@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="500" viewBox="0 0 1120 500" role="img" aria-labelledby="title desc">
+  <title id="title">From aligned sites to a score for one sequence</title>
+  <desc id="desc">Synthetic four-base motif showing counts, probabilities, logo information and additive contributions for ACGT.</desc>
+  <rect width="1120" height="500" fill="#fffdf8"/>
+  <style>text{font-family:DejaVu Sans,Arial,sans-serif;fill:#202124}.h{font-size:24px;font-weight:700}.s{font-size:15px}.m{font:14px DejaVu Sans Mono,monospace}.box{fill:#fff;stroke:#9aa0a6;stroke-width:1.5}.a{fill:#2e7d32}.c{fill:#1565c0}.g{fill:#ef6c00}.t{fill:#c62828}.pick{fill:#fff3bf;stroke:#b8860b;stroke-width:2}.arrow{stroke:#5f6368;stroke-width:2;marker-end:url(#e)}</style>
+  <defs><marker id="e" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#5f6368"/></marker></defs>
+  <text x="34" y="38" class="h">Synthetic aligned sites → matrix → score</text>
+  <rect x="35" y="70" width="205" height="315" rx="10" class="box"/>
+  <text x="55" y="102" class="h">Aligned sites</text>
+  <g id="aligned-sites">
+    <text x="67" y="133" class="m">ACGT</text><text x="67" y="154" class="m">ACGT</text>
+    <text x="67" y="175" class="m">ACGT</text><text x="67" y="196" class="m">ACGT</text>
+    <text x="67" y="217" class="m">ACGT</text><text x="67" y="238" class="m">ACGT</text>
+    <text x="67" y="259" class="m">ACGT</text><text x="67" y="280" class="m">AAGA</text>
+    <text x="67" y="301" class="m">CGCC</text><text x="67" y="322" class="m">GTTG</text>
+  </g>
+  <text x="55" y="342" class="s">Counts summarize</text><text x="55" y="360" class="s">sequence preferences,</text><text x="55" y="378" class="s">not measured affinity.</text>
+  <line x1="245" y1="220" x2="286" y2="220" class="arrow"/>
+  <rect x="292" y="70" width="360" height="315" rx="10" class="box"/>
+  <text x="312" y="102" class="h">PFM counts</text>
+  <text x="413" y="132" class="m">1    2    3    4</text>
+  <text x="318" y="164" class="m a">A</text><text x="407" y="164" class="m">8    1    0    1</text>
+  <text x="318" y="196" class="m c">C</text><text x="407" y="196" class="m">1    7    1    1</text>
+  <text x="318" y="228" class="m g">G</text><text x="407" y="228" class="m">1    1    8    1</text>
+  <text x="318" y="260" class="m t">T</text><text x="407" y="260" class="m">0    1    1    7</text>
+  <text x="312" y="296" class="s">IC bits</text>
+  <text x="373" y="284" class="m">1</text><text x="373" y="334" class="m">0</text>
+  <path d="M395 280H560M395 330H560" fill="none" stroke="#9aa0a6"/>
+  <g id="information-stacks" data-pixels-per-bit="50">
+    <rect data-position="1" data-base="C" x="407" y="324.6096" width="24" height="5.3904" class="c"/>
+    <rect data-position="1" data-base="G" x="407" y="319.2193" width="24" height="5.3904" class="g"/>
+    <rect data-position="1" data-base="A" x="407" y="276.0964" width="24" height="43.1229" class="a"/>
+    <rect data-position="2" data-base="A" x="447" y="326.7839" width="24" height="3.2161" class="a"/>
+    <rect data-position="2" data-base="G" x="447" y="323.5678" width="24" height="3.2161" class="g"/>
+    <rect data-position="2" data-base="T" x="447" y="320.3517" width="24" height="3.2161" class="t"/>
+    <rect data-position="2" data-base="C" x="447" y="297.8390" width="24" height="22.5127" class="c"/>
+    <rect data-position="3" data-base="C" x="487" y="324.6096" width="24" height="5.3904" class="c"/>
+    <rect data-position="3" data-base="T" x="487" y="319.2193" width="24" height="5.3904" class="t"/>
+    <rect data-position="3" data-base="G" x="487" y="276.0964" width="24" height="43.1229" class="g"/>
+    <rect data-position="4" data-base="A" x="527" y="326.7839" width="24" height="3.2161" class="a"/>
+    <rect data-position="4" data-base="C" x="527" y="323.5678" width="24" height="3.2161" class="c"/>
+    <rect data-position="4" data-base="G" x="527" y="320.3517" width="24" height="3.2161" class="g"/>
+    <rect data-position="4" data-base="T" x="527" y="297.8390" width="24" height="22.5127" class="t"/>
+  </g>
+  <text x="312" y="354" class="s">IC = 2 − H(p); raw counts, no correction.</text>
+  <text x="312" y="376" class="s">Base colours match PFM rows; IC is not W.</text>
+  <line x1="657" y1="220" x2="698" y2="220" class="arrow"/>
+  <rect x="704" y="70" width="380" height="315" rx="10" class="box"/>
+  <text x="724" y="102" class="h">Select A-C-G-T</text>
+  <rect x="727" y="127" width="330" height="150" rx="7" class="pick"/>
+  <text x="745" y="158" class="m">W(ACGT) =</text>
+  <text x="745" y="191" class="m">log₂[p₁(A)/q(A)] + … +</text>
+  <text x="745" y="224" class="m">log₂[p₄(T)/q(T)]</text>
+  <text x="745" y="259" class="m">= 5.110430 bits (scanner, a=1)</text>
+  <text x="724" y="310" class="s">Add scores; model probabilities multiply.</text>
+  <text x="724" y="334" class="s">2<tspan baseline-shift="super" font-size="11">W</tspan> compares two sequence models.</text>
+  <text x="724" y="358" class="s">Not P(binding), occupancy, Kd or output.</text>
+  <rect x="35" y="404" width="1049" height="64" rx="8" fill="#eef5ff" stroke="#8ab4f8"/>
+  <text x="55" y="431" class="s"><tspan font-weight="700">Reverse strand:</tspan> score the reverse complement with the same matrix.</text>
+  <text x="55" y="455" class="s"><tspan font-weight="700">Ambiguous base:</tspan> GENtle returns a null window; scanner behavior depends explicitly on --skip-N or --neutral-N.</text>
+</svg>

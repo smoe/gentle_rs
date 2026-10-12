@@ -1,0 +1,4 @@
+readA_geneA u
+readN_nohit u
+readAB_ambiguous u
+readA2_geneA u

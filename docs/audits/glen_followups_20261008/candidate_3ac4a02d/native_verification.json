@@ -1,0 +1,59 @@
+{
+  "schema": "gentle.independent_native_audit_verification.v1",
+  "source_revision": "3ac4a02dd81a7b2dabe3c2bd82b28d76f6ce21da",
+  "status": "pass",
+  "receipt_sha256": "bef0707566d9f68f19f51d57cf760d47c8fbef30818b2f05dcc22bf4c75a121d",
+  "artifact_hashes_verified": 115,
+  "safe_exact_membership": true,
+  "focused_rust_passed": 19,
+  "focused_tests": {
+    "promoter_pair_": 4,
+    "reporter_construct_handoff_": 7,
+    "variant_followup_allele_pair_": 2,
+    "tutorial_gui_semantics__tests": 4,
+    "tutorial_gui_acceptance_feature_targets": 1,
+    "vkorc1_pair_gui_starter_and_oracle": 1
+  },
+  "ordinary_x11_input_steps": 8,
+  "explicit_alternate_base": "T",
+  "completion_transition": [
+    "unsatisfied",
+    "satisfied"
+  ],
+  "full_seq_comparison": [
+    {
+      "seq_id": "vkorc1_rs9923231_promoter_alternate",
+      "length_bp": 20,
+      "full_seq_equal_to_oracle": true
+    },
+    {
+      "seq_id": "vkorc1_rs9923231_promoter_fragment",
+      "length_bp": 20,
+      "full_seq_equal_to_oracle": true
+    },
+    {
+      "seq_id": "vkorc1_rs9923231_promoter_reference",
+      "length_bp": 20,
+      "full_seq_equal_to_oracle": true
+    }
+  ],
+  "pair": {
+    "length_bp": 20,
+    "difference": {
+      "position_0based": 6,
+      "reference": "C",
+      "alternate": "T"
+    },
+    "nonvariant_bytes_preserved": true
+  },
+  "raw_evidence_directory": "/private/tmp/gentle-vkorc1-gui-3ac4a02d",
+  "visually_inspected_raw_captures": [
+    "open_fragment",
+    "review_t",
+    "scroll_to_pair",
+    "materialize_pair"
+  ],
+  "nonclaims": [
+    "Synthetic Linux/X11 dev control, not public-locus GUI, package, timed performance, biological or human scientific approval."
+  ]
+}

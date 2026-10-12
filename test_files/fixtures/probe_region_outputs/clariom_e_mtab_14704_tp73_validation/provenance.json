@@ -14,7 +14,7 @@
     {
       "path": "test_files/fixtures/probe_region_adapter_inputs/clariom_e_mtab_14704_tp73_glen_style.csv",
       "role": "glen_style_adapter_input",
-      "sha1": "2c5d369e04fb6062f24fc93f719fb23b03e8902d"
+      "sha256": "sha256:88c443a1d5397b691f0a4c3cd44ab8e2506b44b78d0a462101f54fadac1cc527"
     }
   ],
   "input_schema": "gentle.glen_probe_region_adapter_input.v1",

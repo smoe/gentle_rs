@@ -16,6 +16,48 @@ pub struct GuiProminentGlossaryEntry {
 
 const GUI_PROMINENT_GLOSSARY_ENTRIES: &[GuiProminentGlossaryEntry] = &[
     GuiProminentGlossaryEntry {
+        glossary_path: "promoters tss-collection",
+        menu_path: "Transcript starts > Inspect stored collection",
+        palette_title: "Transcript Starts / TSS Windows",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "promoters tss-forget",
+        menu_path: "Transcript starts > Forget registry entry... > Confirm forget registry entry",
+        palette_title: "Transcript Starts / TSS Windows",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "promoters tss-list",
+        menu_path: "Transcript starts > Refresh collections",
+        palette_title: "Transcript Starts / TSS Windows",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "promoters tss-inventory",
+        menu_path: "DNA Sequence Viewer > TFBS scan > Transcript starts / TSS windows...",
+        palette_title: "Transcript Starts / TSS Windows",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "promoters tss-materialize",
+        menu_path: "Transcript starts > Approve and create selected windows",
+        palette_title: "Transcript Starts / TSS Windows",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "promoters tata-screen",
+        menu_path: "DNA Sequence Viewer > TFBS scan > TATA-box evidence",
+        palette_title: "TATA-box Evidence",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "promoters tata-materialize",
+        menu_path: "TATA-box evidence > Add selected to DNA map",
+        palette_title: "TATA-box Evidence",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
         glossary_path: "load-project",
         menu_path: "File > Open Project...",
         palette_title: "Open Project",
@@ -118,6 +160,36 @@ const GUI_PROMINENT_GLOSSARY_ENTRIES: &[GuiProminentGlossaryEntry] = &[
         ui_intent_target: Some(UiIntentTarget::ImportGenomeTrack),
     },
     GuiProminentGlossaryEntry {
+        glossary_path: "features edit-location",
+        menu_path: "Edit > Feature Location Editor...",
+        palette_title: "Feature Location Editor",
+        ui_intent_target: Some(UiIntentTarget::FeatureLocationEditor),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "features create",
+        menu_path: "Edit > Feature Location Editor...",
+        palette_title: "Feature Location Editor",
+        ui_intent_target: Some(UiIntentTarget::FeatureLocationEditor),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "features delete",
+        menu_path: "Edit > Feature Location Editor...",
+        palette_title: "Feature Location Editor",
+        ui_intent_target: Some(UiIntentTarget::FeatureLocationEditor),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "features split",
+        menu_path: "Edit > Feature Location Editor...",
+        palette_title: "Feature Location Editor",
+        ui_intent_target: Some(UiIntentTarget::FeatureLocationEditor),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "features merge",
+        menu_path: "Edit > Feature Location Editor...",
+        palette_title: "Feature Location Editor",
+        ui_intent_target: Some(UiIntentTarget::FeatureLocationEditor),
+    },
+    GuiProminentGlossaryEntry {
         glossary_path: "primers design",
         menu_path: "Patterns > PCR Designer...",
         palette_title: "PCR Designer",
@@ -130,15 +202,165 @@ const GUI_PROMINENT_GLOSSARY_ENTRIES: &[GuiProminentGlossaryEntry] = &[
         ui_intent_target: Some(UiIntentTarget::PcrDesign),
     },
     GuiProminentGlossaryEntry {
+        glossary_path: "primers design-transcript-assay-panel",
+        menu_path: "Patterns > PCR Designer...",
+        palette_title: "PCR Designer",
+        ui_intent_target: Some(UiIntentTarget::PcrDesign),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "primers experimental-handoff",
+        menu_path: "Patterns > PCR Designer...",
+        palette_title: "PCR Designer",
+        ui_intent_target: Some(UiIntentTarget::PcrDesign),
+    },
+    GuiProminentGlossaryEntry {
         glossary_path: "seq-confirm run",
         menu_path: "Patterns > Sequencing Confirmation...",
         palette_title: "Sequencing Confirmation",
         ui_intent_target: Some(UiIntentTarget::SequencingConfirmation),
     },
     GuiProminentGlossaryEntry {
+        glossary_path: "gene-sets resolve",
+        menu_path: "Genome > Gene Set Inspector...",
+        palette_title: "Gene Set Inspector",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "gene-sets create-pool",
+        menu_path: "Genome > Gene Set Inspector...",
+        palette_title: "Gene Set Inspector",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "gene-sets regulatory-partner-screen",
+        menu_path: "Genome > Gene Set Inspector...",
+        palette_title: "Gene Set Inspector",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "collections run primer-specificity",
+        menu_path: "Genome > Gene Set Inspector...",
+        palette_title: "Gene Set Inspector",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "collections run restriction-scan",
+        menu_path: "Genome > Gene Set Inspector...",
+        palette_title: "Gene Set Inspector",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "collections run tfbs-scan",
+        menu_path: "Genome > Gene Set Inspector...",
+        palette_title: "Gene Set Inspector",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "features genomic-motif-evidence",
+        menu_path: "DNA Sequence Viewer > TFBS scan > Precomputed hits",
+        palette_title: "Precomputed Genomic Motif Evidence",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "features promoter-cofactors",
+        menu_path: "File > Promoter Cofactors...",
+        palette_title: "Promoter Cofactors",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "regions preview-feature",
+        menu_path: "File > Promoter Cofactors... > Saved motif: DNA annotation",
+        palette_title: "Promoter Cofactors",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "regions materialize-feature",
+        menu_path: "File > Promoter Cofactors... > Saved motif: DNA annotation",
+        palette_title: "Promoter Cofactors",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "regions create",
+        menu_path: "Genome > Saved Genomic Regions...",
+        palette_title: "Saved Genomic Regions",
+        ui_intent_target: Some(UiIntentTarget::SavedGenomicRegions),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "regions capture",
+        menu_path: "Genome > Saved Genomic Regions...",
+        palette_title: "Saved Genomic Regions",
+        ui_intent_target: Some(UiIntentTarget::SavedGenomicRegions),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "regions list",
+        menu_path: "Genome > Saved Genomic Regions...",
+        palette_title: "Saved Genomic Regions",
+        ui_intent_target: Some(UiIntentTarget::SavedGenomicRegions),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "regions update",
+        menu_path: "Genome > Saved Genomic Regions...",
+        palette_title: "Saved Genomic Regions",
+        ui_intent_target: Some(UiIntentTarget::SavedGenomicRegions),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "regions import",
+        menu_path: "Genome > Saved Genomic Regions...",
+        palette_title: "Saved Genomic Regions",
+        ui_intent_target: Some(UiIntentTarget::SavedGenomicRegions),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "regions export",
+        menu_path: "Genome > Saved Genomic Regions...",
+        palette_title: "Saved Genomic Regions",
+        ui_intent_target: Some(UiIntentTarget::SavedGenomicRegions),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "regions homology-screen",
+        menu_path: "DNA Sequence Viewer > Saved genomic regions > Conservation...",
+        palette_title: "Genomic Region Conservation",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "regions render-homology-svg",
+        menu_path: "Conservation > Export SVG...",
+        palette_title: "Genomic Region Conservation",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "promoters assess-conserved-modules",
+        menu_path: "Conservation > Assess selected evidence",
+        palette_title: "Genomic Region Conservation",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "collections run digest",
+        menu_path: "Genome > Gene Set Inspector...",
+        palette_title: "Gene Set Inspector",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "collections run export-pool",
+        menu_path: "Project Overview > Containers",
+        palette_title: "Project Overview",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
         glossary_path: "mirna scan-target",
         menu_path: "Patterns > microRNA Target Scan...",
         palette_title: "microRNA Target Scan",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "splicing cryptic-screen",
+        menu_path: "DNA Sequence Viewer > Sequence Tools > Cryptic-splicing structural screen",
+        palette_title: "Cryptic-splicing Structural Screen",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "splicing cryptic-render",
+        menu_path: "Splicing Expert > Cryptic screen > Render SVG",
+        palette_title: "Cryptic-splicing Structural Screen",
         ui_intent_target: None,
     },
 ];
@@ -147,7 +369,7 @@ pub fn gui_prominent_glossary_entries() -> &'static [GuiProminentGlossaryEntry] 
     GUI_PROMINENT_GLOSSARY_ENTRIES
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(super) struct OpenWindowEntry {
     pub(super) native_menu_key: u64,
     pub(super) viewport_id: ViewportId,
@@ -185,6 +407,16 @@ impl GENtleApp {
         }
         if viewport_id == Self::command_palette_viewport_id() {
             return Some(Self::embedded_window_layer_from_title("Command Palette"));
+        }
+        if viewport_id == Self::external_services_viewport_id() {
+            return Some(Self::embedded_window_layer_from_window_id(
+                Self::hosted_external_services_window_id(),
+            ));
+        }
+        if viewport_id == Self::gene_set_inspector_viewport_id() {
+            return Some(Self::embedded_window_layer_from_window_id(
+                Self::hosted_gene_set_inspector_window_id(),
+            ));
         }
         if viewport_id == Self::history_viewport_id() {
             return Some(Self::embedded_window_layer_from_title("Operation History"));
@@ -224,6 +456,11 @@ impl GENtleApp {
                 "hosted_arrangement_gel_preview_window",
                 viewport_id,
             ))));
+        }
+        if viewport_id == Self::gel_image_viewport_id() {
+            return Some(Self::embedded_window_layer_from_window_id(
+                Self::gel_image_window_id(),
+            ));
         }
         if viewport_id == Self::pcr_design_viewport_id() {
             return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
@@ -290,7 +527,76 @@ impl GENtleApp {
             })
     }
 
-    pub(super) fn collect_open_window_entries(&self) -> Vec<OpenWindowEntry> {
+    fn open_window_model_signature(&self, engine_structural_revision: u64) -> Option<u64> {
+        let mut hasher = DefaultHasher::new();
+        self.root_engine_summary_cache
+            .engine_identity
+            .hash(&mut hasher);
+        engine_structural_revision.hash(&mut hasher);
+        self.current_project_path.hash(&mut hasher);
+        self.show_configuration_dialog.hash(&mut hasher);
+        self.show_help_dialog.hash(&mut hasher);
+        if self.show_help_dialog {
+            self.active_help_title().hash(&mut hasher);
+        }
+        self.show_command_palette_dialog.hash(&mut hasher);
+        self.external_services_ui.show_panel.hash(&mut hasher);
+        self.gene_set_inspector.show_panel.hash(&mut hasher);
+        self.evidence_preparation_panel.show_panel.hash(&mut hasher);
+        self.history_ui.show_panel.hash(&mut hasher);
+        self.show_jobs_panel.hash(&mut hasher);
+        self.show_reference_genome_prepare_dialog.hash(&mut hasher);
+        self.show_reference_genome_retrieve_dialog.hash(&mut hasher);
+        self.show_reference_genome_blast_dialog.hash(&mut hasher);
+        self.genome_dialog_scope.prepare_title().hash(&mut hasher);
+        self.show_genome_bed_track_dialog.hash(&mut hasher);
+        self.show_gibson_dialog.hash(&mut hasher);
+        self.show_arrangement_gel_preview_dialog.hash(&mut hasher);
+        self.gel_image_editor.open.hash(&mut hasher);
+        if self.show_arrangement_gel_preview_dialog {
+            self.arrangement_gel_preview
+                .arrangement_title
+                .hash(&mut hasher);
+        }
+        self.show_pcr_design_dialog.hash(&mut hasher);
+        if self.show_pcr_design_dialog {
+            self.pcr_design_seq_id.hash(&mut hasher);
+        }
+        self.show_sequencing_confirmation_dialog.hash(&mut hasher);
+        if self.show_sequencing_confirmation_dialog {
+            self.sequencing_confirmation_seq_id.hash(&mut hasher);
+        }
+        self.show_planning_dialog.hash(&mut hasher);
+        self.show_routine_assistant_dialog.hash(&mut hasher);
+        self.show_agent_assistant_dialog.hash(&mut hasher);
+        self.show_jaspar_expert_dialog.hash(&mut hasher);
+        self.show_new_sequence_dialog.hash(&mut hasher);
+        self.show_uniprot_dialog.hash(&mut hasher);
+        self.show_genbank_dialog.hash(&mut hasher);
+
+        let mut window_signature = 0_u64;
+        for (map_kind, windows) in [
+            (0_u8, &self.windows),
+            (1_u8, &self.detached_auxiliary_window_hosts),
+        ] {
+            for (viewport_id, window) in windows {
+                let window = window.read().ok()?;
+                let mut item_hasher = DefaultHasher::new();
+                map_kind.hash(&mut item_hasher);
+                viewport_id.hash(&mut item_hasher);
+                window
+                    .open_window_registry_signature()?
+                    .hash(&mut item_hasher);
+                window_signature = window_signature.wrapping_add(item_hasher.finish());
+            }
+        }
+        self.windows.len().hash(&mut hasher);
+        self.detached_auxiliary_window_hosts.len().hash(&mut hasher);
+        window_signature.hash(&mut hasher);
+        Some(hasher.finish())
+    }
+
+    fn build_open_window_model(&self) -> OpenWindowModel {
         let mut entries = vec![OpenWindowEntry {
             native_menu_key: Self::native_menu_key_for_viewport(ViewportId::ROOT),
             viewport_id: ViewportId::ROOT,
@@ -334,6 +640,16 @@ impl GENtleApp {
                 viewport_id: Self::external_services_viewport_id(),
                 title: "External Services".to_string(),
                 detail: "Provider catalog, preflight, and quote handoff workspace".to_string(),
+            });
+        }
+        if self.gene_set_inspector.show_panel {
+            entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(
+                    Self::gene_set_inspector_viewport_id(),
+                ),
+                viewport_id: Self::gene_set_inspector_viewport_id(),
+                title: "Gene Set Inspector".to_string(),
+                detail: "Gene-set resolution, audit, and collection operations".to_string(),
             });
         }
         if self.evidence_preparation_panel.show_panel {
@@ -425,6 +741,14 @@ impl GENtleApp {
                 viewport_id: Self::arrangement_gel_preview_viewport_id(),
                 title: self.arrangement_gel_preview_title(),
                 detail: "Serial gel preview with live ladder selection".to_string(),
+            });
+        }
+        if self.gel_image_editor.open {
+            entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(Self::gel_image_viewport_id()),
+                viewport_id: Self::gel_image_viewport_id(),
+                title: "Gel Image Analysis".into(),
+                detail: "Measured gel lanes, confirmed ladder calibration and band sizing".into(),
             });
         }
         if self.show_pcr_design_dialog {
@@ -522,30 +846,18 @@ impl GENtleApp {
             });
         }
 
-        let mut sequence_windows = self
-            .windows
-            .iter()
-            .map(|(viewport_id, window)| {
-                let title = window
-                    .read()
-                    .map(|w| w.name())
-                    .unwrap_or_else(|_| "Sequence window".to_string());
-                OpenWindowEntry {
-                    native_menu_key: Self::native_menu_key_for_viewport(*viewport_id),
-                    viewport_id: *viewport_id,
-                    title,
-                    detail: "Sequence map window".to_string(),
-                }
-            })
-            .collect::<Vec<_>>();
-        sequence_windows.sort_by(|left, right| left.title.cmp(&right.title));
-        entries.extend(sequence_windows);
-
+        let mut sequence_windows = Vec::new();
         let mut auxiliary_windows = Vec::new();
-        for window in self.windows.values() {
+        for (viewport_id, window) in &self.windows {
             let Ok(window_guard) = window.read() else {
                 continue;
             };
+            sequence_windows.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(*viewport_id),
+                viewport_id: *viewport_id,
+                title: window_guard.name(),
+                detail: "Sequence map window".to_string(),
+            });
             for (viewport_id, title, detail) in window_guard.collect_open_auxiliary_window_entries()
             {
                 auxiliary_windows.push(OpenWindowEntry {
@@ -556,6 +868,9 @@ impl GENtleApp {
                 });
             }
         }
+        sequence_windows.sort_by(|left, right| left.title.cmp(&right.title));
+        entries.extend(sequence_windows);
+
         for window in self.detached_auxiliary_window_hosts.values() {
             let Ok(window_guard) = window.read() else {
                 continue;
@@ -575,34 +890,61 @@ impl GENtleApp {
                 .cmp(&right.title)
                 .then(left.detail.cmp(&right.detail))
         });
+        let auxiliary_titles = auxiliary_windows
+            .iter()
+            .map(|entry| entry.title.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
         entries.extend(auxiliary_windows);
-        entries
+        let native_entries = entries
+            .iter()
+            .map(|entry| (entry.native_menu_key, entry.title.clone()))
+            .collect();
+        let native_key_to_viewport = entries
+            .iter()
+            .map(|entry| (entry.native_menu_key, entry.viewport_id))
+            .collect();
+        OpenWindowModel {
+            entries,
+            native_entries,
+            native_key_to_viewport,
+            auxiliary_titles,
+        }
     }
 
-    fn collect_open_auxiliary_window_titles(&self) -> Vec<String> {
-        let mut titles = Vec::new();
-        let mut seen = HashSet::new();
-        for window_map in [&self.windows, &self.detached_auxiliary_window_hosts] {
-            for window in window_map.values() {
-                let Ok(window_guard) = window.read() else {
-                    continue;
-                };
-                for (_, title, _) in window_guard.collect_open_auxiliary_window_entries() {
-                    if seen.insert(title.clone()) {
-                        titles.push(title);
-                    }
-                }
-            }
+    pub(super) fn refresh_open_window_model_cache(&mut self) {
+        let structural_revision = self.root_engine_summary_cache.structural_revision;
+        let Some(signature) = self.open_window_model_signature(structural_revision) else {
+            return;
+        };
+        if self.open_window_model_cache.signature == Some(signature) {
+            self.open_window_model_cache.hits = self.open_window_model_cache.hits.saturating_add(1);
+            return;
         }
-        titles
+        let model = Arc::new(self.build_open_window_model());
+        self.native_window_key_to_viewport = model.native_key_to_viewport.clone();
+        self.open_window_model_cache.signature = Some(signature);
+        self.open_window_model_cache.model = model;
+        self.open_window_model_cache.misses = self.open_window_model_cache.misses.saturating_add(1);
+    }
+
+    pub(super) fn collect_open_window_entries(&self) -> Vec<OpenWindowEntry> {
+        self.build_open_window_model().entries
     }
 
     pub(super) fn reset_root_auxiliary_areas_if_legacy_title_layers_visible(
-        &self,
+        &mut self,
         ctx: &egui::Context,
     ) -> bool {
+        if self.open_window_model_cache.signature.is_none() {
+            self.refresh_root_engine_summary_cache();
+            self.refresh_open_window_model_cache();
+        }
         let has_stale_auxiliary_title_layer = self
-            .collect_open_auxiliary_window_titles()
+            .open_window_model_cache
+            .model
+            .auxiliary_titles
             .iter()
             .any(|title| {
                 let layer_id = Self::stale_hosted_window_title_layer_id(title);
@@ -635,6 +977,9 @@ impl GENtleApp {
                 self.detached_auxiliary_window_hosts.remove(&viewport_id);
                 continue;
             };
+            if let Some(seq_id) = window.read().ok().and_then(|guard| guard.sequence_id()) {
+                self.sequence_window_open_runtime_frames.remove(&seq_id);
+            }
             let keep_auxiliary_host_alive = window
                 .read()
                 .ok()
@@ -787,6 +1132,8 @@ impl GENtleApp {
             self.command_palette_focus_query = true;
         } else if viewport_id == Self::external_services_viewport_id() {
             self.external_services_ui.show_panel = true;
+        } else if viewport_id == Self::gene_set_inspector_viewport_id() {
+            self.gene_set_inspector.show_panel = true;
         } else if viewport_id == Self::history_viewport_id() {
             self.history_ui.show_panel = true;
         } else if viewport_id == Self::prepare_genome_viewport_id() {
@@ -836,13 +1183,21 @@ impl GENtleApp {
     }
 
     pub(super) fn deferred_window_position(index: usize) -> Pos2 {
+        const CASCADE_STEP_PX: f32 = 48.0;
+        const CASCADE_SLOTS: usize = 6;
+        let offset = (index % CASCADE_SLOTS) as f32 * CASCADE_STEP_PX;
         Pos2 {
-            x: index as f32 * 200.0,
-            y: index as f32 * 200.0,
+            x: offset,
+            y: offset,
         }
     }
 
     pub(super) fn register_window(&mut self, mut window: Window) -> ViewportId {
+        if let Some(seq_id) = window.sequence_id()
+            && let Some(frame) = self.sequence_window_open_runtime_frames.get(&seq_id)
+        {
+            frame.update_phase("viewport-created");
+        }
         let id = format!("Viewport {}", self.viewport_id_counter);
         let id = ViewportId::from_hash_of(id);
         let position = Self::deferred_window_position(self.viewport_id_counter);

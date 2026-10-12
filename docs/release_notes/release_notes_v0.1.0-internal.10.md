@@ -1,0 +1,682 @@
+# Release Notes / Changelog: `v0.1.0-internal.10`
+
+Updated: 2026-09-19, after publication and a read-only GitHub status check.
+
+Status: **published without recorded exact-candidate acceptance**. The
+[GitHub prerelease](https://github.com/smoe/gentle_rs/releases/tag/v0.1.0-internal.10),
+"10th Internal Preview (Not for External Use)", was published at
+2026-09-18 17:37:26 UTC. Its tag identifies
+`84f34a9e479d0dee5d8476aba29c379d370f57e1`. Publication is an observed event,
+not a retrospective readiness verdict. Glen's earlier successful runs remain
+historical evidence; the Pending ledger below is not waived or restarted.
+
+At this check the release had no attached assets. The
+[installer run](https://github.com/smoe/gentle_rs/actions/runs/35375443963)
+completed with Windows packaging successful, macOS cancelled and Linux failed;
+the aggregate package-validation and publication jobs were skipped. A successful
+Windows build is not three-platform extracted-package acceptance. The
+[release-triggered container run](https://github.com/smoe/gentle_rs/actions/runs/35375444006)
+had failed. The headless-container change `85bd9fdb` and subsequent fixes are
+after the tag; rerunning the tag does not include them. Later `.11` development
+and acceptance must name their own SHA, not silently redefine this release.
+
+| Release field | Value |
+| --- | --- |
+| Status | Published prerelease; exact-candidate acceptance unrecorded, installer run failed and no assets attached at the status check |
+| Publication date | 2026-09-18 17:37:26 UTC |
+| Previous tag | `v0.1.0-internal.9` (2026-06-05) |
+| Primary story | Genome-anchored evidence, transcript-aware assays and auditable promoter/TSS reporter design |
+| Manual GUI smoke | Pending at the tagged revision; later-SHA checks must be identified separately |
+
+This internal release covers the work after `v0.1.0-internal.9`, tagged on
+2026-06-05. This comparison identifies the published source, not later fixes
+or evidence that its acceptance gates passed:
+
+```text
+v0.1.0-internal.9..v0.1.0-internal.10
+```
+
+[Open the GitHub comparison.](https://github.com/smoe/gentle_rs/compare/v0.1.0-internal.9...v0.1.0-internal.10)
+
+For subsequent acceptance, record the full SHA used by Glen and distinguish it
+from the published tag whenever they differ.
+
+The main release story is a genome-anchored TP73 evidence viewer. GENtle can
+open the GRCh38.p14 TP73 locus and inspect exon and transcript structure,
+repeats, projected microarray intervals, prepared CUT&RUN intervals,
+paired-read ROI support, regulatory/motif-context reasoning, TFBS annotations,
+and coordinate/build provenance in one project. The same proof is reproducible
+through a committed headless workflow and inspectable through GUI, CLI/shared
+shell, MCP, and agent-facing paths.
+
+This is also a substantial infrastructure cut. It expands transcript-aware
+primer and isoform-assay planning, fact-aware capability introspection, local
+and external agent integration, probe-region and RNA evidence handling,
+gene-set/promoter reasoning, review-gated material handoffs, and the amount of
+expensive GUI work that runs safely away from the egui thread.
+
+## Tagged Additions
+
+- Inspect TP73 genome-anchored tracks and PATZ1 negative-strand transcript,
+  motif, occupancy and assay evidence through shared engine/GUI contracts.
+- Save assembly-bound genomic regions; exchange reproducible Conservation
+  requests, navigate alignment blocks and cancel active BLAST work.
+- Resolve hash-bound external locus/reporter evidence before proposing
+  regulatory-fragment panels. Separately approve exact, atomic multi-fragment
+  products with explicit source, annotation and sequence provenance.
+- Compare exact-matrix TSS profiles with corrected inclusive background-tail
+  scores and optional shared ranges across TSSs. Compressed overview traces
+  retain narrow peaks without joining them into apparent plateaus.
+- Attach saved DuckDB motif-query evidence as separate detailed-panel triangles:
+  base spans the TFBS, up/down indicates displayed orientation, and height
+  represents the imported score. Labels retain bp, score and genomic direction;
+  sparse or truncated query results are not evidence of absent binding sites.
+- Export annotated TSS sequences in GenBank or EMBL alongside FASTA and
+  integrated SVG/PNG/PDF reports. Fixed-column GenBank headers and shared
+  annotation serialization improve interoperability without changing scores.
+  Lossless PDF compression reduces raster storage; CLI exports print a concise
+  summary while retaining complete `report.json` and explicit `--full-report`
+  stdout access. Large score/TSV bundles still require deliberate storage.
+- Inspect source-coherent Ensembl/RefSeq transcript context. Hardened NCBI
+  parsing preserves repeated alignments, child-before-parent records and shared
+  exon/CDS parents. Correct Ensembl discovery URLs and genome-bound progress
+  avoid associating an active preparation with a newly selected genome.
+- Learn PWM/PSSM, raw LLR and tail-score interpretation through the
+  [motif-to-promoter tutorial](../tutorial/08-13_motif_logo_to_promoter_trace.md),
+  discoverable by the inner agent. Imported JASPAR-mapping scores and GENtle's
+  native scoring remain distinct provenance paths.
+- Reproduce branch/reverse-complement, digest and Simple-PCR tutorials through
+  ordinary Linux X11 input with native-window/coordinate binding and retained
+  screenshot provenance. Starter projects must not contain completed results.
+- Add the [manual measured-gel editor](../gel_image_analysis.md): explicit
+  ladder-band calibration, measured bands, sizing diagnostics and shared-engine
+  exports. Commits `6fedd4de` and `76ac480a` are in this tag. Verified ladder
+  catalogs and real-image performance acceptance remain pending; automatic
+  peak detection is not implemented.
+- Define Linux tarball, Windows ZIP and macOS DMG builds at one declared SHA.
+  The tagged Windows ZIP contains only the GUI executable. Self-contained
+  desktop packaging and the genuinely headless container changes belong to
+  later revisions; download and installed-package acceptance remain pending.
+- Check generated tutorials in both LF and CRLF local checkouts on every
+  sampled native CI host. Byte-hashed fixtures and `Cargo.lock` retain LF;
+  receipt verification remains strict rather than normalizing away changes.
+
+Glen's `c7f3f005` runner fixes are integrated. The Simple-PCR starter now uses
+the same 800-base TP73 extract as its scripted oracle, with core [200, 600)
+and at most 200 bases per flank. The full source locus is retained for
+provenance. This bounds the input rather than relaxing scientific gates or
+raising the ten-minute compute timeout. A new live run is still required.
+
+## Important TFBS Score Correction
+
+The background-tail correction in `8b7b6b47` fixes accumulated per-column
+rounding error and cancellation in small survival probabilities. For the TP73
+MA0861.2 maximizer `ACATGTCTGGACATGT`, raw LLR remains **19.543680326691 bits**,
+but the former displayed **300** becomes **9.632959861247**, from the inclusive
+uniform-background tail `4^-16`. This is `-log10(P(score >= observed))`, **not**
+biochemical binding probability, raw LLR bits or a quantile. Pseudocount policy
+is unchanged. The documented conservative discretization can overestimate the
+tail and therefore underestimate its negative-log score.
+
+Detailed panels explicitly label their scale policy. Use
+`--scale-mode shared_across_tss` for one common range per exact matrix across
+all TSSs and both strands in the supplied report; independent scaling remains
+available and is not cross-TSS peak-height comparability. Neither policy
+calibrates biological affinity between different matrices. Overview pixel
+buckets show separate-strand min/max ranges and mean marks, not connected
+maxima; original arrays remain intact.
+
+**Existing reports are not silently repaired.** Background-derived TSS,
+TFBS-track, cohort and locus/reporter results need explicit rescoring from the
+same sequence/PFM inputs, including dependent peaks and comparisons. Pure
+presentation changes and GenBank/EMBL exports need only re-export when the
+stored scores and required context are already correct. The three affected
+synthetic tutorial datasets were explicitly refreshed; this does not certify
+the private five-gene bundle.
+
+Follow the [input-completeness gate and regeneration procedure](../tss_tfbs_profiles.md#check-input-completeness-before-regeneration).
+The historical 58-window FASTAs, 30-track panel and 13 selections are recoverable
+from Git, but do not establish identity with a prior scored run on their own.
+Before/after acceptance also requires its complete `report.json`, receipt and
+exact matrix bindings; integrated pages need the original bound locus inputs.
+Selected FASTAs, annotated sequence files and PDFs cannot replace that set.
+No private scientific bundle was rescored or republished by this release-note
+update. Earlier producer reports of successful replay remain attributed to
+their exact revision, not promoted to current-candidate acceptance.
+
+## Exact-Candidate Gate Ledger
+
+Build-only CI verification is available through the
+[candidate packaging instructions](../release.md#build-only-candidate-verification).
+It retains packages and receipts without publishing or altering the existing
+release; implementation of that path does not mark acceptance gates passed.
+
+This carried-forward ledger is bound to the published source
+`84f34a9e479d0dee5d8476aba29c379d370f57e1`. Its rows remain Pending unless
+exact-revision evidence is recorded. Checks of a newer `.11` candidate must
+record that full SHA separately; they cannot certify the older tagged source.
+
+Before evaluation, record the full candidate SHA, clean-tree status,
+`Cargo.lock` SHA-256, Rust version, build features/profile, host and relevant
+fixture/resource hashes in the evidence bundle. Each ledger row must link its
+receipt and identify that same revision. Do not aggregate passes from nearby
+commits. After a fix, select the new candidate and rerun its gates.
+
+| Gate | Owner | Status |
+| --- | --- | --- |
+| `cargo check -q --locked` and `cargo test --locked --workspace` | Glen / CI | Pending |
+| Release-shaped `script-interfaces` build and every published entrypoint smoke | Glen / platform CI | Pending |
+| Examples, tutorial generation/manifest/catalog checks, interface parity | Glen / CI | Pending |
+| LF/CRLF checkout replay and raw lockfile identity | Glen / CI | Pending at final SHA; focused local regression evidence below |
+| All three Linux tutorial GUI smoke chapters, including bounded Simple PCR | Glen | Pending; new runtime measurement required |
+| TP73/PATZ1 graphical inspection and Conservation navigation/cancellation | Glen | Pending |
+| Copied-state IRF9/Q00978 acceptance | Glen, private copied-state evidence | Pending |
+| GUI and specificity benchmark acceptance | Glen | Pending |
+| TP73 CUT&RUN/evidence-viewer and PATZ1 locus-composer proof | Glen / CI | Pending |
+| Headless Docker target, `runtime-cli` (no GUI/JS/Lua) | Container CI | Pending on a later candidate; required changes are not in this tag |
+| Linux tarball, Windows ZIP and macOS DMG from the exact candidate | Release CI | Pending; build-only dispatch does not require retagging |
+| Extracted/copied desktop package launch, resources and tutorial availability away from the checkout | Native Windows/macOS testers | Pending; current workflow archive checks do not establish this |
+| macOS optional `screenshot-capture` compilation | macOS CI | Pending; Linux cannot validate this |
+| Clean tree, version/tag/SHA consistency and generated-artifact checks | Release owner | Pending; published source identified above, acceptance not recorded |
+| Explicit exact-candidate readiness verdict | Glen / release owner | Pending; publication occurred without a recorded verdict here |
+
+Use [the release checklist](../release.md) for entrypoint commands,
+[GUI acceptance instructions](../testing.md#61-tutorial-gui-acceptance-contracts)
+for the three-chapter smoke, and the
+[benchmark contract](../testing.md#51-external-performance-audit) for
+performance evidence. The TP73 proof is described in the
+[evidence-viewer runbook](../tp73_genome_evidence_viewer_runbook.md) and
+[CUT&RUN smoke guide](../cutrun_release_smoke.md). Retain private inputs outside
+the repository; a missing private gate is pending, not silently waived.
+
+The copied-state assay acceptance must retain the expected one-of-three linked
+cDNA / two-of-four linked-record coverage, with only the actual patch record
+genomically unassessed. GUI/report evidence must not rewrite that scientific
+oracle to obtain a pass.
+
+Local evidence for the 2026-09-15 checkout/lockfile changes: 29 offline Python
+release-policy and checkout-harness tests passed, including real LF/CRLF Git
+clones and rejection of changed lockfile bytes. Locked offline `cargo check`
+and the release-version consistency test also passed locally. The earlier `343ff4aa` tutorial
+fix was exercised with full LF/CRLF tutorial replay. These scoped checks are
+not native Windows/macOS installer acceptance or final-candidate certification.
+
+## Candidate Acceptance Limits
+
+- Products are **designed, not experimentally validated**. Sequence similarity
+  does not establish orthology, TF binding, regulatory activity or sufficiency.
+- A candidate-region BLAST database does not establish whole-genome uniqueness.
+- The compact PCR tutorial is a navigation/design smoke, not a whole-locus
+  performance benchmark or genome-wide specificity assessment.
+- Missing whole-genome, transcriptome or private evidence remains explicit.
+- The Linux tarball targets Ubuntu 24.04 x86-64 and compatible runtime libraries;
+  it is not a static universal binary, AppImage or Debian package. BLAST+,
+  Primer3 and other external scientific tools remain separately installed.
+- Linux screenshot acceptance does not prove macOS ScreenCaptureKit behavior.
+- Screenshot files explain interaction; typed sequence/report checks remain
+  the scientific oracle. No background capture authority is added.
+
+This status correction does not authorize retagging or further publication.
+Keep the historical ledger intact and obtain Glen's readiness verdict and
+owner approval on exact-candidate evidence before a subsequent release.
+
+## Highlights
+
+- **Genome-anchored TP73 evidence viewer:** a public, offline-safe proof joins
+  GRCh38.p14 sequence context with repeat, Clariom-style array, BED, TFBS, and
+  splicing evidence, with deterministic SVG/JSON artifacts and a manual GUI
+  runbook.
+- **Microarray and probe-region bridge:** explicit Affymetrix CEL/APT planning,
+  helper-output inspection, plotting, coordinate projection, PM-probe input,
+  transcript/exon geometry interpretation, and Clariom D GUI support now form
+  a shared engine/shell workflow rather than a GUI-only path.
+- **Splicing and RNA evidence:** junction probes are visible in the DNA and
+  Splicing Expert views; transcript/exon and exon/exon summaries gained clearer
+  support/provenance presentation; RNA workflows gained target-region rescue,
+  allele-aware hash screening, persisted disjoint exonic parts, and DEXSeq
+  annotation/count exports.
+- **Transcript-aware primer workflows:** bounded and progress-aware Primer3
+  searches, explicit transcript-coverage universes, whole-cDNA similarity
+  guidance, terminal-exon RT-primer pools, related-sequence common primers,
+  exhaustive cDNA/genomic specificity checks, and digest-bound multi-gene
+  isoform-study execution now share auditable engine contracts.
+- **Fact-aware automation:** project facts, capability requirements, expected
+  effects, readiness evaluation, and post-run effect verification now cover
+  the shared capability registry broadly. JSON help and capability
+  introspection derive from the same descriptors.
+- **Inner and outer agents:** Agent Assistant project guidance, shared UI
+  intents, local OpenAI-compatible providers, Ollama/Msty guidance, Codex Local
+  discovery, visible local `/help` and `/list` results, and ClawBio/OpenClaw
+  request paths were hardened without creating a second biology command
+  surface. Fresh sessions offer direct open-document and Configuration actions;
+  typed suggestion preconditions now dim and block dependent rows until the
+  live project fact exists, including a fail-closed check for automatic runs.
+  DNA-window intents also expose their queued/opening state in Agent Assistant;
+  annotation-rich lazy windows postpone their feature browser until requested.
+  Explicit `Agent help` controls can attach the exact GENtle viewport
+  being diagnosed with a local preview-before-send; optional macOS native
+  full-window capture is permission-gated and restricted to GENtle-owned
+  windows. Image-capable agents may also explain why they need one screenshot;
+  GENtle then requires one-shot approval for a user-selected registered window
+  and still previews the result before the separate send action.
+- **Codex Local usability:** GENtle can discover the current macOS ChatGPT
+  bundled Codex executable, presents a model selector immediately, reads the
+  visible local Codex model metadata, and forwards an explicit choice through
+  `codex --model`.
+- **Promoter, gene-set, and construct reasoning:** offline gene-set producers,
+  promoter cohorts, ortholog promoter comparison, relationship expectations,
+  CUT&RUN support summaries, repeat-family interpretation, and portable
+  construct-reasoning inspection actions are available through shared
+  contracts.
+- **Review-gated experimental handoffs:** first-class oligo order forms,
+  duplicate/reuse review, delivery routing, protein-expression planning, and
+  Metabion/GeneArt-oriented preflight/quote packets keep planning outputs
+  separate from confirmed purchasing actions.
+- **GUI responsiveness:** detached revision-checked engine work, cheap display
+  checkpoints, history-excluding read-only worker clones, presentation caches,
+  virtualized dense lists, slower idle repainting, and background network,
+  track, BigWig, and model-discovery work substantially reduce idle and active
+  GUI overhead.
+- **Runtime and dependency hardening:** process-local runtime activity is
+  visible through `introspect runtime`, MCP, SIGUSR1, and the GUI status bar;
+  local fingerprints use SHA-256; legacy SHA-1 download checks are delegated
+  to optional platform tools; and the macOS Objective-C bridge uses the current
+  `objc2` API family.
+
+## Notable Changes by Area
+
+### 1. TP73 Genome Evidence and Presentation
+
+- Added the release-proof workflow
+  `docs/examples/workflows/tp73_genome_evidence_viewer_release_proof.json` and
+  the public `docs/tp73_genome_evidence_viewer_runbook.md`.
+- Added tiny, provenance-documented fixtures that deterministically produce
+  three repeat features, four projected array intervals, two prepared/projected
+  CUT&RUN BED features, four concordant paired-read fragments in two support
+  windows, V3 regulatory-support JSON, TFBS annotations, and TFBS score-track
+  output without a prepared whole genome or SRA download.
+- Added headless queries for repeat, array, and BED qualifiers so an inner
+  agent, MCP client, or CLI user can verify the same evidence shown in the GUI.
+- Improved linear and Splicing Expert SVG legends, provenance text, vertical
+  layout, support-frequency color coding, and long-text containment.
+- Added inspectable/copyable feature details for repeats, array intervals, and
+  BED tracks, including coordinates, score/statistical fields, source files,
+  projection state, and assembly context.
+- Added a sequence-visibility control, clearer array-effect color semantics,
+  and coordinate-aligned array placement in both the live DNA view and linear
+  SVG export.
+- Added junction-probe evidence to Splicing Expert and the DNA sequence viewer,
+  using split probe geometry and connection arcs where appropriate.
+- Improved exon/intron continuity and phase cues, including CDS-phase flank
+  coloring and tooltips for frame interpretation.
+
+### 2. Array and Probe-Region Evidence
+
+- Added `arrays probe-regions` as a shared preflight for explicit CEL,
+  metadata, annotation/library, platform, dependency, contrast, output, and
+  cache checks.
+- Added explicit R/oligo and Affymetrix Power Tools handoff paths without
+  embedding vendor analysis logic in the GUI.
+- Added inspection, native SVG rendering, direct and mapped coordinate
+  projection, and GUI controls for completed helper output.
+- Added optional sample metadata and true PM-probe matrices, preserving sample,
+  condition summary, logFC, probeset/transcript-cluster, exon, and coordinate
+  provenance.
+- Added transcript/exon geometry interpretation with explicit overlap,
+  junction, ambiguity, score-basis, and review-status records. These are
+  evidence-triage aids, not automatic isoform calls.
+- Added a registry-first Clariom D platform preparation path and a small
+  E-MTAB-14704 TP73 validation fixture with deterministic provenance.
+
+### 3. RNA Read Interpretation
+
+- Added a standalone target-region rescue screen for finding reads overlooked
+  by an initial mapping while preserving explicit target and read provenance.
+- Added the deterministic `gentle.rna_allele_hash_screen.v1` route and
+  standalone `gentle_cli allele-hash-screen` adapter for small allele-aware
+  RNA-read screens.
+- Persisted disjoint exonic-part partitions and added mutually joinable DEXSeq
+  flattened-annotation GFF and strict two-column count exports.
+- Improved transcript exon-path handling and reduced RNA mapping/inspection UI
+  repaint and presentation work.
+
+### 4. August Primer and Isoform-Assay Work
+
+- Added deterministic, digest-bound planning and execution for single- and
+  multi-gene isoform-assay studies. Two explicit approval stages bind the
+  normalized biological request and the exact ordered operations before shared
+  project state changes.
+- Added atomic multi-gene execution, content-bound checkpoints, separately
+  approved exact-prefix reuse, and opt-in per-gene continuation. A failed gene
+  rolls back to its own boundary; external output paths remain fail-closed
+  because filesystem writes cannot be revoked by an in-memory rollback.
+- Added sequence-aware bounded Primer3 plans with annotation-anchored allowed
+  and rejected intervals, deterministic work budgets, pre-launch feasibility,
+  candidate counters, cancellation, and progress streaming. GENtle detects
+  `--progress`, can request an updated Unix status with `SIGUSR1`, and retains a
+  legacy path for unextended Primer3 binaries.
+- Added capability-aware Primer3 discovery. A progress-capable build is
+  preferred, then the highest version and newest executable; an explicit user
+  override remains authoritative. Windows `PATHEXT` discovery and deterministic
+  fake-binary tests cover the cross-platform behavior.
+- Added explicit transcript-coverage universes, including content-bound UniProt
+  isoform inventories. Coverage and isoform distinction remain separate, and
+  unresolved mandatory targets stop strict searches before Primer3.
+- UniProt-linked transcript coverage now evaluates each inventory record through
+  its own mature-cDNA digest and panel equivalence group. Protein-target,
+  linked-record, and distinct-linked-cDNA numerators therefore remain separate;
+  versioned Ensembl ids match versionless local annotation by stable id without
+  discarding exact provenance.
+- Added content-bound whole-cDNA resources and similarity maps that guide
+  Primer3 toward lower-risk intervals. Variant, repeat, and cDNA-similarity
+  evidence can be reviewed as hard or soft design constraints without replacing
+  final complete-cDNA or genomic specificity gates.
+- Added Primer-BLAST-style review material: bounded junction-side matching,
+  complete-primer realignment, narrowly reviewed off-target products, stored
+  alignment rendering, chemistry settings, and content-bound redesign proposals
+  after specificity failure.
+- Added deterministic common-primer design for related loaded sequences,
+  complete pair-by-member product matrices, explicit strict versus best-effort
+  coverage, and bounded Pareto alternatives. Existing selection and specificity
+  gates are unchanged.
+- Added `gentle.terminal_exon_rt_primer_pool.v1` for sequence-specific RT oligos
+  composed from a fixed adapter and terminal-exon-derived variable segment.
+  Strand-aware transcript mapping, bounded pool-wide interaction selection,
+  persisted provenance, JSON export, and optional exhaustive local genomic
+  BLAST evidence are shared across PCR Designer, shell/CLI, MCP, Python,
+  JavaScript, and Lua.
+- Improved exhaustive cDNA specificity import by consuming validated complete
+  BLAST HSP alignments directly while retaining the established semiglobal
+  fallback for partial or legacy rows. Subject-grouped product pairing,
+  completeness, intended-target, allowlist, and provenance gates remain
+  authoritative.
+- Retained the linear cDNA evaluator as independently labelled fallback
+  evidence only. It can help inspect very large handoffs, but it is never
+  promoted into a native GENtle-finalized specificity pass.
+- Added replayable selection provenance and clearer differential-junction
+  explanations, including qualifying contrasts, thresholds, incremental and
+  redundant detection value, and explicit validation obligations that do not
+  claim isoform abundance.
+- Added an approval-bound informative fallback for strict transcript-panel
+  designs that are structurally infeasible. The original typed failure remains
+  intact; any derived best-effort panel is visibly partial, budgeted, audited,
+  and never presented as an optimal or complete strict solution.
+- Expanded isoform-assay dossiers and publication bundles with readiness gates,
+  blockers, evidence and report identities, order provenance, complete primer
+  tables, locus/exon/gel figures, and explicit `resolved`, `pending`, or
+  `unresolved` status for partially completed studies.
+
+### 5. Introspection, Agents, and Interface Parity
+
+- Added the first shared project fact graph and fact domains for sequences,
+  reports, displays, persisted workflow objects, host tools, and GUI
+  availability.
+- Added capability preconditions, expected-effect modalities, argument
+  binding, catalog versus bound readiness, and post-run verification for the
+  shared operation/shell registry.
+- Expanded fact-aware descriptors across sequence operations, genomes, BLAST,
+  tracks, reports, primers, candidate/guide sets, containers/racks, macros,
+  gene sets, external resources, UI intents, agents, and service handoffs.
+- Added `introspect facts`, `introspect capabilities`,
+  `introspect readiness`, `introspect verify-effects`, `introspect all`, and
+  direct CLI introspection access.
+- Projected built-in shell help and JSON help rows from shared capability
+  descriptors while retaining `docs/glossary.json` as the transitional source
+  for glossary wording.
+- Added Agent Assistant controls for sequence-window selection and display
+  visibility, while preserving the rule that selection/window intents do not
+  imply sequence deletion or arbitrary execution.
+- Hardened local model response parsing and Msty/Ollama configuration guidance,
+  including Msty's gateway/model-server distinction.
+- Added JS and Lua bindings for construct-reasoning inspection actions and
+  maintained CLI/MCP/ClawBio parity checks over shared routes.
+- Projected all five portable cryptic-splicing inspection/export routes through
+  the confirmation-gated MCP `op` tool. User-supplied MaxEnt resource sync
+  remains an explicit external-mutation exclusion rather than an implied MCP
+  capability.
+- Replaced guessable 64-bit semantic GUI scope hashes with domain-separated,
+  length-prefixed SHA-256 scopes truncated to 128 bits. These identifiers are
+  path-free and pseudonymous, not a claim of anonymity for guessable inputs.
+- Repaired the opt-in semantic GUI acceptance surface for native DNA child
+  windows: Agent Help uses caller-supplied stable window identities, repeated
+  child repaint measurements no longer collide, and the Linux smoke waits for
+  the DNA viewer and splitter before interacting.
+- Moved Criterion performance audits into the non-published
+  `gentle-benchmarks` workspace package. Audit runs now compile the GENtle
+  library, including the feature-gated DNA-window modules actually measured,
+  without preparing unrelated application binaries. Headless frame cases
+  explicitly clear unapplied egui texture deltas; the routine and exact
+  release-like profiles and hash-bound fixtures remain distinct.
+- Added a contract-driven Linux/X11 runner for the Simple-PCR GUI tutorial.
+  It materializes independent starter/oracle projects, drives only
+  Rust-validated semantic controls through ordinary desktop events, saves through
+  the GUI, and retains content-bound visual plus typed scientific evidence.
+  A non-GUI validation is not presented as GUI acceptance, and host limitations
+  remain separate from product failures.
+
+### 6. Gene Sets, Promoters, and Construct Reasoning
+
+- Added first-class gene sets across protocol, engine, shell, GUI, CUT&RUN,
+  promoter TFBS, lineage, and documentation paths.
+- Added offline direct-list, ontology-assignment, and co-regulated gene-set
+  producers with explicit source and relationship metadata.
+- Added offline ortholog promoter cohorts and comparisons using local mapping
+  resources, including species/genome-matched evidence states.
+- Added co-regulated and anti-co-regulated relationship expectations with
+  non-blocking divergence/concordance review flags.
+- Added portable construct-reasoning inspection actions and shared dotplot
+  execution routes, including objective-specific task severity and curated
+  repeat-family corroboration.
+- Added approval-gated promoter-reporter panel planning/materialization with
+  exact vector and state binding. Requests must explicitly select the supported
+  `p53_family_core_disruption_v1` mutation policy; study-specific caveats are
+  bound to the request rather than hard-coded into the generic operation.
+- Extended promoter-reporter members support exon-junction-split start codons
+  but fail closed when CDS-entry phase/partiality cannot establish a canonical
+  oriented `ATG`, preventing a partial CDS from being reported as a verified
+  translation-start boundary.
+
+### 7. Materials and External-Service Handoffs
+
+- Added persisted oligo order forms with deterministic line ids, source primer
+  or qPCR report provenance, duplicate/reuse groups, explicit review, and
+  JSON/CSV export.
+- Added delivery routing from selected sequences/spans, oligo forms, and primer
+  report pairs, with review gates before quote preparation.
+- Added read-only protein-expression handoff reports with sequence/CDS/tag
+  context, high-yield questions, candidate routes, and separate GeneArt
+  preflight versus quote-packet actions.
+- Added ClawBio/OpenClaw request examples for provider diagnostics, Metabion
+  oligo/m-block handoffs, GeneArt cloned-gene/protein-expression handoffs, and
+  generic sequence-delivery routing.
+
+### 8. GUI Responsiveness and Correctness
+
+- Moved long mutating GUI jobs onto engine-owned detached forks and retained
+  stale-result, display-merge, auxiliary-metadata conflict, revision, and undo
+  semantics when committing results.
+- Prevented detached and read-only workers from cloning inherited undo/redo
+  history while preserving undo across live and detached operations.
+- Made metadata-only track/planning edits dirty the project and invalidate
+  stale redo checkpoints.
+- Made Splicing Expert panel reuse sequence-scoped, preventing a shared TP53
+  default from being copied into PATZ1 when the active sequence has its own
+  imported panel.
+- Cached root-frame presentation state, linear rendering derivations,
+  sequence-window display synchronization, and Splicing Expert models.
+- Virtualized dense JASPAR, feature-tree, and sequencing-confirmation lists and
+  made Splicing Expert transition caching sparse rather than exon-count
+  squared.
+- Moved GenBank, UniProt, Ensembl-protein, JASPAR, tracked-file, track auto-sync,
+  BigWig preflight, and related I/O away from the egui thread with typed task
+  completion and cancellation/stop-waiting behavior.
+- Reduced forced repaint cadence for idle RNA workspaces and prevented
+  unchanged per-frame genome-track serialization/synchronization.
+- Added constant-time dirty-state and unchanged-display checks while retaining
+  complete refreshes for structural, feature, topology, sequence, and visible
+  presentation changes.
+
+### 9. Runtime, Security, Dependencies, and Documentation
+
+- Added `gentle.runtime_status.v1` and a process-local activity stack exposed
+  through shared introspection, MCP, Unix SIGUSR1 dumps, and a compact GUI
+  status indicator.
+- Improved genome preparation progress with separate transcript/gene indexing
+  and checksum-verification phases.
+- Removed the in-process Rust SHA-1 implementation. Local generated identities
+  use SHA-256; legacy external-download SHA-1 verification uses optional
+  platform tools and reports unavailable verification explicitly.
+- Updated the egui/resvg and macOS Objective-C integration stack and migrated
+  native menu code to current `objc2` class-definition APIs.
+- Reworked the repository README into a concise overview, moved detailed
+  demonstrations to `docs/showcase.md`, and documented the complementary inner
+  Agent Assistant and outer-agent/MCP/ClawBio paths with generated TP73 figures.
+- Hardened Windows examples/tutorial execution against small-stack overflow and
+  kept capability, glossary, MCP, fixture-provenance, and generated-tutorial
+  checks aligned with the expanded command surface.
+
+## Compatibility and Contract Notes
+
+- The shared engine remains the source of biology and workflow behavior across
+  GUI, CLI/shared shell, MCP, Python, JavaScript, Lua, and ClawBio/OpenClaw
+  adapters.
+- Most new schemas and fields in this interval are additive. Callers should
+  continue to validate the advertised schema id/version and ignore documented
+  optional fields they do not consume.
+- The unreleased `gentle.promoter_reporter_panel_request.v1` contract now
+  requires an explicit `mutation_policy`; omitted/`unspecified` requests fail
+  closed instead of silently receiving p53-family substitutions.
+- ClawBio shell-normalizer compatibility modes deprecated in `.8` remain
+  accepted in `.10` with warnings. Their earliest possible removal is `.11`,
+  after a separate compatibility discussion.
+- Agent-suggested commands remain subject to confirmation/execution policy;
+  chat replies and clarification questions do not imply an executable action.
+- Vendor/service output remains a reviewable handoff packet. GENtle does not
+  submit a purchase merely because an order form, preflight, or quote request
+  was generated.
+- Microarray, repeat, TFBS, and CUT&RUN tracks are evidence layers. Their
+  presence or geometric overlap is not itself a biological conclusion.
+- Primer search intervals, similarity maps, Pareto alternatives, and fallback
+  panels are design evidence. They do not replace native specificity
+  finalization or experimental primer validation.
+
+## Release-Facing Known Limitations
+
+- This remains an internal release, not a stable file-format or public API
+  commitment.
+- The macOS bundle identifier remains the interim `com.example.gentle` value
+  pending coordination with Magnus Manske on a stable project identity and
+  URL. Changing it is intentionally deferred from this tag.
+- Desktop packaging is not yet proven self-contained: the Windows ZIP recipe
+  currently includes only `gentle.exe`, not external assets, tutorials or the
+  CLI/MCP companions. The macOS bundle includes resources, but tutorial lookup
+  and fixture availability still need installed-location validation. Current
+  CI checks mount/extract the archives; they do not launch those installed
+  desktop copies. No signing/notarization acceptance is claimed.
+- Pushing or moving a tag does not trigger `Release Installers`. The owner must
+  use the [explicit candidate workflow](../release.md#build-only-candidate-verification)
+  for build-only downloadable Actions artifacts; release publication is a
+  separate approved action. This document neither moves tags nor uploads files.
+- Existing NCBI caches are not automatically rewritten by the hardened parser.
+  Use **Reindex Using Cached Files** before relying on the new transcript joins;
+  retain original reference and report evidence.
+- General nonblocking command submission remains incomplete. Background-job
+  progress, cancellation and rollback improvements do not mean every command
+  can be admitted or observed without waiting; the
+  [responsive-command plan](../asynchronous_command_execution_plan.md) remains active.
+- The committed TP73 proof uses tiny local fixtures. Full UCSC `rmsk`, raw CEL,
+  full SRA, BigWig, prepared genomes, and vendor resources remain optional
+  external inputs.
+- The vendor-derived Clariom identifiers/coordinates in the TP73 proof are
+  paired with synthetic expression/statistical values; the fixture must not be
+  interpreted as a biological differential-expression result.
+- Probe-region transcript geometry is deliberately conservative and does not
+  infer an expressed isoform from overlap alone.
+- Codex Local model enumeration depends on a readable local Codex metadata
+  cache. `Codex default` remains available and lets the installed CLI choose a
+  model when no explicit model is selected.
+- BLAST+, Primer3, ViennaRNA/RNAPKIN, `bigWigToBedGraph`, R/oligo/APT helpers,
+  and legacy SHA-1 tools remain optional and are reported through preflight or
+  runtime status when absent.
+- Terminal-exon RT-primer melting temperatures remain descriptive. Global
+  genomic uniqueness is reported only when the optional exhaustive genomic
+  BLAST step was requested and completed against an identified prepared
+  database.
+- Independent linear cDNA fallback reports remain separately labelled evidence
+  and cannot establish a native GENtle specificity pass.
+
+## Suggested Pre-Tag Validation
+
+Run the complete locked workspace suite for the selected candidate, then retain
+the focused release-story checks in its evidence record. These local commands
+do not tag, dispatch CI or publish:
+
+```bash
+python3 -m unittest scripts.test_release_candidate scripts.test_tutorial_checkouts -v
+cargo check -q --locked
+cargo test -q --locked --test release_version_consistency
+cargo test -q --locked terminal_exon_rt_primer_pool --lib
+cargo test -q --locked transcript_assay --lib
+cargo test -q --locked primer3 --lib
+cargo test --locked --workspace --no-fail-fast
+cargo run --locked --quiet --bin gentle_examples_docs -- --check
+cargo run --locked --quiet --bin gentle_examples_docs -- tutorial-check
+cargo test -q --locked workflow_examples_tp73_cutrun_release_proof_writes_artifacts_and_features
+cargo test -q --locked workflow_examples_patz1_locus_evidence_preserves_visual_evidence_classes
+python3 -m pytest -q tests/test_codex_agent_bridge.py
+cargo run --locked --release --bin gentle -- --version
+cargo run --locked --release --bin gentle_cli -- capabilities
+git diff --check
+```
+
+Automated pre-tag validation results: _pending_.
+
+## Pre-Tag Independent Acceptance
+
+Manual GUI smoke is required on the exact candidate revision before this
+interim tag. It must follow `docs/tp73_genome_evidence_viewer_runbook.md`, including
+anchor/build status, repeat/array/BED/TFBS visibility and details,
+feature-detail copy controls, Splicing Expert presentation, and the first 1200
+bp linear viewport. The PATZ1 Splicing Expert workflow in
+`docs/gene_isoform_occupancy_figure_runbook.md` must also be opened from its
+clean-profile project, select the panel imported for the active PATZ1
+sequence rather than the unrelated global panel-editor default, reach resource
+readiness, compose the locus preview, and produce non-empty shared JSON/SVG/PDF
+exports where the native host's file dialogs can be exercised. Evidence-to-assay
+continuation must remain an explicit planning action and must not imply assay
+validation or order readiness.
+
+Also open the Agent Assistant, select Codex Local, and
+confirm that the model selector is visible before model discovery completes.
+From Splicing Expert, click `Agent help` and confirm that Agent Assistant opens
+with a preview labelled for that source window, that removing the image works,
+and that no request is sent before `Ask Agent`. On macOS, right-clicking the
+same control should either capture the complete GENtle window after Screen
+Recording permission is granted or explain the missing permission without
+affecting normal viewport capture.
+Also ask an image-capable agent to request visual context. Confirm that its
+reason/provider and registered-window selector appear before any capture, that
+`Decline` produces no attachment, and that `Allow one screenshot` produces one
+local preview but sends nothing until `Ask Agent`. Change the provider or close
+the selected window before approval and confirm that the request expires.
+For the August primer tranche, open PCR Designer and confirm that Primer3
+preflight explains the selected executable, a terminal-exon RT-primer-pool
+request exposes its fixed adapter and complete selected oligos, and a bounded
+Primer3 run reports progress and remains cancellable when a progress-capable
+binary is available. A machine without Primer3 or BLAST+ should instead show a
+clear preflight limitation without disabling unrelated project work.
+
+The copied-state IRF9/Q00978 acceptance is likewise a pre-tag gate and requires
+Glen's private copied state; it cannot be reproduced from public repository
+fixtures. The historical assessment at `42b82288fe95f928ea160afa309f5fa585204b35`
+reported one of three linked cDNA digests and two of four linked records
+covered, with only `ENST00000646071.2` genomically unassessed. That historical
+result is context, not acceptance of the candidate revision.
+
+Native macOS and Windows checks remain platform-specific. Linux/Xvfb evidence
+does not establish native file-dialog, repaint, or permission behavior on
+either platform.
+
+Manual TP73/PATZ1 GUI smoke on exact candidate: _pending_.
+
+Copied-state IRF9/Q00978 acceptance on exact candidate: _pending_.

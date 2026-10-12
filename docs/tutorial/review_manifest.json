@@ -3,6 +3,132 @@
   "warn_after_months": 12,
   "entries": [
     {
+      "tutorial_id": "microarray_evidence_gui_cli",
+      "tutorial_kind": "guided_walkthrough",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": null,
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
+      "tutorial_id": "measured_gel_sizing_gui_cli",
+      "tutorial_kind": "guided_walkthrough",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": null,
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
+      "tutorial_id": "repeat_environment_cohorts",
+      "tutorial_kind": "guided_walkthrough",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": null,
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
+      "tutorial_id": "reference_bound_primer_specificity",
+      "tutorial_kind": "guided_walkthrough",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": "2026-10-09",
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
+      "tutorial_id": "synthetic_sequence_design",
+      "tutorial_kind": "guided_walkthrough",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": "2026-10-06",
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
+      "tutorial_id": "gene_assay_study_gui",
+      "tutorial_kind": "guided_walkthrough",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": "2026-09-30",
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
+      "tutorial_id": "tss_collection_gui",
+      "tutorial_kind": "generated_chapter",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": "2026-09-29",
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
+      "tutorial_id": "tp73_dnp73_factor_curves",
+      "tutorial_kind": "guided_walkthrough",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": null,
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
+      "tutorial_id": "tss_regulatory_view_gui",
+      "tutorial_kind": "guided_walkthrough",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": "2026-10-12",
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
+      "tutorial_id": "promoter_cofactor_browser",
+      "tutorial_kind": "guided_walkthrough",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": "2026-09-16",
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
+      "tutorial_id": "motif_logo_to_promoter_trace",
+      "tutorial_kind": "guided_walkthrough",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": "2026-09-12",
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
+      "tutorial_id": "transcript_assay_followup_gui_cli",
+      "tutorial_kind": "guided_walkthrough",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": "2026-10-01",
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
+      "tutorial_id": "mcp_offline_roundtrip",
+      "tutorial_kind": "guided_walkthrough",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": "2026-10-01",
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
+      "tutorial_id": "feature_editor_gui_cli",
+      "tutorial_kind": "guided_walkthrough",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": "2026-10-01",
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
       "tutorial_id": "generated_hub",
       "tutorial_kind": "guided_walkthrough",
       "tutorial_status": "active",
@@ -25,7 +151,7 @@
       "tutorial_kind": "guided_walkthrough",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -34,7 +160,7 @@
       "tutorial_kind": "guided_walkthrough",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -43,7 +169,7 @@
       "tutorial_kind": "guided_walkthrough",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -52,7 +178,7 @@
       "tutorial_kind": "guided_walkthrough",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -61,7 +187,7 @@
       "tutorial_kind": "guided_walkthrough",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-09-11",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -70,7 +196,7 @@
       "tutorial_kind": "guided_walkthrough",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-09-11",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -79,7 +205,16 @@
       "tutorial_kind": "guided_walkthrough",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
+      "tutorial_id": "cryptic_splicing_evidence_cli_gui",
+      "tutorial_kind": "guided_walkthrough",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": "2026-08-27",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -97,7 +232,7 @@
       "tutorial_kind": "guided_walkthrough",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -106,7 +241,7 @@
       "tutorial_kind": "guided_walkthrough",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-09-11",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -115,7 +250,7 @@
       "tutorial_kind": "guided_walkthrough",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-09-11",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -133,7 +268,7 @@
       "tutorial_kind": "generated_chapter",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -142,7 +277,7 @@
       "tutorial_kind": "guided_walkthrough",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -151,7 +286,7 @@
       "tutorial_kind": "guided_walkthrough",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -178,7 +313,7 @@
       "tutorial_kind": "guided_walkthrough",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -187,7 +322,7 @@
       "tutorial_kind": "generated_chapter",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": "2026-05-18",
       "human_reviewer": "smoe"
     },
@@ -196,7 +331,7 @@
       "tutorial_kind": "generated_chapter",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -205,7 +340,7 @@
       "tutorial_kind": "generated_chapter",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -214,7 +349,7 @@
       "tutorial_kind": "generated_chapter",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -223,7 +358,7 @@
       "tutorial_kind": "generated_chapter",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -241,7 +376,7 @@
       "tutorial_kind": "generated_chapter",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -259,7 +394,7 @@
       "tutorial_kind": "generated_chapter",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -268,7 +403,7 @@
       "tutorial_kind": "generated_chapter",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -277,7 +412,7 @@
       "tutorial_kind": "generated_chapter",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -286,7 +421,7 @@
       "tutorial_kind": "generated_chapter",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -295,7 +430,7 @@
       "tutorial_kind": "generated_chapter",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -304,7 +439,7 @@
       "tutorial_kind": "generated_chapter",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -331,7 +466,7 @@
       "tutorial_kind": "generated_chapter",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -340,7 +475,7 @@
       "tutorial_kind": "generated_chapter",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": "2026-05-18",
       "human_reviewer": "smoe"
     },
@@ -359,6 +494,60 @@
       "tutorial_status": "active",
       "replaced_by": null,
       "codex_reviewed_at": "2026-06-25",
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
+      "tutorial_id": "patz1_gene_locus_evidence_offline",
+      "tutorial_kind": "generated_chapter",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": "2026-10-01",
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
+      "tutorial_id": "patz1_transcript_assay_panels_cli",
+      "tutorial_kind": "generated_chapter",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": "2026-10-01",
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
+      "tutorial_id": "promoter_reporter_panel_planning_offline",
+      "tutorial_kind": "generated_chapter",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": "2026-08-29",
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
+      "tutorial_id": "portable_genomic_regions_offline",
+      "tutorial_kind": "generated_chapter",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": "2026-09-04",
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
+      "tutorial_id": "regulatory_fragment_panel_planning_offline",
+      "tutorial_kind": "generated_chapter",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": "2026-09-08",
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
+      "tutorial_id": "region_homology_promoter_modules_offline",
+      "tutorial_kind": "generated_chapter",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": "2026-09-07",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -385,7 +574,7 @@
       "tutorial_kind": "guided_walkthrough",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": null,
       "human_reviewer": null
     },
@@ -394,7 +583,7 @@
       "tutorial_kind": "guided_walkthrough",
       "tutorial_status": "active",
       "replaced_by": null,
-      "codex_reviewed_at": null,
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": null,
       "human_reviewer": null
     }

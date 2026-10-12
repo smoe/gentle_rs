@@ -15,7 +15,6 @@ use crate::genomes::{
     BUILTIN_ASSET_ROOT_ENV, GenomeChromosomeRecord, PROJECT_ROOT_ENV, SYSTEM_CONFIG_ROOT_ENV,
 };
 use reqwest::blocking::Client;
-use sha1::{Digest, Sha1};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 
@@ -966,33 +965,20 @@ fn file_size_bytes(path: &Path) -> Result<u64, EngineError> {
 }
 
 fn checksum_sha1(path: &Path) -> Result<String, EngineError> {
-    let mut file = File::open(path).map_err(|e| EngineError {
-        code: ErrorCode::Io,
-        message: format!(
-            "Could not open '{}' to compute checksum: {e}",
-            path.display()
-        ),
-
-        cause_chain: vec![],
-    })?;
-    let mut hasher = Sha1::new();
-    let mut buffer = [0u8; 16 * 1024];
-    loop {
-        let read = file.read(&mut buffer).map_err(|e| EngineError {
+    match crate::external_checksums::compute_sha1_with_external_tool(path) {
+        Ok(digest) => Ok(format!("sha1:{}", digest.value)),
+        Err(error) if error.allows_unverified_fallback() => {
+            Ok("sha1:unverified-tool-unavailable".to_string())
+        }
+        Err(error) => Err(EngineError {
             code: ErrorCode::Io,
             message: format!(
-                "Could not read '{}' while computing checksum: {e}",
+                "Could not compute legacy SHA-1 for CUT&RUN asset '{}': {error}",
                 path.display()
             ),
-
             cause_chain: vec![],
-        })?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..read]);
+        }),
     }
-    Ok(format!("sha1:{:x}", hasher.finalize()))
 }
 
 impl GentleEngine {
@@ -1860,7 +1846,6 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "CUT&RUN report_id must contain at least one ASCII letter, digit, '-', '_' or '.'"
                     .to_string(),
-            
                 cause_chain: vec![],});
         }
         Ok(out)
@@ -2210,7 +2195,6 @@ impl GentleEngine {
                     "CUT&RUN dataset '{}' has not been prepared yet; run prepare before dataset-backed interpret",
                     status.dataset_id
                 ),
-            
                 cause_chain: vec![],})?;
             let r1 = manifest
                 .reads_r1
@@ -2239,7 +2223,6 @@ impl GentleEngine {
                                 "Prepared CUT&RUN dataset '{}' is paired-end but does not contain reads_r2",
                                 status.dataset_id
                             ),
-                        
                             cause_chain: vec![],})?,
                 ),
             };
@@ -2362,7 +2345,6 @@ impl GentleEngine {
                     "Could not list chromosome lengths for genome '{}' while preparing CUT&RUN ROI window: {}",
                     genome_id, e
                 ),
-            
                 cause_chain: vec![],})?;
         let normalized = Self::normalize_chromosome_alias(chromosome);
         records
@@ -2400,6 +2382,27 @@ impl GentleEngine {
                 cause_chain: vec![],
             })?;
         let roi_sequence = Self::normalize_cutrun_input_sequence(dna.forward_bytes());
+        let anchor_length_bp = anchor
+            .end_1based
+            .saturating_sub(anchor.start_1based)
+            .saturating_add(1);
+        if roi_flank_bp == 0 && anchor_length_bp == roi_sequence.len() {
+            return Ok(CutRunReferenceWindow {
+                genome_id: anchor.genome_id,
+                chromosome: anchor.chromosome,
+                window_start_1based: anchor.start_1based,
+                window_end_1based: anchor.end_1based,
+                roi_local_start_1based: 1,
+                roi_local_end_1based: roi_sequence.len(),
+                orientation: if anchor.strand == Some('-') {
+                    CutRunReadOrientation::Reverse
+                } else {
+                    CutRunReadOrientation::Forward
+                },
+                sequence: roi_sequence,
+                warnings: vec![],
+            });
+        }
         let (catalog, _) = Self::open_reference_genome_catalog(anchor.catalog_path.as_deref())?;
         let chromosome_length = Self::cutrun_find_chromosome_length(
             &catalog,
@@ -4971,6 +4974,32 @@ impl GentleEngine {
         neighbor_window_bp: usize,
         species_filters: &[String],
     ) -> Result<CutRunRegulatorySupportReport, EngineError> {
+        self.inspect_cutrun_regulatory_support_with_catalog(
+            seq_id,
+            dataset_ids,
+            read_report_ids,
+            None,
+            None,
+            promoter_search_start_0based,
+            promoter_search_end_0based_exclusive,
+            neighbor_window_bp,
+            species_filters,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn inspect_cutrun_regulatory_support_with_catalog(
+        &self,
+        seq_id: &str,
+        dataset_ids: &[String],
+        read_report_ids: &[String],
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+        promoter_search_start_0based: Option<usize>,
+        promoter_search_end_0based_exclusive: Option<usize>,
+        neighbor_window_bp: usize,
+        species_filters: &[String],
+    ) -> Result<CutRunRegulatorySupportReport, EngineError> {
         let seq_id = seq_id.trim();
         if seq_id.is_empty() {
             return Err(EngineError {
@@ -4986,7 +5015,6 @@ impl GentleEngine {
                 message:
                     "InspectCutRunRegulatorySupport requires at least one dataset or read-report source"
                         .to_string(),
-            
                 cause_chain: vec![],});
         }
 
@@ -5025,7 +5053,7 @@ impl GentleEngine {
             if dataset_query.is_empty() {
                 continue;
             }
-            let status = self.show_cutrun_dataset_status(dataset_query, None, None)?;
+            let status = self.show_cutrun_dataset_status(dataset_query, catalog_path, cache_dir)?;
             if let Some(target_factor) = status
                 .target_factor
                 .as_deref()
@@ -5403,6 +5431,14 @@ impl GentleEngine {
             generated_at_unix_ms: Self::now_unix_ms(),
             op_id: None,
             run_id: None,
+            catalog_path: catalog_path
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+            cache_dir: cache_dir
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
             evidence_sources,
             promoter_search_start_0based: span_start_0based,
             promoter_search_end_0based_exclusive: span_end_0based_exclusive,

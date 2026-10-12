@@ -17,6 +17,7 @@ usage <- function(status = 0) {
     "    [--cdf-package hgu133plus2cdf] [--cdf-name hgu133plus2]\n",
     "    [--annotation-package hgu133plus2.db] [--annotation-library probeset_coordinates.csv]\n",
     "    [--platform-name HG_U133_Plus_2] [--normalization rma]\n",
+    "    [--r-library-path PATH ...]\n",
     "    [--coordinate-system hg19] [--genome-build GRCh37]\n",
     "    [--contrast A-B] --output DIR [--cache-dir DIR] [--allow-all-features]\n",
     "\n",
@@ -41,6 +42,7 @@ empty_args <- function() {
     annotation_package = Sys.getenv("GENTLE_PROBE_REGION_ANNOTATION_PACKAGE", ""),
     annotation_library = "",
     platform_name = Sys.getenv("GENTLE_PROBE_REGION_PLATFORM", ""),
+    r_library_paths = character(),
     coordinate_system = Sys.getenv("GENTLE_PROBE_REGION_COORDINATE_SYSTEM", ""),
     genome_build = Sys.getenv("GENTLE_PROBE_REGION_GENOME_BUILD", ""),
     normalization = "rma",
@@ -104,6 +106,9 @@ parse_args <- function(argv) {
     } else if (flag == "--platform-name") {
       out$platform_name <- take_value(argv, i, flag)
       i <- i + 2
+    } else if (flag == "--r-library-path" || flag == "--r-lib") {
+      out$r_library_paths <- c(out$r_library_paths, take_value(argv, i, flag))
+      i <- i + 2
     } else if (flag == "--coordinate-system") {
       out$coordinate_system <- take_value(argv, i, flag)
       i <- i + 2
@@ -150,15 +155,26 @@ parse_args <- function(argv) {
   out$genes <- unique(out$genes[nzchar(out$genes)])
   out$loci <- unique(out$loci[nzchar(out$loci)])
   out$probeset_ids <- unique(out$probeset_ids[nzchar(out$probeset_ids)])
+  out$r_library_paths <- unique(out$r_library_paths[nzchar(out$r_library_paths)])
   out
 }
 
 args <- parse_args(commandArgs(trailingOnly = TRUE))
 
-workspace_r_lib <- file.path(getwd(), ".r-lib")
-if (dir.exists(workspace_r_lib)) {
-  .libPaths(c(normalizePath(workspace_r_lib), .libPaths()))
+if (length(args$r_library_paths) == 0) {
+  workspace_r_lib <- file.path(getwd(), ".r-lib")
+  if (dir.exists(workspace_r_lib)) {
+    args$r_library_paths <- normalizePath(workspace_r_lib, winslash = "/", mustWork = TRUE)
+  }
 }
+existing_r_library_paths <- args$r_library_paths[dir.exists(args$r_library_paths)]
+if (length(existing_r_library_paths) > 0) {
+  .libPaths(unique(c(
+    normalizePath(existing_r_library_paths, winslash = "/", mustWork = TRUE),
+    .libPaths()
+  )))
+}
+r_library_paths_checked <- .libPaths()
 
 required_packages <- c("affy", "limma", "Biobase")
 if (nzchar(args$annotation_package)) {
@@ -176,7 +192,11 @@ if (length(missing_packages) > 0) {
     "Missing R/Bioconductor package(s): ", paste(unique(missing_packages), collapse = ", "), "\n",
     "Install outside GENtle, for example: if (!requireNamespace('BiocManager', quietly=TRUE)) ",
     "install.packages('BiocManager'); BiocManager::install(c('affy','limma','",
-    paste(unique(missing_packages), collapse = "','"), "'))",
+    paste(unique(missing_packages), collapse = "','"), "'))\n",
+    "Requested R library paths: ",
+    if (length(args$r_library_paths) == 0) "(none)" else paste(args$r_library_paths, collapse = ", "),
+    "\nEffective R library paths checked: ", paste(r_library_paths_checked, collapse = ", "), "\n",
+    "Check --r-library-path PATH if this differs from the environment where the packages were installed.",
     call. = FALSE
   )
 }
@@ -228,6 +248,16 @@ json_string <- function(value) paste0("\"", json_escape(value), "\"")
 json_array <- function(values) {
   values <- values[!is.na(values) & nzchar(values)]
   paste0("[", paste(vapply(values, json_string, character(1)), collapse = ", "), "]")
+}
+
+json_named_string_object <- function(values) {
+  if (length(values) == 0) return("{}")
+  entries <- vapply(
+    seq_along(values),
+    function(i) paste0(json_string(names(values)[[i]]), ": ", json_string(values[[i]])),
+    character(1)
+  )
+  paste0("{", paste(entries, collapse = ", "), "}")
 }
 
 json_bool <- function(value) {
@@ -610,6 +640,12 @@ artifact_paths <- c(artifact_paths, run_limma(expr_table, sample_table, args$con
 session_path <- file.path(args$output, "sessionInfo.txt")
 capture.output(utils::sessionInfo(), file = session_path)
 artifact_paths <- c(artifact_paths, session_path)
+runtime_packages <- unique(c(required_packages, args$cdf_package, args$annotation_package))
+runtime_packages <- runtime_packages[nzchar(runtime_packages)]
+package_versions <- setNames(
+  vapply(runtime_packages, function(package) as.character(utils::packageVersion(package)), character(1)),
+  runtime_packages
+)
 
 manifest_path <- file.path(args$output, "normalized_feature_matrix_manifest.json")
 manifest_lines <- c(
@@ -639,6 +675,10 @@ provenance_lines <- c(
   paste0("  \"schema\": ", json_string("gentle.probe_region_backend_provenance.v1"), ","),
   paste0("  \"backend\": ", json_string("r_affy_cdf"), ","),
   paste0("  \"command\": ", json_string(paste(commandArgs(FALSE), collapse = " ")), ","),
+  paste0("  \"r_version\": ", json_string(R.version.string), ","),
+  paste0("  \"package_versions\": ", json_named_string_object(package_versions), ","),
+  paste0("  \"r_library_paths_requested\": ", json_array(args$r_library_paths), ","),
+  paste0("  \"r_library_paths_checked\": ", json_array(.libPaths()), ","),
   paste0("  \"platform\": ", json_string(args$platform_name), ","),
   paste0("  \"cdf_package\": ", json_string(args$cdf_package), ","),
   paste0("  \"cdf_name\": ", json_string(cdf_name), ","),

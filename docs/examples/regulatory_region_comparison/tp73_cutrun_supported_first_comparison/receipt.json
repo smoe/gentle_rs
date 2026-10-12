@@ -1,0 +1,17 @@
+{
+  "inputs": {
+    "candidate_regions.fa": "a4a2db5cf3411b37d2a796ee071649b3a1fde261504b4aa006d9772f275c6e22",
+    "candidate_regions.json": "981b69e885da3378209f387d607b42cffcb7ad04bf5a28f526fbd87d59c02b5b",
+    "comparison.json": "0c17139c6499551e3f1074bc63524ef494e13bb3d7fd91aca70cff30b5471bb8"
+  },
+  "outputs": {
+    "first_comparison.png": "2003adf515a0a8095bcf3e6134afbd12f458f7b925c8d91d0d38b3a5c35cac38",
+    "first_comparison.svg": "9d7f4d3831e625dc777f2e98da1c0414ba3ce48a78893670d7c5ace1c83a133f",
+    "report.md": "72d4b8a0d5537e010fce359346f9e5f9ff73eee8f49f06bf39499c86c19f2413",
+    "summary.tsv": "a4dce531687962666b181e4aa258f9e446883dedecbb16469adaed25afb97c03",
+    "top_matches.tsv": "749b7e64d619a8f86e45899b5a2975845d07dd066f14b910a20e022595b36fab"
+  },
+  "schema": "gentle.tp73_cutrun_supported_promoter_comparison_receipt.v1",
+  "source_revision": "c23ea8110cfbad1cd0dc09ffcc638ddf12609d07",
+  "target_cap_reached": false
+}

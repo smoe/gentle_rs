@@ -85,6 +85,19 @@ By the end, you should have confirmed all of these:
 - and one saved report can still be inspected in detail via
   `summarize-gene-support` and `inspect-gene-support`.
 
+### Reviewed acceptance replay
+
+The 2026-10-01 review exercised all five routes below against a retained
+Ensembl-116 TP53 locus and twelve committed cDNA read fragments split into two
+gzipped samples. Each report contained six reads. Phase 2 aligned all six, even
+though none passed the default phase-1 seed threshold; all six were classified
+as target-assigned fragments, with no complete molecule or direct-transition
+support.
+
+That tiny replay verifies input handling, persistence, aggregation, audit rows,
+and the native report view. It is not a claim about sensitivity, specificity,
+throughput, or a realistic 20-sample experiment.
+
 ## Step 1: Pick a Dedicated State and Output Directory
 
 Use one dedicated state file so the batch export can safely use the exact
@@ -205,6 +218,18 @@ Why `--selection all` matters:
 - that is usually the better first pass when the goal is cohort annotation and
   not only conservative filtering
 
+Do not erase that distinction when reporting the result. A row aligned through
+`--selection all` can still have `passed_seed_filter=false`. Likewise,
+`accepted_target` means that phase 2 assigned the retained row to the requested
+gene; it does not mean that the row passed the seed filter, spans a complete
+transcript, or supports a direct exon transition.
+
+![Native RNA-read Mapping workspace with six aligned reads and an empty seed-passed subset.](../screenshots/rna_read_batch_gene_support_cli/01-report-workspace.png)
+
+The native workspace above is the reviewed two-sample acceptance fixture. Its
+saved report is useful precisely because alignment and seed-filter status do
+not collapse into one green/failed flag.
+
 ## Step 5: Export One Combined Target-Gene Sample Sheet
 
 This version uses the exact saved report ids rather than `--seq-id`, which is
@@ -310,6 +335,13 @@ This is the same distinction reflected in the exported columns:
 - `gene_support_direct_transition_support_json`
   - direct neighboring exon-step evidence only
 
+![Native gene-support cohorts showing target-assigned fragments without complete-molecule or direct-transition evidence.](../screenshots/rna_read_batch_gene_support_cli/02-gene-support-cohorts.png)
+
+In this bounded replay, six reads are target-assigned fragments but none are
+full-length and the direct-transition total is zero. The GUI and exported JSON
+therefore support a narrow mapping statement, not an isoform or splice-junction
+claim.
+
 ## Step 7: Audit One Interesting Sample in Detail
 
 Once the sample sheet tells you which sample is interesting, drill into that
@@ -383,6 +415,61 @@ through:
 ```bash
 cargo run --bin gentle_cli -- --state "$STATE" shell 'rna-reads ...'
 ```
+
+## Ask the Inner Agent
+
+The inner Agent Assistant sees the currently open GENtle project only through
+the state summary and attachments you choose to disclose. It can propose the
+same shared-shell routes and help interpret the open report, but each mutating
+or artifact-writing command remains review-first.
+
+A useful prompt is:
+
+> In the current GENtle project, inspect the selected RNA-read report for the
+> target gene. First report the exact sequence id, feature id, report id,
+> profile, origin mode and selection policy. Keep total, seed-passed, aligned,
+> accepted-target, fragment, complete and direct-transition counts separate.
+> Show the exact `rna-reads` command and expected output for my review. Do not
+> rerun interpretation/alignment or write an export until I approve.
+
+The inner agent must not:
+
+- infer a raw FASTA path, sample identity, threshold, or target gene from a
+  screenshot,
+- describe `selection=all` alignments as seed-passed reads,
+- turn target assignment into complete-molecule or direct-junction evidence,
+- silently replace an existing report id or output path, or
+- summarize away the row-level audit, thresholds, warnings, and provenance.
+
+## Ask an Outer Agent (ClawBio/OpenClaw or Coding Agent)
+
+An outer agent does not inherit the open GUI, its unsaved state, or its selected
+transcript. Give it an explicit saved state, sequence and feature ids, a sorted
+manifest of exact input files, stable report ids, target gene, complete rule,
+and output paths.
+
+There is currently no one-shot GENtle batch-manifest operation for this
+tutorial. The outer driver must therefore preserve the visible loop as a series
+of exact shared-engine commands; it must not invent inputs from a directory or
+claim that one opaque agent action performed the batch.
+
+A useful request is:
+
+> Use GENtle against the explicit disposable state and the attached sorted
+> sample manifest. Before execution, return every input-file-to-report-id
+> mapping, the sequence/feature ids, origin mode, phase-2 selection, target
+> gene, complete rule and all output paths. Request approval for state changes
+> and artifact writes. Then run the exact `interpret`, `align-report`,
+> `export-sample-sheet`, `summarize-gene-support` and
+> `inspect-gene-support` routes, retaining structured results and the final
+> state digest. Report seed-passed, aligned, accepted-target, fragment,
+> complete and direct-transition evidence separately.
+
+For ClawBio, use the generic `gentle-cloning` wrapper only with those explicit
+inputs. This chapter intentionally does not show a fictional single workflow
+request: until a canonical batch manifest exists, an outer agent or coding
+agent must expose the command series and its approvals rather than hiding the
+shell-loop boundary.
 
 ## Why This Tutorial Matters
 

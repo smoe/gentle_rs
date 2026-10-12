@@ -4,8 +4,9 @@ use crate::{
     QualifierRecord, QualifierValue, SnapGeneError,
 };
 use quick_xml::{
-    Reader,
-    events::{BytesStart, Event},
+    Reader, XmlVersion,
+    escape::unescape,
+    events::{BytesRef, BytesStart, Event},
 };
 use std::collections::BTreeMap;
 
@@ -260,10 +261,10 @@ fn parse_xml_document(xml: &str, context: &'static str) -> Result<XmlNode, SnapG
     loop {
         match reader.read_event() {
             Ok(Event::Start(start)) => {
-                stack.push(start_node(&reader, &start, context)?);
+                stack.push(start_node(&start, context)?);
             }
             Ok(Event::Empty(start)) => {
-                let node = start_node(&reader, &start, context)?;
+                let node = start_node(&start, context)?;
                 if let Some(parent) = stack.last_mut() {
                     parent.children.push(node);
                 } else {
@@ -285,20 +286,19 @@ fn parse_xml_document(xml: &str, context: &'static str) -> Result<XmlNode, SnapG
             }
             Ok(Event::Text(text)) => {
                 if let Some(node) = stack.last_mut() {
-                    let decoded = text.unescape().map_err(|err| SnapGeneError::Xml {
-                        context,
-                        message: err.to_string(),
-                    })?;
+                    let decoded = text.xml10_content();
                     node.text.push_str(decoded.as_ref());
                 }
             }
             Ok(Event::CData(text)) => {
                 if let Some(node) = stack.last_mut() {
-                    let decoded = text.decode().map_err(|err| SnapGeneError::Xml {
-                        context,
-                        message: err.to_string(),
-                    })?;
+                    let decoded = text.xml10_content();
                     node.text.push_str(decoded.as_ref());
+                }
+            }
+            Ok(Event::GeneralRef(reference)) => {
+                if let Some(node) = stack.last_mut() {
+                    node.text.push_str(&decode_general_ref(reference));
                 }
             }
             Ok(Event::Decl(_))
@@ -321,21 +321,25 @@ fn parse_xml_document(xml: &str, context: &'static str) -> Result<XmlNode, SnapG
     })
 }
 
-fn start_node(
-    reader: &Reader<&[u8]>,
-    start: &BytesStart<'_>,
-    context: &'static str,
-) -> Result<XmlNode, SnapGeneError> {
-    let name = String::from_utf8_lossy(start.name().as_ref()).into_owned();
+fn decode_general_ref(reference: BytesRef<'_>) -> String {
+    let name = reference.xml10_content();
+    let escaped = format!("&{};", name);
+    unescape(&escaped)
+        .map(|value| value.into_owned())
+        .unwrap_or(escaped)
+}
+
+fn start_node(start: &BytesStart<'_>, context: &'static str) -> Result<XmlNode, SnapGeneError> {
+    let name = start.name().as_ref().to_owned();
     let mut attributes = BTreeMap::new();
     for attr in start.attributes().with_checks(false) {
         let attr = attr.map_err(|err| SnapGeneError::Xml {
             context,
             message: err.to_string(),
         })?;
-        let key = String::from_utf8_lossy(attr.key.as_ref()).into_owned();
+        let key = attr.key.as_ref().to_owned();
         let value = attr
-            .decode_and_unescape_value(reader.decoder())
+            .normalized_value(XmlVersion::Implicit1_0)
             .map_err(|err| SnapGeneError::Xml {
                 context,
                 message: err.to_string(),

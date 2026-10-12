@@ -1,0 +1,287 @@
+#!/usr/bin/env python3
+"""Stage tracked desktop resources and smoke extracted native release packages."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import plistlib
+import re
+import shutil
+import subprocess
+import tomllib
+
+
+BINARIES = (
+    "gentle", "gentle_cli", "gentle_mcp",
+    "gentle_examples_docs", "gentle_publication_report",
+)
+# Match the Linux distribution inventory, never downloaded/untracked caches.
+RESOURCE_PATHS = (
+    "assets", "icons", "docs", "test_files", "integrations/python",
+    "data/resources/affymetrix/platform_registry.json", "README.md",
+    "CONTRIBUTING.md", "copyright", "Credits.rtf",
+)
+
+
+def layout(root: Path, platform: str) -> tuple[Path, Path]:
+    if platform == "macos":
+        return root / "Contents/MacOS", root / "Contents/Resources"
+    return root / "bin", root
+
+
+def digest(path: Path) -> str:
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def files(root: Path) -> list[Path]:
+    return sorted(p for p in root.rglob("*") if p.is_file() and p != root / "SHA256SUMS")
+
+
+def verify_macos_bundle(repo: Path, app_bundle: Path, binary: Path) -> None:
+    """Check real cargo-bundle output, using either a preflight or built binary."""
+    manifest = tomllib.loads((repo / "Cargo.toml").read_text(encoding="utf-8"))
+    bundle = manifest["package"]["metadata"]["bundle"]["bin"]["gentle"]
+    version = manifest["workspace"]["package"]["version"]
+    expected = {
+        "CFBundleName": bundle["name"], "CFBundleDisplayName": bundle["name"],
+        "CFBundleIdentifier": bundle["identifier"], "CFBundleExecutable": "gentle",
+        "CFBundleShortVersionString": version, "CFBundlePackageType": "APPL",
+        "NSHumanReadableCopyright": bundle["copyright"],
+    }
+    for relative in bundle["osx"]["info_plist_exts"]:
+        fragment = (repo / relative).read_text(encoding="utf-8")
+        extra = plistlib.loads(
+            f'<plist version="1.0"><dict>{fragment}</dict></plist>'.encode("utf-8"))
+        if any(key in expected or key in ("CFBundleIconFile", "CFBundleVersion") for key in extra):
+            raise ValueError("Plist extensions must not override generated bundle identity")
+        expected.update(extra)
+    if not expected.get("NSScreenCaptureUsageDescription"):
+        raise ValueError("Missing screen-capture consent description")
+    with (app_bundle / "Contents/Info.plist").open("rb") as stream:
+        info = plistlib.load(stream)
+    for key, value in expected.items():
+        if info.get(key) != value:
+            raise ValueError(f"Bundle metadata mismatch: {key}")
+    if not info.get("CFBundleVersion"):
+        raise ValueError("Missing generated bundle build version")
+    icon = info.get("CFBundleIconFile")
+    resources = (app_bundle / "Contents/Resources").resolve()
+    if not isinstance(icon, str) or not icon or Path(icon).name != icon:
+        raise ValueError("Missing or invalid declared bundle icon")
+    icon_path = resources / icon
+    if not icon_path.suffix:
+        icon_path = icon_path.with_suffix(".icns")
+    if (not icon_path.is_file() or icon_path.stat().st_size == 0
+            or not icon_path.resolve().is_relative_to(resources)):
+        raise ValueError("Missing or escaping declared bundle icon")
+    executable = app_bundle / "Contents/MacOS/gentle"
+    if (not binary.is_file() or binary.stat().st_size == 0
+            or not executable.is_file() or digest(executable) != digest(binary)):
+        raise ValueError("Bundle executable differs from the supplied prebuilt binary")
+
+
+def stage(repo: Path, binaries: Path, destination: Path, platform: str,
+          tag: str, app_bundle: Path | None = None) -> None:
+    repo, binaries, destination = repo.resolve(), binaries.resolve(), destination.resolve()
+    if destination.exists():
+        raise ValueError("Package staging destination must be new")
+    suffix = ".exe" if platform == "windows" else ""
+    for name in BINARIES:
+        source = binaries / (name + suffix)
+        if not source.is_file() or source.stat().st_size == 0:
+            raise ValueError(f"Missing or empty release binary: {source}")
+    tracked = subprocess.check_output(
+        ["git", "ls-files", "-z", "--", *RESOURCE_PATHS], cwd=repo,
+    ).decode("utf-8").split("\0")
+    resources = [Path(p) for p in tracked if p]
+    for relative in resources:
+        source = repo / relative
+        if not source.resolve().is_relative_to(repo) or not source.is_file():
+            raise ValueError(f"Unavailable or escaping tracked resource: {relative}")
+
+    app_icon = None
+    if platform == "macos":
+        if app_bundle is None or not (app_bundle / "Contents/Info.plist").is_file():
+            raise ValueError("macOS staging requires a cargo-bundle app with Info.plist")
+        app_bundle = app_bundle.resolve()
+        with (app_bundle / "Contents/Info.plist").open("rb") as stream:
+            icon_name = plistlib.load(stream).get("CFBundleIconFile")
+        if icon_name:
+            if not isinstance(icon_name, str) or Path(icon_name).name != icon_name:
+                raise ValueError("Bundle icon must be a resource filename")
+            app_icon = app_bundle / "Contents/Resources" / icon_name
+            if not app_icon.suffix:
+                app_icon = app_icon.with_suffix(".icns")
+            if (not app_icon.is_file()
+                    or not app_icon.resolve().is_relative_to(app_bundle / "Contents/Resources")):
+                raise ValueError("Missing or escaping declared bundle icon")
+        # Replace resources and executables with the reviewed inventory, not
+        # cargo-bundle's globs or stale scripting/reproduction binaries.
+        shutil.copytree(
+            app_bundle, destination, symlinks=True,
+            ignore=lambda directory, names: ["Resources", "MacOS"]
+            if Path(directory) == app_bundle / "Contents" else [],
+        )
+    else:
+        destination.mkdir(parents=True)
+    binary_root, resource_root = layout(destination, platform)
+    binary_root.mkdir(parents=True, exist_ok=True)
+    if app_icon is not None:
+        resource_root.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(app_icon, resource_root / app_icon.name)
+    for name in BINARIES:
+        shutil.copy2(binaries / (name + suffix), binary_root / (name + suffix))
+    for relative in resources:
+        target = resource_root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(repo / relative, target)
+
+    revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+    (destination / "REVISION").write_text(revision + "\n", encoding="utf-8")
+    (destination / "VERSION").write_text(tag + "\n", encoding="utf-8")
+    if platform == "linux":
+        shutil.copy2(resource_root / "docs/linux_tarball.md", destination / "START-HERE.md")
+        libraries = []
+        for name in BINARIES:
+            result = subprocess.run(["ldd", str(binary_root / name)],
+                                    capture_output=True, text=True, check=True)
+            if "not found" in result.stdout + result.stderr:
+                raise ValueError(f"Unresolved runtime library: {name}")
+            libraries.append(f"{name}:\n{result.stdout}{result.stderr}")
+        (destination / "runtime-libraries.txt").write_text("\n".join(libraries), encoding="utf-8")
+    (destination / "SHA256SUMS").write_text("".join(
+        f"{digest(path)}  {path.relative_to(destination).as_posix()}\n"
+        for path in files(destination)
+    ), encoding="utf-8")
+
+
+def validate_binary_identities(identities: object, tag: str, revision: str) -> None:
+    """Require one exact version/source observation and digest per native binary."""
+    if not isinstance(identities, dict) or set(identities) != set(BINARIES):
+        raise ValueError("Expected source identities for exactly the five native binaries")
+    for name, record in identities.items():
+        if not isinstance(record, dict):
+            raise ValueError(f"Invalid source identity record: {name}")
+        validate_source_identity(record.get("version"), tag, revision, name)
+        checksum = record.get("sha256")
+        if not isinstance(checksum, str) or not re.fullmatch(r"[0-9a-f]{64}", checksum):
+            raise ValueError(f"Invalid native binary digest: {name}")
+
+
+def validate_source_identity(version: object, tag: str, revision: str, name: str) -> None:
+    """Compare whole identity lines; prefixes, unknown sources and duplicates fail."""
+    if (not re.fullmatch(r"v[0-9][0-9A-Za-z.+-]*", tag)
+            or not re.fullmatch(r"[0-9a-f]{40}", revision)):
+        raise ValueError("Explicit version label and full source SHA required")
+    lines = version.splitlines() if isinstance(version, str) else []
+    versions = [line for line in lines if line.startswith("GENtle ")]
+    sources = [line for line in lines if line.startswith("Source revision ")]
+    if (versions != [f"GENtle {tag[1:]}"]
+            or sources != [f"Source revision {tag[1:]}+git.{revision}"]):
+        raise ValueError(f"Packaged binary source identity mismatch: {name}")
+
+
+def smoke(root: Path, platform: str, revision: str, checkout: Path, tag: str,
+          output: Path | None = None) -> dict:
+    root, checkout = root.resolve(), checkout.resolve()
+    if root.is_relative_to(checkout):
+        raise ValueError("Smoke the extracted package outside the checkout")
+    if output is not None and (output.resolve().is_relative_to(root) or output.exists()):
+        raise ValueError("Smoke receipt must be new and outside the package")
+    if (root / "REVISION").read_text().strip() != revision:
+        raise ValueError("Package revision does not match selected candidate")
+    if (root / "VERSION").read_text().strip() != tag:
+        raise ValueError("Package version does not match selected candidate")
+    entries = (root / "SHA256SUMS").read_text(encoding="utf-8").splitlines()
+    expected = {}
+    for line in entries:
+        checksum, relative = line.split("  ", 1)
+        path = root / relative
+        if relative in expected or not path.resolve().is_relative_to(root):
+            raise ValueError(f"Invalid checksum entry: {relative}")
+        if not path.is_file() or digest(path) != checksum:
+            raise ValueError(f"Package checksum mismatch: {relative}")
+        expected[relative] = checksum
+    if set(expected) != {p.relative_to(root).as_posix() for p in files(root)}:
+        raise ValueError("Package file inventory differs from SHA256SUMS")
+
+    binary_root, resource_root = layout(root, platform)
+    suffix = ".exe" if platform == "windows" else ""
+    for name in ("gentle_js", "gentle_lua"):
+        if (binary_root / (name + suffix)).exists():
+            raise ValueError(f"Unexpected packaged scripting binary: {name}")
+    for relative in ("assets/genomes.json", "docs/tutorial/manifest.json",
+                     "test_files", "integrations/python/gentle_py"):
+        resource = resource_root / relative
+        if not resource.exists() or (resource.is_file() and resource.stat().st_size == 0):
+            raise ValueError(f"Missing packaged resource: {relative}")
+    commands = tuple((name, "--version") for name in BINARIES) + (
+        ("gentle_cli", "capabilities"),
+        ("gentle_mcp", "--help"), ("gentle_examples_docs", "--help"),
+        ("gentle_publication_report", "--help"),
+        ("gentle_examples_docs", "tutorial-manifest-check"),
+    )
+    identities = {}
+    for name, argument in commands:
+        executable = binary_root / (name + suffix)
+        if not executable.is_file() or executable.stat().st_size == 0:
+            raise ValueError(f"Missing or empty packaged binary: {executable}")
+        print(f"Package smoke: {name} {argument}", flush=True)
+        result = subprocess.run([str(executable), argument], cwd=resource_root,
+                                capture_output=True, text=True, encoding="utf-8",
+                                errors="replace", timeout=120)
+        if result.returncode:
+            raise ValueError(f"{name} {argument} failed ({result.returncode}):\n"
+                             f"{result.stdout[-4000:]}\n{result.stderr[-4000:]}")
+        if argument == "--version":
+            validate_source_identity(result.stdout, tag, revision, name)
+            identities[name] = {"version": result.stdout.strip()}
+    for name in BINARIES:
+        executable = binary_root / (name + suffix)
+        checksum = digest(executable)
+        if checksum != expected[executable.relative_to(root).as_posix()]:
+            raise ValueError(f"Packaged binary changed during smoke: {name}")
+        identities[name]["sha256"] = checksum
+    validate_binary_identities(identities, tag, revision)
+    record = {"schema": "gentle.native_package_smoke.v1", "tag": tag,
+              "revision": revision, "platform": platform,
+              "binary_identities": identities}
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with output.open("x", encoding="utf-8") as stream:
+            stream.write(json.dumps(record, indent=2) + "\n")
+    return record
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+    staging = commands.add_parser("stage")
+    staging.add_argument("--repo", type=Path, required=True)
+    staging.add_argument("--binaries", type=Path, required=True)
+    staging.add_argument("--destination", type=Path, required=True)
+    staging.add_argument("--tag", required=True)
+    staging.add_argument("--app-bundle", type=Path)
+    checking = commands.add_parser("smoke")
+    checking.add_argument("--root", type=Path, required=True)
+    checking.add_argument("--revision", required=True)
+    checking.add_argument("--checkout", type=Path, required=True)
+    checking.add_argument("--tag", required=True)
+    checking.add_argument("--output", type=Path)
+    for command in (staging, checking):
+        command.add_argument("--platform", choices=("macos", "windows", "linux"), required=True)
+    bundle_check = commands.add_parser("verify-macos-bundle")
+    bundle_check.add_argument("--repo", type=Path, required=True)
+    bundle_check.add_argument("--app-bundle", type=Path, required=True)
+    bundle_check.add_argument("--binary", type=Path, required=True)
+    args = vars(parser.parse_args())
+    command = args.pop("command")
+    {"stage": stage, "smoke": smoke, "verify-macos-bundle": verify_macos_bundle}[command](**args)
+
+
+if __name__ == "__main__":
+    main()

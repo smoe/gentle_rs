@@ -1,8 +1,8 @@
 {
   "schema": "gentle.workflow_example.v1",
   "id": "simple_pcr_selection_gui",
-  "title": "Simple PCR starter project on local TP73 context (offline)",
-  "summary": "Load one stable local TP73 locus sequence and pin the primer backend to the deterministic internal implementation so the GUI walkthrough can begin from a ready offline project.",
+  "title": "Simple PCR starter project on compact TP73 context (offline)",
+  "summary": "Extract the same 800-base TP73 window used by the scripted PCR oracle, retain the source locus for provenance, and pin the internal primer backend. The GUI designs on the compact window, not the full locus.",
   "test_mode": "always",
   "required_files": [
     "test_files/tp73.ncbi.gb"
@@ -20,7 +20,15 @@
       {
         "LoadFile": {
           "path": "test_files/tp73.ncbi.gb",
-          "as_id": "tp73_locus"
+          "as_id": "simple_pcr_source_locus"
+        }
+      },
+      {
+        "ExtractRegion": {
+          "input": "simple_pcr_source_locus",
+          "from": 61520,
+          "to": 62320,
+          "output_id": "tp73_locus"
         }
       },
       {

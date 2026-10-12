@@ -60,6 +60,7 @@ cargo run --quiet --bin gentle_cli -- \
   variant materialize-allele vkorc1_rs9923231_promoter_fragment \
   --variant rs9923231 \
   --allele alternate \
+  --alternate-base T \
   --output-id vkorc1_rs9923231_promoter_alternate
 
 # Load the pinned local mammalian reporter backbone

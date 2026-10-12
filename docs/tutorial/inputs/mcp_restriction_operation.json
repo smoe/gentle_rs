@@ -1,0 +1,12 @@
+{
+  "FindRestrictionSites": {
+    "target": {
+      "kind": "inline_sequence",
+      "sequence_text": "GAATTCGGATCC",
+      "topology": "linear",
+      "id_hint": "mcp_tutorial"
+    },
+    "enzymes": ["EcoRI", "BamHI"],
+    "include_cut_geometry": true
+  }
+}

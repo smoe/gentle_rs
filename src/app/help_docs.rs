@@ -11,6 +11,10 @@
 
 use super::*;
 
+#[cfg(test)]
+#[path = "help_docs/tests.rs"]
+mod tests;
+
 pub(super) const AGENT_INTERFACES_TUTORIAL_PATH: &str = "docs/tutorial/01-01_agent_interfaces.md";
 pub(super) const AGENT_INTERFACES_TUTORIAL_TITLE: &str =
     "GENtle Agent Assistant and Agent Interfaces Tutorial";
@@ -24,18 +28,43 @@ impl GENtleApp {
         entry: crate::workflow_examples::TutorialCatalogEntry,
     ) -> Option<HelpTutorialDocEntry> {
         let resolved_path = Self::resolve_runtime_doc_path(&entry.path)?;
-        let markdown = Self::load_help_markdown_from_path(&resolved_path).unwrap_or_default();
-        let title = Self::markdown_first_heading(&markdown).unwrap_or_else(|| {
-            if entry.title.trim().is_empty() {
-                Self::markdown_title_from_path(&resolved_path)
-            } else {
-                entry.title.clone()
-            }
-        });
+        let title = Self::load_help_tutorial_heading(&resolved_path)
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| {
+                if entry.title.trim().is_empty() {
+                    Self::markdown_title_from_path(&resolved_path)
+                } else {
+                    entry.title.clone()
+                }
+            });
         let mut summary = format!(
             "{}\ntype: {}\nstatus: {}",
             entry.path, entry.entry_type, entry.status
         );
+        if let Some(minutes) = entry.estimated_minutes {
+            summary.push_str(&format!("\ntime: about {minutes} minutes"));
+        }
+        if let Some(difficulty) = entry.difficulty.as_deref() {
+            summary.push_str("\ndifficulty: ");
+            summary.push_str(difficulty);
+        }
+        if let Some(network) = entry.network.as_deref() {
+            summary.push_str("\nnetwork: ");
+            summary.push_str(network);
+        }
+        if !entry.interfaces.is_empty() {
+            summary.push_str("\ninterfaces: ");
+            summary.push_str(&entry.interfaces.join(", "));
+        }
+        if let Some(starting_state) = entry.starting_state.as_deref() {
+            summary.push_str("\nstart: ");
+            summary.push_str(starting_state);
+        }
+        if !entry.produces.is_empty() {
+            summary.push_str("\nproduces: ");
+            summary.push_str(&entry.produces.join(", "));
+        }
         summary.push('\n');
         summary.push_str(&crate::workflow_examples::tutorial_review_badge_label(
             entry.review_status.as_deref(),
@@ -49,6 +78,7 @@ impl GENtleApp {
             summary.push_str(entry.notes.trim());
         }
         Some(HelpTutorialDocEntry {
+            tutorial_id: entry.id,
             title,
             path: resolved_path.to_string_lossy().to_string(),
             summary,
@@ -57,6 +87,8 @@ impl GENtleApp {
             group_order: entry.group_order,
             group_position: entry.group_position,
             decimal_id: entry.decimal_id,
+            prerequisites: entry.prerequisites,
+            next_steps: entry.next_steps,
             review_status: entry.review_status,
             codex_reviewed_at: entry.codex_reviewed_at,
             human_reviewed_at: entry.human_reviewed_at,
@@ -121,32 +153,15 @@ impl GENtleApp {
         let Some((front_matter, body)) = Self::split_leading_markdown_front_matter(markdown) else {
             return markdown.to_string();
         };
-        let chapter_id = Self::markdown_front_matter_value(front_matter, "chapter_id");
-        let source_example = Self::markdown_front_matter_value(front_matter, "source_example");
-        let mut note = String::from("_Provenance note: ");
-        match (chapter_id, source_example) {
-            (Some(chapter_id), Some(source_example)) => {
-                note.push_str("this generated tutorial is tracked as chapter `");
-                note.push_str(&chapter_id);
-                note.push_str("` from workflow `");
-                note.push_str(&source_example);
-                note.push_str("`.");
-            }
-            (Some(chapter_id), None) => {
-                note.push_str("this generated tutorial is tracked as chapter `");
-                note.push_str(&chapter_id);
-                note.push_str("`.");
-            }
-            (None, Some(source_example)) => {
-                note.push_str("this generated tutorial is tracked from workflow `");
-                note.push_str(&source_example);
-                note.push_str("`.");
-            }
-            (None, None) => {
-                note.push_str("this generated tutorial has machine-readable source metadata.");
-            }
-        }
-        note.push_str(" The note is only there to preserve tutorial provenance; the hands-on walkthrough starts here, and full canonical source details are repeated at the end._\n\n");
+        let tier = Self::markdown_front_matter_value(front_matter, "tier")
+            .unwrap_or_else(|| "unspecified tier".to_string());
+        let automated = Self::markdown_front_matter_value(front_matter, "automated_status")
+            .unwrap_or_else(|| "automation not recorded".to_string());
+        let review = Self::markdown_front_matter_value(front_matter, "review_status")
+            .unwrap_or_else(|| "review not recorded".to_string());
+        let note = format!(
+            "_Quick facts: `{tier}` · `{automated}` · review `{review}`. Full provenance is at the end._\n\n"
+        );
         Self::insert_markdown_note_after_first_heading(body, &note)
     }
 
@@ -298,18 +313,20 @@ impl GENtleApp {
             return None;
         }
         let metadata = fs::metadata(svg_path).ok();
-        let mut hasher = Sha1::new();
-        hasher.update(svg_path.to_string_lossy().as_bytes());
+        let mut fingerprint_input = svg_path.to_string_lossy().to_string();
         if let Some(metadata) = metadata {
-            hasher.update(metadata.len().to_le_bytes());
+            fingerprint_input.push_str(&format!("\nlen={}", metadata.len()));
             if let Ok(modified) = metadata.modified()
                 && let Ok(duration) = modified.duration_since(UNIX_EPOCH)
             {
-                hasher.update(duration.as_secs().to_le_bytes());
-                hasher.update(duration.subsec_nanos().to_le_bytes());
+                fingerprint_input.push_str(&format!(
+                    "\nmtime={}.{}",
+                    duration.as_secs(),
+                    duration.subsec_nanos()
+                ));
             }
         }
-        let digest = format!("{:x}", hasher.finalize());
+        let digest = crate::digest_utils::sha256_hex_str(&fingerprint_input);
         let stem = svg_path
             .file_stem()
             .and_then(|stem| stem.to_str())
@@ -331,25 +348,33 @@ impl GENtleApp {
     }
 
     pub(super) fn help_image_render_path(absolute_dest: &Path) -> PathBuf {
+        use crate::gui_profiler::startup_trace::{
+            HelpImageObservation, measure_help_rasterization, observe_help_image,
+        };
         let Some(png_path) = Self::help_svg_png_cache_path(absolute_dest) else {
             return absolute_dest.to_path_buf();
         };
+        observe_help_image(HelpImageObservation::SvgReference);
         if png_path.is_file() {
+            observe_help_image(HelpImageObservation::CacheHit);
             return png_path;
         }
         if let Some(parent) = png_path.parent()
             && fs::create_dir_all(parent).is_err()
         {
+            observe_help_image(HelpImageObservation::PreparationFailed);
             return absolute_dest.to_path_buf();
         }
-        match crate::svg_png::render_svg_file_to_png(
-            absolute_dest,
-            &png_path,
-            crate::svg_png::SvgPngRenderOptions {
-                scale: 1.0,
-                drop_dotplot_metadata: false,
-            },
-        ) {
+        match measure_help_rasterization(|| {
+            crate::svg_png::render_svg_file_to_png(
+                absolute_dest,
+                &png_path,
+                crate::svg_png::SvgPngRenderOptions {
+                    scale: 1.0,
+                    drop_dotplot_metadata: false,
+                },
+            )
+        }) {
             Ok(_) => png_path,
             Err(_) => absolute_dest.to_path_buf(),
         }
@@ -542,6 +567,13 @@ impl GENtleApp {
         Some(text)
     }
 
+    fn load_help_tutorial_heading(path: &Path) -> std::io::Result<Option<String>> {
+        // Discovery preserves the document's heading without preparing images
+        // (and their fonts). Only the selected page uses the rendering loader.
+        let markdown = fs::read_to_string(path)?;
+        Ok(Self::markdown_first_heading(&markdown))
+    }
+
     pub(super) fn collect_markdown_paths_recursive(root: &Path, out: &mut Vec<PathBuf>) {
         let Ok(entries) = fs::read_dir(root) else {
             return;
@@ -627,14 +659,16 @@ impl GENtleApp {
         let mut entries = markdown_paths
             .into_iter()
             .map(|path| {
-                let markdown = Self::load_help_markdown_from_path(&path).unwrap_or_default();
-                let title = Self::markdown_first_heading(&markdown)
+                let title = Self::load_help_tutorial_heading(&path)
+                    .ok()
+                    .flatten()
                     .unwrap_or_else(|| Self::markdown_title_from_path(&path));
                 let relative = path
                     .strip_prefix(&tutorial_root)
                     .map(|value| value.to_string_lossy().replace('\\', "/"))
                     .unwrap_or_else(|_| path.to_string_lossy().to_string());
                 HelpTutorialDocEntry {
+                    tutorial_id: String::new(),
                     title,
                     path: path.to_string_lossy().to_string(),
                     summary: format!("docs/tutorial/{relative}"),
@@ -643,6 +677,8 @@ impl GENtleApp {
                     group_order: None,
                     group_position: None,
                     decimal_id: None,
+                    prerequisites: vec![],
+                    next_steps: vec![],
                     review_status: None,
                     codex_reviewed_at: None,
                     human_reviewed_at: None,
@@ -687,10 +723,12 @@ impl GENtleApp {
         if entries.iter().any(|entry| entry.path == resolved_string) {
             return;
         }
-        let markdown = Self::load_help_markdown_from_path(&resolved_path).unwrap_or_default();
-        let title = Self::markdown_first_heading(&markdown)
+        let title = Self::load_help_tutorial_heading(&resolved_path)
+            .ok()
+            .flatten()
             .unwrap_or_else(|| AGENT_INTERFACES_TUTORIAL_TITLE.to_string());
         entries.push(HelpTutorialDocEntry {
+            tutorial_id: "agent_interfaces".to_string(),
             title,
             path: resolved_string,
             summary: AGENT_INTERFACES_TUTORIAL_SUMMARY.to_string(),
@@ -703,6 +741,8 @@ impl GENtleApp {
             group_order: Some(1),
             group_position: Some(1),
             decimal_id: Some("01.01".to_string()),
+            prerequisites: vec![],
+            next_steps: vec![],
             review_status: Some("unreviewed".to_string()),
             codex_reviewed_at: None,
             human_reviewed_at: None,
@@ -722,6 +762,11 @@ impl GENtleApp {
         }
         let clamped_index = tutorial_index.min(self.help_tutorial_entries.len() - 1);
         let changed = clamped_index != self.help_tutorial_selected;
+        let trace = (self.show_help_dialog && changed).then(|| {
+            crate::gui_profiler::startup_trace::span_once(
+                crate::gui_profiler::startup_trace::Phase::HelpTutorialSwitch,
+            )
+        });
         self.help_tutorial_selected = clamped_index;
         if let Some(entry) = self.help_tutorial_entries.get(clamped_index) {
             self.help_tutorial_title = entry.title.clone();
@@ -734,10 +779,41 @@ impl GENtleApp {
                     )
                 });
         }
+        if let Some(trace) = trace {
+            trace.finish(true);
+        }
         changed
     }
 
+    pub(super) fn help_tutorial_navigation_targets(
+        &self,
+        tutorial_ids: &[String],
+    ) -> Vec<(usize, String, String)> {
+        tutorial_ids
+            .iter()
+            .filter_map(|tutorial_id| {
+                self.help_tutorial_entries
+                    .iter()
+                    .enumerate()
+                    .find(|(_, entry)| entry.tutorial_id == *tutorial_id)
+                    .map(|(index, entry)| {
+                        (
+                            index,
+                            entry
+                                .decimal_id
+                                .clone()
+                                .unwrap_or_else(|| entry.title.clone()),
+                            format!("{}\n{}", entry.title, entry.summary),
+                        )
+                    })
+            })
+            .collect()
+    }
+
     pub(super) fn open_help_tutorial_doc(&mut self, tutorial_index: usize) {
+        let trace = crate::gui_profiler::startup_trace::span_once(
+            crate::gui_profiler::startup_trace::Phase::HelpTutorialOpen,
+        );
         if self.help_tutorial_entries.is_empty() {
             self.help_tutorial_entries = Self::discover_help_tutorial_entries();
         }
@@ -758,6 +834,7 @@ impl GENtleApp {
         self.help_focus_search_box = true;
         self.show_help_dialog = true;
         self.queue_focus_viewport(Self::help_viewport_id());
+        trace.finish(true);
     }
 
     pub(super) fn open_help_tutorial_path(
@@ -776,7 +853,7 @@ impl GENtleApp {
                 )
             })?
         };
-        let markdown = Self::load_help_markdown_from_path(&resolved_path).ok_or_else(|| {
+        let heading = Self::load_help_tutorial_heading(&resolved_path).map_err(|_| {
             format!(
                 "Tutorial guide '{}' could not be loaded",
                 resolved_path.display()
@@ -793,7 +870,7 @@ impl GENtleApp {
         {
             Some(index) => index,
             None => {
-                let title = Self::markdown_first_heading(&markdown).unwrap_or_else(|| {
+                let title = heading.unwrap_or_else(|| {
                     let trimmed = fallback_title.trim();
                     if trimmed.is_empty() {
                         Self::markdown_title_from_path(&resolved_path)
@@ -807,6 +884,7 @@ impl GENtleApp {
                     fallback_summary.trim().to_string()
                 };
                 self.help_tutorial_entries.push(HelpTutorialDocEntry {
+                    tutorial_id: String::new(),
                     title,
                     path: resolved_string,
                     summary,
@@ -815,6 +893,8 @@ impl GENtleApp {
                     group_order: None,
                     group_position: None,
                     decimal_id: None,
+                    prerequisites: vec![],
+                    next_steps: vec![],
                     review_status: None,
                     codex_reviewed_at: None,
                     human_reviewed_at: None,

@@ -42,13 +42,37 @@ Exact sequence:
 GAATTCCCGGGATCCGGGCGGGGCGCATGTGTAACAGGGGCGGGGC
 ```
 
-Why this sequence is still good enough for the ranking tutorial:
+Why this sequence is useful for software acceptance:
 
 - it is tiny, so repeated GUI reruns stay fast
 - it contains one GC-rich `SP1`-like block plus one p53-family-like teaching
   block
 - the ranking route still has a continuous signal to compare even when the
   sequence is much shorter than a real promoter
+
+It is **not** a biological similarity model. The reviewed route applies a
+25-base centred-boxcar smoothing window to only 46 bases. The resulting
+correlations and peak offsets are therefore strongly constrained by this toy
+window. They do not establish motif equivalence, binding, co-occupancy, or
+transcription-factor cooperation.
+
+## Reviewed Evidence And Current GUI Blocker
+
+The 2026-10-01 review used exact source revision
+`3c6226337db450313f3b669007dc90e133a96122`.
+
+![Six selected local JASPAR motifs in the native TFBS panel](../screenshots/tfbs_similarity_ranking_gui/01-motif-selection.png)
+
+![Reviewed ranking settings before execution](../screenshots/tfbs_similarity_ranking_gui/02-ranking-settings.png)
+
+![Whole-sequence ranking action immediately before the stack overflow](../screenshots/tfbs_similarity_ranking_gui/03-whole-sequence-action.png)
+
+The settings are reachable and persist in the native DNA window. However,
+choosing **Rank similarity in whole sequence** terminated the reviewed GUI with
+`thread '<unknown>' has overflowed its stack`. No populated native result-table
+screenshot exists for this revision. Treat the GUI portion as blocked until a
+later exact build completes the action; a passing CLI or wrapper replay does
+not substitute for that acceptance.
 
 ## GUI Walkthrough
 
@@ -80,6 +104,10 @@ Why this sequence is still good enough for the ranking tutorial:
    - leave `species filters` empty for the first run
    - leave `include cached remote metadata` off for the first run
 6. Use the toolbar menu `TFBS similarity -> Rank similarity in whole sequence`.
+   - On the reviewed revision this is the current blocker: GENtle exits with a
+     stack overflow before caching the table.
+   - If a later build reaches the result, record its exact source revision and
+     retain a native screenshot rather than silently replacing this finding.
 7. Return to the `TFBS annotation` panel.
    - Expected result:
      - the `TFBS similarity ranking` block is no longer empty
@@ -107,6 +135,9 @@ What this should prove:
 - the GUI is still thin: it delegates ranking to the shared engine operation
 - pre-rank species filtering is visible to the user instead of being hidden
 
+On the reviewed revision only the configuration part is proven in the GUI;
+the remaining claims are the intended post-fix acceptance criteria.
+
 ## Offline Workflow Replay
 
 Canonical offline workflow example:
@@ -131,6 +162,37 @@ This path stays fully offline and state-optional at the biology layer: the
 workflow uses the same inline sequence letters directly rather than requiring
 you to create or save a project first.
 
+The reviewed replay resolved anchor `SP1` to `MA0079.5` and returned five rows:
+
+| Rank | Candidate | Smoothed Spearman rho | Signed primary-peak offset |
+| ---: | --- | ---: | ---: |
+| 1 | TP73 | 0.000000000000 | -36 bp |
+| 2 | REST | -0.443722102850 | -30 bp |
+| 3 | TP53 | -0.671305234441 | -25 bp |
+| 4 | TP63 | -0.671305234441 | -25 bp |
+| 5 | CTCF | -0.673649781031 | -25 bp |
+
+These values are deterministic regression evidence for this fixture. In
+particular, equal TP53 and TP63 values here do not mean that their proteins or
+motif models are biologically equivalent.
+
+## Inner Agent: Review The Live DNA Window
+
+Use the inner Agent Assistant only as a review-first helper for the current
+DNA window. A useful request is:
+
+> On the current 46 bp sequence, propose TFBS similarity settings with SP1 as
+> anchor and TP53, TP63, TP73, REST and CTCF as candidates. Keep
+> `llr_background_tail_log10`, negative values unclipped, Smoothed Spearman,
+> the 25 bp smoothing window, the full `0..46` linear span, limit 10, no remote
+> metadata and no species filter. Explain why this toy result is software
+> acceptance rather than biological binding evidence. Do not run or export
+> anything until I approve.
+
+Before approval, verify the live sequence identity, span, topology, resolved
+matrix IDs and every ranking setting. Export is a separate file write and
+needs its own reviewed path.
+
 ## ClawBio Replay
 
 Matching ClawBio request:
@@ -150,9 +212,24 @@ Expected result:
 - the wrapper writes the same three workflow artifacts into the output bundle
 - no hand-prepared GENtle state is required before the request
 
+The reviewed real wrapper invocation exited successfully, collected those
+three JSON/SVG workflow artifacts plus a derived PNG, and bound the request,
+workflow, runner and checksums in its receipt. After removing runtime-only
+fields, its similarity JSON matched the direct CLI replay exactly
+(`11a15364c035d7ed649900fbfe210812345563f26e06b306f4aac679ec7db7ef`).
+
+An outer agent has no access to an unsaved DNA window. It must receive the
+canonical workflow (or an equally explicit inline sequence), output directory,
+runner identity and approval policy. This workflow is state-optional and does
+not mutate a live project, but it still writes an output bundle; the agent must
+report those paths and the receipt rather than claiming that it operated the
+GUI.
+
 ## What To Mark As Successful
 
-Mark this tutorial successful if all of these are true:
+For the reviewed revision, mark the **headless parity slice** successful only
+if the direct CLI and wrapper artifacts agree. Mark the full tutorial
+successful only after all of these are true on one recorded GUI build:
 
 - the GUI `TFBS similarity` menu runs for the whole sequence without errors
 - the `TFBS similarity ranking` subpanel shows a populated cached ranked table

@@ -6,6 +6,135 @@
 
 use super::*;
 
+pub(super) fn container_pool_export_shell_command(
+    container_id: &str,
+    output: &str,
+) -> ShellCommand {
+    ShellCommand::CollectionsRunExportPool {
+        collection_subject: crate::engine::CollectionSubjectRef::Container {
+            container_id: container_id.to_string(),
+        },
+        output: output.to_string(),
+        pool_id: None,
+        human_id: None,
+    }
+}
+
+fn collection_pool_export_report_from_shell_output(
+    output: &serde_json::Value,
+    expected_container_id: &str,
+    expected_path: &str,
+) -> Result<crate::engine::CollectionPoolExportReport, EngineError> {
+    const COMMAND_SCHEMA: &str = "gentle.collection_pool_export_command.v1";
+    let command_schema = output
+        .get("schema")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    if command_schema != COMMAND_SCHEMA {
+        return Err(EngineError::new(
+            ErrorCode::Internal,
+            format!(
+                "Collection pool export returned command schema '{command_schema}', expected '{COMMAND_SCHEMA}'"
+            ),
+        ));
+    }
+    let report_value = output.get("report").cloned().ok_or_else(|| {
+        EngineError::new(
+            ErrorCode::Internal,
+            "Collection pool export returned no typed report",
+        )
+    })?;
+    let report: crate::engine::CollectionPoolExportReport = serde_json::from_value(report_value)
+        .map_err(|error| {
+            EngineError::new(
+                ErrorCode::Internal,
+                format!("Could not decode collection pool export report: {error}"),
+            )
+        })?;
+    if report.schema != crate::engine::COLLECTION_POOL_EXPORT_REPORT_SCHEMA {
+        return Err(EngineError::new(
+            ErrorCode::Internal,
+            format!(
+                "Collection pool export returned report schema '{}', expected '{}'",
+                report.schema,
+                crate::engine::COLLECTION_POOL_EXPORT_REPORT_SCHEMA
+            ),
+        ));
+    }
+    if report.artifact_schema != "gentle.pool.v1" {
+        return Err(EngineError::new(
+            ErrorCode::Internal,
+            format!(
+                "Collection pool export returned artifact schema '{}', expected 'gentle.pool.v1'",
+                report.artifact_schema
+            ),
+        ));
+    }
+    if report.source_container_id != expected_container_id {
+        return Err(EngineError::new(
+            ErrorCode::Internal,
+            format!(
+                "Collection pool export returned container '{}', expected '{expected_container_id}'",
+                report.source_container_id
+            ),
+        ));
+    }
+    if report.artifact_path != expected_path {
+        return Err(EngineError::new(
+            ErrorCode::Internal,
+            format!(
+                "Collection pool export returned artifact path '{}', expected '{expected_path}'",
+                report.artifact_path
+            ),
+        ));
+    }
+    if !report.source_container_declared_contents_exclusive {
+        return Err(EngineError::new(
+            ErrorCode::Internal,
+            "Collection pool export report did not confirm exclusive container contents",
+        ));
+    }
+    if report.member_count == 0
+        || report.member_count != report.collection_operation.per_member_status.len()
+    {
+        return Err(EngineError::new(
+            ErrorCode::Internal,
+            format!(
+                "Collection pool export reported {} member(s) but {} per-member status row(s)",
+                report.member_count,
+                report.collection_operation.per_member_status.len()
+            ),
+        ));
+    }
+    if report.collection_operation.capability_name != "ExportPoolCollection"
+        || report.collection_operation.lifting_mode != crate::engine::CollectionLiftingMode::Combine
+        || !report.collection_operation.applied
+    {
+        return Err(EngineError::new(
+            ErrorCode::Internal,
+            "Collection pool export report did not describe an applied ExportPoolCollection combine",
+        ));
+    }
+    Ok(report)
+}
+
+fn execute_container_pool_export_task(
+    engine: &Arc<RwLock<GentleEngine>>,
+    command: ShellCommand,
+    expected_container_id: String,
+    expected_path: String,
+) -> Result<crate::engine::CollectionPoolExportReport, EngineError> {
+    crate::background_engine::execute_on_engine_snapshot(engine, move |snapshot| {
+        let run = crate::engine_shell::execute_shell_command(snapshot, &command)
+            .map_err(|message| EngineError::new(ErrorCode::InvalidInput, message))?;
+        collection_pool_export_report_from_shell_output(
+            &run.output,
+            &expected_container_id,
+            &expected_path,
+        )
+    })
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum RackDragState {
     Sample {
@@ -81,6 +210,14 @@ pub(super) struct RackLabelsPreviewState {
     pub(super) status: String,
 }
 
+pub(super) struct ContainerPoolExportTask {
+    started: Instant,
+    runtime_frame: RuntimeStatusGuard,
+    container_id: String,
+    path: String,
+    receiver: mpsc::Receiver<Result<crate::engine::CollectionPoolExportReport, EngineError>>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub(super) struct PersistedRackWorkspace {
@@ -91,6 +228,111 @@ pub(super) struct PersistedRackWorkspace {
 }
 
 impl GENtleApp {
+    pub(super) fn arrangement_gel_readiness(
+        arrangement_id: &str,
+        mode: &ArrangementMode,
+    ) -> std::result::Result<(), EngineError> {
+        GentleEngine::validate_arrangement_gel_mode(arrangement_id, mode)
+    }
+
+    pub(super) fn prompt_export_container_pool(&mut self, container_id: &str) {
+        if self.container_pool_export_task.is_some() {
+            self.app_status = "A container pool export is already running".to_string();
+            return;
+        }
+        let stem = Self::sanitize_file_stem(container_id, "pool");
+        let default_file_name = format!("{stem}.pool.gentle.json");
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_file_name)
+            .add_filter("GENtle pool JSON", &["json"])
+            .save_file();
+        let Some(path) = path else {
+            self.app_status = "Pool export canceled".to_string();
+            return;
+        };
+        let path_text = path.display().to_string();
+        self.start_container_pool_export_task(container_id, path_text);
+    }
+
+    fn start_container_pool_export_task(&mut self, container_id: &str, path_text: String) {
+        if self.container_pool_export_task.is_some() {
+            self.app_status = "A container pool export is already running".to_string();
+            return;
+        }
+        let command = container_pool_export_shell_command(container_id, &path_text);
+        let engine = self.engine.clone();
+        let expected_container_id = container_id.to_string();
+        let expected_path = path_text.clone();
+        let (tx, receiver) = mpsc::channel();
+        let runtime_frame = runtime_status_registry().push_with_detail(
+            RuntimeStatusFrameKind::BackgroundJob,
+            "Export container pool",
+            Some(format!("container={container_id}, path={path_text}")),
+        );
+        runtime_frame.update_phase("running");
+        std::thread::spawn(move || {
+            let result = execute_container_pool_export_task(
+                &engine,
+                command,
+                expected_container_id,
+                expected_path,
+            );
+            let _ = tx.send(result);
+        });
+        self.app_status = format!(
+            "Exporting container '{container_id}' to '{path_text}' in a detached project snapshot..."
+        );
+        self.container_pool_export_task = Some(ContainerPoolExportTask {
+            started: Instant::now(),
+            runtime_frame,
+            container_id: container_id.to_string(),
+            path: path_text,
+            receiver,
+        });
+    }
+
+    pub(super) fn poll_container_pool_export_task(&mut self, ctx: &egui::Context) {
+        let Some(task) = self.container_pool_export_task.as_ref() else {
+            return;
+        };
+        ctx.request_repaint_after(Duration::from_millis(100));
+        let outcome = match task.receiver.try_recv() {
+            Ok(result) => Some(result),
+            Err(mpsc::TryRecvError::Empty) => None,
+            Err(mpsc::TryRecvError::Disconnected) => Some(Err(EngineError::new(
+                ErrorCode::Io,
+                "Container pool export background worker disconnected",
+            ))),
+        };
+        let Some(outcome) = outcome else {
+            return;
+        };
+        let Some(task) = self.container_pool_export_task.take() else {
+            return;
+        };
+        let elapsed = task.started.elapsed().as_secs_f64();
+        match outcome {
+            Ok(report) => {
+                task.runtime_frame.update_phase("completed");
+                self.app_status = format!(
+                    "Exported container '{}' as pool '{}' with {} member(s) to '{}' in {:.1}s",
+                    report.source_container_id,
+                    report.pool_id,
+                    report.member_count,
+                    report.artifact_path,
+                    elapsed
+                );
+            }
+            Err(error) => {
+                task.runtime_frame.update_phase("failed");
+                self.app_status = format!(
+                    "Could not export container '{}' to '{}' after {:.1}s: {}",
+                    task.container_id, task.path, elapsed, error
+                );
+            }
+        }
+    }
+
     pub(super) fn prompt_export_serial_gel_svg(
         &mut self,
         default_stem: &str,
@@ -121,6 +363,7 @@ impl GENtleApp {
                 container_ids,
                 arrangement_id,
                 conditions,
+                render_options: None,
             });
         match result {
             Ok(op_result) => {
@@ -1388,6 +1631,16 @@ impl GENtleApp {
         if pinned { "Unpin" } else { "Pin open" }
     }
 
+    pub(super) fn rack_grid_viewport_height(available_height: f32) -> f32 {
+        const MIN_GRID_HEIGHT: f32 = 48.0;
+        const FOOTER_AND_STATUS_RESERVE: f32 = 156.0;
+        (available_height - FOOTER_AND_STATUS_RESERVE).max(MIN_GRID_HEIGHT)
+    }
+
+    pub(super) fn rack_help_uses_compact_summary(available_height: f32) -> bool {
+        available_height < 480.0
+    }
+
     pub(super) fn record_successful_rack_move_and_maybe_autocollapse(&mut self) {
         if self.rack_help_strip_pinned_open || self.rack_help_strip_auto_minimized {
             return;
@@ -1407,7 +1660,12 @@ impl GENtleApp {
         }
     }
 
-    pub(super) fn render_rack_help_strip(&mut self, ui: &mut Ui, arrangement_ids: &[String]) {
+    pub(super) fn render_rack_help_strip(
+        &mut self,
+        ui: &mut Ui,
+        arrangement_ids: &[String],
+        compact_summary: bool,
+    ) {
         egui::Frame::group(ui.style())
             .inner_margin(egui::Margin::symmetric(8, 6))
             .show(ui, |ui| {
@@ -1446,6 +1704,13 @@ impl GENtleApp {
                     }
                 });
                 if self.rack_help_strip_collapsed {
+                    return;
+                }
+                if compact_summary {
+                    ui.add_space(4.0);
+                    ui.small(
+                        "Drag samples or arrangement blocks · Command/Ctrl multi-selects · Esc cancels · preview ghosts show drop order.",
+                    );
                     return;
                 }
                 ui.add_space(4.0);
@@ -2048,7 +2313,7 @@ impl GENtleApp {
             return close_requested;
         };
         ui.label("Physical rack/plate placement linked to one or more arrangements. Drag one occupied sample slot to another slot to shift neighbors within that arrangement block, or drag an arrangement chip to move the whole block. Command/Ctrl-click arrangement chips to select multiple blocks, then drag one selected chip or click a target slot. Click-select and click-target still works as a fallback.");
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Rack");
             ui.monospace(format!("{} ({})", rack.name, rack.rack_id));
             ui.label("Profile");
@@ -2172,7 +2437,7 @@ impl GENtleApp {
                 }
             }
         });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Template");
             egui::ComboBox::from_id_salt("rack_template_combo")
                 .selected_text(Self::rack_authoring_template_label(
@@ -2239,7 +2504,7 @@ impl GENtleApp {
             );
         });
         if self.rack_profile_editor_kind == RackProfileKind::Custom {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label("Custom rows");
                 ui.add(
                     egui::TextEdit::singleline(&mut self.rack_custom_profile_rows)
@@ -2335,7 +2600,7 @@ impl GENtleApp {
                 ui.small("Use A1-style coordinates; row labels continue beyond Z as AA, AB, ...");
             });
         }
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Blocked");
             ui.add(
                 egui::TextEdit::singleline(&mut self.rack_blocked_coordinates_text)
@@ -2474,7 +2739,8 @@ impl GENtleApp {
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect::<Vec<_>>();
-        self.render_rack_help_strip(ui, &arrangement_ids);
+        let compact_help = Self::rack_help_uses_compact_summary(ui.available_height());
+        self.render_rack_help_strip(ui, &arrangement_ids, compact_help);
         ui.horizontal_wrapped(|ui| {
             ui.label("Arrangement blocks");
             for arrangement_id in &arrangement_ids {
@@ -2549,6 +2815,7 @@ impl GENtleApp {
         let rack_scroll_output = egui::ScrollArea::both()
             .id_salt("rack_grid_scroll")
             .auto_shrink([false, false])
+            .max_height(Self::rack_grid_viewport_height(ui.available_height()))
             .scroll_offset(self.rack_view_scroll_offset)
             .show(ui, |ui| {
             egui::Grid::new("rack_grid")
@@ -2958,104 +3225,113 @@ impl GENtleApp {
             self.rack_view_recent_drop_ghost = None;
         }
         ui.separator();
-        ui.horizontal(|ui| {
-            ui.label("Label preset");
-            egui::ComboBox::from_id_salt("rack_label_sheet_preset_combo")
-                .selected_text(Self::rack_label_sheet_preset_label(
-                    self.rack_label_sheet_preset,
-                ))
-                .show_ui(ui, |ui| {
-                    for preset in [
-                        RackLabelSheetPreset::CompactCards,
-                        RackLabelSheetPreset::PrintA4,
-                        RackLabelSheetPreset::WideCards,
-                    ] {
-                        ui.selectable_value(
-                            &mut self.rack_label_sheet_preset,
-                            preset,
-                            Self::rack_label_sheet_preset_label(preset),
-                        );
-                    }
-                });
-            if ui
-                .button("Preview Labels...")
-                .on_hover_text("Open an in-app preview of the deterministic label sheet for the currently shown rack before exporting it")
-                .clicked()
-            {
-                self.open_rack_labels_preview_dialog(&rack.rack_id, None);
-            }
-            ui.separator();
-            ui.label("Physical template");
-            egui::ComboBox::from_id_salt("rack_physical_template_combo")
-                .selected_text(Self::rack_physical_template_label(
-                    self.rack_physical_template_kind,
-                ))
-                .show_ui(ui, |ui| {
-                    for template in [
-                        RackPhysicalTemplateKind::StoragePcrTubeRack,
-                        RackPhysicalTemplateKind::PipettingPcrTubeRack,
-                        RackPhysicalTemplateKind::CellCulturePlate,
-                    ] {
-                        ui.selectable_value(
-                            &mut self.rack_physical_template_kind,
-                            template,
-                            Self::rack_physical_template_label(template),
-                        );
-                    }
-                });
-            ui.label("Carrier preset");
-            egui::ComboBox::from_id_salt("rack_carrier_label_preset_combo")
-                .selected_text(Self::rack_carrier_label_preset_label(
-                    self.rack_carrier_label_preset,
-                ))
-                .show_ui(ui, |ui| {
-                    for preset in [
-                        RackCarrierLabelPreset::FrontStripAndCards,
-                        RackCarrierLabelPreset::FrontStripOnly,
-                        RackCarrierLabelPreset::ModuleCardsOnly,
-                    ] {
-                        ui.selectable_value(
-                            &mut self.rack_carrier_label_preset,
-                            preset,
-                            Self::rack_carrier_label_preset_label(preset),
-                        );
-                    }
-                });
-            if ui
-                .button("Fabrication SVG...")
-                .on_hover_text("Export a top-view fabrication/planning SVG for the current rack using the selected physical carrier template")
-                .clicked()
-            {
-                self.prompt_export_rack_fabrication_svg(&rack.rack_id);
-            }
-            if ui
-                .button("Isometric SVG...")
-                .on_hover_text("Export a presentation-grade pseudo-3D rack SVG for the current rack using the selected physical carrier template")
-                .clicked()
-            {
-                self.prompt_export_rack_isometric_svg(&rack.rack_id);
-            }
-            if ui
-                .button("OpenSCAD...")
-                .on_hover_text("Export one parameterized OpenSCAD file for the current rack using the selected physical carrier template")
-                .clicked()
-            {
-                self.prompt_export_rack_openscad(&rack.rack_id);
-            }
-            if ui
-                .button("Carrier labels SVG...")
-                .on_hover_text("Export one carrier-matched front-strip plus module-label SVG sheet for the current rack using the selected physical carrier template")
-                .clicked()
-            {
-                self.prompt_export_rack_carrier_labels_svg(&rack.rack_id);
-            }
-            if ui
-                .button("Simulation JSON...")
-                .on_hover_text("Export one machine-readable physical rack geometry/placement JSON for downstream simulation adapters using the selected physical carrier template")
-                .clicked()
-            {
-                self.prompt_export_rack_simulation_json(&rack.rack_id);
-            }
+        ui.group(|ui| {
+            ui.set_width(ui.available_width());
+            ui.small(egui::RichText::new("Labels").strong());
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Label preset");
+                egui::ComboBox::from_id_salt("rack_label_sheet_preset_combo")
+                    .selected_text(Self::rack_label_sheet_preset_label(
+                        self.rack_label_sheet_preset,
+                    ))
+                    .show_ui(ui, |ui| {
+                        for preset in [
+                            RackLabelSheetPreset::CompactCards,
+                            RackLabelSheetPreset::PrintA4,
+                            RackLabelSheetPreset::WideCards,
+                        ] {
+                            ui.selectable_value(
+                                &mut self.rack_label_sheet_preset,
+                                preset,
+                                Self::rack_label_sheet_preset_label(preset),
+                            );
+                        }
+                    });
+                if ui
+                    .button("Preview Labels...")
+                    .on_hover_text("Open an in-app preview of the deterministic label sheet for the currently shown rack before exporting it")
+                    .clicked()
+                {
+                    self.open_rack_labels_preview_dialog(&rack.rack_id, None);
+                }
+            });
+            ui.add_space(4.0);
+            ui.small(egui::RichText::new("Physical carrier exports").strong());
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Physical template");
+                egui::ComboBox::from_id_salt("rack_physical_template_combo")
+                    .selected_text(Self::rack_physical_template_label(
+                        self.rack_physical_template_kind,
+                    ))
+                    .show_ui(ui, |ui| {
+                        for template in [
+                            RackPhysicalTemplateKind::StoragePcrTubeRack,
+                            RackPhysicalTemplateKind::PipettingPcrTubeRack,
+                            RackPhysicalTemplateKind::CellCulturePlate,
+                        ] {
+                            ui.selectable_value(
+                                &mut self.rack_physical_template_kind,
+                                template,
+                                Self::rack_physical_template_label(template),
+                            );
+                        }
+                    });
+                ui.label("Carrier preset");
+                egui::ComboBox::from_id_salt("rack_carrier_label_preset_combo")
+                    .selected_text(Self::rack_carrier_label_preset_label(
+                        self.rack_carrier_label_preset,
+                    ))
+                    .show_ui(ui, |ui| {
+                        for preset in [
+                            RackCarrierLabelPreset::FrontStripAndCards,
+                            RackCarrierLabelPreset::FrontStripOnly,
+                            RackCarrierLabelPreset::ModuleCardsOnly,
+                        ] {
+                            ui.selectable_value(
+                                &mut self.rack_carrier_label_preset,
+                                preset,
+                                Self::rack_carrier_label_preset_label(preset),
+                            );
+                        }
+                    });
+            });
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .button("Fabrication SVG...")
+                    .on_hover_text("Export a top-view fabrication/planning SVG for the current rack using the selected physical carrier template")
+                    .clicked()
+                {
+                    self.prompt_export_rack_fabrication_svg(&rack.rack_id);
+                }
+                if ui
+                    .button("Isometric SVG...")
+                    .on_hover_text("Export a presentation-grade pseudo-3D rack SVG for the current rack using the selected physical carrier template")
+                    .clicked()
+                {
+                    self.prompt_export_rack_isometric_svg(&rack.rack_id);
+                }
+                if ui
+                    .button("OpenSCAD...")
+                    .on_hover_text("Export one parameterized OpenSCAD file for the current rack using the selected physical carrier template")
+                    .clicked()
+                {
+                    self.prompt_export_rack_openscad(&rack.rack_id);
+                }
+                if ui
+                    .button("Carrier labels SVG...")
+                    .on_hover_text("Export one carrier-matched front-strip plus module-label SVG sheet for the current rack using the selected physical carrier template")
+                    .clicked()
+                {
+                    self.prompt_export_rack_carrier_labels_svg(&rack.rack_id);
+                }
+                if ui
+                    .button("Simulation JSON...")
+                    .on_hover_text("Export one machine-readable physical rack geometry/placement JSON for downstream simulation adapters using the selected physical carrier template")
+                    .clicked()
+                {
+                    self.prompt_export_rack_simulation_json(&rack.rack_id);
+                }
+            });
         });
         close_requested
     }
@@ -3235,5 +3511,117 @@ impl GENtleApp {
             open = false;
         }
         self.show_place_arrangement_rack_dialog = open;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compact_rack_layout_reserves_export_controls_and_keeps_help_concise() {
+        assert_eq!(GENtleApp::rack_grid_viewport_height(400.0), 244.0);
+        assert_eq!(GENtleApp::rack_grid_viewport_height(220.0), 64.0);
+        assert_eq!(GENtleApp::rack_grid_viewport_height(100.0), 48.0);
+        assert!(GENtleApp::rack_help_uses_compact_summary(479.0));
+        assert!(!GENtleApp::rack_help_uses_compact_summary(480.0));
+    }
+
+    #[test]
+    fn container_pool_export_gui_command_matches_shared_shell_parser() {
+        let gui = container_pool_export_shell_command("pool-a", "/tmp/pool-a.gentle.json");
+        let parsed = crate::engine_shell::parse_shell_line(
+            "collections run export-pool pool-a --path /tmp/pool-a.gentle.json",
+        )
+        .expect("parse collection pool export");
+        for command in [gui, parsed] {
+            match command {
+                ShellCommand::CollectionsRunExportPool {
+                    collection_subject:
+                        crate::engine::CollectionSubjectRef::Container { container_id },
+                    output,
+                    pool_id,
+                    human_id,
+                } => {
+                    assert_eq!(container_id, "pool-a");
+                    assert_eq!(output, "/tmp/pool-a.gentle.json");
+                    assert!(pool_id.is_none());
+                    assert!(human_id.is_none());
+                }
+                other => panic!("unexpected pool export command: {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn container_pool_export_gui_uses_detached_typed_report() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "member-a".to_string(),
+            DNAsequence::from_sequence("ATGC").expect("member sequence"),
+        );
+        state.container_state.containers.insert(
+            "pool-a".to_string(),
+            crate::engine::Container {
+                container_id: "pool-a".to_string(),
+                kind: crate::engine::ContainerKind::Pool,
+                name: Some("Pool A".to_string()),
+                members: vec!["member-a".to_string()],
+                declared_contents_exclusive: true,
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("pool-a.gentle.json");
+        let path_text = path.display().to_string();
+
+        let report = execute_container_pool_export_task(
+            &engine,
+            container_pool_export_shell_command("pool-a", &path_text),
+            "pool-a".to_string(),
+            path_text.clone(),
+        )
+        .expect("detached typed pool export");
+
+        assert_eq!(
+            report.schema,
+            crate::engine::COLLECTION_POOL_EXPORT_REPORT_SCHEMA
+        );
+        assert_eq!(report.source_container_id, "pool-a");
+        assert_eq!(report.artifact_path, path_text);
+        assert_eq!(report.member_count, 1);
+        assert!(path.is_file());
+
+        let mut malformed = serde_json::json!({
+            "schema": "gentle.collection_pool_export_command.v1",
+            "report": report,
+        });
+        malformed["report"]["schema"] =
+            serde_json::Value::String("gentle.collection_pool_export.v999".to_string());
+        let error = collection_pool_export_report_from_shell_output(
+            &malformed,
+            "pool-a",
+            &path.display().to_string(),
+        )
+        .expect_err("unknown typed report schema must not become GUI success");
+        assert!(
+            error
+                .message
+                .contains("expected 'gentle.collection_pool_export.v1'")
+        );
+    }
+
+    #[test]
+    fn container_pool_export_gui_has_no_inline_engine_write_execution() {
+        let source = include_str!("rack_workspace_ui.rs");
+        let forbidden_inline_call = [
+            "execute_shell_command(&mut self.engine",
+            ".write().unwrap()",
+        ]
+        .concat();
+        assert!(source.contains("execute_on_engine_snapshot"));
+        assert!(!source.contains(&forbidden_inline_call));
     }
 }

@@ -1,0 +1,7 @@
+{
+  "TutorialTssToy": {
+    "description": "Synthetic TSS tutorial v1; not a real reference genome",
+    "sequence_local": "locus.fa",
+    "annotations_local": "locus.gtf"
+  }
+}

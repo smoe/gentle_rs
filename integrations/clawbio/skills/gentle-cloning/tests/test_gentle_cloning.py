@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import os
 from pathlib import Path
+import signal
 import shlex
 import shutil
 import subprocess
 import sys
+import threading
+import time
+
+import pytest
 
 
 def _skill_script() -> Path:
@@ -54,10 +60,496 @@ def _examples_dir() -> Path:
     return Path(__file__).resolve().parents[1] / "examples"
 
 
+def _fixture_cli_argv(
+    path: Path, *, platform_name: str | None = None
+) -> list[str]:
+    """Return an explicit interpreter command for synthetic CLI scripts on Windows."""
+
+    platform_name = os.name if platform_name is None else platform_name
+    if platform_name != "nt":
+        return [str(path)]
+    script_bytes = path.read_bytes()
+    script_text = script_bytes.decode("utf-8")
+    first_line = script_text.splitlines()[0]
+    if path.suffix == ".py" or "python" in first_line:
+        return [sys.executable, str(path)]
+    if path.suffix == ".sh" or "sh" in first_line:
+        if b"\r\n" in script_bytes:
+            path.write_bytes(script_bytes.replace(b"\r\n", b"\n"))
+        shell = shutil.which("bash") or shutil.which("sh")
+        if shell is None and platform_name == "nt":
+            program_files = Path(os.environ.get("ProgramFiles", "C:/Program Files"))
+            git_bash = program_files / "Git" / "bin" / "bash.exe"
+            if git_bash.is_file():
+                shell = str(git_bash)
+        if shell is None:
+            pytest.skip("synthetic shell CLI fixture requires bash or sh on Windows")
+        return [shell, path.as_posix()]
+    pytest.fail(f"synthetic CLI fixture '{path}' has no supported interpreter")
+
+
+def _fixture_cli_command(
+    path: Path, *, platform_name: str | None = None
+) -> str:
+    return shlex.join(_fixture_cli_argv(path, platform_name=platform_name))
+
+
+def _fixture_python_shell_command() -> str:
+    return shlex.quote(Path(sys.executable).as_posix())
+
+
+def _fixture_exit_command(exit_code: int) -> str:
+    if os.name != "nt":
+        return "true" if exit_code == 0 else "false"
+    return shlex.join([sys.executable, "-c", f"raise SystemExit({exit_code})"])
+
+
+def test_fixture_cli_command_selects_python_explicitly_on_windows(
+    tmp_path: Path,
+) -> None:
+    fake_cli = tmp_path / "fake_cli.py"
+    fake_cli.write_text("print('synthetic')\n", encoding="utf-8")
+
+    argv = _fixture_cli_argv(fake_cli, platform_name="nt")
+
+    assert argv == [sys.executable, str(fake_cli)]
+    assert shlex.split(shlex.join(argv)) == argv
+
+
+def test_fixture_cli_command_selects_shell_explicitly_on_windows(
+    tmp_path: Path,
+) -> None:
+    fake_cli = tmp_path / "fake cli.sh"
+    fake_cli.write_bytes(
+        b"#!/usr/bin/env bash\r\nprintf '%s\\n' synthetic-shell-cli\r\n"
+    )
+
+    command = _fixture_cli_command(fake_cli, platform_name="nt")
+    argv = shlex.split(command)
+    run = subprocess.run(argv, capture_output=True, text=True, check=False)
+
+    assert argv[1] == fake_cli.as_posix()
+    assert b"\r\n" not in fake_cli.read_bytes()
+    assert run.returncode == 0
+    assert run.stdout == "synthetic-shell-cli\n"
+
+
+def test_run_cli_command_preserves_child_failure_bytes_and_hashes(tmp_path: Path) -> None:
+    module = _skill_module()
+    child = tmp_path / "child_failure.py"
+    child.write_text(
+        "import sys\nsys.stdout.buffer.write(b'out\\x00bytes')\n"
+        "sys.stderr.buffer.write(b'err\\xffbytes')\nsys.exit(7)\n",
+        encoding="utf-8",
+    )
+    resolution = module.CliResolution(
+        argv_prefix=[sys.executable, str(child)],
+        cwd=None,
+        label="synthetic failing child",
+    )
+
+    result, step = module._run_cli_command(resolution, [], tmp_path, 5)
+
+    assert result.returncode == 7
+    assert step["status"] == "command_failed"
+    assert step["stdout_bytes"] == len(b"out\x00bytes")
+    assert step["stderr_bytes"] == len(b"err\xffbytes")
+    assert step["stdout_sha256"] == module._sha256_prefixed_bytes(b"out\x00bytes")
+    assert step["stderr_sha256"] == module._sha256_prefixed_bytes(b"err\xffbytes")
+
+
+def test_run_cli_command_timeout_preserves_partial_output_receipt(tmp_path: Path) -> None:
+    module = _skill_module()
+    child = tmp_path / "child_timeout.py"
+    child.write_text(
+        "import os, time\nos.write(1, b'before-timeout')\n"
+        "os.write(2, b'timeout-diagnostic')\ntime.sleep(60)\n",
+        encoding="utf-8",
+    )
+    resolution = module.CliResolution(
+        argv_prefix=[sys.executable, str(child)],
+        cwd=None,
+        label="synthetic timed-out child",
+    )
+
+    result, step = module._run_cli_command(resolution, [], tmp_path, 1.0)
+
+    assert result.returncode == 124
+    assert step["status"] == "timed_out"
+    assert step["timed_out"] is True
+    assert step["child_exit_code"] is not None
+    assert step["stdout_bytes"] == len(b"before-timeout")
+    assert step["stderr_bytes"] == len(b"timeout-diagnostic")
+    assert step["stdout_sha256"] == module._sha256_prefixed_bytes(b"before-timeout")
+    assert step["stderr_sha256"] == module._sha256_prefixed_bytes(b"timeout-diagnostic")
+
+
+@pytest.mark.skipif(
+    os.name != "posix",
+    reason="a child handling SIGTERM and exiting zero is a POSIX-only contract",
+)
+def test_run_cli_command_timeout_stays_failed_when_child_exits_zero(
+    tmp_path: Path,
+) -> None:
+    module = _skill_module()
+    child = tmp_path / "child_graceful_timeout.py"
+    child.write_text(
+        "import os, signal, sys, time\n"
+        "def stop(_signum, _frame):\n"
+        "    os.write(1, b'graceful-timeout-exit')\n"
+        "    raise SystemExit(0)\n"
+        "signal.signal(signal.SIGTERM, stop)\n"
+        "os.write(2, b'ready-for-timeout')\n"
+        "time.sleep(60)\n",
+        encoding="utf-8",
+    )
+    resolution = module.CliResolution(
+        argv_prefix=[sys.executable, str(child)],
+        cwd=None,
+        label="synthetic graceful timeout child",
+    )
+
+    result, step = module._run_cli_command(resolution, [], tmp_path, 0.5)
+
+    assert result.returncode == 124
+    assert step["child_exit_code"] == 0
+    assert step["status"] == "timed_out"
+    assert step["timed_out"] is True
+    assert result.stdout == "graceful-timeout-exit"
+    assert result.stderr == "ready-for-timeout"
+    assert any(
+        record["source"] == "timeout"
+        and record["purpose"] == "shutdown"
+        and record["forwarded"]
+        for record in step["forwarded_signals"]
+    )
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or not hasattr(signal, "SIGUSR1"),
+    reason="POSIX signal contract",
+)
+def test_sigusr1_without_active_child_is_harmless(capfd: pytest.CaptureFixture[str]) -> None:
+    module = _skill_module()
+    assert module._ensure_idle_sigusr1_handler() is True
+    before = len(module._idle_sigusr1_events())
+
+    os.kill(os.getpid(), signal.SIGUSR1)
+
+    events = module._idle_sigusr1_events()
+    assert len(events) == before + 1
+    assert events[-1]["disposition"] == "no_active_child"
+    assert events[-1]["forwarded"] is False
+    assert "status request ignored" in capfd.readouterr().err
+
+
+@pytest.mark.skipif(os.name != "posix" or not hasattr(signal, "SIGUSR1"), reason="POSIX signal contract")
+def test_run_cli_command_forwards_sigusr1_without_terminating_wrapper(tmp_path: Path) -> None:
+    module = _skill_module()
+    ready = tmp_path / "child.ready"
+    child = tmp_path / "signal_child.py"
+    child.write_text(
+        "import pathlib, signal, sys, time\n"
+        "seen = False\n"
+        "def handle(_signum, _frame):\n"
+        "    global seen\n"
+        "    seen = True\n"
+        "signal.signal(signal.SIGUSR1, handle)\n"
+        f"pathlib.Path({str(ready)!r}).write_text('ready', encoding='utf-8')\n"
+        "deadline = time.monotonic() + 4\n"
+        "while not seen and time.monotonic() < deadline:\n"
+        "    time.sleep(0.01)\n"
+        "print('SIGUSR1 forwarded' if seen else 'SIGUSR1 missing')\n"
+        "sys.exit(0 if seen else 9)\n",
+        encoding="utf-8",
+    )
+    resolution = module.CliResolution(
+        argv_prefix=[sys.executable, str(child)],
+        cwd=None,
+        label="synthetic signal child",
+    )
+
+    def signal_wrapper() -> None:
+        deadline = time.monotonic() + 3
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        time.sleep(0.05)
+        os.kill(os.getpid(), signal.SIGUSR1)
+
+    sender = threading.Thread(target=signal_wrapper, daemon=True)
+    sender.start()
+    result, step = module._run_cli_command(resolution, [], tmp_path, 5)
+    sender.join(timeout=1)
+
+    assert result.returncode == 0, result.stderr
+    assert "SIGUSR1 forwarded" in result.stdout
+    assert step["status"] == "ok"
+    assert any(
+        record["signal_name"] == "SIGUSR1" and record["forwarded"]
+        for record in step["forwarded_signals"]
+    )
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or not hasattr(signal, "SIGUSR1"),
+    reason="POSIX signal contract",
+)
+def test_run_cli_command_forwards_repeated_sigusr1_and_preserves_output(
+    tmp_path: Path,
+) -> None:
+    module = _skill_module()
+    ready = tmp_path / "repeated.ready"
+    child = tmp_path / "repeated_signal_child.py"
+    child.write_text(
+        "import os, pathlib, signal, time\n"
+        "seen = 0\n"
+        "def handle(_signum, _frame):\n"
+        "    global seen\n"
+        "    seen += 1\n"
+        "    os.write(1, f'status-{seen}\\n'.encode())\n"
+        "signal.signal(signal.SIGUSR1, handle)\n"
+        f"pathlib.Path({str(ready)!r}).write_text('ready', encoding='utf-8')\n"
+        "deadline = time.monotonic() + 5\n"
+        "while seen < 3 and time.monotonic() < deadline:\n"
+        "    time.sleep(0.01)\n"
+        "os.write(2, b'complete-stderr')\n"
+        "raise SystemExit(0 if seen == 3 else 9)\n",
+        encoding="utf-8",
+    )
+    resolution = module.CliResolution(
+        argv_prefix=[sys.executable, str(child)],
+        cwd=None,
+        label="synthetic repeated signal child",
+    )
+
+    def signal_wrapper() -> None:
+        deadline = time.monotonic() + 3
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        for _ in range(3):
+            os.kill(os.getpid(), signal.SIGUSR1)
+            time.sleep(0.1)
+
+    sender = threading.Thread(target=signal_wrapper, daemon=True)
+    sender.start()
+    result, step = module._run_cli_command(resolution, [], tmp_path, 6)
+    sender.join(timeout=1)
+
+    assert result.returncode == 0
+    assert result.stdout == "status-1\nstatus-2\nstatus-3\n"
+    assert result.stderr == "complete-stderr"
+    status_events = [
+        event
+        for event in step["forwarded_signals"]
+        if event["signal_name"] == "SIGUSR1"
+    ]
+    assert len(status_events) == 3
+    assert all(event["forwarded"] for event in status_events)
+    assert [event["sequence"] for event in status_events] == [1, 2, 3]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX signal contract")
+@pytest.mark.parametrize("signal_name", ["SIGTERM", "SIGINT"])
+def test_run_cli_command_interrupts_fail_closed_and_retains_child_exit(
+    tmp_path: Path,
+    signal_name: str,
+) -> None:
+    module = _skill_module()
+    signum = getattr(signal, signal_name)
+    ready = tmp_path / f"{signal_name}.ready"
+    child = tmp_path / f"{signal_name}_child.py"
+    child.write_text(
+        "import os, pathlib, signal, time\n"
+        "def stop(signum, _frame):\n"
+        "    os.write(1, f'interrupted-{signum}'.encode())\n"
+        "    os.write(2, b'graceful-shutdown')\n"
+        "    raise SystemExit(0)\n"
+        f"signal.signal({signum}, stop)\n"
+        f"pathlib.Path({str(ready)!r}).write_text('ready', encoding='utf-8')\n"
+        "time.sleep(60)\n",
+        encoding="utf-8",
+    )
+    resolution = module.CliResolution(
+        argv_prefix=[sys.executable, str(child)],
+        cwd=None,
+        label=f"synthetic {signal_name} child",
+    )
+
+    def signal_wrapper() -> None:
+        deadline = time.monotonic() + 3
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        os.kill(os.getpid(), signum)
+
+    sender = threading.Thread(target=signal_wrapper, daemon=True)
+    sender.start()
+    result, step = module._run_cli_command(resolution, [], tmp_path, 5)
+    sender.join(timeout=1)
+
+    assert result.returncode == 128 + signum
+    assert step["child_exit_code"] == 0
+    assert step["status"] == "interrupted"
+    assert step["initiating_signal"]["signal_name"] == signal_name
+    assert result.stdout == f"interrupted-{signum}"
+    assert result.stderr == "graceful-shutdown"
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or not hasattr(signal, "SIGUSR1"),
+    reason="POSIX signal contract",
+)
+def test_supervisor_does_not_signal_a_child_that_already_exited(tmp_path: Path) -> None:
+    module = _skill_module()
+    process = subprocess.Popen(
+        [sys.executable, "-c", "raise SystemExit(0)"],
+        cwd=tmp_path,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=False,
+        start_new_session=True,
+    )
+    process.communicate(timeout=5)
+    supervisor = module._CliProcessSupervisor(process)
+
+    supervisor.enqueue_wrapper_signal(signal.SIGUSR1)
+    supervisor.drain_pending_signals()
+
+    assert supervisor.signal_events == [
+        {
+            "sequence": 1,
+            "signal": signal.SIGUSR1,
+            "signal_name": "SIGUSR1",
+            "source": "wrapper_signal",
+            "purpose": "status",
+            "target": "direct_child",
+            "forwarded": False,
+            "disposition": "child_exited",
+            "error": None,
+        }
+    ]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX process-group contract")
+def test_run_cli_command_timeout_cleans_up_signal_ignoring_descendant(
+    tmp_path: Path,
+) -> None:
+    module = _skill_module()
+    module._CLI_TERMINATION_GRACE_SECONDS = 0.1
+    child = tmp_path / "ignore_shutdown.py"
+    child.write_text(
+        "import os, signal, subprocess, sys, time\n"
+        "descendant = \"import os, signal, time; "
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        "os.write(1, b'descendant-ready'); time.sleep(60)\"\n"
+        "subprocess.Popen([sys.executable, '-c', descendant])\n"
+        "def stop(_signum, _frame):\n"
+        "    os.write(2, b'parent-exited-zero')\n"
+        "    raise SystemExit(0)\n"
+        "signal.signal(signal.SIGTERM, stop)\n"
+        "os.write(1, b'parent-ready')\n"
+        "time.sleep(60)\n",
+        encoding="utf-8",
+    )
+    resolution = module.CliResolution(
+        argv_prefix=[sys.executable, str(child)],
+        cwd=None,
+        label="synthetic forced shutdown child",
+    )
+
+    result, step = module._run_cli_command(resolution, [], tmp_path, 0.5)
+
+    assert result.returncode == 124
+    assert step["child_exit_code"] == 0
+    assert "parent-ready" in result.stdout
+    assert "descendant-ready" in result.stdout
+    assert result.stderr == "parent-exited-zero"
+    assert step["status"] == "timed_out"
+    assert step["forced_termination"] is True
+    forced = [
+        event
+        for event in step["forwarded_signals"]
+        if event["purpose"] == "forced_shutdown"
+    ]
+    assert len(forced) == 1
+    assert forced[0]["target"] == "child_process_group"
+    assert forced[0]["forwarded"] is True
+
+
+@pytest.mark.skipif(
+    os.name != "posix",
+    reason="a child handling SIGTERM and returning JSON is a POSIX-only contract",
+)
+def test_wrapper_timeout_manifest_is_failed_even_when_child_returns_json_and_zero(
+    tmp_path: Path,
+) -> None:
+    fake_cli = tmp_path / "fake_timeout_cli.py"
+    fake_cli.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, signal, sys, time\n"
+        "if sys.argv[1:] == ['--version']:\n"
+        "    print('gentle_cli timeout-test')\n"
+        "    raise SystemExit(0)\n"
+        "def stop(_signum, _frame):\n"
+        "    print(json.dumps({'schema': 'gentle.partial.v1', "
+        "'summary_lines': ['must not become a scientific claim']}))\n"
+        "    raise SystemExit(0)\n"
+        "signal.signal(signal.SIGTERM, stop)\n"
+        "time.sleep(60)\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "capabilities",
+                "timeout_secs": 1,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "output"
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            _fixture_cli_command(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+
+    assert run.returncode == 1
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["status"] == "timed_out"
+    assert result["exit_code"] == 124
+    assert result["stdout_json"] is None
+    assert result["execution_manifest"]["execution_outcome"] == "failed"
+    main_step = result["execution_manifest"]["execution_steps"][-1]
+    assert main_step["stage"] == "main_command"
+    assert main_step["status"] == "timed_out"
+    assert main_step["exit_code"] == 124
+    assert main_step["child_exit_code"] == 0
+    assert result["execution_manifest"]["native_result"]["schema"] is None
+    assert result["claim_ledger"] is None
+
+
 # These examples are intentionally not direct top-level intent routes. They are
 # bootstrap, follow-on, direct-mode, or documentation/development examples that
 # remain callable by path but should not widen ClawBio's chat intent surface.
 INTENT_EXAMPLE_ALLOWLIST = {
+    "request_external_primer_handoff_synthetic.json",
     "request_cdna_pcr_products_gel_demo_direct.json",
     "request_cdna_qpcr_taqman_products_gel_demo_direct.json",
     "request_construct_reasoning_list_inspections.json",
@@ -153,7 +645,7 @@ def _fake_cli_with_svg_png(main_body: str) -> str:
         "if [ \"${1:-}\" = \"svg-png\" ]; then\n"
         "  output_path=$3\n"
         "  mkdir -p \"$(dirname \"$output_path\")\"\n"
-        "  python3 - \"$output_path\" <<'PY'\n"
+        f"  {_fixture_python_shell_command()} - \"$output_path\" <<'PY'\n"
         "import base64, sys\n"
         "from pathlib import Path\n"
         "Path(sys.argv[1]).write_bytes(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z0ioAAAAASUVORK5CYII='))\n"
@@ -163,6 +655,725 @@ def _fake_cli_with_svg_png(main_body: str) -> str:
         "fi\n"
         f"{main_body}"
     )
+
+
+def _write_workflow_graphics_cli(
+    path: Path,
+    *,
+    svg_path: str,
+    svg_text: str,
+    run_id: str,
+    json_artifacts: dict[str, dict] | None = None,
+) -> None:
+    """Synthetic artifact transport fixture, not a scientific workflow or renderer."""
+
+    response = {"schema": "gentle.workflow_run.v1", "run_id": run_id}
+    path.write_text(
+        "#!/usr/bin/env python3\n"
+        "import base64, json, sys\n"
+        "from pathlib import Path\n"
+        "args = sys.argv[1:]\n"
+        "if args[:1] == ['--state']:\n"
+        "    args = args[2:]\n"
+        "if args[:1] == ['svg-png']:\n"
+        "    assert len(args) == 5 and args[3:] == ['--scale', '2.0'], args\n"
+        "    assert '<svg' in Path(args[1]).read_text(encoding='utf-8')\n"
+        "    output = Path(args[2])\n"
+        "    output.parent.mkdir(parents=True, exist_ok=True)\n"
+        "    output.write_bytes(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z0ioAAAAASUVORK5CYII='))\n"
+        "    print('{}')\n"
+        "elif args[:1] == ['workflow']:\n"
+        "    assert len(args) == 2 and args[1].startswith('@'), args\n"
+        "    assert Path(args[1][1:]).is_file(), args\n"
+        f"    output = Path({svg_path!r})\n"
+        "    output.parent.mkdir(parents=True, exist_ok=True)\n"
+        f"    output.write_text({svg_text!r}, encoding='utf-8')\n"
+        f"    for name, payload in {(json_artifacts or {})!r}.items():\n"
+        "        artifact = Path(name)\n"
+        "        artifact.parent.mkdir(parents=True, exist_ok=True)\n"
+        "        artifact.write_text(json.dumps(payload, separators=(',', ':')) + '\\n', encoding='utf-8')\n"
+        f"    print(json.dumps({response!r}))\n"
+        "else:\n"
+        "    raise SystemExit('unexpected fixture arguments: ' + repr(args))\n",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+
+
+def _write_approval_gate_fake_cli(path: Path, execution_marker: Path) -> None:
+    path.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json\n"
+        "from pathlib import Path\n"
+        "import sys\n"
+        f"MARKER = Path({str(execution_marker)!r})\n"
+        "INVOCATIONS = MARKER.with_name('invocations.log')\n"
+        "args = sys.argv[1:]\n"
+        "with INVOCATIONS.open('a', encoding='utf-8') as handle:\n"
+        "    handle.write(json.dumps(args) + '\\n')\n"
+        "if args == ['--version']:\n"
+        "    print('gentle_cli 9.9.approval-test')\n"
+        "    raise SystemExit(0)\n"
+        "if 'shell' not in args:\n"
+        "    raise SystemExit('expected shell request')\n"
+        "shell_line = args[args.index('shell') + 1]\n"
+        "if shell_line.startswith('primers preflight '):\n"
+        "    print(json.dumps({'schema': 'gentle.primer3_preflight.v1', 'preflight': {\n"
+        "        'backend': 'auto', 'configured_executable': None,\n"
+        "        'used_default_executable': True, 'executable': 'primer3_core',\n"
+        "        'resolved_path': None, 'working_directory': str(Path.cwd()),\n"
+        "        'reachable': False, 'version_probe_ok': False,\n"
+        "        'status_code': None, 'version': None, 'detail': None,\n"
+        "        'error': 'synthetic unavailable', 'probe_time_ms': 0}}))\n"
+        "    raise SystemExit(0)\n"
+        "if shell_line.startswith('primers design '):\n"
+        "    MARKER.write_text(shell_line + '\\n', encoding='utf-8')\n"
+        "    print(json.dumps({'schema': 'gentle.synthetic_primer_result.v1',\n"
+        "        'report_id': 'primer_report_approved', 'status': 'ok',\n"
+        "        'summary_lines': ['Approved primer design executed.']}))\n"
+        "    raise SystemExit(0)\n"
+        "raise SystemExit('unexpected shell line: ' + shell_line)\n",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+
+
+def _approval_gated_design_request(tmp_path: Path) -> tuple[Path, Path]:
+    operation_path = tmp_path / "operation.json"
+    operation_path.write_text(
+        '{"DesignPrimerPairs":{"report_id":"synthetic_approved"}}\n',
+        encoding="utf-8",
+    )
+    source_skill_root = _skill_script().parents[1] / "gentle-pcr-primer-design"
+    descriptor = json.loads(
+        (source_skill_root / "INTENTS.json").read_text(encoding="utf-8")
+    )
+    route = next(
+        row
+        for row in descriptor["routes"]
+        if row["intent_id"] == "conventional_pcr_design"
+    )
+    request = json.loads(json.dumps(route["plan"][0]["input_template"]))
+    request["shell_line"] = "primers design @operation.json --backend auto"
+    request["delegation"]["resolved_slots"] = {
+        "request_path": "operation.json",
+        "backend": "auto",
+    }
+    request_path = tmp_path / "delegated_request.json"
+    request_path.write_text(json.dumps(request) + "\n", encoding="utf-8")
+    return request_path, operation_path
+
+
+def _write_approved_execution_request(
+    path: Path,
+    proposal_path: Path,
+    proposal_digest: str,
+    *,
+    approval_id: str,
+) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_approved_execution_request.v1",
+                "proposal_path": str(proposal_path),
+                "approval": {
+                    "schema": "gentle.clawbio_execution_approval.v1",
+                    "approval_scope": "execute_exact_proposal",
+                    "proposal_digest": proposal_digest,
+                    "approval_id": approval_id,
+                    "approved_by": "synthetic-test-reviewer",
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def _write_external_primer_handoff_fake_cli(
+    path: Path, *, tamper_sequence: bool = False, tamper_target: bool = False
+) -> None:
+    script = r'''#!/usr/bin/env python3
+import hashlib
+import json
+from pathlib import Path
+import shlex
+import sys
+
+TAMPER_SEQUENCE = False
+TAMPER_TARGET = False
+
+
+def sha256_prefixed_bytes(value):
+    return "sha256:" + hashlib.sha256(value).hexdigest()
+
+
+def short_id(prefix, value):
+    return prefix + "_" + hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+
+
+if sys.argv[1:] == ["--version"]:
+    print("gentle_cli 0.1.synthetic-handoff-test")
+    raise SystemExit(0)
+
+state_index = sys.argv.index("--state")
+state_path = Path(sys.argv[state_index + 1])
+shell_index = sys.argv.index("shell")
+tokens = shlex.split(sys.argv[shell_index + 1])
+if tokens[:2] != ["primers", "import-external-pairs"]:
+    raise SystemExit("unexpected command")
+
+
+def option(flag):
+    return tokens[tokens.index(flag) + 1]
+
+
+def optional_option(flag, default=None):
+    return option(flag) if flag in tokens else default
+
+
+batch_path = Path(tokens[2])
+seq_id = tokens[3]
+source_feature_id = int(tokens[4])
+artifact_dir = Path(option("--artifact-output-dir"))
+report_path = Path(option("--path"))
+batch_bytes = batch_path.read_bytes()
+batch = json.loads(batch_bytes)
+source_sha256 = sha256_prefixed_bytes(batch_bytes)
+artifact_dir.mkdir(parents=True, exist_ok=True)
+
+grouped = {}
+for row_number, source in enumerate(batch["pairs"], start=1):
+    key = (
+        source["forward_sequence_5_to_3"],
+        source["reverse_sequence_5_to_3"],
+    )
+    source_record_id = short_id(
+        "external_primer_source",
+        json.dumps(source, sort_keys=True, separators=(",", ":")),
+    )
+    provenance = {
+        "source_record_id": source_record_id,
+        "input_row_number": row_number,
+        "source_kind": source["source_kind"],
+        "provider": source["provider"],
+        "catalogue_id": source["catalogue_id"],
+        "source_url": source["source_url"],
+        "claimed_accession": source["claimed_accession"],
+        "aliases": sorted(set(source["aliases"])),
+        "claimed_target": source["claimed_target"],
+        "validation_claims": sorted(set(source["validation_claims"])),
+        "annotations": source["annotations"],
+        "input_format": "json",
+        "source_path": str(batch_path),
+        "source_sha256": source_sha256,
+        "claim_evidence_status": "provenance_only_not_used_for_coverage_or_specificity",
+    }
+    grouped.setdefault(key, []).append(provenance)
+
+pairs = []
+digest_rows = []
+for (forward, reverse), sources in sorted(grouped.items()):
+    pair_id = short_id("primer_pair", forward + "\n" + reverse)
+    output_forward = "TTTT" if TAMPER_SEQUENCE else forward
+    assay = {
+        "schema": "gentle.cdna_assay_test_report.v1",
+        "assay_test_id": short_id("assay_test_sha256", pair_id + seq_id),
+        "pair_id": short_id("pair_sha256", forward + reverse),
+        "assay_kind": "pcr",
+        "source_seq_id": seq_id,
+        "source_feature_id": source_feature_id,
+        "requested_transcript_id": optional_option("--transcript-id"),
+        "forward_primer": output_forward,
+        "reverse_primer": reverse,
+        "min_amplicon_bp": int(optional_option("--min-amplicon-bp", 1)),
+        "max_amplicon_bp": int(optional_option("--max-amplicon-bp", 10000)),
+        "max_mismatches": int(optional_option("--max-mismatches", 0)),
+        "require_3prime_exact_bases": int(
+            optional_option("--require-3prime-exact-bases", 0)
+        ),
+        "transcript_order": optional_option("--transcript-order", "transcript_id"),
+        "transcript_map_coordinate_mode": optional_option(
+            "--map-coordinate-mode", "cdna"
+        ),
+        "overall_status": "single_product",
+        "product_count": 1,
+    }
+    cdna_path = artifact_dir / f"{pair_id}.cdna_assay.json"
+    map_path = artifact_dir / f"{pair_id}.transcript_map.svg"
+    cdna_path.write_text(json.dumps(assay, indent=2) + "\n", encoding="utf-8")
+    map_path.write_text(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\"><text>synthetic map</text></svg>\n",
+        encoding="utf-8",
+    )
+    product_path = None
+    if "--materialize-products" in tokens:
+        product = artifact_dir / f"{pair_id}.product_gel.svg"
+        product.write_text(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\"><text>synthetic gel</text></svg>\n",
+            encoding="utf-8",
+        )
+        product_path = str(product)
+    pairs.append(
+        {
+            "pair_id": pair_id,
+            "sources": sorted(sources, key=lambda source: source["source_record_id"]),
+            "forward": {"sequence_5_to_3": output_forward},
+            "reverse": {"sequence_5_to_3": reverse},
+            "cdna_assay": assay,
+            "specificity": {
+                "status": "not_run",
+                "reason": "not requested in synthetic test",
+                "report": None,
+            },
+            "artifacts": {
+                "cdna_report_json_path": str(cdna_path),
+                "transcript_map_svg_path": str(map_path),
+                "product_gel_svg_path": product_path,
+            },
+            "vendor_claims_used_as_biological_evidence": False,
+            "product_materialization": (
+                {"product_count": 1} if "--materialize-products" in tokens else None
+            ),
+            "warnings": [],
+        }
+    )
+    for source in sources:
+        digest_rows.append([source["source_record_id"], forward, reverse])
+
+digest_rows.sort()
+normalized_batch_sha256 = sha256_prefixed_bytes(
+    json.dumps(digest_rows, separators=(",", ":")).encode("utf-8")
+)
+report = {
+    "schema": "gentle.external_primer_pair_import_report.v1",
+    "report_id": short_id(
+        "external_primer_import", normalized_batch_sha256 + seq_id
+    ),
+    "batch_id": batch["batch_id"],
+    "normalized_batch_sha256": normalized_batch_sha256,
+    "generated_at_unix_ms": 1,
+    "seq_id": "WRONG_TARGET" if TAMPER_TARGET else seq_id,
+    "source_feature_id": source_feature_id,
+    "input_provenance": {
+        "input_format": "json",
+        "source_path": str(batch_path),
+        "source_sha256": source_sha256,
+    },
+    "source_record_count": len(batch["pairs"]),
+    "unique_pair_count": len(pairs),
+    "duplicate_source_record_count": len(batch["pairs"]) - len(pairs),
+    "pairs": pairs,
+    "warnings": [
+        "Prepared-target specificity was not run; claims do not imply a pass."
+    ],
+}
+report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+state_path.write_text(state_path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+result = {
+    "schema": "gentle.external_primer_pair_import_command.v1",
+    "report": report,
+    "path": str(report_path),
+    "preferred_artifacts": [],
+    "result": {
+        "op_id": "op_000001",
+        "created_seq_ids": [],
+        "changed_seq_ids": [],
+        "warnings": [],
+        "messages": [],
+        "external_primer_pair_import_report": report,
+    },
+}
+print(json.dumps(result))
+'''
+    if tamper_sequence:
+        script = script.replace("TAMPER_SEQUENCE = False", "TAMPER_SEQUENCE = True")
+    if tamper_target:
+        script = script.replace("TAMPER_TARGET = False", "TAMPER_TARGET = True")
+    path.write_text(script, encoding="utf-8")
+    path.chmod(0o755)
+
+
+def _external_primer_handoff_request(
+    state_path: Path, *, expected_state_sha256: str | None = None
+) -> dict:
+    target = {
+        "seq_id": "SYNTHETIC_TARGET",
+        "source_feature_id": 7,
+        "transcript_id": "SYNTHETIC_TX.1",
+        "reference_label": "synthetic transcript fixture",
+        "reference_release": "fixture-2026-08",
+    }
+    if expected_state_sha256 is not None:
+        target["expected_state_sha256"] = expected_state_sha256
+    return {
+        "schema": "gentle.clawbio_skill_request.v1",
+        "mode": "external-primer-handoff",
+        "state_path": str(state_path),
+        "external_primer_handoff": {
+            "schema": "gentle.external_primer_handoff_request.v1",
+            "collection_id": "synthetic-primer-evidence",
+            "target": target,
+            "evaluation": {
+                "min_amplicon_bp": 60,
+                "max_amplicon_bp": 250,
+                "max_mismatches": 2,
+                "require_3prime_exact_bases": 4,
+                "transcript_order": "transcript_id",
+                "map_coordinate_mode": "cdna",
+            },
+            "records": [
+                {
+                    "record_id": "synthetic-literature-pair",
+                    "assay_purpose": "qPCR",
+                    "source_kind": "literature",
+                    "provider": "Synthetic Methods Journal",
+                    "source_url": "https://example.invalid/synthetic-method",
+                    "claimed_target": "SYNTHETIC_TARGET",
+                    "validation_claims": ["Reported amplification in source"],
+                    "forward_sequence_5_to_3": "acgt acgt acgt acgt ac",
+                    "reverse_sequence_5_to_3": "tgca tgca tgca tgca tg",
+                },
+                {
+                    "record_id": "synthetic-catalogue-pair",
+                    "assay_purpose": "endpoint_pcr",
+                    "source_kind": "commercial_catalogue",
+                    "provider": "Synthetic Oligo Catalogue",
+                    "catalogue_id": "SYN-0001",
+                    "claimed_target": "SYNTHETIC_TARGET",
+                    "validation_claims": ["Supplier-described assay"],
+                    "forward_sequence_5_to_3": "ACGTACGTACGTACGTAC",
+                    "reverse_sequence_5_to_3": "TGCATGCATGCATGCATG",
+                },
+                {
+                    "record_id": "synthetic-cloning-pair",
+                    "assay_purpose": "cloning",
+                    "source_kind": "external",
+                    "provider": "Synthetic teaching fixture",
+                    "forward_sequence_5_to_3": "AAAACCCCGGGGTTTTAA",
+                    "reverse_sequence_5_to_3": "TTTTGGGGCCCCAAAATT",
+                },
+                {
+                    "record_id": "synthetic-sequencing-oligo",
+                    "assay_purpose": "sequencing",
+                    "source_kind": "external",
+                    "provider": "Synthetic teaching fixture",
+                    "sequence_5_to_3": "GATTACAGATTACAGATT",
+                    "role": "U6 sequencing primer",
+                },
+            ],
+        },
+    }
+
+
+def test_external_primer_handoff_binds_native_results_and_preserves_non_pcr_records(
+    tmp_path: Path,
+) -> None:
+    fake_cli = tmp_path / "gentle_cli"
+    _write_external_primer_handoff_fake_cli(fake_cli)
+    state_path = tmp_path / "state.json"
+    state_path.write_text("{}\n", encoding="utf-8")
+    state_sha256 = "sha256:" + hashlib.sha256(state_path.read_bytes()).hexdigest()
+    request = _external_primer_handoff_request(
+        state_path, expected_state_sha256=state_sha256
+    )
+    request_path = tmp_path / "request.json"
+    request_path.write_text(json.dumps(request), encoding="utf-8")
+    output_dir = tmp_path / "output"
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            _fixture_cli_command(fake_cli),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert run.returncode == 0, run.stderr or run.stdout
+    payload = json.loads(run.stdout)
+    assert payload["status"] == "ok"
+    handoff = payload["external_primer_handoff"]
+    assert handoff["schema"] == "gentle.external_primer_handoff_result.v1"
+    assert handoff["status"] == "complete"
+    assert handoff["analysis_completeness"] == "complete_for_requested_scope"
+    assert handoff["runtime"]["gentle_version"] == (
+        "gentle_cli 0.1.synthetic-handoff-test"
+    )
+    assert handoff["target_state"]["state_sha256_before"] == state_sha256
+    assert handoff["target_state"]["state_sha256_after"] != state_sha256
+    assert handoff["target_state"]["reference_label"] == (
+        "synthetic transcript fixture"
+    )
+    assert handoff["target_state"]["reference_declaration_status"] == (
+        "caller_declared_and_bound_to_state_sha256"
+    )
+    assert handoff["submitted_record_count"] == 2
+    assert handoff["not_submitted_record_count"] == 2
+    joins = handoff["submitted_record_joins"]
+    assert {row["record_id"] for row in joins} == {
+        "synthetic-literature-pair",
+        "synthetic-catalogue-pair",
+    }
+    assert len({row["pair_id"] for row in joins}) == 1
+    assert len({row["source_record_id"] for row in joins}) == 2
+    assert all(row["forward_sequence_5_to_3"] == "ACGTACGTACGTACGTAC" for row in joins)
+    assert all(row["reverse_sequence_5_to_3"] == "TGCATGCATGCATGCATG" for row in joins)
+    assert all(row["status"] == "computed" for row in joins)
+
+    not_submitted = handoff["not_submitted_records"]
+    assert {row["record_id"] for row in not_submitted} == {
+        "synthetic-cloning-pair",
+        "synthetic-sequencing-oligo",
+    }
+    assert {row["assay_purpose"] for row in not_submitted} == {
+        "cloning",
+        "sequencing",
+    }
+    assert all(row["status"] == "not_submitted" for row in not_submitted)
+    assert handoff["report_binding"]["report_id"].startswith(
+        "external_primer_import_"
+    )
+    assert handoff["report_binding"]["normalized_batch_sha256"].startswith(
+        "sha256:"
+    )
+    assert handoff["canonical_request_sha256"].startswith("sha256:")
+    assert handoff["execution_binding_sha256"].startswith("sha256:")
+    assert {artifact["artifact_kind"] for artifact in handoff["scientific_artifacts"]} == {
+        "external_primer_import_report",
+        "cdna_assay_report",
+        "transcript_map",
+    }
+    assert all(
+        artifact["sha256"].startswith("sha256:")
+        for artifact in handoff["scientific_artifacts"]
+    )
+    assert "--report-id" not in " ".join(payload["command"])
+    commands = (output_dir / "reproducibility" / "commands.sh").read_text(
+        encoding="utf-8"
+    )
+    assert "--version" in commands
+    assert "primers import-external-pairs" in commands
+    checksums = (output_dir / "reproducibility" / "checksums.sha256").read_text(
+        encoding="utf-8"
+    )
+    assert "external_primer_handoff/canonical_request.json" in checksums
+    assert "external_primer_handoff/submitted_external_primer_pairs.json" in checksums
+    assert "external_primer_handoff/external_primer_import_report.json" in checksums
+    assert "external_primer_handoff/scientific_artifacts/" in checksums
+
+
+def test_external_primer_handoff_rejects_altered_native_sequence(
+    tmp_path: Path,
+) -> None:
+    fake_cli = tmp_path / "gentle_cli"
+    _write_external_primer_handoff_fake_cli(fake_cli, tamper_sequence=True)
+    state_path = tmp_path / "state.json"
+    state_path.write_text("{}\n", encoding="utf-8")
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(_external_primer_handoff_request(state_path)), encoding="utf-8"
+    )
+    output_dir = tmp_path / "output"
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            _fixture_cli_command(fake_cli),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert run.returncode == 1
+    payload = json.loads(run.stdout)
+    assert payload["status"] == "verification_failed"
+    assert "sequence mismatch" in payload["error"]
+    assert payload["external_primer_handoff"]["status"] == "verification_failed"
+    assert payload["external_primer_handoff"]["analysis_completeness"] == "unverified"
+
+
+def test_external_primer_handoff_rejects_result_from_wrong_target(
+    tmp_path: Path,
+) -> None:
+    fake_cli = tmp_path / "gentle_cli"
+    _write_external_primer_handoff_fake_cli(fake_cli, tamper_target=True)
+    state_path = tmp_path / "state.json"
+    state_path.write_text("{}\n", encoding="utf-8")
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(_external_primer_handoff_request(state_path)), encoding="utf-8"
+    )
+    output_dir = tmp_path / "output"
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            _fixture_cli_command(fake_cli),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert run.returncode == 1
+    payload = json.loads(run.stdout)
+    assert payload["status"] == "verification_failed"
+    assert "report seq_id mismatch" in payload["error"]
+    assert payload["external_primer_handoff"]["status"] == "verification_failed"
+
+
+def test_external_primer_handoff_does_not_accept_missing_requested_specificity(
+    tmp_path: Path,
+) -> None:
+    fake_cli = tmp_path / "gentle_cli"
+    _write_external_primer_handoff_fake_cli(fake_cli)
+    state_path = tmp_path / "state.json"
+    state_path.write_text("{}\n", encoding="utf-8")
+    request = _external_primer_handoff_request(state_path)
+    request["external_primer_handoff"]["evaluation"][
+        "specificity_target_genome_id"
+    ] = "synthetic_genome"
+    request_path = tmp_path / "request.json"
+    request_path.write_text(json.dumps(request), encoding="utf-8")
+    output_dir = tmp_path / "output"
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            _fixture_cli_command(fake_cli),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert run.returncode == 1
+    payload = json.loads(run.stdout)
+    assert payload["status"] == "verification_failed"
+    assert "omitted requested specificity" in payload["error"]
+    assert payload["external_primer_handoff"]["analysis_completeness"] == "unverified"
+
+
+def test_external_primer_handoff_rejects_wrong_target_state_before_invocation(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "state.json"
+    state_path.write_text("{}\n", encoding="utf-8")
+    request = _external_primer_handoff_request(
+        state_path, expected_state_sha256="sha256:" + "0" * 64
+    )
+    request_path = tmp_path / "request.json"
+    request_path.write_text(json.dumps(request), encoding="utf-8")
+    output_dir = tmp_path / "output"
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            _fixture_exit_command(1),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert run.returncode == 1
+    payload = json.loads(run.stdout)
+    assert payload["status"] == "failed"
+    assert "target state SHA-256 mismatch" in payload["error"]
+    assert payload["command"] is None
+
+
+def test_external_primer_handoff_keeps_non_pcr_collection_as_not_submitted(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "state.json"
+    state_path.write_text("{}\n", encoding="utf-8")
+    request = _external_primer_handoff_request(state_path)
+    request["external_primer_handoff"]["records"] = [
+        record
+        for record in request["external_primer_handoff"]["records"]
+        if record["assay_purpose"] in {"cloning", "sequencing"}
+    ]
+    request_path = tmp_path / "request.json"
+    request_path.write_text(json.dumps(request), encoding="utf-8")
+    output_dir = tmp_path / "output"
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            _fixture_exit_command(1),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert run.returncode == 1
+    payload = json.loads(run.stdout)
+    assert payload["status"] == "incomplete"
+    assert payload["command"] is None
+    handoff = payload["external_primer_handoff"]
+    assert handoff["status"] == "not_run"
+    assert handoff["analysis_completeness"] == "no_pcr_compatible_records"
+    assert handoff["submitted_record_count"] == 0
+    assert handoff["not_submitted_record_count"] == 2
+
+
+def test_external_primer_handoff_canonical_digest_ignores_record_order() -> None:
+    module = _skill_module()
+    request = _external_primer_handoff_request(Path("state.json"))[
+        "external_primer_handoff"
+    ]
+    reordered = json.loads(json.dumps(request))
+    reordered["records"].reverse()
+    reordered["records"][0]["validation_claims"] = list(
+        reversed(reordered["records"][0].get("validation_claims", []))
+    )
+
+    first = module._normalise_external_primer_handoff(request)
+    second = module._normalise_external_primer_handoff(reordered)
+
+    assert first == second
+    assert module._sha256_prefixed_json(first) == module._sha256_prefixed_json(second)
 
 
 def test_action_envelope_stamp_adds_skill_alias_and_confirm_invariant() -> None:
@@ -198,6 +1409,1025 @@ def test_action_envelope_stamp_adds_skill_alias_and_confirm_invariant() -> None:
     assert stamped[1]["requires_confirmation"] is True
 
 
+def test_strict_claim_attribution_prefixes_prose_and_records_tool_chain() -> None:
+    module = _skill_module()
+    request = module.Request(
+        mode="shell",
+        shell_line="primers experimental-handoff panel_1 --gel-svg panel.gel.svg",
+        claim_attribution_mode="strict",
+        presentation_profile="pcr_primer_design",
+        input_claims=[
+            "RT priming chemistry: oligo-dT.",
+            "5-prime cap-capture evidence: not supplied.",
+        ],
+    )
+    stdout_json = {
+        "summary_lines": ["Built experimental assay handoff with two cards."]
+    }
+    projection = module._extract_chat_summary_projection(stdout_json)
+
+    lines, ledger = module._strict_claim_attribution(
+        request=request,
+        lines=[
+            "Built experimental assay handoff with two cards.",
+            module.CONTINUE_ARTIFACT_NOTICE,
+        ],
+        default_source_kind="gentle_executable",
+        summary_projection=projection,
+        stdout_json=stdout_json,
+        command=[
+            "gentle_cli",
+            "primers",
+            "experimental-handoff",
+            "panel_1",
+            "--gel-svg",
+            "panel.gel.svg",
+        ],
+        collected_artifacts=[
+            {
+                "declared_path": "panel.gel.svg",
+                "bundle_path": "generated/panel.gel.svg",
+            },
+            {
+                "declared_path": "generated/clawbio_storyboard.svg",
+                "bundle_path": "generated/clawbio_storyboard.svg",
+            },
+        ],
+        warning_lines=[
+            "[gentle] One requested transcript was unresolved.",
+            "[clawbio] One optional artifact was not collected.",
+            "[external:blastn] Search completed from a provenance-backed runner.",
+        ],
+    )
+
+    assert lines == [
+        "[gentle] Built experimental assay handoff with two cards.",
+        f"[clawbio] {module.CONTINUE_ARTIFACT_NOTICE}",
+    ]
+    assert ledger["schema"] == "gentle.clawbio_claim_ledger.v1"
+    assert ledger["presentation_profile"] == "pcr_primer_design"
+    assert [claim["source_kind"] for claim in ledger["claims"]] == [
+        "gentle_executable",
+        "clawbio_presentation",
+    ]
+    assert [claim["display_text"] for claim in ledger["input_claims"]] == [
+        "[input] RT priming chemistry: oligo-dT.",
+        "[input] 5-prime cap-capture evidence: not supplied.",
+    ]
+    assert [
+        claim["evidence"]["json_pointer"]
+        for claim in ledger["input_claims"]
+    ] == [
+        "/request/input_claims/0",
+        "/request/input_claims/1",
+    ]
+    assert ledger["claims"][0]["evidence"]["json_pointer"] == (
+        "/stdout_json/summary_lines/0"
+    )
+    assert ledger["claims"][0]["evidence"]["projection_id"] == (
+        "gentle.clawbio.summary_lines.identity_trim.v1"
+    )
+    assert {
+        step["prefix"] for step in ledger["processing_steps"]
+    } == {"[input]", "[clawbio]", "[gentle]"}
+    gentle_step = next(
+        step
+        for step in ledger["processing_steps"]
+        if step["source_kind"] == "gentle_executable"
+    )
+    assert gentle_step["command"][-2:] == ["--gel-svg", "panel.gel.svg"]
+    assert [
+        artifact["scientific_content_authority"]
+        for artifact in ledger["artifacts"]
+    ] == ["gentle_executable", "none_presentation_only"]
+    assert [artifact["prefix"] for artifact in ledger["artifacts"]] == [
+        "[gentle]",
+        "[clawbio]",
+    ]
+    assert [warning["source_kind"] for warning in ledger["warning_claims"]] == [
+        "clawbio_presentation",
+        "clawbio_presentation",
+        "clawbio_presentation",
+    ]
+    assert ledger["warning_claims"][0]["display_text"].startswith(
+        "[clawbio] (literal source prefix [gentle])"
+    )
+    assert any(
+        "Unverified prose must use [unverified]" in rule
+        for rule in ledger["rules"]
+    )
+
+
+def test_strict_pcr_bundle_writes_attributed_report_and_artifact_ledger(
+    tmp_path: Path,
+) -> None:
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        _fake_cli_with_svg_png(
+            "if [ \"${1:-}\" = \"shell\" ]; then\n"
+            "  cat > handoff.json <<'JSON'\n"
+            "{\"schema\":\"gentle.experimental_assay_handoff.v1\"}\n"
+            "JSON\n"
+            "  printf 'pair_id\\treadiness_state\\n' > handoff.order.tsv\n"
+            "  cat > handoff.gel.svg <<'SVG'\n"
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"600\"><text>[gentle] Serial Gel Preview</text></svg>\n"
+            "SVG\n"
+            "  cat <<'JSON'\n"
+            "{\"summary_lines\":[\"Built two GENtle assay cards.\"],\"preferred_artifacts\":[{\"artifact_id\":\"experimental_assay_virtual_gel_svg\",\"path\":\"handoff.gel.svg\",\"caption\":\"[gentle] Primer-pair product comparison\",\"is_best_first_artifact\":true}]}\n"
+            "JSON\n"
+            "  exit 0\n"
+            "fi\n"
+            "echo '{}'\n"
+        ),
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "claim_attribution_mode": "strict",
+                "presentation_profile": "pcr_primer_design",
+                "mode": "shell",
+                "input_claims": [
+                    "RT priming chemistry: oligo-dT.",
+                    "5-prime completeness evidence: not supplied.",
+                ],
+                "shell_line": (
+                    "primers experimental-handoff panel_1 "
+                    "--path handoff.json --order-table handoff.order.tsv "
+                    "--gel-svg handoff.gel.svg"
+                ),
+                "expected_artifacts": [
+                    "handoff.json",
+                    "handoff.order.tsv",
+                    "handoff.gel.svg",
+                ],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            _fixture_cli_command(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert run.returncode == 0, run.stderr
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["chat_summary_lines"] == [
+        "[gentle] Built two GENtle assay cards."
+    ]
+    assert result["stdout_json"]["summary_lines"] == [
+        "Built two GENtle assay cards."
+    ]
+    assert result["claim_ledger"]["schema"] == "gentle.clawbio_claim_ledger.v1"
+    assert result["request"]["input_claims"] == [
+        "RT priming chemistry: oligo-dT.",
+        "5-prime completeness evidence: not supplied.",
+    ]
+    assert [
+        claim["source_kind"]
+        for claim in result["claim_ledger"]["input_claims"]
+    ] == [
+        "caller_input",
+        "caller_input",
+    ]
+    assert (output_dir / "claim_ledger.json").is_file()
+    assert (output_dir / "reproducibility" / "execution_manifest.json").is_file()
+    assert result["execution_manifest"]["schema"] == (
+        "gentle.clawbio_execution_manifest.v1"
+    )
+    assert result["execution_manifest"]["delegation"] is None
+    assert all(
+        artifact["scientific_content_authority"] == "gentle_executable"
+        for artifact in result["claim_ledger"]["artifacts"]
+    )
+    assert all(
+        str(artifact["content_sha256"]).startswith("sha256:")
+        for artifact in result["claim_ledger"]["artifacts"]
+    )
+    report = (output_dir / "report.md").read_text(encoding="utf-8")
+    assert "## Claim Attribution" in report
+    assert "### Input Assumptions" in report
+    assert "[input] RT priming chemistry: oligo-dT." in report
+    assert "[input] 5-prime completeness evidence: not supplied." in report
+    assert "[gentle] Built two GENtle assay cards." in report
+
+
+def test_content_bound_inputs_hash_at_files_and_reject_digest_mismatch(
+    tmp_path: Path,
+) -> None:
+    module = _skill_module()
+    input_path = tmp_path / "operation.json"
+    input_path.write_text('{"operation":"synthetic"}\n', encoding="utf-8")
+    observed_sha256 = "sha256:" + hashlib.sha256(input_path.read_bytes()).hexdigest()
+    request = module.Request(
+        mode="shell",
+        shell_line="primers design @operation.json --backend internal",
+        input_bindings=[
+            {
+                "binding_id": "reviewed_operation",
+                "path": "operation.json",
+                "role": "operation_request",
+                "media_type": "application/json",
+                "expected_sha256": observed_sha256,
+            }
+        ],
+    )
+
+    bindings = module._prepare_content_bound_inputs(
+        request,
+        request_source_path=None,
+        execution_cwd=tmp_path,
+        script_path=_skill_script(),
+    )
+
+    assert len(bindings) == 1
+    assert bindings[0]["sha256"] == observed_sha256
+    assert bindings[0]["binding_ids"] == [
+        "reviewed_operation",
+        "shell_at_input_1",
+    ]
+
+    request.input_bindings[0]["expected_sha256"] = "sha256:" + "0" * 64
+    with pytest.raises(module.SkillError, match="SHA-256 mismatch"):
+        module._prepare_content_bound_inputs(
+            request,
+            request_source_path=None,
+            execution_cwd=tmp_path,
+            script_path=_skill_script(),
+        )
+
+
+def test_content_bound_input_mutation_fails_closed_and_keeps_original_hash(
+    tmp_path: Path,
+) -> None:
+    input_path = tmp_path / "reviewed_input.json"
+    input_path.write_text('{"value":"reviewed"}\n', encoding="utf-8")
+    original_sha256 = "sha256:" + hashlib.sha256(input_path.read_bytes()).hexdigest()
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": "state-summary",
+                "input_bindings": [
+                    {
+                        "binding_id": "reviewed_input",
+                        "path": str(input_path),
+                        "role": "reviewed_scientific_input",
+                        "media_type": "application/json",
+                        "expected_sha256": original_sha256,
+                    }
+                ],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    fake_cli = tmp_path / "mutating_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        f"printf '%s\\n' '{{\"value\":\"altered\"}}' > {shlex.quote(str(input_path))}\n"
+        "echo '{\"schema\":\"gentle.synthetic_result.v1\"}'\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+    output_dir = tmp_path / "out"
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            _fixture_cli_command(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert run.returncode == 1
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["status"] == "verification_failed"
+    assert result["failure_summary"]["stage"] == "content_binding_verification"
+    binding = next(
+        row
+        for row in result["execution_manifest"]["request_binding"][
+            "content_bound_inputs"
+        ]
+        if "reviewed_input" in row["binding_ids"]
+    )
+    assert binding["sha256"] == original_sha256
+    assert binding["post_execution_verification"]["status"] == "changed"
+    assert binding["post_execution_verification"]["sha256"] != original_sha256
+
+
+def test_delegated_run_binds_route_runtime_state_and_native_verdict(
+    tmp_path: Path,
+) -> None:
+    descriptor_path = (
+        _skill_script().parents[1] / "gentle-pcr-primer-design" / "INTENTS.json"
+    )
+    descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
+    route = next(
+        route
+        for route in descriptor["routes"]
+        if route["intent_id"] == "primer_report_list"
+    )
+    request = route["plan"][0]["input_template"]
+    request_path = tmp_path / "request.json"
+    request_path.write_text(json.dumps(request) + "\n", encoding="utf-8")
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "if [ \"${1:-}\" = \"--version\" ]; then\n"
+        "  echo 'gentle_cli 9.9.synthetic'\n"
+        "  exit 0\n"
+        "fi\n"
+        "cat <<'JSON'\n"
+        '{"schema":"gentle.synthetic_primer_result.v1",'
+        '"report_id":"primer_report_1","status":"specificity_fail",'
+        '"summary_lines":["Specificity review completed with a biological fail verdict."]}\n'
+        "JSON\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+    output_dir = tmp_path / "out"
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            _fixture_cli_command(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert run.returncode == 0, run.stderr
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    manifest = result["execution_manifest"]
+    assert manifest["execution_outcome"] == "completed"
+    assert manifest["wrapper_status"] == "ok"
+    assert manifest["runtime"]["gentle_version"] == "gentle_cli 9.9.synthetic"
+    assert manifest["delegation"]["compatibility_status"] == "verified"
+    assert manifest["delegation"]["intent_id"] == "primer_report_list"
+    assert manifest["delegation"]["routing_scope"].endswith(
+        "not_natural_language_reproduction"
+    )
+    assert manifest["state_binding"]["before"]["exists"] is False
+    assert manifest["state_binding"]["after"]["exists"] is False
+    assert [step["stage"] for step in manifest["execution_steps"]] == [
+        "runtime_preflight",
+        "main_command",
+    ]
+    main_step = manifest["execution_steps"][1]
+    assert main_step["exit_code"] == 0
+    assert main_step["child_exit_code"] == 0
+    assert main_step["timed_out"] is False
+    assert main_step["initiating_signal"] is None
+    assert main_step["forced_termination"] is False
+    assert main_step["forwarded_signals"] == []
+    assert {
+        (binding["field"], binding["value"])
+        for binding in manifest["native_result"]["reported_status_bindings"]
+    } == {("status", "specificity_fail")}
+    assert manifest["native_result"]["status_interpretation"] == (
+        "native_fields_only_no_wrapper_scientific_reclassification"
+    )
+    request_binding = next(
+        binding
+        for binding in manifest["request_binding"]["content_bound_inputs"]
+        if "wrapper_request" in binding["binding_ids"]
+    )
+    assert request_binding["sha256"].startswith("sha256:")
+    claim = result["claim_ledger"]["claims"][0]
+    assert claim["source_kind"] == "gentle_executable"
+    assert claim["evidence"]["json_pointer"] == "/stdout_json/summary_lines/0"
+    assert claim["evidence"]["source_value_sha256"].startswith("sha256:")
+
+
+def test_confirmation_gated_delegation_proposes_then_executes_exact_approval(
+    tmp_path: Path,
+) -> None:
+    request_path, _ = _approval_gated_design_request(tmp_path)
+    marker = tmp_path / "executed.txt"
+    fake_cli = tmp_path / "fake_cli.py"
+    _write_approval_gate_fake_cli(fake_cli, marker)
+    proposal_output = tmp_path / "proposal"
+
+    proposed = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(proposal_output),
+            "--gentle-cli",
+            _fixture_cli_command(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proposed.returncode == 0, proposed.stderr
+    assert not marker.exists()
+    proposal_result = json.loads(
+        (proposal_output / "result.json").read_text(encoding="utf-8")
+    )
+    assert proposal_result["status"] == "approval_required"
+    proposal_path = Path(
+        proposal_result["artifacts"]["execution_proposal_json"]
+    )
+    proposal = json.loads(proposal_path.read_text(encoding="utf-8"))
+    assert proposal["schema"] == "gentle.clawbio_execution_proposal.v1"
+    assert proposal["proposal_digest"].startswith("sha256:")
+    assert proposal["approval_basis"]["normalized_request"]["state_path"] == str(
+        (tmp_path / ".gentle_state.json").resolve()
+    )
+    shell_line = proposal["approval_basis"]["normalized_request"]["shell_line"]
+    assert "--backend internal" in shell_line
+    assert "--backend auto" not in shell_line
+    assert proposal["review"]["backend_resolution"]["selected_backend"] == (
+        "internal"
+    )
+    wrapper_contract = proposal["approval_basis"]["wrapper_contract"]
+    assert wrapper_contract["contract_files_complete"] is True
+    assert {record["contract_part"] for record in wrapper_contract["files"]} == {
+        "runner",
+        "catalog_entry",
+        "intent_descriptor",
+    }
+    assert proposal["review"]["wrapper_contract"] == wrapper_contract
+    assert "PATH" in proposal["review"]["execution_environment"]
+    assert proposal_result["execution_manifest"]["execution_outcome"] == (
+        "not_executed"
+    )
+
+    repeat_output = tmp_path / "proposal_repeat"
+    repeated = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(repeat_output),
+            "--gentle-cli",
+            _fixture_cli_command(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert repeated.returncode == 0, repeated.stderr
+    repeated_proposal = json.loads(
+        (
+            repeat_output / "reproducibility" / "execution_proposal.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert repeated_proposal["proposal_digest"] == proposal["proposal_digest"]
+
+    approval_path = tmp_path / "approval.json"
+    approval_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_approved_execution_request.v1",
+                "proposal_path": str(proposal_path),
+                "approval": {
+                    "schema": "gentle.clawbio_execution_approval.v1",
+                    "approval_scope": "execute_exact_proposal",
+                    "proposal_digest": proposal["proposal_digest"],
+                    "approval_id": "human-review-1",
+                    "approved_by": "synthetic-test-reviewer",
+                    "approved_at_utc": "2026-08-03T12:00:00Z",
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    execution_output = tmp_path / "execution"
+    executed = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(approval_path),
+            "--output",
+            str(execution_output),
+            "--gentle-cli",
+            _fixture_cli_command(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert executed.returncode == 0, executed.stderr
+    assert marker.read_text(encoding="utf-8").strip() == shell_line
+    result = json.loads((execution_output / "result.json").read_text(encoding="utf-8"))
+    assert result["status"] == "ok"
+    assert result["execution_approval"]["status"] == "approved"
+    assert result["execution_approval"]["proposal_digest"] == proposal[
+        "proposal_digest"
+    ]
+    proposed_request = dict(proposal["approval_basis"]["normalized_request"])
+    assert proposed_request.pop("schema") == "gentle.clawbio_skill_request.v1"
+    assert result["request"] == proposed_request
+    assert result["execution_manifest"]["execution_approval"]["approval"][
+        "approval_id"
+    ] == "human-review-1"
+
+
+def test_approved_execution_rejects_tampered_proposal_before_command(
+    tmp_path: Path,
+) -> None:
+    module = _skill_module()
+    proposal_path = tmp_path / "proposal.json"
+    proposal = {
+        "schema": module.EXECUTION_PROPOSAL_SCHEMA,
+        "created_utc": "2026-08-03T12:00:00Z",
+        "proposal_digest": "sha256:" + "0" * 64,
+        "proposal_digest_scope": "synthetic",
+        "approval_basis": {"normalized_request": {"mode": "shell"}},
+        "review": {},
+    }
+    proposal_path.write_text(json.dumps(proposal) + "\n", encoding="utf-8")
+    envelope_path = tmp_path / "approval.json"
+    envelope = {
+        "schema": module.APPROVED_EXECUTION_REQUEST_SCHEMA,
+        "proposal_path": str(proposal_path),
+        "approval": {
+            "schema": module.EXECUTION_APPROVAL_SCHEMA,
+            "approval_scope": "execute_exact_proposal",
+            "proposal_digest": "sha256:" + "0" * 64,
+            "approval_id": "synthetic",
+            "approved_by": "synthetic",
+        },
+    }
+
+    with pytest.raises(module.SkillError, match="stored proposal was altered"):
+        module._load_approved_execution(envelope, envelope_path, _skill_script())
+
+
+def test_approved_execution_rejects_tampered_review_projection(
+    tmp_path: Path,
+) -> None:
+    module = _skill_module()
+    request_path, _ = _approval_gated_design_request(tmp_path)
+    marker = tmp_path / "executed.txt"
+    fake_cli = tmp_path / "fake_cli.py"
+    _write_approval_gate_fake_cli(fake_cli, marker)
+    proposal_output = tmp_path / "proposal"
+    proposed = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(proposal_output),
+            "--gentle-cli",
+            _fixture_cli_command(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proposed.returncode == 0, proposed.stderr
+    proposal_path = proposal_output / "reproducibility" / "execution_proposal.json"
+    proposal = json.loads(proposal_path.read_text(encoding="utf-8"))
+    proposal["review"]["exact_command_text"] = "gentle_cli shell 'different command'"
+    proposal_path.write_text(json.dumps(proposal) + "\n", encoding="utf-8")
+    envelope_path = tmp_path / "approval.json"
+    envelope = {
+        "schema": module.APPROVED_EXECUTION_REQUEST_SCHEMA,
+        "proposal_path": str(proposal_path),
+        "approval": {
+            "schema": module.EXECUTION_APPROVAL_SCHEMA,
+            "approval_scope": "execute_exact_proposal",
+            "proposal_digest": proposal["proposal_digest"],
+            "approval_id": "tampered-review",
+            "approved_by": "synthetic-test-reviewer",
+        },
+    }
+
+    with pytest.raises(module.SkillError, match="review projection mismatch"):
+        module._load_approved_execution(envelope, envelope_path, _skill_script())
+    assert not marker.exists()
+
+
+def test_approved_execution_rejects_approval_for_another_proposal(
+    tmp_path: Path,
+) -> None:
+    module = _skill_module()
+    approval_basis = {"normalized_request": {"schema": module.REQUEST_SCHEMA}}
+    proposal_digest = module._sha256_prefixed_json(approval_basis)
+    proposal_path = tmp_path / "proposal.json"
+    proposal_path.write_text(
+        json.dumps(
+            {
+                "schema": module.EXECUTION_PROPOSAL_SCHEMA,
+                "created_utc": "2026-08-03T12:00:00Z",
+                "proposal_digest": proposal_digest,
+                "proposal_digest_scope": "synthetic",
+                "approval_basis": approval_basis,
+                "review": {},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    envelope_path = tmp_path / "approval.json"
+    envelope = {
+        "schema": module.APPROVED_EXECUTION_REQUEST_SCHEMA,
+        "proposal_path": str(proposal_path),
+        "approval": {
+            "schema": module.EXECUTION_APPROVAL_SCHEMA,
+            "approval_scope": "execute_exact_proposal",
+            "proposal_digest": "sha256:" + "f" * 64,
+            "approval_id": "wrong-run",
+            "approved_by": "synthetic",
+        },
+    }
+
+    with pytest.raises(module.SkillError, match="different proposal digest"):
+        module._load_approved_execution(envelope, envelope_path, _skill_script())
+
+
+def test_approved_execution_rejects_input_drift_before_command(
+    tmp_path: Path,
+) -> None:
+    request_path, operation_path = _approval_gated_design_request(tmp_path)
+    marker = tmp_path / "executed.txt"
+    fake_cli = tmp_path / "fake_cli.py"
+    _write_approval_gate_fake_cli(fake_cli, marker)
+    proposal_output = tmp_path / "proposal"
+    proposed = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(proposal_output),
+            "--gentle-cli",
+            _fixture_cli_command(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proposed.returncode == 0, proposed.stderr
+    proposal_path = proposal_output / "reproducibility" / "execution_proposal.json"
+    proposal = json.loads(proposal_path.read_text(encoding="utf-8"))
+    operation_path.write_text('{"changed":true}\n', encoding="utf-8")
+    approval_path = tmp_path / "approval.json"
+    approval_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_approved_execution_request.v1",
+                "proposal_path": str(proposal_path),
+                "approval": {
+                    "schema": "gentle.clawbio_execution_approval.v1",
+                    "approval_scope": "execute_exact_proposal",
+                    "proposal_digest": proposal["proposal_digest"],
+                    "approval_id": "human-review-drift",
+                    "approved_by": "synthetic-test-reviewer",
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    execution_output = tmp_path / "execution"
+    executed = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(approval_path),
+            "--output",
+            str(execution_output),
+            "--gentle-cli",
+            _fixture_cli_command(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert executed.returncode == 1
+    assert not marker.exists()
+    result = json.loads((execution_output / "result.json").read_text(encoding="utf-8"))
+    assert result["status"] == "failed"
+    assert "content-bound scientific inputs changed" in result["error"]
+
+
+def test_approved_execution_rejects_state_drift_before_version_probe(
+    tmp_path: Path,
+) -> None:
+    request_path, _ = _approval_gated_design_request(tmp_path)
+    state_path = tmp_path / ".gentle_state.json"
+    state_path.write_text('{"schema":"synthetic.state.v1","revision":1}\n')
+    marker = tmp_path / "executed.txt"
+    invocation_log = tmp_path / "invocations.log"
+    fake_cli = tmp_path / "fake_cli.py"
+    _write_approval_gate_fake_cli(fake_cli, marker)
+    proposal_output = tmp_path / "proposal"
+    proposed = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(proposal_output),
+            "--gentle-cli",
+            _fixture_cli_command(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proposed.returncode == 0, proposed.stderr
+    invocation_count_before = len(
+        invocation_log.read_text(encoding="utf-8").splitlines()
+    )
+    proposal_path = proposal_output / "reproducibility" / "execution_proposal.json"
+    proposal = json.loads(proposal_path.read_text(encoding="utf-8"))
+    state_path.write_text('{"schema":"synthetic.state.v1","revision":2}\n')
+    approval_path = tmp_path / "approval.json"
+    _write_approved_execution_request(
+        approval_path,
+        proposal_path,
+        proposal["proposal_digest"],
+        approval_id="human-review-state",
+    )
+    execution_output = tmp_path / "execution"
+    executed = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(approval_path),
+            "--output",
+            str(execution_output),
+            "--gentle-cli",
+            _fixture_cli_command(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert executed.returncode == 1
+    assert not marker.exists()
+    assert len(invocation_log.read_text(encoding="utf-8").splitlines()) == (
+        invocation_count_before
+    )
+    result = json.loads((execution_output / "result.json").read_text(encoding="utf-8"))
+    assert "project state changed" in result["error"]
+
+
+def test_approved_execution_rejects_environment_drift_before_version_probe(
+    tmp_path: Path,
+) -> None:
+    request_path, _ = _approval_gated_design_request(tmp_path)
+    marker = tmp_path / "executed.txt"
+    invocation_log = tmp_path / "invocations.log"
+    fake_cli = tmp_path / "fake_cli.py"
+    _write_approval_gate_fake_cli(fake_cli, marker)
+    proposal_output = tmp_path / "proposal"
+    proposal_env = dict(os.environ)
+    proposal_env["GENTLE_REFERENCE_CACHE_DIR"] = str(tmp_path / "reference-a")
+    proposed = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(proposal_output),
+            "--gentle-cli",
+            _fixture_cli_command(fake_cli),
+        ],
+        cwd=tmp_path,
+        env=proposal_env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proposed.returncode == 0, proposed.stderr
+    invocation_count_before = len(
+        invocation_log.read_text(encoding="utf-8").splitlines()
+    )
+    proposal_path = proposal_output / "reproducibility" / "execution_proposal.json"
+    proposal = json.loads(proposal_path.read_text(encoding="utf-8"))
+    approval_path = tmp_path / "approval.json"
+    _write_approved_execution_request(
+        approval_path,
+        proposal_path,
+        proposal["proposal_digest"],
+        approval_id="human-review-environment",
+    )
+    execution_env = dict(proposal_env)
+    execution_env["GENTLE_REFERENCE_CACHE_DIR"] = str(tmp_path / "reference-b")
+    execution_output = tmp_path / "execution"
+    executed = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(approval_path),
+            "--output",
+            str(execution_output),
+            "--gentle-cli",
+            _fixture_cli_command(fake_cli),
+        ],
+        cwd=tmp_path,
+        env=execution_env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert executed.returncode == 1
+    assert not marker.exists()
+    assert len(invocation_log.read_text(encoding="utf-8").splitlines()) == (
+        invocation_count_before
+    )
+    result = json.loads((execution_output / "result.json").read_text(encoding="utf-8"))
+    assert "execution environment changed" in result["error"]
+
+
+def test_approved_execution_rejects_runtime_drift_before_version_probe(
+    tmp_path: Path,
+) -> None:
+    request_path, _ = _approval_gated_design_request(tmp_path)
+    marker = tmp_path / "executed.txt"
+    invocation_log = tmp_path / "invocations.log"
+    fake_cli = tmp_path / "fake_cli.py"
+    _write_approval_gate_fake_cli(fake_cli, marker)
+    proposal_output = tmp_path / "proposal"
+    proposed = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(proposal_output),
+            "--gentle-cli",
+            _fixture_cli_command(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proposed.returncode == 0, proposed.stderr
+    invocation_count_before = len(
+        invocation_log.read_text(encoding="utf-8").splitlines()
+    )
+    proposal_path = proposal_output / "reproducibility" / "execution_proposal.json"
+    proposal = json.loads(proposal_path.read_text(encoding="utf-8"))
+    fake_cli.write_text(
+        fake_cli.read_text(encoding="utf-8") + "# changed after approval\n",
+        encoding="utf-8",
+    )
+    approval_path = tmp_path / "approval.json"
+    approval_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_approved_execution_request.v1",
+                "proposal_path": str(proposal_path),
+                "approval": {
+                    "schema": "gentle.clawbio_execution_approval.v1",
+                    "approval_scope": "execute_exact_proposal",
+                    "proposal_digest": proposal["proposal_digest"],
+                    "approval_id": "human-review-runtime",
+                    "approved_by": "synthetic-test-reviewer",
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    execution_output = tmp_path / "execution"
+    executed = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(approval_path),
+            "--output",
+            str(execution_output),
+            "--gentle-cli",
+            _fixture_cli_command(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert executed.returncode == 1
+    assert not marker.exists()
+    assert len(invocation_log.read_text(encoding="utf-8").splitlines()) == (
+        invocation_count_before
+    )
+    result = json.loads((execution_output / "result.json").read_text(encoding="utf-8"))
+    assert "runtime file identity changed" in result["error"]
+
+
+def test_delegation_rejects_wrong_source_skill_version() -> None:
+    module = _skill_module()
+    request = module.Request(
+        mode="shell",
+        shell_line="primers list-reports",
+        delegation={
+            "schema": module.DELEGATION_SCHEMA,
+            "source_skill": "gentle-pcr-primer-design",
+            "source_skill_version": "999.0.0",
+            "intent_id": "primer_report_list",
+            "plan_step_index": 0,
+            "resolved_slots": None,
+            "descriptor_sha256": None,
+            "catalog_sha256": None,
+        },
+    )
+
+    with pytest.raises(module.SkillError, match="catalog version mismatch"):
+        module._verified_delegation(request, _skill_script())
+
+
+def test_claim_prefixes_from_caller_text_cannot_spoof_gentle_authority() -> None:
+    module = _skill_module()
+    request = module.Request(
+        mode="shell",
+        shell_line="primers list-reports",
+        claim_attribution_mode="strict",
+        input_claims=["[gentle] This caller statement is not computed."],
+    )
+
+    _, ledger = module._strict_claim_attribution(
+        request=request,
+        lines=None,
+        default_source_kind=None,
+        summary_projection=None,
+        stdout_json=None,
+        command=None,
+        warning_lines=[],
+    )
+
+    display = ledger["input_claims"][0]["display_text"]
+    assert display.startswith("[input] (literal source prefix [gentle])")
+
+
 def test_demo_writes_expected_artifacts(tmp_path: Path) -> None:
     output_dir = tmp_path / "demo_out"
     cmd = [
@@ -207,7 +2437,7 @@ def test_demo_writes_expected_artifacts(tmp_path: Path) -> None:
         "--output",
         str(output_dir),
         "--gentle-cli",
-        "true",
+        _fixture_exit_command(0),
     ]
     run = subprocess.run(cmd, capture_output=True, text=True, check=False)
     assert run.returncode == 0, run.stderr
@@ -260,7 +2490,7 @@ def test_demo_followup_action_is_routeable_by_skill_alias(tmp_path: Path) -> Non
             "--output",
             str(output_dir),
             "--gentle-cli",
-            "true",
+            _fixture_exit_command(0),
         ],
         capture_output=True,
         text=True,
@@ -313,7 +2543,7 @@ def test_demo_promotes_graphical_artifact_and_capabilities_followup(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -377,7 +2607,7 @@ def test_expected_artifact_parent_dirs_are_created_before_command(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -422,10 +2652,16 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
     assert payload["stdout_json"] == {
         "schema": "gentle.clawbio_skill_info.v1",
         "name": "gentle-cloning",
-        "version": "0.1.0",
+        "version": "0.3.0",
         "status": "mvp",
         "request_schema": "gentle.clawbio_skill_request.v1",
         "result_schema": "gentle.clawbio_skill_result.v1",
+        "execution_manifest_schema": "gentle.clawbio_execution_manifest.v1",
+        "execution_proposal_schema": "gentle.clawbio_execution_proposal.v1",
+        "execution_approval_schema": "gentle.clawbio_execution_approval.v1",
+        "approved_execution_request_schema": (
+            "gentle.clawbio_approved_execution_request.v1"
+        ),
         "supported_request_modes": [
             "skill-info",
             "intents",
@@ -452,6 +2688,7 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
             "qpcr-report-export",
             "cdna-pcr-test",
             "cdna-qpcr-test",
+            "external-primer-handoff",
             "protein-residue-genomic-coordinates",
             "transcript-qpcr-panel",
             "restriction-cloning-pcr-handoff",
@@ -509,7 +2746,7 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
         },
     }
     assert payload["chat_summary_lines"] == [
-        "gentle-cloning skill version 0.1.0 (mvp).",
+            "gentle-cloning skill version 0.3.0 (mvp).",
         "Request schema: gentle.clawbio_skill_request.v1; result schema: gentle.clawbio_skill_result.v1.",
         "Use request mode `version` when you need the installed local GENtle rewrite runtime version.",
         "Use request mode `intents` to compare the installed wrapper's live intent descriptor with ClawBio's on-disk snapshot.",
@@ -553,7 +2790,7 @@ def test_skill_info_request_mode_reports_catalog_version(
     assert payload["status"] == "ok"
     assert payload["request"]["mode"] == "skill-info"
     assert payload["stdout_json"]["schema"] == "gentle.clawbio_skill_info.v1"
-    assert payload["stdout_json"]["version"] == "0.1.0"
+    assert payload["stdout_json"]["version"] == "0.3.0"
     assert payload["resolver"] is None
     assert payload["command"] is None
 
@@ -659,7 +2896,7 @@ def test_capabilities_mode_surfaces_ui_intent_catalog_and_handoff_actions(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         env=env,
@@ -719,9 +2956,9 @@ def test_capabilities_mode_surfaces_ui_intent_catalog_and_handoff_actions(
     commands_text = (output_dir / "reproducibility" / "commands.sh").read_text(
         encoding="utf-8"
     )
-    assert "\n" + shlex.quote(str(fake_cli)) + " capabilities\n" in commands_text
+    assert "\n" + shlex.join(_fixture_cli_argv(fake_cli)) + " capabilities\n" in commands_text
     assert (
-        "\n" + shlex.quote(str(fake_cli)) + " shell 'ui intents'\n"
+        "\n" + shlex.join(_fixture_cli_argv(fake_cli)) + " shell 'ui intents'\n"
         in commands_text
     )
     assert capture_path.read_text(encoding="utf-8").splitlines() == [
@@ -767,7 +3004,7 @@ def test_capabilities_mode_tolerates_missing_ui_intents_probe(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -788,9 +3025,9 @@ def test_capabilities_mode_tolerates_missing_ui_intents_probe(
     commands_text = (output_dir / "reproducibility" / "commands.sh").read_text(
         encoding="utf-8"
     )
-    assert "\n" + shlex.quote(str(fake_cli)) + " capabilities\n" in commands_text
+    assert "\n" + shlex.join(_fixture_cli_argv(fake_cli)) + " capabilities\n" in commands_text
     assert (
-        "\n" + shlex.quote(str(fake_cli)) + " shell 'ui intents'\n"
+        "\n" + shlex.join(_fixture_cli_argv(fake_cli)) + " shell 'ui intents'\n"
         in commands_text
     )
 
@@ -827,7 +3064,7 @@ def test_version_mode_reports_installed_gentle_runtime(tmp_path: Path) -> None:
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         capture_output=True,
         text=True,
@@ -839,7 +3076,7 @@ def test_version_mode_reports_installed_gentle_runtime(tmp_path: Path) -> None:
     assert payload["status"] == "ok"
     assert payload["invocation_marker"] == "GENtle ClawBio skill wrapper invoked"
     assert payload["request"]["mode"] == "version"
-    assert payload["command"] == [str(fake_cli), "--version"]
+    assert payload["command"] == [*_fixture_cli_argv(fake_cli), "--version"]
     assert payload["stdout"] == "GENtle 0.1.0-test\n"
     assert payload["stdout_json"] is None
     assert payload["chat_summary_lines"] == [
@@ -876,7 +3113,7 @@ def test_clawbio_style_input_path_resolves_from_skill_cwd(tmp_path: Path) -> Non
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=_skill_script().parent,
         capture_output=True,
@@ -950,7 +3187,7 @@ def test_construct_reasoning_inspection_modes_build_shared_shell_commands(
             "--output",
             str(tmp_path / "list_out"),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         capture_output=True,
         text=True,
@@ -959,7 +3196,7 @@ def test_construct_reasoning_inspection_modes_build_shared_shell_commands(
     assert list_run.returncode == 0, list_run.stderr
     list_payload = json.loads(list_run.stdout)
     assert list_payload["command"] == [
-        str(fake_cli),
+        *_fixture_cli_argv(fake_cli),
         "--state",
         ".gentle_state.json",
         "shell",
@@ -999,7 +3236,7 @@ def test_construct_reasoning_inspection_modes_build_shared_shell_commands(
             "--output",
             str(tmp_path / "run_out"),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         capture_output=True,
         text=True,
@@ -1008,7 +3245,7 @@ def test_construct_reasoning_inspection_modes_build_shared_shell_commands(
     assert run_run.returncode == 0, run_run.stderr
     run_payload = json.loads(run_run.stdout)
     assert run_payload["command"] == [
-        str(fake_cli),
+        *_fixture_cli_argv(fake_cli),
         "--state",
         ".gentle_state.json",
         "shell",
@@ -1038,7 +3275,7 @@ def test_agent_plan_mode_builds_shell_wrapper_command(tmp_path: Path) -> None:
     fake_cli = tmp_path / "fake_cli.sh"
     fake_cli.write_text(
         "#!/usr/bin/env bash\n"
-        "python3 - \"$@\" <<'PY'\n"
+        f"{_fixture_python_shell_command()} - \"$@\" <<'PY'\n"
         "import json, sys\n"
         "print(json.dumps({\"argv\": sys.argv[1:]}))\n"
         "PY\n",
@@ -1056,7 +3293,7 @@ def test_agent_plan_mode_builds_shell_wrapper_command(tmp_path: Path) -> None:
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         capture_output=True,
         text=True,
@@ -1096,7 +3333,7 @@ def test_exon_skip_plan_mode_builds_shell_wrapper_command(tmp_path: Path) -> Non
     fake_cli = tmp_path / "fake_cli.sh"
     fake_cli.write_text(
         "#!/usr/bin/env bash\n"
-        "python3 - \"$@\" <<'PY'\n"
+        f"{_fixture_python_shell_command()} - \"$@\" <<'PY'\n"
         "import json, sys\n"
         "print(json.dumps({\"argv\": sys.argv[1:]}))\n"
         "PY\n",
@@ -1114,7 +3351,7 @@ def test_exon_skip_plan_mode_builds_shell_wrapper_command(tmp_path: Path) -> Non
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         capture_output=True,
         text=True,
@@ -1159,7 +3396,7 @@ def test_exon_skip_materialize_mode_requires_confirm_and_builds_requested_return
             "--output",
             str(bad_out),
             "--gentle-cli",
-            "true",
+            _fixture_exit_command(0),
         ],
         capture_output=True,
         text=True,
@@ -1188,7 +3425,7 @@ def test_exon_skip_materialize_mode_requires_confirm_and_builds_requested_return
     fake_cli = tmp_path / "fake_cli.sh"
     fake_cli.write_text(
         "#!/usr/bin/env bash\n"
-        "python3 - \"$@\" <<'PY'\n"
+        f"{_fixture_python_shell_command()} - \"$@\" <<'PY'\n"
         "import json, sys\n"
         "print(json.dumps({\"argv\": sys.argv[1:]}))\n"
         "PY\n",
@@ -1206,7 +3443,7 @@ def test_exon_skip_materialize_mode_requires_confirm_and_builds_requested_return
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         capture_output=True,
         text=True,
@@ -1238,7 +3475,7 @@ def test_rejects_invalid_request_schema(tmp_path: Path) -> None:
         "--output",
         str(out_dir),
         "--gentle-cli",
-        "true",
+        _fixture_exit_command(0),
     ]
     run = subprocess.run(cmd, capture_output=True, text=True, check=False)
     assert run.returncode != 0
@@ -1291,7 +3528,7 @@ def test_result_payload_promotes_sequence_context_chat_summary(tmp_path: Path) -
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -1369,7 +3606,7 @@ def test_result_payload_promotes_bundle_nested_sequence_context_chat_summary(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -1456,7 +3693,7 @@ def test_result_payload_promotes_protein_residue_genomic_coordinate_summary(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -1467,7 +3704,7 @@ def test_result_payload_promotes_protein_residue_genomic_coordinate_summary(
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
     assert result["command"] == [
-        str(fake_cli),
+        *_fixture_cli_argv(fake_cli),
         "--state",
         ".gentle_state.json",
         "op",
@@ -1531,7 +3768,7 @@ def test_result_payload_promotes_cdna_genomic_carryover_risk_summary(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -1602,7 +3839,7 @@ def test_result_payload_promotes_cdna_product_materialization_summary(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -1658,7 +3895,7 @@ def test_cdna_assay_mode_builds_genomic_aligned_map_shell_command(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -1669,7 +3906,7 @@ def test_cdna_assay_mode_builds_genomic_aligned_map_shell_command(
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
     assert result["command"] == [
-        str(fake_cli),
+        *_fixture_cli_argv(fake_cli),
         "--state",
         ".gentle_state.json",
         "shell",
@@ -1712,7 +3949,7 @@ def test_cdna_assay_mode_builds_product_gel_shell_command(tmp_path: Path) -> Non
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -1723,7 +3960,7 @@ def test_cdna_assay_mode_builds_product_gel_shell_command(tmp_path: Path) -> Non
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
     assert result["command"] == [
-        str(fake_cli),
+        *_fixture_cli_argv(fake_cli),
         "--state",
         ".gentle_state.json",
         "shell",
@@ -1767,7 +4004,7 @@ def test_qpcr_seed_mode_builds_shared_primer_shell_command(tmp_path: Path) -> No
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -1778,7 +4015,7 @@ def test_qpcr_seed_mode_builds_shared_primer_shell_command(tmp_path: Path) -> No
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
     assert result["command"] == [
-        str(fake_cli),
+        *_fixture_cli_argv(fake_cli),
         "--state",
         ".gentle_state.json",
         "shell",
@@ -1816,7 +4053,7 @@ def test_pcr_protocol_cartoon_mode_builds_render_shell_command(tmp_path: Path) -
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -1827,7 +4064,7 @@ def test_pcr_protocol_cartoon_mode_builds_render_shell_command(tmp_path: Path) -
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
     assert result["command"] == [
-        str(fake_cli),
+        *_fixture_cli_argv(fake_cli),
         "shell",
         "protocol-cartoon render-svg pcr.assay.qpcr artifacts/qpcr.assay.protocol.svg",
     ]
@@ -1874,7 +4111,7 @@ def test_services_status_promotes_prepare_and_sync_suggested_actions(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -1978,7 +4215,7 @@ def test_services_status_running_suppresses_prepare_and_suggests_refresh(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -2049,7 +4286,7 @@ def test_services_handoff_uses_engine_suggested_actions_and_artifacts(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -2184,7 +4421,7 @@ def test_services_telegram_guide_promotes_section_actions(tmp_path: Path) -> Non
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -2256,7 +4493,7 @@ def test_genomes_status_promotes_prepare_command_as_suggested_action(tmp_path: P
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -2320,7 +4557,7 @@ def test_genomes_status_running_suggests_refresh_instead_of_prepare(tmp_path: Pa
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -2384,7 +4621,7 @@ def test_cutrun_status_promotes_prepare_for_missing_dataset(tmp_path: Path) -> N
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -2448,7 +4685,7 @@ def test_cutrun_status_running_suggests_refresh_instead_of_prepare(tmp_path: Pat
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -2512,7 +4749,7 @@ def test_prepare_request_suggests_rechecking_services_status(tmp_path: Path) -> 
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -2542,6 +4779,9 @@ def test_prepare_request_suggests_rechecking_services_status(tmp_path: Path) -> 
 
 
 def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -> None:
+    (tmp_path / "variant_luciferase_storyboard_demo.json").write_text(
+        '{"schema":"synthetic.workflow.stub.v1"}\n', encoding="utf-8"
+    )
     request_path = tmp_path / "request.json"
     request_path.write_text(
         json.dumps(
@@ -2606,7 +4846,7 @@ def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -2697,6 +4937,10 @@ def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -
     assert "## Artifact Bundle Summary" in report
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX-only Apptainer Bash launcher; Windows uses gentle_cloning.py",
+)
 def test_apptainer_launcher_wraps_gentle_cli_with_bind_mount(tmp_path: Path) -> None:
     fake_runtime = tmp_path / "apptainer"
     capture_path = tmp_path / "apptainer_args.txt"
@@ -2738,6 +4982,10 @@ def test_apptainer_launcher_wraps_gentle_cli_with_bind_mount(tmp_path: Path) -> 
     ]
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX-only local-checkout Bash launcher; Windows uses gentle_cloning.py",
+)
 def test_local_checkout_launcher_uses_repo_root_defaults(tmp_path: Path) -> None:
     fake_repo = tmp_path / "GENtle"
     (fake_repo / "src" / "bin").mkdir(parents=True)
@@ -2801,8 +5049,97 @@ def test_local_checkout_launcher_uses_repo_root_defaults(tmp_path: Path) -> None
     ]
 
 
-def test_workflow_request_resolves_against_gentle_repo_root(tmp_path: Path) -> None:
+def test_approval_gate_pins_local_launcher_to_built_binary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _skill_module()
     fake_repo = tmp_path / "GENtle"
+    binary = fake_repo / "target" / "debug" / (
+        "gentle_cli.exe" if os.name == "nt" else "gentle_cli"
+    )
+    binary.parent.mkdir(parents=True)
+    binary.write_bytes(b"synthetic gentle runtime")
+    launcher = tmp_path / "gentle_local_checkout_cli.sh"
+    launcher.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+    monkeypatch.setenv("GENTLE_REPO_ROOT", str(fake_repo))
+    monkeypatch.delenv("CARGO_TARGET_DIR", raising=False)
+    monkeypatch.delenv("GENTLE_REFERENCE_CACHE_DIR", raising=False)
+    monkeypatch.delenv("GENTLE_HELPER_CACHE_DIR", raising=False)
+    resolution = module.CliResolution(
+        argv_prefix=["bash", str(launcher)],
+        cwd=None,
+        label="synthetic local launcher",
+    )
+
+    pinned = module._pin_delegated_runtime(
+        resolution,
+        tmp_path,
+        _skill_script(),
+        require_local_binary=True,
+    )
+
+    assert pinned.argv_prefix == [str(binary.resolve())]
+    assert os.environ["GENTLE_REFERENCE_CACHE_DIR"] == str(
+        (fake_repo / "data" / "genomes").resolve()
+    )
+    assert os.environ["GENTLE_HELPER_CACHE_DIR"] == str(
+        (fake_repo / "data" / "helper_genomes").resolve()
+    )
+    bindings = module._runtime_file_bindings(pinned, tmp_path)
+    assert bindings == [
+        {
+            "binding_id": "argv_prefix_0",
+            "path": str(binary.resolve()),
+            "size_bytes": binary.stat().st_size,
+            "sha256": module._sha256_file_prefixed(binary),
+        }
+    ]
+
+
+def test_approval_gate_rejects_mutable_oci_image_reference(tmp_path: Path) -> None:
+    module = _skill_module()
+    resolution = module.CliResolution(
+        argv_prefix=[
+            "docker",
+            "run",
+            "--rm",
+            "ghcr.io/smoe/gentle_rs:latest",
+        ],
+        cwd=None,
+        label="synthetic mutable OCI tag",
+    )
+
+    with pytest.raises(module.SkillError, match="immutable image digest"):
+        module._pin_delegated_runtime(
+            resolution,
+            tmp_path,
+            _skill_script(),
+            require_local_binary=False,
+        )
+
+    immutable = module.CliResolution(
+        argv_prefix=[
+            "docker",
+            "run",
+            "--rm",
+            "ghcr.io/smoe/gentle_rs@sha256:" + "a" * 64,
+        ],
+        cwd=None,
+        label="synthetic immutable OCI digest",
+    )
+    assert (
+        module._pin_delegated_runtime(
+            immutable,
+            tmp_path,
+            _skill_script(),
+            require_local_binary=False,
+        )
+        == immutable
+    )
+
+
+def test_workflow_request_resolves_against_gentle_repo_root(tmp_path: Path) -> None:
+    fake_repo = tmp_path / "GENtle checkout"
     (fake_repo / "src" / "bin").mkdir(parents=True)
     (fake_repo / "Cargo.toml").write_text("[package]\nname = 'gentle'\n", encoding="utf-8")
     (fake_repo / "src" / "bin" / "gentle_cli.rs").write_text(
@@ -2828,13 +5165,15 @@ def test_workflow_request_resolves_against_gentle_repo_root(tmp_path: Path) -> N
         encoding="utf-8",
     )
 
-    fake_cli = tmp_path / "capture_cli.sh"
+    fake_cli = tmp_path / "capture cli.py"
     capture_path = tmp_path / "captured_args.txt"
     capture_cwd = tmp_path / "captured_cwd.txt"
     fake_cli.write_text(
-        "#!/usr/bin/env bash\n"
-        "printf '%s\\n' \"$@\" > \"$FAKE_CAPTURE_ARGS\"\n"
-        "pwd > \"$FAKE_CAPTURE_CWD\"\n",
+        "#!/usr/bin/env python3\n"
+        "import os, sys\n"
+        "from pathlib import Path\n"
+        "Path(os.environ['FAKE_CAPTURE_ARGS']).write_text('\\n'.join(sys.argv[1:]) + '\\n', encoding='utf-8')\n"
+        "Path(os.environ['FAKE_CAPTURE_CWD']).write_text(str(Path.cwd()) + '\\n', encoding='utf-8')\n",
         encoding="utf-8",
     )
     fake_cli.chmod(0o755)
@@ -2857,7 +5196,7 @@ def test_workflow_request_resolves_against_gentle_repo_root(tmp_path: Path) -> N
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=run_cwd,
         env=env,
@@ -2911,7 +5250,7 @@ def test_expected_artifacts_are_copied_into_output_bundle(tmp_path: Path) -> Non
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -2985,7 +5324,7 @@ def test_expected_artifacts_are_sandboxed_under_generated_dir(tmp_path: Path) ->
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=run_cwd,
         capture_output=True,
@@ -3045,7 +5384,7 @@ def test_non_graphic_expected_artifacts_are_copied_without_rasterization(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -3121,7 +5460,7 @@ def test_wrapper_rasterizes_svg_artifact_via_real_gentle_cli_route(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -3178,21 +5517,18 @@ def test_simple_pcr_workflow_promotes_protocol_figure_summary(
         encoding="utf-8",
     )
 
-    fake_cli = tmp_path / "fake_cli.sh"
-    fake_cli.write_text(
-        _fake_cli_with_svg_png(
-            "mkdir -p artifacts\n"
-            "cat > artifacts/simple_pcr_demo_primers.protocol.svg <<'SVG'\n"
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"96\" height=\"48\" viewBox=\"0 0 96 48\"><text x=\"4\" y=\"24\">PCR</text></svg>\n"
-            "SVG\n"
-            "printf '{\"schema\":\"gentle.primer_design_report.v1\"}\\n' > artifacts/simple_pcr_demo_primers.report.json\n"
-            "cat <<'JSON'\n"
-            '{"schema":"gentle.workflow_run.v1","run_id":"example_simple_pcr_primer_design_offline"}\n'
-            "JSON\n"
-        ),
-        encoding="utf-8",
+    fake_cli = tmp_path / "fake_cli.py"
+    _write_workflow_graphics_cli(
+        fake_cli,
+        svg_path="artifacts/simple_pcr_demo_primers.protocol.svg",
+        svg_text='<svg xmlns="http://www.w3.org/2000/svg" width="96" height="48" viewBox="0 0 96 48"><text x="4" y="24">PCR</text></svg>\n',
+        run_id="example_simple_pcr_primer_design_offline",
+        json_artifacts={
+            "artifacts/simple_pcr_demo_primers.report.json": {
+                "schema": "gentle.primer_design_report.v1"
+            }
+        },
     )
-    fake_cli.chmod(0o755)
 
     output_dir = tmp_path / "out"
     env = dict(os.environ)
@@ -3206,7 +5542,7 @@ def test_simple_pcr_workflow_promotes_protocol_figure_summary(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         env=env,
@@ -3271,7 +5607,7 @@ def test_shipped_graphics_example_emits_png_first_artifacts(tmp_path: Path) -> N
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -3300,23 +5636,18 @@ def test_shipped_graphics_example_emits_png_first_artifacts(tmp_path: Path) -> N
 def test_isoform_protein_gel_demo_request_promotes_png_first_artifact(
     tmp_path: Path,
 ) -> None:
-    fake_cli = tmp_path / "fake_cli.sh"
-    fake_cli.write_text(
-        _fake_cli_with_svg_png(
-            f"mkdir -p {shlex.quote('exports')}\n"
-            "cat > exports/tp73_isoform_protein_gel.svg <<'SVG'\n"
+    fake_cli = tmp_path / "fake_cli.py"
+    _write_workflow_graphics_cli(
+        fake_cli,
+        svg_path="exports/tp73_isoform_protein_gel.svg",
+        svg_text=(
             '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="32" viewBox="0 0 64 32">\n'
             '  <rect width="64" height="32" fill="#f8fafc"/>\n'
             '  <rect x="8" y="6" width="48" height="20" fill="#f59e0b"/>\n'
             "</svg>\n"
-            "SVG\n"
-            "cat <<'JSON'\n"
-            '{"schema":"gentle.workflow_run.v1","run_id":"example_tp73_isoform_protein_gel_offline"}\n'
-            "JSON\n"
         ),
-        encoding="utf-8",
+        run_id="example_tp73_isoform_protein_gel_offline",
     )
-    fake_cli.chmod(0o755)
 
     output_dir = tmp_path / "out"
     run = subprocess.run(
@@ -3333,7 +5664,7 @@ def test_isoform_protein_gel_demo_request_promotes_png_first_artifact(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -3360,23 +5691,18 @@ def test_isoform_protein_gel_demo_request_promotes_png_first_artifact(
 def test_isoform_protein_2d_gel_demo_request_promotes_png_first_artifact(
     tmp_path: Path,
 ) -> None:
-    fake_cli = tmp_path / "fake_cli.sh"
-    fake_cli.write_text(
-        _fake_cli_with_svg_png(
-            f"mkdir -p {shlex.quote('exports')}\n"
-            "cat > exports/tp73_isoform_protein_2d_gel.svg <<'SVG'\n"
+    fake_cli = tmp_path / "fake_cli.py"
+    _write_workflow_graphics_cli(
+        fake_cli,
+        svg_path="exports/tp73_isoform_protein_2d_gel.svg",
+        svg_text=(
             '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="32" viewBox="0 0 64 32">\n'
             '  <rect width="64" height="32" fill="#f8fafc"/>\n'
             '  <circle cx="32" cy="16" r="10" fill="#2563eb"/>\n'
             "</svg>\n"
-            "SVG\n"
-            "cat <<'JSON'\n"
-            '{"schema":"gentle.workflow_run.v1","run_id":"example_tp73_isoform_protein_2d_gel_offline"}\n'
-            "JSON\n"
         ),
-        encoding="utf-8",
+        run_id="example_tp73_isoform_protein_2d_gel_offline",
     )
-    fake_cli.chmod(0o755)
 
     output_dir = tmp_path / "out"
     run = subprocess.run(
@@ -3393,7 +5719,7 @@ def test_isoform_protein_2d_gel_demo_request_promotes_png_first_artifact(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -3428,7 +5754,7 @@ def test_gene_protein_2d_gel_request_builds_parameterized_ensembl_workflow(
     fake_cli = tmp_path / "fake_cli.sh"
     fake_cli.write_text(
         _fake_cli_with_svg_png(
-            "python3 - \"$@\" <<'PY'\n"
+            f"{_fixture_python_shell_command()} - \"$@\" <<'PY'\n"
             "import json, sys\n"
             "from pathlib import Path\n"
             "args = sys.argv[1:]\n"
@@ -3465,7 +5791,7 @@ def test_gene_protein_2d_gel_request_builds_parameterized_ensembl_workflow(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -3548,7 +5874,7 @@ def test_reference_preflight_runs_status_prepare_and_main_command(tmp_path: Path
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         env=env,
@@ -3566,13 +5892,13 @@ def test_reference_preflight_runs_status_prepare_and_main_command(tmp_path: Path
     assert preflight["status"] == "prepared_during_run"
     assert len(preflight["steps"]) == 3
     assert preflight["steps"][0]["command"] == [
-        str(fake_cli),
+        *_fixture_cli_argv(fake_cli),
         "genomes",
         "status",
         "Human GRCh38 Ensembl 116",
     ]
     assert preflight["steps"][1]["command"] == [
-        str(fake_cli),
+        *_fixture_cli_argv(fake_cli),
         "genomes",
         "prepare",
         "Human GRCh38 Ensembl 116",
@@ -3580,7 +5906,7 @@ def test_reference_preflight_runs_status_prepare_and_main_command(tmp_path: Path
         "7200",
     ]
     assert preflight["steps"][2]["command"] == [
-        str(fake_cli),
+        *_fixture_cli_argv(fake_cli),
         "genomes",
         "status",
         "Human GRCh38 Ensembl 116",
@@ -3593,7 +5919,7 @@ def test_reference_preflight_runs_status_prepare_and_main_command(tmp_path: Path
         'genomes prepare \'Human GRCh38 Ensembl 116\' --timeout-secs 7200'
         in commands_text
     )
-    assert "\n" + shlex.quote(str(fake_cli)) + " capabilities\n" in commands_text
+    assert "\n" + shlex.join(_fixture_cli_argv(fake_cli)) + " capabilities\n" in commands_text
 
 
 def test_failed_command_reports_command_exit_code_and_stderr_preview(tmp_path: Path) -> None:
@@ -3630,7 +5956,7 @@ def test_failed_command_reports_command_exit_code_and_stderr_preview(tmp_path: P
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -3645,16 +5971,21 @@ def test_failed_command_reports_command_exit_code_and_stderr_preview(tmp_path: P
         "stage": "main_command",
         "note": None,
         "command": [
-            str(fake_cli),
+            *_fixture_cli_argv(fake_cli),
             "shell",
             'genomes status "Human GRCh38 Ensembl 116"',
         ],
         "command_text": (
-            f"{shlex.quote(str(fake_cli))} shell "
+            f"{shlex.join(_fixture_cli_argv(fake_cli))} shell "
             '\'genomes status "Human GRCh38 Ensembl 116"\''
         ),
         "execution_cwd": str(tmp_path.resolve()),
         "exit_code": 17,
+        "child_exit_code": 17,
+        "execution_status": "command_failed",
+        "initiating_signal": None,
+        "timed_out": False,
+        "forced_termination": False,
         "stderr_preview": "catalog file missing",
         "stdout_preview": None,
     }
@@ -3665,6 +5996,44 @@ def test_failed_command_reports_command_exit_code_and_stderr_preview(tmp_path: P
     assert "## Failure Summary" in report
     assert "catalog file missing" in report
     assert "Failure stage: `main_command`" in report
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        ["gentle_cli"],
+        ["python", "fixture.py"],
+        ["cargo", "run", "--bin", "gentle_cli", "--"],
+        ["docker", "run", "--rm", "gentle:test"],
+    ],
+)
+@pytest.mark.parametrize("state_args", [[], ["--state", "project with spaces.json"]])
+def test_compatibility_note_uses_cli_args_not_launcher(
+    prefix: list[str], state_args: list[str],
+) -> None:
+    module = _skill_module()
+    cli_args = state_args + ["shell", "services status"]
+    command = prefix + cli_args
+    step = {
+        "command": command,
+        "cli_args": cli_args,
+        "stderr": "Unknown shell command 'services'. Try: help\n",
+        "exit_code": 1,
+    }
+
+    summary = module._build_failure_summary(stage="main", step=step, execution_cwd=None)
+
+    assert "requested status route" in summary["note"]
+    assert "gentle_local_checkout_cli.sh" in summary["note"]
+    assert summary["command"] == command
+    assert step["cli_args"] == cli_args
+    # Old receipts still support the direct-executable command form.
+    assert module._infer_command_compatibility_note(
+        ["gentle_cli"] + cli_args, step["stderr"]
+    ) == summary["note"]
+    assert module._infer_command_compatibility_note(
+        command, "Permission denied", cli_args=cli_args
+    ) is None
 
 
 def test_unknown_services_shell_command_reports_version_mismatch_hint(tmp_path: Path) -> None:
@@ -3682,11 +6051,11 @@ def test_unknown_services_shell_command_reports_version_mismatch_hint(tmp_path: 
         encoding="utf-8",
     )
 
-    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli = tmp_path / "fake_cli.py"
     fake_cli.write_text(
-        "#!/usr/bin/env bash\n"
-        "printf \"Unknown shell command 'services'. Try: help\\n\" >&2\n"
-        "exit 1\n",
+        "import sys\n"
+        "print(\"Unknown shell command 'services'. Try: help\", file=sys.stderr)\n"
+        "raise SystemExit(1)\n",
         encoding="utf-8",
     )
     fake_cli.chmod(0o755)
@@ -3701,7 +6070,7 @@ def test_unknown_services_shell_command_reports_version_mismatch_hint(tmp_path: 
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            shlex.join([sys.executable, str(fake_cli)]),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -3754,7 +6123,7 @@ def test_relative_input_path_resolves_from_copied_clawbio_skill_layout(tmp_path:
             "--output",
             str(output_dir),
             "--gentle-cli",
-            "true",
+            _fixture_exit_command(0),
         ],
         cwd=unrelated_cwd,
         capture_output=True,
@@ -3766,6 +6135,12 @@ def test_relative_input_path_resolves_from_copied_clawbio_skill_layout(tmp_path:
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
     assert result["status"] == "ok"
     assert result["request"]["mode"] == "capabilities"
+    wrapper = result["execution_manifest"]["wrapper"]
+    assert wrapper["contract_files_complete"] is False
+    assert {row["contract_part"] for row in wrapper["missing_files"]} == {
+        "catalog_entry",
+        "intent_descriptor",
+    }
 
 
 def test_confirmed_capabilities_action_gets_telegram_safe_summary(
@@ -3803,7 +6178,7 @@ def test_confirmed_capabilities_action_gets_telegram_safe_summary(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -3816,14 +6191,14 @@ def test_confirmed_capabilities_action_gets_telegram_safe_summary(
     assert result["status"] == "ok"
     assert result["chat_summary_lines"] == [
         "GENtle command completed with status `ok` and exit code `0`.",
-        f"Command: {shlex.quote(str(fake_cli))} shell capabilities",
+        f"Command: {shlex.join(_fixture_cli_argv(fake_cli))} shell capabilities",
         "Parsed JSON output keys: capabilities",
         "Capability entries reported: 2",
     ]
 
     report = (output_dir / "report.md").read_text(encoding="utf-8")
     assert "## Execution Summary" in report
-    assert f"- Command: `{shlex.quote(str(fake_cli))} shell capabilities`" in report
+    assert f"- Command: `{shlex.join(_fixture_cli_argv(fake_cli))} shell capabilities`" in report
     assert '- Stdout preview: `{"capabilities":["demo","services handoff"]}`' in report
 
 
@@ -5219,33 +7594,33 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "services status" in trigger_keywords
     assert "readiness" in trigger_keywords
     assert "local resources" in trigger_keywords
-    assert "simple pcr" in trigger_keywords
-    assert "primer preflight" in trigger_keywords
-    assert "primer3 preflight" in trigger_keywords
+    assert "gentle-cloning simple pcr" in trigger_keywords
+    assert "gentle-cloning primer preflight" in trigger_keywords
+    assert "gentle-cloning primer3 preflight" in trigger_keywords
     assert "seed pcr from feature" in trigger_keywords
     assert "seed pcr from splicing" in trigger_keywords
-    assert "design pcr primers" in trigger_keywords
-    assert "design primers from json" in trigger_keywords
-    assert "pcr constraints" in trigger_keywords
+    assert "gentle-cloning design pcr primers" in trigger_keywords
+    assert "gentle-cloning design primers from json" in trigger_keywords
+    assert "gentle-cloning pcr constraints" in trigger_keywords
     assert "seed qpcr from feature" in trigger_keywords
     assert "seed qpcr from splicing" in trigger_keywords
     assert "seed taqman from feature" in trigger_keywords
     assert "seed taqman from splicing" in trigger_keywords
-    assert "design taqman assay" in trigger_keywords
-    assert "exon junction taqman" in trigger_keywords
-    assert "test cdna pcr" in trigger_keywords
-    assert "test cdna qpcr" in trigger_keywords
-    assert "direct taqman test" in trigger_keywords
-    assert "qpcr assay test" in trigger_keywords
-    assert "taqman assay test" in trigger_keywords
-    assert "qpcr reports" in trigger_keywords
-    assert "taqman reports" in trigger_keywords
-    assert "show primer report" in trigger_keywords
-    assert "export primer report" in trigger_keywords
-    assert "show taqman report" in trigger_keywords
-    assert "export taqman report" in trigger_keywords
-    assert "pcr protocol cartoon" in trigger_keywords
-    assert "taqman protocol cartoon" in trigger_keywords
+    assert "gentle-cloning design taqman assay" in trigger_keywords
+    assert "gentle-cloning exon junction taqman" in trigger_keywords
+    assert "gentle-cloning test cdna pcr" in trigger_keywords
+    assert "gentle-cloning test cdna qpcr" in trigger_keywords
+    assert "gentle-cloning direct taqman test" in trigger_keywords
+    assert "gentle-cloning qpcr assay test" in trigger_keywords
+    assert "gentle-cloning taqman assay test" in trigger_keywords
+    assert "gentle-cloning qpcr reports" in trigger_keywords
+    assert "gentle-cloning taqman reports" in trigger_keywords
+    assert "gentle-cloning show primer report" in trigger_keywords
+    assert "gentle-cloning export primer report" in trigger_keywords
+    assert "gentle-cloning show taqman report" in trigger_keywords
+    assert "gentle-cloning export taqman report" in trigger_keywords
+    assert "gentle-cloning pcr protocol cartoon" in trigger_keywords
+    assert "gentle-cloning taqman protocol cartoon" in trigger_keywords
     assert "restriction cloning pcr handoff" in trigger_keywords
     assert "lab assistant handoff" in trigger_keywords
     assert "lab assistant instructions" in trigger_keywords
@@ -5281,8 +7656,8 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "trypsin digest" in trigger_keywords
     assert "trypsin digest gel" in trigger_keywords
     assert "pi vs kda" in trigger_keywords
-    assert "transcript qpcr panel" in trigger_keywords
-    assert "characteristic qpcr primers" in trigger_keywords
+    assert "gentle-cloning transcript qpcr panel" in trigger_keywords
+    assert "gentle-cloning characteristic qpcr primers" in trigger_keywords
 
 
 def _route_input_paths(intents: dict) -> list[str]:
@@ -5752,9 +8127,15 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
     assert "isoelectric point demo" in routes["demo_isoform_protein_2d_gel"][
         "trigger_terms"
     ]
-    assert "simple pcr" in routes["simple_pcr_primer_design"]["trigger_terms"]
-    assert "continue pcr" in routes["simple_pcr_primer_design"]["trigger_terms"]
-    assert "primer preflight" in routes["primer_preflight"]["trigger_terms"]
+    assert "gentle-cloning simple pcr" in routes["simple_pcr_primer_design"][
+        "trigger_terms"
+    ]
+    assert "gentle-cloning continue pcr" in routes["simple_pcr_primer_design"][
+        "trigger_terms"
+    ]
+    assert "gentle-cloning primer preflight" in routes["primer_preflight"][
+        "trigger_terms"
+    ]
     assert "seed pcr from feature" in routes["primer_seed_from_feature"][
         "trigger_terms"
     ]
@@ -5767,27 +8148,43 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
     assert "exon junction taqman seed" in routes["qpcr_taqman_seed_from_splicing"][
         "trigger_terms"
     ]
-    assert "execute designprimerpairs" in routes["pcr_primer_design_operation"][
+    assert "gentle-cloning execute designprimerpairs" in routes[
+        "pcr_primer_design_operation"
+    ]["trigger_terms"]
+    assert "gentle-cloning design taqman assay" in routes[
+        "qpcr_taqman_design_operation"
+    ]["trigger_terms"]
+    assert "gentle-cloning test cdna pcr" in routes[
+        "cdna_pcr_qpcr_assay_test"
+    ]["trigger_terms"]
+    assert "gentle-cloning test cdna qpcr" in routes[
+        "cdna_pcr_qpcr_assay_test"
+    ]["trigger_terms"]
+    assert "gentle-cloning direct cdna pcr test" in routes["cdna_pcr_direct_test"][
         "trigger_terms"
     ]
-    assert "design taqman assay" in routes["qpcr_taqman_design_operation"][
+    assert "gentle-cloning direct taqman test" in routes[
+        "cdna_qpcr_taqman_direct_test"
+    ]["trigger_terms"]
+    assert "gentle-cloning list pcr primer reports" in routes["primer_report_list"][
         "trigger_terms"
     ]
-    assert "test cdna pcr" in routes["cdna_pcr_qpcr_assay_test"]["trigger_terms"]
-    assert "test cdna qpcr" in routes["cdna_pcr_qpcr_assay_test"]["trigger_terms"]
-    assert "direct cdna pcr test" in routes["cdna_pcr_direct_test"]["trigger_terms"]
-    assert "direct taqman test" in routes["cdna_qpcr_taqman_direct_test"][
+    assert "gentle-cloning show pcr primer report" in routes["primer_report_show"][
         "trigger_terms"
     ]
-    assert "list pcr primer reports" in routes["primer_report_list"]["trigger_terms"]
-    assert "show pcr primer report" in routes["primer_report_show"]["trigger_terms"]
-    assert "export pcr primer report" in routes["primer_report_export"][
+    assert "gentle-cloning export pcr primer report" in routes["primer_report_export"][
         "trigger_terms"
     ]
-    assert "taqman reports" in routes["qpcr_report_list"]["trigger_terms"]
-    assert "show taqman report" in routes["qpcr_report_show"]["trigger_terms"]
-    assert "export taqman report" in routes["qpcr_report_export"]["trigger_terms"]
-    assert "taqman protocol cartoon" in routes["pcr_protocol_cartoon"][
+    assert "gentle-cloning taqman reports" in routes["qpcr_report_list"][
+        "trigger_terms"
+    ]
+    assert "gentle-cloning show taqman report" in routes["qpcr_report_show"][
+        "trigger_terms"
+    ]
+    assert "gentle-cloning export taqman report" in routes["qpcr_report_export"][
+        "trigger_terms"
+    ]
+    assert "gentle-cloning taqman protocol cartoon" in routes["pcr_protocol_cartoon"][
         "trigger_terms"
     ]
     assert "gene panel protein gel" in routes["ensembl_gene_panel_protein_gel"][

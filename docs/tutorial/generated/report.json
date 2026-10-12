@@ -2,7 +2,7 @@
   "schema": "gentle.tutorial_generation_report.v1",
   "manifest": "docs/tutorial/manifest.json",
   "source_examples": "docs/examples/workflows",
-  "chapter_count": 22,
+  "chapter_count": 30,
   "online_enabled": false,
   "generated_files": [
     "README.md",
@@ -13,6 +13,16 @@
     "artifacts/gibson_arrangements_baseline/artifacts/gibson_lab_assistant_handoff.md",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt",
+    "artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg",
+    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_endpoint_end_matrix.report.json",
+    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_routine_common_region_screen.report.json",
+    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json",
+    "artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r01.report.json",
+    "artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r02.report.json",
+    "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.bed",
+    "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.bed.manifest.json",
+    "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.locus.svg",
+    "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.region_set.json",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.alternative_promoters.json",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.evidence_matrix.json",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.isoform_promoter_comparison.json",
@@ -24,6 +34,9 @@
     "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/gene_set_promoter_cohort_comparison.json",
     "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/ortholog_promoter_cohort.json",
     "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/ortholog_promoter_comparison.json",
+    "artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.source.svg",
+    "artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.synthetic_vector.svg",
+    "artifacts/regulatory_fragment_panel_planning_offline/artifacts/regulatory_fragment_panel.locus.svg",
     "chapters/01-02_contribute_to_gentle_development.md",
     "chapters/02-01_load_branch_reverse_complement_pgex_fasta.md",
     "chapters/02-04_tp73_cdna_genomic_dotplot_online.md",
@@ -36,60 +49,89 @@
     "chapters/04-02_pcr_selection_batch_primer_pairs_offline.md",
     "chapters/04-04_guides_filter_and_generate_oligos.md",
     "chapters/04-05_guides_export_csv_and_protocol.md",
+    "chapters/04-06_patz1_transcript_assay_panels_cli.md",
     "chapters/05-01_find_and_extend_genomic_target_local_catalog.md",
     "chapters/05-02_prepare_reference_genome_online.md",
     "chapters/05-03_tp63_anchor_extension_online.md",
     "chapters/06-03_tp53_isoform_architecture_online.md",
     "chapters/06-04_tp53_uniprot_projection_online.md",
     "chapters/06-05_tp73_uniprot_projection_audit_cli.md",
+    "chapters/06-06_patz1_gene_locus_evidence_offline.md",
     "chapters/07-02_tp53_multi_gene_sparse_mapping_online.md",
     "chapters/08-03_promoter_design_artifact_slice_offline.md",
+    "chapters/08-04_vkorc1_warfarin_promoter_luciferase_gui.md",
     "chapters/08-07_promoter_gene_set_ortholog_cohort_offline.md",
     "chapters/08-08_gene_set_ortholog_promoter_cohorts_offline.md",
+    "chapters/08-09_promoter_reporter_panel_planning_offline.md",
+    "chapters/08-10_portable_genomic_regions_offline.md",
+    "chapters/08-11_regulatory_fragment_panel_planning_offline.md",
+    "chapters/08-12_region_homology_promoter_modules_offline.md",
+    "chapters/08-15_tss_collection_gui.md",
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "bc788203360914a9afff482516376d82ae405c5d",
-    "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json": "3cafec727acc78d2d25f99eb6677a95f521ed815",
-    "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json": "408ab85d4045e3518793d69bbc571843012e1ef5",
-    "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json": "70076d2552ca0abdad3bf50f874dc15a4f7828aa",
-    "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_comparison.json": "0d088cb42f8c21e29204a6bfe275ca9cb1e6a52b",
-    "artifacts/gibson_arrangements_baseline/artifacts/gibson_lab_assistant_handoff.md": "ea49d90a537300148ada050060e1b12a48b8b57c",
-    "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "2fd8b22187bb90dcdc0388ed65df4f6c33240893",
-    "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "ddfcc1b983151b4a7fa444b171065c4d90a6ecfb",
-    "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.alternative_promoters.json": "d969d66504ba240b566d1691a95074d39460d33b",
-    "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.evidence_matrix.json": "77b1ebe2c377af95076dce0e6aa2b726353d863e",
-    "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.isoform_promoter_comparison.json": "16bbf495b3e05fdc4de4637d0a766a6bf5942309",
-    "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.promoter_artifact_manifest.json": "0cb88613b5851d9d19a2c6d01e1195ccc48a66e6",
-    "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.promoter_expression_evidence.json": "cd6f53a7f4c78b3e5096ce8678beee574185a7b9",
-    "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg": "b35113f6bae05715c0759d55acd5b78503f5a9c0",
-    "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json": "552e99f01f41c48e015e9739e17ae4ec9aa6f4fc",
-    "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/gene_set_promoter_cohort.json": "c58323320d4062b36934f95e66b201c905cd96ac",
-    "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/gene_set_promoter_cohort_comparison.json": "aeeca97d5954c8787db73bea417ab7d09b655ab6",
-    "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/ortholog_promoter_cohort.json": "c7827d36275a0a52b9924f0384210a5e9f2d6496",
-    "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/ortholog_promoter_comparison.json": "7c8cbe42bdb53c45f30559618d1bcce22364ccbf",
-    "chapters/01-02_contribute_to_gentle_development.md": "0db4226e18469fbf4ff2b492c6de38ce68801097",
-    "chapters/02-01_load_branch_reverse_complement_pgex_fasta.md": "189f6af229942642565f8fbf72aedc3055c3b7a1",
-    "chapters/02-04_tp73_cdna_genomic_dotplot_online.md": "c996b0d17b56d112ee40e31ecf7c04903ca565de",
-    "chapters/03-01_load_and_digest_pgex.md": "d5e64f717c9ae40b57244fc037c489f5d1a24a1a",
-    "chapters/03-02_digest_ligation_extract_region_minimal.md": "0eef632b136a8f35d1dfa9d4f1df03764f2764da",
-    "chapters/03-03_gibson_two_fragment_overlap_preview.md": "090fd6373f07c153a30aa557994147924a6f59ea",
-    "chapters/03-04_gibson_specialist_testing_baseline.md": "93c961686812d71d2dfb0a04a127bb49614ede9f",
-    "chapters/03-06_gibson_arrangements_baseline.md": "6049a0bfade9114953f15d5c718e837b80739083",
-    "chapters/04-01_simple_pcr_selection_gui.md": "915ddb33e58737a447e7908780c5379c3386aba8",
-    "chapters/04-02_pcr_selection_batch_primer_pairs_offline.md": "f07c856bf8df7ecf5c19d681e9ff360209c1971f",
-    "chapters/04-04_guides_filter_and_generate_oligos.md": "35b4f5d8fd30649e516f4916810eaf86e3dcbe77",
-    "chapters/04-05_guides_export_csv_and_protocol.md": "8c634d127e44798630d4ed7299e99056e4a13d53",
-    "chapters/05-01_find_and_extend_genomic_target_local_catalog.md": "bad7d354dee8c7653d3e9286a053e6ef0d3f19c3",
-    "chapters/05-02_prepare_reference_genome_online.md": "7b1dfc124719d2683d687082d86be62102e87bd5",
-    "chapters/05-03_tp63_anchor_extension_online.md": "0a2e38a10aa7a4400f670ec35848b4a6a16f0bf4",
-    "chapters/06-03_tp53_isoform_architecture_online.md": "24bcf2ff9f64db6cbe67b1fab746c3a7a4db1c80",
-    "chapters/06-04_tp53_uniprot_projection_online.md": "90a59ea04f54b4d1938e3bfca7cd48ceeed352e9",
-    "chapters/06-05_tp73_uniprot_projection_audit_cli.md": "0487f1a7940dc711f32930e87de868ab99d6a363",
-    "chapters/07-02_tp53_multi_gene_sparse_mapping_online.md": "6014e363084dca60f5732f0e2ff8b7629976a7d2",
-    "chapters/08-03_promoter_design_artifact_slice_offline.md": "8749657d6ad49f455f478aac6898cd81a0eb31a1",
-    "chapters/08-07_promoter_gene_set_ortholog_cohort_offline.md": "a9d2a132ef5fdb3bcc0d71b15fb112bc4b9ff166",
-    "chapters/08-08_gene_set_ortholog_promoter_cohorts_offline.md": "7a4478d1d96eec51be707b31076a6d1df9237b63"
+    "README.md": "7e0f636ab2b20385eab27964b1f073b1c840f4bdb8f2947161370683600ba6da",
+    "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json": "a3a9093760934082e5e9ea8c06b2528978908de49e59a6142766d90f8baad5a5",
+    "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json": "501f94bfbccec23266de94815be2dadefbd5a945764e3ce3a7317d6a73234230",
+    "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json": "e415893e3a32ed0ed4fc75d5e637bb7f19ac0552d0f671d5a5d0421db17f079d",
+    "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_comparison.json": "3c3f38d2ca847550ac3dfbc0b42365bce00731076c52266450b38ba444e7cd15",
+    "artifacts/gibson_arrangements_baseline/artifacts/gibson_lab_assistant_handoff.md": "e4b7e229f41b122dbbb6e4d8d1fe8feca090e1fed779a4ca5cb403a3b7c69512",
+    "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "49e60ce8db8fee3b193398ef6831f280017bbcfe34ea4732c2d19aea97e7adeb",
+    "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "beecd9e82a0336053bf82d63fd54fed530f3357f94f0ff29a7c46ac33d74a092",
+    "artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg": "aea862f6c65089f582a77348092679fa1404b3b9a6798fd3902d65582e91dfe6",
+    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_endpoint_end_matrix.report.json": "443e06b85009474ec34b8c4082249fbbce253fceb9431329f000b7500ec8d277",
+    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_routine_common_region_screen.report.json": "542efe9764489b84a30c06422df40d5a49d5b1522ee00ffc05edf252a100805c",
+    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json": "352daba60be138d64b78ab10e319f2b43f3a48caceb9aa649aec139bbdee84d7",
+    "artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r01.report.json": "06c24247d8de5e16d1115555881c77461ae115573678380c74ff51926e6d3f20",
+    "artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r02.report.json": "813dfb83318f0a2de397d4ddcd80d8020fe72586ec637d97598c3ea5a353dd3a",
+    "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.bed": "a4c0b3b274099f1336ad956e18952008b0a4cefbd5bde255cc24fffcdf76c54c",
+    "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.bed.manifest.json": "bb806ac7ff1c9933ab765a34888cd91b531514cbb7ff477818d6eb439bf4560a",
+    "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.locus.svg": "533bcfa7683b1bde4f41ba4751a036ef7f8e7663763fc6e0649c44fef6e3eb0d",
+    "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.region_set.json": "f99dd295e6b9d8a7d057d71f89bd38d02314ee63c9fc050ef141cca295316d84",
+    "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.alternative_promoters.json": "fcdcdcec09c3d595220276e1dd0a542d876634897ef6c270952c6b40d08c6f54",
+    "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.evidence_matrix.json": "a29e3031ecde6dd9f945860bda0be48fbced440bb62f464381d42c331e35db25",
+    "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.isoform_promoter_comparison.json": "2a23e46ce8c76b8352cb5c2b8dffe3dbd05b8e229dd7da6a50de17de81dc03ef",
+    "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.promoter_artifact_manifest.json": "a71be6650a7c870daef5c97404476b922854f9d7c9cd868eb8b97a2099898673",
+    "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.promoter_expression_evidence.json": "156c17628fc41a44a1ac79f26b4c5a543926fc75f2dcd96c45ef5b70f1927534",
+    "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg": "473bd58f7fa330978109a66b8b47848d0f3217cec9bc18bf67c741e3b28f8d14",
+    "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json": "d4cd84964ea606f4f3d56754aaa4c52b77a2363e7dc5b11d59f9c07edeb8ba9a",
+    "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/gene_set_promoter_cohort.json": "f3b94bad1daab3494305bdf5cc4ace737c381acbf7c877343d1b27417f2022e8",
+    "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/gene_set_promoter_cohort_comparison.json": "b0b783b2a8554d97cd8ba6ffa0ec6fffbdfcca6da0edb528e50eae2a133b3241",
+    "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/ortholog_promoter_cohort.json": "00a42a06ba81c4a2992c7f8726b6401084e168e40805e3ebcb513b367428b142",
+    "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/ortholog_promoter_comparison.json": "43c335e296be2c4ccba39d4bbcd52fd4a97835906d3874da42b019bf989c38ac",
+    "artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.source.svg": "43d60e523b1740c2545eee606f16bd5c48291605694c0f658678ac7dbb9a27d4",
+    "artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.synthetic_vector.svg": "fe0771e577dd68b0902ef26496623e2319ab1350f6c8064c86a6cd3a8c3fc3c8",
+    "artifacts/regulatory_fragment_panel_planning_offline/artifacts/regulatory_fragment_panel.locus.svg": "0a7f3875a8bc0acba35e982bbeb93c9bd3cad29939ca21d96c9629ce59072e50",
+    "chapters/01-02_contribute_to_gentle_development.md": "84c01b3f89c704c9c05a709a0b2918d1483b89a64343877766f835aa8524361a",
+    "chapters/02-01_load_branch_reverse_complement_pgex_fasta.md": "ad2f1318e1c8c1a763cfed84dd7379f734745713365f6d5defbe82591ae96de4",
+    "chapters/02-04_tp73_cdna_genomic_dotplot_online.md": "97fc3aea689a001cdcd692e39b5c02423fec5a0491d822f6944428e7c425ce04",
+    "chapters/03-01_load_and_digest_pgex.md": "af9d30eb5634e8444b258a86b0791816b47104625a0c0edc3f6da1178e822e82",
+    "chapters/03-02_digest_ligation_extract_region_minimal.md": "8344555dce9f7d749805d87367dd79783b007ae68c68e331b79d90ea3d6ff668",
+    "chapters/03-03_gibson_two_fragment_overlap_preview.md": "b6f2eed799af01377ce38e250c2ea64a1a75a153021d70a2e1f81365ae69d881",
+    "chapters/03-04_gibson_specialist_testing_baseline.md": "818dad81837f0382c087f1998cfaeb3e40a58a4f82318d70bea31965b98873ae",
+    "chapters/03-06_gibson_arrangements_baseline.md": "77705b3f99c8d030c5969fe1a4fa34506aa800ca935d30733bfbf33006946f1d",
+    "chapters/04-01_simple_pcr_selection_gui.md": "fbad7e28fe80eb7dea406ad4654d724a7cc05e9b5f4f3ed503f8f347a684035f",
+    "chapters/04-02_pcr_selection_batch_primer_pairs_offline.md": "a34952a16142faa839520430b40de90028452abee130555d01d633cac322c840",
+    "chapters/04-04_guides_filter_and_generate_oligos.md": "5670774eb977ecb078901147b2252f4f372a4462d0194d8b4168bb2af7f32e7f",
+    "chapters/04-05_guides_export_csv_and_protocol.md": "e889d98c0ba67ce43e4f85aeb03824f6c0c4ee489f323df1d2351c6d6c678571",
+    "chapters/04-06_patz1_transcript_assay_panels_cli.md": "96009babcbaffc892fbb150d2273ee3c4aa41896604f25c55e27aa8e770cc6a5",
+    "chapters/05-01_find_and_extend_genomic_target_local_catalog.md": "14c77573500e299b24988d2e07b5fcd6125c3337839fec51bb2a9dfda9755e46",
+    "chapters/05-02_prepare_reference_genome_online.md": "d5779430ac042286aa80d3b4e5d4c4093549a10a97ad8e363664bb46cfd99092",
+    "chapters/05-03_tp63_anchor_extension_online.md": "c405dbcb8ff7aa24247ae4c8995c12527614bd9587433e298f3b7d5924eb9ea3",
+    "chapters/06-03_tp53_isoform_architecture_online.md": "743997135aeee48a10b36a1bf76eac3906fbca754bd674d3c775749f14138603",
+    "chapters/06-04_tp53_uniprot_projection_online.md": "ff59bc6e3ea0882b40aa025e6597ed04bcbcf03e7eb00af56b491d3681c90ff2",
+    "chapters/06-05_tp73_uniprot_projection_audit_cli.md": "1b9b01d3e38cbbdf58a6aadef1dd690566ad9f5fe1abd4595cfff38ccb5b2bca",
+    "chapters/06-06_patz1_gene_locus_evidence_offline.md": "527cff170fe361039fd62a6d4bd0bc1382278de20d7d17da32f2f7c9669c5476",
+    "chapters/07-02_tp53_multi_gene_sparse_mapping_online.md": "2b288b15197cab3dc74af50cc6a2ffec3196438e9f523523cdbdece251ac4c99",
+    "chapters/08-03_promoter_design_artifact_slice_offline.md": "7c0d33770f4eb8d5a134b2f2c66eb8b3a0b8ea013b9db49aa6035cd138553826",
+    "chapters/08-04_vkorc1_warfarin_promoter_luciferase_gui.md": "0ef0874817204800228998503ce7b06637ccade8c74c34893e35a9fbb268c7ab",
+    "chapters/08-07_promoter_gene_set_ortholog_cohort_offline.md": "af82ca8399df8a546eec6fdcea5d359c625a0a9cb61f08cb3e8578209872088a",
+    "chapters/08-08_gene_set_ortholog_promoter_cohorts_offline.md": "d19238a127d5c7de32f085228aeb58985f9dc3e9ed32a3222ca9adfedbb8dafe",
+    "chapters/08-09_promoter_reporter_panel_planning_offline.md": "7d34fc09183e0f5bafec379f537e288d3cdf850e913e84852107883fba41dd4a",
+    "chapters/08-10_portable_genomic_regions_offline.md": "ea543bfde98f4b56e3d414fd254d38baa959aa6e464044c43fa7078fb1548641",
+    "chapters/08-11_regulatory_fragment_panel_planning_offline.md": "166ad18d3678de7470a8c292ae669728590ddf46fcab118c8fbf2abc141332a3",
+    "chapters/08-12_region_homology_promoter_modules_offline.md": "1b60419b4140acdeee38e1eaec945bf3ad293895529c943623f2d68e6b1df539",
+    "chapters/08-15_tss_collection_gui.md": "08ef29efa9e80030108c75f29089bb4cc386cf07c044706916eebb05486b9790"
   },
   "warnings": [
     "Tutorial 'load_branch_reverse_complement_pgex_fasta' review is stale because source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18",
@@ -115,12 +157,36 @@
       ],
       "executed": true,
       "review_status": "human_reviewed",
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": "2026-05-18",
       "human_reviewer": "smoe",
       "review_stale": true,
       "review_stale_reason": "source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/branch.context.svg",
+          "caption": "Interaction context for creating a branch while preserving the original sequence.",
+          "illustrates_step": 2,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/reverse_complement.orientation.svg",
+          "caption": "Whole-screen orientation for the reverse-complement action in the DNA viewer.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/reverse_complement.context.svg",
+          "caption": "Focused reverse-complement control and nearby sequence context.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-08"
+        }
+      ],
       "retained_artifacts": []
     },
     {
@@ -142,9 +208,8 @@
         "genome_catalog_targeting"
       ],
       "executed": true,
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
       "retained_artifacts": []
     },
     {
@@ -164,15 +229,37 @@
         "sequence_lineage"
       ],
       "executed": true,
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/open_tools.orientation.svg",
+          "caption": "Whole-screen orientation after opening Sequence Tools from the DNA viewer.",
+          "illustrates_step": 2,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/set_prefix.context.svg",
+          "caption": "Digest controls with the enzyme list and output prefix in interaction context.",
+          "illustrates_step": 2,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/digest.orientation.svg",
+          "caption": "Whole-screen orientation after running the digest and publishing its fragment products.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-08"
+        }
+      ],
       "retained_artifacts": []
     },
     {
       "id": "gibson_two_fragment_overlap_preview",
       "order": 4,
-      "title": "Gibson two-fragment overlap planning baseline",
+      "title": "Gibson two-fragment overlap preflight and concatenation preview",
       "group": "03",
       "group_label": "Cloning & Assembly",
       "group_order": 3,
@@ -187,15 +274,14 @@
         "sequence_lineage"
       ],
       "executed": true,
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
       "retained_artifacts": []
     },
     {
       "id": "guides_filter_and_generate_oligos",
       "order": 5,
-      "title": "Guide practical filtering and oligo generation",
+      "title": "Filter declared guides and format cloning oligos",
       "group": "04",
       "group_label": "Primers, PCR & qPCR",
       "group_order": 4,
@@ -209,9 +295,8 @@
         "guide_design_pipeline"
       ],
       "executed": true,
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
       "retained_artifacts": []
     },
     {
@@ -253,9 +338,8 @@
         "artifact_exports"
       ],
       "executed": true,
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
       "retained_artifacts": [
         "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv",
         "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt"
@@ -302,9 +386,8 @@
         "genome_catalog_targeting"
       ],
       "executed": false,
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
       "retained_artifacts": []
     },
     {
@@ -327,9 +410,31 @@
         "artifact_exports"
       ],
       "executed": false,
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_isoform_architecture_online/01-isoform-panel-controls.png",
+          "caption": "The current native Sequence tools panel reopened on the retained Ensembl-116 TP53 source. Panel path and id are populated; the unchecked Strict control is the current GUI input state, not evidence about the earlier strict CLI import.",
+          "illustrates_step": 2,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_isoform_architecture_online/02-isoform-expert.png",
+          "caption": "The native Isoform Expert after strict local import: seven mapped TP53 transcript lanes and seven protein-domain rows from the shared expert payload.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "generated",
+          "path": "docs/figures/tp53_isoform_architecture.svg",
+          "caption": "Current deterministic 1200 by 1400 isoform architecture export from the retained Ensembl-116 source and strict seven-isoform panel. Exon-family colours connect coordinate-true transcript geometry with isoform-local protein products.",
+          "illustrates_step": 3,
+          "regen_command": "cargo run --bin gentle_cli -- --state /tmp/tp53-isoform-figure.state.json workflow docs/figures/tp53_isoform_architecture.workflow.json"
+        }
+      ],
       "retained_artifacts": []
     },
     {
@@ -351,15 +456,14 @@
         "online_opt_in"
       ],
       "executed": false,
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
       "retained_artifacts": []
     },
     {
       "id": "tp53_multi_gene_sparse_mapping_online",
       "order": 12,
-      "title": "Map TP53 locus reads with multi-gene sparse indexing (online)",
+      "title": "Probe TP53-family sparse indexing from a TP53 locus (online)",
       "group": "07",
       "group_label": "RNA Reads, Splicing & Expression",
       "group_order": 7,
@@ -375,15 +479,30 @@
         "online_opt_in"
       ],
       "executed": false,
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_multi_gene_sparse_mapping_online/01-project-graph.png",
+          "caption": "The native project graph retains the Ensembl-116 TP53 locus, its exon-concatenated derivative, and the 10,000-read sparse-origin report as separate provenance nodes. The report records 11 seed-passed reads and zero aligned reads because this workflow runs phase 1 only.",
+          "illustrates_step": 1,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_multi_gene_sparse_mapping_online/02-sparse-report-warnings.png",
+          "caption": "The native RNA-read Mapping workspace opens the report through TP53 mRNA feature 1 and shows that multi_gene_sparse added no local lanes beyond TP53. The structured report additionally records TP63 and TP73 as absent from the extracted sequence's local annotation.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        }
+      ],
       "retained_artifacts": []
     },
     {
       "id": "pcr_selection_batch_primer_pairs_offline",
       "order": 13,
-      "title": "Selection-first PCR batch primer design (offline)",
+      "title": "Determine and review PCR primer pairs (offline)",
       "group": "04",
       "group_label": "Primers, PCR & qPCR",
       "group_order": 4,
@@ -395,13 +514,16 @@
       "concepts": [
         "shared_engine_contract",
         "deterministic_workflows",
-        "sequence_lineage"
+        "artifact_exports",
+        "tutorial_drift_checks"
       ],
       "executed": true,
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
-      "retained_artifacts": []
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "retained_artifacts": [
+        "artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r01.report.json",
+        "artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r02.report.json"
+      ]
     },
     {
       "id": "tp73_cdna_genomic_dotplot_online",
@@ -423,9 +545,8 @@
         "online_opt_in"
       ],
       "executed": false,
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
       "retained_artifacts": []
     },
     {
@@ -498,9 +619,24 @@
         "artifact_exports"
       ],
       "executed": false,
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_uniprot_projection_online/01-protein-expert.png",
+          "caption": "The native Protein Expert on the provenance-bound GRCh38/Ensembl-116 acceptance locus. Six UniProt-linked transcript projections are stored; the expert also keeps the broader transcript-native architecture and 16 missing UniProt transcript references explicit instead of hiding partial coverage.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_uniprot_projection_online/02-feature-coding-dna.png",
+          "caption": "The expanded native coding-DNA result for the P04637 DNA-binding match on ENST00000269305.9: amino acids 368-387, exon 11, 60 bases of exact genomic coding DNA and a separately labelled translation-speed-oriented alternative.",
+          "illustrates_step": 4,
+          "capture_date": "2026-10-01"
+        }
+      ],
       "retained_artifacts": []
     },
     {
@@ -520,9 +656,31 @@
         "deterministic_workflows"
       ],
       "executed": true,
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.context.svg",
+          "caption": "The selected core region's context menu. Choose Simple PCR from selection; the surrounding advanced map actions are unrelated to this walkthrough.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/seed_simple_pcr.context.svg",
+          "caption": "PCR Designer starter controls after seeding the selected core region.",
+          "illustrates_step": 4,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/inspect_primer_report.context.svg",
+          "caption": "The saved primer-report preview after design. The automated check requires at least one pair and verifies that the first pair flanks the core ROI.",
+          "illustrates_step": 5,
+          "capture_date": "2026-09-28"
+        }
+      ],
       "retained_artifacts": []
     },
     {
@@ -549,6 +707,22 @@
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp73_uniprot_projection_audit_online/01-audit-mismatch-vs-missing-evidence.png",
+          "caption": "The native Protein Evidence audit separates six protein-length mismatches from four rows whose remaining limitation is missing Ensembl evidence. Expanded rows show corrected genomic CDS accounting, and the text box is explicitly an unsent local draft.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp73_uniprot_projection_audit_online/02-direct-vs-composed-parity.png",
+          "caption": "The native parity summary reports zero divergent rows out of ten and confirms that the direct and composed paths selected the same transcript set for the local draft.",
+          "illustrates_step": 4,
+          "capture_date": "2026-10-01"
+        }
+      ],
       "retained_artifacts": []
     },
     {
@@ -572,6 +746,7 @@
       ],
       "executed": true,
       "review_status": "human_reviewed",
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": "2026-05-18",
       "human_reviewer": "smoe",
       "review_stale": true,
@@ -585,6 +760,20 @@
           "caption": "TFBS score tracks across the synthetic TP73 promoter slice.",
           "illustrates_step": 8,
           "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/promoter_design_artifact_slice_offline/01-alternative-promoters.png",
+          "caption": "The native Promoter design window shows all three transcript interpretations collapsed into two DNA-level promoter windows after clearing the mRNA-seeded transcript filter.",
+          "illustrates_step": 4,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/promoter_design_artifact_slice_offline/02-evidence-matrix.png",
+          "caption": "The native evidence matrix contains the two collapsed promoter candidates and their promoter geometry, transcript, TFBS, repeat, variant and CUT&RUN-style evidence summaries.",
+          "illustrates_step": 5,
+          "capture_date": "2026-10-01"
         }
       ],
       "retained_artifacts": [
@@ -655,6 +844,322 @@
         "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json",
         "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_comparison.json"
       ]
+    },
+    {
+      "id": "patz1_gene_locus_evidence_offline",
+      "order": 27,
+      "title": "PATZ1 Gene-Locus Evidence Composition (Offline Synthetic Demo)",
+      "group": "06",
+      "group_label": "Transcript, Protein & Projection",
+      "group_order": 6,
+      "group_position": 6,
+      "decimal_id": "06.06",
+      "tier": "core",
+      "example_id": "patz1_gene_locus_evidence_offline",
+      "example_source": "docs/examples/workflows/patz1_gene_locus_evidence_offline.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "genome_catalog_targeting",
+        "artifact_exports",
+        "tutorial_drift_checks"
+      ],
+      "executed": true,
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/patz1_gene_locus_evidence_offline/01-evidence-ledger.png",
+          "caption": "The native Evidence tab keeps three negative-strand transcript models, four projected occupancy tracks, and four junction-evidence rows separate. The deliberately incompatible GRCh37 cDNA/EST row remains visibly rejected against the GRCh38.p14 anchor instead of being coerced into support.",
+          "illustrates_step": 2,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/patz1_gene_locus_evidence_offline/02-locus-composition.png",
+          "caption": "The native Locus figure tab composes three transcripts, two occupancy groups, one TP73 motif track, and two probe-effect rows. Warnings and explicit non-claims remain beside the preview; the synthetic layers are not presented as experimental PATZ1 regulation.",
+          "illustrates_step": 6,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "generated",
+          "path": "docs/tutorial/generated/artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg",
+          "caption": "A strand-aware synthetic PATZ1 locus composition with transcript models, distinct PSR/JUC effects, grouped occupancy lanes, and a TP73 motif score track. The aligned layers are evidence for inspection, not proof of isoform-specific regulation.",
+          "illustrates_step": 6,
+          "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        }
+      ],
+      "retained_artifacts": [
+        "artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg"
+      ]
+    },
+    {
+      "id": "patz1_transcript_assay_panels_cli",
+      "order": 28,
+      "title": "Synthetic Transcript-Panel CLI Regression Walkthrough (Not PATZ1)",
+      "group": "04",
+      "group_label": "Primers, PCR & qPCR",
+      "group_order": 4,
+      "group_position": 6,
+      "decimal_id": "04.06",
+      "tier": "core",
+      "example_id": "patz1_endpoint_sybr_transcript_assay_panel_offline",
+      "example_source": "docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "artifact_exports",
+        "tutorial_drift_checks"
+      ],
+      "executed": true,
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "retained_artifacts": [
+        "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_endpoint_end_matrix.report.json",
+        "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_routine_common_region_screen.report.json",
+        "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json"
+      ]
+    },
+    {
+      "id": "promoter_reporter_panel_planning_offline",
+      "order": 29,
+      "title": "Promoter-Reporter Panel Planning (Offline Approval-Gated Demo)",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 9,
+      "decimal_id": "08.09",
+      "tier": "core",
+      "example_id": "promoter_reporter_panel_planning_offline",
+      "example_source": "docs/examples/workflows/promoter_reporter_panel_planning_offline.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "promoter_motif_controls",
+        "artifact_exports",
+        "tutorial_drift_checks"
+      ],
+      "executed": true,
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-08-29",
+      "graphics": [
+        {
+          "kind": "generated",
+          "path": "docs/tutorial/generated/artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.synthetic_vector.svg",
+          "caption": "Circular map of the explicitly synthetic MCS-layout vector used to exercise exact-vector validation; this is not pGL4.10.",
+          "illustrates_step": 3,
+          "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        },
+        {
+          "kind": "generated",
+          "path": "docs/tutorial/generated/artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.source.svg",
+          "caption": "Linear map of the 151 bp synthetic promoter-fragment input.",
+          "illustrates_step": 4,
+          "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        }
+      ],
+      "retained_artifacts": [
+        "artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.source.svg",
+        "artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.synthetic_vector.svg"
+      ]
+    },
+    {
+      "id": "portable_genomic_regions_offline",
+      "order": 30,
+      "title": "Save and Share Genomic Regions (Offline SERPINE1 Example)",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 10,
+      "decimal_id": "08.10",
+      "tier": "core",
+      "example_id": "portable_genomic_regions_offline",
+      "example_source": "docs/examples/workflows/portable_genomic_regions_offline.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "genome_catalog_targeting",
+        "artifact_exports",
+        "tutorial_drift_checks"
+      ],
+      "executed": true,
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-04",
+      "graphics": [
+        {
+          "kind": "generated",
+          "path": "docs/tutorial/generated/artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.locus.svg",
+          "caption": "A pinned public Ensembl-116 SERPINE1 locus with three saved regions: a manual candidate, a synthetic Ensembl-regulatory annotation, and a synthetic CUT&RUN support window. Their shared position is for inspection and does not establish binding or causal regulation.",
+          "illustrates_step": 7,
+          "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        }
+      ],
+      "retained_artifacts": [
+        "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.bed",
+        "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.bed.manifest.json",
+        "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.locus.svg",
+        "artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.region_set.json"
+      ]
+    },
+    {
+      "id": "regulatory_fragment_panel_planning_offline",
+      "order": 31,
+      "title": "Plan Exact A/B Regulatory-Fragment Contrasts (Offline)",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 11,
+      "decimal_id": "08.11",
+      "tier": "core",
+      "example_id": "regulatory_fragment_panel_planning_offline",
+      "example_source": "docs/examples/workflows/regulatory_fragment_panel_planning_offline.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "genome_catalog_targeting",
+        "artifact_exports",
+        "tutorial_drift_checks"
+      ],
+      "executed": true,
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-08",
+      "graphics": [
+        {
+          "kind": "generated",
+          "path": "docs/tutorial/generated/artifacts/regulatory_fragment_panel_planning_offline/artifacts/regulatory_fragment_panel.locus.svg",
+          "caption": "The pinned Ensembl-116 SERPINE1 locus used as a coordinate substrate, with candidate A, caller-declared partner B, and the promoter-context control retained as exact genomic regions. The tutorial roles define comparisons; they do not establish regulatory activity or partnership.",
+          "illustrates_step": 2,
+          "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        }
+      ],
+      "retained_artifacts": [
+        "artifacts/regulatory_fragment_panel_planning_offline/artifacts/regulatory_fragment_panel.locus.svg"
+      ]
+    },
+    {
+      "id": "region_homology_promoter_modules_offline",
+      "order": 32,
+      "title": "Conserved Blocks and Testable Promoter-Module Hypotheses",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 12,
+      "decimal_id": "08.12",
+      "tier": "advanced",
+      "example_id": "region_homology_promoter_modules_offline",
+      "example_source": "docs/examples/workflows/region_homology_promoter_modules_offline.json",
+      "concepts": [
+        "portable_genomic_regions",
+        "local_blast_indexes",
+        "query_referenced_alignment",
+        "explicit_orthology",
+        "reporter_module_hypotheses",
+        "transcript_linked_promoter_recurrence",
+        "ordered_similarity_blocks",
+        "deterministic_workflows"
+      ],
+      "executed": false,
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-07",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/open_saved_regions.context.svg",
+          "caption": "The saved-region manager shows the assembly-bound candidate and keeps Conservation and Promoter similarity actions visible at the standard 800×600 DNA-window size.",
+          "illustrates_step": 2,
+          "capture_date": "2026-09-09"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/open_promoter_similarity.orientation.svg",
+          "caption": "Whole-screen orientation after Promoter similarity opens the content-bound Conservation workspace for the selected candidate.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-09"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/expand_search_request.context.svg",
+          "caption": "The expanded request exposes the query genome, catalog/cache, required target genome, and target role before any search starts.",
+          "illustrates_step": 4,
+          "capture_date": "2026-09-09"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/show_promoter_constraints.orientation.svg",
+          "caption": "Whole-screen orientation for the lower search-policy and transcript-promoter matrix controls.",
+          "illustrates_step": 5,
+          "capture_date": "2026-09-09"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/show_promoter_constraints.context.svg",
+          "caption": "Focused constraints include identity, E-value, aligned length, chain gap, retained-locus and HSP budgets, exact-block length, promoter-window dimensions, and displayed-row limit.",
+          "illustrates_step": 5,
+          "capture_date": "2026-09-09"
+        }
+      ],
+      "retained_artifacts": []
+    },
+    {
+      "id": "vkorc1_warfarin_promoter_luciferase_gui",
+      "order": 33,
+      "title": "VKORC1 / rs9923231 PGx Alert -> Mammalian Luciferase Reporter (GUI Tutorial with Matching CLI Commands)",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 4,
+      "decimal_id": "08.04",
+      "tier": "core",
+      "example_id": "vkorc1_pair_gui_starter",
+      "example_source": "docs/examples/workflows/vkorc1_pair_gui_starter.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows"
+      ],
+      "executed": true,
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "retained_artifacts": []
+    },
+    {
+      "id": "tss_collection_gui",
+      "order": 40,
+      "title": "From annotated transcript starts to reusable TSS windows (offline)",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 15,
+      "decimal_id": "08.15",
+      "tier": "core",
+      "example_id": "tss_collection_gui_oracle",
+      "example_source": "docs/examples/workflows/tss_collection_gui_oracle.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
+      "executed": true,
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-29",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tss_collection_gui/preview.raw.png",
+          "caption": "The read-only preview groups plus_a and plus_b at one shared start while keeping the second plus-strand start and the minus-strand start separate; no window has been created yet.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-29"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tss_collection_gui/validate_collection.raw.png",
+          "caption": "After explicit approval, registry discovery still says not checked; Inspect stored collection produces a concise validated summary while keeping the full fingerprint, JSON and member table in collapsed technical details.",
+          "illustrates_step": 5,
+          "capture_date": "2026-09-29"
+        }
+      ],
+      "retained_artifacts": []
     }
   ]
 }

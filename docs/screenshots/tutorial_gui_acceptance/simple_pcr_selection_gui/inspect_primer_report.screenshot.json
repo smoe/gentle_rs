@@ -1,0 +1,120 @@
+{
+  "acceptance_contract_sha256": "4e61ee3f8c70b2b60a4278f00f222bb3c01a3144c8a434e33d76dab2f1276f2a",
+  "capture": {
+    "backend": "scrot",
+    "backend_version": {
+      "argv": [
+        "/home/clawbio/.local/opt/gentle-xvfb-tools-a38ae2e3/root/usr/bin/scrot",
+        "--version"
+      ],
+      "available": true,
+      "exit_code": 0,
+      "output": "scrot version 2.0.0"
+    },
+    "captured_at_unix_ms": 1790590500360,
+    "display": ":100",
+    "gui_process_pid": 946797,
+    "raw": {
+      "height_px": 1000,
+      "path": "/tmp/gentle-tutorial-ux-evidence-9070cb1d-r2/simple_pcr_selection_gui/checkpoints/inspect_primer_report.raw.png",
+      "sha256": "4d02a604328e2639ff2d37018b4fe75370ed2d0e370899e7ffec2d486a1c7f26",
+      "width_px": 1600
+    },
+    "scope": "x11_root"
+  },
+  "chapter_id": "simple_pcr_selection_gui",
+  "derived_views": [
+    {
+      "annotation": "Numbered outline derived from the semantic focus rectangle",
+      "crop_physical_pixels": {
+        "max_x": 1600,
+        "max_y": 1000,
+        "min_x": 0,
+        "min_y": 0
+      },
+      "path": "/tmp/gentle-tutorial-ux-evidence-9070cb1d-r2/simple_pcr_selection_gui/checkpoints/inspect_primer_report.orientation.svg",
+      "role": "orientation",
+      "sha256": "176b87f31cc0a77746642ba06309be0177f7db1dab3e0e01b59c5d12f6cbf45f"
+    },
+    {
+      "annotation": "Padded crop around the same semantic focus rectangle",
+      "crop_physical_pixels": {
+        "max_x": 1600,
+        "max_y": 1000,
+        "min_x": 445,
+        "min_y": 775
+      },
+      "path": "/tmp/gentle-tutorial-ux-evidence-9070cb1d-r2/simple_pcr_selection_gui/checkpoints/inspect_primer_report.context.svg",
+      "role": "interaction_context",
+      "sha256": "e953fcccc19c792c0690fd332ccec2edc15b453c110190b2b9d744ca531aac54"
+    }
+  ],
+  "gentle_binary_sha256": "795ecee47d776191456949927214354fd5c94f84bf71f98137b2f7d5592123f8",
+  "project_state": {
+    "path": "/tmp/gentle-tutorial-ux-evidence-9070cb1d-r2/simple_pcr_selection_gui/starter.project.gentle.json",
+    "sha256": "b5bf43254660ad04075742845215333273f06f0cc3bcb55b21120ef195bc24c0"
+  },
+  "prose_step": 5,
+  "requested_target": {
+    "semantic_id": "pcr.design.report_preview",
+    "subject_scope": "subject-f33b2c9685525d19be7ecd5efd1f518f",
+    "window_id": "window.pcr_design"
+  },
+  "requirement": "required",
+  "schema": "gentle.tutorial_gui_screenshot_evidence.v1",
+  "semantic_snapshot": {
+    "canonical_sha256": "def0f375af7c464b87badc4cd4322f758726f8e068e47044cbd34fb98d455462",
+    "generation": 288,
+    "retained_file_sha256": "d91c219b592d3f3ef063d165687b7b0598435674d013ff1df9e539cf7691a4ca",
+    "retained_path": "/tmp/gentle-tutorial-ux-evidence-9070cb1d-r2/simple_pcr_selection_gui/checkpoints/inspect_primer_report.snapshot.json",
+    "schema": "gentle.gui_semantic_snapshot.v2",
+    "settled": true
+  },
+  "source_revision": "9070cb1d08c83afb08e94710bf689c1163ad7757",
+  "step_id": "inspect_primer_report",
+  "step_sha256": "145dcbcf084f0131f47ec021cdecbd606020e4f401c99431254beded7c5fe7ef",
+  "tutorial_manifest_sha256": "03695a96a4e92e14bf79c4c6fc59a90d4729dc300d356100496b322468317088",
+  "visual_focus": {
+    "native_window_binding": {
+      "coordinate_transform": "root_screen_px = native_client_origin_px + (target_logical - semantic_window_logical_origin) * pixels_per_point",
+      "egui_viewport_id": "\"8771\"",
+      "native_client_geometry": {
+        "height": 840,
+        "root_x": 399,
+        "root_y": 155,
+        "width": 1200
+      },
+      "native_owner_semantic_window_id": "window.pcr_design",
+      "screen_rect_physical_pixels": {
+        "max_x": 1581,
+        "max_y": 979,
+        "min_x": 1013,
+        "min_y": 911
+      },
+      "semantic_window_id": "window.pcr_design",
+      "semantic_window_rect_logical_points": {
+        "max_x": 1590.0,
+        "max_y": 967.0,
+        "min_x": 406.0,
+        "min_y": 143.0
+      },
+      "x11_client_window_id": 4194508
+    },
+    "pixels_per_point": 1.0,
+    "rect_logical_points": {
+      "max_x": 1588.0625,
+      "max_y": 967.0,
+      "min_x": 1020.0,
+      "min_y": 899.0
+    },
+    "rect_physical_pixels": {
+      "max_x": 1581,
+      "max_y": 979,
+      "min_x": 1013,
+      "min_y": 911
+    },
+    "semantic_id": "pcr.design.report_preview",
+    "subject_scope": "subject-f33b2c9685525d19be7ecd5efd1f518f",
+    "window_id": "window.pcr_design"
+  }
+}

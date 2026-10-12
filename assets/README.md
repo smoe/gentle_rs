@@ -27,7 +27,8 @@ panels/tp53_isoforms_v1.json:: Curated TP53 isoform architecture panel used by i
 panels/tp73_isoforms_v1.json:: Local TP73 isoform curation seed that records lab/public hybrid transcript-class knowledge for assay design without treating public disease-transcript coverage as complete; it now also carries a local IEGT Rostock TAp73alpha coding-cDNA evidence record whose exact source cell line is still pending clarification.
 panels/tp73_long_range_cdna_virtual_panel_v1.json:: Local TP73 long-range cDNA selector panel that explicitly materializes virtual 5' x 3' isoform combinations absent from the bundled public RefSeq-style annotation; the companion FASTA stores the theoretical cDNA sequences.
 panels/tp73_delta_ex2_3_isoforms_v1.json:: Local TP73 DEx2,3 alpha/beta panel with RefSeq-derived exon-chain models and an IEGT plasmid-contained D_Ex2/3_p73beta coding-cDNA evidence record.
-jaspar.motifs.json:: The JASPAR database transformed into a JSON format that is meant to be mostly compatible with the JSON format offered by the JASPAR project: ```gzip -dc data/JASPAR_2022.txt.gz | perl scripts/pfm2json.pl | jq --compact-output > assets/jaspar_2022.json```
+jaspar.motifs.json:: Full JASPAR 2026 CORE non-redundant matrices in the shared `gentle.tf_motifs.v2` format; see provenance and regeneration below.
+jaspar_2022.json:: Historical 2022 PFM archive retained for exact-version supplementation of explicitly loaded legacy compact inputs and the legacy PSSM parser test. It must not supply an older matrix under a newer model ID.
 ncoils.matrix::
 
 Data notes:
@@ -36,7 +37,8 @@ Data notes:
 - `dna_ladders.json` is the built-in DNA-ladder catalog used for pool gel
   ladder auto-selection and rendering.
 - `jaspar.motifs.json` is a built-in JASPAR CORE motif snapshot (currently
-  generated from the 2026 non-redundant JASPAR-format release).
+  generated from the 2026 non-redundant JASPAR-format release, with all four
+  PFM rows retained rather than only consensus strings).
 - `genomes.json` is the default reference-genome catalog.
   Entries may use explicit `sequence_remote`/`annotations_remote` URLs or
   `ncbi_assembly_accession` + `ncbi_assembly_name` for direct NCBI GenBank/RefSeq
@@ -71,6 +73,42 @@ Data notes:
   seed rather than a public-registry mirror. Normal recommendation runs use this
   local pack offline; future source refresh or expanded annotation should be an
   explicit import/update step so provenance and license status stay visible.
+
+## JASPAR Bundle Provenance
+
+- Origin: the official JASPAR 2026 CORE non-redundant release, all taxonomic
+  groups, downloaded on 2026-09-08; not synthetic or independently estimated.
+- Source: <https://jaspar.elixir.no/download/data/2026/CORE/JASPAR2026_CORE_non-redundant_pfms_jaspar.txt>
+- Source SHA-256: `0dc9b7f9e159a8376c2e52edf373863ae21518bb760ceeea494ad6b746092e53`.
+- Records: 2,633. License: JASPAR CC BY 4.0; cite
+  <https://jaspar.elixir.no/> and its release publication when using the data.
+- Runtime: the shared TF motif registry uses these exact matrices for TFBS
+  scoring, logos, experts and reporter audits. Regression tests verify every
+  entry has full nonnegative finite matrices, exact ID/width agreement, TBP
+  MA0108.3 (7 bp), TP73 MA0861.2 (16 bp), and no cross-version substitution.
+- A local `data/resources/jaspar.motifs.json` still overrides the built-in
+  snapshot. Updating this asset does not rewrite existing project reports,
+  external scan databases or runtime resources.
+
+Regenerate with the existing GENtle importer, then bind the original source
+URL/hash instead of the temporary download path. Set `fetched_at_unix_ms` to
+the retained snapshot value only when reproducing that exact acquisition;
+a new acquisition should retain its own timestamp.
+
+```sh
+curl --fail --location --output /tmp/JASPAR2026.txt \
+  https://jaspar.elixir.no/download/data/2026/CORE/JASPAR2026_CORE_non-redundant_pfms_jaspar.txt
+shasum -a 256 /tmp/JASPAR2026.txt
+gentle_cli resources sync-jaspar /tmp/JASPAR2026.txt /tmp/jaspar2026.json
+jq --arg source 'https://jaspar.elixir.no/download/data/2026/CORE/JASPAR2026_CORE_non-redundant_pfms_jaspar.txt' \
+  --arg sha '0dc9b7f9e159a8376c2e52edf373863ae21518bb760ceeea494ad6b746092e53' \
+  '.source = $source | .source_sha256 = $sha' \
+  /tmp/jaspar2026.json > assets/jaspar.motifs.json
+```
+
+Verify the downloaded checksum before binding it. The 2022 archive is unchanged;
+its original conversion was:
+`gzip -dc data/JASPAR_2022.txt.gz | perl scripts/pfm2json.pl | jq --compact-output > assets/jaspar_2022.json`.
 
 # "Finder" icon (seen in OS' task bar)
 

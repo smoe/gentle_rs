@@ -1,6 +1,6 @@
 # GENtle Agent Interface
 
-Last updated: 2026-06-21
+Last updated: 2026-08-26
 
 This guide explains how agents can control GENtle and how the available
 interfaces differ.
@@ -35,10 +35,46 @@ Plain-language note used in this file:
 ## First run from an empty project
 
 When GENtle opens with an empty project, the inner Agent Assistant should be
-treated as a command-suggestion layer, not as a database client that already
-knows the current project. Start with a small, observable loop:
+treated as a goal-directed workflow guide with controlled execution, not as a
+database client that already knows the current project. A useful introduction
+is conceptually:
 
-1. Open `File -> Agent Assistant...`.
+> I understand GENtle's documented menus, fields, buttons, shared commands,
+> tutorials, and workflows. I can invoke the same underlying functionality
+> through GENtle's parity interfaces without needing to imitate every mouse
+> click literally. Tell me the scientific outcome you want, the data you have,
+> and the constraints of your laboratory. I can find and adapt an established
+> workflow, suggest a justified improvement, or compose a new reviewable path
+> from GENtle's registered capabilities.
+
+The parity promise concerns functionality rather than synthetic pixel clicks.
+GUI, CLI, GUI scripting, and agent routes should project the same shared engine
+capabilities. User confirmation, file selection, credentials, and other safety
+boundaries can still require human input. If a documented GUI action lacks an
+equivalent parser-valid route, that is a parity gap to report and repair, not a
+normal manual-only exception. The agent must neither hide that gap nor claim
+that it performed the action.
+
+The introduction also does not present the selected model's prior biological
+knowledge as verified evidence. Model knowledge can help interpret traditional
+molecular-biology language, but its quality depends on the provider/model and
+must remain distinguishable from GENtle results and supplied evidence.
+
+The intended collaboration is therefore:
+
+1. The user describes the desired biological outcome, available inputs, and
+   local constraints in their normal technical language.
+2. The agent compares that intent with established tutorials and workflows,
+   then proposes the closest reviewed path rather than merely listing commands.
+3. It binds the abstract workflow inputs to user-supplied data, calls out
+   assumptions and confirmations, and may suggest a better route with reasons.
+4. If no existing path fits, it composes registered capabilities into a new
+   reviewable path or identifies a concrete missing engine capability. It does
+   not invent an executable command.
+
+Start the technical setup with a small, observable loop:
+
+1. Open `Configuration -> Agent Systems`.
 2. Choose the provider profile (`Local Model`, `Codex Local`, OpenAI, Claude,
    Mistral, or another catalog entry).
 3. For local OpenAI-compatible services such as Ollama, Jan, or Msty, set the
@@ -46,10 +82,11 @@ knows the current project. Start with a small, observable loop:
    model.
 4. Click `Test Setup`. This checks endpoint/model reachability without sending
    a generation request.
-5. Leave `Project summary` / `Include state summary` unchecked for the first
+5. Close Configuration and open `File -> Agent Assistant...`.
+6. Leave `Project summary` / `Include state summary` unchecked for the first
    prompt. In an empty project there is no useful project context to send, and
    small local models often behave better with the shortest possible request.
-6. Ask a response-format probe before asking biology:
+7. Ask a response-format probe before asking biology:
 
 ```text
 Introduce yourself briefly as GENtle's internal Agent Assistant.
@@ -63,16 +100,178 @@ The first pass is successful only when GENtle parses the reply and every shown
 suggestion is a valid GENtle command. Good first suggestions include
 `state-summary`, `capabilities`, or `/help`. If the status reports
 `AGENT_RESPONSE_PARSE`, the provider answered in a form GENtle could not parse.
-Native HTTP transports tolerate a single top-level Markdown `json` code fence,
-but they still reject prose wrapped around the JSON.
+All model-facing transports tolerate a single top-level Markdown `json` code
+fence, but they still reject prose wrapped around the JSON. External stdio
+adapters remain responsible for returning the versioned response schema and
+should emit bare JSON whenever possible.
+
+Successful turns appear under `Conversation`. GENtle stores that transcript
+with the current project and supplies a bounded recent portion to later agent
+requests, so a follow-up answer such as `homo_sapiens` remains available even
+when Codex Local starts a fresh process. `Clear Conversation` removes the
+stored transcript. API keys and session-only provider settings are never part
+of project conversation metadata. Prompt text is stored verbatim, so do not
+paste secrets into the prompt.
 
 The prompt box is still an Agent Assistant prompt, not the full GENtle shell.
 For convenience it intercepts a small set of local control commands before
 contacting the model: `/...` Agent Assistant slash commands plus bare `help`,
 `state-summary`, and `capabilities`. Mistyped slash commands fail locally
-instead of being reinterpreted as prose. Ollama REPL habits such as bare
-`/path/to/file` attachments are not used here; use `/open file PATH`, `/import
-file PATH`, or the GUI import path for local sequence files.
+instead of being reinterpreted as prose. Ollama REPL paths are not a biological
+sequence-import command here; use `/open file PATH`, `/import file PATH`, or
+the GUI import path for local sequence files.
+
+Requests made from the GUI also receive `gentle.agent_gui_context.v1`. This is
+the authoritative bounded mirror of the same Open Recent Project and Open
+Tutorial Project catalogs visible in the File menu, plus the five global
+Configuration sections. Consequently, questions such as "Which previous
+projects are known?" or "Which tutorial projects are known?" should return the
+actual rows rather than infer an empty list from an empty current project.
+Recent-project rows contain path-free display metadata, file availability,
+size/time, and an opaque id; only the live GUI can resolve that id:
+
+```text
+ui open recent-project RECENT_ITEM_ID
+ui open tutorial-project CHAPTER_ID
+ui open tutorial-guide TUTORIAL_ID
+ui open configuration agent-systems
+ui open configuration microarrays
+```
+
+These remain reviewed UI intents. A missing recent file is listed as
+unavailable, a stale id fails closed, and opening Configuration only navigates
+to the selected tab. The user still applies credentials, executable paths, and
+other global settings through the existing Configuration confirmation model.
+Executable tutorial rows include use cases, learning objectives, concepts,
+prerequisites, expected outcomes, network requirements, GUI-acceptance profile,
+and review state. The GUI context also includes the non-project walkthroughs
+and operational references from the tutorial catalog. Their exact
+`ui open tutorial-guide ...` commands open the text in GENtle's Help window;
+they do not build a worked project.
+
+Before invoking the model, GENtle compares the current request with those
+bounded catalogs. When that request is context-light, it also uses up to three
+recent user messages so a follow-up such as “which tutorial fits that?” retains
+the scientific goal; a new specific goal supersedes older interests. It
+supplies at most five
+`tutorial_recommendations`, each with matched terms/fields and a deterministic
+`relevance_score`. This is a text-retrieval score, not a biological-confidence
+claim. The inner agent should normally explain and offer the one to three
+closest rows, use their exact commands, state prerequisites, and distinguish a
+worked project from reading material. Reviewed, non-stale, offline material is
+preferred only when relevance is otherwise comparable. If the shortlist is
+empty because the interest is still broad, one short clarifying question is
+preferable to guessing or dumping the entire catalog. Explicit requests to
+list the catalog can still use the complete bounded project/guide rows.
+
+Within Agent Assistant, a suggestion guarded by `ui.host_available` is checked
+against the live GUI host as well as the project fact graph. Consequently, a
+catalog-supplied tutorial command is runnable on the same GUI instance after
+confirmation; it is not incorrectly disabled merely because the project is
+empty. Headless agent calls do not acquire this live-GUI readiness and retain
+their existing behavior.
+Headless `agents ask` calls do not invent a GUI recent-project catalog; they can
+still parse and report the same intent commands for a future GUI host.
+
+For textual guidance documents, use the separate bounded document-context
+route. Click `Attach text document...`, or include an exact absolute path such
+as `/Users/name/checkout/docs/roadmap.md` in a natural-language prompt. GENtle
+reads that supported UTF-8 text file itself and adds `x_local_documents` to the
+request with byte limits, truncation state, and SHA-256 provenance. One level of
+prioritized local Markdown guide/runbook links can be included under the same
+directory tree. Pi/Codex/local HTTP models still receive no filesystem tool and
+cannot browse adjacent files. Review the visible paths and selected provider:
+the copied contents are sent to that provider.
+
+A useful walkthrough request is:
+
+```text
+Please guide me through the GUI smoke test described in
+/absolute/path/to/gentle_rs/docs/roadmap.md.
+
+Use validated GENtle ui/display commands where they exist. Otherwise give me
+one exact manual step at a time and ask what I see before continuing.
+```
+
+The resulting command suggestions remain review rows in GENtle. Running one
+uses the same parser and confirmation boundary as any other Agent Assistant
+suggestion. If a checklist action has no registered GUI intent, the agent can
+coach the human but must not claim to have pressed or observed the control.
+
+For visual GUI problems, use `Agent help` in the window where the problem is
+visible. A normal click captures that exact GENtle viewport before opening Agent
+Assistant; on macOS, the right-click menu can optionally capture the complete
+native GENtle window after Screen Recording permission is granted. Agent
+Assistant previews the image locally and asks for explanatory prompt text. The
+image is sent only when the user clicks `Ask agent`, and only to catalog systems
+that explicitly declare image support. Bare prompt paths are deliberately not
+treated as attachments.
+
+An image-capable agent may return one optional `screenshot_request` containing
+only a bounded stable `id` and a human-readable `reason`. This creates a consent
+card, not a capture. The user chooses one currently registered GENtle content
+window and may allow exactly one cross-platform egui capture or decline. The
+approval is bound to the response turn, provider, project generation, and
+selected viewport; it expires on change and is never persisted. The resulting
+image enters the same local preview and still requires `Ask Agent` before
+transport. Agents cannot select arbitrary windows, paths, coordinates, native
+window ids, desktop capture, or capture commands. Auto-run cannot approve it.
+
+The separate controls do not imply that pixels are inherently more private
+than structured state. A complete project summary can expose more scientific
+context, while a screenshot is often necessary to interpret layout, colour,
+direction, and disabled controls. Both are disclosures to the selected provider
+and should be reviewed for the current professional context.
+
+### Reproducible screenshot-consent smoke
+
+Use an Agent Assistant catalog system with
+`supports_image_attachments: true`. On Linux, the same desktop flow can be run
+under Xvfb after building the GUI:
+
+```bash
+xvfb-run -a -s "-screen 0 1440x900x24" target/debug/gentle
+```
+
+Open a main/sequence content window and Agent Assistant, then ask the configured
+agent: `For this consent-flow test, request one screenshot with id
+consent-smoke-1 and explain that you need to inspect the visible controls.` The
+expected sequence is:
+
+1. The response shows a consent card with the reason, provider, and registered
+   window selector; there is no preview or pending attachment yet.
+2. `Decline` removes the card without a capture. Repeat the request, choose
+   `Main Window`, and click `Allow one screenshot` once.
+3. One local preview appears with source title, `egui.viewport` backend, pixel
+   dimensions, and digest-backed attachment metadata. A second click/replay
+   cannot create another capture.
+4. The image remains local and no agent task starts until `Ask Agent` is clicked.
+   A provider lacking image support instead keeps approval disabled.
+
+Changing provider/project, clearing the conversation, closing the selected
+window, or starting another request before approval should expire the card.
+This smoke does not use or enable `screenshot-window` and does not exercise the
+user-only native macOS context-menu capture.
+
+Local command results are presented directly beneath the prompt status. In the
+GUI, `/help` also opens the built-in Help window at `Shell Commands`; an
+optional topic is copied into Help search. `/list` renders a compact current-
+project overview with sequence ids, names, lengths, topology, container counts,
+and arrangement counts. Its object rows have context menus with concrete shared-
+shell actions: sequence rows can open the sequence, query annotations, or scan
+restriction sites, while container rows expose the same exhaustive/subset toggle
+as the main project overview. A `Show complete project overview` action focuses
+the main table/graph for analyses and the other project-object context menus.
+`Copy JSON` preserves the complete engine-owned result when a machine-readable
+handoff is needed.
+
+Session history is also available locally: `/history` reports undo/redo
+availability, while `/undo` and `/redo` apply the corresponding session-local
+transition. A command typed and run by the user is explicit. A command proposed
+by an agent must be reviewed and run by the user; GENtle refuses to
+automatically execute undo or redo even if the provider marks it `auto`. In the
+GUI, history transitions remain disabled while background jobs are active and
+refresh dependent sequence windows and caches after success.
 
 Viewer-window requests are GUI intents, not project-data mutations. To control a
 catalogued GENtle tool/dialog, use `ui open TARGET`, `ui focus TARGET`, or
@@ -174,6 +373,8 @@ documentation before it proposes commands. The minimum bundle is:
 - `docs/cli.md` for operand conventions and shell examples
 - `docs/protocol.md` for request/response schemas and execution rules
 - `docs/ai_prompt_contract.md` for agent behavior expectations
+- `docs/biological_extension_guide.md` for coding agents/contributors adapting
+  a biological workflow rather than merely invoking it
 - `docs/ai_cloning_primer.md`, `docs/ai_task_playbooks.md`, and
   `docs/examples/ai_cloning_examples.md` for biology-first context
 - optional compact terminology: `docs/ai_glossary_extensions.json`
@@ -183,6 +384,14 @@ This matters most for small local models: glossary placeholders such as
 If the model has not been given the relevant documentation, or if the operand
 semantics remain unclear, it should ask for the missing identifier or exact path
 instead of inventing a GENtle command.
+
+When a request is biologically clear but no registered route implements it,
+the inner assistant must distinguish that capability gap from missing project
+input. It should classify the request as parameterization, composition, or a
+missing primitive and return a concise implementation brief rather than a
+fictional command. A coding-capable outer agent can then follow
+`docs/biological_extension_guide.md`; the inner assistant itself remains an
+execution/planning client and does not edit GENtle source.
 
 ### 3) MCP (`gentle_mcp`)
 
@@ -197,6 +406,7 @@ Current MCP tool families include:
 - engine/state/help tools:
   - `capabilities`
   - `state_summary`
+  - `runtime_status`
   - `op` (requires `confirm=true`)
   - `workflow` (requires `confirm=true`)
   - `help`
@@ -213,6 +423,9 @@ Current MCP tool families include:
   - `ensembl_installable_genomes`
   - `exon_skip_plan`
   - `exon_skip_materialize`
+  - `promoter_reporter_panel_plan`
+  - `promoter_reporter_panel_materialize` (requires `confirm=true` and the exact
+    approved proposal digest)
   - `construct_reasoning_graphs`
   - `construct_reasoning_graph`
   - `construct_reasoning_set_annotation_status`
@@ -240,12 +453,74 @@ Key properties:
 
 - MCP tools are thin wrappers over existing shared engine/shell paths
 - no MCP-only biology logic branch
+- `runtime_status` returns the same `gentle.runtime_status.v1` shape as
+  `introspect runtime` for the MCP process: process-local live `frames[]` plus
+  observed `activities[]` from existing persisted/project ledgers. It does not
+  create status files or see another process's unsaved GUI-local frames.
 - `tools/list` descriptors expose `mutating: false`, `mutating: true`, or
   `mutating: "external"` so agents can apply their own safety boundary before
   calling a route
 - `op`, `workflow`, and materialization-style routes require explicit
   confirmation (`confirm=true`) at the tool boundary where supported
+- The complete `regions create|capture|preview-feature|materialize-feature|list|inspect|update|derive|import|export`
+  family is advertised through the generic typed `op` tool. Import/export keep
+  their declared project-mutation and external-file boundaries.
+  Feature preview is read-only; materialization is explicitly confirmed,
+  undoable and requires the fresh preview approval digest. Both use the exact
+  locally prepared reference, never a download or compatible-assembly fallback.
+- `uniprot build-linked-transcript-inventory` and the five
+  `splicing cryptic-*` inspection/export routes are advertised through the
+  generic typed `op` tool, not through duplicate MCP-only implementations.
+  Cryptic reports remain typed; JSON/SVG output paths retain their explicit
+  external-I/O boundary and write only after `confirm=true`.
+- ENCODE cCRE and Ensembl Regulation overlap/materialization routes are
+  advertised through the generic typed `op` tool. Their host-local resource
+  discovery, installation, and index preparation commands remain CLI/GUI
+  workflows and are explicitly excluded below.
+- `promoters regulatory-products-plan` and `promoters regulatory-products-materialize`
+  are advertised through typed MCP `op` as `PlanRegulatoryFragmentMaterialization`
+  and `MaterializeRegulatoryFragmentPanel`. The tool confirmation and exact
+  proposal-digest approval are separate gates; neither substitutes for the other.
 - UI-intent tools are currently non-mutating query/intent routes
+
+#### Primer reports and panel specificity
+
+`primer_reports` projects the shared primer report routes with a bounded
+`family` (`primer`, `qpcr`, `transcript_assay_panel`, or
+`transcript_assay_fallback`) and `action` (`list`, `show`, or `export`).
+`list` needs neither an id nor confirmation. `show` requires `report_id`
+(the `execution_id` for fallback reports). `export` also requires `path` and
+explicit `confirm: true`. Export never modifies the project, but writes a file.
+`state_path` is optional on all three tools below. Unknown or inapplicable
+arguments fail instead of silently changing what is inspected.
+
+```json
+{"name":"primer_reports","arguments":{"family":"transcript_assay_panel","action":"list"}}
+```
+
+`transcript_assay_specificity_plan` requires `panel_report_id`,
+`target_genome_id`, `output_dir`, and `confirm: true`. It prepares the shared
+whole-panel BLAST handoff and execution-manifest template, but does not run
+BLAST. Optional fields mirror the shell thresholds with underscores:
+`max_target_amplicon_bp` or separate `readiness_max_amplicon_bp` and
+`exploratory_max_amplicon_bp`; `report_detail`, `full_alignment`,
+`min_primer_coverage_fraction`, `max_3prime_mismatches`, `three_prime_window_bp`,
+`min_total_mismatches_to_unintended_target`, `max_hits_per_primer`,
+`allow_same_gene_splice_variants`, `avoid_known_variants`, `avoid_rmsk_repeats`,
+`avoid_low_complexity`, `catalog_path`, and `cache_dir`.
+`reviewed_off_target_allowlist` accepts the structured JSON array, not a path.
+Omitted fields retain shared engine defaults; conflicting ceiling forms fail.
+
+`transcript_assay_specificity_finalize` requires `handoff_path`, the structured
+`execution_manifest` object, and `confirm: true`; optional `path` exports the
+acceptance report. It validates the same hashes, completeness, database and
+panel identity as the shell. Only complete assessments are persisted;
+`incomplete` remains distinct from `not_assessed`, `specificity_fail`, and
+`pass`. It does not execute commands from a manifest. Confirmation is checked
+before loading state or accessing report files for either handoff tool.
+
+These three tools cover fourteen shared command paths. This is a scoped parity
+extension, not an unrestricted shell tool or a claim that all MCP gaps are closed.
 
 #### Intentionally MCP-excluded shell commands
 
@@ -290,6 +565,11 @@ an agent has selected a deterministic operation.
 - `candidates template-run`
 - `candidates template-show`
 - `candidates top-k`
+- `collections run digest`
+- `collections run export-pool`
+- `collections run primer-specificity`
+- `collections run restriction-scan`
+- `collections run tfbs-scan`
 - `construct-reasoning build-protein-dna-handoff`
 - `construct-reasoning export-graph`
 - `cutrun export-coverage`
@@ -303,6 +583,7 @@ an agent has selected a deterministic operation.
 - `cutrun show-read-report`
 - `cutrun status`
 - `dbsnp fetch`
+- `digest`
 - `display`
 - `dotplot compute`
 - `dotplot list`
@@ -323,6 +604,8 @@ an agent has selected a deterministic operation.
 - `features repeat-cohort`
 - `features repeat-overlaps`
 - `features repeat-query`
+- `features restriction-scan`
+- `features tfbs-scan`
 - `features tfbs-score-tracks-svg`
 - `features tfbs-summary`
 - `features window-cohort-tfbs`
@@ -340,7 +623,9 @@ an agent has selected a deterministic operation.
 - `gene-sets produce co-regulated`
 - `gene-sets produce direct-list`
 - `gene-sets produce ontology-assignment`
+- `gene-sets create-pool`
 - `gene-sets promoter-cohort`
+- `gene-sets regulatory-partner-screen`
 - `gene-sets resolve`
 - `genomes blast`
 - `genomes blast-track`
@@ -351,6 +636,9 @@ an agent has selected a deterministic operation.
 - `genomes genes`
 - `genomes install-ensembl`
 - `genomes prepare`
+- `genomes adopt-blast-resource`
+- `genomes prepare-blast-resource`
+- `genomes inspect-blast-resource`
 - `genomes preview-ensembl-specs`
 - `genomes remove-catalog-entry`
 - `genomes remove-prepared`
@@ -414,6 +702,7 @@ an agent has selected a deterministic operation.
 - `mirna catalog-show`
 - `mirna explain-seed`
 - `mirna scan-target`
+- `orthologs conservation-comparison`
 - `orthologs promoter-comparison`
 - `orthologs resolve-promoter-cohort`
 - `panels import-isoform`
@@ -435,21 +724,29 @@ an agent has selected a deterministic operation.
 - `planning sync push`
 - `planning sync status`
 - `primers design`
+- `primers design-terminal-exon-rt-pool` (the typed
+  `DesignTerminalExonRtPrimerPool` operation remains available through the
+  generic MCP `op` tool)
+- `primers design-transcript-assay-panel`
+- `primers compose-gene-isoform-study-workflow-batch`
+- `primers inspect-gene-isoform-study-reuse`
+- `primers execute-gene-isoform-study-workflow`
+- `primers execute-gene-isoform-study-workflow-batch`
 - `primers design-qpcr`
-- `primers export-qpcr-report`
-- `primers export-report`
+- `primers experimental-handoff` (the typed `BuildExperimentalAssayHandoff` operation remains available through the generic MCP `op` tool)
 - `primers export-restriction-cloning-handoff`
-- `primers list-qpcr-reports`
-- `primers list-reports`
+- `primers import-external-pairs`
 - `primers list-restriction-cloning-handoffs`
+- `primers primerbank search`
+- `primers primerbank show`
+- `primers primerbank test-cdna`
+- `primers screen-variants` (the typed `ScreenPrimerVariants` operation remains available through the generic MCP `op` tool)
 - `primers preflight`
 - `primers prepare-restriction-cloning`
 - `primers restriction-cloning-vector-suggestions`
 - `primers seed-from-feature`
 - `primers seed-from-splicing`
 - `primers seed-restriction-cloning-handoff`
-- `primers show-qpcr-report`
-- `primers show-report`
 - `primers show-restriction-cloning-handoff`
 - `primers test-cdna-pcr`
 - `primers test-cdna-qpcr`
@@ -500,9 +797,15 @@ an agent has selected a deterministic operation.
 - `resources import-gene-list-cache`
 - `resources import-ontology-assignment-cache`
 - `resources inspect-jaspar`
+- `resources install-encode-ccres`
+- `resources install-ensembl-regulatory-features`
 - `resources install-ucsc-rmsk`
+- `resources list-encode-ccre-sources`
+- `resources list-ensembl-regulation-sources`
 - `resources list-jaspar`
 - `resources list-publication-datasets`
+- `resources prepare-encode-ccre-index`
+- `resources prepare-ensembl-regulation-index`
 - `resources prepare-publication-dataset`
 - `resources prepare-ucsc-rmsk-index`
 - `resources resolve-tf-query`
@@ -511,6 +814,10 @@ an agent has selected a deterministic operation.
 - `resources summarize-jaspar`
 - `resources sync-jaspar`
 - `resources sync-jaspar-remote-metadata`
+- `resources sync-maxent` - normalizes user-supplied local model tables and
+  writes host resource files, and records external provenance; it has no
+  portable engine operation and remains outside MCP until a dedicated
+  confirmed external-mutation contract exists
 - `resources sync-rebase`
 - `resources sync-ucsc-rmsk`
 - `reverse-translate export-report`
@@ -518,12 +825,15 @@ an agent has selected a deterministic operation.
 - `reverse-translate run`
 - `reverse-translate show-report`
 - `rna-info`
+- `rna-reads allele-hash-screen`
 - `rna-reads align-report`
 - `rna-reads batch-map`
 - `rna-reads build-transcript-index`
 - `rna-reads export-abundance-tsv`
 - `rna-reads export-alignment-dotplot-svg`
 - `rna-reads export-alignments-tsv`
+- `rna-reads export-dexseq-annotation-gff`
+- `rna-reads export-dexseq-counts-tsv`
 - `rna-reads export-hits-fasta`
 - `rna-reads export-isoform-triage-tsv`
 - `rna-reads export-paths-tsv`
@@ -541,6 +851,7 @@ an agent has selected a deterministic operation.
 - `rna-reads show-alignment`
 - `rna-reads show-report`
 - `rna-reads summarize-gene-support`
+- `rna-reads verify-dexseq`
 - `routines compare`
 - `routines explain`
 - `routines list`
@@ -603,6 +914,21 @@ an agent has selected a deterministic operation.
 - `variant promoter-context`
 - `variant reporter-fragments`
 
+For `rna-reads allele-hash-screen`, agents may supply
+`--from-rna-report REPORT_ID` to let the engine resolve target-gene-aligned
+retained rows and their stored sequences through the same gene-support cohort
+logic used by the audit command. Salmon `unmapped_names` and mapping SAM files
+are ID selectors, not complete sequence stores: when either Salmon flag is
+used, the command also requires explicit `--read-file` or `--read-pair`
+inputs. The v3 report exposes overlapping per-read `source_origins[]` and
+aggregate `source_provenance[]` counts so downstream imbalance interpretation
+does not lose its cohort basis. Its representation verdict is threshold-based
+on phased allele-informative depth (`--min-informative-reads` and the balanced
+band flags); report-derived retained-read support is contextual expression
+weight, and the optional binomial value is advisory rather than a significance
+gate. Agents must describe the result as sequence representation, not
+biological significance or causation.
+
 ### 4) Agent Assistant bridge (`agents ...` and GUI Agent Assistant)
 
 Agent Assistant runs configured external/internal AI systems and can return:
@@ -635,6 +961,8 @@ Key properties:
   primary machine-facing planning API
 - recursion guardrail blocks nested `agents ask`, `agents plan`, and
   `agents execute-plan` execution from suggested commands
+- `/undo` and `/redo` suggestions require explicit confirmation and cannot be
+  selected by automatic-suggestion execution
 - suggested commands can execute shared BLAST routes (`genomes/helpers blast`,
   `genomes/helpers blast-track`) because they use the same parser/executor as
   CLI shell
@@ -645,6 +973,21 @@ Key properties:
 - the Agent Assistant system prompt receives its known project-fact vocabulary
   from the same registry used by the evaluator, instead of a separately
   maintained prose-only list
+- when project-context injection is enabled, Agent Assistant and `agents ask`
+  also receive `x_introspection` from the same engine snapshot as
+  `state_summary`; it contains at most 128 concrete facts, complete fact-type
+  counts, explicit truncation metadata, and the read-only routes used to obtain
+  more detail
+- every request also receives `x_helper_catalog`, a bounded prompt-matched
+  projection of GENtle's own helper/vector records. The projection includes
+  exact known product, catalogue, accession, constraints, source URLs, and
+  valid GENtle retrieval routes; it also uses recent conversation text so
+  follow-up questions remain grounded. Catalog presence does not mean a
+  sequence has already been loaded
+- the prompt's compact introspection card explains the distinction between a
+  registered fact name and a currently projected fact. This guidance is
+  embedded at runtime because native HTTP models and the isolated Codex Local
+  bridge cannot be assumed to read files from the GENtle checkout
 - use `facts graph` and `facts eval ...` in shared shell/CLI contexts when an
   external agent needs the same deterministic project-fact projection
 - open-world facts such as restriction-site absence require explicit evidence
@@ -656,7 +999,38 @@ Key properties:
 - ChatGPT/Codex subscriptions do not authenticate the OpenAI API. Native OpenAI
   API mode needs `OPENAI_API_KEY`. The separate `Codex Local` catalog entry
   delegates to the logged-in local Codex CLI through `scripts/codex-agent-bridge`
-  and uses Codex/ChatGPT plan limits instead of API billing.
+  and uses Codex/ChatGPT plan limits instead of API billing. The bridge honors
+  `CODEX_BIN`, then `codex` on `PATH`, and on macOS checks both the bundled
+  ChatGPT `Contents/Resources/codex` CLI and `Contents/MacOS/ChatGPT`
+  executable before the legacy standalone Codex app location. Selecting Codex
+  Local immediately presents `Codex default`; GENtle reads the CLI's visible
+  model ids from its local metadata cache and forwards a selected id through
+  `GENTLE_AGENT_MODEL` to `codex --model`.
+- Pi can be used as a second local Agent Assistant harness through the
+  `Pi Local (uses Pi provider login)` catalog entry. GENtle invokes
+  `scripts/pi-agent-bridge`, which runs one ephemeral `pi --print` request with
+  sessions, built-in tools, extension discovery, skills, prompt templates, and
+  project-context discovery disabled. GENtle keeps the conversation and
+  project-fact context; Pi supplies the selected provider/model. If the user
+  enables public-web research for the request, the bridge loads one co-shipped
+  extension and allowlists only `gentle_web_search` and `gentle_web_fetch`.
+  Those tools may read arbitrary public HTTP/HTTPS text pages but reject
+  localhost, private/reserved networks, credentials, binaries, unsafe
+  redirects, oversized responses, and shell or filesystem access. Model
+  discovery uses `pi --list-models`, and authentication remains in Pi's own
+  `/login` flow.
+  `agents preflight pi_local_stdio --live` and GUI `Test Setup` also run a
+  non-generating command-shape probe: Pi is invoked with the baseline
+  ephemeral no-tools/no-session flags plus `--help`, so unsupported local Pi
+  CLI flags are reported before any prompt is sent to a model. GENtle does not
+  read or copy Pi's credential store.
+- Actual Pi search queries and pages are attached by the bridge as typed
+  `x_web_research` provenance and shown separately in the Agent Assistant.
+  Model-authored source claims are not accepted as that provenance. Public web
+  content remains untrusted evidence and cannot authorize GENtle commands.
+- This Pi entry is not a source-editing developer agent. A future coding mode
+  would need a separate workspace, permission, diff-review, and test contract;
+  it must not inherit the Agent Assistant's reviewed-command permissions.
 - Native Claude mode uses the Anthropic API directly and needs
   `ANTHROPIC_API_KEY`; Claude Code or Claude.ai subscription/login tokens do
   not authenticate direct Anthropic API calls.
@@ -664,8 +1038,9 @@ Key properties:
   `MISTRAL_API_KEY`; Le Chat or Mistral account login tokens do not
   authenticate direct Mistral API calls.
 - `agents preflight` remains config-only by default. `--live` adds the optional
-  `gentle.agent_preflight.v1.live_probe` model-list probe without sending a
-  generation request.
+  `gentle.agent_preflight.v1.live_probe`: native HTTP systems use model-list
+  probes, while Pi Local uses the no-generation command-shape probe described
+  above.
 
 ## CLI vs planner vs MCP vs Agent Assistant
 
@@ -690,7 +1065,15 @@ Current template set includes:
 - Candidate between anchors
 - BLAST specificity check
 - Track import + prioritization
+- Evidence-guided regulatory reporter study
+- Adapt a biological workflow
 - Macro/template authoring
+
+The regulatory-reporter template treats expression response, sequence motifs,
+independent occupancy data, and completed reporter measurements as separate
+evidence classes. It asks for species/build, TSS policy, responsive-gene
+evidence, and exact vector identity before proposing shared GENtle commands,
+defaults to native fragments, and stops before mutation or materialization.
 
 `Compact intro (no state)` is optimized for live demonstrations and "what can
 you do?" prompts. Selecting it in the GUI disables project-state summary

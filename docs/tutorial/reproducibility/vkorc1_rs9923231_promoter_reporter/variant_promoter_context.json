@@ -2,13 +2,15 @@
   "schema": "gentle.variant_promoter_context.v1",
   "seq_id": "vkorc1_rs9923231_context",
   "sequence_length_bp": 6001,
-  "generated_at_unix_ms": 1776334292994,
-  "op_id": "op-4",
-  "run_id": "example_vkorc1_rs9923231_promoter_luciferase_assay_planning",
+  "generated_at_unix_ms": 1791151149680,
+  "op_id": "op-2",
+  "run_id": "interactive",
   "variant_label": "rs9923231",
   "variant_feature_id": 113,
   "variant_start_0based": 3000,
   "variant_end_0based_exclusive": 3001,
+  "genomic_ref": "C",
+  "genomic_alt": "A,G,T",
   "genome_anchor": {
     "seq_id": "vkorc1_rs9923231_context",
     "genome_id": "Human GRCh38 Ensembl 116",
@@ -78,6 +80,13 @@
       "transcript_id": "ENST00000300851",
       "transcript_label": "ENST00000300851",
       "transcript_feature_id": 4,
+      "transcript_count": 1,
+      "transcript_ids": [
+        "ENST00000300851"
+      ],
+      "transcript_labels": [
+        "ENST00000300851"
+      ],
       "strand": "-",
       "tss_local_0based": 1392,
       "start_0based": 1192,
@@ -92,6 +101,13 @@
       "transcript_id": "ENST00000319788",
       "transcript_label": "ENST00000319788",
       "transcript_feature_id": 9,
+      "transcript_count": 1,
+      "transcript_ids": [
+        "ENST00000319788"
+      ],
+      "transcript_labels": [
+        "ENST00000319788"
+      ],
       "strand": "-",
       "tss_local_0based": 1572,
       "start_0based": 1372,
@@ -106,6 +122,13 @@
       "transcript_id": "ENST00000354895",
       "transcript_label": "ENST00000354895",
       "transcript_feature_id": 14,
+      "transcript_count": 1,
+      "transcript_ids": [
+        "ENST00000354895"
+      ],
+      "transcript_labels": [
+        "ENST00000354895"
+      ],
       "strand": "-",
       "tss_local_0based": 1588,
       "start_0based": 1388,
@@ -120,6 +143,13 @@
       "transcript_id": "ENST00000394971",
       "transcript_label": "ENST00000394971",
       "transcript_feature_id": 17,
+      "transcript_count": 1,
+      "transcript_ids": [
+        "ENST00000394971"
+      ],
+      "transcript_labels": [
+        "ENST00000394971"
+      ],
       "strand": "-",
       "tss_local_0based": 1181,
       "start_0based": 981,
@@ -134,6 +164,13 @@
       "transcript_id": "ENST00000394975",
       "transcript_label": "ENST00000394975",
       "transcript_feature_id": 22,
+      "transcript_count": 1,
+      "transcript_ids": [
+        "ENST00000394975"
+      ],
+      "transcript_labels": [
+        "ENST00000394975"
+      ],
       "strand": "-",
       "tss_local_0based": 1429,
       "start_0based": 1229,
@@ -148,6 +185,13 @@
       "transcript_id": "ENST00000420057",
       "transcript_label": "ENST00000420057",
       "transcript_feature_id": 27,
+      "transcript_count": 1,
+      "transcript_ids": [
+        "ENST00000420057"
+      ],
+      "transcript_labels": [
+        "ENST00000420057"
+      ],
       "strand": "-",
       "tss_local_0based": 2290,
       "start_0based": 2090,
@@ -162,6 +206,13 @@
       "transcript_id": "ENST00000472468",
       "transcript_label": "ENST00000472468",
       "transcript_feature_id": 30,
+      "transcript_count": 1,
+      "transcript_ids": [
+        "ENST00000472468"
+      ],
+      "transcript_labels": [
+        "ENST00000472468"
+      ],
       "strand": "-",
       "tss_local_0based": 243,
       "start_0based": 43,
@@ -176,6 +227,13 @@
       "transcript_id": "ENST00000498155",
       "transcript_label": "ENST00000498155",
       "transcript_feature_id": 32,
+      "transcript_count": 1,
+      "transcript_ids": [
+        "ENST00000498155"
+      ],
+      "transcript_labels": [
+        "ENST00000498155"
+      ],
       "strand": "-",
       "tss_local_0based": 2612,
       "start_0based": 2412,
@@ -190,6 +248,13 @@
       "transcript_id": "ENST00000879179",
       "transcript_label": "ENST00000879179",
       "transcript_feature_id": 54,
+      "transcript_count": 1,
+      "transcript_ids": [
+        "ENST00000879179"
+      ],
+      "transcript_labels": [
+        "ENST00000879179"
+      ],
       "strand": "-",
       "tss_local_0based": 1594,
       "start_0based": 1394,
@@ -204,6 +269,13 @@
       "transcript_id": "ENST00000879180",
       "transcript_label": "ENST00000879180",
       "transcript_feature_id": 59,
+      "transcript_count": 1,
+      "transcript_ids": [
+        "ENST00000879180"
+      ],
+      "transcript_labels": [
+        "ENST00000879180"
+      ],
       "strand": "-",
       "tss_local_0based": 1496,
       "start_0based": 1296,
@@ -218,6 +290,13 @@
       "transcript_id": "ENST00000990848",
       "transcript_label": "ENST00000990848",
       "transcript_feature_id": 62,
+      "transcript_count": 1,
+      "transcript_ids": [
+        "ENST00000990848"
+      ],
+      "transcript_labels": [
+        "ENST00000990848"
+      ],
       "strand": "-",
       "tss_local_0based": 1411,
       "start_0based": 1211,
@@ -232,6 +311,13 @@
       "transcript_id": "ENST00001028608",
       "transcript_label": "ENST00001028608",
       "transcript_feature_id": 67,
+      "transcript_count": 1,
+      "transcript_ids": [
+        "ENST00001028608"
+      ],
+      "transcript_labels": [
+        "ENST00001028608"
+      ],
       "strand": "-",
       "tss_local_0based": 1613,
       "start_0based": 1413,
@@ -246,6 +332,13 @@
       "transcript_id": "ENST00001028609",
       "transcript_label": "ENST00001028609",
       "transcript_feature_id": 72,
+      "transcript_count": 1,
+      "transcript_ids": [
+        "ENST00001028609"
+      ],
+      "transcript_labels": [
+        "ENST00001028609"
+      ],
       "strand": "-",
       "tss_local_0based": 1415,
       "start_0based": 1215,
@@ -260,6 +353,13 @@
       "transcript_id": "ENST00001104749",
       "transcript_label": "ENST00001104749",
       "transcript_feature_id": 77,
+      "transcript_count": 1,
+      "transcript_ids": [
+        "ENST00001104749"
+      ],
+      "transcript_labels": [
+        "ENST00001104749"
+      ],
       "strand": "-",
       "tss_local_0based": 1600,
       "start_0based": 1400,
@@ -274,6 +374,13 @@
       "transcript_id": "ENST00001104750",
       "transcript_label": "ENST00001104750",
       "transcript_feature_id": 82,
+      "transcript_count": 1,
+      "transcript_ids": [
+        "ENST00001104750"
+      ],
+      "transcript_labels": [
+        "ENST00001104750"
+      ],
       "strand": "-",
       "tss_local_0based": 1548,
       "start_0based": 1348,
@@ -288,6 +395,13 @@
       "transcript_id": "ENST00001104751",
       "transcript_label": "ENST00001104751",
       "transcript_feature_id": 85,
+      "transcript_count": 1,
+      "transcript_ids": [
+        "ENST00001104751"
+      ],
+      "transcript_labels": [
+        "ENST00001104751"
+      ],
       "strand": "-",
       "tss_local_0based": 1548,
       "start_0based": 1348,
@@ -302,6 +416,13 @@
       "transcript_id": "ENST00001104752",
       "transcript_label": "ENST00001104752",
       "transcript_feature_id": 90,
+      "transcript_count": 1,
+      "transcript_ids": [
+        "ENST00001104752"
+      ],
+      "transcript_labels": [
+        "ENST00001104752"
+      ],
       "strand": "-",
       "tss_local_0based": 1430,
       "start_0based": 1230,
@@ -316,6 +437,13 @@
       "transcript_id": "ENST00001104753",
       "transcript_label": "ENST00001104753",
       "transcript_feature_id": 95,
+      "transcript_count": 1,
+      "transcript_ids": [
+        "ENST00001104753"
+      ],
+      "transcript_labels": [
+        "ENST00001104753"
+      ],
       "strand": "-",
       "tss_local_0based": 1429,
       "start_0based": 1229,
@@ -330,6 +458,13 @@
       "transcript_id": "ENST00001104754",
       "transcript_label": "ENST00001104754",
       "transcript_feature_id": 100,
+      "transcript_count": 1,
+      "transcript_ids": [
+        "ENST00001104754"
+      ],
+      "transcript_labels": [
+        "ENST00001104754"
+      ],
       "strand": "-",
       "tss_local_0based": 1429,
       "start_0based": 1229,
@@ -344,6 +479,13 @@
       "transcript_id": "ENST00001104755",
       "transcript_label": "ENST00001104755",
       "transcript_feature_id": 105,
+      "transcript_count": 1,
+      "transcript_ids": [
+        "ENST00001104755"
+      ],
+      "transcript_labels": [
+        "ENST00001104755"
+      ],
       "strand": "-",
       "tss_local_0based": 1417,
       "start_0based": 1217,
@@ -358,6 +500,13 @@
       "transcript_id": "ENST00001139928",
       "transcript_label": "ENST00001139928",
       "transcript_feature_id": 108,
+      "transcript_count": 1,
+      "transcript_ids": [
+        "ENST00001139928"
+      ],
+      "transcript_labels": [
+        "ENST00001139928"
+      ],
       "strand": "-",
       "tss_local_0based": 1429,
       "start_0based": 1229,

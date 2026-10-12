@@ -1,0 +1,861 @@
+//! Closed semantic-control vocabulary for tutorial GUI acceptance contracts.
+//!
+//! The semantic snapshot can expose more controls than tutorials may drive.
+//! This catalog is deliberately narrower: each accepted target declares its
+//! window, allowed interaction, persistence behavior, and scientific authority.
+//! Tutorial contracts therefore cannot turn an arbitrary semantic text field or
+//! command-capable control into an execution path.
+
+pub const WINDOW_MAIN: &str = "window.main";
+pub const DNA_TFBS_MENU: &str = "dna.tfbs.menu";
+pub const DNA_TSS_OPEN: &str = "dna.tss.open";
+pub const WINDOW_TSS_WORKSPACE: &str = "window.tss_workspace";
+pub const TSS_GENE: &str = "tss.gene";
+pub const TSS_COLLECTION: &str = "tss.collection";
+pub const TSS_PREVIEW: &str = "tss.preview";
+pub const TSS_SELECT_AVAILABLE: &str = "tss.select_available";
+pub const TSS_MATERIALIZE: &str = "tss.materialize";
+pub const TSS_REFRESH: &str = "tss.refresh";
+pub const TSS_COLLECTION_ROW: &str = "tss.collection_row";
+pub const TSS_INSPECT: &str = "tss.inspect";
+pub const TSS_OPEN_WINDOWS: &str = "tss.open_windows";
+pub const TSS_FORGET: &str = "tss.forget";
+pub const TSS_CONFIRM_FORGET: &str = "tss.confirm_forget";
+pub const TSS_CANCEL_FORGET: &str = "tss.cancel_forget";
+pub const TSS_STATUS: &str = "tss.status";
+pub const TSS_VALIDATION_SUMMARY: &str = "tss.validation_summary";
+pub const WINDOW_DNA_VIEWER: &str = "window.dna_viewer";
+pub const WINDOW_PROMOTER_DESIGN: &str = "window.promoter_design";
+pub const DNA_FEATURE_TREE_ROW: &str = "dna.feature_tree.row";
+pub const DNA_FEATURE_TREE_GROUP: &str = "dna.feature_tree.group";
+pub const DNA_PROMOTER_OPEN: &str = "dna.promoter.open";
+pub const PROMOTER_ALTERNATE_BASE: &str = "promoter.alternate_base";
+pub const PROMOTER_MATERIALIZE_PAIR: &str = "promoter.materialize_pair";
+pub const PROMOTER_PANEL: &str = "promoter.panel";
+pub const PROMOTER_STATUS: &str = "promoter.status";
+pub const WINDOW_PCR_DESIGN: &str = "window.pcr_design";
+pub const WINDOW_SEQUENCE_TOOLS: &str = "window.sequence_tools";
+pub const DNA_BRANCH: &str = "dna.sequence.branch";
+pub const DNA_REVCOMP: &str = "dna.sequence.reverse_complement";
+pub const DNA_OPEN_TOOLS: &str = "dna.sequence.open_tools";
+pub const DNA_OPEN_REGIONS: &str = "dna.sequence.open_regions";
+pub const TOOLS_CLONING: &str = "sequence_tools.cloning";
+pub const TOOLS_DIGEST_PREFIX: &str = "sequence_tools.digest.prefix";
+pub const TOOLS_DIGEST_RUN: &str = "sequence_tools.digest.run";
+pub const WINDOW_GENOMIC_REGIONS: &str = "window.genomic_regions";
+pub const WINDOW_REGION_CONSERVATION: &str = "window.region_conservation";
+pub const WINDOW_SPLICING_EXPERT: &str = "window.splicing_expert";
+pub const MAIN_PROJECT_SEQUENCE_OPEN: &str = "main.project.sequence.open";
+pub const MAIN_PROJECT_SAVE_STATE: &str = "main.project.save_state";
+pub const MAIN_EDIT_MENU: &str = "main.edit.menu";
+pub const MAIN_UNDO: &str = "main.edit.undo";
+pub const DNA_SELECTION_FORMULA_INPUT: &str = "dna.selection_formula.input";
+pub const DNA_SELECTION_FORMULA_APPLY: &str = "dna.selection_formula.apply";
+pub const DNA_SELECTION_STATUS: &str = "dna.selection.status";
+pub const DNA_MAP_CANVAS: &str = "dna.map.canvas";
+pub const DNA_SELECTION_MAP_SPAN: &str = "dna.selection.map_span";
+pub const DNA_SELECTION_SIMPLE_PCR: &str = "dna.selection.simple_pcr";
+pub const PCR_SIMPLE_STARTER_PANEL: &str = "pcr.simple_starter.panel";
+pub const PCR_SIMPLE_STARTER_SEED_FROM_SELECTION: &str = "pcr.simple_starter.seed_from_selection";
+pub const PCR_DESIGN_REPORT_ID: &str = "pcr.design.report_id";
+pub const PCR_DESIGN_MAX_PAIRS: &str = "pcr.design.max_pairs";
+pub const PCR_DESIGN_RUN: &str = "pcr.design.run";
+pub const PCR_DESIGN_REPORT_PREVIEW: &str = "pcr.design.report_preview";
+pub const DNA_SELECTION_SAVE_REGION: &str = "dna.selection.save_genomic_region";
+pub const GENOMIC_REGION_REFRESH: &str = "genomic_region.refresh";
+pub const GENOMIC_REGION_SAVE_PENDING: &str = "genomic_region.save_pending";
+pub const GENOMIC_REGION_COPY_HUMAN: &str = "genomic_region.copy_human_1based";
+pub const GENOMIC_REGION_COPY_BED: &str = "genomic_region.copy_bed_0based";
+pub const GENOMIC_REGION_COPY_JSON: &str = "genomic_region.copy_canonical_json";
+pub const GENOMIC_REGION_EXPORT_JSON: &str = "genomic_region.export_set_json";
+pub const GENOMIC_REGION_EXPORT_BED: &str = "genomic_region.export_set_bed_manifest";
+pub const GENOMIC_REGION_IMPORT_JSON: &str = "genomic_region.import_set_json";
+pub const GENOMIC_REGION_IMPORT_BED: &str = "genomic_region.import_set_bed_manifest";
+pub const GENOMIC_REGION_CAPTURE_CUTRUN: &str = "genomic_region.capture_cutrun_window";
+pub const GENOMIC_REGION_CAPTURE_ENSEMBL: &str = "genomic_region.capture_ensembl_feature";
+pub const GENOMIC_REGION_PROMOTER_SIMILARITY: &str = "genomic_region.promoter_similarity";
+pub const REGION_CONSERVATION_RUN: &str = "region_conservation.run";
+pub const REGION_CONSERVATION_CANCEL: &str = "region_conservation.cancel";
+pub const REGION_CONSERVATION_OPEN_REPORT: &str = "region_conservation.open_report";
+pub const REGION_CONSERVATION_IMPORT_REQUEST: &str = "region_conservation.import_request";
+pub const REGION_CONSERVATION_EXPORT_REQUEST: &str = "region_conservation.export_request";
+pub const REGION_CONSERVATION_STATUS: &str = "region_conservation.status";
+pub const REGION_CONSERVATION_EXPORT_JSON: &str = "region_conservation.export_json";
+pub const REGION_CONSERVATION_EXPORT_SVG: &str = "region_conservation.export_svg";
+pub const REGION_CONSERVATION_SAVE_BLOCK: &str = "region_conservation.save_selected_block";
+pub const REGION_CONSERVATION_ASSESS_MODULES: &str = "region_conservation.assess_modules";
+pub const REGION_CONSERVATION_SEARCH_REQUEST: &str = "region_conservation.search_request";
+pub const REGION_CONSERVATION_SEARCH_FIELDS: &str = "region_conservation.search_fields";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TutorialGuiInteractionKind {
+    Click,
+    RightClick,
+    DoubleClick,
+    ReplaceText,
+    SetCheckbox,
+    SelectTab,
+    PressKey,
+    Scroll,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TutorialGuiControlAuthority {
+    /// Snapshot-only status or window identity; never an interaction target.
+    Observe,
+    /// Changes only the current GUI/view state.
+    ViewState,
+    /// Persists project metadata but does not itself establish a scientific result.
+    ProjectMetadata,
+    /// Persists an engine-owned scientific result that requires typed proof.
+    ScientificState,
+}
+
+impl TutorialGuiControlAuthority {
+    pub fn persists_project_state(self) -> bool {
+        matches!(self, Self::ProjectMetadata | Self::ScientificState)
+    }
+
+    pub fn requires_scientific_effect(self) -> bool {
+        self == Self::ScientificState
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TutorialGuiTextPolicy {
+    SelectionFormula,
+    Identifier,
+    PositiveInteger,
+    /// One explicit genomic-forward SNV allele, never a list or command.
+    DnaSingleBase,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct TutorialGuiControlSpec {
+    pub semantic_id: &'static str,
+    pub window_id: &'static str,
+    pub authority: TutorialGuiControlAuthority,
+    pub allowed_interactions: &'static [TutorialGuiInteractionKind],
+    pub text_policy: Option<TutorialGuiTextPolicy>,
+}
+
+const NO_INTERACTIONS: &[TutorialGuiInteractionKind] = &[];
+const CLICK: &[TutorialGuiInteractionKind] = &[TutorialGuiInteractionKind::Click];
+const RIGHT_CLICK: &[TutorialGuiInteractionKind] = &[TutorialGuiInteractionKind::RightClick];
+const DOUBLE_CLICK: &[TutorialGuiInteractionKind] = &[TutorialGuiInteractionKind::DoubleClick];
+const REPLACE_TEXT: &[TutorialGuiInteractionKind] = &[TutorialGuiInteractionKind::ReplaceText];
+const SCROLL: &[TutorialGuiInteractionKind] = &[TutorialGuiInteractionKind::Scroll];
+
+pub const TUTORIAL_GUI_CONTROLS: &[TutorialGuiControlSpec] = &[
+    TutorialGuiControlSpec {
+        semantic_id: WINDOW_PROMOTER_DESIGN,
+        window_id: WINDOW_PROMOTER_DESIGN,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_FEATURE_TREE_GROUP,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_FEATURE_TREE_ROW,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_PROMOTER_OPEN,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: PROMOTER_ALTERNATE_BASE,
+        window_id: WINDOW_PROMOTER_DESIGN,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: REPLACE_TEXT,
+        text_policy: Some(TutorialGuiTextPolicy::DnaSingleBase),
+    },
+    TutorialGuiControlSpec {
+        semantic_id: PROMOTER_MATERIALIZE_PAIR,
+        window_id: WINDOW_PROMOTER_DESIGN,
+        authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: PROMOTER_PANEL,
+        window_id: WINDOW_PROMOTER_DESIGN,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: SCROLL,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: PROMOTER_STATUS,
+        window_id: WINDOW_PROMOTER_DESIGN,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_COLLECTION_ROW,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_TFBS_MENU,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_TSS_OPEN,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: WINDOW_TSS_WORKSPACE,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_GENE,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: REPLACE_TEXT,
+        text_policy: Some(TutorialGuiTextPolicy::Identifier),
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_COLLECTION,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: REPLACE_TEXT,
+        text_policy: Some(TutorialGuiTextPolicy::Identifier),
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_PREVIEW,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_SELECT_AVAILABLE,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_MATERIALIZE,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_REFRESH,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_INSPECT,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_OPEN_WINDOWS,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_FORGET,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_CONFIRM_FORGET,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::ProjectMetadata,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_CANCEL_FORGET,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_STATUS,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_VALIDATION_SUMMARY,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: WINDOW_SEQUENCE_TOOLS,
+        window_id: WINDOW_SEQUENCE_TOOLS,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_BRANCH,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_REVCOMP,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_OPEN_TOOLS,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ProjectMetadata,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_OPEN_REGIONS,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TOOLS_CLONING,
+        window_id: WINDOW_SEQUENCE_TOOLS,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TOOLS_DIGEST_PREFIX,
+        window_id: WINDOW_SEQUENCE_TOOLS,
+        authority: TutorialGuiControlAuthority::ProjectMetadata,
+        allowed_interactions: REPLACE_TEXT,
+        text_policy: Some(TutorialGuiTextPolicy::Identifier),
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TOOLS_DIGEST_RUN,
+        window_id: WINDOW_SEQUENCE_TOOLS,
+        authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: WINDOW_MAIN,
+        window_id: WINDOW_MAIN,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: WINDOW_DNA_VIEWER,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: MAIN_PROJECT_SEQUENCE_OPEN,
+        window_id: WINDOW_MAIN,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: DOUBLE_CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: MAIN_EDIT_MENU,
+        window_id: WINDOW_MAIN,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: MAIN_UNDO,
+        window_id: WINDOW_MAIN,
+        authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: MAIN_PROJECT_SAVE_STATE,
+        window_id: WINDOW_MAIN,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: WINDOW_PCR_DESIGN,
+        window_id: WINDOW_PCR_DESIGN,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: WINDOW_GENOMIC_REGIONS,
+        window_id: WINDOW_GENOMIC_REGIONS,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: WINDOW_SPLICING_EXPERT,
+        window_id: WINDOW_SPLICING_EXPERT,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: WINDOW_REGION_CONSERVATION,
+        window_id: WINDOW_REGION_CONSERVATION,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_SELECTION_FORMULA_INPUT,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ProjectMetadata,
+        allowed_interactions: REPLACE_TEXT,
+        text_policy: Some(TutorialGuiTextPolicy::SelectionFormula),
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_SELECTION_FORMULA_APPLY,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_SELECTION_STATUS,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_MAP_CANVAS,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: RIGHT_CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_SELECTION_MAP_SPAN,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: RIGHT_CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_SELECTION_SIMPLE_PCR,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ProjectMetadata,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: PCR_SIMPLE_STARTER_PANEL,
+        window_id: WINDOW_PCR_DESIGN,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: SCROLL,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: PCR_SIMPLE_STARTER_SEED_FROM_SELECTION,
+        window_id: WINDOW_PCR_DESIGN,
+        authority: TutorialGuiControlAuthority::ProjectMetadata,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: PCR_DESIGN_MAX_PAIRS,
+        window_id: WINDOW_PCR_DESIGN,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: REPLACE_TEXT,
+        text_policy: Some(TutorialGuiTextPolicy::PositiveInteger),
+    },
+    TutorialGuiControlSpec {
+        semantic_id: PCR_DESIGN_REPORT_ID,
+        window_id: WINDOW_PCR_DESIGN,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: REPLACE_TEXT,
+        text_policy: Some(TutorialGuiTextPolicy::Identifier),
+    },
+    TutorialGuiControlSpec {
+        semantic_id: PCR_DESIGN_RUN,
+        window_id: WINDOW_PCR_DESIGN,
+        authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: PCR_DESIGN_REPORT_PREVIEW,
+        window_id: WINDOW_PCR_DESIGN,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: SCROLL,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_SELECTION_SAVE_REGION,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: GENOMIC_REGION_REFRESH,
+        window_id: WINDOW_GENOMIC_REGIONS,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: GENOMIC_REGION_SAVE_PENDING,
+        window_id: WINDOW_GENOMIC_REGIONS,
+        authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: GENOMIC_REGION_COPY_HUMAN,
+        window_id: WINDOW_GENOMIC_REGIONS,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: GENOMIC_REGION_COPY_BED,
+        window_id: WINDOW_GENOMIC_REGIONS,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: GENOMIC_REGION_COPY_JSON,
+        window_id: WINDOW_GENOMIC_REGIONS,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: GENOMIC_REGION_EXPORT_JSON,
+        window_id: WINDOW_GENOMIC_REGIONS,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: GENOMIC_REGION_EXPORT_BED,
+        window_id: WINDOW_GENOMIC_REGIONS,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: GENOMIC_REGION_IMPORT_JSON,
+        window_id: WINDOW_GENOMIC_REGIONS,
+        authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: GENOMIC_REGION_IMPORT_BED,
+        window_id: WINDOW_GENOMIC_REGIONS,
+        authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: GENOMIC_REGION_CAPTURE_CUTRUN,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: GENOMIC_REGION_CAPTURE_ENSEMBL,
+        window_id: WINDOW_SPLICING_EXPERT,
+        authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: GENOMIC_REGION_PROMOTER_SIMILARITY,
+        window_id: WINDOW_GENOMIC_REGIONS,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: REGION_CONSERVATION_RUN,
+        window_id: WINDOW_REGION_CONSERVATION,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: REGION_CONSERVATION_CANCEL,
+        window_id: WINDOW_REGION_CONSERVATION,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: REGION_CONSERVATION_IMPORT_REQUEST,
+        window_id: WINDOW_REGION_CONSERVATION,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: REGION_CONSERVATION_EXPORT_REQUEST,
+        window_id: WINDOW_REGION_CONSERVATION,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: REGION_CONSERVATION_OPEN_REPORT,
+        window_id: WINDOW_REGION_CONSERVATION,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: REGION_CONSERVATION_STATUS,
+        window_id: WINDOW_REGION_CONSERVATION,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: REGION_CONSERVATION_EXPORT_JSON,
+        window_id: WINDOW_REGION_CONSERVATION,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: REGION_CONSERVATION_EXPORT_SVG,
+        window_id: WINDOW_REGION_CONSERVATION,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: REGION_CONSERVATION_SAVE_BLOCK,
+        window_id: WINDOW_REGION_CONSERVATION,
+        authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: REGION_CONSERVATION_ASSESS_MODULES,
+        window_id: WINDOW_REGION_CONSERVATION,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: REGION_CONSERVATION_SEARCH_REQUEST,
+        window_id: WINDOW_REGION_CONSERVATION,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: REGION_CONSERVATION_SEARCH_FIELDS,
+        window_id: WINDOW_REGION_CONSERVATION,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: SCROLL,
+        text_policy: None,
+    },
+];
+
+pub fn tutorial_gui_control(semantic_id: &str) -> Option<&'static TutorialGuiControlSpec> {
+    TUTORIAL_GUI_CONTROLS
+        .iter()
+        .find(|spec| spec.semantic_id == semantic_id)
+}
+
+/// Build the same path-free subject identity used by semantic GUI snapshots.
+///
+/// External acceptance runners call this through `gentle_examples_docs`
+/// instead of reimplementing the domain separator and length framing.
+pub fn pseudonymous_subject_scope(parts: &[&str]) -> String {
+    let mut identity = b"gentle.gui.subject_scope.v1\0".to_vec();
+    for part in parts {
+        let length = u64::try_from(part.len()).expect("semantic scope part length fits u64");
+        identity.extend_from_slice(&length.to_be_bytes());
+        identity.extend_from_slice(part.as_bytes());
+    }
+    let digest = crate::digest_utils::sha256_hex_bytes(&identity);
+    format!("subject-{}", &digest[..32])
+}
+
+pub fn validate_replacement_text(policy: TutorialGuiTextPolicy, text: &str) -> Result<(), String> {
+    if text.is_empty() {
+        return Err("replacement text must not be empty".to_string());
+    }
+    if text.len() > 512 || text.chars().any(char::is_control) {
+        return Err(
+            "replacement text must be at most 512 bytes and contain no controls".to_string(),
+        );
+    }
+    match policy {
+        TutorialGuiTextPolicy::SelectionFormula => {
+            if !text.trim_start().starts_with('=') {
+                return Err("selection-formula replacement text must start with '='".to_string());
+            }
+        }
+        TutorialGuiTextPolicy::Identifier => {
+            if text.len() > 128
+                || !text
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
+            {
+                return Err(
+                    "identifier replacement text must use at most 128 ASCII letters, digits, '.', '-' or '_'"
+                        .to_string(),
+                );
+            }
+        }
+        TutorialGuiTextPolicy::PositiveInteger => {
+            if text
+                .parse::<usize>()
+                .ok()
+                .filter(|value| *value > 0)
+                .is_none()
+            {
+                return Err("positive-integer replacement text must be an integer >= 1".to_string());
+            }
+        }
+        TutorialGuiTextPolicy::DnaSingleBase => {
+            if !matches!(text, "A" | "C" | "G" | "T") {
+                return Err("SNV alternate must be one explicit uppercase A, C, G or T".into());
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn tutorial_gui_control_ids_are_unique_and_windows_are_catalogued() {
+        let mut ids = HashSet::new();
+        for spec in TUTORIAL_GUI_CONTROLS {
+            assert!(
+                ids.insert(spec.semantic_id),
+                "duplicate {}",
+                spec.semantic_id
+            );
+            let window = tutorial_gui_control(spec.window_id).expect("catalogued window");
+            assert_eq!(window.authority, TutorialGuiControlAuthority::Observe);
+            assert!(window.allowed_interactions.is_empty());
+        }
+    }
+
+    #[test]
+    fn tutorial_text_policies_reject_ambiguous_or_command_like_values() {
+        assert!(
+            validate_replacement_text(TutorialGuiTextPolicy::SelectionFormula, "=1 .. 20").is_ok()
+        );
+        assert!(
+            validate_replacement_text(TutorialGuiTextPolicy::SelectionFormula, "cargo run")
+                .is_err()
+        );
+        assert!(
+            validate_replacement_text(TutorialGuiTextPolicy::Identifier, "primer_report-1").is_ok()
+        );
+        assert!(
+            validate_replacement_text(TutorialGuiTextPolicy::Identifier, "primer report; rm")
+                .is_err()
+        );
+        assert!(validate_replacement_text(TutorialGuiTextPolicy::PositiveInteger, "5").is_ok());
+        assert!(validate_replacement_text(TutorialGuiTextPolicy::PositiveInteger, "0").is_err());
+        assert!(validate_replacement_text(TutorialGuiTextPolicy::PositiveInteger, "five").is_err());
+        for base in ["A", "C", "G", "T"] {
+            assert!(validate_replacement_text(TutorialGuiTextPolicy::DnaSingleBase, base).is_ok());
+        }
+        for rejected in ["", "A,G,T", "t", " T", "N", "T; echo unsafe"] {
+            assert!(
+                validate_replacement_text(TutorialGuiTextPolicy::DnaSingleBase, rejected).is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn tutorial_subject_scope_is_length_framed_and_path_free() {
+        // Cross-language vector also pinned by the external acceptance runner.
+        assert_eq!(
+            pseudonymous_subject_scope(&["tss_locus"]),
+            "subject-d5d56e660296e866e6a0c16f7deed261"
+        );
+        let scope = pseudonymous_subject_scope(&["tp73_locus"]);
+        assert_eq!(scope.len(), 40);
+        assert!(scope.starts_with("subject-"));
+        assert_ne!(
+            pseudonymous_subject_scope(&["ab", "c"]),
+            pseudonymous_subject_scope(&["a", "bc"])
+        );
+        assert!(!scope.contains("tp73"));
+    }
+
+    #[test]
+    fn tutorial_tss_lifecycle_controls_preserve_authority() {
+        assert_eq!(
+            tutorial_gui_control(TSS_CANCEL_FORGET).unwrap().authority,
+            TutorialGuiControlAuthority::ViewState
+        );
+        assert_eq!(
+            tutorial_gui_control(TSS_CONFIRM_FORGET).unwrap().authority,
+            TutorialGuiControlAuthority::ProjectMetadata
+        );
+        // Undo can restore biological state, not just the registry in this tutorial.
+        assert_eq!(
+            tutorial_gui_control(MAIN_UNDO).unwrap().authority,
+            TutorialGuiControlAuthority::ScientificState
+        );
+    }
+}

@@ -14,29 +14,49 @@ pub mod about;
 pub mod agent_bridge;
 /// Deterministic execution of stored machine-facing agent plans.
 pub mod agent_execution;
+/// Bounded, non-authorizing execution receipts shared by agent adapters.
+pub mod agent_feedback;
+/// User-invoked, viewport-bound screenshot capture for Agent Assistant help.
+#[cfg(feature = "desktop-gui")]
+pub mod agent_help;
 /// Machine-facing prose compiler and typed plan/result contracts.
 pub mod agent_planner;
 /// Shared agent transport metadata, availability, and discovery helpers.
 pub mod agent_transport;
+/// Allele-aware RNA-read hash screen for transcript-coordinate variant evidence.
+pub mod allele_hash_screen;
 /// Amino-acid lookup tables and codon translation helpers.
 pub mod amino_acids;
+/// Shared annotated nucleotide serialization for GenBank and EMBL.
+pub mod annotated_sequence_io;
 /// Top-level GUI application wiring and event loop state.
+#[cfg(feature = "desktop-gui")]
 pub mod app;
 /// ATtRACT RNA-binding motif registry and runtime snapshot helpers.
 pub mod attract_motifs;
+#[cfg(feature = "desktop-gui")]
+mod background_engine;
 /// Small shared helpers for GENtle command-line binaries.
 pub mod cli_support;
+/// Bounded host-owned asynchronous shell execution and retained receipts.
+pub mod command_execution;
+pub(crate) mod digest_utils;
 /// Shared DNA display configuration and visibility policies.
+#[cfg(feature = "desktop-gui")]
 pub mod dna_display;
 /// DNA/RNA ladder catalogs and migration helper utilities.
 pub mod dna_ladder;
 /// Core DNA sequence model and sequence-level biological operations.
 pub mod dna_sequence;
 /// Local GUI repro harness for bisecting DNA-viewer layout surfaces.
+#[cfg(feature = "desktop-gui")]
 #[doc(hidden)]
 pub mod dna_viewer_repro;
 /// Internal egui compatibility helpers used during GUI API migrations.
+#[cfg(feature = "desktop-gui")]
 pub(crate) mod egui_compat;
+/// Optional ENCODE SCREEN Registry cCRE source, index, and overlap helpers.
+pub mod encode_ccre;
 /// Shared deterministic operation engine and state model.
 pub mod engine;
 /// Shared shell command parser/executor reused by GUI shell and CLI shell mode.
@@ -45,30 +65,47 @@ pub mod engine_shell;
 pub mod ensembl_gene;
 /// Ensembl protein-entry parsing contracts and REST normalization helpers.
 pub mod ensembl_protein;
+/// Optional Ensembl Regulation source, snapshot, index, and overlap helpers.
+pub mod ensembl_regulation;
 /// Restriction-enzyme catalog loading and convenience selection helpers.
 pub mod enzymes;
 /// Shared exon length and coding-frame cue helpers.
 pub mod exon_frame;
+/// External platform-tool checksum helpers for legacy download verification.
+pub mod external_checksums;
 /// Overlay-discoverable external-service provider configuration catalogs.
 pub mod external_service_providers;
 /// Expert-view data contracts for feature-centric deep-inspection UIs.
 pub mod feature_expert;
 /// Feature location/strand utilities used across render and engine code.
 pub mod feature_location;
+/// Deterministic helpers for complete feature-record creation, deletion, splitting, and merging.
+pub mod feature_record_curation;
 /// GC-content computations and display helpers.
 pub mod gc_contents;
+/// Local measured-gel image import and deterministic manual band sizing.
+pub mod gel_image;
 /// Catalog-extensible gene-group knowledge records and validation helpers.
 pub mod gene_groups;
+/// Manifest-driven HTML and print publication bundles for reusable gene sets.
+pub mod gene_set_publication;
 /// Genome catalog, preparation, indexing, extraction, and BLAST integration.
 pub mod genomes;
+/// Optional read-only access to precomputed whole-genome motif scan packages.
+pub mod genomic_motif_evidence;
 /// Gibson assembly planning contracts and deterministic preview derivation.
 pub mod gibson_planning;
 /// Optional GUI profiling hooks for evidence-based latency investigations.
 pub mod gui_profiler;
+/// Feature-gated semantic GUI metadata for native acceptance harnesses.
+#[cfg(feature = "gui-test-support")]
+pub mod gui_test_support;
 /// Embedded GUI translation catalogs and runtime presentation-language state.
+#[cfg(feature = "desktop-gui")]
 #[path = "app/i18n.rs"]
 pub(crate) mod i18n;
 /// Embedded icon/resource helpers for GUI rendering.
+#[cfg(feature = "desktop-gui")]
 pub mod icons;
 /// IUPAC nucleotide-code conversion and validation helpers.
 pub mod iupac_code;
@@ -79,15 +116,22 @@ pub mod js_interface;
 pub mod lineage_export;
 /// Adaptive routing decisions for linear DNA base-letter rendering.
 pub mod linear_base_routing;
+/// Portable locus report loading and sequence/anchor verification for adapters.
+pub mod locus_report;
 /// Lua adapter wrappers over shared engine contracts.
 #[cfg(feature = "lua-interface")]
 pub mod lua_interface;
 /// Main sequence-window GUI controller and interaction orchestration.
+#[cfg(feature = "desktop-gui")]
 pub mod main_area_dna;
+/// User-supplied MaxEnt splice-site model snapshots and native scoring.
+pub mod maxent_splicing;
 /// MCP stdio server adapter exposing tool execution and capability discovery.
 pub mod mcp_server;
 /// Methylation-site detection and state helpers.
 pub mod methylation_sites;
+/// Bounded checkout-local discovery used by guided microarray setup surfaces.
+pub mod microarray_setup;
 /// microRNA seed-site scanning reports over annotated sequence records.
 pub mod mirna;
 /// NCBI sequence XML (`GBSet/GBSeq`, `INSDSet/INSDSeq`) parsing helpers.
@@ -96,6 +140,12 @@ pub mod ncbi_genbank_xml;
 pub mod open_reading_frame;
 /// Virtual pool gel model and rendering primitives.
 pub mod pool_gel;
+/// Assembly-aware local variant screening for primer and probe binding sites.
+pub mod primer_variants;
+/// PrimerBank search, provenance records, and HTML parsing helpers.
+pub mod primerbank;
+/// Optional reduced promoter-cofactor package validation and bounded queries.
+pub mod promoter_cofactors;
 /// Protease digest definitions and helpers.
 pub mod protease;
 /// Protein molecular-weight gel model and rendering primitives.
@@ -107,10 +157,13 @@ pub mod pssm;
 /// Publication-associated external dataset catalog and download preparation.
 pub mod publication_resources;
 /// Shared DNA rendering entry points.
+#[cfg(feature = "desktop-gui")]
 pub mod render_dna;
 /// Circular-map DNA renderer.
+#[cfg(feature = "desktop-gui")]
 pub mod render_dna_circular;
 /// Linear-map DNA renderer.
+#[cfg(feature = "desktop-gui")]
 pub mod render_dna_linear;
 /// Shared export surfaces (SVG and snapshot pathways).
 pub mod render_export;
@@ -118,7 +171,12 @@ pub mod render_export;
 pub mod render_feature_expert;
 /// Shared multi-gene promoter TFBS small-multiples SVG renderer.
 pub mod render_multi_gene_promoter_tfbs;
+/// Shared transcript-aware promoter-reporter architecture SVG renderer.
+pub mod render_promoter_reporter_architecture;
+/// Shared regulatory-fragment panel-plan SVG renderer.
+pub mod render_regulatory_fragment_panel;
 /// Sequence export helpers and render-side formatting.
+#[cfg(feature = "desktop-gui")]
 pub mod render_sequence;
 /// Shared TF motif score-track SVG renderer.
 pub mod render_tfbs_score_tracks;
@@ -132,15 +190,24 @@ pub mod resource_sync;
 pub mod restriction_enzyme;
 /// RNA structure wrappers and tool integration glue.
 pub mod rna_structure;
+/// Checkout and packaged-desktop lookup for shipped assets.
+pub mod runtime_assets;
+/// Process-local live activity stack and SIGUSR1 runtime diagnostics.
+pub mod runtime_status;
 /// Shared wheel/key/cursor interaction policy for scroll, pan, and zoom.
+#[cfg(feature = "desktop-gui")]
 pub mod scroll_input_policy;
 /// Sequence-row abstraction shared by specialized row renderers.
+#[cfg(feature = "desktop-gui")]
 pub mod sequence_rows;
 /// Blank-row renderer implementation.
+#[cfg(feature = "desktop-gui")]
 pub mod sequence_rows_blank;
 /// DNA base-row renderer implementation.
+#[cfg(feature = "desktop-gui")]
 pub mod sequence_rows_dna;
 /// Restriction-enzyme sequence-row renderer implementation.
+#[cfg(feature = "desktop-gui")]
 pub mod sequence_rows_restriction_enzymes;
 /// Combined readiness summary for prepared references, helpers, and resources.
 pub mod service_readiness;
@@ -150,22 +217,41 @@ pub mod shell_docs;
 pub mod svg_pdf;
 /// Deterministic SVG-to-PNG rasterization helpers for headless adapters.
 pub mod svg_png;
+/// Selectable-text vector PDF projection of engine-owned SVG output.
+pub mod svg_vector_pdf;
+/// Standalone RNA-seq target-region rescue screen for CLI calibration runs.
+pub mod target_rescue;
 /// Hidden shared support helpers for internal tests across library and binaries.
 #[doc(hidden)]
 pub mod test_support;
 /// TF-motif registry and matching support.
 pub mod tf_motifs;
+/// Typed TFBS track-panel inputs and strict TSS policy adaptation.
+pub mod tfbs_track_panel;
 /// Process-local tool-path override registry.
 pub mod tool_overrides;
+/// Bound local Ensembl/GFF3 adapters for source-coherent transcript presentation.
+pub mod transcript_presentation;
+/// Strict, digest-bound TSS FASTA bundle validation.
+pub mod tss_fasta_bundle;
+/// Atomic, report-driven TSS profile exports and receipts.
+pub mod tss_profile_export;
+/// Headless, hash-bound inspection of annotated TSS sequence exports.
+pub mod tss_sequence_view;
+/// Closed semantic-control catalog used by typed tutorial GUI acceptance contracts.
+pub mod tutorial_gui_semantics;
 /// UCSC RepeatMasker (`rmsk`) table resource contracts and indexing guidance.
 pub mod ucsc_rmsk;
 /// UniProt/SWISS-PROT parsing contracts and projection payload models.
 pub mod uniprot;
 /// Generic GUI window abstraction.
+#[cfg(feature = "desktop-gui")]
 pub mod window;
 /// Window backdrop configuration and rendering helpers.
+#[cfg(feature = "desktop-gui")]
 pub mod window_backdrop;
 /// DNA sequence-window wrapper and per-window controls.
+#[cfg(feature = "desktop-gui")]
 pub mod window_dna;
 /// Curated workflow example payloads and templates.
 pub mod workflow_examples;

@@ -1,0 +1,9 @@
+variant_id	transcript_id	cdna_pos_1based	ref	alt	genotype	phase_set
+FUS_REP_TX1_hap1	FUS_REP_TX1	20	C	G	1|0	ps_fus_rep_tx1
+FUS_REP_TX1_hap2	FUS_REP_TX1	45	A	C	0|1	ps_fus_rep_tx1
+FUS_REP_TX2_hap1	FUS_REP_TX2	20	A	C	1|0	ps_fus_rep_tx2
+FUS_REP_TX2_hap2	FUS_REP_TX2	45	T	A	0|1	ps_fus_rep_tx2
+FUS_REP_TX3_hap1	FUS_REP_TX3	20	T	A	1|0	ps_fus_rep_tx3
+FUS_REP_TX3_hap2	FUS_REP_TX3	45	C	G	0|1	ps_fus_rep_tx3
+FUS_REP_TX4_hap1	FUS_REP_TX4	20	T	A	1|0	ps_fus_rep_tx4
+FUS_REP_TX4_hap2	FUS_REP_TX4	45	A	C	0|1	ps_fus_rep_tx4

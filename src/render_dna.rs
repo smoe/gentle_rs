@@ -91,6 +91,21 @@ impl RenderDna {
         }
     }
 
+    pub fn invalidate_sequence_derived_caches(&self) {
+        match self {
+            RenderDna::Circular(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.invalidate_sequence_derived_caches();
+                }
+            }
+            RenderDna::Linear(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.invalidate_sequence_derived_caches();
+                }
+            }
+        }
+    }
+
     pub fn on_click(&self, pointer_state: PointerState) {
         match self {
             RenderDna::Circular(renderer) => {
@@ -307,6 +322,19 @@ impl RenderDna {
         };
         let renderer = renderer.read().ok()?;
         let (content_top, content_bottom) = renderer.visible_feature_bounds_y()?;
+        let area = renderer.area();
+        Some((area.top(), area.bottom(), content_top, content_bottom))
+    }
+
+    pub fn linear_feature_vertical_bounds(
+        &self,
+        feature_id: usize,
+    ) -> Option<(f32, f32, f32, f32)> {
+        let RenderDna::Linear(renderer) = self else {
+            return None;
+        };
+        let renderer = renderer.read().ok()?;
+        let (content_top, content_bottom) = renderer.feature_bounds_y(feature_id)?;
         let area = renderer.area();
         Some((area.top(), area.bottom(), content_top, content_bottom))
     }
@@ -1024,6 +1052,15 @@ impl RenderDna {
         ] {
             Self::push_first_feature_detail_line(&mut lines, &mut seen, feature, label, keys);
         }
+        for line in [
+            "array_value_interpretation: logFC is the selected contrast effect size; adj.P.Val is the multiple-testing adjusted p-value",
+            "array_projection_note: visible array rows are imported/projection records, not all expression measurements for the source dataset",
+            "array_level_note: level describes array-row granularity, not expression magnitude",
+        ] {
+            if seen.insert(line.to_string()) {
+                lines.push(line.to_string());
+            }
+        }
         lines
     }
 
@@ -1282,10 +1319,20 @@ impl RenderDna {
         let platform = Self::feature_qualifier_text(feature, "gentle_array_platform")
             .or_else(|| Self::feature_qualifier_text(feature, "gentle_track_name"))
             .unwrap_or_else(|| "microarray".to_string());
+        let dataset = Self::feature_qualifier_text(feature, "gentle_array_dataset");
+        let source_label = match dataset {
+            Some(dataset) if dataset.eq_ignore_ascii_case("probe_region_output") => {
+                format!("Probe-region output / {platform}")
+            }
+            Some(dataset) if !dataset.eq_ignore_ascii_case(&platform) => {
+                format!("{dataset} / {platform}")
+            }
+            _ => platform,
+        };
         let contrast = Self::feature_qualifier_text(feature, "gentle_array_contrast");
         match contrast {
-            Some(contrast) => Some(format!("Array: {platform} ({contrast})")),
-            None => Some(format!("Array: {platform}")),
+            Some(contrast) => Some(format!("Array: {source_label} ({contrast})")),
+            None => Some(format!("Array: {source_label}")),
         }
     }
 
@@ -1651,6 +1698,88 @@ impl RenderDna {
         lines
     }
 
+    fn prioritized_detail_lines(
+        details: &[String],
+        prefixes: &[&str],
+        fallback_take: usize,
+        max_lines: usize,
+    ) -> Vec<String> {
+        let mut lines = Vec::new();
+        let mut seen = BTreeSet::new();
+        for prefix in prefixes {
+            if let Some(line) = details.iter().find(|line| line.starts_with(prefix))
+                && seen.insert(line.clone())
+            {
+                lines.push(line.clone());
+            }
+        }
+        for line in details.iter().take(fallback_take) {
+            if lines.len() >= max_lines {
+                break;
+            }
+            if seen.insert(line.clone()) {
+                lines.push(line.clone());
+            }
+        }
+        lines.truncate(max_lines);
+        lines
+    }
+
+    pub fn feature_tooltip_detail_lines(feature: &Feature) -> Vec<String> {
+        let details = Self::feature_detail_lines(feature);
+        if Self::is_array_track_feature(feature) {
+            return Self::prioritized_detail_lines(
+                &details,
+                &[
+                    "contrast:",
+                    "logFC:",
+                    "adj.P.Val:",
+                    "feature_id:",
+                    "transcript_cluster:",
+                    "exon_id:",
+                    "projection_status:",
+                    "genomic_interval:",
+                    "array_value_interpretation:",
+                ],
+                4,
+                9,
+            );
+        }
+        if Self::is_repeat_feature(feature) {
+            return Self::prioritized_detail_lines(
+                &details,
+                &[
+                    "repeat_name:",
+                    "repeat_class:",
+                    "repeat_family:",
+                    "score:",
+                    "divergence_percent:",
+                    "genomic_interval:",
+                ],
+                4,
+                8,
+            );
+        }
+        if Self::is_track_feature(feature) {
+            return Self::prioritized_detail_lines(
+                &details,
+                &[
+                    "track_source:",
+                    "track_name:",
+                    "track_file:",
+                    "genomic_interval:",
+                    "score:",
+                    "bed_strand:",
+                    "local_strand:",
+                    "note:",
+                ],
+                4,
+                8,
+            );
+        }
+        details.into_iter().take(4).collect()
+    }
+
     pub fn feature_max_view_span_bp(
         feature: &Feature,
         regulatory_max_view_span_bp: usize,
@@ -1782,7 +1911,7 @@ mod tests {
         });
         let first_response = render_map_after_spacer(&ctx, render_dna.clone(), 20.0);
         assert!(!first_response.rect.contains(press_pos));
-        let _ = ctx.end_pass();
+        crate::egui_compat::discard_test_pass_output(&ctx);
 
         let move_pos = egui::pos2(10.0, 70.0);
         ctx.begin_pass(egui::RawInput {
@@ -1795,6 +1924,7 @@ mod tests {
         assert!(shifted_response.rect.contains(move_pos));
         assert!(!shifted_response.drag_started());
         assert_ne!(ctx.dragged_id(), Some(shifted_response.id));
+        crate::egui_compat::discard_test_pass_output(&ctx);
     }
 
     #[test]
@@ -1819,7 +1949,7 @@ mod tests {
                 assert!(response.rect.height() <= 1.0);
             },
         );
-        let _ = ctx.end_pass();
+        crate::egui_compat::discard_test_pass_output(&ctx);
     }
 
     #[test]
@@ -2102,6 +2232,10 @@ mod tests {
         );
         assert!(!details.iter().any(|line| line.starts_with("repName:")));
         assert!(!details.iter().any(|line| line.starts_with("rmsk_name:")));
+        let tooltip = RenderDna::feature_tooltip_detail_lines(&feature);
+        assert!(tooltip.contains(&"repeat_name: AluY".to_string()));
+        assert!(tooltip.contains(&"score: 1234".to_string()));
+        assert!(tooltip.contains(&"divergence_percent: 1.8".to_string()));
     }
 
     #[test]
@@ -2150,7 +2284,7 @@ mod tests {
         assert!(RenderDna::is_array_track_feature(&feature));
         assert_eq!(
             RenderDna::array_group_label(&feature).as_deref(),
-            Some("Array: Clariom D human (AdTAp73alpha-AdGFP)")
+            Some("Array: E-MTAB-14704 / Clariom D human (AdTAp73alpha-AdGFP)")
         );
         let details = RenderDna::feature_detail_lines(&feature);
         assert!(details.contains(&"array_dataset: E-MTAB-14704".to_string()));
@@ -2172,8 +2306,33 @@ mod tests {
         assert!(details.contains(&"transcript_cluster: TC0001".to_string()));
         assert!(details.contains(&"exon_id: EX0001".to_string()));
         assert!(details.iter().any(|line| {
+            line.starts_with("array_value_interpretation:")
+                && line.contains("logFC is the selected contrast effect size")
+        }));
+        assert!(
+            details
+                .iter()
+                .any(|line| line.starts_with("array_projection_note:"))
+        );
+        assert!(
+            details
+                .iter()
+                .any(|line| line.starts_with("array_level_note:"))
+        );
+        assert!(details.iter().any(|line| {
             line.starts_with("all_contrast_values:")
                 && line.contains("AdTAp73beta-AdGFP logFC=-0.750000")
+        }));
+        let tooltip = RenderDna::feature_tooltip_detail_lines(&feature);
+        assert!(tooltip.contains(&"contrast: AdTAp73alpha-AdGFP".to_string()));
+        assert!(tooltip.contains(&"logFC: 1.500000".to_string()));
+        assert!(tooltip.contains(&"adj.P.Val: 0.020000".to_string()));
+        assert!(tooltip.contains(&"feature_id: PSR0001".to_string()));
+        assert!(tooltip.contains(&"transcript_cluster: TC0001".to_string()));
+        assert!(tooltip.contains(&"exon_id: EX0001".to_string()));
+        assert!(tooltip.iter().any(|line| {
+            line.starts_with("array_value_interpretation:")
+                && line.contains("adj.P.Val is the multiple-testing adjusted p-value")
         }));
     }
 
@@ -2220,5 +2379,10 @@ mod tests {
                 .iter()
                 .any(|line| line.contains("TP73 CUT&RUN proof BED"))
         );
+        let tooltip = RenderDna::feature_tooltip_detail_lines(&feature);
+        assert!(tooltip.contains(&"track_source: BED".to_string()));
+        assert!(tooltip.contains(&"track_name: TP73 CUT&RUN proof BED".to_string()));
+        assert!(tooltip.contains(&"score: 650.000000".to_string()));
+        assert!(tooltip.contains(&"bed_strand: +".to_string()));
     }
 }

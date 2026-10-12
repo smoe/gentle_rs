@@ -11,9 +11,11 @@
     "audiences": [
       "gui_first",
       "sequence_analysis",
+      "agent_users",
+      "clawbio",
       "contributors"
     ],
-    "notes": "GUI-first walkthrough for raw trace import, baseline-aware confirmation, chromatogram inspection, and lineage reopen.",
+    "notes": "Offline Sanger sequencing confirmation GUI tutorial: Patterns -> Sequencing Confirmation..., Raw Trace Import, ABI/AB1 evidence, baseline/reference intended-edit checkpoints, chromatogram curves, lineage reopen, Save Project and JSON/TSV export. Prerequisites: already-built GUI, bundled 3100.ab1 and construct/baseline FASTA pair. The matching base-24 call has confidence 9: expect low_confidence_or_ambiguous and overall insufficient_evidence, not an intended-edit confirmation. SCF import exists but public SCF fixture coverage is absent; no invented qualities, peak re-calling, automatic quality trimming or independent biological validation. No uncovered-gap or primer-overlay exercise. Open with ui open tutorial-guide sequencing_confirmation_gui. codex source review 2026-09-11 against code 32875224 and this revised source: scoped workflow clarity, UI labels, links and nonclaims reviewed for wet-lab biologists and inner agents; not live GUI acceptance, binary execution sign-off or human scientific approval. Structured review records remain in the separate review manifest.",
     "group": "10",
     "group_position": 2
   }

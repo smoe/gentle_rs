@@ -4,6 +4,7 @@ use gentle::{
     about,
     cli_support::parse_state_path_cli_args,
     mcp_server::{DEFAULT_MCP_STATE_PATH, run_stdio_server},
+    runtime_status,
 };
 use std::env;
 
@@ -44,6 +45,9 @@ fn run() -> Result<(), String> {
 }
 
 fn main() {
+    if let Err(error) = runtime_status::install_sigusr1_stderr_dump_thread() {
+        eprintln!("Warning: could not install SIGUSR1 runtime-status diagnostics: {error}");
+    }
     if let Err(err) = run() {
         eprintln!("{err}");
         std::process::exit(1);

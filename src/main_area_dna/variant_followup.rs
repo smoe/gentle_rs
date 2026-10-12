@@ -1,11 +1,15 @@
-//! Variant-linked promoter follow-up expert for `MainAreaDna`.
+//! Variant-linked regulatory-reporter follow-up expert for `MainAreaDna`.
 //!
-//! This keeps the GUI orchestration for promoter-SNP-to-luciferase follow-up
+//! This keeps the GUI orchestration for promoter and variant follow-up
 //! close to the sequence window while still routing all biology/business logic
 //! through shared engine operations.
 
 use super::*;
-use crate::engine::{TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource};
+use crate::engine::{
+    PromoterReporterPanelExtendedBoundaryKind, PromoterReporterPanelMutationPolicy,
+    RegulatoryFragmentEvidenceObservation, TfbsScoreTrackCorrelationMetric,
+    TfbsScoreTrackCorrelationSignalSource,
+};
 
 #[derive(Clone, Debug)]
 pub(super) struct VariantFollowupBundleArtifacts {
@@ -227,6 +231,13 @@ impl MainAreaDna {
         variant_label: &str,
         gene_label: &str,
     ) -> String {
+        if !variant_label.trim().is_empty() && !gene_label.trim().is_empty() {
+            return format!(
+                "{}_{}",
+                Self::sanitize_export_name_component(gene_label, "gene"),
+                Self::variant_followup_suggested_token(variant_label)
+            );
+        }
         if !variant_label.trim().is_empty() {
             return Self::variant_followup_suggested_token(variant_label);
         }
@@ -260,6 +271,19 @@ impl MainAreaDna {
         } else {
             String::new()
         };
+        let alternate_allele = feature
+            .qualifier_values("vcf_alt")
+            .next()
+            .map(str::trim)
+            .filter(|value| {
+                value
+                    .split([',', '/', '|'])
+                    .filter(|candidate| !candidate.trim().is_empty())
+                    .count()
+                    == 1
+            })
+            .unwrap_or_default()
+            .to_string();
         let token = Self::feature_seed_token(&feature, &variant_label, &gene_label);
         let seq_len = self
             .variant_followup_sequence_len(&source_seq_id)
@@ -295,10 +319,39 @@ impl MainAreaDna {
             fragment_output_id: format!("{token}_promoter_fragment"),
             reference_output_id: format!("{token}_promoter_reference"),
             alternate_output_id: format!("{token}_promoter_alternate"),
+            alternate_allele,
             reporter_backbone_seq_id: "gentle_mammalian_luciferase_backbone_v1".to_string(),
             reporter_backbone_path:
                 "data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb".to_string(),
             reporter_output_prefix: format!("{token}_reporter"),
+            promoter_reporter_architecture_request_json: String::new(),
+            promoter_reporter_architecture_json_path: format!(
+                "analysis/promoter_reporter/{token}_architectures.json"
+            ),
+            promoter_reporter_architecture_svg_path: format!(
+                "analysis/promoter_reporter/{token}_architectures.svg"
+            ),
+            promoter_reporter_panel_request_json: String::new(),
+            promoter_reporter_panel_approval_digest: String::new(),
+            regulatory_fragment_plan_id: format!("{token}_regulatory_fragment_panel"),
+            regulatory_fragment_candidate_roi: String::new(),
+            regulatory_fragment_partner_roi: String::new(),
+            regulatory_fragment_minimal_promoter_roi: String::new(),
+            regulatory_fragment_reference_control_roi: String::new(),
+            regulatory_fragment_reference_release: String::new(),
+            regulatory_fragment_vector_seq_id: String::new(),
+            regulatory_fragment_vector_catalog_id: String::new(),
+            regulatory_fragment_helper_catalog_path: String::new(),
+            regulatory_fragment_max_panel_members: "12".to_string(),
+            regulatory_fragment_max_construct_length_bp: "5000".to_string(),
+            regulatory_fragment_partner_dependence: false,
+            regulatory_fragment_order_dependence: false,
+            regulatory_fragment_orientation_dependence: false,
+            regulatory_fragment_spacing_dependence: false,
+            regulatory_fragment_controlled_spacer: "GG".to_string(),
+            regulatory_fragment_approval_digest: String::new(),
+            regulatory_fragment_product_prefix: format!("{token}_regulatory_design"),
+            regulatory_fragment_product_approval_digest: String::new(),
             cached_score_tracks: None,
             cached_tfbs_track_similarity: None,
             cached_report: None,
@@ -317,10 +370,18 @@ impl MainAreaDna {
             ortholog_cache_dir: String::new(),
             ortholog_cutrun_dataset_ids: String::new(),
             ortholog_cutrun_read_report_ids: String::new(),
+            ortholog_cutrun_normalization_json: String::new(),
+            ortholog_ambiguity_policy: OrthologAmbiguityPolicy::Reject,
             ortholog_relationship: GeneSetCohortRelationship::Unspecified,
             cached_ortholog_promoter_cohort: None,
             cached_ortholog_promoter_comparison: None,
             cached_candidates: None,
+            cached_promoter_reporter_architecture_comparison: None,
+            cached_promoter_reporter_panel_proposal: None,
+            cached_promoter_reporter_panel_receipt: None,
+            cached_regulatory_fragment_panel_plan: None,
+            cached_regulatory_fragment_products: None,
+            cached_regulatory_fragment_receipt: None,
         };
         Ok(())
     }
@@ -1168,144 +1229,265 @@ impl MainAreaDna {
         }
     }
 
-    pub(super) fn summarize_variant_followup_ortholog_promoter_cohort(&mut self) {
+    pub(super) fn variant_followup_ortholog_promoter_cohort_operation(
+        &self,
+        path: Option<String>,
+    ) -> Result<Operation, String> {
         let anchor_species = self.variant_followup_ui.ortholog_anchor_species.trim();
         if anchor_species.is_empty() {
-            self.op_status = "Ortholog cohort requires an anchor species".to_string();
-            return;
+            return Err("Ortholog cohort requires an anchor species".to_string());
         }
         let anchor_genome_id = self.variant_followup_ui.ortholog_anchor_genome_id.trim();
         if anchor_genome_id.is_empty() {
-            self.op_status = "Ortholog cohort requires an anchor genome id".to_string();
-            return;
+            return Err("Ortholog cohort requires an anchor genome id".to_string());
         }
         let anchor_gene_query =
             Self::variant_followup_optional_text(&self.variant_followup_ui.gene_label)
                 .unwrap_or_else(|| self.variant_followup_ui.variant_label_or_id.clone());
         if anchor_gene_query.trim().is_empty() {
-            self.op_status = "Ortholog cohort requires a gene label/query".to_string();
-            return;
+            return Err("Ortholog cohort requires a gene label/query".to_string());
         }
-        let target_species = match Self::parse_variant_followup_ortholog_list(
+        let target_species = Self::parse_variant_followup_ortholog_list(
             &self.variant_followup_ui.ortholog_target_species,
             "Ortholog target species",
-        ) {
-            Ok(values) => values,
-            Err(err) => {
-                self.op_status = err;
-                return;
-            }
-        };
-        let target_genome_ids = match Self::parse_variant_followup_ortholog_bindings(
+        )?;
+        if target_species.is_empty() {
+            return Err("Ortholog cohort requires at least one target species".to_string());
+        }
+        let target_genome_ids = Self::parse_variant_followup_ortholog_bindings(
             &self.variant_followup_ui.ortholog_target_genome_ids,
-        ) {
-            Ok(values) => values,
-            Err(err) => {
-                self.op_status = err;
-                return;
-            }
-        };
+        )?;
         let ortholog_resource_path = self.variant_followup_ui.ortholog_resource_path.trim();
         if ortholog_resource_path.is_empty() {
-            self.op_status = "Ortholog cohort requires a local ortholog resource path".to_string();
-            return;
+            return Err("Ortholog cohort requires a local ortholog resource path".to_string());
         }
-        let upstream_bp = match Self::parse_positive_usize_text(
+        let upstream_bp = Self::parse_positive_usize_text(
             &self.variant_followup_ui.promoter_upstream_bp,
             "ortholog promoter upstream bp",
-        ) {
-            Ok(value) => value,
-            Err(err) => {
-                self.op_status = err;
-                return;
-            }
-        };
-        let downstream_bp = match Self::parse_positive_usize_text(
+        )?;
+        let downstream_bp = Self::parse_positive_usize_text(
             &self.variant_followup_ui.promoter_downstream_bp,
             "ortholog promoter downstream bp",
-        ) {
-            Ok(value) => value,
-            Err(err) => {
-                self.op_status = err;
-                return;
-            }
-        };
+        )?;
         let mut transcript_ids = BTreeMap::new();
         if let Some(transcript_id) =
             Self::variant_followup_optional_text(&self.variant_followup_ui.transcript_id)
         {
             transcript_ids.insert(anchor_species.to_string(), transcript_id);
         }
-        let result = self.apply_operation_with_feedback_and_result(
-            Operation::ResolveOrthologPromoterCohort {
-                anchor_species: anchor_species.to_string(),
-                anchor_genome_id: anchor_genome_id.to_string(),
-                anchor_gene_query: anchor_gene_query.trim().to_string(),
-                target_species,
-                target_genome_ids,
-                transcript_ids,
-                ortholog_resource_path: ortholog_resource_path.to_string(),
-                upstream_bp,
-                downstream_bp,
-                ambiguity_policy: OrthologAmbiguityPolicy::Reject,
-                relationship: self.variant_followup_ui.ortholog_relationship,
-                genome_catalog_path: Self::variant_followup_optional_trimmed(
-                    &self.variant_followup_ui.ortholog_genome_catalog_path,
-                ),
-                cache_dir: Self::variant_followup_optional_trimmed(
-                    &self.variant_followup_ui.ortholog_cache_dir,
-                ),
-                path: None,
-            },
-        );
+        Ok(Operation::ResolveOrthologPromoterCohort {
+            anchor_species: anchor_species.to_string(),
+            anchor_genome_id: anchor_genome_id.to_string(),
+            anchor_gene_query: anchor_gene_query.trim().to_string(),
+            target_species,
+            target_genome_ids,
+            transcript_ids,
+            ortholog_resource_path: ortholog_resource_path.to_string(),
+            upstream_bp,
+            downstream_bp,
+            ambiguity_policy: self.variant_followup_ui.ortholog_ambiguity_policy,
+            relationship: self.variant_followup_ui.ortholog_relationship,
+            genome_catalog_path: Self::variant_followup_optional_trimmed(
+                &self.variant_followup_ui.ortholog_genome_catalog_path,
+            ),
+            cache_dir: Self::variant_followup_optional_trimmed(
+                &self.variant_followup_ui.ortholog_cache_dir,
+            ),
+            path,
+        })
+    }
+
+    pub(super) fn summarize_variant_followup_ortholog_promoter_cohort(&mut self) {
+        let operation = match self.variant_followup_ortholog_promoter_cohort_operation(None) {
+            Ok(operation) => operation,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let result = self.apply_operation_with_feedback_and_result(operation);
         if let Some(report) = result.and_then(|row| row.ortholog_promoter_cohort) {
             self.variant_followup_ui.cached_ortholog_promoter_comparison = None;
             self.variant_followup_ui.cached_ortholog_promoter_cohort = Some(report);
         }
     }
 
-    pub(super) fn summarize_variant_followup_ortholog_promoter_comparison(&mut self) {
+    fn parse_variant_followup_ortholog_cutrun_normalization(
+        raw: &str,
+    ) -> Result<Option<OrthologCutRunNormalizationInput>, String> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Ok(None);
+        }
+        let path_token = trimmed.strip_prefix('@').unwrap_or(trimmed);
+        let json = if Path::new(path_token).is_file() {
+            fs::read_to_string(path_token).map_err(|err| {
+                format!(
+                    "Could not read ortholog CUT&RUN normalization JSON '{}': {}",
+                    path_token, err
+                )
+            })?
+        } else {
+            trimmed.to_string()
+        };
+        serde_json::from_str::<OrthologCutRunNormalizationInput>(&json)
+            .map(Some)
+            .map_err(|err| format!("Invalid ortholog CUT&RUN normalization JSON: {err}"))
+    }
+
+    pub(super) fn variant_followup_ortholog_promoter_comparison_operation(
+        &self,
+        path: Option<String>,
+    ) -> Result<Operation, String> {
         let Some(cohort) = self
             .variant_followup_ui
             .cached_ortholog_promoter_cohort
             .clone()
         else {
-            self.op_status =
-                "Resolve or load an ortholog promoter cohort before comparison".to_string();
-            return;
+            return Err(
+                "Resolve or load an ortholog promoter cohort before comparison".to_string(),
+            );
         };
         let motifs =
             Self::promoter_design_parse_motif_tokens(&self.variant_followup_ui.score_track_motifs);
         if motifs.is_empty() {
-            self.op_status =
-                "Ortholog promoter comparison requires at least one TF motif token".to_string();
-            return;
+            return Err(
+                "Ortholog promoter comparison requires at least one TF motif token".to_string(),
+            );
         }
-        let cutrun_dataset_ids = Self::parse_variant_followup_ortholog_list(
-            &self.variant_followup_ui.ortholog_cutrun_dataset_ids,
-            "CUT&RUN dataset ids",
-        )
-        .unwrap_or_default();
-        let cutrun_read_report_ids = Self::parse_variant_followup_ortholog_list(
-            &self.variant_followup_ui.ortholog_cutrun_read_report_ids,
-            "CUT&RUN read report ids",
-        )
-        .unwrap_or_default();
-        let result = self.apply_operation_with_feedback_and_result(
-            Operation::SummarizeOrthologPromoterComparison {
-                cohort: Some(Box::new(cohort)),
-                cohort_path: None,
-                motifs,
-                score_kind: self.variant_followup_ui.score_track_value_kind,
-                clip_negative: self.variant_followup_ui.score_track_clip_negative,
-                relationship: self.variant_followup_ui.ortholog_relationship,
-                expression_rows: vec![],
-                expression_source_label: None,
-                cutrun_dataset_ids,
-                cutrun_read_report_ids,
-                path: None,
-            },
+        let cutrun_dataset_ids = if self
+            .variant_followup_ui
+            .ortholog_cutrun_dataset_ids
+            .trim()
+            .is_empty()
+        {
+            vec![]
+        } else {
+            Self::parse_variant_followup_ortholog_list(
+                &self.variant_followup_ui.ortholog_cutrun_dataset_ids,
+                "CUT&RUN dataset ids",
+            )?
+        };
+        let cutrun_read_report_ids = if self
+            .variant_followup_ui
+            .ortholog_cutrun_read_report_ids
+            .trim()
+            .is_empty()
+        {
+            vec![]
+        } else {
+            Self::parse_variant_followup_ortholog_list(
+                &self.variant_followup_ui.ortholog_cutrun_read_report_ids,
+                "CUT&RUN read report ids",
+            )?
+        };
+        let cutrun_normalization = Self::parse_variant_followup_ortholog_cutrun_normalization(
+            &self.variant_followup_ui.ortholog_cutrun_normalization_json,
+        )?;
+        Ok(Operation::SummarizeOrthologPromoterComparison {
+            cohort: Some(Box::new(cohort)),
+            cohort_path: None,
+            motifs,
+            score_kind: self.variant_followup_ui.score_track_value_kind,
+            clip_negative: self.variant_followup_ui.score_track_clip_negative,
+            relationship: self.variant_followup_ui.ortholog_relationship,
+            expression_rows: vec![],
+            expression_source_label: None,
+            cutrun_dataset_ids,
+            cutrun_read_report_ids,
+            cutrun_normalization,
+            path,
+        })
+    }
+
+    pub(super) fn summarize_variant_followup_ortholog_promoter_comparison(&mut self) {
+        let operation = match self.variant_followup_ortholog_promoter_comparison_operation(None) {
+            Ok(operation) => operation,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let result = self.apply_operation_with_feedback_and_result(operation);
+        if let Some(report) = result.and_then(|row| row.ortholog_promoter_comparison) {
+            self.variant_followup_ui.cached_ortholog_promoter_cohort = Some(report.cohort.clone());
+            self.variant_followup_ui.cached_ortholog_promoter_comparison = Some(report);
+        }
+    }
+
+    fn export_variant_followup_ortholog_promoter_cohort_json(&mut self) {
+        let Some(report) = self
+            .variant_followup_ui
+            .cached_ortholog_promoter_cohort
+            .as_ref()
+        else {
+            self.op_status = "No cached ortholog promoter cohort available for export".to_string();
+            return;
+        };
+        let default_name = format!(
+            "{}_ortholog_promoter_cohort.json",
+            Self::sanitize_export_name_component(
+                &report.request.anchor_gene_query,
+                "ortholog_promoters",
+            )
         );
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .save_file()
+        else {
+            self.op_status = "Ortholog promoter cohort export canceled".to_string();
+            return;
+        };
+        let operation = match self
+            .variant_followup_ortholog_promoter_cohort_operation(Some(path.display().to_string()))
+        {
+            Ok(operation) => operation,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let result = self.apply_operation_with_feedback_and_result(operation);
+        if let Some(report) = result.and_then(|row| row.ortholog_promoter_cohort) {
+            self.variant_followup_ui.cached_ortholog_promoter_comparison = None;
+            self.variant_followup_ui.cached_ortholog_promoter_cohort = Some(report);
+        }
+    }
+
+    fn export_variant_followup_ortholog_promoter_comparison_json(&mut self) {
+        let Some(report) = self
+            .variant_followup_ui
+            .cached_ortholog_promoter_comparison
+            .as_ref()
+        else {
+            self.op_status =
+                "No cached ortholog promoter comparison available for export".to_string();
+            return;
+        };
+        let default_name = format!(
+            "{}_ortholog_promoter_comparison.json",
+            Self::sanitize_export_name_component(
+                &report.cohort.request.anchor_gene_query,
+                "ortholog_promoters",
+            )
+        );
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .save_file()
+        else {
+            self.op_status = "Ortholog promoter comparison export canceled".to_string();
+            return;
+        };
+        let operation = match self.variant_followup_ortholog_promoter_comparison_operation(Some(
+            path.display().to_string(),
+        )) {
+            Ok(operation) => operation,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let result = self.apply_operation_with_feedback_and_result(operation);
         if let Some(report) = result.and_then(|row| row.ortholog_promoter_comparison) {
             self.variant_followup_ui.cached_ortholog_promoter_cohort = Some(report.cohort.clone());
             self.variant_followup_ui.cached_ortholog_promoter_comparison = Some(report);
@@ -1811,6 +1993,7 @@ impl MainAreaDna {
                 retain_downstream_from_tss_bp,
                 retain_upstream_beyond_variant_bp,
                 max_candidates,
+                fragment_policy: Default::default(),
                 path,
             },
         );
@@ -1825,6 +2008,742 @@ impl MainAreaDna {
 
     fn suggest_variant_followup_reporter_fragments(&mut self) {
         let _ = self.run_variant_followup_reporter_fragment_suggestion(None);
+    }
+
+    pub(super) fn prepare_variant_followup_promoter_architecture_request(&mut self) {
+        let seq_id = match self.variant_followup_input_seq_id() {
+            Ok(value) => value,
+            Err(error) => {
+                self.op_status = error;
+                return;
+            }
+        };
+        let promoter_upstream_bp = match Self::parse_positive_usize_text(
+            &self.variant_followup_ui.promoter_upstream_bp,
+            "promoter upstream bp",
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                self.op_status = error;
+                return;
+            }
+        };
+        let tss_proximal_downstream_bp = match Self::parse_positive_usize_text(
+            &self.variant_followup_ui.promoter_downstream_bp,
+            "promoter downstream bp",
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                self.op_status = error;
+                return;
+            }
+        };
+        let transcript_ids =
+            Self::variant_followup_optional_text(&self.variant_followup_ui.transcript_id)
+                .into_iter()
+                .collect();
+        let locus_evidence_request = match self.splicing_locus_evidence_request() {
+            Ok(request) => Some(request),
+            Err(_) if self.splicing_isoform_evidence_panel_id.trim().is_empty() => None,
+            Err(error) => {
+                self.op_status = format!(
+                    "Could not attach the configured Locus figure to the reporter comparison: {error}"
+                );
+                return;
+            }
+        };
+        let includes_locus_evidence = locus_evidence_request.is_some();
+        let request = PromoterReporterArchitectureComparisonRequest {
+            seq_id,
+            gene_label: Self::variant_followup_optional_text(&self.variant_followup_ui.gene_label),
+            transcript_ids,
+            promoter_upstream_bp,
+            tss_proximal_downstream_bp,
+            motif_tokens: Self::promoter_design_parse_motif_tokens(
+                &self.variant_followup_ui.score_track_motifs,
+            ),
+            locus_evidence_request,
+            ..PromoterReporterArchitectureComparisonRequest::default()
+        };
+        match serde_json::to_string_pretty(&request) {
+            Ok(json) => {
+                self.variant_followup_ui
+                    .promoter_reporter_architecture_request_json = json;
+                self.variant_followup_ui
+                    .cached_promoter_reporter_architecture_comparison = None;
+                self.op_status = if includes_locus_evidence {
+                    "Prepared a reporter architecture request with the configured Locus figure evidence"
+                        .to_string()
+                } else {
+                    "Prepared a reporter architecture request without quantitative locus evidence; configure an isoform panel in Splicing Expert > Locus figure to integrate it"
+                        .to_string()
+                };
+            }
+            Err(error) => {
+                self.op_status =
+                    format!("Could not serialize promoter-reporter architecture request: {error}");
+            }
+        }
+    }
+
+    pub(super) fn variant_followup_promoter_architecture_operation(
+        &self,
+    ) -> Result<Operation, String> {
+        let raw = self
+            .variant_followup_ui
+            .promoter_reporter_architecture_request_json
+            .trim();
+        if raw.is_empty() {
+            return Err(
+                "Prepare or paste a promoter-reporter architecture request first".to_string(),
+            );
+        }
+        let request = serde_json::from_str::<PromoterReporterArchitectureComparisonRequest>(raw)
+            .map_err(|error| {
+                format!("Could not parse promoter-reporter architecture request JSON: {error}")
+            })?;
+        Ok(Operation::ComparePromoterReporterArchitectures {
+            request: Box::new(request),
+            path: Self::variant_followup_optional_text(
+                &self
+                    .variant_followup_ui
+                    .promoter_reporter_architecture_json_path,
+            ),
+            svg_path: Self::variant_followup_optional_text(
+                &self
+                    .variant_followup_ui
+                    .promoter_reporter_architecture_svg_path,
+            ),
+        })
+    }
+
+    pub(super) fn run_variant_followup_promoter_architecture_comparison(&mut self) {
+        let operation = match self.variant_followup_promoter_architecture_operation() {
+            Ok(operation) => operation,
+            Err(error) => {
+                self.op_status = error;
+                return;
+            }
+        };
+        let result = self.apply_operation_with_feedback_and_result(operation);
+        if let Some(report) = result.and_then(|row| row.promoter_reporter_architecture_comparison) {
+            self.variant_followup_ui
+                .cached_promoter_reporter_architecture_comparison = Some(*report);
+        }
+    }
+
+    pub(super) fn variant_followup_promoter_reporter_panel_plan_operation(
+        &self,
+        path: Option<String>,
+    ) -> Result<Operation, String> {
+        let raw = self
+            .variant_followup_ui
+            .promoter_reporter_panel_request_json
+            .trim();
+        if raw.is_empty() {
+            return Err(
+                "Promoter reporter panel planning requires a request JSON payload".to_string(),
+            );
+        }
+        let request = serde_json::from_str::<PromoterReporterPanelRequest>(raw)
+            .map_err(|error| format!("Could not parse promoter panel request JSON: {error}"))?;
+        Ok(Operation::PlanPromoterReporterPanel {
+            request: Box::new(request),
+            path,
+        })
+    }
+
+    pub(super) fn plan_variant_followup_promoter_reporter_panel(&mut self) {
+        let operation = match self.variant_followup_promoter_reporter_panel_plan_operation(None) {
+            Ok(operation) => operation,
+            Err(error) => {
+                self.op_status = error;
+                return;
+            }
+        };
+        let result = self.apply_operation_with_feedback_and_result(operation);
+        if let Some(proposal) = result.and_then(|row| row.promoter_reporter_panel_proposal) {
+            self.variant_followup_ui
+                .cached_promoter_reporter_panel_receipt = None;
+            self.variant_followup_ui
+                .promoter_reporter_panel_approval_digest
+                .clear();
+            self.variant_followup_ui
+                .cached_promoter_reporter_panel_proposal = Some(*proposal);
+        }
+    }
+
+    pub(super) fn materialize_variant_followup_promoter_reporter_panel(&mut self) {
+        let Some(proposal) = self
+            .variant_followup_ui
+            .cached_promoter_reporter_panel_proposal
+            .clone()
+        else {
+            self.op_status = "No promoter reporter panel proposal is cached".to_string();
+            return;
+        };
+        let approval_digest = self
+            .variant_followup_ui
+            .promoter_reporter_panel_approval_digest
+            .trim()
+            .to_string();
+        if approval_digest != proposal.proposal_digest {
+            self.op_status =
+                "Typed approval digest does not exactly match the cached proposal".to_string();
+            return;
+        }
+        let result = self.apply_operation_with_feedback_and_result(
+            Operation::MaterializePromoterReporterPanel {
+                proposal: Box::new(proposal),
+                approval_digest,
+            },
+        );
+        if let Some(receipt) = result.and_then(|row| row.promoter_reporter_panel_receipt) {
+            self.variant_followup_ui
+                .cached_promoter_reporter_panel_receipt = Some(*receipt);
+        }
+    }
+
+    fn regulatory_fragment_roi_key(set_id: &str, region_id: &str) -> String {
+        format!("{set_id}::{region_id}")
+    }
+
+    fn variant_followup_regulatory_fragment_roi_options(
+        &self,
+    ) -> Result<Vec<(String, String)>, String> {
+        let engine = self
+            .engine
+            .as_ref()
+            .ok_or_else(|| "No engine attached".to_string())?;
+        let guard = engine
+            .try_read()
+            .map_err(|_| "Engine is busy; try planning again".to_string())?;
+        let store = guard
+            .genomic_region_store_snapshot()
+            .map_err(|error| error.message)?;
+        let mut rows = store
+            .sets
+            .iter()
+            .flat_map(|set| {
+                set.regions.iter().map(|region| {
+                    let projection = region
+                        .local_projection
+                        .as_ref()
+                        .map(|row| format!("{:?}", row.status))
+                        .unwrap_or_else(|| "unprojected".to_string());
+                    let label = region
+                        .label
+                        .as_deref()
+                        .filter(|value| !value.trim().is_empty())
+                        .unwrap_or(&region.region_id);
+                    (
+                        Self::regulatory_fragment_roi_key(&set.set_id, &region.region_id),
+                        format!(
+                            "{label} | {}:{}-{} ({}) | {projection}",
+                            region.interval.reference.contig_name,
+                            region.interval.start_0based,
+                            region.interval.end_0based_exclusive,
+                            region.interval.strand.human_value(),
+                        ),
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+        rows.sort_by(|left, right| left.0.cmp(&right.0));
+        Ok(rows)
+    }
+
+    fn regulatory_fragment_binding_from_selection(
+        store: &gentle_protocol::GenomicRegionStore,
+        selection: &str,
+        fragment_id: &str,
+        declared_order: usize,
+        role: RegulatoryFragmentRole,
+        reference_release: &str,
+    ) -> Result<RegulatoryFragmentBinding, String> {
+        let selection = selection.trim();
+        if selection.is_empty() {
+            return Err(format!("Select the {role:?} genomic region first"));
+        }
+        let (set_id, region_id) = selection.split_once("::").ok_or_else(|| {
+            format!("Saved-region selection '{selection}' is no longer valid; select it again")
+        })?;
+        let set = store
+            .sets
+            .iter()
+            .find(|set| set.set_id == set_id)
+            .ok_or_else(|| format!("Saved genomic-region set '{set_id}' is no longer available"))?;
+        let region = set
+            .regions
+            .iter()
+            .find(|region| region.region_id == region_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!("Saved genomic region '{set_id}::{region_id}' is no longer available")
+            })?;
+        Ok(RegulatoryFragmentBinding {
+            fragment_id: fragment_id.to_string(),
+            declared_order,
+            role,
+            region_set_id: set.set_id.clone(),
+            region_set_content_sha256: set.content_sha256.clone(),
+            reference_release: reference_release.to_string(),
+            region,
+        })
+    }
+
+    fn regulatory_fragment_geometry_instances(
+        fragment_ids: &[&str],
+        reverse_fragment: Option<&str>,
+        spacer_before_fragment: Option<(&str, &str)>,
+    ) -> Vec<RegulatoryFragmentInstanceRequest> {
+        fragment_ids
+            .iter()
+            .map(|fragment_id| RegulatoryFragmentInstanceRequest {
+                fragment_id: (*fragment_id).to_string(),
+                orientation: if reverse_fragment == Some(*fragment_id) {
+                    RegulatoryFragmentOrientation::ReverseComplement
+                } else {
+                    RegulatoryFragmentOrientation::Forward
+                },
+                spacer_before: spacer_before_fragment
+                    .filter(|(target, _)| target == fragment_id)
+                    .map(|(_, spacer)| spacer.to_string())
+                    .unwrap_or_default(),
+            })
+            .collect()
+    }
+
+    pub(super) fn variant_followup_regulatory_fragment_panel_request(
+        &self,
+    ) -> Result<RegulatoryFragmentPanelRequest, String> {
+        let release = self
+            .variant_followup_ui
+            .regulatory_fragment_reference_release
+            .trim();
+        if release.is_empty() {
+            return Err(
+                "Reference/annotation release is required for every selected ROI".to_string(),
+            );
+        }
+        let engine = self
+            .engine
+            .as_ref()
+            .ok_or_else(|| "No engine attached".to_string())?;
+        let guard = engine
+            .try_read()
+            .map_err(|_| "Engine is busy; try planning again".to_string())?;
+        let store = guard
+            .genomic_region_store_snapshot()
+            .map_err(|error| error.message)?;
+
+        let mut fragments = vec![Self::regulatory_fragment_binding_from_selection(
+            &store,
+            &self.variant_followup_ui.regulatory_fragment_candidate_roi,
+            "candidate_a",
+            0,
+            RegulatoryFragmentRole::Candidate,
+            release,
+        )?];
+        let partner_selected = !self
+            .variant_followup_ui
+            .regulatory_fragment_partner_roi
+            .trim()
+            .is_empty();
+        if partner_selected {
+            fragments.push(Self::regulatory_fragment_binding_from_selection(
+                &store,
+                &self.variant_followup_ui.regulatory_fragment_partner_roi,
+                "partner_b",
+                1,
+                RegulatoryFragmentRole::Partner,
+                release,
+            )?);
+        }
+        fragments.push(Self::regulatory_fragment_binding_from_selection(
+            &store,
+            &self
+                .variant_followup_ui
+                .regulatory_fragment_minimal_promoter_roi,
+            "minimal_promoter",
+            2,
+            RegulatoryFragmentRole::MinimalPromoter,
+            release,
+        )?);
+        if !self
+            .variant_followup_ui
+            .regulatory_fragment_reference_control_roi
+            .trim()
+            .is_empty()
+        {
+            fragments.push(Self::regulatory_fragment_binding_from_selection(
+                &store,
+                &self
+                    .variant_followup_ui
+                    .regulatory_fragment_reference_control_roi,
+                "reference_control",
+                3,
+                RegulatoryFragmentRole::ReferenceControl,
+                release,
+            )?);
+        }
+        drop(guard);
+
+        let partner_question_requested = self
+            .variant_followup_ui
+            .regulatory_fragment_partner_dependence
+            || self
+                .variant_followup_ui
+                .regulatory_fragment_order_dependence
+            || self
+                .variant_followup_ui
+                .regulatory_fragment_orientation_dependence
+            || self
+                .variant_followup_ui
+                .regulatory_fragment_spacing_dependence;
+        if partner_question_requested && !partner_selected {
+            return Err(
+                "Partner, order, orientation, and spacing comparisons require a selected partner ROI"
+                    .to_string(),
+            );
+        }
+
+        let mut questions = vec![RegulatoryFragmentQuestion::StandaloneCandidate];
+        let mut requested_variants = vec![];
+        let reference_combination =
+            partner_question_requested.then(|| RegulatoryFragmentGeometryRequest {
+                variant_id: "reference_candidate_partner".to_string(),
+                declared_order: 0,
+                kind: RegulatoryFragmentGeometryKind::ReferenceCombination,
+                instances: Self::regulatory_fragment_geometry_instances(
+                    &["candidate_a", "partner_b", "minimal_promoter"],
+                    None,
+                    None,
+                ),
+                ..RegulatoryFragmentGeometryRequest::default()
+            });
+        if self
+            .variant_followup_ui
+            .regulatory_fragment_partner_dependence
+        {
+            questions.push(RegulatoryFragmentQuestion::PartnerDependence);
+        }
+        if self
+            .variant_followup_ui
+            .regulatory_fragment_order_dependence
+        {
+            questions.push(RegulatoryFragmentQuestion::OrderDependence);
+            requested_variants.push(RegulatoryFragmentGeometryRequest {
+                variant_id: "partner_before_candidate".to_string(),
+                declared_order: 1,
+                kind: RegulatoryFragmentGeometryKind::ReversedOrder,
+                instances: Self::regulatory_fragment_geometry_instances(
+                    &["partner_b", "candidate_a", "minimal_promoter"],
+                    None,
+                    None,
+                ),
+                ..RegulatoryFragmentGeometryRequest::default()
+            });
+        }
+        if self
+            .variant_followup_ui
+            .regulatory_fragment_orientation_dependence
+        {
+            questions.push(RegulatoryFragmentQuestion::OrientationDependence);
+            requested_variants.push(RegulatoryFragmentGeometryRequest {
+                variant_id: "partner_reverse_complement".to_string(),
+                declared_order: 2,
+                kind: RegulatoryFragmentGeometryKind::ReversedOrientation,
+                instances: Self::regulatory_fragment_geometry_instances(
+                    &["candidate_a", "partner_b", "minimal_promoter"],
+                    Some("partner_b"),
+                    None,
+                ),
+                ..RegulatoryFragmentGeometryRequest::default()
+            });
+        }
+        if self
+            .variant_followup_ui
+            .regulatory_fragment_spacing_dependence
+        {
+            let spacer = self
+                .variant_followup_ui
+                .regulatory_fragment_controlled_spacer
+                .trim();
+            if spacer.is_empty() {
+                return Err(
+                    "Spacing comparison requires non-empty controlled spacer DNA".to_string(),
+                );
+            }
+            questions.push(RegulatoryFragmentQuestion::SpacingDependence);
+            requested_variants.push(RegulatoryFragmentGeometryRequest {
+                variant_id: "controlled_partner_spacing".to_string(),
+                declared_order: 3,
+                kind: RegulatoryFragmentGeometryKind::ControlledSpacing,
+                instances: Self::regulatory_fragment_geometry_instances(
+                    &["candidate_a", "partner_b", "minimal_promoter"],
+                    None,
+                    Some(("partner_b", spacer)),
+                ),
+                ..RegulatoryFragmentGeometryRequest::default()
+            });
+        }
+
+        Ok(RegulatoryFragmentPanelRequest {
+            plan_id: self
+                .variant_followup_ui
+                .regulatory_fragment_plan_id
+                .trim()
+                .to_string(),
+            vector_seq_id: self
+                .variant_followup_ui
+                .regulatory_fragment_vector_seq_id
+                .trim()
+                .to_string(),
+            vector_catalog_id: self
+                .variant_followup_ui
+                .regulatory_fragment_vector_catalog_id
+                .trim()
+                .to_string(),
+            helper_catalog_path: Self::variant_followup_optional_text(
+                &self
+                    .variant_followup_ui
+                    .regulatory_fragment_helper_catalog_path,
+            ),
+            fragments,
+            questions,
+            reference_combination,
+            requested_variants,
+            mutation_policy: PromoterReporterPanelMutationPolicy::NativeOnlyV1,
+            max_panel_members: Self::parse_positive_usize_text(
+                &self
+                    .variant_followup_ui
+                    .regulatory_fragment_max_panel_members,
+                "maximum panel members",
+            )?,
+            max_construct_length_bp: Self::parse_positive_usize_text(
+                &self
+                    .variant_followup_ui
+                    .regulatory_fragment_max_construct_length_bp,
+                "maximum construct length",
+            )?,
+            ..RegulatoryFragmentPanelRequest::default()
+        })
+    }
+
+    pub(super) fn variant_followup_regulatory_fragment_panel_plan_operation(
+        &self,
+        path: Option<String>,
+    ) -> Result<Operation, String> {
+        Ok(Operation::PlanRegulatoryFragmentPanel {
+            request: Box::new(self.variant_followup_regulatory_fragment_panel_request()?),
+            path,
+        })
+    }
+
+    pub(super) fn plan_variant_followup_regulatory_fragment_panel(&mut self) {
+        self.invalidate_variant_followup_regulatory_fragment_panel();
+        let operation = match self.variant_followup_regulatory_fragment_panel_plan_operation(None) {
+            Ok(operation) => operation,
+            Err(error) => {
+                self.op_status = error;
+                return;
+            }
+        };
+        let result = self.apply_operation_with_feedback_and_result(operation);
+        if let Some(plan) = result.and_then(|row| row.regulatory_fragment_panel_plan) {
+            self.variant_followup_ui
+                .regulatory_fragment_approval_digest
+                .clear();
+            self.variant_followup_ui
+                .cached_regulatory_fragment_panel_plan = Some(*plan);
+        }
+    }
+
+    fn export_variant_followup_regulatory_fragment_panel_json(&mut self) {
+        let default_name = format!(
+            "{}_plan.json",
+            Self::sanitize_export_name_component(
+                &self.variant_followup_ui.regulatory_fragment_plan_id,
+                "regulatory_fragment_panel",
+            )
+        );
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(default_name)
+            .save_file()
+        else {
+            self.op_status = "Regulatory-fragment panel JSON export canceled".to_string();
+            return;
+        };
+        self.invalidate_variant_followup_regulatory_fragment_panel();
+        let operation = match self.variant_followup_regulatory_fragment_panel_plan_operation(Some(
+            path.display().to_string(),
+        )) {
+            Ok(operation) => operation,
+            Err(error) => {
+                self.op_status = error;
+                return;
+            }
+        };
+        let result = self.apply_operation_with_feedback_and_result(operation);
+        if let Some(plan) = result.and_then(|row| row.regulatory_fragment_panel_plan) {
+            self.variant_followup_ui
+                .cached_regulatory_fragment_panel_plan = Some(*plan);
+        }
+    }
+
+    pub(super) fn invalidate_variant_followup_regulatory_products(&mut self) {
+        self.variant_followup_ui.cached_regulatory_fragment_products = None;
+        self.variant_followup_ui.cached_regulatory_fragment_receipt = None;
+        self.variant_followup_ui
+            .regulatory_fragment_product_approval_digest
+            .clear();
+    }
+
+    pub(super) fn invalidate_variant_followup_regulatory_fragment_panel(&mut self) {
+        self.variant_followup_ui
+            .cached_regulatory_fragment_panel_plan = None;
+        self.variant_followup_ui
+            .regulatory_fragment_approval_digest
+            .clear();
+        self.invalidate_variant_followup_regulatory_products();
+    }
+
+    pub(super) fn plan_variant_followup_regulatory_products(&mut self) {
+        self.invalidate_variant_followup_regulatory_products();
+        let Some(plan) = self
+            .variant_followup_ui
+            .cached_regulatory_fragment_panel_plan
+            .clone()
+        else {
+            self.op_status = "Plan an exact regulatory-fragment panel first".to_string();
+            return;
+        };
+        let result = self.apply_operation_with_feedback_and_result(
+            Operation::PlanRegulatoryFragmentMaterialization {
+                plan: Box::new(plan),
+                output_prefix: self
+                    .variant_followup_ui
+                    .regulatory_fragment_product_prefix
+                    .trim()
+                    .to_string(),
+            },
+        );
+        if let Some(proposal) =
+            result.and_then(|row| row.regulatory_fragment_materialization_proposal)
+        {
+            self.variant_followup_ui.cached_regulatory_fragment_products = Some(*proposal);
+        }
+    }
+
+    fn variant_followup_regulatory_product_approval(
+        &self,
+    ) -> Result<&RegulatoryFragmentMaterializationProposal, String> {
+        let proposal = self
+            .variant_followup_ui
+            .cached_regulatory_fragment_products
+            .as_ref()
+            .ok_or("Prepare exact regulatory products first")?;
+        let current_plan = self
+            .variant_followup_ui
+            .cached_regulatory_fragment_panel_plan
+            .as_ref()
+            .ok_or("Plan an exact regulatory-fragment panel first")?;
+        if proposal.plan.proposal_digest != current_plan.proposal_digest
+            || proposal.output_prefix
+                != self
+                    .variant_followup_ui
+                    .regulatory_fragment_product_prefix
+                    .trim()
+        {
+            return Err(
+                "Panel or output prefix changed; prepare and review new products".to_string(),
+            );
+        }
+        if self
+            .variant_followup_ui
+            .cached_regulatory_fragment_receipt
+            .is_some()
+        {
+            return Err(
+                "These products were already created; prepare a new proposal for another batch"
+                    .to_string(),
+            );
+        }
+        let approval_digest = self
+            .variant_followup_ui
+            .regulatory_fragment_product_approval_digest
+            .trim();
+        if approval_digest != proposal.proposal_digest {
+            return Err(
+                "Typed approval digest does not exactly match the product proposal".to_string(),
+            );
+        }
+        Ok(proposal)
+    }
+
+    pub(super) fn variant_followup_regulatory_product_materialization_operation(
+        &self,
+    ) -> Result<Operation, String> {
+        let proposal = self.variant_followup_regulatory_product_approval()?;
+        Ok(Operation::MaterializeRegulatoryFragmentPanel {
+            proposal: Box::new(proposal.clone()),
+            approval_digest: self
+                .variant_followup_ui
+                .regulatory_fragment_product_approval_digest
+                .trim()
+                .to_string(),
+        })
+    }
+
+    pub(super) fn materialize_variant_followup_regulatory_products(&mut self) {
+        let operation = match self.variant_followup_regulatory_product_materialization_operation() {
+            Ok(operation) => operation,
+            Err(error) => {
+                self.op_status = error;
+                return;
+            }
+        };
+        // Approval is single-use in the GUI, including an engine rejection of stale inputs.
+        self.variant_followup_ui
+            .regulatory_fragment_product_approval_digest
+            .clear();
+        let result = self.apply_operation_with_feedback_and_result(operation);
+        if let Some(receipt) =
+            result.and_then(|row| row.regulatory_fragment_materialization_receipt)
+        {
+            self.variant_followup_ui.cached_regulatory_fragment_receipt = Some(*receipt);
+        } else {
+            self.invalidate_variant_followup_regulatory_products();
+        }
+    }
+
+    fn export_variant_followup_regulatory_fragment_panel_svg(&mut self) {
+        let Some(plan) = self
+            .variant_followup_ui
+            .cached_regulatory_fragment_panel_plan
+            .clone()
+        else {
+            self.op_status = "No exact regulatory-fragment panel plan is cached".to_string();
+            return;
+        };
+        let default_name = format!(
+            "{}_plan.svg",
+            Self::sanitize_export_name_component(&plan.plan_id, "regulatory_fragment_panel")
+        );
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(default_name)
+            .save_file()
+        else {
+            self.op_status = "Regulatory-fragment panel SVG export canceled".to_string();
+            return;
+        };
+        let _ = self.apply_operation_with_feedback_and_result(
+            Operation::RenderRegulatoryFragmentPanelSvg {
+                plan: Box::new(plan),
+                path: path.display().to_string(),
+            },
+        );
     }
 
     fn variant_followup_recommended_candidate(
@@ -1883,7 +2802,35 @@ impl MainAreaDna {
         }
     }
 
-    fn materialize_variant_followup_alleles(&mut self) {
+    /// Apply a preflighted pair atomically before publishing GUI success feedback.
+    pub(super) fn apply_variant_followup_allele_pair(
+        engine: &mut GentleEngine,
+        input: &str,
+        variant_label_or_id: Option<&str>,
+        alternate_allele: Option<&str>,
+        reference_output_id: Option<&str>,
+        alternate_output_id: Option<&str>,
+    ) -> Result<(OpResult, OpResult), EngineError> {
+        engine.with_rollback_on_error(|engine| {
+            let reference = engine.apply(Operation::MaterializeVariantAllele {
+                input: input.to_string(),
+                variant_label_or_id: variant_label_or_id.map(str::to_string),
+                allele: VariantAlleleChoice::Reference,
+                alternate_allele: None,
+                output_id: reference_output_id.map(str::to_string),
+            })?;
+            let alternate = engine.apply(Operation::MaterializeVariantAllele {
+                input: input.to_string(),
+                variant_label_or_id: variant_label_or_id.map(str::to_string),
+                allele: VariantAlleleChoice::Alternate,
+                alternate_allele: alternate_allele.map(str::to_string),
+                output_id: alternate_output_id.map(str::to_string),
+            })?;
+            Ok((reference, alternate))
+        })
+    }
+
+    pub(super) fn materialize_variant_followup_alleles(&mut self) {
         let input = self
             .variant_followup_ui
             .fragment_output_id
@@ -1908,35 +2855,75 @@ impl MainAreaDna {
             Self::variant_followup_optional_text(&self.variant_followup_ui.reference_output_id);
         let alternate_output_id =
             Self::variant_followup_optional_text(&self.variant_followup_ui.alternate_output_id);
-        let reference_result =
-            self.apply_operation_with_feedback_and_result(Operation::MaterializeVariantAllele {
-                input: input.clone(),
-                variant_label_or_id: variant_label_or_id.clone(),
-                allele: VariantAlleleChoice::Reference,
-                output_id: reference_output_id,
-            });
-        let Some(reference_seq_id) = reference_result
+        let alternate_allele =
+            Self::variant_followup_optional_text(&self.variant_followup_ui.alternate_allele);
+        let preflight = self
+            .engine
             .as_ref()
-            .and_then(|row| row.created_seq_ids.first())
-            .cloned()
-        else {
+            .ok_or_else(|| "Engine is not available".to_string())
+            .and_then(|engine| {
+                let guard = engine
+                    .read()
+                    .map_err(|_| "Engine lock is poisoned".to_string())?;
+                guard
+                    .materialize_variant_allele_sequence(
+                        &input,
+                        variant_label_or_id.as_deref(),
+                        VariantAlleleChoice::Reference,
+                        None,
+                        reference_output_id.as_deref(),
+                    )
+                    .map_err(|error| error.message)?;
+                guard
+                    .materialize_variant_allele_sequence(
+                        &input,
+                        variant_label_or_id.as_deref(),
+                        VariantAlleleChoice::Alternate,
+                        alternate_allele.as_deref(),
+                        alternate_output_id.as_deref(),
+                    )
+                    .map_err(|error| error.message)?;
+                Ok(())
+            });
+        if let Err(error) = preflight {
+            self.op_status = format!("Allele materialization preflight failed: {error}");
+            self.op_error_popup = Some(self.op_status.clone());
+            return;
+        }
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "Engine is not available".to_string();
             return;
         };
+        let started = Instant::now();
+        let result = {
+            let Ok(mut guard) = engine.write() else {
+                self.op_status = "Engine lock is poisoned".to_string();
+                return;
+            };
+            Self::apply_variant_followup_allele_pair(
+                &mut guard,
+                &input,
+                variant_label_or_id.as_deref(),
+                alternate_allele.as_deref(),
+                reference_output_id.as_deref(),
+                alternate_output_id.as_deref(),
+            )
+        };
+        let (reference_result, alternate_result) = match result {
+            Ok(results) => results,
+            Err(error) => {
+                self.handle_operation_error(error, started);
+                return;
+            }
+        };
+        let Some(reference_seq_id) = reference_result.created_seq_ids.first().cloned() else {
+            return;
+        };
+        let Some(alternate_seq_id) = alternate_result.created_seq_ids.first().cloned() else {
+            return;
+        };
+        self.handle_operation_success(alternate_result, started);
         self.variant_followup_ui.reference_output_id = reference_seq_id.clone();
-        let alternate_result =
-            self.apply_operation_with_feedback_and_result(Operation::MaterializeVariantAllele {
-                input,
-                variant_label_or_id,
-                allele: VariantAlleleChoice::Alternate,
-                output_id: alternate_output_id,
-            });
-        let Some(alternate_seq_id) = alternate_result
-            .as_ref()
-            .and_then(|row| row.created_seq_ids.first())
-            .cloned()
-        else {
-            return;
-        };
         self.variant_followup_ui.alternate_output_id = alternate_seq_id.clone();
         self.last_created_seq_ids = vec![reference_seq_id.clone(), alternate_seq_id.clone()];
         self.export_pool_inputs_text = self.last_created_seq_ids.join(", ");
@@ -2278,7 +3265,10 @@ impl MainAreaDna {
                 },
                 "allele_specific_inserts": {
                     "reference": self.variant_followup_ui.reference_output_id.trim(),
-                    "alternate": self.variant_followup_ui.alternate_output_id.trim()
+                    "alternate": self.variant_followup_ui.alternate_output_id.trim(),
+                    "alternate_allele": Self::variant_followup_optional_text(
+                        &self.variant_followup_ui.alternate_allele,
+                    )
                 },
                 "backbone": {
                     "sequence_id": self.variant_followup_ui.reporter_backbone_seq_id.trim(),
@@ -2411,7 +3401,7 @@ impl MainAreaDna {
         let alternate_reporter_id = format!("{prefix}_alternate");
         let reference_assembly_id = format!("{prefix}_reference_assembly_1");
         let alternate_assembly_id = format!("{prefix}_alternate_assembly_1");
-        format!(
+        let commands = format!(
             "#!/usr/bin/env bash\nset -euo pipefail\n\nSTATE=\"${{STATE:-/tmp/{bundle_id}.state.json}}\"\nBUNDLE_DIR=\"${{BUNDLE_DIR:-$(pwd)}}\"\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  genomes status \"{prepared_genome}\" \\\n  --catalog assets/genomes.json \\\n  --cache-dir data/genomes\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"FetchDbSnpRegion\":{{\"rs_id\":\"{variant}\",\"genome_id\":\"{prepared_genome}\",\"flank_bp\":{flank_bp},\"output_id\":\"{source_seq_id}\",\"annotation_scope\":\"full\",\"catalog_path\":\"assets/genomes.json\",\"cache_dir\":\"data/genomes\"}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  variant annotate-promoters {source_seq_id} \\\n  --gene-label {gene_label} \\\n  --upstream-bp {promoter_upstream_bp} \\\n  --downstream-bp {promoter_downstream_bp}\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  variant promoter-context {source_seq_id} \\\n  --variant {variant} \\\n  --gene-label {gene_label} \\\n  --path \"$BUNDLE_DIR/{promoter_context_json}\"\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  variant reporter-fragments {source_seq_id} \\\n  --variant {variant} \\\n  --gene-label {gene_label} \\\n  --retain-downstream-from-tss-bp {retain_downstream_from_tss_bp} \\\n  --retain-upstream-beyond-variant-bp {retain_upstream_beyond_variant_bp} \\\n  --path \"$BUNDLE_DIR/{promoter_candidates_json}\"\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"ExtractRegion\":{{\"input\":\"{source_seq_id}\",\"from\":{fragment_start},\"to\":{fragment_end},\"output_id\":\"{fragment_id}\"}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  variant materialize-allele {fragment_id} \\\n  --variant {variant} \\\n  --allele reference \\\n  --output-id {reference_insert}\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  variant materialize-allele {fragment_id} \\\n  --variant {variant} \\\n  --allele alternate \\\n  --output-id {alternate_insert}\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"LoadFile\":{{\"path\":\"{backbone_path}\",\"as_id\":\"{backbone_id}\"}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"Ligation\":{{\"inputs\":[\"{reference_insert}\",\"{backbone_id}\"],\"circularize_if_possible\":false,\"protocol\":\"Blunt\",\"output_prefix\":\"{prefix}_reference_assembly\",\"unique\":false}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"Branch\":{{\"input\":\"{reference_assembly_id}\",\"output_id\":\"{reference_reporter_id}\"}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"Ligation\":{{\"inputs\":[\"{alternate_insert}\",\"{backbone_id}\"],\"circularize_if_possible\":false,\"protocol\":\"Blunt\",\"output_prefix\":\"{prefix}_alternate_assembly\",\"unique\":false}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"Branch\":{{\"input\":\"{alternate_assembly_id}\",\"output_id\":\"{alternate_reporter_id}\"}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"SetLinearViewport\":{{\"start_bp\":{viewport_start},\"span_bp\":{viewport_span}}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  render-svg {source_seq_id} linear \"$BUNDLE_DIR/{promoter_context_svg}\"\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  render-svg {reference_reporter_id} circular \"$BUNDLE_DIR/{reference_svg}\"\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  render-svg {alternate_reporter_id} circular \"$BUNDLE_DIR/{alternate_svg}\"\n",
             bundle_id = artifacts.bundle_id.as_str(),
             prepared_genome = prepared_genome,
@@ -2450,6 +3440,16 @@ impl MainAreaDna {
             promoter_context_svg = artifacts.promoter_context_svg.as_str(),
             reference_svg = artifacts.reference_reporter_svg.as_str(),
             alternate_svg = artifacts.alternate_reporter_svg.as_str(),
+        );
+        let alternate_allele =
+            Self::variant_followup_optional_text(&self.variant_followup_ui.alternate_allele)
+                .unwrap_or_else(|| "REVIEW_REQUIRED".to_string());
+        let alternate_allele = crate::engine_shell::shell_quote(&alternate_allele);
+        commands.replace(
+            "  --allele alternate \\\n  --output-id",
+            &format!(
+                "  --allele alternate \\\n  --alternate-base {alternate_allele} \\\n  --output-id"
+            ),
         )
     }
 
@@ -2656,6 +3656,13 @@ impl MainAreaDna {
             .show(ui, |ui| {
                 ui.small("Variant");
                 ui.monospace(&report.variant_label);
+                ui.end_row();
+                ui.small("Genomic alleles");
+                ui.monospace(format!(
+                    "{} -> {}",
+                    report.genomic_ref.as_deref().unwrap_or("?"),
+                    report.genomic_alt.as_deref().unwrap_or("?")
+                ));
                 ui.end_row();
                 ui.small("Chosen gene");
                 ui.label(
@@ -2918,7 +3925,7 @@ impl MainAreaDna {
     fn promoter_design_track_peak_summary(
         track: &crate::engine::TfbsScoreTrackRow,
     ) -> Option<String> {
-        if track.top_peaks.is_empty() {
+        if track.top_peaks.is_empty() || track.evaluated_strand_windows() == 0 {
             return None;
         }
         Some(format!(
@@ -2944,6 +3951,10 @@ impl MainAreaDna {
         correlation_metric: Option<&mut TfbsScoreTrackCorrelationMetric>,
         correlation_signal_source: Option<&mut TfbsScoreTrackCorrelationSignalSource>,
     ) {
+        if report.tracks.iter().any(|track| !track.fully_evaluated()) {
+            ui.label("Correlation unavailable: incomplete or legacy-unassessed tracks; no zero imputation.");
+            return;
+        }
         ui.add_space(8.0);
         ui.group(|ui| {
             ui.label(egui::RichText::new("TFBS track correlation").strong());
@@ -3236,34 +4247,33 @@ impl MainAreaDna {
             );
         }
 
-        let forward_points = track
-            .forward_scores
-            .iter()
-            .enumerate()
-            .map(|(idx, score)| egui::pos2(to_x(idx), to_y(*score)))
-            .collect::<Vec<_>>();
-        if forward_points.len() > 1 {
-            painter.add(egui::Shape::line(
-                forward_points,
-                egui::Stroke::new(1.8_f32, egui::Color32::from_rgb(14, 116, 144)),
-            ));
-        }
-        let reverse_points = track
-            .reverse_scores
-            .iter()
-            .enumerate()
-            .map(|(idx, score)| egui::pos2(to_x(idx), to_y(*score)))
-            .collect::<Vec<_>>();
-        if reverse_points.len() > 1 {
-            painter.add(egui::Shape::line(
-                reverse_points,
-                egui::Stroke::new(1.6_f32, egui::Color32::from_rgb(180, 83, 9)),
-            ));
+        for (reverse, color) in [
+            (false, egui::Color32::from_rgb(14, 116, 144)),
+            (true, egui::Color32::from_rgb(180, 83, 9)),
+        ] {
+            let mut previous = None;
+            for i in 0..track.scored_window_count {
+                if let Some(score) = track.score_at(i, reverse) {
+                    let point = egui::pos2(to_x(i), to_y(score));
+                    if let Some(prior) = previous {
+                        painter.line_segment([prior, point], egui::Stroke::new(1.6, color));
+                    } else {
+                        painter.circle_filled(point, 1.0, color);
+                    }
+                    previous = Some(point);
+                } else {
+                    previous = None;
+                }
+            }
         }
         painter.text(
             egui::pos2(plot_rect.right() - 4.0, plot_rect.top() + 2.0),
             egui::Align2::RIGHT_TOP,
-            format!("0 .. {:.2}", report.global_max_score),
+            if track.fully_evaluated() {
+                format!("0 .. {:.2}", report.global_max_score)
+            } else {
+                "Unavailable / unassessed windows: gaps, not zero".into()
+            },
             egui::FontId::monospace(10.0),
             egui::Color32::from_rgb(71, 85, 105),
         );
@@ -3430,17 +4440,18 @@ impl MainAreaDna {
                                     );
                                 }
                             });
+                            let evaluated = track.evaluated_strand_windows();
                             ui.small(format!(
-                                "{} bp motif | {} windows | max {:.2}{}",
+                                "{} bp motif | {}/{} assessed strand-windows | max {}",
                                 track.motif_length_bp,
-                                track.scored_window_count,
-                                track.max_score,
-                                track
+                                evaluated,
+                                track.scored_window_count * 2,
+                                if evaluated > 0 { format!("{:.2}{}", track.max_score, track
                                     .max_position_0based
                                     .map(|pos| format!(" @ {}", pos))
-                                    .unwrap_or_default()
+                                    .unwrap_or_default()) } else { "unavailable".into() }
                             ));
-                            if let Some(normalization) = track.normalization_reference.as_ref() {
+                            if let Some(normalization) = track.normalization_reference.as_ref().filter(|_| evaluated > 0) {
                                 ui.small(
                                     egui::RichText::new(
                                         Self::promoter_design_track_normalization_summary(
@@ -4302,6 +5313,52 @@ impl MainAreaDna {
                     ))
                     .color(egui::Color32::from_rgb(180, 83, 9)),
                 );
+                if !unresolved.candidate_mappings.is_empty() {
+                    ui.collapsing(
+                        format!(
+                            "{} preserved candidate mapping(s)",
+                            unresolved.candidate_mappings.len()
+                        ),
+                        |ui| {
+                            egui::Grid::new((
+                                "variant_followup_ortholog_ambiguity_candidates",
+                                unresolved.species.as_str(),
+                            ))
+                            .num_columns(6)
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.small(egui::RichText::new("rank").strong());
+                                ui.small(egui::RichText::new("gene").strong());
+                                ui.small(egui::RichText::new("orthology").strong());
+                                ui.small(egui::RichText::new("confidence").strong());
+                                ui.small(egui::RichText::new("source").strong());
+                                ui.small(egui::RichText::new("genome/context").strong());
+                                ui.end_row();
+                                for candidate in &unresolved.candidate_mappings {
+                                    ui.monospace(candidate.candidate_rank.to_string());
+                                    ui.small(
+                                        candidate
+                                            .target_gene_symbol
+                                            .as_deref()
+                                            .or(candidate.target_gene_id.as_deref())
+                                            .unwrap_or("-"),
+                                    )
+                                    .on_hover_text(candidate.candidate_label.as_str());
+                                    ui.small(candidate.orthology_type.as_deref().unwrap_or("-"))
+                                        .on_hover_text(candidate.evidence.join("\n"));
+                                    ui.small(candidate.confidence.as_deref().unwrap_or("-"));
+                                    ui.small(candidate.source.as_deref().unwrap_or("-"));
+                                    ui.small(format!(
+                                        "{} / {}",
+                                        candidate.target_genome_id.as_deref().unwrap_or("-"),
+                                        candidate.target_context_id.as_deref().unwrap_or("-")
+                                    ));
+                                    ui.end_row();
+                                }
+                            });
+                        },
+                    );
+                }
             }
 
             let Some(comparison) = self
@@ -4421,6 +5478,86 @@ impl MainAreaDna {
                                 ui.end_row();
                             }
                         });
+                });
+            }
+            if let Some(quantitative) = comparison.cutrun_quantitative_comparison.as_ref() {
+                ui.collapsing("Quantitative CUT&RUN comparison", |ui| {
+                    let status_color = match quantitative.status {
+                        OrthologCutRunQuantitativeComparisonStatus::Comparable => {
+                            egui::Color32::from_rgb(22, 101, 52)
+                        }
+                        OrthologCutRunQuantitativeComparisonStatus::NotComparable => {
+                            egui::Color32::from_rgb(180, 83, 9)
+                        }
+                    };
+                    ui.small(
+                        egui::RichText::new(format!(
+                            "{}: {}",
+                            quantitative.status.as_str(),
+                            quantitative.detail
+                        ))
+                        .color(status_color),
+                    );
+                    if !quantitative.assignments.is_empty() {
+                        egui::Grid::new("variant_followup_ortholog_cutrun_quantitative_grid")
+                            .num_columns(4)
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.small(egui::RichText::new("species").strong());
+                                ui.small(egui::RichText::new("gene").strong());
+                                ui.small(egui::RichText::new("value").strong());
+                                ui.small(egui::RichText::new("sources").strong());
+                                ui.end_row();
+                                for row in &quantitative.assignments {
+                                    ui.small(row.species.as_str());
+                                    ui.small(row.gene_label.as_str());
+                                    ui.monospace(format!(
+                                        "{:.4} {}",
+                                        row.normalized_value,
+                                        quantitative.normalization.unit
+                                    ));
+                                    ui.small(format!(
+                                        "{} dataset(s), {} read report(s)",
+                                        row.contributing_dataset_ids.len(),
+                                        row.contributing_read_report_ids.len()
+                                    ));
+                                    ui.end_row();
+                                }
+                            });
+                    }
+                    if !quantitative.pairwise_comparisons.is_empty() {
+                        ui.add_space(4.0);
+                        egui::Grid::new(
+                            "variant_followup_ortholog_cutrun_quantitative_pairwise_grid",
+                        )
+                        .num_columns(3)
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.small(egui::RichText::new("left").strong());
+                            ui.small(egui::RichText::new("right").strong());
+                            ui.small(egui::RichText::new("right - left").strong());
+                            ui.end_row();
+                            for row in &quantitative.pairwise_comparisons {
+                                ui.small(format!(
+                                    "{}: {} ({:.4})",
+                                    row.left_species,
+                                    row.left_gene_label,
+                                    row.left_normalized_value
+                                ));
+                                ui.small(format!(
+                                    "{}: {} ({:.4})",
+                                    row.right_species,
+                                    row.right_gene_label,
+                                    row.right_normalized_value
+                                ));
+                                ui.monospace(format!(
+                                    "{:+.4} {}",
+                                    row.delta_right_minus_left, quantitative.normalization.unit
+                                ));
+                                ui.end_row();
+                            }
+                        });
+                    }
                 });
             }
         });
@@ -4623,9 +5760,1172 @@ impl MainAreaDna {
         }
     }
 
+    fn render_variant_followup_promoter_reporter_panel(&mut self, ui: &mut egui::Ui) {
+        let mut plan_requested = false;
+        let mut materialize_requested = false;
+        egui::CollapsingHeader::new("Promoter reporter panel")
+            .default_open(false)
+            .show(ui, |ui| {
+                ui.label("Panel request JSON");
+                if ui
+                    .add(
+                        egui::TextEdit::multiline(
+                            &mut self
+                                .variant_followup_ui
+                                .promoter_reporter_panel_request_json,
+                        )
+                        .desired_rows(6)
+                        .code_editor(),
+                    )
+                    .changed()
+                {
+                    self.variant_followup_ui.cached_promoter_reporter_panel_proposal = None;
+                    self.variant_followup_ui.cached_promoter_reporter_panel_receipt = None;
+                    self.variant_followup_ui
+                        .promoter_reporter_panel_approval_digest
+                        .clear();
+                }
+                if ui
+                    .add_enabled(
+                        self.engine.is_some()
+                            && !self
+                                .variant_followup_ui
+                                .promoter_reporter_panel_request_json
+                                .trim()
+                                .is_empty(),
+                        egui::Button::new("Plan panel"),
+                    )
+                    .clicked()
+                {
+                    plan_requested = true;
+                }
+
+                if let Some(proposal) = self
+                    .variant_followup_ui
+                    .cached_promoter_reporter_panel_proposal
+                    .clone()
+                {
+                    ui.separator();
+                    egui::Grid::new((
+                        "promoter_reporter_panel_proposal",
+                        proposal.proposal_id.as_str(),
+                    ))
+                    .num_columns(2)
+                    .spacing([12.0, 4.0])
+                    .show(ui, |ui| {
+                        ui.label("Proposal");
+                        ui.monospace(&proposal.proposal_id);
+                        ui.end_row();
+                        ui.label("Vector");
+                        ui.label(format!(
+                            "{} / {} ({:?})",
+                            proposal.request.vector_seq_id,
+                            proposal.request.vector_catalog_id,
+                            proposal.vector_validation.status
+                        ));
+                        ui.end_row();
+                        ui.label("MCS");
+                        ui.monospace(format!(
+                            "{}..{}",
+                            proposal.mcs_start_0based, proposal.mcs_end_0based_exclusive
+                        ));
+                        ui.end_row();
+                        ui.label("Assembly");
+                        ui.label(format!("{:?}", proposal.cloning_strategy.strategy));
+                        ui.end_row();
+                        ui.label("Products");
+                        ui.label(proposal.products.len().to_string());
+                        ui.end_row();
+                    });
+
+                    for member in &proposal.members {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.strong(&member.label);
+                            let sequence_ids = member
+                                .mutant_seq_id
+                                .as_deref()
+                                .map(|mutant| {
+                                    format!("{} / {mutant}", member.wild_type_seq_id)
+                                })
+                                .unwrap_or_else(|| member.wild_type_seq_id.clone());
+                            ui.label(format!(
+                                "{:?} | {} bp | {:?} | {}",
+                                member.fragment_role,
+                                member.fragment_length_bp,
+                                member.mutation_policy,
+                                sequence_ids
+                            ));
+                        });
+                        if let Some(anchor) = &member.anchor {
+                            ui.small(format!(
+                                "anchor {:?} '{}' {}..{} | {} evidence row(s)",
+                                anchor.kind,
+                                anchor.label,
+                                anchor.start_0based,
+                                anchor.end_0based_exclusive,
+                                member.evidence.len()
+                            ));
+                        } else {
+                            ui.small(format!(
+                                "anchor not reported (legacy proposal) | {} evidence row(s)",
+                                member.evidence.len()
+                            ));
+                        }
+                        if let Some(mutation) = &member.mutation {
+                            ui.small(format!(
+                                "motif {}..{} | {} stated base changes | p53-family local maximum audit: {}",
+                                member.motif_start_in_fragment_0based,
+                                member.motif_end_in_fragment_0based_exclusive,
+                                mutation.changes.len(),
+                                if mutation.no_stronger_p53_family_hit_near_edit {
+                                    "pass"
+                                } else {
+                                    "review"
+                                }
+                            ));
+                        }
+                        if let Some(audit) = &member.extended_boundary_audit {
+                            let boundary_description = match audit.policy.kind {
+                                PromoterReporterPanelExtendedBoundaryKind::CanonicalCdsStartCodon => {
+                                    "through"
+                                }
+                                PromoterReporterPanelExtendedBoundaryKind::CanonicalCdsStartExclusive => {
+                                    "up to but excluding"
+                                }
+                            };
+                            ui.small(format!(
+                                "extended {} {} CDS start codon {} {}..{} | spliced 5' UTR {} bp",
+                                boundary_description,
+                                audit.policy.transcript_id,
+                                audit.cds_start_codon_5prime_to_3prime,
+                                audit.cds_start_codon_source_start_0based,
+                                audit.cds_start_codon_source_end_0based_exclusive,
+                                audit.five_prime_utr_spliced_length_bp,
+                            ));
+                            for warning in &audit.warnings {
+                                ui.colored_label(
+                                    egui::Color32::from_rgb(180, 83, 9),
+                                    &warning.detail,
+                                );
+                            }
+                        }
+                    }
+                    for product in &proposal.products {
+                        ui.small(format!(
+                            "{} | {} bp circular | {} | {} primer(s) | required vector annotations {} ({}) | {} final restriction site(s)",
+                            product.product_seq_id,
+                            product.length_bp,
+                            product.assembly_model,
+                            product.primer_seq_ids.len(),
+                            match product.required_vector_annotations_preserved {
+                                Some(true) => "preserved",
+                                Some(false) => "missing",
+                                None => "not reported (legacy proposal)",
+                            },
+                            product.preserved_vector_annotation_ids.join(", "),
+                            product.final_product_audit.matched_site_count,
+                        ));
+                        ui.small(format!(
+                            "junctions: {} | unexpected site-count excess: {}",
+                            product.final_product_audit.junction_validation,
+                            if product
+                                .final_product_audit
+                                .unexpected_count_excess_by_enzyme
+                                .is_empty()
+                            {
+                                "none".to_string()
+                            } else {
+                                product
+                                    .final_product_audit
+                                    .unexpected_count_excess_by_enzyme
+                                    .iter()
+                                    .map(|(enzyme, count)| format!("{enzyme} (+{count})"))
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            }
+                        ));
+                    }
+                    for warning in &proposal.warnings {
+                        ui.colored_label(egui::Color32::from_rgb(180, 83, 9), warning);
+                    }
+                    for nonclaim in &proposal.nonclaims {
+                        ui.small(
+                            egui::RichText::new(nonclaim)
+                                .color(egui::Color32::from_rgb(100, 116, 139)),
+                        );
+                    }
+                    ui.label("Approval digest");
+                    ui.monospace(&proposal.proposal_digest);
+                    ui.text_edit_singleline(
+                        &mut self
+                            .variant_followup_ui
+                            .promoter_reporter_panel_approval_digest,
+                    );
+                    let approval_matches = self
+                        .variant_followup_ui
+                        .promoter_reporter_panel_approval_digest
+                        .trim()
+                        == proposal.proposal_digest;
+                    if ui
+                        .add_enabled(
+                            self.engine.is_some() && approval_matches,
+                            egui::Button::new("Materialize approved panel"),
+                        )
+                        .clicked()
+                    {
+                        materialize_requested = true;
+                    }
+                }
+
+                if let Some(receipt) = self
+                    .variant_followup_ui
+                    .cached_promoter_reporter_panel_receipt
+                    .as_ref()
+                {
+                    ui.separator();
+                    ui.label(format!(
+                        "Materialized {} sequence(s); wrote {} artifact(s)",
+                        receipt.created_seq_ids.len(),
+                        receipt.artifact_paths.len()
+                    ));
+                    ui.monospace(&receipt.manifest_path);
+                }
+            });
+        if plan_requested {
+            self.plan_variant_followup_promoter_reporter_panel();
+        }
+        if materialize_requested {
+            self.materialize_variant_followup_promoter_reporter_panel();
+        }
+    }
+
+    fn render_regulatory_fragment_roi_selector(
+        ui: &mut egui::Ui,
+        id: &'static str,
+        label: &str,
+        selected: &mut String,
+        options: &[(String, String)],
+        required: bool,
+    ) -> bool {
+        let selected_text = options
+            .iter()
+            .find(|(key, _)| key == selected)
+            .map(|(_, label)| label.clone())
+            .unwrap_or_else(|| {
+                if selected.trim().is_empty() {
+                    if required {
+                        "Select region".to_string()
+                    } else {
+                        "None".to_string()
+                    }
+                } else {
+                    selected.clone()
+                }
+            });
+        let mut changed = false;
+        ui.label(label);
+        egui::ComboBox::from_id_salt(id)
+            .selected_text(selected_text)
+            .width(560.0)
+            .show_ui(ui, |ui| {
+                if !required {
+                    changed |= ui
+                        .selectable_value(selected, String::new(), "None")
+                        .changed();
+                }
+                for (key, option_label) in options {
+                    changed |= ui
+                        .selectable_value(selected, key.clone(), option_label)
+                        .changed();
+                }
+            });
+        ui.end_row();
+        changed
+    }
+
+    fn regulatory_fragment_observation_label(
+        observation: &RegulatoryFragmentEvidenceObservation,
+    ) -> String {
+        match observation {
+            RegulatoryFragmentEvidenceObservation::ExternalLocusContext {
+                report_id,
+                row_id,
+                fragment_ids,
+                state,
+                ..
+            } => format!(
+                "{report_id} / {row_id}: {state:?}; source context for {} (not an activity verdict)",
+                fragment_ids.join(", ")
+            ),
+            RegulatoryFragmentEvidenceObservation::ReferenceGenomicUniqueness {
+                fragment_id,
+                exact_forward_match_count,
+                exact_reverse_complement_match_count,
+                near_exact_forward_match_count,
+                near_exact_reverse_complement_match_count,
+                detail,
+                ..
+            } => format!(
+                "{fragment_id}: exact F/R {exact_forward_match_count}/{exact_reverse_complement_match_count}; near-exact F/R {}/{}; {detail}",
+                near_exact_forward_match_count
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "not evaluated".to_string()),
+                near_exact_reverse_complement_match_count
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "not evaluated".to_string()),
+            ),
+            RegulatoryFragmentEvidenceObservation::PanelSequenceSimilarity {
+                left_subject_id,
+                right_subject_id,
+                exact_forward_word_match_count,
+                exact_inverted_word_match_count,
+                detail,
+                ..
+            } => format!(
+                "{left_subject_id} vs {right_subject_id}: {exact_forward_word_match_count} forward and {exact_inverted_word_match_count} inverted exact words; {detail}"
+            ),
+            RegulatoryFragmentEvidenceObservation::RepeatOrLowComplexity {
+                subject_id,
+                evidence,
+                ..
+            } => format!(
+                "{subject_id}: {} at {}..{}; {}",
+                evidence.label,
+                evidence.start_0based,
+                evidence.end_0based_exclusive,
+                evidence.rationale
+            ),
+            RegulatoryFragmentEvidenceObservation::PairSpecificJunctionUniqueness {
+                member_id,
+                left_fragment_id,
+                right_fragment_id,
+                exact_unique_in_assessed_context,
+                detail,
+                ..
+            } => format!(
+                "{member_id}: {left_fragment_id} -> {right_fragment_id}; exact context unique={exact_unique_in_assessed_context}; {detail}"
+            ),
+            RegulatoryFragmentEvidenceObservation::RestrictionAndCloningRisk {
+                member_id,
+                cloning_feasibility,
+                blocker_count,
+                selected_strategy,
+                detail,
+                ..
+            } => format!(
+                "{member_id}: {cloning_feasibility:?}, {selected_strategy:?}, {blocker_count} blocker(s); {detail}"
+            ),
+        }
+    }
+
+    fn render_variant_followup_regulatory_fragment_panel(&mut self, ui: &mut egui::Ui) {
+        let region_options = self.variant_followup_regulatory_fragment_roi_options();
+        let mut plan_requested = false;
+        let mut export_json_requested = false;
+        let mut export_svg_requested = false;
+        let mut inputs_changed = false;
+        egui::CollapsingHeader::new("Regulatory-fragment panel")
+            .default_open(false)
+            .show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Plan id");
+                    inputs_changed |= ui
+                        .text_edit_singleline(
+                            &mut self.variant_followup_ui.regulatory_fragment_plan_id,
+                        )
+                        .changed();
+                    if ui.button("Saved regions...").clicked() {
+                        self.show_genomic_region_manager = true;
+                    }
+                });
+                match &region_options {
+                    Ok(options) if options.is_empty() => {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(180, 83, 9),
+                            "No saved genomic regions are available.",
+                        );
+                    }
+                    Err(error) => {
+                        ui.colored_label(egui::Color32::from_rgb(180, 83, 9), error);
+                    }
+                    Ok(options) => {
+                        egui::Grid::new("regulatory_fragment_roi_selectors")
+                            .num_columns(2)
+                            .spacing([12.0, 5.0])
+                            .show(ui, |ui| {
+                                inputs_changed |= Self::render_regulatory_fragment_roi_selector(
+                                    ui,
+                                    "regulatory_fragment_candidate_roi",
+                                    "Candidate A",
+                                    &mut self
+                                        .variant_followup_ui
+                                        .regulatory_fragment_candidate_roi,
+                                    options,
+                                    true,
+                                );
+                                inputs_changed |= Self::render_regulatory_fragment_roi_selector(
+                                    ui,
+                                    "regulatory_fragment_partner_roi",
+                                    "Partner B",
+                                    &mut self
+                                        .variant_followup_ui
+                                        .regulatory_fragment_partner_roi,
+                                    options,
+                                    false,
+                                );
+                                inputs_changed |= Self::render_regulatory_fragment_roi_selector(
+                                    ui,
+                                    "regulatory_fragment_minimal_promoter_roi",
+                                    "Minimal promoter",
+                                    &mut self
+                                        .variant_followup_ui
+                                        .regulatory_fragment_minimal_promoter_roi,
+                                    options,
+                                    true,
+                                );
+                                inputs_changed |= Self::render_regulatory_fragment_roi_selector(
+                                    ui,
+                                    "regulatory_fragment_reference_control_roi",
+                                    "Reference control",
+                                    &mut self
+                                        .variant_followup_ui
+                                        .regulatory_fragment_reference_control_roi,
+                                    options,
+                                    false,
+                                );
+                            });
+                    }
+                }
+
+                egui::Grid::new("regulatory_fragment_panel_identity")
+                    .num_columns(2)
+                    .spacing([12.0, 5.0])
+                    .show(ui, |ui| {
+                        ui.label("Reference release");
+                        inputs_changed |= ui
+                            .text_edit_singleline(
+                                &mut self
+                                    .variant_followup_ui
+                                    .regulatory_fragment_reference_release,
+                            )
+                            .changed();
+                        ui.end_row();
+                        ui.label("Loaded vector id");
+                        inputs_changed |= ui
+                            .text_edit_singleline(
+                                &mut self
+                                    .variant_followup_ui
+                                    .regulatory_fragment_vector_seq_id,
+                            )
+                            .changed();
+                        ui.end_row();
+                        ui.label("Vector catalog id");
+                        inputs_changed |= ui
+                            .text_edit_singleline(
+                                &mut self
+                                    .variant_followup_ui
+                                    .regulatory_fragment_vector_catalog_id,
+                            )
+                            .changed();
+                        ui.end_row();
+                        ui.label("Helper catalog path");
+                        inputs_changed |= ui
+                            .text_edit_singleline(
+                                &mut self
+                                    .variant_followup_ui
+                                    .regulatory_fragment_helper_catalog_path,
+                            )
+                            .changed();
+                        ui.end_row();
+                        ui.label("Maximum panel members");
+                        inputs_changed |= ui
+                            .text_edit_singleline(
+                                &mut self
+                                    .variant_followup_ui
+                                    .regulatory_fragment_max_panel_members,
+                            )
+                            .changed();
+                        ui.end_row();
+                        ui.label("Maximum insert length (bp)");
+                        inputs_changed |= ui
+                            .text_edit_singleline(
+                                &mut self
+                                    .variant_followup_ui
+                                    .regulatory_fragment_max_construct_length_bp,
+                            )
+                            .changed();
+                        ui.end_row();
+                    });
+
+                let partner_selected = !self
+                    .variant_followup_ui
+                    .regulatory_fragment_partner_roi
+                    .trim()
+                    .is_empty();
+                ui.horizontal_wrapped(|ui| {
+                    inputs_changed |= ui
+                        .add_enabled(
+                            partner_selected,
+                            egui::Checkbox::new(
+                                &mut self
+                                    .variant_followup_ui
+                                    .regulatory_fragment_partner_dependence,
+                                "Partner dependence",
+                            ),
+                        )
+                        .changed();
+                    inputs_changed |= ui
+                        .add_enabled(
+                            partner_selected,
+                            egui::Checkbox::new(
+                                &mut self
+                                    .variant_followup_ui
+                                    .regulatory_fragment_order_dependence,
+                                "Order",
+                            ),
+                        )
+                        .changed();
+                    inputs_changed |= ui
+                        .add_enabled(
+                            partner_selected,
+                            egui::Checkbox::new(
+                                &mut self
+                                    .variant_followup_ui
+                                    .regulatory_fragment_orientation_dependence,
+                                "Orientation",
+                            ),
+                        )
+                        .changed();
+                    inputs_changed |= ui
+                        .add_enabled(
+                            partner_selected,
+                            egui::Checkbox::new(
+                                &mut self
+                                    .variant_followup_ui
+                                    .regulatory_fragment_spacing_dependence,
+                                "Spacing",
+                            ),
+                        )
+                        .changed();
+                });
+                if self
+                    .variant_followup_ui
+                    .regulatory_fragment_spacing_dependence
+                {
+                    ui.horizontal(|ui| {
+                        ui.label("Controlled spacer DNA");
+                        inputs_changed |= ui
+                            .text_edit_singleline(
+                                &mut self
+                                    .variant_followup_ui
+                                    .regulatory_fragment_controlled_spacer,
+                            )
+                            .changed();
+                    });
+                }
+
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .add_enabled(
+                            self.engine.is_some() && region_options.is_ok(),
+                            egui::Button::new("Plan exact panel"),
+                        )
+                        .clicked()
+                    {
+                        plan_requested = true;
+                    }
+                    if ui
+                        .add_enabled(
+                            self.variant_followup_ui
+                                .cached_regulatory_fragment_panel_plan
+                                .is_some(),
+                            egui::Button::new("Export JSON..."),
+                        )
+                        .clicked()
+                    {
+                        export_json_requested = true;
+                    }
+                    if ui
+                        .add_enabled(
+                            self.variant_followup_ui
+                                .cached_regulatory_fragment_panel_plan
+                                .is_some(),
+                            egui::Button::new("Export SVG..."),
+                        )
+                        .clicked()
+                    {
+                        export_svg_requested = true;
+                    }
+                });
+
+                if let Some(plan) = self
+                    .variant_followup_ui
+                    .cached_regulatory_fragment_panel_plan
+                    .as_ref()
+                {
+                    ui.separator();
+                    egui::Grid::new(("regulatory_fragment_plan_summary", &plan.plan_id))
+                        .num_columns(2)
+                        .spacing([12.0, 4.0])
+                        .show(ui, |ui| {
+                            ui.label("Plan");
+                            ui.monospace(&plan.plan_id);
+                            ui.end_row();
+                            ui.label("Interpretation");
+                            ui.label(format!("{:?}", plan.planning_label));
+                            ui.end_row();
+                            ui.label("Vector");
+                            ui.label(format!(
+                                "{} / {} ({:?})",
+                                plan.vector_context.vector_seq_id,
+                                plan.vector_context.vector_catalog_id,
+                                plan.vector_validation.status
+                            ));
+                            ui.end_row();
+                            ui.label("Panel");
+                            ui.label(format!(
+                                "{} member(s), {} contrast(s), {} omitted",
+                                plan.members.len(),
+                                plan.contrasts.len(),
+                                plan.omitted_variants.len()
+                            ));
+                            ui.end_row();
+                        });
+                    for member in &plan.members {
+                        egui::CollapsingHeader::new(format!(
+                            "{} | {:?} | {} bp",
+                            member.member_id, member.construct_kind, member.insert_length_bp
+                        ))
+                        .id_salt(("regulatory_fragment_member", &member.member_id))
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            for instance in &member.instances {
+                                ui.monospace(format!(
+                                    "{} {:?} | {}:{}-{} {} | insert {}..{}{}",
+                                    instance.fragment_id,
+                                    instance.orientation,
+                                    instance.contig,
+                                    instance.genomic_start_0based,
+                                    instance.genomic_end_0based_exclusive,
+                                    instance.genomic_strand.human_value(),
+                                    instance.assembled_start_0based,
+                                    instance.assembled_end_0based_exclusive,
+                                    if instance.spacer_before.is_empty() {
+                                        String::new()
+                                    } else {
+                                        format!(" | spacer {}", instance.spacer_before)
+                                    }
+                                ));
+                            }
+                            for reason in &member.inclusion_reasons {
+                                ui.small(format!("Included: {:?}: {}", reason.kind, reason.detail));
+                            }
+                        });
+                    }
+                    for contrast in &plan.contrasts {
+                        ui.small(format!(
+                            "{:?}: {} vs {} | {}",
+                            contrast.question,
+                            contrast.left_member_id,
+                            contrast.right_member_id,
+                            contrast.interpretation
+                        ));
+                    }
+                    ui.separator();
+                    ui.strong("Independent evidence lanes");
+                    for dimension in &plan.evidence_dimensions {
+                        egui::CollapsingHeader::new(format!(
+                            "{:?}: {:?} ({} observation(s))",
+                            dimension.kind,
+                            dimension.state,
+                            dimension.observations.len()
+                        ))
+                        .id_salt(("regulatory_fragment_evidence", dimension.assessment_id.as_str()))
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            ui.small(&dimension.detail);
+                            for observation in &dimension.observations {
+                                ui.small(Self::regulatory_fragment_observation_label(observation));
+                            }
+                            for blocker in &dimension.blockers {
+                                ui.colored_label(
+                                    egui::Color32::from_rgb(185, 28, 28),
+                                    format!("{}: {}", blocker.code, blocker.detail),
+                                );
+                            }
+                            for warning in &dimension.warnings {
+                                ui.colored_label(
+                                    egui::Color32::from_rgb(180, 83, 9),
+                                    format!("{}: {}", warning.code, warning.detail),
+                                );
+                            }
+                        });
+                    }
+                    if !plan.omitted_variants.is_empty() {
+                        ui.separator();
+                        ui.strong("Omitted variants");
+                        for omitted in &plan.omitted_variants {
+                            ui.small(format!(
+                                "{} ({:?}): {}",
+                                omitted.member_id, omitted.reason, omitted.detail
+                            ));
+                        }
+                    }
+                    for blocker in &plan.blockers {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(185, 28, 28),
+                            format!("{}: {}", blocker.code, blocker.detail),
+                        );
+                    }
+                    for warning in &plan.warnings {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(180, 83, 9),
+                            format!("{}: {}", warning.code, warning.detail),
+                        );
+                    }
+                    for nonclaim in &plan.nonclaims {
+                        ui.small(
+                            egui::RichText::new(nonclaim)
+                                .color(egui::Color32::from_rgb(100, 116, 139)),
+                        );
+                    }
+                    ui.label("Review digest");
+                    ui.monospace(&plan.proposal_digest);
+                    ui.text_edit_singleline(
+                        &mut self
+                            .variant_followup_ui
+                            .regulatory_fragment_approval_digest,
+                    );
+                    let approval_matches = self
+                        .variant_followup_ui
+                        .regulatory_fragment_approval_digest
+                        .trim()
+                        == plan.proposal_digest;
+                    ui.colored_label(
+                        if approval_matches {
+                            egui::Color32::from_rgb(22, 101, 52)
+                        } else {
+                            egui::Color32::from_rgb(100, 116, 139)
+                        },
+                        if approval_matches {
+                            "Exact digest reviewed"
+                        } else {
+                            "Digest not yet matched"
+                        },
+                    );
+                    ui.small(
+                        "Panel review does not create constructs. Exact designed products require a separate materialization proposal and digest approval.",
+                    );
+                }
+                if !inputs_changed && !plan_requested && !export_json_requested {
+                    self.render_variant_followup_regulatory_products(ui);
+                }
+            });
+        if inputs_changed {
+            self.invalidate_variant_followup_regulatory_fragment_panel();
+        }
+        if plan_requested {
+            self.plan_variant_followup_regulatory_fragment_panel();
+        }
+        if export_json_requested {
+            self.export_variant_followup_regulatory_fragment_panel_json();
+        }
+        if export_svg_requested {
+            self.export_variant_followup_regulatory_fragment_panel_svg();
+        }
+    }
+
+    pub(super) fn render_variant_followup_regulatory_products(&mut self, ui: &mut egui::Ui) {
+        ui.separator();
+        ui.strong("Exact design products");
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Output ID prefix");
+            if ui
+                .text_edit_singleline(
+                    &mut self.variant_followup_ui.regulatory_fragment_product_prefix,
+                )
+                .changed()
+            {
+                self.invalidate_variant_followup_regulatory_products();
+            }
+        });
+        let can_plan = self.engine.is_some()
+            && self
+                .variant_followup_ui
+                .cached_regulatory_fragment_panel_plan
+                .as_ref()
+                .is_some_and(|plan| plan.materialization_supported && plan.blockers.is_empty());
+        if ui
+            .add_enabled(can_plan, egui::Button::new("Prepare exact products"))
+            .clicked()
+        {
+            self.plan_variant_followup_regulatory_products();
+        }
+        if let Some(proposal) = self
+            .variant_followup_ui
+            .cached_regulatory_fragment_products
+            .as_ref()
+        {
+            ui.label(format!(
+                "{} designed products | {}",
+                proposal.products.len(),
+                proposal.method
+            ));
+            for product in &proposal.products {
+                egui::CollapsingHeader::new(format!("{} | {} bp | {}", product.output_seq_id,
+                    product.sequence_5prime_to_3prime.len(), if product.circular { "circular" } else { "linear" }))
+                    .id_salt(("regulatory_product_review", &product.output_seq_id))
+                    .show(ui, |ui| {
+                        ui.label(format!("Member: {}", product.member_id));
+                        ui.monospace(&product.sequence_sha256);
+                        ui.label(format!("{} annotations | omitted vector annotation indices: {:?}",
+                            product.features.len(), product.omitted_vector_feature_indices));
+                        ui.collapsing("Sequence (5' to 3')", |ui| {
+                            // Fixed-length lines keep full product DNA inspectable in narrow viewers.
+                            for line in product.sequence_5prime_to_3prime.as_bytes().chunks(60) {
+                                ui.add(egui::Label::new(egui::RichText::new(String::from_utf8_lossy(line)).monospace()).wrap());
+                            }
+                        });
+                        ui.collapsing("Annotations and source instances", |ui| {
+                            match serde_json::to_string_pretty(&serde_json::json!({
+                                "features": &product.features, "instances": &product.instances,
+                                "omitted_vector_feature_indices": &product.omitted_vector_feature_indices,
+                            })) {
+                                Ok(json) => { ui.add(egui::Label::new(egui::RichText::new(json).monospace()).wrap()); }
+                                Err(error) => { ui.label(format!("Could not display annotations: {error}")); }
+                            }
+                        });
+                    });
+            }
+            for nonclaim in &proposal.nonclaims {
+                ui.small(nonclaim);
+            }
+            ui.label("Product approval digest");
+            ui.add(
+                egui::Label::new(egui::RichText::new(&proposal.proposal_digest).monospace()).wrap(),
+            );
+            if ui.button("Copy product proposal JSON").clicked() {
+                match serde_json::to_string_pretty(proposal) {
+                    Ok(json) => ui.ctx().copy_text(json),
+                    Err(error) => {
+                        self.op_status = format!("Could not serialize product proposal: {error}")
+                    }
+                }
+            }
+            ui.label("Approve exact products (digest)");
+            ui.text_edit_singleline(
+                &mut self
+                    .variant_followup_ui
+                    .regulatory_fragment_product_approval_digest,
+            );
+            let can_create = self.variant_followup_regulatory_product_approval().is_ok();
+            if ui
+                .add_enabled(
+                    can_create,
+                    egui::Button::new("Create approved design products"),
+                )
+                .clicked()
+            {
+                self.materialize_variant_followup_regulatory_products();
+            }
+        }
+        if let Some(receipt) = self
+            .variant_followup_ui
+            .cached_regulatory_fragment_receipt
+            .as_ref()
+        {
+            ui.separator();
+            ui.label(format!(
+                "Created {} exact design products",
+                receipt.created_seq_ids.len()
+            ));
+            for id in &receipt.created_seq_ids {
+                ui.add(egui::Label::new(egui::RichText::new(id).monospace()).wrap());
+            }
+            ui.label(format!(
+                "Final-product audit: {:?}",
+                receipt.final_product_audit_state
+            ));
+            for nonclaim in &receipt.nonclaims {
+                ui.small(nonclaim);
+            }
+        }
+    }
+
+    fn render_variant_followup_promoter_architecture_comparison(&mut self, ui: &mut egui::Ui) {
+        let mut prepare_requested = false;
+        let mut compare_requested = false;
+        let mut selected_transcript = None;
+        egui::CollapsingHeader::new("Reporter architecture comparison (read-only)")
+            .default_open(false)
+            .show(ui, |ui| {
+                ui.label(
+                    "Compare TSS-proximal, spliced-leader, genomic-leader, and explicitly requested ATG-fusion models without creating constructs.",
+                );
+                ui.small(
+                    "Transcript annotation, initiation evidence, occupancy/chromatin lanes, predicted score tracks, and reporter designs remain separate layers on one axis when Locus figure evidence is configured.",
+                );
+                ui.horizontal_wrapped(|ui| {
+                    if ui.button("Prepare from current locus").clicked() {
+                        prepare_requested = true;
+                    }
+                    if ui
+                        .add_enabled(
+                            self.engine.is_some()
+                                && !self
+                                    .variant_followup_ui
+                                    .promoter_reporter_architecture_request_json
+                                    .trim()
+                                    .is_empty(),
+                            egui::Button::new("Compare / refresh"),
+                        )
+                        .clicked()
+                    {
+                        compare_requested = true;
+                    }
+                });
+                egui::CollapsingHeader::new("Request and export paths")
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        ui.label("Request JSON");
+                        if ui
+                            .add(
+                                egui::TextEdit::multiline(
+                                    &mut self
+                                        .variant_followup_ui
+                                        .promoter_reporter_architecture_request_json,
+                                )
+                                .desired_rows(8)
+                                .code_editor(),
+                            )
+                            .changed()
+                        {
+                            self.variant_followup_ui
+                                .cached_promoter_reporter_architecture_comparison = None;
+                        }
+                        egui::Grid::new("promoter_reporter_architecture_export_paths")
+                            .num_columns(2)
+                            .spacing([10.0, 4.0])
+                            .show(ui, |ui| {
+                                ui.label("JSON report");
+                                ui.text_edit_singleline(
+                                    &mut self
+                                        .variant_followup_ui
+                                        .promoter_reporter_architecture_json_path,
+                                );
+                                ui.end_row();
+                                ui.label("SVG figure");
+                                ui.text_edit_singleline(
+                                    &mut self
+                                        .variant_followup_ui
+                                        .promoter_reporter_architecture_svg_path,
+                                );
+                                ui.end_row();
+                            });
+                        ui.small("Leave an output path empty to keep that artifact in memory only.");
+                    });
+
+                if let Some(report) = self
+                    .variant_followup_ui
+                    .cached_promoter_reporter_architecture_comparison
+                    .clone()
+                {
+                    ui.separator();
+                    egui::Grid::new("promoter_reporter_architecture_summary")
+                        .num_columns(2)
+                        .spacing([12.0, 4.0])
+                        .show(ui, |ui| {
+                            ui.label("Locus");
+                            ui.monospace(&report.seq_id);
+                            ui.end_row();
+                            ui.label("TSS classes / transcripts");
+                            ui.label(format!(
+                                "{} / {}",
+                                report.tss_classes.len(),
+                                report.transcripts.len()
+                            ));
+                            ui.end_row();
+                            ui.label("Architecture rows");
+                            ui.label(report.architectures.len().to_string());
+                            ui.end_row();
+                            ui.label("Integrated locus evidence");
+                            if let Some(locus) = report.locus_evidence.as_ref() {
+                                ui.label(format!(
+                                    "{} occupancy group(s), {} score track(s), {} bp scale",
+                                    locus.occupancy_groups.len(),
+                                    locus.regulatory_score_tracks.len(),
+                                    locus.scale_bar.length_bp
+                                ));
+                            } else {
+                                ui.label("not requested (legacy figure)");
+                            }
+                            ui.end_row();
+                            ui.label("Common CDS start");
+                            ui.label(
+                                report
+                                    .common_cds_start_genomic_1based
+                                    .map(|position| position.to_string())
+                                    .unwrap_or_else(|| "not shared / not anchored".to_string()),
+                            );
+                            ui.end_row();
+                            ui.label("Existing construct");
+                            ui.label(&report.existing_construct.status);
+                            ui.end_row();
+                            ui.label("CUT&RUN");
+                            ui.label(format!(
+                                "{}; {}",
+                                report.cutrun_evidence.evaluation_state,
+                                report.cutrun_evidence.quantitative_comparison_status
+                            ));
+                            ui.end_row();
+                        });
+
+                    ui.strong("TSS classes");
+                    for class in &report.tss_classes {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.monospace(&class.class_id);
+                            ui.label(format!(
+                                "{} transcript(s); representative {}",
+                                class.transcript_ids.len(),
+                                class.representative_transcript_id
+                            ));
+                            if ui.small_button("Use transcript").clicked() {
+                                selected_transcript =
+                                    Some(class.representative_transcript_id.clone());
+                            }
+                        });
+                        ui.small(format!(
+                            "initiation evidence: {}",
+                            class.transcription_initiation_evidence_state
+                        ));
+                    }
+
+                    egui::CollapsingHeader::new("Architecture models")
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            for architecture in &report.architectures {
+                                ui.group(|ui| {
+                                    ui.horizontal_wrapped(|ui| {
+                                        ui.monospace(&architecture.architecture_id);
+                                        ui.label(format!(
+                                            "{} | {} | {} bp",
+                                            architecture.transcript_id,
+                                            architecture.architecture_kind.as_str(),
+                                            architecture.modeled_insert_length_bp
+                                        ));
+                                        if ui.small_button("Use transcript").clicked() {
+                                            selected_transcript =
+                                                Some(architecture.transcript_id.clone());
+                                        }
+                                    });
+                                    ui.small(format!(
+                                        "spliced 5' UTR {} bp | introns {} bp total / {} bp max | {}",
+                                        architecture.five_prime_utr_spliced_length_bp,
+                                        architecture.five_prime_utr_total_intron_bp,
+                                        architecture.five_prime_utr_max_intron_bp,
+                                        architecture
+                                            .junction
+                                            .endogenous_atg_disposition
+                                            .as_str()
+                                    ));
+                                    ui.small(&architecture.testable_question);
+                                });
+                            }
+                        });
+
+                    ui.strong("Staged panel");
+                    for recommendation in &report.staged_panel {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.monospace(&recommendation.stage);
+                            ui.label(format!(
+                                "{}: {}",
+                                recommendation.role, recommendation.rationale
+                            ));
+                        });
+                    }
+                    for lane in &report.cutrun_evidence.lanes {
+                        ui.small(format!(
+                            "CUT&RUN {} | {} | {:?}{}",
+                            lane.source_id,
+                            lane.role,
+                            lane.state,
+                            lane.condition
+                                .as_deref()
+                                .map(|value| format!(" | {value}"))
+                                .unwrap_or_default()
+                        ));
+                    }
+                    for warning in &report.warnings {
+                        ui.colored_label(egui::Color32::from_rgb(180, 83, 9), warning);
+                    }
+                    for nonclaim in &report.non_claims {
+                        ui.small(
+                            egui::RichText::new(nonclaim)
+                                .color(egui::Color32::from_rgb(100, 116, 139)),
+                        );
+                    }
+                    if let Some(path) = report.json_path.as_deref() {
+                        ui.small(format!("JSON: {path}"));
+                    }
+                    if let Some(path) = report.svg_path.as_deref() {
+                        ui.small(format!("SVG: {path}"));
+                    }
+                }
+            });
+        if prepare_requested {
+            self.prepare_variant_followup_promoter_architecture_request();
+        }
+        if compare_requested {
+            self.run_variant_followup_promoter_architecture_comparison();
+        }
+        if let Some(transcript_id) = selected_transcript {
+            self.variant_followup_ui.transcript_id = transcript_id.clone();
+            self.op_status = format!(
+                "Selected transcript '{}' from the architecture comparison",
+                transcript_id
+            );
+        }
+    }
+
     fn render_variant_followup_window_contents(&mut self, ui: &mut egui::Ui) {
         let engine_available = self.engine.is_some();
         let source_seq_id = self.variant_followup_ui.source_seq_id.clone();
+        #[cfg(feature = "gui-test-support")]
+        let subject_scope = crate::gui_test_support::pseudonymous_subject_scope(&[&source_seq_id]);
+        #[cfg(feature = "gui-test-support")]
+        for semantic_id in [
+            crate::tutorial_gui_semantics::WINDOW_PROMOTER_DESIGN,
+            crate::tutorial_gui_semantics::PROMOTER_PANEL,
+        ] {
+            crate::gui_test_support::register_rect(
+                ui.ctx().clone(),
+                semantic_id,
+                crate::tutorial_gui_semantics::WINDOW_PROMOTER_DESIGN,
+                Some(&subject_scope),
+                crate::gui_test_support::GuiTestWidgetKind::Window,
+                ui.clip_rect(),
+                true,
+                true,
+                false,
+                None,
+            );
+        }
+        crate::agent_help::render_agent_help_button(
+            ui,
+            format!("Promoter design - {}", source_seq_id),
+            crate::tutorial_gui_semantics::WINDOW_PROMOTER_DESIGN,
+        );
+        ui.separator();
+        let _status = ui.small(&self.op_status);
+        #[cfg(feature = "gui-test-support")]
+        crate::gui_test_support::register_response(
+            &_status,
+            crate::tutorial_gui_semantics::PROMOTER_STATUS,
+            crate::tutorial_gui_semantics::WINDOW_PROMOTER_DESIGN,
+            Some(&subject_scope),
+            crate::gui_test_support::GuiTestWidgetKind::Status,
+            false,
+        );
         let current_seq_id = self.seq_id.clone().unwrap_or_default();
         let source_missing = !self.variant_followup_sequence_exists(&source_seq_id);
         let has_variant_seed = self.variant_followup_has_variant_seed();
@@ -5047,6 +7347,35 @@ impl MainAreaDna {
                                 }
                             }
                         });
+                    ui.label("ambiguity");
+                    egui::ComboBox::from_id_salt("promoter_design_ortholog_ambiguity")
+                        .selected_text(
+                            self.variant_followup_ui
+                                .ortholog_ambiguity_policy
+                                .as_str(),
+                        )
+                        .show_ui(ui, |ui| {
+                            for choice in [
+                                OrthologAmbiguityPolicy::Reject,
+                                OrthologAmbiguityPolicy::First,
+                                OrthologAmbiguityPolicy::Preserve,
+                            ] {
+                                if ui
+                                    .selectable_value(
+                                        &mut self
+                                            .variant_followup_ui
+                                            .ortholog_ambiguity_policy,
+                                        choice,
+                                        choice.as_str(),
+                                    )
+                                    .changed()
+                                {
+                                    ortholog_params_changed = true;
+                                }
+                            }
+                        });
+                });
+                ui.horizontal_wrapped(|ui| {
                     ui.label("CUT&RUN datasets");
                     if ui
                         .text_edit_singleline(
@@ -5066,9 +7395,40 @@ impl MainAreaDna {
                         ortholog_params_changed = true;
                     }
                 });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("normalized CUT&RUN JSON");
+                    if ui
+                        .add(
+                            egui::TextEdit::singleline(
+                                &mut self
+                                    .variant_followup_ui
+                                    .ortholog_cutrun_normalization_json,
+                            )
+                            .desired_width(360.0)
+                            .hint_text("optional JSON object or @file.json"),
+                        )
+                        .changed()
+                    {
+                        ortholog_params_changed = true;
+                    }
+                    if ui
+                        .small_button("Choose...")
+                        .on_hover_text(
+                            "Choose a JSON file containing an explicit normalization method, unit, comparison reference, provenance, and one value per resolved promoter.",
+                        )
+                        .clicked()
+                        && let Some(path) = rfd::FileDialog::new()
+                            .add_filter("JSON", &["json"])
+                            .pick_file()
+                    {
+                        self.variant_followup_ui.ortholog_cutrun_normalization_json =
+                            path.display().to_string();
+                        ortholog_params_changed = true;
+                    }
+                });
                 ui.small(
                     egui::RichText::new(
-                        "Local ortholog resources resolve cross-species promoter windows; any co-regulation expectation is reported as non-blocking evidence triage, not proof.",
+                        "Local ortholog resources resolve cross-species promoter windows. CUT&RUN remains qualitative unless an explicit normalization record supplies provenance-bound values for every resolved promoter.",
                     )
                     .color(egui::Color32::from_rgb(100, 116, 139)),
                 );
@@ -5171,6 +7531,16 @@ impl MainAreaDna {
             });
             ui.end_row();
 
+            ui.label("Alternate base (required for multiallelic variants)");
+            let _alternate_base = ui.text_edit_singleline(&mut self.variant_followup_ui.alternate_allele);
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &_alternate_base, crate::tutorial_gui_semantics::PROMOTER_ALTERNATE_BASE,
+                crate::tutorial_gui_semantics::WINDOW_PROMOTER_DESIGN,
+                Some(&subject_scope), crate::gui_test_support::GuiTestWidgetKind::TextInput, false,
+            );
+            ui.end_row();
+
             ui.label("Reporter backbone");
             ui.horizontal_wrapped(|ui| {
                 ui.text_edit_singleline(&mut self.variant_followup_ui.reporter_backbone_seq_id);
@@ -5189,6 +7559,7 @@ impl MainAreaDna {
         }
         if score_track_params_changed {
             self.variant_followup_ui.cached_score_tracks = None;
+            self.variant_followup_ui.cached_ortholog_promoter_comparison = None;
         }
         if similarity_params_changed {
             self.variant_followup_ui.cached_tfbs_track_similarity = None;
@@ -5458,6 +7829,38 @@ impl MainAreaDna {
             {
                 self.export_variant_followup_isoform_promoter_comparison_json();
             }
+            if ui
+                .add_enabled(
+                    engine_available
+                        && self
+                            .variant_followup_ui
+                            .cached_ortholog_promoter_cohort
+                            .is_some(),
+                    egui::Button::new("Export ortholog cohort JSON..."),
+                )
+                .on_hover_text(
+                    "Write the cached ortholog promoter cohort by rerunning the shared resolver with an output path.",
+                )
+                .clicked()
+            {
+                self.export_variant_followup_ortholog_promoter_cohort_json();
+            }
+            if ui
+                .add_enabled(
+                    engine_available
+                        && self
+                            .variant_followup_ui
+                            .cached_ortholog_promoter_comparison
+                            .is_some(),
+                    egui::Button::new("Export ortholog comparison JSON..."),
+                )
+                .on_hover_text(
+                    "Write the cached ortholog promoter comparison by rerunning the shared comparison operation with an output path.",
+                )
+                .clicked()
+            {
+                self.export_variant_followup_ortholog_promoter_comparison_json();
+            }
             let has_candidates = self.variant_followup_ui.cached_candidates.is_some();
             if ui
                 .add_enabled(
@@ -5470,19 +7873,6 @@ impl MainAreaDna {
                 .clicked()
             {
                 self.extract_variant_followup_recommended_fragment();
-            }
-            let has_fragment = !self.variant_followup_ui.fragment_output_id.trim().is_empty();
-            if ui
-                .add_enabled(
-                    has_variant_seed && has_fragment,
-                    egui::Button::new("Make reference/alternate inserts"),
-                )
-                .on_hover_text(
-                    "Build matched SNV-specific promoter inserts from the extracted fragment.",
-                )
-                .clicked()
-            {
-                self.materialize_variant_followup_alleles();
             }
             let has_materialized = !self.variant_followup_ui.reference_output_id.trim().is_empty()
                 && !self.variant_followup_ui.alternate_output_id.trim().is_empty();
@@ -5512,6 +7902,36 @@ impl MainAreaDna {
             }
         });
 
+        // The parameter grid can expand horizontally; keep the pair action
+        // at the start of its own row so vertical scrolling can reach it.
+        ui.horizontal_wrapped(|ui| {
+            let has_fragment = !self
+                .variant_followup_ui
+                .fragment_output_id
+                .trim()
+                .is_empty();
+            let materialize_pair = ui
+                .add_enabled(
+                    has_variant_seed && has_fragment,
+                    egui::Button::new("Make reference/alternate inserts"),
+                )
+                .on_hover_text(
+                    "Build matched SNV-specific promoter inserts from the extracted fragment.",
+                );
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &materialize_pair,
+                crate::tutorial_gui_semantics::PROMOTER_MATERIALIZE_PAIR,
+                crate::tutorial_gui_semantics::WINDOW_PROMOTER_DESIGN,
+                Some(&subject_scope),
+                crate::gui_test_support::GuiTestWidgetKind::Button,
+                false,
+            );
+            if materialize_pair.clicked() {
+                self.materialize_variant_followup_alleles();
+            }
+        });
+
         ui.separator();
         self.render_variant_followup_score_track_summary(ui);
         ui.add_space(8.0);
@@ -5532,6 +7952,12 @@ impl MainAreaDna {
         self.render_variant_followup_report_summary(ui);
         ui.add_space(8.0);
         self.render_variant_followup_candidate_summary(ui);
+        ui.add_space(8.0);
+        self.render_variant_followup_promoter_architecture_comparison(ui);
+        ui.add_space(8.0);
+        self.render_variant_followup_promoter_reporter_panel(ui);
+        ui.add_space(8.0);
+        self.render_variant_followup_regulatory_fragment_panel(ui);
     }
 
     pub(super) fn render_variant_followup_window(&mut self, ctx: &egui::Context) {

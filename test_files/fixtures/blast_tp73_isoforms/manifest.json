@@ -1,0 +1,47 @@
+{
+  "schema": "gentle.blast_fixture.v1",
+  "description": "Three ENA-derived TP73 DeltaN coding sequences; a small transcript/CDS test database, not a complete transcriptome or genome.",
+  "source_fasta": "data/resources/tp73_dn_ena_transcripts.fasta",
+  "source_panel": "assets/panels/tp73_dn_isoforms_v1.json",
+  "fasta": "cds.fasta",
+  "fasta_sha256": "c9338fdd35f0d700e7395212d43a2f05d01ec748194f454d582af406f7d74783",
+  "total_bases": 4398,
+  "records": [
+    {
+      "id": "AY040827.1_DNp73alpha_CDS",
+      "accession": "AY040827.1",
+      "label": "DNp73alpha",
+      "url": "https://www.ebi.ac.uk/ena/browser/view/AY040827",
+      "retrieved_on": "2026-05-01",
+      "source_sequence_sha256": "df0a7a4158f6ad38b6aa64361d7d4f73eb377ac2f63a6d37ac582c06b197abe3",
+      "cds_start_1based": 235,
+      "cds_end_1based": 1998,
+      "length_bp": 1764,
+      "sequence_sha256": "efa9de7ceab3872c68f09b6980b4aba581bf6f2b92414f5f0099577ff4917350"
+    },
+    {
+      "id": "AY040828.1_DNp73beta_CDS",
+      "accession": "AY040828.1",
+      "label": "DNp73beta",
+      "url": "https://www.ebi.ac.uk/ena/browser/view/AY040828",
+      "retrieved_on": "2026-05-01",
+      "source_sequence_sha256": "9778290bdd92f87943a5d49b3eefce78d0444ad2ef3c55e33427e30a011aa37c",
+      "cds_start_1based": 235,
+      "cds_end_1based": 1587,
+      "length_bp": 1353,
+      "sequence_sha256": "235686e0c6a8e9ff586da41ffc0cb0be4140812a555ddeb87e1d0fb890deb232"
+    },
+    {
+      "id": "AY040829.1_DNp73gamma_CDS",
+      "accession": "AY040829.1",
+      "label": "DNp73gamma",
+      "url": "https://www.ebi.ac.uk/ena/browser/view/AY040829",
+      "retrieved_on": "2026-05-01",
+      "source_sequence_sha256": "88102b6672d45663e0606a707222c93f8e94e31f33cbbb7ed57a5dcfbf382d19",
+      "cds_start_1based": 235,
+      "cds_end_1based": 1515,
+      "length_bp": 1281,
+      "sequence_sha256": "e1821d881a61f21da622e781991647e1b77af2238eebfea9712b44c77564a695"
+    }
+  ]
+}

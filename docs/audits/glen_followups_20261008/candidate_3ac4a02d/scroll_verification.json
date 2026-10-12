@@ -1,0 +1,10 @@
+{
+  "source_revision": "3ac4a02dd81a7b2dabe3c2bd82b28d76f6ce21da",
+  "receipt_sha256": "87a274adaf3c8046f4458b8d0374757ea7db3cc63fab2a5eed7e9dbc5094c00d",
+  "verified_artifacts": 25,
+  "verified_cases": 24,
+  "binary_sha256": "daacf5896aa076df63746fafd90bd03f48efb5a83568678f83d8b9d468e2ff39",
+  "profile": "dev",
+  "native_latency_measured": false,
+  "package_accepted": false
+}

@@ -1,23 +1,69 @@
+#[test]
+fn annotated_format_parity_gui_export_extension_selection() {
+    use crate::engine::ExportFormat;
+    for path in ["sequence.embl", "sequence.emb", "sequence.EMBL"] {
+        assert!(matches!(
+            MainAreaDna::infer_export_format(path),
+            ExportFormat::Embl
+        ));
+    }
+    assert!(matches!(
+        MainAreaDna::infer_export_format("sequence.gb"),
+        ExportFormat::GenBank
+    ));
+    assert!(matches!(
+        MainAreaDna::infer_export_format("sequence.fasta"),
+        ExportFormat::Fasta
+    ));
+}
+
 use super::{
-    DnaPresentationMode, FeatureCopyPayloadKind, LINEAR_TOPOLOGY_SWITCH_MAX_INITIAL_SPAN_BP,
-    MainAreaDna, PcrDesignerMode, PcrPaintRole, PrimaryMapMode, QpcrTranscriptIntentUiMode,
+    CrypticSplicingStrand, DnaPresentationMode, FEATURE_TREE_DEFERRED_AUTO_LOAD_MAX_FEATURES,
+    FeatureCopyPayloadKind, LINEAR_TOPOLOGY_SWITCH_MAX_INITIAL_SPAN_BP, MainAreaDna,
+    PcrDesignerMode, PcrPaintRole, PrimaryMapMode, QpcrTranscriptIntentUiMode,
     RnaReadConcatemerSubsetMode, RnaReadInterpretOpsUiState, RnaReadTask, RnaReadTaskMessage,
     RnaReadTaskOutcome, SPLICING_ATTRACT_EAGER_BOUNDARY_THRESHOLD,
     SequencingConfirmationOverviewSelection, SequencingConfirmationReviewFocusKind,
-    SplicingIntronSignalKey, SplicingIntronSignalRow, ViewSvgExportProfile,
+    SplicingIntronSignalKey, SplicingIntronSignalRow, SplicingLaneCanvasStyle,
+    ViewSvgExportProfile,
+    auxiliary_workspaces::LocusEvidenceResourceReadiness,
+    feature_location_editor_ui::{FeatureEditorMode, FeatureRecordQualifierUiRow},
 };
+
+#[test]
+fn dna_toolbar_panel_starts_tall_enough_for_action_rows_and_remains_resizable() {
+    assert_eq!(
+        MainAreaDna::top_panel_height_range(240.0),
+        (108.0, 100.0, 108.0)
+    );
+    assert_eq!(
+        MainAreaDna::top_panel_height_range(600.0),
+        (180.0, 100.0, 270.0)
+    );
+    assert_eq!(
+        MainAreaDna::top_panel_height_range(860.0),
+        (258.0, 100.0, 387.0)
+    );
+    assert_eq!(
+        MainAreaDna::top_panel_height_range(1200.0),
+        (360.0, 100.0, 420.0)
+    );
+}
 use crate::{
     dna_display::{ConstructReasoningOverlay, ConstructReasoningOverlaySpan, Selection},
     dna_sequence::DNAsequence,
     engine::{
         AlternativePromoterComparisonRow, AnnotationCandidateSummary, AttractRegionClass,
         AttractSpeciesMatchMode, AttractSplicingEvidenceHitRow, AttractSplicingEvidenceSettings,
-        AttractSplicingEvidenceView, ConstructRole, CutRunAlignConfig, CutRunInputFormat,
-        CutRunReadLayout, CutRunRegulatoryTfbsConfirmationStatus, CutRunSeedFilterConfig,
-        DotplotMode, DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView,
-        EditableStatus, Engine, EvidenceClass, FlexibilityModel, FlexibilityTrack, GentleEngine,
+        AttractSplicingEvidenceView, ConstructReasoningInspectionAction, ConstructRole,
+        CutRunAlignConfig, CutRunInputFormat, CutRunReadLayout,
+        CutRunRegulatoryTfbsConfirmationStatus, CutRunSeedFilterConfig, DotplotMode,
+        DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine,
+        EngineError, ErrorCode, EvidenceClass, FeatureLocationEditStrand,
+        FeatureRecordCurationOutcome, FlexibilityModel, FlexibilityTrack,
+        GeneIsoformEvidenceReport, GenomicMotifEvidenceReport, GentleEngine,
         LinearSequenceLetterLayoutMode, OpResult, Operation, PairwiseAlignmentMode,
-        PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignProgress,
+        Primer3Progress, PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignProgress,
         PrimerDesignSideConstraint, ProbeRegionEvidenceInterpretationReport,
         ProbeRegionEvidenceMappingRow, ProjectState, PromoterExpressionEvidenceInput,
         PromoterReporterCandidateSet, ProtocolCartoonPreviewTelemetry,
@@ -28,24 +74,26 @@ use crate::{
         RnaReadInterpretationProfile, RnaReadInterpretationReport,
         RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadIsoformTriageBin,
         RnaReadMappingHit, RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityVariant,
-        RnaReadSeedFilterConfig, SequenceAlignmentReport, SequenceGenomeAnchorSummary,
-        SequencingConfirmationReadResult, SequencingConfirmationReport,
-        SequencingConfirmationStatus, SequencingConfirmationTargetKind,
-        SequencingConfirmationTargetResult, SequencingConfirmationVariantRow,
-        SequencingPrimerOrientation, SequencingPrimerOverlayReport,
-        SequencingPrimerOverlaySuggestion, SequencingPrimerProblemKind,
-        SequencingPrimerProposalRow, SequencingTraceChannelData, SequencingTraceFormat,
-        SequencingTraceImportReport, SequencingTraceRecord, SplicingScopePreset,
-        TfbsScoreTrackReport, TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
-        TfbsTrackSimilarityReport, VariantPromoterContextReport,
+        RnaReadSeedFilterConfig, RnaReadSeedHistogramBin, RnaReadTopHitPreview,
+        RnaSeedHashCatalogEntry, RnaSeedHashTemplateAuditEntry, SequenceAlignmentReport,
+        SequenceGenomeAnchorSummary, SequencingConfirmationReadResult,
+        SequencingConfirmationReport, SequencingConfirmationStatus,
+        SequencingConfirmationTargetKind, SequencingConfirmationTargetResult,
+        SequencingConfirmationVariantRow, SequencingPrimerOrientation,
+        SequencingPrimerOverlayReport, SequencingPrimerOverlaySuggestion,
+        SequencingPrimerProblemKind, SequencingPrimerProposalRow, SequencingTraceChannelData,
+        SequencingTraceFormat, SequencingTraceImportReport, SequencingTraceRecord,
+        SplicingScopePreset, TfbsScoreTrackReport, TfbsScoreTrackValueKind,
+        TfbsTrackSimilarityRankingMetric, TfbsTrackSimilarityReport, VariantPromoterContextReport,
         parse_required_usize_or_formula_text_on_sequence,
     },
-    engine_shell::ShellCommand,
+    engine_shell::{ShellCommand, parse_shell_line},
     enzymes::active_restriction_enzymes,
     feature_expert::{
-        FeatureExpertView, IsoformArchitectureExpertView, RestrictionSiteExpertView,
-        SplicingBoundaryMarker, SplicingExonSummary, SplicingExpertView, SplicingIntronSignal,
-        SplicingJunctionArc, SplicingRange, SplicingTranscriptLane,
+        FeatureExpertView, GeneLocusEvidenceDisplayReport, GeneLocusScaleBarMode,
+        IsoformArchitectureExpertView, RestrictionSiteExpertView, SplicingBoundaryMarker,
+        SplicingExonSummary, SplicingExpertView, SplicingIntronSignal, SplicingJunctionArc,
+        SplicingMatrixRow, SplicingRange, SplicingTranscriptLane,
     },
     linear_base_routing::{LinearBaseRenderMode, LinearBaseRoutePolicy},
     protocol_cartoon::pcr_oe_substitution_geometry_bindings,
@@ -89,6 +137,99 @@ fn cutrun_tfbs_confirmation_label_covers_occupancy_support_statuses() {
             CutRunRegulatoryTfbsConfirmationStatus::Unconfirmed
         ),
         "unconfirmed"
+    );
+}
+
+#[test]
+fn cryptic_splicing_gui_builds_one_typed_source_request() {
+    let dna = DNAsequence::from_sequence(&"A".repeat(200)).expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("screen_source".to_string()), None);
+    area.cryptic_splicing_start_1based = "11".to_string();
+    area.cryptic_splicing_end_1based = "180".to_string();
+    area.cryptic_splicing_reverse = true;
+    area.cryptic_splicing_insert_start_1based = "21".to_string();
+    area.cryptic_splicing_insert_end_1based = "170".to_string();
+    area.cryptic_splicing_cds_feature_id = "3".to_string();
+    area.cryptic_splicing_min_intron_bp = "40".to_string();
+    area.cryptic_splicing_max_intron_bp = "120".to_string();
+    area.cryptic_splicing_max_candidates = "75".to_string();
+    area.cryptic_splicing_use_maxent = true;
+    area.cryptic_splicing_expected_model_fingerprint = "sha256:expected".to_string();
+
+    let request = area
+        .cryptic_splicing_request_from_controls()
+        .expect("typed request");
+    assert_eq!(request.seq_id, "screen_source");
+    assert_eq!((request.start_1based, request.end_1based), (11, 180));
+    assert_eq!(request.strand, CrypticSplicingStrand::Reverse);
+    assert_eq!(
+        request
+            .insert_span
+            .map(|span| (span.start_1based, span.end_1based)),
+        Some((21, 170))
+    );
+    assert_eq!(request.cds_feature_id, Some(3));
+    assert_eq!(
+        (request.min_pseudo_intron_bp, request.max_pseudo_intron_bp),
+        (40, 120)
+    );
+    assert_eq!(request.max_candidate_pairs, 75);
+    assert_eq!(
+        request.model_policy,
+        gentle_protocol::CrypticSplicingModelPolicy::UseActiveMaxent
+    );
+    assert_eq!(
+        request.expected_model_fingerprint_sha256.as_deref(),
+        Some("sha256:expected")
+    );
+}
+
+#[test]
+fn cryptic_splicing_gui_worker_is_read_only_and_caches_content_identity() {
+    let dna = DNAsequence::from_sequence(
+        "AAAGTCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAGAAA",
+    )
+    .expect("sequence");
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("screen_source".to_string(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let revision_before = engine.read().expect("engine").mutation_revision();
+    let mut area = MainAreaDna::new(
+        dna,
+        Some("screen_source".to_string()),
+        Some(Arc::clone(&engine)),
+    );
+    area.cryptic_splicing_min_intron_bp = "20".to_string();
+    area.cryptic_splicing_max_intron_bp = "100".to_string();
+    area.start_cryptic_splicing_screen();
+    assert!(area.cryptic_splicing_task.is_some());
+
+    let ctx = egui::Context::default();
+    for _ in 0..100 {
+        area.poll_cryptic_splicing_task(&ctx);
+        if area.cryptic_splicing_task.is_none() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let report = area
+        .cryptic_splicing_report
+        .as_ref()
+        .expect("cached report");
+    let cache_key = area
+        .cryptic_splicing_cache_key
+        .as_ref()
+        .expect("content cache key");
+    assert_eq!(
+        cache_key.effective_input_sha256,
+        report.effective_input_sha256
+    );
+    assert!(report.op_id.is_some());
+    assert_eq!(
+        engine.read().expect("engine").mutation_revision(),
+        revision_before
     );
 }
 
@@ -137,7 +278,7 @@ fn with_linear_map_response(
             inspect(&response);
         },
     );
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 fn probe_region_validation_fixture_dir() -> String {
@@ -571,7 +712,7 @@ fn collect_rendered_text_rects_from_shape(
 }
 
 fn collect_pass_texts(ctx: &egui::Context) -> Vec<String> {
-    let full_output = ctx.end_pass();
+    let full_output = crate::egui_compat::end_test_pass(&ctx);
     let mut texts = Vec::new();
     for clipped in full_output.shapes {
         collect_rendered_text_from_shape(&clipped.shape, &mut texts);
@@ -592,7 +733,7 @@ fn render_selection_formula_control_pass(
             area.render_selection_formula_inline_controls(ui, 420.0);
         },
     );
-    let full_output = ctx.end_pass();
+    let full_output = crate::egui_compat::end_test_pass(&ctx);
     let mut rects = Vec::new();
     for clipped in full_output.shapes {
         collect_rendered_text_rects_from_shape(&clipped.shape, &mut rects);
@@ -613,7 +754,7 @@ fn render_feature_tree_pass(
             area.render_features(ui);
         },
     );
-    let full_output = ctx.end_pass();
+    let full_output = crate::egui_compat::end_test_pass(&ctx);
     let mut rects = Vec::new();
     for clipped in full_output.shapes {
         collect_rendered_text_rects_from_shape(&clipped.shape, &mut rects);
@@ -1067,6 +1208,17 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
     area.sequencing_confirmation_ui.trace_import_add_to_run = true;
 
     area.handle_imported_sequencing_trace_result(&OpResult {
+        dna_sequence_design: None,
+        dna_sequence_design_receipt: None,
+        primer_group_target_design: None,
+        cryptic_splicing_screen: None,
+        tata_box_screen: None,
+        cryptic_splicing_evidence_overlay: None,
+        cryptic_splicing_protein_projection: None,
+        gene_locus_evidence_preparation: None,
+        experimental_assay_handoff: None,
+        regulatory_partner_screen: None,
+        genomic_region_operation: None,
         op_id: "op-import-trace".to_string(),
         created_seq_ids: vec![],
         changed_seq_ids: vec![],
@@ -1083,8 +1235,23 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
         exon_skip_materialization: None,
         cdna_assay_test_report: None,
         cdna_assay_product_materialization: None,
+        primerbank_search_report: None,
         transcript_qpcr_panel: None,
+        transcript_assay_panel: None,
+        transcript_assay_fallback_execution: None,
+        transcript_assay_cdna_similarity_map: None,
+        transcript_assay_specificity_redesign: None,
+        gene_isoform_assay_study_plan: None,
+        gene_transcript_assay_routine: None,
+        primer_specificity_handoff: None,
+        primer_specificity_multi_handoff: None,
+        primer_specificity_multi_summary: None,
+        primer_specificity_multi_summaries: vec![],
         primer_specificity_report: None,
+        external_primer_pair_import_report: None,
+        terminal_exon_rt_primer_pool: None,
+        transcript_capture_pool: None,
+        primer_variant_screen: None,
         construct_reasoning_graph: None,
         sequencing_confirmation_report: None,
         sequencing_trace_import_report: Some(SequencingTraceImportReport {
@@ -1115,6 +1282,13 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
         cutrun_regulatory_support: None,
         gene_set_resolution: None,
         gene_set_promoter_cohort: None,
+        collection_operation: None,
+        collection_restriction_site_scan: None,
+        collection_construct_reasoning_inspection: None,
+        collection_tfbs_hit_scan: None,
+        collection_digest: None,
+        collection_pool_export: None,
+        gene_set_pool_creation: None,
         gene_set_cutrun_regulatory_support: None,
         ortholog_promoter_cohort: None,
         ortholog_promoter_comparison: None,
@@ -1127,6 +1301,7 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
         rna_read_target_quality_export: None,
         rna_read_batch_map_report: None,
         rna_read_isoform_preflight: None,
+        rna_read_dexseq_verification: None,
         tfbs_region_summary: None,
         tfbs_score_tracks: None,
         tfbs_track_similarity: None,
@@ -1135,9 +1310,15 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
         repeat_annotation_query: None,
         sequence_repeat_overlaps: None,
         repeat_feature_materialization: None,
+        encode_ccre_overlaps: None,
+        encode_ccre_materialization: None,
+        ensembl_regulation_overlaps: None,
+        ensembl_regulation_materialization: None,
         repeat_environment_cohort: None,
         window_cohort_tfbs: None,
         tfbs_hit_scan: None,
+        genomic_motif_evidence: None,
+        promoter_cofactors: None,
         restriction_site_scan: None,
         jaspar_remote_metadata_snapshot: None,
         jaspar_catalog_report: None,
@@ -1148,6 +1329,7 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
         sequence_context_view: None,
         sequence_context_bundle: None,
         alternative_promoter_comparison: None,
+        promoter_reporter_architecture_comparison: None,
         variant_promoter_context: None,
         promoter_evidence_matrix: None,
         isoform_promoter_comparison: None,
@@ -1158,9 +1340,32 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
         reporter_recommendation: None,
         reporter_corpus_export: None,
         reporter_construct_handoff: None,
+        reporter_vector_validation: None,
+        promoter_reporter_panel_proposal: None,
+        regulatory_reporter_study: None,
+        reporter_fragment_selection: None,
+        tss_window_geometry: None,
+        regulatory_fragment_panel_plan: None,
+        regulatory_fragment_materialization_proposal: None,
+        regulatory_fragment_materialization_receipt: None,
+        promoter_reporter_panel_readiness: None,
+        promoter_reporter_panel_receipt: None,
         uniprot_projection_audit: None,
+        uniprot_linked_transcript_inventory: None,
         uniprot_projection_audit_parity: None,
         lab_assistant_instructions: None,
+        genomic_region_homology: None,
+        promoter_module_assessment: None,
+        feature_location_edit_report: None,
+        feature_record_curation_report: None,
+        tss_inventory: None,
+        tss_collection: None,
+        tss_collection_list: None,
+        tss_view_svg_export: None,
+        tss_tfbs_profiles: None,
+        tss_tfbs_profile_receipt: None,
+        gel_image: None,
+        gel_image_analysis: None,
     });
 
     assert_eq!(area.sequencing_confirmation_ui.selected_trace_id, "trace_b");
@@ -1440,6 +1645,7 @@ fn splicing_boundary_motif_rows_pair_donor_and_acceptor_markers() {
         transcript_count: 1,
         unique_exon_count: 2,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![SplicingTranscriptLane {
             transcript_feature_id: 11,
             transcript_id: "tx1".to_string(),
@@ -1513,6 +1719,7 @@ fn splicing_intron_signal_rows_preserve_branchpoint_and_polyy_metadata() {
         transcript_count: 1,
         unique_exon_count: 2,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -1564,6 +1771,7 @@ fn splicing_selected_intron_signal_key_falls_back_and_preserves_valid_selection(
         transcript_count: 1,
         unique_exon_count: 2,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -1644,6 +1852,7 @@ fn splicing_selected_intron_signal_row_recovers_when_previous_selection_is_missi
         transcript_count: 1,
         unique_exon_count: 2,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -1837,6 +2046,152 @@ fn sequencing_confirmation_selected_target_id_prefers_unresolved_rows_when_reque
     let selected = MainAreaDna::sequencing_confirmation_selected_target_id(&report, "", true)
         .expect("selected target id");
     assert_eq!(selected, "insufficient_target");
+}
+
+fn sequencing_confirmation_presentation_test_report() -> SequencingConfirmationReport {
+    SequencingConfirmationReport {
+        report_id: "confirm_large".to_string(),
+        generated_at_unix_ms: 42,
+        targets: vec![
+            SequencingConfirmationTargetResult {
+                target_id: "confirmed_target".to_string(),
+                label: "Confirmed".to_string(),
+                status: SequencingConfirmationStatus::Confirmed,
+                start_0based: 0,
+                end_0based_exclusive: 10,
+                ..Default::default()
+            },
+            SequencingConfirmationTargetResult {
+                target_id: "insufficient_target".to_string(),
+                label: "Insufficient".to_string(),
+                status: SequencingConfirmationStatus::InsufficientEvidence,
+                start_0based: 10,
+                end_0based_exclusive: 20,
+                ..Default::default()
+            },
+            SequencingConfirmationTargetResult {
+                target_id: "contradicted_target".to_string(),
+                label: "Contradicted".to_string(),
+                status: SequencingConfirmationStatus::Contradicted,
+                start_0based: 20,
+                end_0based_exclusive: 30,
+                ..Default::default()
+            },
+        ],
+        reads: vec![
+            SequencingConfirmationReadResult {
+                evidence_id: "evidence_a".to_string(),
+                read_seq_id: "read_a".to_string(),
+                ..Default::default()
+            },
+            SequencingConfirmationReadResult {
+                evidence_id: "evidence_b".to_string(),
+                read_seq_id: "read_b".to_string(),
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    }
+}
+
+#[test]
+fn sequencing_confirmation_target_review_order_cache_reuses_indices_and_tracks_sort_mode() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("dna");
+    let mut area = MainAreaDna::new(dna, Some("expected_seq".to_string()), None);
+    let report = sequencing_confirmation_presentation_test_report();
+
+    let unresolved_first = area.sequencing_confirmation_cached_target_review_indices(&report, true);
+    assert_eq!(unresolved_first.as_slice(), &[2, 1, 0]);
+    let reused = area.sequencing_confirmation_cached_target_review_indices(&report, true);
+    assert!(Arc::ptr_eq(&unresolved_first, &reused));
+    assert_eq!(
+        area.sequencing_confirmation_ui
+            .target_review_order_cache_misses,
+        1
+    );
+    assert_eq!(
+        area.sequencing_confirmation_ui
+            .target_review_order_cache_hits,
+        1
+    );
+
+    let report_order = area.sequencing_confirmation_cached_target_review_indices(&report, false);
+    assert_eq!(report_order.as_slice(), &[0, 1, 2]);
+    assert_eq!(
+        area.sequencing_confirmation_ui
+            .target_review_order_cache_misses,
+        2
+    );
+
+    let mut revised_report = report.clone();
+    revised_report.generated_at_unix_ms = 43;
+    let revised = area.sequencing_confirmation_cached_target_review_indices(&revised_report, true);
+    assert!(!Arc::ptr_eq(&unresolved_first, &revised));
+    assert_eq!(
+        area.sequencing_confirmation_ui
+            .target_review_order_cache_misses,
+        3
+    );
+}
+
+#[test]
+fn sequencing_confirmation_table_scroll_requests_follow_programmatic_selection() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("dna");
+    let mut area = MainAreaDna::new(dna, Some("expected_seq".to_string()), None);
+    let report = sequencing_confirmation_presentation_test_report();
+    area.sequencing_confirmation_ui.review_unresolved_first = true;
+    area.sequencing_confirmation_ui.selected_target_id = "confirmed_target".to_string();
+    area.sequencing_confirmation_ui.selected_evidence_id = "evidence_b".to_string();
+    let target_order = area.sequencing_confirmation_cached_target_review_indices(&report, true);
+
+    assert_eq!(
+        area.sequencing_confirmation_target_scroll_request(&report, &target_order),
+        Some(2)
+    );
+    assert_eq!(
+        area.sequencing_confirmation_read_scroll_request(&report),
+        Some(1)
+    );
+    assert_eq!(
+        area.sequencing_confirmation_target_scroll_request(&report, &target_order),
+        None
+    );
+    assert_eq!(
+        area.sequencing_confirmation_read_scroll_request(&report),
+        None
+    );
+
+    area.sequencing_confirmation_ui.selected_target_id = "contradicted_target".to_string();
+    assert_eq!(
+        area.sequencing_confirmation_target_scroll_request(&report, &target_order),
+        Some(0)
+    );
+    area.sequencing_confirmation_ui.review_unresolved_first = false;
+    let report_order = area.sequencing_confirmation_cached_target_review_indices(&report, false);
+    assert_eq!(
+        area.sequencing_confirmation_target_scroll_request(&report, &report_order),
+        Some(2)
+    );
+
+    area.sequencing_confirmation_ui.selected_evidence_id = "evidence_a".to_string();
+    assert_eq!(
+        area.sequencing_confirmation_read_scroll_request(&report),
+        Some(0)
+    );
+}
+
+#[test]
+fn sequencing_confirmation_virtual_table_height_bounds_visible_rows() {
+    assert_eq!(
+        MainAreaDna::sequencing_confirmation_virtual_table_height(3, 20.0, 220.0),
+        60.0
+    );
+    let target_height = MainAreaDna::sequencing_confirmation_virtual_table_height(100, 20.0, 220.0);
+    let read_height = MainAreaDna::sequencing_confirmation_virtual_table_height(100, 20.0, 280.0);
+    assert_eq!(target_height, 220.0);
+    assert_eq!(read_height, 280.0);
+    assert_eq!((target_height / 20.0) as usize, 11);
+    assert_eq!((read_height / 20.0) as usize, 14);
 }
 
 #[test]
@@ -2217,7 +2572,7 @@ fn restriction_layer_counts_respect_display_mode_and_total_sites() {
         .collect();
     dna.set_max_restriction_enzyme_sites(None);
     dna.update_computed_features();
-    let area = MainAreaDna::new(dna, Some("s".to_string()), None);
+    let mut area = MainAreaDna::new(dna, Some("s".to_string()), None);
     {
         let mut display = area.dna_display.write().expect("display");
         display.set_restriction_enzyme_display_mode(RestrictionEnzymeDisplayMode::PreferredOnly);
@@ -2242,6 +2597,185 @@ fn restriction_layer_counts_respect_display_mode_and_total_sites() {
         .set_restriction_enzyme_display_mode(RestrictionEnzymeDisplayMode::AllInView);
     let all_counts = area.compute_layer_visibility_counts();
     assert_eq!(all_counts.restriction_site_count, 3);
+}
+
+#[test]
+fn array_layer_button_label_distinguishes_setup_view_and_total_counts() {
+    assert_eq!(
+        MainAreaDna::array_layer_button_label(0, 0),
+        "Array setup..."
+    );
+    assert_eq!(MainAreaDna::array_layer_button_label(0, 2), "Array (0/2)");
+    assert_eq!(MainAreaDna::array_layer_button_label(1, 2), "Array (1/2)");
+    assert_eq!(MainAreaDna::array_layer_button_label(2, 2), "Array (2)");
+}
+
+#[test]
+fn array_setup_opens_sequence_tools_and_requests_probe_region_focus() {
+    let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("array-setup".to_string()), None);
+    area.probe_region_apt_platform.clear();
+    area.probe_region_apt_normalization.clear();
+    area.probe_region_apt_coordinate_system.clear();
+    area.probe_region_apt_genome_build.clear();
+
+    area.open_array_setup();
+
+    assert!(area.show_engine_ops);
+    assert!(area.probe_region_setup_requested);
+    assert_eq!(area.probe_region_apt_platform, "Clariom_D_Human");
+    assert_eq!(area.probe_region_apt_normalization, "rma-sketch");
+    assert_eq!(area.probe_region_apt_coordinate_system, "hg38");
+    assert_eq!(area.probe_region_apt_genome_build, "GRCh38");
+    assert!(area.op_status.contains("Clariom D"));
+}
+
+#[test]
+fn local_tp73_array_preflight_suggestion_uses_shared_shell_contract() {
+    let line = MainAreaDna::local_tp73_probe_region_preflight_command("/tmp/gentle probe regions");
+    let parsed = parse_shell_line(&line).expect("suggested command should parse");
+
+    let ShellCommand::ArraysProbeRegions {
+        dataset,
+        genes,
+        platform,
+        output_dir,
+        dry_run,
+        ..
+    } = parsed
+    else {
+        panic!("expected arrays probe-regions command");
+    };
+    assert_eq!(dataset.as_deref(), Some("E-MTAB-14704"));
+    assert_eq!(genes, vec!["TP73"]);
+    assert_eq!(platform.as_deref(), Some("Clariom_D_Human"));
+    assert_eq!(output_dir.as_deref(), Some("/tmp/gentle probe regions"));
+    assert!(dry_run);
+}
+
+#[test]
+fn array_layer_counts_distinguish_visible_and_full_sequence_features() {
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(75)).expect("sequence");
+    for (start, end, label) in [(20, 30, "visible-array"), (220, 230, "distant-array")] {
+        dna.features_mut().push(Feature {
+            kind: "track".into(),
+            location: Location::simple_range(start, end),
+            qualifiers: vec![
+                ("label".into(), Some(label.to_string())),
+                (
+                    "gentle_generated".into(),
+                    Some("microarray_track_projection".to_string()),
+                ),
+            ],
+        });
+    }
+    let mut area = MainAreaDna::new(dna, Some("array-locus".to_string()), None);
+    area.set_linear_viewport(0, 100);
+
+    let counts = area.compute_layer_visibility_counts();
+    assert_eq!(counts.array_count(), 1);
+    assert_eq!(counts.array_total_count(), 2);
+}
+
+#[test]
+fn nearest_array_navigation_uses_shared_feature_query_for_both_projection_tags() {
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(75)).expect("sequence");
+    dna.features_mut().push(Feature {
+        kind: "track".into(),
+        location: Location::simple_range(20, 30),
+        qualifiers: vec![
+            ("label".into(), Some("track-source-array".to_string())),
+            ("gentle_track_source".into(), Some("Array".to_string())),
+        ],
+    });
+    dna.features_mut().push(Feature {
+        kind: "track".into(),
+        location: Location::simple_range(80, 90),
+        qualifiers: vec![
+            ("label".into(), Some("generated-array".to_string())),
+            (
+                "gentle_generated".into(),
+                Some("microarray_track_projection".to_string()),
+            ),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("array-locus".to_string(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let area = MainAreaDna::new(dna, Some("array-locus".to_string()), Some(engine));
+
+    let nearest = area
+        .query_nearest_array_feature(75)
+        .expect("shared nearest-array query")
+        .expect("nearest array feature");
+
+    assert_eq!(nearest.0, 1);
+    assert_eq!(nearest.1, 5);
+    assert_eq!(nearest.2, "generated-array");
+}
+
+#[test]
+fn open_array_setup_restores_missing_clariom_d_defaults() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("array-locus".to_string()), None);
+    area.probe_region_apt_platform.clear();
+    area.probe_region_apt_normalization.clear();
+    area.probe_region_apt_coordinate_system.clear();
+    area.probe_region_apt_genome_build.clear();
+    area.probe_region_output_dir.clear();
+    area.probe_region_projection_seq_id.clear();
+
+    area.open_array_setup();
+
+    assert!(area.show_engine_ops);
+    assert!(area.probe_region_setup_requested);
+    assert_eq!(area.probe_region_apt_platform, "Clariom_D_Human");
+    assert_eq!(area.probe_region_apt_normalization, "rma-sketch");
+    assert_eq!(area.probe_region_apt_coordinate_system, "hg38");
+    assert_eq!(area.probe_region_apt_genome_build, "GRCh38");
+    assert_eq!(area.probe_region_output_dir, "analysis/probe_regions");
+    assert_eq!(area.probe_region_projection_seq_id, "array-locus");
+}
+
+#[test]
+fn layer_visibility_counts_reuse_cache_until_display_changes() {
+    let dna = DNAsequence::from_sequence("ATGCGCGCATGC").expect("seq");
+    let mut area = MainAreaDna::new(dna, Some("s".to_string()), None);
+
+    let first = area.compute_layer_visibility_counts();
+    let second = area.compute_layer_visibility_counts();
+    assert_eq!(first.gc_region_count, second.gc_region_count);
+    assert_eq!(area.layer_visibility_cache_misses, 1);
+    assert_eq!(area.layer_visibility_cache_hits, 1);
+
+    area.dna_display
+        .write()
+        .expect("display")
+        .set_gc_content_bin_size_bp(3);
+    let _ = area.compute_layer_visibility_counts();
+    assert_eq!(area.layer_visibility_cache_misses, 2);
+}
+
+#[test]
+fn window_title_reuses_lineage_lookup_cache() {
+    let dna = DNAsequence::from_sequence("ATGC").expect("seq");
+    let engine = Arc::new(RwLock::new(GentleEngine::new()));
+    let area = MainAreaDna::new(dna, Some("seq".to_string()), Some(engine.clone()));
+    assert_eq!(area.window_title(), "seq (seq)");
+    engine
+        .write()
+        .expect("engine")
+        .display_state_mut()
+        .linear_view_start_bp = 25;
+    assert_eq!(area.window_title(), "seq (seq)");
+    let write_guard = engine.write().expect("engine");
+    assert_eq!(area.window_title(), "seq (seq)");
+    drop(write_guard);
+    let cache = area.window_title_cache.lock().expect("title cache");
+    assert_eq!(cache.misses, 1);
+    assert_eq!(cache.hits, 2);
 }
 
 #[test]
@@ -2525,6 +3059,9 @@ fn whole_sequence_tfbs_track_similarity_uses_shared_engine_report_path() {
 
 #[test]
 fn cutrun_regulatory_support_gui_uses_shared_engine_report_path() {
+    let _motif_registry_guard = crate::tf_motifs::test_registry_lock()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
     let td = tempdir().expect("tempdir");
     let root = td.path();
     let sp1_consensus = "TATAAA";
@@ -3129,6 +3666,7 @@ fn dotplot_transcript_reference_choices_follow_active_mapping_locus() {
         transcript_count: 1,
         unique_exon_count: 0,
         instruction: "mapping".to_string(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![SplicingTranscriptLane {
             transcript_feature_id: 4,
             transcript_id: "NM_005427.4".to_string(),
@@ -3171,6 +3709,7 @@ fn dotplot_can_derive_annotated_transcript_reference_without_switching_query_win
         transcript_count: 2,
         unique_exon_count: 0,
         instruction: "mapping".to_string(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![
             SplicingTranscriptLane {
                 transcript_feature_id: 0,
@@ -3244,6 +3783,321 @@ fn rna_read_dotplot_svg_default_filename_mentions_parameters() {
     assert!(file_name.contains("_w9_s1_mm1_tileauto"));
 }
 
+fn test_rna_read_progress_snapshot(reads_processed: usize) -> RnaReadInterpretProgress {
+    RnaReadInterpretProgress {
+        seq_id: "seq1".to_string(),
+        reads_processed,
+        reads_total: 10,
+        read_bases_processed: reads_processed as u64 * 100,
+        mean_read_length_bp: 100.0,
+        median_read_length_bp: 100,
+        p95_read_length_bp: 120,
+        input_bytes_processed: reads_processed as u64 * 128,
+        input_bytes_total: 1280,
+        seed_passed: reads_processed,
+        aligned: 0,
+        tested_kmers: reads_processed * 4,
+        matched_kmers: reads_processed * 2,
+        seed_compute_ms: 0.0,
+        align_compute_ms: 0.0,
+        io_read_ms: 0.0,
+        fasta_parse_ms: 0.0,
+        normalize_compute_ms: 0.0,
+        inference_compute_ms: 0.0,
+        progress_emit_ms: 0.0,
+        update_every_reads: 1,
+        done: false,
+        bins: vec![RnaReadSeedHistogramBin {
+            start_1based: 1,
+            end_1based: 25,
+            confirmed_plus: reads_processed as u64,
+            confirmed_minus: reads_processed.saturating_sub(1) as u64,
+        }],
+        score_density_bins: vec![],
+        seed_pass_score_density_bins: vec![],
+        top_hits_preview: vec![RnaReadTopHitPreview {
+            record_index: 0,
+            header_id: "read0".to_string(),
+            sequence: "ACGT".to_string(),
+            sequence_preview: "ACGT".to_string(),
+            ..RnaReadTopHitPreview::default()
+        }],
+        transition_support_rows: vec![],
+        isoform_support_rows: vec![],
+        mapped_exon_support_frequencies: vec![],
+        mapped_junction_support_frequencies: vec![],
+        mapped_isoform_support_rows: vec![],
+        reads_with_transition_support: 0,
+        transition_confirmations: 0,
+        junction_crossing_seed_bits_indexed: 0,
+        origin_class_counts: BTreeMap::new(),
+    }
+}
+
+#[test]
+fn rna_seed_histogram_cache_separates_biological_and_pixel_rebuilds() {
+    let dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGTACGTACGT").expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    area.rna_reads_ui.report_id = "rna_report".to_string();
+    area.rna_reads_ui.kmer_len = "3".to_string();
+    area.rna_reads_ui.seed_stride_bp = "1".to_string();
+    area.rna_seed_highlight_record_index = Some(0);
+    area.rna_seed_catalog_preview = vec![
+        RnaSeedHashCatalogEntry {
+            seed_bits: MainAreaDna::encode_rna_seed_bits(b"ACG").expect("ACG bits"),
+            kmer_sequence: "ACG".to_string(),
+            transcript_feature_id: 11,
+            transcript_id: "TX1".to_string(),
+            transcript_label: "TX1".to_string(),
+            strand: "+".to_string(),
+            template_offset_0based: 0,
+            genomic_pos_1based: 3,
+        },
+        RnaSeedHashCatalogEntry {
+            seed_bits: MainAreaDna::encode_rna_seed_bits(b"CGT").expect("CGT bits"),
+            kmer_sequence: "CGT".to_string(),
+            transcript_feature_id: 11,
+            transcript_id: "TX1".to_string(),
+            transcript_label: "TX1".to_string(),
+            strand: "-".to_string(),
+            template_offset_0based: 1,
+            genomic_pos_1based: 18,
+        },
+    ];
+    area.rna_seed_template_audit_preview = vec![RnaSeedHashTemplateAuditEntry {
+        transcript_feature_id: 11,
+        transcript_id: "TX1".to_string(),
+        transcript_label: "TX1".to_string(),
+        strand: "+".to_string(),
+        template_sequence: "ACGT".to_string(),
+        template_length_bp: 4,
+        template_first_genomic_pos_1based: 1,
+        template_last_genomic_pos_1based: 25,
+        reverse_complemented_from_genome: false,
+    }];
+    let mut view = SplicingExpertView {
+        seq_id: "seq1".to_string(),
+        target_feature_id: 7,
+        scope: SplicingScopePreset::AllOverlappingAnyStrand,
+        group_label: "GENE1".to_string(),
+        strand: "+".to_string(),
+        region_start_1based: 1,
+        region_end_1based: 25,
+        transcript_count: 1,
+        unique_exon_count: 2,
+        instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
+        transcripts: vec![],
+        unique_exons: vec![
+            SplicingExonSummary {
+                start_1based: 1,
+                end_1based: 10,
+                support_transcript_count: 1,
+                constitutive: true,
+            },
+            SplicingExonSummary {
+                start_1based: 15,
+                end_1based: 25,
+                support_transcript_count: 1,
+                constitutive: true,
+            },
+        ],
+        matrix_rows: vec![],
+        boundaries: vec![],
+        intron_signals: vec![],
+        junctions: vec![],
+        events: vec![],
+    };
+    let progress = test_rna_read_progress_snapshot(1);
+
+    area.refresh_rna_read_seed_histogram_cache(&progress, &view, true, true, false, 400.0);
+    assert_eq!(area.rna_read_seed_histogram_cache_misses, 1);
+    assert_eq!(area.rna_read_seed_histogram_pixel_cache_misses, 1);
+    let cached = area
+        .cached_rna_read_seed_histogram
+        .as_ref()
+        .expect("histogram cache");
+    assert_eq!(cached.model.selected_supported_positions, 2);
+    assert_eq!(cached.model.plus_unique_positions, 1);
+    assert_eq!(cached.model.minus_unique_positions, 1);
+    let model_points_ptr = cached.model.points.as_ptr();
+
+    area.refresh_rna_read_seed_histogram_cache(&progress, &view, true, true, false, 400.0);
+    assert_eq!(area.rna_read_seed_histogram_cache_hits, 1);
+    assert_eq!(area.rna_read_seed_histogram_pixel_cache_hits, 1);
+    assert_eq!(
+        area.cached_rna_read_seed_histogram
+            .as_ref()
+            .expect("stable cache")
+            .model
+            .points
+            .as_ptr(),
+        model_points_ptr
+    );
+
+    area.refresh_rna_read_seed_histogram_cache(&progress, &view, true, true, false, 520.0);
+    assert_eq!(area.rna_read_seed_histogram_cache_hits, 2);
+    assert_eq!(area.rna_read_seed_histogram_pixel_cache_misses, 2);
+    assert_eq!(
+        area.cached_rna_read_seed_histogram
+            .as_ref()
+            .expect("width-only refresh")
+            .model
+            .points
+            .as_ptr(),
+        model_points_ptr,
+        "width changes must retain the biological presentation model"
+    );
+
+    area.rna_seed_highlight_record_index = None;
+    area.refresh_rna_read_seed_histogram_cache(&progress, &view, true, true, false, 520.0);
+    assert_eq!(area.rna_read_seed_histogram_cache_misses, 2);
+    assert_eq!(
+        area.cached_rna_read_seed_histogram
+            .as_ref()
+            .expect("selection refresh")
+            .model
+            .selected_supported_positions,
+        0
+    );
+
+    let misses_before_geometry_change = area.rna_read_seed_histogram_cache_misses;
+    let previous_exon_end_fraction = area
+        .cached_rna_read_seed_histogram
+        .as_ref()
+        .expect("pre-geometry-change cache")
+        .model
+        .exon_guides[0]
+        .end_fraction;
+    view.unique_exons[0].end_1based = 8;
+    area.refresh_rna_read_seed_histogram_cache(&progress, &view, true, true, false, 520.0);
+    assert_eq!(
+        area.rna_read_seed_histogram_cache_misses,
+        misses_before_geometry_change + 1,
+        "in-place-equivalent view storage with changed exon geometry must invalidate the biological presentation",
+    );
+    let revised = area
+        .cached_rna_read_seed_histogram
+        .as_ref()
+        .expect("geometry-refreshed cache");
+    assert_ne!(
+        revised.model.exon_guides[0].end_fraction, previous_exon_end_fraction,
+        "refreshed exon guides must reflect the revised geometry",
+    );
+}
+
+#[test]
+fn rna_seed_histogram_key_uses_revision_instead_of_vector_address() {
+    let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    area.rna_seed_catalog_preview = vec![RnaSeedHashCatalogEntry {
+        seed_bits: MainAreaDna::encode_rna_seed_bits(b"ACG").expect("ACG bits"),
+        kmer_sequence: "ACG".to_string(),
+        transcript_feature_id: 11,
+        transcript_id: "TX1".to_string(),
+        transcript_label: "TX1".to_string(),
+        strand: "+".to_string(),
+        template_offset_0based: 0,
+        genomic_pos_1based: 3,
+    }];
+    let progress = test_rna_read_progress_snapshot(1);
+    let view = splicing_expert_presentation_test_view();
+    let original_address = area.rna_seed_catalog_preview.as_ptr();
+    let first =
+        area.rna_read_seed_histogram_presentation_key(&progress, &view, true, true, false, 3, 1);
+
+    area.rna_seed_catalog_preview[0].genomic_pos_1based = 5;
+    assert_eq!(
+        area.rna_seed_catalog_preview.as_ptr(),
+        original_address,
+        "the regression must retain the vector allocation"
+    );
+    area.invalidate_rna_read_seed_histogram_cache();
+    let second =
+        area.rna_read_seed_histogram_presentation_key(&progress, &view, true, true, false, 3, 1);
+
+    assert_ne!(first, second);
+    assert_eq!(second.data_revision, first.data_revision + 1);
+}
+
+#[test]
+fn rna_read_progress_coalescing_keeps_latest_snapshot_and_terminal_message() {
+    let (tx, rx) = mpsc::channel::<RnaReadTaskMessage>();
+    for reads_processed in 1..=3 {
+        tx.send(RnaReadTaskMessage::Progress(
+            test_rna_read_progress_snapshot(reads_processed),
+        ))
+        .expect("send progress");
+    }
+    tx.send(RnaReadTaskMessage::Done(Err(EngineError {
+        code: ErrorCode::InvalidInput,
+        message: "terminal mapping error".to_string(),
+        cause_chain: vec![],
+    })))
+    .expect("send terminal message");
+
+    let batch = MainAreaDna::coalesce_rna_read_task_messages(&rx, 16);
+    assert_eq!(batch.progress_messages_drained, 3);
+    assert_eq!(
+        batch
+            .latest_progress
+            .as_ref()
+            .map(|progress| progress.reads_processed),
+        Some(3)
+    );
+    assert!(!batch.hit_message_cap);
+    assert_eq!(
+        batch
+            .done
+            .expect("terminal outcome")
+            .expect_err("terminal error")
+            .message,
+        "terminal mapping error"
+    );
+
+    let (tx, rx) = mpsc::channel::<RnaReadTaskMessage>();
+    for reads_processed in 4..=6 {
+        tx.send(RnaReadTaskMessage::Progress(
+            test_rna_read_progress_snapshot(reads_processed),
+        ))
+        .expect("send capped progress");
+    }
+    tx.send(RnaReadTaskMessage::Done(Err(EngineError {
+        code: ErrorCode::InvalidInput,
+        message: "cancelled".to_string(),
+        cause_chain: vec![],
+    })))
+    .expect("send cancellation");
+    let first = MainAreaDna::coalesce_rna_read_task_messages(&rx, 2);
+    assert_eq!(first.progress_messages_drained, 2);
+    assert_eq!(
+        first
+            .latest_progress
+            .map(|progress| progress.reads_processed),
+        Some(5)
+    );
+    assert!(first.done.is_none());
+    assert!(first.hit_message_cap);
+
+    let second = MainAreaDna::coalesce_rna_read_task_messages(&rx, 2);
+    assert_eq!(second.progress_messages_drained, 1);
+    assert_eq!(
+        second
+            .latest_progress
+            .map(|progress| progress.reads_processed),
+        Some(6)
+    );
+    assert_eq!(
+        second
+            .done
+            .expect("cancellation terminal")
+            .expect_err("cancellation error")
+            .message,
+        "cancelled"
+    );
+    assert!(!second.hit_message_cap);
+}
+
 #[test]
 fn async_task_repaint_delay_scales_with_queue_pressure() {
     assert_eq!(
@@ -3264,7 +4118,7 @@ fn async_task_repaint_delay_scales_with_queue_pressure() {
 fn poll_rna_read_task_keeps_live_progress_out_of_dna_window_status() {
     let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
     let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
-    let (_tx, rx) = mpsc::channel::<RnaReadTaskMessage>();
+    let (tx, rx) = mpsc::channel::<RnaReadTaskMessage>();
     area.show_rna_read_mapping_window = true;
     area.op_status = "keep this status in the DNA window".to_string();
     area.rna_read_progress = Some(RnaReadInterpretProgress {
@@ -3314,10 +4168,22 @@ fn poll_rna_read_task_keeps_live_progress_out_of_dna_window_status() {
         cancel_requested: Arc::new(AtomicBool::new(false)),
         receiver: Arc::new(Mutex::new(rx)),
     });
+    tx.send(RnaReadTaskMessage::Progress(
+        test_rna_read_progress_snapshot(9),
+    ))
+    .expect("send progress");
 
     area.poll_rna_read_task(&egui::Context::default());
 
     assert_eq!(area.op_status, "keep this status in the DNA window");
+    assert_eq!(area.rna_read_task_repaint_delay, Duration::from_millis(120));
+
+    area.poll_rna_read_task(&egui::Context::default());
+    assert_eq!(
+        area.rna_read_task_repaint_delay,
+        Duration::from_millis(700),
+        "an open mapping workspace should back off when no new progress arrived"
+    );
 }
 
 #[test]
@@ -3339,6 +4205,7 @@ fn completed_rna_read_task_routes_final_status_to_mapping_workspace() {
         transcript_count: 1,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -3428,6 +4295,16 @@ fn auto_enable_deferred_feature_tree_flips_flag_once() {
     assert!(area.maybe_auto_enable_deferred_feature_tree());
     assert!(!area.feature_tree_deferred_until_interaction);
     assert!(!area.maybe_auto_enable_deferred_feature_tree());
+}
+
+#[test]
+fn annotation_rich_deferred_feature_tree_requires_explicit_load() {
+    assert!(!MainAreaDna::deferred_feature_tree_requires_explicit_load(
+        FEATURE_TREE_DEFERRED_AUTO_LOAD_MAX_FEATURES
+    ));
+    assert!(MainAreaDna::deferred_feature_tree_requires_explicit_load(
+        FEATURE_TREE_DEFERRED_AUTO_LOAD_MAX_FEATURES + 1
+    ));
 }
 
 #[test]
@@ -3821,6 +4698,7 @@ fn selection_formula_applies_current_selection_range() {
 
 #[test]
 fn selection_formula_inline_controls_apply_button_resolves_formula() {
+    let _language = crate::i18n::TestLanguageGuard::new(crate::i18n::UiLanguage::EnGb);
     let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(120)).expect("sequence");
     dna.features_mut().push(Feature {
         kind: "CDS".into(),
@@ -4401,6 +5279,59 @@ fn primer_design_async_worker_completes_and_applies_operation() {
 }
 
 #[test]
+fn pcr_designer_specialist_polls_and_applies_completed_worker() {
+    let mut area = make_primer_batch_area();
+    let op = Operation::SetParameter {
+        name: "max_fragments_per_container".to_string(),
+        value: json!(23456),
+    };
+    area.start_primer_design_operation(op, "Primer-pair design");
+    assert!(area.primer_design_task.is_some());
+
+    // Let the worker finish without polling through the parent DNA viewport.
+    for _ in 0..300 {
+        if area
+            .engine
+            .as_ref()
+            .expect("engine")
+            .read()
+            .expect("engine lock")
+            .state()
+            .parameters
+            .max_fragments_per_container
+            == 23456
+        {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+
+    let ctx = egui::Context::default();
+    ctx.begin_pass(egui::RawInput::default());
+    egui::Area::new("pcr_designer_worker_poll".into()).show(&ctx, |ui| {
+        ui.set_width(1000.0);
+        area.render_pcr_designer_specialist(ui, &ctx);
+    });
+    crate::egui_compat::discard_test_pass_output(&ctx);
+
+    assert!(
+        area.primer_design_task.is_none(),
+        "specialist viewport should publish the completed worker"
+    );
+    assert_eq!(
+        area.engine
+            .as_ref()
+            .expect("engine")
+            .read()
+            .expect("engine lock")
+            .state()
+            .parameters
+            .max_fragments_per_container,
+        23456
+    );
+}
+
+#[test]
 fn protocol_cartoon_preview_svg_render_resolves_bound_oe_geometry() {
     let preview = ProtocolCartoonPreviewTelemetry {
         protocol: "pcr.oe.substitution".to_string(),
@@ -4437,6 +5368,17 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
     };
     area.handle_operation_success(
         super::OpResult {
+            dna_sequence_design: None,
+            dna_sequence_design_receipt: None,
+            primer_group_target_design: None,
+            cryptic_splicing_screen: None,
+            tata_box_screen: None,
+            cryptic_splicing_evidence_overlay: None,
+            cryptic_splicing_protein_projection: None,
+            gene_locus_evidence_preparation: None,
+            experimental_assay_handoff: None,
+            regulatory_partner_screen: None,
+            genomic_region_operation: None,
             op_id: "op-preview".to_string(),
             created_seq_ids: vec![],
             changed_seq_ids: vec![],
@@ -4453,8 +5395,23 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
             exon_skip_materialization: None,
             cdna_assay_test_report: None,
             cdna_assay_product_materialization: None,
+            primerbank_search_report: None,
             transcript_qpcr_panel: None,
+            transcript_assay_panel: None,
+            transcript_assay_fallback_execution: None,
+            transcript_assay_cdna_similarity_map: None,
+            transcript_assay_specificity_redesign: None,
+            gene_isoform_assay_study_plan: None,
+            gene_transcript_assay_routine: None,
+            primer_specificity_handoff: None,
+            primer_specificity_multi_handoff: None,
+            primer_specificity_multi_summary: None,
+            primer_specificity_multi_summaries: vec![],
             primer_specificity_report: None,
+            external_primer_pair_import_report: None,
+            terminal_exon_rt_primer_pool: None,
+            transcript_capture_pool: None,
+            primer_variant_screen: None,
             construct_reasoning_graph: None,
             sequencing_confirmation_report: None,
             sequencing_primer_overlay_report: None,
@@ -4470,6 +5427,13 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
             cutrun_regulatory_support: None,
             gene_set_resolution: None,
             gene_set_promoter_cohort: None,
+            collection_operation: None,
+            collection_restriction_site_scan: None,
+            collection_construct_reasoning_inspection: None,
+            collection_tfbs_hit_scan: None,
+            collection_digest: None,
+            collection_pool_export: None,
+            gene_set_pool_creation: None,
             gene_set_cutrun_regulatory_support: None,
             ortholog_promoter_cohort: None,
             ortholog_promoter_comparison: None,
@@ -4482,6 +5446,7 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
             rna_read_target_quality_export: None,
             rna_read_batch_map_report: None,
             rna_read_isoform_preflight: None,
+            rna_read_dexseq_verification: None,
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
             tfbs_track_similarity: None,
@@ -4490,9 +5455,15 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
             repeat_annotation_query: None,
             sequence_repeat_overlaps: None,
             repeat_feature_materialization: None,
+            encode_ccre_overlaps: None,
+            encode_ccre_materialization: None,
+            ensembl_regulation_overlaps: None,
+            ensembl_regulation_materialization: None,
             repeat_environment_cohort: None,
             window_cohort_tfbs: None,
             tfbs_hit_scan: None,
+            genomic_motif_evidence: None,
+            promoter_cofactors: None,
             restriction_site_scan: None,
             jaspar_remote_metadata_snapshot: None,
             jaspar_catalog_report: None,
@@ -4503,6 +5474,7 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
             sequence_context_view: None,
             sequence_context_bundle: None,
             alternative_promoter_comparison: None,
+            promoter_reporter_architecture_comparison: None,
             variant_promoter_context: None,
             promoter_evidence_matrix: None,
             isoform_promoter_comparison: None,
@@ -4513,9 +5485,32 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
             reporter_recommendation: None,
             reporter_corpus_export: None,
             reporter_construct_handoff: None,
+            reporter_vector_validation: None,
+            promoter_reporter_panel_proposal: None,
+            regulatory_reporter_study: None,
+            reporter_fragment_selection: None,
+            tss_window_geometry: None,
+            regulatory_fragment_panel_plan: None,
+            regulatory_fragment_materialization_proposal: None,
+            regulatory_fragment_materialization_receipt: None,
+            promoter_reporter_panel_readiness: None,
+            promoter_reporter_panel_receipt: None,
             uniprot_projection_audit: None,
+            uniprot_linked_transcript_inventory: None,
             uniprot_projection_audit_parity: None,
             lab_assistant_instructions: None,
+            genomic_region_homology: None,
+            promoter_module_assessment: None,
+            feature_location_edit_report: None,
+            feature_record_curation_report: None,
+            tss_inventory: None,
+            tss_collection: None,
+            tss_collection_list: None,
+            tss_view_svg_export: None,
+            tss_tfbs_profiles: None,
+            tss_tfbs_profile_receipt: None,
+            gel_image: None,
+            gel_image_analysis: None,
         },
         Instant::now(),
     );
@@ -4801,6 +5796,7 @@ fn splicing_expert_array_probe_geometry_rows_include_exon_overlap_probes() {
         .expect("exon-overlap PM probe row");
     assert!(exon_row.tooltip.contains("probe overlaps exon 1"));
     assert_eq!(exon_row.level, "pm_probe");
+    assert_eq!(exon_row.evidence_kind, "exon-overlap probe");
     assert_ne!(exon_row.parent_feature_id, exon_row.feature_id);
 }
 
@@ -4819,16 +5815,38 @@ fn splicing_expert_array_probe_geometry_rows_include_junction_probe_labels() {
                 .any(|label| label.contains("exon 1-exon 2 junction"))
         })
         .expect("junction-spanning PM probe row");
+    assert_eq!(junction_row.evidence_kind, "junction-spanning probe");
     assert!(
         junction_row
             .tooltip
             .contains("probe spans exon 1-exon 2 junction")
+    );
+    assert!(
+        junction_row
+            .tooltip
+            .contains("junction-spanning array probe")
     );
     assert!(junction_row.parent_mixes_transcript_features);
     assert!(
         junction_row
             .tooltip
             .contains("parent probeset contains probes across multiple transcript features")
+    );
+}
+
+#[test]
+fn splicing_expert_array_probe_geometry_summary_counts_junction_rows() {
+    let (_area, view, report) =
+        make_tp73_probe_region_validation_area_with_splicing_view_and_report();
+
+    let rows = MainAreaDna::array_probe_geometry_rows_for_splicing_view(&report, &view);
+    let summary = MainAreaDna::array_probe_geometry_summary_text(&rows);
+
+    assert!(summary.contains("junction-spanning row(s)"));
+    assert!(summary.contains("exon-overlap/other row(s)"));
+    assert!(
+        rows.iter()
+            .any(|row| row.evidence_kind == "junction-spanning probe")
     );
 }
 
@@ -5240,6 +6258,7 @@ fn splicing_group_roi_range_converts_to_zero_based_end_exclusive() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -5349,6 +6368,7 @@ fn splicing_transcript_dotplot_mode_uses_transcript_lane_strand() {
         transcript_count: 2,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![
             SplicingTranscriptLane {
                 transcript_feature_id: 11,
@@ -5855,6 +6875,7 @@ fn qpcr_preview_geometry_from_assay_tracks_top_assay_lengths() {
         assays: vec![crate::engine::QpcrAssayRecord {
             rank: 1,
             score: 97.2,
+            score_terms: vec![],
             forward: crate::engine::PrimerDesignPrimerRecord {
                 start_0based: 8,
                 end_0based_exclusive: 28,
@@ -5925,6 +6946,110 @@ fn selected_qpcr_assay_rank_defaults_to_first_for_invalid_rank() {
 }
 
 #[test]
+fn primer_designer_report_cache_reuses_preview_and_explicit_reopen_refreshes_revision() {
+    let dna = DNAsequence::from_sequence(&"ACGT".repeat(40)).expect("dna");
+    let mut state = ProjectState::default();
+    state.sequences.insert("tpl".to_string(), dna.clone());
+    let primer_report = crate::engine::PrimerDesignReport {
+        schema: "gentle.primer_design_report.v1".to_string(),
+        report_id: "primer_cache".to_string(),
+        template: "tpl".to_string(),
+        generated_at_unix_ms: 11,
+        ..Default::default()
+    };
+    let qpcr_report = crate::engine::QpcrDesignReport {
+        schema: "gentle.qpcr_design_report.v1".to_string(),
+        report_id: "qpcr_cache".to_string(),
+        template: "tpl".to_string(),
+        generated_at_unix_ms: 21,
+        ..Default::default()
+    };
+    state.metadata.insert(
+        crate::engine::PRIMER_DESIGN_REPORTS_METADATA_KEY.to_string(),
+        serde_json::json!({
+            "schema": "gentle.primer_design_reports.v1",
+            "reports": {
+                "primer_cache": primer_report,
+            },
+            "qpcr_reports": {
+                "qpcr_cache": qpcr_report,
+            },
+        }),
+    );
+    let engine = GentleEngine::from_state(state);
+    let engine = Arc::new(RwLock::new(engine));
+    let mut area = MainAreaDna::new(dna, Some("tpl".to_string()), Some(Arc::clone(&engine)));
+
+    assert_eq!(
+        area.load_primer_design_report("primer_cache")
+            .expect("load primer report")
+            .generated_at_unix_ms,
+        11
+    );
+    assert_eq!(
+        area.load_qpcr_design_report("qpcr_cache")
+            .expect("load qPCR report")
+            .generated_at_unix_ms,
+        21
+    );
+    assert_eq!(
+        area.cached_primer_design_report.as_deref().map(|report| (
+            report.schema.as_str(),
+            report.report_id.as_str(),
+            report.generated_at_unix_ms,
+        )),
+        Some(("gentle.primer_design_report.v1", "primer_cache", 11))
+    );
+    assert_eq!(
+        area.cached_qpcr_design_report.as_deref().map(|report| (
+            report.schema.as_str(),
+            report.report_id.as_str(),
+            report.generated_at_unix_ms,
+        )),
+        Some(("gentle.qpcr_design_report.v1", "qpcr_cache", 21))
+    );
+
+    {
+        let mut engine = engine.write().expect("engine write");
+        let store = engine
+            .state_mut()
+            .metadata
+            .get_mut(crate::engine::PRIMER_DESIGN_REPORTS_METADATA_KEY)
+            .expect("primer-design metadata");
+        store["reports"]["primer_cache"]["generated_at_unix_ms"] = serde_json::json!(12);
+        store["qpcr_reports"]["qpcr_cache"]["generated_at_unix_ms"] = serde_json::json!(22);
+    }
+
+    assert_eq!(
+        area.load_primer_design_report("primer_cache")
+            .expect("reuse cached primer report")
+            .generated_at_unix_ms,
+        11
+    );
+    assert_eq!(
+        area.load_qpcr_design_report("qpcr_cache")
+            .expect("reuse cached qPCR report")
+            .generated_at_unix_ms,
+        21
+    );
+
+    area.show_primer_design_report("primer_cache");
+    area.show_qpcr_design_report("qpcr_cache");
+    assert_eq!(
+        area.cached_primer_design_report
+            .as_deref()
+            .map(|report| report.generated_at_unix_ms),
+        Some(12)
+    );
+    assert_eq!(
+        area.cached_qpcr_design_report
+            .as_deref()
+            .map(|report| report.generated_at_unix_ms),
+        Some(22)
+    );
+}
+
+#[test]
 fn qpcr_splicing_context_summary_flags_junction_crossing_probe() {
     let view = SplicingExpertView {
         seq_id: "seq".to_string(),
@@ -5937,6 +7062,7 @@ fn qpcr_splicing_context_summary_flags_junction_crossing_probe() {
         transcript_count: 1,
         unique_exon_count: 2,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![
             SplicingExonSummary {
@@ -6695,6 +7821,37 @@ fn feature_tree_display_label_disambiguates_rna_by_range_fallback() {
 }
 
 #[test]
+fn feature_tree_transcript_summary_reports_spliced_length_and_name() {
+    let feature = gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(10, 30),
+            gb_io::seq::Location::simple_range(100, 135),
+        ]),
+        qualifiers: vec![
+            ("transcript_id".into(), Some("NM_TEST.1".to_string())),
+            ("transcript_name".into(), Some("TAp73alpha".to_string())),
+        ],
+    };
+
+    assert_eq!(
+        MainAreaDna::feature_tree_transcript_summary(&feature).as_deref(),
+        Some("55 nt · TAp73alpha")
+    );
+}
+
+#[test]
+fn feature_tree_transcript_summary_ignores_non_transcript_features() {
+    let feature = gb_io::seq::Feature {
+        kind: "gene".into(),
+        location: gb_io::seq::Location::simple_range(10, 30),
+        qualifiers: vec![("name".into(), Some("TP73".to_string()))],
+    };
+
+    assert_eq!(MainAreaDna::feature_tree_transcript_summary(&feature), None);
+}
+
+#[test]
 fn feature_tree_subgroup_label_does_not_group_gene_features() {
     let feature = make_feature("gene", vec![("gene", "TP73")]);
     assert_eq!(
@@ -6717,8 +7874,8 @@ fn feature_tree_model_keeps_gene_rows_splicing_action_capable() {
     let mut area = MainAreaDna::new(dna, Some("seq_gene".to_string()), None);
     area.feature_tree_grouping_mode = super::FeatureTreeGroupingMode::Always;
 
-    let key = area.current_feature_tree_cache_key(None);
-    let model = area.build_feature_tree_model(&key);
+    let key = area.current_feature_tree_cache_key();
+    let model = area.build_feature_tree_model(&key, None);
     let gene_group = model
         .groups
         .iter()
@@ -6796,6 +7953,10 @@ fn feature_tree_model_groups_dense_regulatory_repeat_track_and_array_surfaces() 
                 Some("Clariom D".to_string()),
             ),
             (
+                "gentle_array_dataset".into(),
+                Some("probe_region_output".to_string()),
+            ),
+            (
                 "gentle_array_contrast".into(),
                 Some("AdTAp73alpha-AdGFP".to_string()),
             ),
@@ -6805,8 +7966,8 @@ fn feature_tree_model_groups_dense_regulatory_repeat_track_and_array_surfaces() 
     let mut area = MainAreaDna::new(dna, Some("dense_tree".to_string()), None);
     area.feature_tree_grouping_mode = super::FeatureTreeGroupingMode::Always;
 
-    let key = area.current_feature_tree_cache_key(None);
-    let model = area.build_feature_tree_model(&key);
+    let key = area.current_feature_tree_cache_key();
+    let model = area.build_feature_tree_model(&key, None);
 
     let regulatory_group = model
         .groups
@@ -6845,7 +8006,7 @@ fn feature_tree_model_groups_dense_regulatory_repeat_track_and_array_surfaces() 
         .expect("array group");
     assert_eq!(
         array_group.grouped_entries[0].label,
-        "Array: Clariom D (AdTAp73alpha-AdGFP)"
+        "Array: Probe-region output / Clariom D (AdTAp73alpha-AdGFP)"
     );
 }
 
@@ -6889,8 +8050,8 @@ fn feature_tree_layer_summary_labels_count_current_model_categories() {
         ],
     ));
     let area = MainAreaDna::new(dna, Some("summary_tree".to_string()), None);
-    let key = area.current_feature_tree_cache_key(None);
-    let model = area.build_feature_tree_model(&key);
+    let key = area.current_feature_tree_cache_key();
+    let model = area.build_feature_tree_model(&key, None);
 
     let labels = MainAreaDna::feature_tree_layer_summary_labels(&model, false);
 
@@ -7527,6 +8688,20 @@ fn replace_active_dna_invalidates_feature_tree_cache() {
 }
 
 #[test]
+fn replace_active_dna_invalidates_transient_genomic_motif_evidence() {
+    let initial_dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+    let mut area = MainAreaDna::new(initial_dna, Some("initial".to_string()), None);
+    area.cached_genomic_motif_evidence = Some(GenomicMotifEvidenceReport::default());
+
+    area.replace_active_dna(
+        DNAsequence::from_sequence("TGCATGCA").expect("replacement sequence"),
+        true,
+    );
+
+    assert!(area.cached_genomic_motif_evidence.is_none());
+}
+
+#[test]
 fn feature_tree_cache_rebuilds_when_filter_changes() {
     let mut dna = DNAsequence::from_sequence("A".repeat(100).as_str()).expect("sequence");
     dna.features_mut()
@@ -7562,15 +8737,256 @@ fn feature_tree_cache_rebuilds_when_filter_changes() {
     assert!(cache.model.groups.is_empty());
 }
 
+// Hand-crafted synthetic geometry; no external annotation or biological claim.
+fn feature_tree_pan_fixture() -> MainAreaDna {
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(50)).unwrap();
+    dna.features_mut().push(make_feature("source", vec![]));
+    for reverse in [false, true] {
+        let mut transcript =
+            make_feature("mRNA", vec![("gene", "synthetic"), ("label", "isoform")]);
+        let exons = Location::Join(vec![
+            Location::simple_range(10, 20),
+            Location::simple_range(80, 100),
+        ]);
+        transcript.location = if reverse {
+            Location::Complement(Box::new(exons))
+        } else {
+            exons
+        };
+        dna.features_mut().push(transcript);
+    }
+    for start in [10, 80] {
+        for (kind, qualifiers) in [
+            (
+                "regulatory",
+                vec![
+                    ("regulatory_class", "enhancer"),
+                    ("note", "H3K4me1 active enhancer"),
+                ],
+            ),
+            (
+                "regulatory",
+                vec![("regulatory_class", "silencer"), ("label", "silencer")],
+            ),
+            (
+                "repeat_region",
+                vec![("repClass", "LINE"), ("repFamily", "L1")],
+            ),
+            (
+                "track",
+                vec![
+                    ("gentle_generated", "genome_bed_track"),
+                    ("gentle_track_name", "synthetic"),
+                ],
+            ),
+            (
+                "track",
+                vec![
+                    ("gentle_generated", "microarray_track_projection"),
+                    ("gentle_track_source", "Array"),
+                ],
+            ),
+            ("CDS", vec![("label", "coding")]),
+            ("gene", vec![("gene", "synthetic")]),
+            ("TFBS", vec![("label", "synthetic motif")]),
+        ] {
+            let mut feature = make_feature(kind, qualifiers);
+            feature.location = Location::simple_range(start, start + 10);
+            dna.features_mut().push(feature);
+        }
+    }
+    let area = MainAreaDna::new(dna, None, None);
+    {
+        let mut display = area.dna_display.write().unwrap();
+        display.set_show_mrna_features(true);
+        display.set_show_cds_features(true);
+        display.set_show_gene_features(true);
+        display.set_show_contextual_transcript_features(true);
+        display.set_show_repeat_features(true);
+        display.set_show_array_features(true);
+        display.set_show_tfbs(true);
+    }
+    area
+}
+
+fn assert_feature_tree_matches_full_rebuild(area: &MainAreaDna, viewport: Option<(usize, usize)>) {
+    let expected = area.build_feature_tree_model(&area.current_feature_tree_cache_key(), viewport);
+    let cache = area.feature_tree_cache.as_ref().unwrap();
+    assert_eq!(cache.viewport, viewport);
+    assert_eq!(cache.model, expected);
+    assert_eq!(
+        MainAreaDna::feature_tree_layer_summary(&cache.model),
+        MainAreaDna::feature_tree_layer_summary(&expected),
+    );
+}
+
 #[test]
-fn ensure_full_restriction_site_catalog_current_invalidates_feature_tree_cache() {
+fn feature_tree_pan_recounts_every_group_like_full_rebuild_without_changing_content() {
+    let mut area = feature_tree_pan_fixture();
+    let before = serde_json::to_value(&*area.dna.read().unwrap()).unwrap();
+    for grouping in [
+        super::FeatureTreeGroupingMode::Off,
+        super::FeatureTreeGroupingMode::Auto,
+        super::FeatureTreeGroupingMode::Always,
+    ] {
+        area.feature_tree_grouping_mode = grouping;
+        for filter in ["", "kind:mrna", "regulatory", "track", "label:absent"] {
+            area.feature_tree_filter = filter.to_string();
+            area.ensure_feature_tree_cache_current(None);
+            let builds = area.feature_tree_cache_misses;
+            for viewport in [
+                Some((0, 10)),
+                Some((10, 11)),
+                Some((20, 80)),
+                Some((80, 81)),
+                Some((100, 200)),
+                None,
+            ] {
+                area.ensure_feature_tree_cache_current(viewport);
+                assert_feature_tree_matches_full_rebuild(&area, viewport);
+                assert_eq!(area.feature_tree_cache_misses, builds);
+                let updates = area.feature_tree_viewport_updates;
+                area.ensure_feature_tree_cache_current(viewport);
+                assert_eq!(area.feature_tree_viewport_updates, updates);
+            }
+        }
+    }
+    assert_eq!(
+        serde_json::to_value(&*area.dna.read().unwrap()).unwrap(),
+        before
+    );
+}
+
+#[test]
+fn feature_tree_pan_keeps_both_strand_introns_and_half_open_edges_invisible() {
+    let mut area = feature_tree_pan_fixture();
+    area.feature_tree_grouping_mode = super::FeatureTreeGroupingMode::Always;
+    area.feature_tree_filter = "kind:mrna".to_string();
+    for (viewport, expected) in [
+        (None, 2),
+        (Some((20, 80)), 0),
+        (Some((19, 20)), 2),
+        (Some((80, 81)), 2),
+        (Some((100, 110)), 0),
+        (None, 2),
+    ] {
+        area.ensure_feature_tree_cache_current(viewport);
+        let model = &area.feature_tree_cache.as_ref().unwrap().model;
+        let group = model
+            .groups
+            .iter()
+            .find(|group| group.kind.eq_ignore_ascii_case("mrna"))
+            .unwrap();
+        assert_eq!(group.entries.len(), 2);
+        assert_eq!(group.visible_count, expected);
+        assert_eq!(group.grouped_entries[0].visible_count, expected);
+        assert_eq!(
+            group
+                .entries
+                .iter()
+                .filter(|entry| entry.visible_in_view)
+                .count(),
+            expected
+        );
+    }
+    assert_eq!(area.feature_tree_cache_misses, 1);
+}
+
+#[test]
+fn feature_tree_pan_rebuilds_on_annotation_settings_and_topology_changes() {
+    let mut area = feature_tree_pan_fixture();
+    let viewport = Some((10, 20));
+    area.ensure_feature_tree_cache_current(viewport);
+    let changes: &[fn(&mut MainAreaDna)] = &[
+        |area| {
+            area.dna.write().unwrap().features_mut()[1].location = Location::simple_range(110, 130)
+        },
+        |area| {
+            area.dna.write().unwrap().features_mut()[2]
+                .qualifiers
+                .push(("transcript_id".into(), Some("synthetic-renamed".into())))
+        },
+        |area| area.dna.write().unwrap().features_mut().swap(1, 2),
+        |area| area.dna.write().unwrap().set_circular(true),
+        |area| {
+            area.dna_display
+                .write()
+                .unwrap()
+                .set_show_mrna_features(false)
+        },
+        |area| {
+            area.dna_display
+                .write()
+                .unwrap()
+                .set_show_cds_features(false)
+        },
+        |area| {
+            area.dna_display
+                .write()
+                .unwrap()
+                .set_show_gene_features(false)
+        },
+        |area| {
+            area.dna_display
+                .write()
+                .unwrap()
+                .set_show_repeat_features(false)
+        },
+        |area| {
+            area.dna_display
+                .write()
+                .unwrap()
+                .set_show_array_features(false)
+        },
+        |area| {
+            area.dna_display
+                .write()
+                .unwrap()
+                .set_show_contextual_transcript_features(false)
+        },
+        |area| area.dna_display.write().unwrap().set_show_tfbs(false),
+        |area| {
+            let mut display = area.dna_display.write().unwrap();
+            let mut criteria = display.tfbs_display_criteria();
+            criteria.min_llr_bits += 1.0;
+            display.set_tfbs_display_criteria(criteria);
+        },
+        |area| {
+            let mut display = area.dna_display.write().unwrap();
+            let mut criteria = display.vcf_display_criteria();
+            criteria.pass_only = !criteria.pass_only;
+            display.set_vcf_display_criteria(criteria);
+        },
+        |area| {
+            area.dna_display
+                .write()
+                .unwrap()
+                .set_feature_kind_visible("regulatory", false)
+        },
+        |area| area.feature_tree_grouping_mode = super::FeatureTreeGroupingMode::Always,
+        |area| area.feature_tree_filter = "kind:track".to_string(),
+    ];
+    for change in changes {
+        let builds = area.feature_tree_cache_misses;
+        change(&mut area);
+        area.ensure_feature_tree_cache_current(viewport);
+        assert_eq!(area.feature_tree_cache_misses, builds + 1);
+        assert_feature_tree_matches_full_rebuild(&area, viewport);
+        area.ensure_feature_tree_cache_current(Some((80, 81)));
+        assert_eq!(area.feature_tree_cache_misses, builds + 1);
+        assert_feature_tree_matches_full_rebuild(&area, Some((80, 81)));
+    }
+}
+
+#[test]
+fn ensure_local_restriction_site_catalog_current_invalidates_feature_tree_cache() {
     let dna = restriction_ready_dna("GAATTCGAATTC");
     let mut area = MainAreaDna::new(dna, None, None);
 
     area.ensure_feature_tree_cache_current(None);
     assert!(area.feature_tree_cache.is_some());
 
-    area.ensure_full_restriction_site_catalog_current();
+    area.ensure_local_restriction_site_catalog_current();
 
     assert!(area.feature_tree_cache.is_none());
 }
@@ -7658,6 +9074,30 @@ fn linear_base_status_and_auto_hide_follow_shared_adaptive_routing() {
     assert_ne!(decision.active_mode, LinearBaseRenderMode::Off);
     assert!(area.linear_map_sequence_bases_visible());
     assert!(area.should_auto_hide_sequence_panel());
+}
+
+#[test]
+fn linear_base_visibility_flag_prevents_auto_hide_sequence_panel() {
+    let dna = DNAsequence::from_sequence("A".repeat(5000).as_str()).expect("sequence");
+    let mut area = MainAreaDna::new(dna, None, None);
+    area.last_linear_map_width_px = 1000.0;
+    area.show_map = true;
+    area.show_sequence = true;
+    {
+        let mut display = area.dna_display.write().expect("display lock");
+        display.set_linear_viewport(0, 300);
+        display.set_linear_show_sequence_bases(false);
+        display.set_linear_sequence_helical_letters_enabled(true);
+        display
+            .set_linear_sequence_letter_layout_mode(LinearSequenceLetterLayoutMode::AutoAdaptive);
+        display.set_auto_hide_sequence_panel_when_linear_bases_visible(true);
+    }
+
+    let decision = area.linear_base_routing_decision();
+    assert_eq!(decision.active_mode, LinearBaseRenderMode::Off);
+    assert!(decision.decision_reason.contains("disabled"));
+    assert!(!area.linear_map_sequence_bases_visible());
+    assert!(!area.should_auto_hide_sequence_panel());
 }
 
 #[test]
@@ -7757,6 +9197,43 @@ fn linear_vertical_fit_delta_clamp_limits_extreme_pan() {
 }
 
 #[test]
+fn view_svg_exports_omit_build_diagnostics() {
+    let dna = DNAsequence::from_sequence(&"ACGT".repeat(50)).expect("synthetic sequence");
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("profile_parity".to_string(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let mut area = MainAreaDna::new(dna, Some("profile_parity".to_string()), Some(engine));
+    area.primary_map_mode = PrimaryMapMode::Standard;
+    area.show_map = true;
+    area.show_sequence = true;
+    area.last_linear_map_width_px = 1280.0;
+    area.set_linear_viewport(0, 200);
+
+    for profile in [
+        ViewSvgExportProfile::Screen,
+        ViewSvgExportProfile::WideContext,
+        ViewSvgExportProfile::PrintA3Landscape,
+    ] {
+        let svg = area
+            .compose_active_view_svg(profile)
+            .expect("compose view SVG");
+        assert!(svg.contains("profile_parity"));
+        assert!(svg.contains("map=linear"));
+        assert!(svg.contains("linear view 1..200"));
+        assert!(svg.contains("GENtle view export"));
+        assert!(!svg.contains("debug tiers"), "{}", profile.label());
+        assert!(!svg.contains("standard&lt;="), "{}", profile.label());
+        assert_eq!(
+            svg,
+            area.compose_active_view_svg(profile)
+                .expect("repeat export")
+        );
+    }
+}
+
+#[test]
 fn view_svg_export_profiles_scale_canvas_and_context() {
     let screen =
         MainAreaDna::view_svg_export_layout(ViewSvgExportProfile::Screen, 1280.0, true, true);
@@ -7820,6 +9297,355 @@ fn splicing_expert_window_content_is_wider_than_default_viewport() {
 }
 
 #[test]
+fn splicing_isoform_evidence_request_normalizes_gui_source_lists() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    assert!(area.splicing_isoform_evidence_request().is_err());
+
+    area.splicing_isoform_evidence_panel_id = " patz1_panel ".to_string();
+    area.splicing_isoform_evidence_annotation_release = " Ensembl 116 ".to_string();
+    area.splicing_isoform_evidence_rna_report_ids = "rna-b, rna-a\nrna-b".to_string();
+    area.splicing_isoform_evidence_qpcr_report_ids = "qpcr-1".to_string();
+    area.splicing_isoform_evidence_probe_paths = "b.json,a.json".to_string();
+    area.splicing_isoform_evidence_cdna_est_paths = "support.json".to_string();
+    area.splicing_isoform_evidence_expression_path = " expression.tsv ".to_string();
+    area.splicing_isoform_evidence_occupancy_tracks = "SAOS-2 TA,SAOS-2 DN\nSAOS-2 TA".to_string();
+
+    let request = area
+        .splicing_isoform_evidence_request()
+        .expect("GUI request");
+    assert_eq!(request.panel_id, "patz1_panel");
+    assert_eq!(request.annotation_release.as_deref(), Some("Ensembl 116"));
+    assert_eq!(request.rna_read_report_ids, vec!["rna-a", "rna-b"]);
+    assert_eq!(request.qpcr_report_ids, vec!["qpcr-1"]);
+    assert_eq!(request.probe_evidence_paths, vec!["a.json", "b.json"]);
+    assert_eq!(request.cdna_est_resource_paths, vec!["support.json"]);
+    assert_eq!(
+        request.expression_tsv_path.as_deref(),
+        Some("expression.tsv")
+    );
+    assert_eq!(
+        request.occupancy_track_names,
+        vec!["SAOS-2 TA", "SAOS-2 DN"]
+    );
+}
+
+#[test]
+fn splicing_locus_evidence_request_reuses_isoform_inputs_and_parses_layout() {
+    let temp = tempfile::tempdir().expect("temporary locus UI fixture");
+    let layout_path = temp.path().join("occupancy.json");
+    std::fs::write(
+        &layout_path,
+        r#"{
+          "schema":"gentle.gene_locus_occupancy_layout.v1",
+          "groups":[{
+            "group_id":"saos2",
+            "label":"Saos-2",
+            "scale_mode":"shared_group",
+            "lanes":[{"track_name":"SAOS-2 TA","role":"experimental"}]
+          }]
+        }"#,
+    )
+    .expect("write occupancy layout");
+    let regulatory_path = temp.path().join("regulatory_scores.json");
+    std::fs::write(
+        &regulatory_path,
+        r#"{"tracks":[{"track_id":"tp73_pwm","label":"TP73 PWM","provider_kind":"jaspar_pwm","source_ids":["TP73"],"score_kind":"llr_bits","top_hit_count":3,"scale_mode":"independent"}]}"#,
+    )
+    .expect("write regulatory-score requests");
+    let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    area.splicing_isoform_evidence_panel_id = " patz1_panel ".to_string();
+    area.splicing_isoform_evidence_probe_paths = "probe-b.json,probe-a.json".to_string();
+    area.splicing_isoform_evidence_occupancy_tracks = "ignored direct track".to_string();
+    area.splicing_locus_upstream_bp = "2500".to_string();
+    area.splicing_locus_downstream_bp = "750".to_string();
+    area.splicing_locus_probe_effect_paths = "effects-b.tsv,effects-a.tsv".to_string();
+    area.splicing_locus_probe_effect_contrasts =
+        "TAp73alpha-GFP,DNp73beta-GFP,TAp73alpha-GFP".to_string();
+    area.splicing_locus_probe_effect_coordinate_system = "GRCh38.p14".to_string();
+    area.splicing_locus_occupancy_layout_path = layout_path.to_string_lossy().to_string();
+    area.splicing_locus_motifs = "TP73,SP1,TP73".to_string();
+    area.splicing_locus_motif_score_kind = "llr_bits".to_string();
+    area.splicing_locus_motif_threshold = "2.5".to_string();
+    area.splicing_locus_motif_top_hits = "7".to_string();
+    area.splicing_locus_motif_clip_negative = false;
+    area.splicing_locus_regulatory_tracks_path = regulatory_path.to_string_lossy().to_string();
+    area.splicing_locus_scale_bar_mode = "fixed".to_string();
+    area.splicing_locus_scale_bar_bp = "1000".to_string();
+
+    let request = area
+        .splicing_locus_evidence_request()
+        .expect("locus GUI request");
+    assert_eq!(request.isoform_evidence.panel_id, "patz1_panel");
+    assert_eq!(
+        request.isoform_evidence.probe_evidence_paths,
+        vec!["probe-a.json", "probe-b.json"]
+    );
+    assert!(request.isoform_evidence.occupancy_track_names.is_empty());
+    assert_eq!(request.upstream_bp, 2500);
+    assert_eq!(request.downstream_bp, 750);
+    assert_eq!(
+        request.probe_effect_table_paths,
+        vec!["effects-a.tsv", "effects-b.tsv"]
+    );
+    assert_eq!(
+        request.probe_effect_contrasts,
+        vec!["TAp73alpha-GFP", "DNp73beta-GFP"]
+    );
+    assert_eq!(request.occupancy_layout.groups.len(), 1);
+    assert_eq!(request.motifs, vec!["TP73", "SP1"]);
+    assert_eq!(request.motif_display_threshold, Some(2.5));
+    assert_eq!(request.motif_top_hit_count, 7);
+    assert!(!request.motif_clip_negative);
+    assert_eq!(request.regulatory_score_tracks.len(), 1);
+    assert_eq!(request.regulatory_score_tracks[0].track_id, "tp73_pwm");
+    assert_eq!(request.scale_bar.mode, GeneLocusScaleBarMode::Fixed);
+    assert_eq!(request.scale_bar.length_bp, Some(1_000));
+}
+
+#[test]
+fn splicing_locus_resource_rows_distinguish_ready_and_relocated_files() {
+    let fixture = "test_files/fixtures/isoform_evidence/patz1";
+    let mut engine = GentleEngine::default();
+    engine
+        .apply(Operation::LoadFile {
+            path: format!("{fixture}/patz1_minus_strand.gb"),
+            as_id: Some("patz1_ui".to_string()),
+        })
+        .expect("load anchored PATZ1 fixture");
+    engine
+        .apply(Operation::ImportIsoformPanel {
+            seq_id: "patz1_ui".to_string(),
+            panel_path: format!("{fixture}/patz1_isoform_panel.json"),
+            panel_id: Some("patz1_synthetic_v1".to_string()),
+            strict: false,
+        })
+        .expect("import PATZ1 panel");
+    let dna = engine
+        .state()
+        .sequences
+        .get("patz1_ui")
+        .expect("loaded sequence")
+        .clone();
+    let mut area = MainAreaDna::new(
+        dna,
+        Some("patz1_ui".to_string()),
+        Some(Arc::new(RwLock::new(engine))),
+    );
+    assert_eq!(area.isoform_panel_id, "tp53_isoforms_v1");
+    assert_eq!(
+        area.splicing_isoform_evidence_panel_id, "patz1_synthetic_v1",
+        "the unique panel imported for PATZ1 must win over the unrelated panel-editor default"
+    );
+    assert_eq!(
+        area.splicing_locus_evidence_request()
+            .expect("PATZ1 locus request without manual panel replacement")
+            .isoform_evidence
+            .panel_id,
+        "patz1_synthetic_v1"
+    );
+    area.inspect_splicing_locus_evidence();
+    assert!(
+        area.splicing_locus_report.is_some(),
+        "Compose and preview should reach the shared report with the unique imported panel: {}",
+        area.splicing_locus_status
+    );
+    area.splicing_isoform_evidence_cdna_est_paths = format!("{fixture}/patz1_cdna_est.json");
+    area.splicing_locus_probe_effect_paths = "missing/relocated-effects.tsv".to_string();
+
+    let rows = area.splicing_locus_resource_rows();
+    assert!(rows.iter().any(|row| {
+        row.kind == "genome anchor"
+            && row.readiness == LocusEvidenceResourceReadiness::Ready
+            && row.reference.contains("GRCh38.p14")
+    }));
+    assert!(rows.iter().any(|row| {
+        row.kind == "cDNA/EST evidence" && row.readiness == LocusEvidenceResourceReadiness::Ready
+    }));
+    assert!(rows.iter().any(|row| {
+        row.kind == "isoform panel"
+            && row.readiness == LocusEvidenceResourceReadiness::EngineValidated
+    }));
+    assert!(rows.iter().any(|row| {
+        row.kind == "probe-effect table"
+            && row.readiness == LocusEvidenceResourceReadiness::Missing
+            && row.detail.contains("relocated copy")
+    }));
+}
+
+#[test]
+fn splicing_locus_interactive_inspector_renders_score_sequence_and_saved_region() {
+    let dna = DNAsequence::from_sequence(&"ACGT".repeat(40)).expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("interactive_locus".to_string()), None);
+    let report = GeneLocusEvidenceDisplayReport {
+        seq_id: "interactive_locus".to_string(),
+        sequence_binding: Some(crate::locus_report::sequence_binding(
+            &area.dna.read().unwrap(),
+            None,
+        )),
+        gene_symbol: "DEMO".to_string(),
+        locus_local_start_1based: 1,
+        locus_local_end_1based: 160,
+        local_axis_direction: gentle_protocol::GeneLocusLocalAxisDirection::IncreasingLeftToRight,
+        regulatory_score_tracks: vec![gentle_protocol::GeneLocusRegulatoryScoreTrack {
+            track_id: "demo_tf".to_string(),
+            label: "DEMO TF".to_string(),
+            track_start_0based: 0,
+            stride_bp: 1,
+            display_scale_min: 0.0,
+            display_scale_max: 1.0,
+            forward_scores: vec![0.0, 0.5, 1.0, 0.2],
+            reverse_scores: vec![0.1, 0.4, 0.8, 0.3],
+            ..Default::default()
+        }],
+        saved_region_overlays: vec![gentle_protocol::GeneLocusSavedRegionOverlayRow {
+            set_id: "reporter_regions".to_string(),
+            region_id: "candidate_a".to_string(),
+            local_start_1based: 10,
+            local_end_1based: 40,
+            display_color_hex: Some("#336699".to_string()),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    area.reset_splicing_locus_inspector(&report);
+    area.splicing_locus_inspector_start_1based = 1;
+    area.splicing_locus_inspector_end_1based = 40;
+
+    let ctx = egui::Context::default();
+    ctx.begin_pass(egui::RawInput::default());
+    egui::Area::new("locus_inspector_test".into()).show(&ctx, |ui| {
+        ui.set_width(800.0);
+        area.render_splicing_locus_interactive_inspector(ui, &report);
+    });
+    crate::egui_compat::discard_test_pass_output(&ctx);
+    assert_eq!(area.splicing_locus_inspector_start_1based, 1);
+    assert_eq!(area.splicing_locus_inspector_end_1based, 40);
+    assert!(area.verify_splicing_locus_binding(&report).is_ok());
+    assert_eq!(
+        MainAreaDna::locus_inspector_color(Some("#336699"), egui::Color32::BLACK),
+        egui::Color32::from_rgb(0x33, 0x66, 0x99)
+    );
+}
+
+#[test]
+fn splicing_locus_multiple_imported_panels_require_and_persist_explicit_selection() {
+    let fixture = "test_files/fixtures/isoform_evidence/patz1";
+    let mut engine = GentleEngine::default();
+    engine
+        .apply(Operation::LoadFile {
+            path: format!("{fixture}/patz1_minus_strand.gb"),
+            as_id: Some("patz1_multi".to_string()),
+        })
+        .expect("load PATZ1 fixture");
+    for panel_id in ["patz1_panel_a", "patz1_panel_b"] {
+        engine
+            .apply(Operation::ImportIsoformPanel {
+                seq_id: "patz1_multi".to_string(),
+                panel_path: format!("{fixture}/patz1_isoform_panel.json"),
+                panel_id: Some(panel_id.to_string()),
+                strict: false,
+            })
+            .expect("import compatible PATZ1 panel");
+    }
+    assert_eq!(
+        engine.isoform_panel_ids_for_sequence("patz1_multi"),
+        vec!["patz1_panel_a".to_string(), "patz1_panel_b".to_string()]
+    );
+    let dna = engine.state().sequences["patz1_multi"].clone();
+    let shared_engine = Arc::new(RwLock::new(engine));
+    let mut area = MainAreaDna::new(
+        dna.clone(),
+        Some("patz1_multi".to_string()),
+        Some(Arc::clone(&shared_engine)),
+    );
+    assert!(
+        area.splicing_isoform_evidence_panel_id.is_empty(),
+        "multiple compatible panels must not be selected implicitly"
+    );
+    assert!(area.splicing_isoform_evidence_request().is_err());
+    area.select_splicing_isoform_panel("patz1_panel_b")
+        .expect("select imported panel explicitly");
+    assert_eq!(area.splicing_isoform_evidence_panel_id, "patz1_panel_b");
+    assert_eq!(
+        shared_engine
+            .read()
+            .expect("engine")
+            .splicing_locus_panel_selection("patz1_multi")
+            .as_deref(),
+        Some("patz1_panel_b")
+    );
+
+    let project = tempfile::NamedTempFile::new()
+        .expect("saved project")
+        .into_temp_path();
+    shared_engine
+        .read()
+        .expect("engine")
+        .state()
+        .save_to_path(&project.to_string_lossy())
+        .expect("save project with explicit panel selection");
+    let reopened_state =
+        ProjectState::load_from_path(&project.to_string_lossy()).expect("reopen saved project");
+    let reopened_engine = GentleEngine::from_state(reopened_state);
+    let reopened = MainAreaDna::new(
+        dna,
+        Some("patz1_multi".to_string()),
+        Some(Arc::new(RwLock::new(reopened_engine))),
+    );
+    assert_eq!(
+        reopened.splicing_isoform_evidence_panel_id, "patz1_panel_b",
+        "the user's explicit sequence-scoped choice must survive save/reopen"
+    );
+}
+
+#[test]
+fn splicing_locus_without_imported_panels_stays_blank_and_blocked() {
+    let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+    let mut state = ProjectState::default();
+    state.sequences.insert("no_panel".to_string(), dna.clone());
+    let area = MainAreaDna::new(
+        dna,
+        Some("no_panel".to_string()),
+        Some(Arc::new(RwLock::new(GentleEngine::from_state(state)))),
+    );
+    assert!(area.splicing_isoform_evidence_panel_id.is_empty());
+    assert!(area.splicing_compatible_isoform_panel_ids().is_empty());
+    assert!(
+        area.splicing_isoform_evidence_request()
+            .expect_err("no-panel request should stay blocked")
+            .contains("Select an imported isoform panel")
+    );
+}
+
+#[test]
+fn opening_a_splicing_group_clears_cached_isoform_evidence() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    area.seed_splicing_expert_window_for_tests("seq1", 17, "PATZ1");
+    let view = area
+        .splicing_expert_window_view
+        .as_ref()
+        .expect("seeded view")
+        .as_ref()
+        .clone();
+    area.splicing_isoform_evidence_report = Some(Arc::new(GeneIsoformEvidenceReport::default()));
+    area.splicing_isoform_evidence_status = "stale".to_string();
+    area.splicing_locus_report = Some(Arc::new(GeneLocusEvidenceDisplayReport::default()));
+    area.splicing_locus_preview_png = Some(Arc::from([1_u8, 2, 3]));
+    area.splicing_locus_status = "stale locus".to_string();
+
+    area.open_splicing_expert_window_for_view(&view);
+
+    assert!(area.splicing_isoform_evidence_report.is_none());
+    assert!(area.splicing_isoform_evidence_status.is_empty());
+    assert!(area.splicing_locus_report.is_none());
+    assert!(area.splicing_locus_preview_png.is_none());
+    assert!(area.splicing_locus_status.is_empty());
+}
+
+#[test]
 fn collect_open_auxiliary_window_entries_includes_splicing_and_isoform_windows() {
     let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
     let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
@@ -7835,6 +9661,7 @@ fn collect_open_auxiliary_window_entries_includes_splicing_and_isoform_windows()
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: "splicing".to_string(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -7999,7 +9826,7 @@ fn isoform_expert_embed_mode_uses_single_hosted_shell_without_viewport_title_lay
 
     assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -8018,6 +9845,7 @@ fn collect_open_auxiliary_window_entries_includes_rna_read_mapping_window() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: "mapping".to_string(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -8052,6 +9880,7 @@ fn rna_read_mapping_embedded_window_registers_visible_window_area() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: "mapping".to_string(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -8077,7 +9906,7 @@ fn rna_read_mapping_embedded_window_registers_visible_window_area() {
         false,
     );
     assert!(ctx.memory(|mem| mem.areas().is_visible(&layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -8096,6 +9925,7 @@ fn rna_read_mapping_embedded_window_focus_request_uses_foreground_order() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: "mapping".to_string(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -8121,7 +9951,7 @@ fn rna_read_mapping_embedded_window_focus_request_uses_foreground_order() {
         true,
     );
     assert!(ctx.memory(|mem| mem.areas().is_visible(&layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -8140,6 +9970,7 @@ fn rna_read_mapping_embedded_window_clears_legacy_title_bar_area() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: "mapping".to_string(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -8160,7 +9991,7 @@ fn rna_read_mapping_embedded_window_clears_legacy_title_bar_area() {
         ui.label("legacy mapping title shell");
     });
     assert!(ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 
     ctx.begin_pass(egui::RawInput::default());
     area.show_rna_read_mapping_window = true;
@@ -8174,7 +10005,7 @@ fn rna_read_mapping_embedded_window_clears_legacy_title_bar_area() {
         false,
     );
     assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
 }
 
@@ -8210,7 +10041,7 @@ fn rna_read_mapping_embed_mode_uses_single_hosted_shell_without_viewport_title_l
     assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -8245,7 +10076,7 @@ fn splicing_expert_embed_mode_uses_single_hosted_shell_without_viewport_title_la
     assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -8264,6 +10095,7 @@ fn rna_read_mapping_embedded_window_renders_intro_only_once() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: "mapping".to_string(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -8350,7 +10182,7 @@ fn dotplot_embed_mode_uses_single_hosted_shell_without_viewport_title_layer() {
 
     assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -8382,7 +10214,7 @@ fn variant_followup_embed_mode_uses_single_hosted_shell_without_viewport_title_l
 
     assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -8448,6 +10280,58 @@ fn current_engine_ops_state_records_pcr_designer_mode() {
 }
 
 #[test]
+fn terminal_exon_rt_primer_pool_gui_state_round_trips() {
+    let dna = DNAsequence::from_sequence("ACGT").unwrap();
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    area.pcr_designer_mode = PcrDesignerMode::TerminalExonRtPool;
+    area.primer_design_ui.terminal_exon_rt_pool.targets_tsv =
+        "seq1\tn-3\tNM_TEST.1\tTEST".to_string();
+    area.primer_design_ui
+        .terminal_exon_rt_pool
+        .splicing_transcript_id = "NM_TEST.1".to_string();
+
+    let encoded = serde_json::to_value(area.current_engine_ops_state()).unwrap();
+    let decoded: super::EngineOpsUiState = serde_json::from_value(encoded).unwrap();
+
+    assert_eq!(
+        decoded.pcr_designer_mode,
+        PcrDesignerMode::TerminalExonRtPool
+    );
+    assert_eq!(
+        decoded.primer_design_ui.terminal_exon_rt_pool.targets_tsv,
+        "seq1\tn-3\tNM_TEST.1\tTEST"
+    );
+    assert_eq!(
+        decoded
+            .primer_design_ui
+            .terminal_exon_rt_pool
+            .splicing_transcript_id,
+        "NM_TEST.1"
+    );
+}
+
+#[test]
+fn terminal_exon_rt_primer_pool_gui_preserves_target_priority_and_feature_id_conventions() {
+    let targets = MainAreaDna::parse_terminal_exon_rt_primer_targets(
+        "seq_tp73\tn-7\tTP73-201\tTP73\nseq_patz1\t12\tPATZ1-201\tPATZ1",
+    )
+    .expect("parse ordered terminal-exon RT-primer targets");
+
+    assert_eq!(targets.len(), 2);
+    assert_eq!(targets[0].seq_id, "seq_tp73");
+    assert_eq!(targets[0].source_feature_id, 6);
+    assert_eq!(targets[0].transcript_id.as_deref(), Some("TP73-201"));
+    assert_eq!(targets[0].label.as_deref(), Some("TP73"));
+    assert_eq!(targets[1].seq_id, "seq_patz1");
+    assert_eq!(targets[1].source_feature_id, 12);
+    assert_eq!(targets[1].transcript_id.as_deref(), Some("PATZ1-201"));
+
+    let error = MainAreaDna::parse_terminal_exon_rt_primer_targets("seq\tn-0\tTX")
+        .expect_err("GUI feature label n-0 must be rejected");
+    assert!(error.contains("1-based GUI feature label"));
+}
+
+#[test]
 fn primary_map_mode_defaults_when_missing_in_serialized_engine_ops_state() {
     let dna = DNAsequence::from_sequence("ACGT").unwrap();
     let area = MainAreaDna::new(dna, None, None);
@@ -8478,6 +10362,308 @@ fn pcr_designer_mode_defaults_when_missing_in_serialized_engine_ops_state() {
     value.as_object_mut().unwrap().remove("pcr_designer_mode");
     let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
     assert_eq!(decoded.pcr_designer_mode, PcrDesignerMode::PrimerPairs);
+}
+
+#[test]
+fn transcript_assay_panel_gui_defaults_to_strict_endpoint_oligo_dt_design() {
+    let dna = DNAsequence::from_sequence("ACGT").unwrap();
+    let area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+
+    assert_eq!(
+        area.transcript_assay_panel_ui.assay_kind,
+        crate::engine::TranscriptAssayKind::EndpointRtPcr
+    );
+    assert_eq!(
+        area.transcript_assay_panel_ui.objective,
+        crate::engine::TranscriptAssayPanelObjective::IsoformEndMatrix
+    );
+    assert_eq!(
+        area.transcript_assay_panel_ui.coverage_policy,
+        crate::engine::TranscriptAssayCoveragePolicy::RequireAll
+    );
+    assert_eq!(
+        area.transcript_assay_panel_ui.cdna_synthesis,
+        crate::engine::TranscriptAssayCdnaSynthesis::OligoDt
+    );
+    assert_eq!(area.transcript_assay_panel_ui.max_amplicon_bp, "10000");
+    assert_eq!(
+        area.transcript_assay_panel_ui.assay_tier,
+        crate::engine::TranscriptAssayUseTier::Unspecified
+    );
+    assert!(
+        area.transcript_assay_panel_ui
+            .preferred_min_amplicon_bp
+            .is_empty()
+    );
+    assert!(
+        area.transcript_assay_panel_ui
+            .preferred_max_amplicon_bp
+            .is_empty()
+    );
+    assert!(
+        area.transcript_assay_panel_ui
+            .oligo_dt_5prime_risk_threshold_bp
+            .is_empty()
+    );
+}
+
+#[test]
+fn transcript_assay_panel_gui_builds_default_experimental_handoff_operation() {
+    let operation = MainAreaDna::build_experimental_assay_handoff_operation("panel_gui_test");
+    let Operation::BuildExperimentalAssayHandoff {
+        panel_report_id,
+        policy,
+        variant_evidence_paths,
+        order_form_id,
+        path,
+        order_table_path,
+        virtual_gel_svg_path,
+        virtual_gel_ladders,
+        virtual_gel_render_options,
+    } = operation
+    else {
+        panic!("expected BuildExperimentalAssayHandoff");
+    };
+    assert_eq!(panel_report_id, "panel_gui_test");
+    assert!(policy.require_critical_qc_pass);
+    assert!(policy.require_specificity_pass);
+    assert!(!policy.require_assay_test);
+    assert!(!policy.require_variant_evaluation);
+    assert!(variant_evidence_paths.is_empty());
+    assert!(order_form_id.is_none());
+    assert!(path.is_none());
+    assert!(order_table_path.is_none());
+    assert!(virtual_gel_svg_path.is_none());
+    assert!(virtual_gel_ladders.is_empty());
+    assert_eq!(virtual_gel_render_options, Default::default());
+}
+
+#[test]
+fn transcript_assay_panel_gui_builds_shared_sybr_operation_with_junction_evidence() {
+    let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).unwrap();
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    area.transcript_assay_panel_ui.source_feature_id = "7".to_string();
+    area.transcript_assay_panel_ui.assay_kind = crate::engine::TranscriptAssayKind::SybrQpcr;
+    area.transcript_assay_panel_ui.objective =
+        crate::engine::TranscriptAssayPanelObjective::OnePerClass;
+    area.transcript_assay_panel_ui.assay_tier =
+        crate::engine::TranscriptAssayUseTier::IsoformDiscrimination;
+    area.transcript_assay_panel_ui.min_amplicon_bp = "70".to_string();
+    area.transcript_assay_panel_ui.max_amplicon_bp = "250".to_string();
+    area.transcript_assay_panel_ui.preferred_min_amplicon_bp = "80".to_string();
+    area.transcript_assay_panel_ui.preferred_max_amplicon_bp = "160".to_string();
+    area.transcript_assay_panel_ui
+        .oligo_dt_5prime_risk_threshold_bp = "1800".to_string();
+    area.transcript_assay_panel_ui.junction_evidence_paths =
+        "first.json\nsecond.json\n".to_string();
+    area.transcript_assay_panel_ui.explicit_junctions_json =
+        r#"[{"junction_id":"JUC:test","transcript_local_position_0based":42}]"#.to_string();
+    area.transcript_assay_panel_ui.report_id = "panel_gui_test".to_string();
+
+    let operation = area
+        .build_design_transcript_assay_panel_operation("seq1")
+        .expect("operation");
+    let Operation::DesignTranscriptAssayPanel {
+        seq_id,
+        source_feature_id,
+        assay_kind,
+        objective,
+        coverage_policy,
+        assay_tier,
+        practicality,
+        probe,
+        oligo_dt_5prime_risk_threshold_bp,
+        junctions,
+        junction_evidence_paths,
+        report_id,
+        ..
+    } = operation
+    else {
+        panic!("expected DesignTranscriptAssayPanel");
+    };
+    assert_eq!(seq_id, "seq1");
+    assert_eq!(source_feature_id, 7);
+    assert_eq!(assay_kind, crate::engine::TranscriptAssayKind::SybrQpcr);
+    assert_eq!(
+        objective,
+        crate::engine::TranscriptAssayPanelObjective::OnePerClass
+    );
+    assert_eq!(
+        coverage_policy,
+        crate::engine::TranscriptAssayCoveragePolicy::RequireAll
+    );
+    assert_eq!(
+        assay_tier,
+        crate::engine::TranscriptAssayUseTier::IsoformDiscrimination
+    );
+    assert_eq!(
+        practicality
+            .and_then(|policy| policy.preferred_amplicon_bp)
+            .map(|range| (range.min_bp, range.max_bp)),
+        Some((80, 160))
+    );
+    assert_eq!(
+        serde_json::to_value(probe).unwrap(),
+        serde_json::to_value(PrimerDesignSideConstraint::default()).unwrap()
+    );
+    assert_eq!(oligo_dt_5prime_risk_threshold_bp, Some(1800));
+    assert_eq!(junctions.len(), 1);
+    assert_eq!(junctions[0].junction_id, "JUC:test");
+    assert_eq!(junction_evidence_paths, vec!["first.json", "second.json"]);
+    assert_eq!(report_id.as_deref(), Some("panel_gui_test"));
+}
+
+#[test]
+fn transcript_assay_panel_gui_builds_exact_preapproved_fallback_wrapper() {
+    let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).unwrap();
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    area.transcript_assay_panel_ui.source_feature_id = "7".to_string();
+    area.transcript_assay_panel_ui.assay_kind = crate::engine::TranscriptAssayKind::SybrQpcr;
+    area.transcript_assay_panel_ui.objective =
+        crate::engine::TranscriptAssayPanelObjective::OnePerClass;
+    area.transcript_assay_panel_ui.coverage_policy =
+        crate::engine::TranscriptAssayCoveragePolicy::RequireAll;
+    area.transcript_assay_panel_ui.report_id = "strict_gui_panel".to_string();
+    area.transcript_assay_panel_ui
+        .preapprove_informative_fallback = true;
+    area.transcript_assay_panel_ui.fallback_max_assays = "3".to_string();
+    area.transcript_assay_panel_ui
+        .fallback_min_resolvable_size_difference_bp = "25".to_string();
+
+    let operation = area
+        .build_design_transcript_assay_panel_operation("seq1")
+        .expect("pre-approved GUI operation");
+    let Operation::DesignTranscriptAssayPanelWithFallback {
+        strict_operation,
+        fallback_submission,
+        path,
+    } = operation
+    else {
+        panic!("expected approval-bound fallback wrapper");
+    };
+    assert!(matches!(
+        strict_operation.as_ref(),
+        Operation::DesignTranscriptAssayPanel {
+            coverage_policy: crate::engine::TranscriptAssayCoveragePolicy::RequireAll,
+            objective: crate::engine::TranscriptAssayPanelObjective::OnePerClass,
+            report_id: Some(report_id),
+            ..
+        } if report_id == "strict_gui_panel"
+    ));
+    assert_eq!(
+        fallback_submission.mode,
+        crate::engine::TranscriptAssayFallbackSubmissionMode::PreapprovedInformativePartial
+    );
+    assert_eq!(
+        fallback_submission.fallback_report_id,
+        "strict_gui_panel_informative_partial"
+    );
+    assert_eq!(fallback_submission.informative_selection.max_assays, 3);
+    assert_eq!(
+        fallback_submission
+            .informative_selection
+            .minimum_resolvable_size_difference_bp,
+        25
+    );
+    assert!(
+        fallback_submission
+            .informative_selection
+            .require_nonzero_incremental_value
+    );
+    assert!(path.is_none());
+}
+
+#[test]
+fn transcript_assay_panel_gui_requires_both_preferred_range_bounds() {
+    let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).unwrap();
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    area.transcript_assay_panel_ui.source_feature_id = "7".to_string();
+    area.transcript_assay_panel_ui.preferred_min_amplicon_bp = "80".to_string();
+
+    let error = area
+        .build_design_transcript_assay_panel_operation("seq1")
+        .expect_err("one-sided preferred range must be rejected");
+    assert!(error.contains("minimum and maximum must be supplied together"));
+}
+
+#[test]
+fn transcript_assay_panel_gui_splicing_handoff_selects_group_and_mode() {
+    let dna = DNAsequence::from_sequence(&"ACGT".repeat(20)).unwrap();
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    let view = splicing_expert_presentation_test_view();
+
+    area.seed_transcript_assay_panel_from_splicing_view(&view);
+
+    assert_eq!(area.pcr_designer_mode, PcrDesignerMode::TranscriptPanels);
+    assert_eq!(area.transcript_assay_panel_ui.source_feature_id, "7");
+    assert_eq!(
+        area.transcript_assay_panel_ui.report_id,
+        "TEST_transcript_panel"
+    );
+}
+
+#[test]
+fn transcript_assay_panel_gui_reach_labels_keep_structural_absence_separate_from_rt_risk() {
+    assert_eq!(
+        MainAreaDna::transcript_assay_reach_short_label(
+            crate::engine::TranscriptAssayOligoDtReachStatus::StructuralTargetAbsent,
+        ),
+        "target absent"
+    );
+    assert_eq!(
+        MainAreaDna::transcript_assay_reach_short_label(
+            crate::engine::TranscriptAssayOligoDtReachStatus::Elevated5PrimeRisk,
+        ),
+        "RT risk"
+    );
+    assert_eq!(
+        MainAreaDna::transcript_assay_detection_label(
+            crate::engine::TranscriptAssayDetectionStatus::SingleProduct,
+            &[873],
+        ),
+        "873 bp"
+    );
+}
+
+#[test]
+fn transcript_assay_panel_gui_state_round_trips_without_cached_report() {
+    let dna = DNAsequence::from_sequence("ACGT").unwrap();
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    area.transcript_assay_panel_ui.source_feature_id = "9".to_string();
+    area.pcr_designer_mode = PcrDesignerMode::TranscriptPanels;
+
+    let encoded = serde_json::to_value(area.current_engine_ops_state()).unwrap();
+    let decoded: super::EngineOpsUiState = serde_json::from_value(encoded).unwrap();
+
+    assert_eq!(decoded.pcr_designer_mode, PcrDesignerMode::TranscriptPanels);
+    assert_eq!(decoded.transcript_assay_panel_ui.source_feature_id, "9");
+}
+
+#[test]
+fn transcript_assay_panel_gui_state_defaults_when_missing_from_saved_window_state() {
+    let dna = DNAsequence::from_sequence("ACGT").unwrap();
+    let area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    let mut value = serde_json::to_value(area.current_engine_ops_state()).unwrap();
+    value
+        .as_object_mut()
+        .unwrap()
+        .remove("transcript_assay_panel_ui");
+
+    let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
+
+    assert_eq!(
+        decoded.transcript_assay_panel_ui.assay_kind,
+        crate::engine::TranscriptAssayKind::EndpointRtPcr
+    );
+    assert_eq!(
+        decoded.transcript_assay_panel_ui.coverage_policy,
+        crate::engine::TranscriptAssayCoveragePolicy::RequireAll
+    );
+    assert!(
+        !decoded
+            .transcript_assay_panel_ui
+            .preapprove_informative_fallback
+    );
 }
 
 #[test]
@@ -8542,21 +10728,6 @@ fn rmsk_materialization_controls_default_when_missing_in_serialized_engine_ops_s
     );
     assert_eq!(decoded.rmsk_max_features, "5000");
     assert!(!decoded.rmsk_append_features);
-}
-
-#[test]
-fn clamp_extended_top_panel_height_respects_bounds() {
-    let max_height = MainAreaDna::max_extended_top_panel_height(900.0, true);
-    assert!(
-        (MainAreaDna::clamp_extended_top_panel_height(0.0, 900.0, true)
-            - super::EXTENDED_TOP_PANEL_MIN_HEIGHT_PX)
-            .abs()
-            <= f32::EPSILON
-    );
-    assert!(
-        (MainAreaDna::clamp_extended_top_panel_height(9_999.0, 900.0, true) - max_height).abs()
-            <= f32::EPSILON
-    );
 }
 
 #[test]
@@ -8815,6 +10986,7 @@ fn rna_read_scope_selection_label_mentions_target_gene_when_applicable() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -8883,6 +11055,7 @@ fn rna_read_gene_scope_summary_mentions_explicit_sparse_gene_list() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -8983,6 +11156,7 @@ fn open_rna_read_mapping_workspace_seeds_report_id_from_selected_evidence_report
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -9042,6 +11216,7 @@ fn open_rna_read_mapping_workspace_replaces_stale_report_id_with_matching_report
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -9184,6 +11359,8 @@ fn open_variant_followup_for_feature_seeds_window_from_variation_feature() {
             ("label".into(), Some("rs9923231".to_string())),
             ("db_xref".into(), Some("dbSNP:rs9923231".to_string())),
             ("gene".into(), Some("VKORC1".to_string())),
+            ("vcf_ref".into(), Some("C".to_string())),
+            ("vcf_alt".into(), Some("A,G,T".to_string())),
         ],
     });
     let mut area = MainAreaDna::new(dna, Some("vkorc1_context".to_string()), None);
@@ -9200,16 +11377,17 @@ fn open_variant_followup_for_feature_seeds_window_from_variation_feature() {
     assert_eq!(area.variant_followup_ui.gene_label, "VKORC1");
     assert_eq!(
         area.variant_followup_ui.fragment_output_id,
-        "rs9923231_promoter_fragment"
+        "vkorc1_rs9923231_promoter_fragment"
     );
     assert_eq!(
         area.variant_followup_ui.reference_output_id,
-        "rs9923231_promoter_reference"
+        "vkorc1_rs9923231_promoter_reference"
     );
     assert_eq!(
         area.variant_followup_ui.alternate_output_id,
-        "rs9923231_promoter_alternate"
+        "vkorc1_rs9923231_promoter_alternate"
     );
+    assert_eq!(area.variant_followup_ui.alternate_allele, "");
     assert_eq!(area.variant_followup_ui.score_track_motifs, "SP1");
     assert_eq!(
         area.variant_followup_ui.score_track_value_kind,
@@ -9245,6 +11423,353 @@ fn open_variant_followup_for_feature_seeds_window_from_variation_feature() {
             .cached_alternative_promoter_comparison
             .is_none()
     );
+}
+
+fn synthetic_multiallelic_promoter_pair_area() -> (MainAreaDna, Arc<RwLock<GentleEngine>>) {
+    // Hand-crafted adapter regression, not a human VKORC1 sequence or assay claim.
+    let mut dna = DNAsequence::from_sequence("AAAAAACAAAAAAAAAAAAA").unwrap();
+    dna.features_mut().push(Feature {
+        kind: "variation".into(),
+        location: Location::simple_range(6, 7),
+        qualifiers: vec![
+            ("label".into(), Some("rs9923231".into())),
+            ("gene".into(), Some("VKORC1".into())),
+            ("vcf_ref".into(), Some("C".into())),
+            ("vcf_alt".into(), Some("A,G,T".into())),
+        ],
+    });
+    let input = "vkorc1_rs9923231_promoter_fragment";
+    let mut state = ProjectState::default();
+    state.sequences.insert(input.into(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let mut area = MainAreaDna::new(dna, Some(input.into()), Some(engine.clone()));
+    assert!(area.open_variant_followup_for_feature(0, "synthetic pair regression"));
+    area.variant_followup_ui.reference_output_id = "reviewed_reference".into();
+    area.variant_followup_ui.alternate_output_id = "reviewed_alternate".into();
+    (area, engine)
+}
+
+#[test]
+fn promoter_pair_multiallelic_refusal_preserves_project_and_history() {
+    let (mut area, engine) = synthetic_multiallelic_promoter_pair_area();
+    let before = serde_json::to_value(engine.read().unwrap().state()).unwrap();
+    let journal_before = engine.read().unwrap().journal_len();
+    let active_before = area.seq_id.clone();
+    area.materialize_variant_followup_alleles();
+    assert!(
+        area.op_status.contains("choose one explicitly"),
+        "{}",
+        area.op_status
+    );
+    assert_eq!(
+        serde_json::to_value(engine.read().unwrap().state()).unwrap(),
+        before
+    );
+    assert_eq!(engine.read().unwrap().journal_len(), journal_before);
+    assert_eq!(area.seq_id, active_before);
+    assert!(area.last_created_seq_ids.is_empty());
+}
+
+#[test]
+fn promoter_pair_explicit_t_matches_shared_engine_and_differs_at_one_base() {
+    let (mut area, engine) = synthetic_multiallelic_promoter_pair_area();
+    let before = engine.read().unwrap().state().clone();
+    let mut oracle = GentleEngine::from_state(before.clone());
+    for (allele, output_id, alternate_allele) in [
+        (
+            crate::engine::VariantAlleleChoice::Reference,
+            "reviewed_reference",
+            None,
+        ),
+        (
+            crate::engine::VariantAlleleChoice::Alternate,
+            "reviewed_alternate",
+            Some("T".into()),
+        ),
+    ] {
+        oracle
+            .apply(Operation::MaterializeVariantAllele {
+                input: "vkorc1_rs9923231_promoter_fragment".into(),
+                variant_label_or_id: Some("rs9923231".into()),
+                allele,
+                alternate_allele,
+                output_id: Some(output_id.into()),
+            })
+            .unwrap();
+    }
+    area.variant_followup_ui.alternate_allele = "T".into();
+    area.materialize_variant_followup_alleles();
+    let guard = engine.read().unwrap();
+    assert_eq!(guard.journal_len(), 2);
+    let reference = &guard.state().sequences["reviewed_reference"];
+    let alternate = &guard.state().sequences["reviewed_alternate"];
+    let differences: Vec<_> = reference
+        .forward_bytes()
+        .iter()
+        .zip(alternate.forward_bytes())
+        .enumerate()
+        .filter_map(|(index, (left, right))| (left != right).then_some((index, *left, *right)))
+        .collect();
+    assert_eq!(reference.len(), alternate.len());
+    assert_eq!(differences, vec![(6, b'C', b'T')]);
+    for id in ["reviewed_reference", "reviewed_alternate"] {
+        assert_eq!(
+            guard.state().sequences[id].forward_bytes(),
+            oracle.state().sequences[id].forward_bytes()
+        );
+        assert_eq!(
+            guard.state().sequences[id].features(),
+            oracle.state().sequences[id].features()
+        );
+    }
+    assert_eq!(
+        guard.state().sequences["vkorc1_rs9923231_promoter_fragment"].forward_bytes(),
+        before.sequences["vkorc1_rs9923231_promoter_fragment"].forward_bytes()
+    );
+    assert_eq!(
+        area.last_created_seq_ids,
+        vec!["reviewed_reference", "reviewed_alternate"]
+    );
+}
+
+#[test]
+fn promoter_pair_invalid_explicit_allele_rolls_back_reference() {
+    let (mut area, engine) = synthetic_multiallelic_promoter_pair_area();
+    let before = serde_json::to_value(engine.read().unwrap().state()).unwrap();
+    area.variant_followup_ui.alternate_allele = "C".into();
+    area.materialize_variant_followup_alleles();
+    assert!(
+        area.op_status.contains("not present in vcf_alt"),
+        "{}",
+        area.op_status
+    );
+    assert_eq!(
+        serde_json::to_value(engine.read().unwrap().state()).unwrap(),
+        before
+    );
+    assert_eq!(engine.read().unwrap().journal_len(), 0);
+}
+
+#[cfg(feature = "gui-test-support")]
+#[test]
+fn promoter_pair_button_is_reachable_without_horizontal_scrolling() {
+    let (mut area, engine) = synthetic_multiallelic_promoter_pair_area();
+    area.variant_followup_ui.alternate_allele = "T".into();
+    let ctx = egui::Context::default();
+    ctx.set_embed_viewports(true);
+    let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1000.0));
+    let mut pointer = egui::Pos2::ZERO;
+    let mut reachable = false;
+    for frame in 0..64 {
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            time: Some(frame as f64 * 0.1),
+            events: vec![
+                egui::Event::PointerMoved(pointer),
+                egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: egui::vec2(0.0, -120.0),
+                    phase: egui::TouchPhase::Move,
+                    modifiers: egui::Modifiers::default(),
+                },
+            ],
+            ..Default::default()
+        });
+        crate::gui_test_support::begin_frame(&ctx);
+        area.render_variant_followup_window(&ctx);
+        let _ = crate::egui_compat::end_test_pass(&ctx);
+        let snapshot = crate::gui_test_support::snapshot(&ctx);
+        if snapshot.items.iter().any(|item| {
+            item.semantic_id == crate::tutorial_gui_semantics::PROMOTER_MATERIALIZE_PAIR
+                && item.state.visible
+                && item.state.enabled
+                && item.rect_logical_points.max_x - item.rect_logical_points.min_x > 100.0
+        }) {
+            reachable = true;
+            break;
+        }
+        if let Some(panel) = snapshot
+            .items
+            .iter()
+            .find(|item| item.semantic_id == crate::tutorial_gui_semantics::PROMOTER_PANEL)
+        {
+            let rect = panel.rect_logical_points;
+            pointer = egui::pos2(rect.min_x + 12.0, (rect.min_y + rect.max_y) * 0.5);
+        }
+    }
+    assert!(
+        reachable,
+        "pair action must not require horizontal scrolling"
+    );
+    assert_eq!(engine.read().unwrap().state().sequences.len(), 1);
+    assert_eq!(engine.read().unwrap().journal_len(), 0);
+}
+
+#[test]
+fn variant_followup_allele_pair_preflights_before_creation_and_retries_without_orphans() {
+    // Hand-crafted multi-allelic SNV; not a real locus or biological assertion.
+    let mut dna = DNAsequence::from_sequence("ACCGT").expect("synthetic DNA");
+    dna.features_mut().push(Feature {
+        kind: "variation".into(),
+        location: Location::simple_range(2, 3),
+        qualifiers: vec![
+            ("label".into(), Some("rsSynthetic".to_string())),
+            ("vcf_ref".into(), Some("C".to_string())),
+            ("vcf_alt".into(), Some("A,G,T".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("fragment".to_string(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let mut area = MainAreaDna::new(dna, Some("fragment".to_string()), Some(engine.clone()));
+    area.variant_followup_ui.fragment_output_id = "fragment".to_string();
+    area.variant_followup_ui.reference_output_id = "pair_reference".to_string();
+    area.variant_followup_ui.alternate_output_id = "pair_alternate".to_string();
+    area.variant_followup_ui.variant_label_or_id = "rsSynthetic".to_string();
+    let before = serde_json::to_value(engine.read().unwrap().state()).unwrap();
+    let journal_before = engine.read().unwrap().journal_len();
+    let view_before = serde_json::to_value(&*area.dna.read().unwrap()).unwrap();
+    let seq_id_before = area.seq_id.clone();
+
+    for alternate in ["", "N", "C", "TT"] {
+        area.variant_followup_ui.alternate_allele = alternate.to_string();
+        area.materialize_variant_followup_alleles();
+        assert!(area.op_status.contains("preflight failed"), "{alternate}");
+        assert!(area.op_error_popup.is_some());
+        assert_eq!(
+            serde_json::to_value(engine.read().unwrap().state()).unwrap(),
+            before
+        );
+        assert_eq!(engine.read().unwrap().journal_len(), journal_before);
+        assert_eq!(
+            serde_json::to_value(&*area.dna.read().unwrap()).unwrap(),
+            view_before
+        );
+        assert_eq!(area.seq_id, seq_id_before);
+        assert_eq!(
+            area.variant_followup_ui.reference_output_id,
+            "pair_reference"
+        );
+        assert_eq!(
+            area.variant_followup_ui.alternate_output_id,
+            "pair_alternate"
+        );
+        assert!(area.last_created_seq_ids.is_empty());
+    }
+
+    area.variant_followup_ui.alternate_allele = "T".to_string();
+    area.materialize_variant_followup_alleles();
+    let guard = engine.read().unwrap();
+    assert_eq!(guard.state().sequences.len(), 3);
+    assert_eq!(guard.journal_len(), journal_before + 2);
+    assert_eq!(
+        guard.state().sequences["pair_reference"].get_forward_string(),
+        "ACCGT"
+    );
+    assert_eq!(
+        guard.state().sequences["pair_alternate"].get_forward_string(),
+        "ACTGT"
+    );
+    assert_eq!(
+        area.variant_followup_ui.reference_output_id,
+        "pair_reference"
+    );
+    assert_eq!(
+        area.variant_followup_ui.alternate_output_id,
+        "pair_alternate"
+    );
+    assert_eq!(
+        area.last_created_seq_ids,
+        ["pair_reference", "pair_alternate"]
+    );
+    assert!(area.op_error_popup.is_none());
+}
+
+#[test]
+fn variant_followup_allele_pair_rolls_back_late_refusal_and_preserves_history() {
+    // Hand-crafted multi-allelic SNV; direct execution exercises a late operation refusal.
+    let mut dna = DNAsequence::from_sequence("ACCGT").expect("synthetic DNA");
+    dna.features_mut().push(Feature {
+        kind: "variation".into(),
+        location: Location::simple_range(2, 3),
+        qualifiers: vec![
+            ("label".into(), Some("rsSynthetic".to_string())),
+            ("vcf_ref".into(), Some("C".to_string())),
+            ("vcf_alt".into(), Some("A,G,T".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("fragment".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    for output_id in ["kept_branch", "redo_branch"] {
+        engine
+            .apply(Operation::Branch {
+                input: "fragment".to_string(),
+                output_id: Some(output_id.to_string()),
+            })
+            .expect("seed history");
+    }
+    engine.undo_last_operation().expect("seed a redo entry");
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let history_before = serde_json::to_value(engine.history_summary()).unwrap();
+    assert_eq!(engine.undo_available(), 1);
+    assert_eq!(engine.redo_available(), 1);
+
+    for alternate in [None, Some("C"), Some("N"), Some("TT")] {
+        let execution_before = engine.execution_revision();
+        let mutation_before = engine.mutation_revision();
+        let structural_before = engine.structural_revision();
+        MainAreaDna::apply_variant_followup_allele_pair(
+            &mut engine,
+            "fragment",
+            Some("rsSynthetic"),
+            alternate,
+            Some("pair_reference"),
+            Some("pair_alternate"),
+        )
+        .expect_err("alternate refusal must roll back the successful reference operation");
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+        assert_eq!(
+            serde_json::to_value(engine.history_summary()).unwrap(),
+            history_before
+        );
+        assert!(engine.execution_revision() > execution_before);
+        assert!(engine.mutation_revision() > mutation_before);
+        assert!(engine.structural_revision() > structural_before);
+    }
+    engine
+        .redo_last_operation()
+        .expect("older redo survives pair rollback");
+    assert!(engine.state().sequences.contains_key("redo_branch"));
+    engine
+        .undo_last_operation()
+        .expect("restore retry baseline");
+    let (reference, alternate) = MainAreaDna::apply_variant_followup_allele_pair(
+        &mut engine,
+        "fragment",
+        Some("rsSynthetic"),
+        Some("T"),
+        Some("pair_reference"),
+        Some("pair_alternate"),
+    )
+    .expect("corrected retry succeeds without suffixed orphan names");
+    assert_eq!(reference.created_seq_ids, ["pair_reference"]);
+    assert_eq!(alternate.created_seq_ids, ["pair_alternate"]);
+    assert_eq!(engine.state().sequences.len(), 4);
+    assert_eq!(
+        engine.state().sequences["fragment"].get_forward_string(),
+        "ACCGT"
+    );
+    assert_eq!(
+        engine.state().sequences["pair_reference"].get_forward_string(),
+        "ACCGT"
+    );
+    assert_eq!(
+        engine.state().sequences["pair_alternate"].get_forward_string(),
+        "ACTGT"
+    );
+    assert_eq!(engine.undo_available(), 3);
+    assert_eq!(engine.redo_available(), 0);
 }
 
 #[test]
@@ -9554,6 +12079,826 @@ fn variant_followup_promoter_expression_evidence_runs_shared_op_and_caches_repor
 }
 
 #[test]
+fn variant_followup_promoter_reporter_panel_runs_shared_plan_and_caches_proposal() {
+    std::thread::Builder::new()
+        .name("promoter-reporter-panel-gui-test".to_string())
+        .stack_size(16 * 1024 * 1024)
+        .spawn(variant_followup_promoter_reporter_panel_runs_on_expanded_stack)
+        .expect("spawn promoter panel GUI test")
+        .join()
+        .expect("promoter panel GUI test thread");
+}
+
+#[test]
+fn variant_followup_regulatory_fragment_panel_runs_shared_plan_and_caches_report() {
+    std::thread::Builder::new()
+        .name("regulatory-fragment-panel-gui-test".to_string())
+        .stack_size(16 * 1024 * 1024)
+        .spawn(variant_followup_regulatory_fragment_panel_runs_on_expanded_stack)
+        .expect("spawn regulatory panel GUI test")
+        .join()
+        .expect("regulatory panel GUI test thread");
+}
+
+#[test]
+fn variant_followup_promoter_architecture_builder_preserves_shared_request_and_exports() {
+    let dna = DNAsequence::from_sequence(&"A".repeat(120)).expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("serpine1_gui".to_string()), None);
+    let request = crate::engine::PromoterReporterArchitectureComparisonRequest {
+        seq_id: "serpine1_gui".to_string(),
+        gene_label: Some("SERPINE1".to_string()),
+        transcript_ids: vec!["ENST00000223095.5".to_string()],
+        ..Default::default()
+    };
+    area.variant_followup_ui
+        .promoter_reporter_architecture_request_json =
+        serde_json::to_string(&request).expect("architecture request JSON");
+    area.variant_followup_ui
+        .promoter_reporter_architecture_json_path = "analysis/serpine1.json".to_string();
+    area.variant_followup_ui
+        .promoter_reporter_architecture_svg_path = "analysis/serpine1.svg".to_string();
+
+    let operation = area
+        .variant_followup_promoter_architecture_operation()
+        .expect("build shared architecture operation");
+    match operation {
+        Operation::ComparePromoterReporterArchitectures {
+            request,
+            path,
+            svg_path,
+        } => {
+            assert_eq!(request.seq_id, "serpine1_gui");
+            assert_eq!(request.gene_label.as_deref(), Some("SERPINE1"));
+            assert_eq!(path.as_deref(), Some("analysis/serpine1.json"));
+            assert_eq!(svg_path.as_deref(), Some("analysis/serpine1.svg"));
+        }
+        other => panic!("unexpected architecture operation: {other:?}"),
+    }
+}
+
+#[test]
+fn variant_followup_promoter_architecture_builder_attaches_configured_locus_evidence() {
+    let dna = DNAsequence::from_sequence(&"A".repeat(120)).expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("serpine1_gui".to_string()), None);
+    area.variant_followup_ui.source_seq_id = "serpine1_gui".to_string();
+    area.variant_followup_ui.gene_label = "SERPINE1".to_string();
+    area.splicing_isoform_evidence_panel_id = "serpine1_panel".to_string();
+
+    area.prepare_variant_followup_promoter_architecture_request();
+
+    let request: crate::engine::PromoterReporterArchitectureComparisonRequest =
+        serde_json::from_str(
+            &area
+                .variant_followup_ui
+                .promoter_reporter_architecture_request_json,
+        )
+        .expect("prepared architecture request");
+    let locus = request
+        .locus_evidence_request
+        .expect("configured locus evidence request");
+    assert_eq!(locus.isoform_evidence.panel_id, "serpine1_panel");
+    assert!(area.op_status.contains("with the configured Locus figure"));
+}
+
+#[test]
+fn variant_followup_promoter_architecture_builder_rejects_invalid_configured_locus_evidence() {
+    let dna = DNAsequence::from_sequence(&"A".repeat(120)).expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("serpine1_gui".to_string()), None);
+    area.variant_followup_ui.source_seq_id = "serpine1_gui".to_string();
+    area.splicing_isoform_evidence_panel_id = "serpine1_panel".to_string();
+    area.splicing_locus_occupancy_layout_path = "missing-occupancy-layout.json".to_string();
+
+    area.prepare_variant_followup_promoter_architecture_request();
+
+    assert!(
+        area.op_status
+            .contains("Could not attach the configured Locus figure")
+    );
+    assert!(area.op_status.contains("missing-occupancy-layout.json"));
+}
+
+fn variant_followup_promoter_reporter_panel_runs_on_expanded_stack() {
+    let temp = tempdir().expect("panel GUI tempdir");
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let vector_path = repo_root
+        .join("test_files/fixtures/reporter_vectors/synthetic_mcs_backbone.gb")
+        .to_string_lossy()
+        .to_string();
+    let source_path = repo_root
+        .join("docs/examples/assets/promoter_reporter_panel_demo_source.fasta")
+        .to_string_lossy()
+        .to_string();
+    let mut panel_engine = GentleEngine::default();
+    panel_engine
+        .apply(Operation::LoadFile {
+            path: vector_path,
+            as_id: Some("synthetic_panel_vector".to_string()),
+        })
+        .expect("load panel vector through shared operation");
+    panel_engine
+        .apply(Operation::LoadFile {
+            path: source_path,
+            as_id: Some("synthetic_panel_source".to_string()),
+        })
+        .expect("load panel source through shared operation");
+    let source = panel_engine
+        .state()
+        .sequences
+        .get("synthetic_panel_source")
+        .expect("loaded panel source")
+        .clone();
+    let engine = Arc::new(RwLock::new(panel_engine));
+    let mut area = MainAreaDna::new(
+        source,
+        Some("synthetic_panel_source".to_string()),
+        Some(engine.clone()),
+    );
+    let mut request = serde_json::from_str::<crate::engine::PromoterReporterPanelRequest>(
+        include_str!("../../docs/examples/assets/promoter_reporter_panel_demo_request.json"),
+    )
+    .expect("panel request");
+    request.helper_catalog_path = Some(
+        repo_root
+            .join("docs/examples/assets/promoter_reporter_panel_demo_helper_vectors.json")
+            .to_string_lossy()
+            .to_string(),
+    );
+    request.members[0].candidate_set_path = repo_root
+        .join("docs/examples/assets/promoter_reporter_panel_demo_candidates.json")
+        .to_string_lossy()
+        .to_string();
+    request.output_dir = temp
+        .path()
+        .join("gui_panel_products")
+        .to_string_lossy()
+        .to_string();
+    area.variant_followup_ui
+        .promoter_reporter_panel_request_json =
+        serde_json::to_string(&request).expect("request JSON");
+    area.variant_followup_ui
+        .promoter_reporter_panel_approval_digest = "stale prior digest".to_string();
+
+    area.plan_variant_followup_promoter_reporter_panel();
+
+    let proposal = area
+        .variant_followup_ui
+        .cached_promoter_reporter_panel_proposal
+        .as_ref()
+        .expect("cached promoter panel proposal");
+    assert_eq!(
+        proposal.schema,
+        crate::engine::PROMOTER_REPORTER_PANEL_PROPOSAL_SCHEMA
+    );
+    assert_eq!(proposal.products.len(), 2);
+    assert!(proposal.proposal_digest.starts_with("sha256:"));
+    assert!(
+        proposal
+            .products
+            .iter()
+            .all(|product| product.circular && product.luc2_annotation_preserved)
+    );
+    assert!(
+        area.variant_followup_ui
+            .promoter_reporter_panel_approval_digest
+            .is_empty()
+    );
+    assert!(
+        area.variant_followup_ui
+            .cached_promoter_reporter_panel_receipt
+            .is_none()
+    );
+    assert_eq!(
+        engine.read().expect("engine read").state().sequences.len(),
+        2,
+        "read-only planning must not materialize simulated panel sequences"
+    );
+    assert!(!Path::new(&proposal.request.output_dir).exists());
+}
+
+fn regulatory_fragment_gui_fixture() -> MainAreaDna {
+    fn add_anchored_sequence(
+        engine: &mut GentleEngine,
+        seq_id: &str,
+        sequence: &str,
+        start_1based: u64,
+    ) {
+        engine.state_mut().sequences.insert(
+            seq_id.to_string(),
+            DNAsequence::from_sequence(sequence).expect("synthetic regulatory DNA"),
+        );
+        let provenance = engine
+            .state_mut()
+            .metadata
+            .entry("provenance".to_string())
+            .or_insert_with(|| serde_json::json!({"genome_extractions": []}));
+        provenance["genome_extractions"]
+            .as_array_mut()
+            .expect("genome extraction array")
+            .push(serde_json::json!({
+                "seq_id": seq_id,
+                "genome_id": "GRCh38",
+                "chromosome": "chr7",
+                "start_1based": start_1based,
+                "end_1based": start_1based + sequence.len() as u64 - 1,
+                "anchor_strand": "+",
+                "anchor_verified": true,
+                "recorded_at_unix_ms": 1_706_000_000_000_u128
+            }));
+    }
+
+    fn capture_region(
+        engine: &mut GentleEngine,
+        set_id: &str,
+        seq_id: &str,
+        region_id: &str,
+        purpose: gentle_protocol::GenomicRegionPurpose,
+    ) {
+        let length = engine
+            .state()
+            .sequences
+            .get(seq_id)
+            .expect("source sequence")
+            .len();
+        engine
+            .apply(Operation::CaptureGenomicRegion {
+                request: gentle_protocol::GenomicRegionCaptureRequest {
+                    set_id: set_id.to_string(),
+                    region_id: Some(region_id.to_string()),
+                    label: Some(region_id.to_string()),
+                    purpose,
+                    source: gentle_protocol::GenomicRegionCaptureSource::SequenceSelection {
+                        seq_id: seq_id.to_string(),
+                        local_start_0based: 0,
+                        local_end_0based_exclusive: length as u64,
+                        strand: gentle_protocol::GenomicRegionStrand::Plus,
+                        reference_override: Some(gentle_protocol::GenomicRegionReference {
+                            assembly_name: "GRCh38".to_string(),
+                            contig_name: "chr7".to_string(),
+                            ..gentle_protocol::GenomicRegionReference::default()
+                        }),
+                    },
+                    created_at_unix_ms: Some(1_706_000_000_000),
+                    collision_policy: gentle_protocol::GenomicRegionCollisionPolicy::Reject,
+                    ..gentle_protocol::GenomicRegionCaptureRequest::default()
+                },
+            })
+            .expect("capture regulatory panel ROI");
+    }
+
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let vector_path = repo_root
+        .join("test_files/fixtures/reporter_vectors/synthetic_mcs_backbone.gb")
+        .to_string_lossy()
+        .to_string();
+    let helper_catalog_path = repo_root
+        .join("docs/examples/assets/promoter_reporter_panel_demo_helper_vectors.json")
+        .to_string_lossy()
+        .to_string();
+    let mut panel_engine = GentleEngine::default();
+    panel_engine
+        .apply(Operation::LoadFile {
+            path: vector_path,
+            as_id: Some("synthetic_panel_vector".to_string()),
+        })
+        .expect("load exact regulatory panel vector");
+    add_anchored_sequence(
+        &mut panel_engine,
+        "candidate_source",
+        "ACGTTGCAAGTCCTGATCGATGCTAGCATCGTACGATTCGGAATCCGTCAGTACGA",
+        1_001,
+    );
+    add_anchored_sequence(
+        &mut panel_engine,
+        "partner_source",
+        "TTGACCGTATGGCATTCGACTAGGCTAACGTTCGATGACCTAGGTCATCGTACCTGA",
+        2_001,
+    );
+    add_anchored_sequence(
+        &mut panel_engine,
+        "minimal_source",
+        "GGGCGGCGCTATAAAAGGCCGCCAGCTGCTGACCATGATTACGCCAAGCTCGAAATTA",
+        3_001,
+    );
+    capture_region(
+        &mut panel_engine,
+        "candidate_regions",
+        "candidate_source",
+        "candidate_roi",
+        gentle_protocol::GenomicRegionPurpose::ReporterCandidate,
+    );
+    capture_region(
+        &mut panel_engine,
+        "partner_regions",
+        "partner_source",
+        "partner_roi",
+        gentle_protocol::GenomicRegionPurpose::CandidateCisRegulatoryRegion,
+    );
+    capture_region(
+        &mut panel_engine,
+        "minimal_regions",
+        "minimal_source",
+        "minimal_roi",
+        gentle_protocol::GenomicRegionPurpose::PromoterRegion,
+    );
+
+    let source = panel_engine
+        .state()
+        .sequences
+        .get("candidate_source")
+        .expect("candidate sequence")
+        .clone();
+    let engine = Arc::new(RwLock::new(panel_engine));
+    let mut area = MainAreaDna::new(
+        source,
+        Some("candidate_source".to_string()),
+        Some(engine.clone()),
+    );
+    area.variant_followup_ui.regulatory_fragment_plan_id = "gui_regulatory_panel".to_string();
+    area.variant_followup_ui.regulatory_fragment_candidate_roi =
+        "candidate_regions::candidate_roi".to_string();
+    area.variant_followup_ui.regulatory_fragment_partner_roi =
+        "partner_regions::partner_roi".to_string();
+    area.variant_followup_ui
+        .regulatory_fragment_minimal_promoter_roi = "minimal_regions::minimal_roi".to_string();
+    area.variant_followup_ui
+        .regulatory_fragment_reference_release = "Ensembl 116".to_string();
+    area.variant_followup_ui.regulatory_fragment_vector_seq_id =
+        "synthetic_panel_vector".to_string();
+    area.variant_followup_ui
+        .regulatory_fragment_vector_catalog_id = "Synthetic panel vector".to_string();
+    area.variant_followup_ui
+        .regulatory_fragment_helper_catalog_path = helper_catalog_path;
+    area.variant_followup_ui
+        .regulatory_fragment_partner_dependence = true;
+    area.variant_followup_ui.regulatory_fragment_approval_digest = "stale prior digest".to_string();
+
+    area
+}
+
+fn variant_followup_regulatory_fragment_panel_runs_on_expanded_stack() {
+    let mut area = regulatory_fragment_gui_fixture();
+    let engine = area.engine.clone().expect("engine");
+
+    let operation = area
+        .variant_followup_regulatory_fragment_panel_plan_operation(Some(
+            "/tmp/gui_regulatory_panel.json".to_string(),
+        ))
+        .expect("build shared regulatory panel operation");
+    match operation {
+        Operation::PlanRegulatoryFragmentPanel { request, path } => {
+            assert_eq!(request.plan_id, "gui_regulatory_panel");
+            assert_eq!(request.fragments.len(), 3);
+            assert_eq!(
+                request.fragments[0].region_set_content_sha256,
+                engine
+                    .read()
+                    .expect("engine read")
+                    .genomic_region_store_snapshot()
+                    .expect("region store")
+                    .sets
+                    .iter()
+                    .find(|set| set.set_id == "candidate_regions")
+                    .expect("candidate region set")
+                    .content_sha256
+            );
+            assert_eq!(path.as_deref(), Some("/tmp/gui_regulatory_panel.json"));
+        }
+        other => panic!("unexpected regulatory panel operation: {other:?}"),
+    }
+
+    let initial_sequence_count = engine.read().expect("engine read").state().sequences.len();
+    area.plan_variant_followup_regulatory_fragment_panel();
+
+    let plan = area
+        .variant_followup_ui
+        .cached_regulatory_fragment_panel_plan
+        .as_ref()
+        .expect("cached exact regulatory-fragment panel plan");
+    assert_eq!(
+        plan.schema,
+        crate::engine::REGULATORY_FRAGMENT_PANEL_PLAN_SCHEMA
+    );
+    assert_eq!(plan.plan_id, "gui_regulatory_panel");
+    assert!(plan.proposal_digest.starts_with("sha256:"));
+    assert!(plan.materialization_supported);
+    assert!(
+        plan.evidence_dimensions
+            .iter()
+            .any(|dimension| !dimension.observations.is_empty())
+    );
+    assert!(
+        area.variant_followup_ui
+            .regulatory_fragment_approval_digest
+            .is_empty()
+    );
+    assert_eq!(
+        engine.read().expect("engine read").state().sequences.len(),
+        initial_sequence_count,
+        "GUI planning must remain read-only"
+    );
+}
+
+fn with_regulatory_product_gui(test: impl FnOnce(&mut MainAreaDna) + Send + 'static) {
+    std::thread::Builder::new()
+        .name("regulatory-product-gui-test".to_string())
+        .stack_size(16 * 1024 * 1024)
+        .spawn(move || {
+            let mut area = regulatory_fragment_gui_fixture();
+            area.plan_variant_followup_regulatory_fragment_panel();
+            assert!(
+                area.variant_followup_ui
+                    .cached_regulatory_fragment_panel_plan
+                    .is_some(),
+                "{}",
+                area.op_status
+            );
+            area.variant_followup_ui.regulatory_fragment_product_prefix =
+                "gui_products".to_string();
+            test(&mut area);
+        })
+        .expect("spawn product GUI test")
+        .join()
+        .expect("product GUI test");
+}
+
+#[test]
+fn variant_followup_regulatory_products_use_shared_ops_and_create_exact_undoable_products() {
+    with_regulatory_product_gui(|area| {
+        let engine = area.engine.clone().expect("engine");
+        let before = serde_json::to_value(engine.read().unwrap().snapshot()).unwrap();
+        area.plan_variant_followup_regulatory_products();
+        let proposal = area
+            .variant_followup_ui
+            .cached_regulatory_fragment_products
+            .clone()
+            .expect("products");
+        assert!(!proposal.products.is_empty());
+        assert_eq!(
+            serde_json::to_value(engine.read().unwrap().snapshot()).unwrap(),
+            before
+        );
+        assert!(
+            area.variant_followup_ui
+                .regulatory_fragment_product_approval_digest
+                .is_empty()
+        );
+        area.variant_followup_ui
+            .regulatory_fragment_product_approval_digest = proposal.proposal_digest.clone();
+        match area
+            .variant_followup_regulatory_product_materialization_operation()
+            .expect("shared operation")
+        {
+            Operation::MaterializeRegulatoryFragmentPanel {
+                proposal: bound,
+                approval_digest,
+            } => {
+                assert_eq!(
+                    serde_json::to_value(bound).unwrap(),
+                    serde_json::to_value(&proposal).unwrap()
+                );
+                assert_eq!(approval_digest, proposal.proposal_digest);
+            }
+            other => panic!("unexpected operation: {other:?}"),
+        }
+        area.materialize_variant_followup_regulatory_products();
+        let receipt = area
+            .variant_followup_ui
+            .cached_regulatory_fragment_receipt
+            .as_ref()
+            .expect("receipt");
+        assert_eq!(receipt.created_seq_ids.len(), proposal.products.len());
+        assert_eq!(
+            receipt.final_product_audit_state,
+            crate::engine::RegulatoryFragmentFinalProductAuditState::NotEvaluated
+        );
+        assert_eq!(area.last_created_seq_ids, receipt.created_seq_ids);
+        for product in &proposal.products {
+            let guard = engine.read().unwrap();
+            let actual = &guard.state().sequences[&product.output_seq_id];
+            assert_eq!(
+                actual.get_forward_string(),
+                product.sequence_5prime_to_3prime
+            );
+            assert_eq!(actual.is_circular(), product.circular);
+            assert_eq!(actual.features(), &product.features);
+        }
+        assert!(
+            area.variant_followup_ui
+                .regulatory_fragment_product_approval_digest
+                .is_empty()
+        );
+        assert!(
+            area.variant_followup_regulatory_product_materialization_operation()
+                .is_err()
+        );
+        engine
+            .write()
+            .unwrap()
+            .undo_last_operation()
+            .expect("one undo");
+        assert_eq!(
+            serde_json::to_value(engine.read().unwrap().snapshot()).unwrap(),
+            before
+        );
+    });
+}
+
+#[test]
+fn variant_followup_regulatory_products_buttons_dispatch_only_after_product_approval() {
+    fn frame(
+        area: &mut MainAreaDna,
+        ctx: &egui::Context,
+        events: Vec<egui::Event>,
+    ) -> Vec<(String, egui::Rect)> {
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(900.0, 1800.0),
+            )),
+            events,
+            ..Default::default()
+        });
+        crate::egui_compat::show_central_panel_for_test_context(
+            ctx,
+            egui::CentralPanel::default(),
+            |ui| {
+                area.render_variant_followup_regulatory_products(ui);
+            },
+        );
+        let output = crate::egui_compat::end_test_pass(ctx);
+        let mut rects = vec![];
+        for clipped in output.shapes {
+            collect_rendered_text_rects_from_shape(&clipped.shape, &mut rects);
+        }
+        rects
+    }
+    fn click(
+        area: &mut MainAreaDna,
+        ctx: &egui::Context,
+        rects: &[(String, egui::Rect)],
+        label: &str,
+    ) {
+        let pos = rects
+            .iter()
+            .find(|(text, _)| text == label)
+            .expect("button label")
+            .1
+            .center();
+        for pressed in [true, false] {
+            frame(
+                area,
+                ctx,
+                vec![
+                    egui::Event::PointerMoved(pos),
+                    egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: Default::default(),
+                    },
+                ],
+            );
+        }
+    }
+    with_regulatory_product_gui(|area| {
+        let engine = area.engine.clone().unwrap();
+        let before = engine.read().unwrap().state().sequences.len();
+        let ctx = egui::Context::default();
+        let rects = frame(area, &ctx, vec![]);
+        click(area, &ctx, &rects, "Prepare exact products");
+        let proposal = area
+            .variant_followup_ui
+            .cached_regulatory_fragment_products
+            .clone()
+            .expect("button prepared products");
+        assert_eq!(engine.read().unwrap().state().sequences.len(), before);
+        let rects = frame(area, &ctx, vec![]);
+        click(area, &ctx, &rects, "Create approved design products");
+        assert!(
+            area.variant_followup_ui
+                .cached_regulatory_fragment_receipt
+                .is_none()
+        );
+        assert_eq!(engine.read().unwrap().state().sequences.len(), before);
+        area.variant_followup_ui
+            .regulatory_fragment_product_approval_digest = proposal.proposal_digest;
+        let rects = frame(area, &ctx, vec![]);
+        click(area, &ctx, &rects, "Create approved design products");
+        let receipt = area
+            .variant_followup_ui
+            .cached_regulatory_fragment_receipt
+            .as_ref()
+            .expect("button created products");
+        assert_eq!(receipt.created_seq_ids.len(), proposal.products.len());
+        assert_eq!(
+            engine.read().unwrap().state().sequences.len(),
+            before + proposal.products.len()
+        );
+        let rects = frame(area, &ctx, vec![]);
+        assert!(
+            rects
+                .iter()
+                .any(|(text, _)| text == "Final-product audit: NotEvaluated")
+        );
+    });
+}
+
+#[test]
+fn variant_followup_regulatory_products_require_the_product_digest_and_current_prefix() {
+    with_regulatory_product_gui(|area| {
+        let engine = area.engine.clone().unwrap();
+        area.plan_variant_followup_regulatory_products();
+        let proposal = area
+            .variant_followup_ui
+            .cached_regulatory_fragment_products
+            .clone()
+            .unwrap();
+        let before = serde_json::to_value(engine.read().unwrap().snapshot()).unwrap();
+        for wrong in [
+            String::new(),
+            "wrong".to_string(),
+            proposal.plan.proposal_digest.clone(),
+        ] {
+            area.variant_followup_ui
+                .regulatory_fragment_product_approval_digest = wrong;
+            area.materialize_variant_followup_regulatory_products();
+            assert!(area.op_status.contains("does not exactly match"));
+            assert_eq!(
+                serde_json::to_value(engine.read().unwrap().snapshot()).unwrap(),
+                before
+            );
+        }
+        area.variant_followup_ui
+            .regulatory_fragment_product_approval_digest = proposal.proposal_digest;
+        area.variant_followup_ui.regulatory_fragment_product_prefix = "changed_prefix".into();
+        area.materialize_variant_followup_regulatory_products();
+        assert!(area.op_status.contains("prefix changed"));
+        assert_eq!(
+            serde_json::to_value(engine.read().unwrap().snapshot()).unwrap(),
+            before
+        );
+        assert!(
+            area.variant_followup_ui
+                .cached_regulatory_fragment_receipt
+                .is_none()
+        );
+    });
+}
+
+#[test]
+fn variant_followup_regulatory_products_clear_review_on_input_change_and_failed_replanning() {
+    with_regulatory_product_gui(|area| {
+        area.plan_variant_followup_regulatory_products();
+        let digest = area
+            .variant_followup_ui
+            .cached_regulatory_fragment_products
+            .as_ref()
+            .unwrap()
+            .proposal_digest
+            .clone();
+        area.variant_followup_ui
+            .regulatory_fragment_product_approval_digest = digest.clone();
+        area.invalidate_variant_followup_regulatory_products();
+        assert!(
+            area.variant_followup_ui
+                .cached_regulatory_fragment_products
+                .is_none()
+        );
+        assert!(
+            area.variant_followup_ui
+                .regulatory_fragment_product_approval_digest
+                .is_empty()
+        );
+        assert!(
+            area.variant_followup_ui
+                .cached_regulatory_fragment_panel_plan
+                .is_some()
+        );
+        area.plan_variant_followup_regulatory_products();
+        area.variant_followup_ui
+            .regulatory_fragment_product_approval_digest = digest.clone();
+        area.plan_variant_followup_regulatory_products();
+        assert!(
+            area.variant_followup_ui
+                .regulatory_fragment_product_approval_digest
+                .is_empty()
+        );
+        area.variant_followup_ui
+            .regulatory_fragment_product_approval_digest = digest;
+        area.variant_followup_ui
+            .regulatory_fragment_max_panel_members = "invalid".into();
+        area.plan_variant_followup_regulatory_fragment_panel();
+        assert!(
+            area.variant_followup_ui
+                .cached_regulatory_fragment_panel_plan
+                .is_none()
+        );
+        assert!(
+            area.variant_followup_ui
+                .cached_regulatory_fragment_products
+                .is_none()
+        );
+        assert!(
+            area.variant_followup_ui
+                .regulatory_fragment_product_approval_digest
+                .is_empty()
+        );
+        assert!(
+            area.variant_followup_ui
+                .regulatory_fragment_approval_digest
+                .is_empty()
+        );
+    });
+}
+
+#[test]
+fn variant_followup_regulatory_products_reject_source_drift_without_partial_creation() {
+    with_regulatory_product_gui(|area| {
+        area.plan_variant_followup_regulatory_products();
+        let proposal = area
+            .variant_followup_ui
+            .cached_regulatory_fragment_products
+            .clone()
+            .unwrap();
+        area.variant_followup_ui
+            .regulatory_fragment_product_approval_digest = proposal.proposal_digest;
+        let engine = area.engine.clone().unwrap();
+        engine.write().unwrap().state_mut().sequences.insert(
+            "candidate_source".into(),
+            DNAsequence::from_sequence(&"A".repeat(55)).unwrap(),
+        );
+        let before = serde_json::to_value(engine.read().unwrap().snapshot()).unwrap();
+        area.materialize_variant_followup_regulatory_products();
+        assert_eq!(
+            serde_json::to_value(engine.read().unwrap().snapshot()).unwrap(),
+            before
+        );
+        assert!(
+            area.variant_followup_ui
+                .cached_regulatory_fragment_products
+                .is_none()
+        );
+        assert!(
+            area.variant_followup_ui
+                .cached_regulatory_fragment_receipt
+                .is_none()
+        );
+        assert!(
+            area.variant_followup_ui
+                .regulatory_fragment_product_approval_digest
+                .is_empty()
+        );
+        assert!(area.op_error_popup.is_some(), "{}", area.op_status);
+    });
+}
+
+#[test]
+fn variant_followup_regulatory_products_reject_output_collisions_without_partial_creation() {
+    with_regulatory_product_gui(|area| {
+        area.plan_variant_followup_regulatory_products();
+        let proposal = area
+            .variant_followup_ui
+            .cached_regulatory_fragment_products
+            .clone()
+            .unwrap();
+        area.variant_followup_ui
+            .regulatory_fragment_product_approval_digest = proposal.proposal_digest.clone();
+        let engine = area.engine.clone().unwrap();
+        engine
+            .write()
+            .unwrap()
+            .apply(Operation::CreateSequenceFromText {
+                name: Some("collision".into()),
+                sequence_text: "ACGT".into(),
+                circular: false,
+                output_id: Some(proposal.products.last().unwrap().output_seq_id.clone()),
+            })
+            .expect("normalized collision state");
+        let before = serde_json::to_value(engine.read().unwrap().snapshot()).unwrap();
+        area.materialize_variant_followup_regulatory_products();
+        assert_eq!(
+            serde_json::to_value(engine.read().unwrap().snapshot()).unwrap(),
+            before
+        );
+        assert!(
+            area.variant_followup_ui
+                .cached_regulatory_fragment_products
+                .is_none()
+        );
+        assert!(
+            area.variant_followup_ui
+                .cached_regulatory_fragment_receipt
+                .is_none()
+        );
+        assert!(
+            area.op_status.contains("output_id_exists"),
+            "{}",
+            area.op_status
+        );
+    });
+}
+
+#[test]
 fn variant_followup_ortholog_promoter_comparison_runs_shared_op_and_caches_report() {
     let dna = DNAsequence::from_sequence(&"A".repeat(120)).expect("sequence");
     let engine = Arc::new(RwLock::new(GentleEngine::from_state(
@@ -9643,6 +12988,83 @@ fn variant_followup_ortholog_promoter_comparison_runs_shared_op_and_caches_repor
 }
 
 #[test]
+fn variant_followup_ortholog_builders_preserve_policy_export_path_and_normalization() {
+    let dna = DNAsequence::from_sequence(&"A".repeat(120)).expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("ortholog_gui".to_string()), None);
+    area.variant_followup_ui.gene_label = "TP73".to_string();
+    area.variant_followup_ui.ortholog_anchor_species = "Homo sapiens".to_string();
+    area.variant_followup_ui.ortholog_anchor_genome_id = "HumanToy".to_string();
+    area.variant_followup_ui.ortholog_target_species = "Mus musculus".to_string();
+    area.variant_followup_ui.ortholog_target_genome_ids = "Mus musculus=MouseToy".to_string();
+    area.variant_followup_ui.ortholog_resource_path = "orthologs.json".to_string();
+    area.variant_followup_ui.promoter_upstream_bp = "1000".to_string();
+    area.variant_followup_ui.promoter_downstream_bp = "200".to_string();
+    area.variant_followup_ui.ortholog_ambiguity_policy =
+        gentle_protocol::OrthologAmbiguityPolicy::Preserve;
+
+    let cohort_op = area
+        .variant_followup_ortholog_promoter_cohort_operation(Some(
+            "ortholog_cohort.json".to_string(),
+        ))
+        .expect("build cohort operation");
+    match cohort_op {
+        Operation::ResolveOrthologPromoterCohort {
+            ambiguity_policy,
+            path,
+            ..
+        } => {
+            assert_eq!(
+                ambiguity_policy,
+                gentle_protocol::OrthologAmbiguityPolicy::Preserve
+            );
+            assert_eq!(path.as_deref(), Some("ortholog_cohort.json"));
+        }
+        other => panic!("unexpected cohort operation: {other:?}"),
+    }
+
+    area.variant_followup_ui.score_track_motifs = "SP1".to_string();
+    area.variant_followup_ui.ortholog_cutrun_dataset_ids = "human_cutrun, mouse_cutrun".to_string();
+    area.variant_followup_ui.ortholog_cutrun_normalization_json = serde_json::json!({
+        "normalization_method": "spike_in_scaled_cpm",
+        "unit": "normalized_fragments_per_million",
+        "comparison_reference": "shared_batch_1",
+        "provenance": "synthetic GUI operation-builder test",
+        "values": []
+    })
+    .to_string();
+    area.variant_followup_ui.cached_ortholog_promoter_cohort =
+        Some(gentle_protocol::OrthologPromoterCohortReport {
+            schema: gentle_protocol::ORTHOLOG_PROMOTER_COHORT_SCHEMA.to_string(),
+            request: gentle_protocol::OrthologPromoterCohortRequest {
+                anchor_species: "Homo sapiens".to_string(),
+                anchor_genome_id: "HumanToy".to_string(),
+                anchor_gene_query: "TP73".to_string(),
+                ..gentle_protocol::OrthologPromoterCohortRequest::default()
+            },
+            ..gentle_protocol::OrthologPromoterCohortReport::default()
+        });
+
+    let comparison_op = area
+        .variant_followup_ortholog_promoter_comparison_operation(Some(
+            "ortholog_comparison.json".to_string(),
+        ))
+        .expect("build comparison operation");
+    match comparison_op {
+        Operation::SummarizeOrthologPromoterComparison {
+            cutrun_normalization,
+            path,
+            ..
+        } => {
+            let normalization = cutrun_normalization.expect("normalization input");
+            assert_eq!(normalization.normalization_method, "spike_in_scaled_cpm");
+            assert_eq!(normalization.comparison_reference, "shared_batch_1");
+            assert_eq!(path.as_deref(), Some("ortholog_comparison.json"));
+        }
+        other => panic!("unexpected comparison operation: {other:?}"),
+    }
+}
+
+#[test]
 fn splicing_intron_regulatory_rows_merge_cached_attract_hits_with_intron_signals() {
     let view = SplicingExpertView {
         seq_id: "tp73".to_string(),
@@ -9655,6 +13077,7 @@ fn splicing_intron_regulatory_rows_merge_cached_attract_hits_with_intron_signals
         transcript_count: 1,
         unique_exon_count: 2,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![SplicingTranscriptLane {
             transcript_feature_id: 1,
             transcript_id: "ENSTTP73A".to_string(),
@@ -9934,6 +13357,8 @@ fn variant_followup_handoff_result_uses_bundle_relative_artifacts() {
         generated_at_unix_ms: 0,
         op_id: None,
         run_id: None,
+        anchor: None,
+        fragment_policy: Default::default(),
         variant_label: "rs9923231".to_string(),
         chosen_gene_label: Some("VKORC1".to_string()),
         chosen_transcript_id: Some("ENST_TEST".to_string()),
@@ -9945,6 +13370,7 @@ fn variant_followup_handoff_result_uses_bundle_relative_artifacts() {
         recommended_candidate_id: "cand-1".to_string(),
         suggested_assay_ids: vec!["allele_paired_promoter_luciferase_reporter".to_string()],
         candidates: vec![],
+        rejected_candidates: vec![],
     };
     let recommended = crate::engine::PromoterReporterFragmentCandidate {
         candidate_id: "cand-1".to_string(),
@@ -9953,6 +13379,12 @@ fn variant_followup_handoff_result_uses_bundle_relative_artifacts() {
         transcript_label: "VKORC1-201".to_string(),
         strand: "-".to_string(),
         tss_local_0based: 2412,
+        promoter_class_id: None,
+        transcript_count: None,
+        transcript_ids: vec![],
+        grouping_reason: None,
+        anchor: None,
+        evidence: vec![],
         variant_start_0based: 3000,
         variant_end_0based_exclusive: 3001,
         start_0based: 2412,
@@ -10059,6 +13491,12 @@ fn variant_followup_handoff_commands_render_svg_paths_expand_bundle_dir() {
         transcript_label: "VKORC1-201".to_string(),
         strand: "-".to_string(),
         tss_local_0based: 2412,
+        promoter_class_id: None,
+        transcript_count: None,
+        transcript_ids: vec![],
+        grouping_reason: None,
+        anchor: None,
+        evidence: vec![],
         variant_start_0based: 3000,
         variant_end_0based_exclusive: 3001,
         start_0based: 2412,
@@ -10081,6 +13519,11 @@ fn variant_followup_handoff_commands_render_svg_paths_expand_bundle_dir() {
     assert!(!commands.contains(
         "RenderSequenceSvg\":{\"seq_id\":\"vkorc1_context\",\"mode\":\"Linear\",\"path\":\"$BUNDLE_DIR/"
     ));
+    assert!(commands.contains("--alternate-base 'REVIEW_REQUIRED'"));
+    area.variant_followup_ui.alternate_allele = "T; echo 'not-a-command'".to_string();
+    let quoted = area.build_variant_followup_handoff_commands(&artifacts, &report, &recommended);
+    assert!(quoted.contains("--alternate-base 'T; echo '\\''not-a-command'\\'''"));
+    assert!(!quoted.contains("--alternate-base T; echo"));
 }
 
 #[test]
@@ -10144,6 +13587,7 @@ fn show_splicing_expert_for_rna_read_mapping_view_selects_current_mapping_report
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -10192,6 +13636,7 @@ fn default_rna_read_report_id_tracks_scope_origin_and_target_genes() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -10231,6 +13676,7 @@ fn build_splicing_rna_read_workflow_uses_interpret_payload_and_autorunid() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -10293,6 +13739,7 @@ fn build_splicing_rna_read_workflow_keeps_manual_report_id_override() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -10356,6 +13803,7 @@ fn legacy_rna_read_ui_state_keeps_manual_report_id_after_load() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -10542,6 +13990,7 @@ fn saved_rna_read_report_payloads_are_cached_and_invalidated_on_commit() {
         transcript_count: 1,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -10673,6 +14122,7 @@ fn mapping_workspace_uses_saved_report_progress_without_evidence_selection() {
         transcript_count: 1,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -10761,6 +14211,7 @@ fn mapping_workspace_ignores_saved_report_progress_for_other_splicing_view() {
         transcript_count: 1,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -10827,6 +14278,7 @@ fn unaligned_saved_report_progress_skips_alignment_inspection() {
         transcript_count: 1,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -11116,7 +14568,7 @@ fn rna_read_support_and_preview_tables_reserve_practical_minimum_heights() {
             "preview table should reserve at least as much space as the support tables"
         );
     });
-    let _ = ctx.end_pass();
+    crate::egui_compat::discard_test_pass_output(&ctx);
 }
 
 #[test]
@@ -11229,6 +14681,7 @@ fn build_splicing_rna_read_align_operation_uses_explicit_sorted_subset() {
         transcript_count: 1,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -11721,6 +15174,7 @@ fn thresholded_cdna_exon_support_rows_follow_seed_passed_isoform_assignments() {
         transcript_count: 2,
         unique_exon_count: 3,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![
             SplicingTranscriptLane {
                 transcript_feature_id: 11,
@@ -12048,6 +15502,7 @@ fn primer_design_progress_summary_mentions_pair_evaluation_counts() {
         assay_candidate_combinations: None,
         assays_evaluated: None,
         accepted_assay_count: None,
+        primer3_progress: None,
         max_output: 10,
         done: false,
     });
@@ -12078,12 +15533,55 @@ fn primer_design_progress_summary_mentions_qpcr_probe_evaluation_counts() {
         assay_candidate_combinations: Some(24),
         assays_evaluated: Some(12),
         accepted_assay_count: Some(2),
+        primer3_progress: None,
         max_output: 5,
         done: false,
     });
 
     assert!(summary.contains("screened 12/24 probe placements"));
     assert!(summary.contains("accepted 2 assays"));
+}
+
+#[test]
+fn primer_design_progress_summary_reports_primer3_bounded_work() {
+    let summary = MainAreaDna::primer_design_progress_summary(&PrimerDesignProgress {
+        seq_id: "tpl".to_string(),
+        design_kind: "primer_pairs".to_string(),
+        backend_requested: "primer3".to_string(),
+        backend_used: "primer3".to_string(),
+        stage: "primer3_search".to_string(),
+        detail: "Primer3 bounded search".to_string(),
+        roi_start_0based: 40,
+        roi_end_0based_exclusive: 80,
+        forward_candidate_count: None,
+        reverse_candidate_count: None,
+        probe_candidate_count: None,
+        pair_candidate_combinations: None,
+        pair_evaluated: None,
+        pair_evaluation_limit: None,
+        pair_evaluation_limited: None,
+        accepted_pair_count: None,
+        assay_candidate_combinations: None,
+        assays_evaluated: None,
+        accepted_assay_count: None,
+        primer3_progress: Some(Primer3Progress {
+            record: 1,
+            completed: 25,
+            bound: 100,
+            bounded_record_ordinal: Some(2),
+            bounded_record_count: Some(7),
+            projected_total_ms: Some(600_000),
+            runtime_assessment: Some("suspicious_runtime_projection".to_string()),
+            ..Primer3Progress::default()
+        }),
+        max_output: 10,
+        done: false,
+    });
+
+    assert!(summary.contains("Primer3 record 1 bounded work 25/100 (25.0%)"));
+    assert!(summary.contains("bounded record 2/7"));
+    assert!(summary.contains("uncertain projection 10.0 min"));
+    assert!(summary.contains("suspicious_runtime_projection"));
 }
 
 #[test]
@@ -12275,34 +15773,6 @@ fn auto_fit_reference_span_for_view_if_requested_skips_without_request() {
 }
 
 #[test]
-fn splicing_lane_index_at_y_returns_expected_lane() {
-    assert_eq!(
-        MainAreaDna::splicing_lane_index_at_y(100.0, 80.0, 20.0, 4),
-        Some(1)
-    );
-    assert_eq!(
-        MainAreaDna::splicing_lane_index_at_y(159.9, 80.0, 20.0, 4),
-        Some(3)
-    );
-}
-
-#[test]
-fn splicing_lane_index_at_y_rejects_out_of_range_positions() {
-    assert_eq!(
-        MainAreaDna::splicing_lane_index_at_y(79.0, 80.0, 20.0, 4),
-        None
-    );
-    assert_eq!(
-        MainAreaDna::splicing_lane_index_at_y(160.0, 80.0, 20.0, 4),
-        None
-    );
-    assert_eq!(
-        MainAreaDna::splicing_lane_index_at_y(100.0, 80.0, 0.0, 4),
-        None
-    );
-}
-
-#[test]
 fn large_splicing_matrix_defaults_to_collapsed_section() {
     assert!(!MainAreaDna::splicing_matrix_should_default_collapsed(
         20, 200
@@ -12322,6 +15792,657 @@ fn large_splicing_transition_matrix_defaults_to_collapsed_section() {
     ));
 }
 
+fn splicing_expert_presentation_test_view() -> SplicingExpertView {
+    SplicingExpertView {
+        seq_id: "seq1".to_string(),
+        target_feature_id: 7,
+        scope: SplicingScopePreset::AllOverlappingAnyStrand,
+        group_label: "TEST".to_string(),
+        strand: "+".to_string(),
+        region_start_1based: 1,
+        region_end_1based: 40,
+        transcript_count: 2,
+        unique_exon_count: 2,
+        instruction: "test".to_string(),
+        presentation_fingerprint_sha256: String::new(),
+        transcripts: vec![
+            SplicingTranscriptLane {
+                transcript_feature_id: 11,
+                transcript_id: "tx1".to_string(),
+                label: "tx1".to_string(),
+                strand: "+".to_string(),
+                exons: vec![
+                    SplicingRange {
+                        start_1based: 1,
+                        end_1based: 10,
+                    },
+                    SplicingRange {
+                        start_1based: 21,
+                        end_1based: 30,
+                    },
+                ],
+                exon_cds_phases: vec![],
+                introns: vec![SplicingRange {
+                    start_1based: 11,
+                    end_1based: 20,
+                }],
+                has_target_feature: true,
+            },
+            SplicingTranscriptLane {
+                transcript_feature_id: 12,
+                transcript_id: "tx2".to_string(),
+                label: "tx2".to_string(),
+                strand: "+".to_string(),
+                exons: vec![SplicingRange {
+                    start_1based: 1,
+                    end_1based: 10,
+                }],
+                exon_cds_phases: vec![],
+                introns: vec![],
+                has_target_feature: false,
+            },
+        ],
+        unique_exons: vec![
+            SplicingExonSummary {
+                start_1based: 1,
+                end_1based: 10,
+                support_transcript_count: 2,
+                constitutive: true,
+            },
+            SplicingExonSummary {
+                start_1based: 21,
+                end_1based: 30,
+                support_transcript_count: 1,
+                constitutive: false,
+            },
+        ],
+        matrix_rows: vec![
+            SplicingMatrixRow {
+                transcript_feature_id: 11,
+                transcript_id: "tx1".to_string(),
+                label: "tx1".to_string(),
+                exon_presence: vec![true, true],
+                uniprot_reference: Default::default(),
+            },
+            SplicingMatrixRow {
+                transcript_feature_id: 12,
+                transcript_id: "tx2".to_string(),
+                label: "tx2".to_string(),
+                exon_presence: vec![true, false],
+                uniprot_reference: Default::default(),
+            },
+        ],
+        boundaries: vec![],
+        intron_signals: vec![],
+        junctions: vec![
+            SplicingJunctionArc {
+                donor_1based: 10,
+                acceptor_1based: 21,
+                support_transcript_count: 1,
+                transcript_feature_ids: vec![11],
+            },
+            SplicingJunctionArc {
+                donor_1based: 30,
+                acceptor_1based: 41,
+                support_transcript_count: 2,
+                transcript_feature_ids: vec![11, 12],
+            },
+        ],
+        events: vec![],
+    }
+}
+
+#[test]
+fn splicing_canvas_keeps_compact_legacy_rows_and_expands_evaluated_groups() {
+    let mut view = splicing_expert_presentation_test_view();
+    let legacy = view.uniprot_presentation_layout();
+    for style in [
+        SplicingLaneCanvasStyle::expert(),
+        SplicingLaneCanvasStyle::primary_map(),
+    ] {
+        let height = style.lane_height_for_layout(&legacy);
+        assert_eq!(height, style.lane_height_px);
+        let canvas = legacy.canvas(height, 24.0);
+        assert_eq!(canvas.height, view.transcripts.len() as f32 * height);
+        assert_eq!(canvas.lane_at_y(height * 0.5), Some(0));
+        assert_eq!(canvas.lane_at_y(height * 1.5), Some(1));
+    }
+    view.matrix_rows[0].uniprot_reference.status =
+        gentle_protocol::SplicingUniprotReferenceStatus::Referenced;
+    let grouped = view.uniprot_presentation_layout();
+    let height = SplicingLaneCanvasStyle::expert().lane_height_for_layout(&grouped);
+    assert_eq!(height, 36.0);
+    let canvas = grouped.canvas(height, 24.0);
+    assert_eq!(canvas.height, 120.0);
+    assert_eq!(canvas.lane_at_y(12.0), None);
+    assert_eq!(canvas.lane_at_y(42.0), Some(0));
+}
+
+#[test]
+fn splicing_junction_arc_labels_are_collision_filtered_in_the_real_canvas() {
+    // Coincident synthetic arcs retain all geometry but must not repaint overlapping numbers.
+    let mut view = splicing_expert_presentation_test_view();
+    view.junctions = vec![
+        SplicingJunctionArc {
+            donor_1based: 10,
+            acceptor_1based: 21,
+            support_transcript_count: 3,
+            transcript_feature_ids: vec![11, 12],
+        };
+        6
+    ];
+    let before = serde_json::to_value(&view).unwrap();
+    let dna = DNAsequence::from_sequence(&"ACGT".repeat(20)).unwrap();
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    let ctx = egui::Context::default();
+    ctx.begin_pass(egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(980.0, 480.0),
+        )),
+        ..Default::default()
+    });
+    crate::egui_compat::show_central_panel_for_test_context(
+        &ctx,
+        egui::CentralPanel::default(),
+        |ui| {
+            area.render_splicing_lane_canvas_ui(
+                ui,
+                &view,
+                SplicingLaneCanvasStyle::expert(),
+                false,
+                "arc-label-regression",
+            );
+        },
+    );
+    let texts = collect_pass_texts(&ctx);
+    assert_eq!(
+        texts.iter().filter(|text| text.as_str() == "3").count(),
+        1,
+        "{texts:?}"
+    );
+    assert_eq!(serde_json::to_value(&view).unwrap(), before);
+}
+
+#[test]
+fn splicing_boundary_summary_text_is_cached_and_rebound_after_ingress() {
+    // Hand-crafted markers, with no real locus or fetched evidence.
+    let mut view = splicing_expert_presentation_test_view();
+    view.boundaries = vec![SplicingBoundaryMarker {
+        transcript_feature_id: 11,
+        transcript_id: "tx1".to_string(),
+        side: "donor".to_string(),
+        position_1based: 10,
+        motif_2bp: "GT".to_string(),
+        canonical: true,
+        canonical_pair: false,
+        partner_position_1based: 21,
+        paired_motif_signature: "GT-TT".to_string(),
+        motif_class: "other_noncanonical".to_string(),
+        annotation: "synthetic source note".to_string(),
+    }];
+    let before = serde_json::to_value(&view).unwrap();
+    let mut area = MainAreaDna::new(
+        DNAsequence::from_sequence("ACGT").unwrap(),
+        Some("seq1".into()),
+        None,
+    );
+    area.open_splicing_expert_window_for_view(&view);
+    let stored = area.splicing_expert_window_view.clone().unwrap();
+    let first = area.splicing_expert_presentation_for_view(&stored);
+    let second = area.splicing_expert_presentation_for_view(&stored);
+    assert!(Arc::ptr_eq(&first, &second));
+    assert_eq!(
+        first.boundary_rows,
+        gentle_protocol::splicing_presentation::boundary_presentation_rows(&view)
+    );
+    assert_eq!(
+        first.boundary_rows[0].hover_text,
+        "n-11 tx1: synthetic source note"
+    );
+    assert!(first.boundary_rows[0].exceptional);
+    assert_eq!(first.boundary_rows.as_ptr(), second.boundary_rows.as_ptr());
+    assert_eq!(
+        first.boundary_rows[0].hover_text.as_ptr(),
+        second.boundary_rows[0].hover_text.as_ptr()
+    );
+    assert_eq!(first.boundary_motif_rows.len(), 1);
+    assert_eq!(first.boundary_motif_class_counts["other_noncanonical"], 1);
+    assert_eq!(serde_json::to_value(&view).unwrap(), before);
+
+    view.boundaries[0].annotation = "changed synthetic source note".into();
+    area.open_splicing_expert_window_for_view(&view);
+    let replaced = area.splicing_expert_window_view.clone().unwrap();
+    assert_ne!(
+        stored.presentation_fingerprint_sha256,
+        replaced.presentation_fingerprint_sha256
+    );
+    let third = area.splicing_expert_presentation_for_view(&replaced);
+    assert!(!Arc::ptr_eq(&second, &third));
+    assert_eq!(
+        third.boundary_rows[0].hover_text,
+        "n-11 tx1: changed synthetic source note"
+    );
+    assert_eq!(
+        first.boundary_rows[0].hover_text,
+        "n-11 tx1: synthetic source note"
+    );
+}
+
+#[test]
+fn splicing_boundary_fallback_cache_rebinds_without_a_valid_fingerprint() {
+    // Hand-crafted boundary records deliberately bypass engine fingerprint normalization.
+    use super::auxiliary_workspaces::SplicingExpertPresentationKey;
+    let mutations: [(&str, fn(&mut SplicingBoundaryMarker)); 11] = [
+        ("feature identity", |marker| {
+            marker.transcript_feature_id = 12
+        }),
+        ("transcript identity", |marker| {
+            marker.transcript_id = "tx2".into()
+        }),
+        ("side", |marker| marker.side = "acceptor".into()),
+        ("position", |marker| marker.position_1based = 9),
+        ("motif", |marker| marker.motif_2bp = "GC".into()),
+        ("canonical", |marker| marker.canonical = false),
+        ("canonical pair", |marker| marker.canonical_pair = false),
+        ("partner position", |marker| {
+            marker.partner_position_1based = 22
+        }),
+        ("paired signature", |marker| {
+            marker.paired_motif_signature = "GT-TT".into()
+        }),
+        ("motif class", |marker| {
+            marker.motif_class = "other_noncanonical".into()
+        }),
+        ("annotation", |marker| {
+            marker.annotation = "changed source note".into()
+        }),
+    ];
+    for fingerprint in [String::new(), format!("sha256:{}", "zz".repeat(32))] {
+        let mut view = splicing_expert_presentation_test_view();
+        view.presentation_fingerprint_sha256 = fingerprint;
+        view.boundaries = vec![SplicingBoundaryMarker {
+            transcript_feature_id: 11,
+            transcript_id: "tx1".into(),
+            side: "donor".into(),
+            position_1based: 10,
+            motif_2bp: "GT".into(),
+            canonical: true,
+            canonical_pair: true,
+            partner_position_1based: 21,
+            paired_motif_signature: "GT-AG".into(),
+            motif_class: "major_canonical".into(),
+            annotation: "original source note".into(),
+        }];
+        let before = serde_json::to_value(&view).unwrap();
+        let key = SplicingExpertPresentationKey::from_view(&view);
+        for (field, mutate) in mutations {
+            let mut changed = view.clone();
+            mutate(&mut changed.boundaries[0]);
+            assert_ne!(
+                key,
+                SplicingExpertPresentationKey::from_view(&changed),
+                "{field}"
+            );
+        }
+        let mut removed = view.clone();
+        removed.boundaries.clear();
+        assert_ne!(key, SplicingExpertPresentationKey::from_view(&removed));
+        let mut added = view.clone();
+        added.boundaries.push(view.boundaries[0].clone());
+        assert_ne!(key, SplicingExpertPresentationKey::from_view(&added));
+
+        let mut area = MainAreaDna::new(
+            DNAsequence::from_sequence("ACGT").unwrap(),
+            Some("seq1".into()),
+            None,
+        );
+        let first = area.splicing_expert_presentation_for_view(&view);
+        let repeated = area.splicing_expert_presentation_for_view(&view);
+        assert!(Arc::ptr_eq(&first, &repeated));
+        let mut changed = view.clone();
+        changed.boundaries[0].annotation = "changed source note".into();
+        let refreshed = area.splicing_expert_presentation_for_view(&changed);
+        assert!(!Arc::ptr_eq(&first, &refreshed));
+        assert_eq!(
+            first.boundary_rows[0].hover_text,
+            "n-11 tx1: original source note"
+        );
+        assert_eq!(
+            refreshed.boundary_rows[0].hover_text,
+            "n-11 tx1: changed source note"
+        );
+        assert_eq!(
+            refreshed.boundary_motif_rows[0].annotation,
+            "changed source note"
+        );
+        assert_eq!(area.splicing_expert_presentation_cache_hits, 1);
+        assert_eq!(area.splicing_expert_presentation_cache_misses, 2);
+        assert_eq!(serde_json::to_value(&view).unwrap(), before);
+    }
+}
+
+#[test]
+fn splicing_grouped_canvas_keeps_header_clicks_inert_and_selects_reordered_introns() {
+    // Synthetic annotation from the existing presentation fixture, not PATZ1/FLNA.
+    let mut view = splicing_expert_presentation_test_view();
+    view.matrix_rows[0].uniprot_reference.status =
+        gentle_protocol::SplicingUniprotReferenceStatus::NotReferenced;
+    view.matrix_rows[1].uniprot_reference.status =
+        gentle_protocol::SplicingUniprotReferenceStatus::Referenced;
+    view.transcripts[1].introns = view.transcripts[0].introns.clone();
+    let before = serde_json::to_value(&view).unwrap();
+    let dna = DNAsequence::from_sequence(&"ACGT".repeat(20)).unwrap();
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    let ctx = egui::Context::default();
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(980.0, 480.0));
+    let mut time = 0.0;
+    let mut pass = |area: &mut MainAreaDna, events: Vec<egui::Event>| {
+        time += 1.0 / 60.0;
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen),
+            time: Some(time),
+            events,
+            ..Default::default()
+        });
+        let mut origin = egui::Pos2::ZERO;
+        let mut width = 0.0;
+        let mut clicked = None;
+        crate::egui_compat::show_central_panel_for_test_context(
+            &ctx,
+            egui::CentralPanel::default(),
+            |ui| {
+                origin = ui.cursor().min;
+                width = ui.available_width().max(920.0);
+                clicked = area.render_splicing_lane_canvas_ui(
+                    ui,
+                    &view,
+                    super::SplicingLaneCanvasStyle::expert(),
+                    true,
+                    "grouped-regression",
+                );
+            },
+        );
+        (origin, width, clicked, collect_pass_texts(&ctx))
+    };
+    let (origin, width, _, _) = pass(&mut area, Vec::new());
+    let canvas = view.uniprot_presentation_layout().canvas(36.0, 24.0);
+    let top = origin.y + 74.0; // Same measured axis padding/offset for this two-support fixture.
+    let click = |area: &mut MainAreaDna,
+                 pos: egui::Pos2,
+                 pass: &mut dyn FnMut(
+        &mut MainAreaDna,
+        Vec<egui::Event>,
+    ) -> (egui::Pos2, f32, Option<usize>, Vec<String>)| {
+        let event = |pressed| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        };
+        pass(area, vec![egui::Event::PointerMoved(pos), event(true)]);
+        pass(area, vec![egui::Event::PointerMoved(pos), event(false)]).2
+    };
+    assert_eq!(
+        click(
+            &mut area,
+            egui::pos2(origin.x + 10.0, top + 12.0),
+            &mut pass
+        ),
+        None
+    );
+    let y = top + canvas.centre_for_lane(1).unwrap();
+    assert_eq!(
+        click(&mut area, egui::pos2(origin.x + 10.0, y), &mut pass),
+        Some(12)
+    );
+    let intron_x = origin.x + 220.0 + (15.0 - 1.0) / 39.0 * (width - 240.0);
+    let intron_pos = egui::pos2(intron_x, y);
+    assert_eq!(click(&mut area, intron_pos, &mut pass), None);
+    assert_eq!(
+        area.splicing_expert_selected_intron_signal_key
+            .as_ref()
+            .unwrap()
+            .transcript_feature_id,
+        12
+    );
+    assert_eq!(area.splicing_expert_selected_intron_keys.len(), 1);
+    for _ in 0..10 {
+        pass(&mut area, Vec::new());
+    }
+    pass(
+        &mut area,
+        vec![egui::Event::PointerMoved(intron_pos + egui::vec2(1.0, 0.0))],
+    );
+    let mut hover_texts = Vec::new();
+    for _ in 0..60 {
+        hover_texts = pass(&mut area, Vec::new()).3;
+    }
+    assert!(hover_texts.iter().any(|text| text == "n-12 tx2"));
+    assert!(
+        hover_texts
+            .iter()
+            .any(|text| text == "intron 11..20  len=10 bp"),
+        "reordered intron hover: {hover_texts:?}"
+    );
+    pass(&mut area, vec![egui::Event::PointerGone]);
+    pass(&mut area, vec![egui::Event::PointerMoved(intron_pos)]);
+    for pressed in [true, false] {
+        pass(
+            &mut area,
+            vec![egui::Event::PointerButton {
+                pos: intron_pos,
+                button: egui::PointerButton::Secondary,
+                pressed,
+                modifiers: egui::Modifiers::default(),
+            }],
+        );
+    }
+    let menu_texts = pass(&mut area, Vec::new()).3;
+    assert!(menu_texts.iter().any(|text| text == "n-12 tx2"));
+    assert!(
+        menu_texts
+            .iter()
+            .any(|text| text == "Intron 11..20  len=10 bp"),
+        "reordered intron context menu: {menu_texts:?}"
+    );
+    assert!(
+        menu_texts
+            .iter()
+            .any(|text| text == "Select only this intron")
+    );
+    assert_eq!(serde_json::to_value(&view).unwrap(), before);
+    let presentation = area.splicing_expert_presentation_for_view(&view);
+    assert!(presentation.transcript_rows[0].is_header);
+    assert_eq!(presentation.transcript_rows[1].label, "n-12 tx2");
+}
+
+#[test]
+fn splicing_expert_presentation_reuses_immutable_view_and_invalidates_on_replacement() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    let mut view = splicing_expert_presentation_test_view();
+
+    let first = area.splicing_expert_presentation_for_view(&view);
+    let second = area.splicing_expert_presentation_for_view(&view);
+    assert!(Arc::ptr_eq(&first, &second));
+    assert_eq!(area.splicing_expert_presentation_cache_misses, 1);
+    assert_eq!(area.splicing_expert_presentation_cache_hits, 1);
+    assert_eq!(first.exons[0].support_label, "2/2 (100.0%) const");
+    assert_eq!(first.transition_rows[0].cells.len(), 1);
+    assert_eq!(first.transition_rows[0].cells[0].to_exon_index, 1);
+    assert_eq!(first.transition_rows[0].cells[0].marker, "1");
+    assert_eq!(
+        first.transition_rows[0].cells[0].transcript_feature_ids,
+        vec![11]
+    );
+    assert_eq!(first.junction_rows[0].donor_label, "30");
+
+    view.matrix_rows[0].transcript_id = "tx1_revised".to_string();
+    let third = area.splicing_expert_presentation_for_view(&view);
+    assert!(!Arc::ptr_eq(&first, &third));
+    assert_eq!(area.splicing_expert_presentation_cache_misses, 2);
+    assert_eq!(
+        third.transcript_rows[0].label, first.transcript_rows[0].label,
+        "display identity comes from the lane, not a divergent saved matrix label"
+    );
+
+    area.invalidate_splicing_expert_presentation_cache();
+    let fourth = area.splicing_expert_presentation_for_view(&view);
+    assert!(!Arc::ptr_eq(&third, &fourth));
+    assert_eq!(area.splicing_expert_presentation_cache_misses, 3);
+}
+
+#[test]
+fn splicing_expert_window_validates_fingerprint_once_before_cached_rendering() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    let mut view = splicing_expert_presentation_test_view();
+    let stale_fingerprint = format!("sha256:{}", "ab".repeat(32));
+    view.presentation_fingerprint_sha256 = stale_fingerprint.clone();
+
+    area.open_splicing_expert_window_for_view(&view);
+    let stored = area
+        .splicing_expert_window_view
+        .clone()
+        .expect("validated splicing view");
+    assert_ne!(
+        stored.presentation_fingerprint_sha256, stale_fingerprint,
+        "wire fingerprints must not be trusted without checking view content"
+    );
+
+    let first = area.splicing_expert_presentation_for_view(stored.as_ref());
+    let second = area.splicing_expert_presentation_for_view(stored.as_ref());
+
+    assert!(Arc::ptr_eq(&first, &second));
+    assert_eq!(area.splicing_expert_presentation_cache_misses, 1);
+    assert_eq!(area.splicing_expert_presentation_cache_hits, 1);
+
+    view.presentation_fingerprint_sha256 = stored.presentation_fingerprint_sha256.clone();
+    view.matrix_rows[0].transcript_id = "content_revised_before_ingress".to_string();
+    area.open_splicing_expert_window_for_view(&view);
+    let revised = area
+        .splicing_expert_window_view
+        .clone()
+        .expect("revalidated splicing view");
+    assert_ne!(
+        revised.presentation_fingerprint_sha256,
+        stored.presentation_fingerprint_sha256
+    );
+    let revised_presentation = area.splicing_expert_presentation_for_view(revised.as_ref());
+    assert_eq!(
+        revised_presentation.transcript_rows[0].label,
+        format!("n-11 {}", view.transcripts[0].transcript_id)
+    );
+}
+
+#[test]
+fn splicing_uniprot_reference_presentation_revalidates_changed_evidence() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("synthetic sequence");
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    let mut view = splicing_expert_presentation_test_view();
+    area.open_splicing_expert_window_for_view(&view);
+    let stored = area.splicing_expert_window_view.clone().unwrap();
+    let first = area.splicing_expert_presentation_for_view(&stored);
+    assert!(
+        first.transcript_rows[0]
+            .uniprot_tooltip
+            .contains("not evaluated")
+    );
+    view.presentation_fingerprint_sha256 = stored.presentation_fingerprint_sha256.clone();
+    view.matrix_rows[0].uniprot_reference = gentle_protocol::SplicingUniprotReferenceEvidence {
+        status: gentle_protocol::SplicingUniprotReferenceStatus::NotReferenced,
+        sources: vec![gentle_protocol::SplicingUniprotReferenceSource {
+            entry_id: "synthetic_entry".to_string(),
+            accession: "SYNTHETIC_ACCESSION".to_string(),
+            reviewed: Some(false),
+            entry_sha256: format!("sha256:{}", "ab".repeat(32)),
+            matched_locus_gene_id: Some("ENSG00000900001".to_string()),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    area.open_splicing_expert_window_for_view(&view);
+    let revised = area.splicing_expert_window_view.clone().unwrap();
+    assert_ne!(
+        revised.presentation_fingerprint_sha256,
+        stored.presentation_fingerprint_sha256
+    );
+    let second = area.splicing_expert_presentation_for_view(&revised);
+    assert!(!Arc::ptr_eq(&first, &second));
+    assert!(second.transcript_rows[0].is_header);
+    let second_row = second
+        .transcript_rows
+        .iter()
+        .find(|row| !row.is_header)
+        .unwrap();
+    assert_eq!(
+        second_row.uniprot_tooltip,
+        view.matrix_rows[0]
+            .uniprot_reference
+            .summary_lines()
+            .join("\n")
+    );
+    assert!(second_row.uniprot_tooltip.contains("unreviewed"));
+    assert!(
+        second_row
+            .uniprot_tooltip
+            .contains("not a global absence claim")
+    );
+    assert_eq!(second_row.label, first.transcript_rows[0].label);
+    assert_eq!(
+        second_row.exon_presence,
+        first.transcript_rows[0].exon_presence
+    );
+}
+
+#[test]
+fn splicing_expert_presentation_transition_storage_is_sparse() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    let mut view = splicing_expert_presentation_test_view();
+    let exon_count = 200usize;
+    view.unique_exons = (0..exon_count)
+        .map(|index| {
+            let start_1based = index * 20 + 1;
+            SplicingExonSummary {
+                start_1based,
+                end_1based: start_1based + 9,
+                support_transcript_count: 1,
+                constitutive: false,
+            }
+        })
+        .collect();
+    view.unique_exon_count = exon_count;
+    view.transcript_count = 1;
+    view.region_end_1based = exon_count * 20;
+    view.transcripts.truncate(1);
+    view.transcripts[0].exons = vec![
+        SplicingRange {
+            start_1based: 1,
+            end_1based: 10,
+        },
+        SplicingRange {
+            start_1based: (exon_count - 1) * 20 + 1,
+            end_1based: (exon_count - 1) * 20 + 10,
+        },
+    ];
+
+    let presentation = area.splicing_expert_presentation_for_view(&view);
+    let stored_transition_cells = presentation
+        .transition_rows
+        .iter()
+        .map(|row| row.cells.len())
+        .sum::<usize>();
+
+    assert_eq!(presentation.transition_rows.len(), exon_count);
+    assert_eq!(stored_transition_cells, 1);
+    assert_eq!(
+        presentation.transition_rows[0].cells[0].to_exon_index,
+        exon_count - 1
+    );
+}
+
 #[test]
 fn large_splicing_attract_section_defaults_to_collapsed() {
     let small_view = SplicingExpertView {
@@ -12335,6 +16456,7 @@ fn large_splicing_attract_section_defaults_to_collapsed() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -12819,6 +16941,16 @@ fn construct_reasoning_similarity_fact_entries_offer_dotplot_actions() {
         pcr_entry.detail_lines
     );
     assert!(
+        pcr_entry.detail_lines.iter().any(|line| {
+            line.contains("effective_score=")
+                && line.contains("base_score=")
+                && line.contains("applicability=unknown")
+                && line.contains("applicability_basis=unspecified")
+        }),
+        "task severity details should distinguish intrinsic concern from objective priority: {:?}",
+        pcr_entry.detail_lines
+    );
+    assert!(
         pcr_entry
             .dotplot_actions
             .iter()
@@ -12965,6 +17097,174 @@ fn open_construct_reasoning_dotplot_action_focuses_repeat_region() {
     );
     assert!(view.span_start_0based <= focus_midpoint_0based);
     assert!(view.span_end_0based > focus_midpoint_0based);
+    let citation = view
+        .inspection_provenance
+        .as_ref()
+        .expect("reasoning-guided dotplot citation");
+    assert_eq!(
+        citation.status,
+        crate::engine::DotplotInspectionProvenanceStatus::Pass
+    );
+    assert_eq!(citation.graph_id, graph.graph_id);
+    assert_eq!(citation.action_id, action.action_id);
+    assert_eq!(citation.rationale, action.rationale);
+    assert_eq!(citation.driving_evidence_ids, action.driving_evidence_ids);
+}
+
+#[test]
+fn construct_reasoning_dotplot_action_rejects_stale_graph_snapshot() {
+    let sequence = format!(
+        "{}{}{}{}{}",
+        "ACGT".repeat(12),
+        "AAAAAAAAAAAAAA",
+        "ATATATATATATATATATAT",
+        "GATTACAGATTACCCGGGGATTACAGATTA",
+        "GCGTACGCTATTTTTAGCGTACGC"
+    );
+    let dna = DNAsequence::from_sequence(&sequence).expect("sequence");
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_reasoning_stale".to_string(), dna.clone());
+    let mut engine = GentleEngine::from_state(state);
+    let graph = engine
+        .build_construct_reasoning_graph("seq_reasoning_stale", None, None)
+        .expect("graph");
+    let action = graph
+        .inspection_actions
+        .first()
+        .cloned()
+        .expect("inspection action");
+    let engine = Arc::new(RwLock::new(engine));
+    let mut area = MainAreaDna::new(
+        dna,
+        Some("seq_reasoning_stale".to_string()),
+        Some(engine.clone()),
+    );
+    area.focused_construct_reasoning_graph_id = Some(graph.graph_id.clone());
+    engine
+        .write()
+        .expect("engine write")
+        .state_mut()
+        .sequences
+        .get_mut("seq_reasoning_stale")
+        .expect("sequence")
+        .features_mut()
+        .push(gb_io::seq::Feature {
+            kind: "misc_feature".into(),
+            location: gb_io::seq::Location::simple_range(0, 4),
+            qualifiers: vec![],
+        });
+
+    let error = area
+        .open_construct_reasoning_dotplot_action(&action)
+        .expect_err("stale graph action should be blocked");
+    assert!(error.contains("stale") && error.contains("refresh"));
+    assert!(!area.show_dotplot_window);
+}
+
+#[test]
+fn construct_reasoning_action_details_show_all_repeat_family_provenance() {
+    let action = ConstructReasoningInspectionAction {
+        repeat_family_provenances: vec![
+            crate::engine::ConstructReasoningRepeatFamilyProvenance {
+                source_kind: "ucsc_rmsk".to_string(),
+                repeat_name: Some("AluY".to_string()),
+                repeat_class: Some("SINE".to_string()),
+                repeat_family: Some("Alu".to_string()),
+                family_name: Some("Alu".to_string()),
+                agreement: crate::engine::ConstructReasoningRepeatFamilyAgreement::Family,
+                confidence: Some(0.95),
+                ..crate::engine::ConstructReasoningRepeatFamilyProvenance::default()
+            },
+            crate::engine::ConstructReasoningRepeatFamilyProvenance {
+                source_kind: "ucsc_rmsk".to_string(),
+                repeat_name: Some("L1PA2".to_string()),
+                repeat_class: Some("LINE".to_string()),
+                repeat_family: Some("L1".to_string()),
+                family_name: Some("L1".to_string()),
+                agreement:
+                    crate::engine::ConstructReasoningRepeatFamilyAgreement::CuratedAnnotation,
+                confidence: Some(0.8),
+                ..crate::engine::ConstructReasoningRepeatFamilyProvenance::default()
+            },
+        ],
+        ..ConstructReasoningInspectionAction::default()
+    };
+
+    let lines = MainAreaDna::construct_reasoning_dotplot_action_detail_lines(&[action]);
+    let provenance_lines = lines
+        .iter()
+        .filter(|line| line.starts_with("inspection_action_repeat_family:"))
+        .collect::<Vec<_>>();
+    assert_eq!(provenance_lines.len(), 2);
+    assert!(provenance_lines.iter().any(|line| {
+        line.contains("repeat_family=Alu")
+            && line.contains("agreement=family")
+            && line.contains("confidence=0.95")
+    }));
+    assert!(provenance_lines.iter().any(|line| {
+        line.contains("repeat_family=L1")
+            && line.contains("agreement=curated_annotation")
+            && line.contains("confidence=0.80")
+    }));
+}
+
+#[test]
+fn construct_reasoning_action_provenance_prefers_plural_and_falls_back_to_legacy() {
+    let legacy = crate::engine::ConstructReasoningRepeatFamilyProvenance {
+        source_kind: "legacy".to_string(),
+        family_name: Some("Legacy family".to_string()),
+        ..crate::engine::ConstructReasoningRepeatFamilyProvenance::default()
+    };
+    let plural = crate::engine::ConstructReasoningRepeatFamilyProvenance {
+        source_kind: "plural".to_string(),
+        family_name: Some("Current family".to_string()),
+        ..crate::engine::ConstructReasoningRepeatFamilyProvenance::default()
+    };
+    let action = ConstructReasoningInspectionAction {
+        repeat_family_provenance: Some(legacy.clone()),
+        repeat_family_provenances: vec![plural.clone()],
+        ..ConstructReasoningInspectionAction::default()
+    };
+
+    let preferred = MainAreaDna::construct_reasoning_repeat_family_provenances(&action);
+    assert_eq!(preferred, vec![&plural]);
+
+    let legacy_only = ConstructReasoningInspectionAction {
+        repeat_family_provenance: Some(legacy.clone()),
+        ..ConstructReasoningInspectionAction::default()
+    };
+    let fallback = MainAreaDna::construct_reasoning_repeat_family_provenances(&legacy_only);
+    assert_eq!(fallback, vec![&legacy]);
+}
+
+#[test]
+fn construct_reasoning_task_severity_pane_omits_absent_optional_fields() {
+    let severity = crate::engine::ConstructReasoningTaskSeverity::default();
+
+    let fields = MainAreaDna::construct_reasoning_task_severity_pane_fields(&severity);
+    let labels = fields.iter().map(|(label, _)| *label).collect::<Vec<_>>();
+
+    assert!(!labels.contains(&"Effective score"));
+    assert!(!labels.contains(&"Base score"));
+    assert!(!labels.contains(&"Objective adjustment"));
+    assert!(!labels.contains(&"Base severity"));
+    assert!(!labels.contains(&"Rationale"));
+    assert!(fields.iter().all(|(_, value)| !value.contains("None")));
+}
+
+#[test]
+fn construct_reasoning_stale_snapshot_disables_inspection_actions() {
+    assert!(!MainAreaDna::construct_reasoning_actions_enabled(
+        crate::engine::ConstructReasoningGraphFreshness::Stale
+    ));
+    assert!(MainAreaDna::construct_reasoning_actions_enabled(
+        crate::engine::ConstructReasoningGraphFreshness::Current
+    ));
+    assert!(MainAreaDna::construct_reasoning_actions_enabled(
+        crate::engine::ConstructReasoningGraphFreshness::Unknown
+    ));
 }
 
 #[test]
@@ -13212,6 +17512,137 @@ fn sync_from_engine_display_does_not_rebuild_construct_reasoning_overlay_each_fr
 }
 
 #[test]
+fn sync_from_engine_display_reuses_unchanged_key_and_honors_forced_refreshes() {
+    let dna = DNAsequence::from_sequence("ATGCGTATGCGT").expect("sequence");
+    let mut state = ProjectState::default();
+    state.sequences.insert("seq_sync".to_string(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let mut area = MainAreaDna::new(dna, Some("seq_sync".to_string()), Some(engine));
+
+    assert_eq!(area.engine_display_sync_apply_count, 1);
+    assert_eq!(area.engine_display_sync_cache_misses, 1);
+    let initial_hits = area.engine_display_sync_cache_hits;
+
+    area.sync_from_engine_display();
+    area.sync_from_engine_display();
+
+    assert_eq!(area.engine_display_sync_apply_count, 1);
+    assert_eq!(area.engine_display_sync_cache_misses, 1);
+    assert_eq!(area.engine_display_sync_cache_hits, initial_hits + 2);
+
+    area.refresh_from_engine_settings();
+    assert_eq!(area.engine_display_sync_apply_count, 2);
+    assert_eq!(area.engine_display_sync_cache_misses, 2);
+
+    let replacement = DNAsequence::from_sequence("ATGCGTATGCGT").expect("replacement");
+    area.replace_active_dna(replacement, false);
+    assert!(area.engine_display_sync_key.is_none());
+    area.sync_from_engine_display();
+    assert_eq!(area.engine_display_sync_apply_count, 3);
+    assert_eq!(area.engine_display_sync_cache_misses, 3);
+}
+
+#[test]
+fn sync_from_engine_display_key_covers_display_structure_features_and_presentation() {
+    let dna = DNAsequence::from_sequence("ATGCGTATGCGTATGCGTATGCGT").expect("sequence");
+    let mut state = ProjectState::default();
+    state.sequences.insert("seq_sync".to_string(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let mut area = MainAreaDna::new(dna, Some("seq_sync".to_string()), Some(engine.clone()));
+    let mut expected_apply_count = area.engine_display_sync_apply_count;
+
+    let next_show_tfbs = !engine.read().expect("engine").state().display.show_tfbs;
+    {
+        let mut guard = engine.write().expect("engine");
+        let display = guard.display_state_mut();
+        display.show_tfbs = next_show_tfbs;
+        display.linear_view_start_bp = 4;
+        display.linear_view_span_bp = 8;
+    }
+    area.sync_from_engine_display();
+    expected_apply_count += 1;
+    assert_eq!(area.engine_display_sync_apply_count, expected_apply_count);
+    assert_eq!(
+        area.dna_display.read().expect("display").show_tfbs(),
+        next_show_tfbs
+    );
+    assert_eq!(area.current_linear_viewport(), (4, 8, 24));
+
+    area.dna
+        .write()
+        .expect("DNA")
+        .features_mut()
+        .push(make_feature("gene", vec![("gene", "SYNC1")]));
+    area.sync_from_engine_display();
+    expected_apply_count += 1;
+    assert_eq!(area.engine_display_sync_apply_count, expected_apply_count);
+    assert!(
+        area.dna_display
+            .read()
+            .expect("display")
+            .suppress_cds_features_for_gene_annotations()
+    );
+
+    engine.write().expect("engine").state_mut().metadata.insert(
+        "provenance".to_string(),
+        json!({
+            "genome_extractions": [{
+                "seq_id": "seq_sync",
+                "genome_id": "synthetic_genome",
+                "chromosome": "chrSynthetic",
+                "start_1based": 1,
+                "end_1based": 24,
+                "recorded_at_unix_ms": 1
+            }]
+        }),
+    );
+    area.sync_from_engine_display();
+    expected_apply_count += 1;
+    assert_eq!(area.engine_display_sync_apply_count, expected_apply_count);
+    assert!(
+        area.dna_display
+            .read()
+            .expect("display")
+            .suppress_open_reading_frames_for_genome_anchor()
+    );
+
+    area.dna.write().expect("DNA").set_circular(true);
+    area.sync_from_engine_display();
+    expected_apply_count += 1;
+    assert_eq!(area.engine_display_sync_apply_count, expected_apply_count);
+
+    area.dna_presentation_mode = DnaPresentationMode::Cdna;
+    area.sync_from_engine_display();
+    expected_apply_count += 1;
+    assert_eq!(area.engine_display_sync_apply_count, expected_apply_count);
+    assert!(
+        !area
+            .dna_display
+            .read()
+            .expect("display")
+            .show_contextual_transcript_features()
+    );
+
+    area.show_all_contextual_transcripts = true;
+    area.sync_from_engine_display();
+    expected_apply_count += 1;
+    assert_eq!(area.engine_display_sync_apply_count, expected_apply_count);
+    assert!(
+        area.dna_display
+            .read()
+            .expect("display")
+            .show_contextual_transcript_features()
+    );
+
+    area.enable_compact_lane_layout();
+    area.sync_from_engine_display();
+    expected_apply_count += 1;
+    assert_eq!(area.engine_display_sync_apply_count, expected_apply_count);
+    assert!(!area.show_sequence);
+    assert!(area.show_map);
+}
+
+#[test]
 fn refresh_description_cache_includes_variant_reasoning_context() {
     let mut dna = DNAsequence::from_sequence("ATGGAATTTACGTACGT").expect("sequence");
     dna.features_mut().push(Feature {
@@ -13281,6 +17712,65 @@ fn refresh_description_cache_includes_variant_reasoning_context() {
 }
 
 #[test]
+fn splicing_expert_intent_reuses_inspection_and_closes_only_bound_feature() {
+    use crate::engine_shell::UiIntentAction;
+    // Hand-crafted transcript geometry; no biological performance claim.
+    for reverse in [false, true] {
+        let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(10)).unwrap();
+        let location = Location::Join(vec![
+            Location::simple_range(2, 8),
+            Location::simple_range(12, 20),
+        ]);
+        dna.features_mut().push(Feature {
+            kind: "mRNA".into(),
+            location: if reverse {
+                Location::Complement(Box::new(location))
+            } else {
+                location
+            },
+            qualifiers: vec![
+                ("gene".into(), Some("SYNTHETIC".into())),
+                ("transcript_id".into(), Some("TX1".into())),
+            ],
+        });
+        let mut state = ProjectState::default();
+        state.sequences.insert("locus".into(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let mut area = MainAreaDna::new(dna, Some("locus".into()), Some(engine.clone()));
+        // Viewer initialization populates the reasoning cache; expert intents must not change it.
+        let before = serde_json::to_value(engine.read().unwrap().state()).unwrap();
+        area.apply_splicing_expert_intent(UiIntentAction::Open, 0)
+            .unwrap();
+        let view = area.splicing_expert_window_view.clone().unwrap();
+        assert_eq!(view.strand, if reverse { "-" } else { "+" });
+        area.splicing_locus_status = "Keep reviewed evidence".into();
+        for action in [UiIntentAction::Open, UiIntentAction::Focus] {
+            area.apply_splicing_expert_intent(action, 0).unwrap();
+            assert!(Arc::ptr_eq(
+                &view,
+                area.splicing_expert_window_view.as_ref().unwrap()
+            ));
+            assert_eq!(area.splicing_locus_status, "Keep reviewed evidence");
+        }
+        assert!(
+            area.apply_splicing_expert_intent(UiIntentAction::Open, 999)
+                .is_err()
+        );
+        area.apply_splicing_expert_intent(UiIntentAction::Close, 999)
+            .unwrap();
+        assert!(area.show_splicing_expert_window);
+        area.apply_splicing_expert_intent(UiIntentAction::Close, 0)
+            .unwrap();
+        assert!(!area.show_splicing_expert_window);
+        assert!(!area.splicing_expert_window_focus_requested);
+        assert_eq!(
+            serde_json::to_value(engine.read().unwrap().state()).unwrap(),
+            before
+        );
+    }
+}
+
+#[test]
 fn open_splicing_expert_for_feature_opens_window_on_explicit_request() {
     let mut dna =
         DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").expect("sequence");
@@ -13325,6 +17815,7 @@ fn open_splicing_expert_window_marks_initial_render_pending() {
         transcript_count: 0,
         unique_exon_count: 0,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![],
         unique_exons: vec![],
         matrix_rows: vec![],
@@ -13347,6 +17838,7 @@ fn tooltip_help_splicing_expert_window_mentions_transcripts_and_rna_reads() {
     assert!(help.contains("transcript"));
     assert!(help.contains("primer/qPCR"));
     assert!(help.contains("RNA-read evidence"));
+    assert!(help.contains("junction-spanning array probe"));
 }
 
 #[test]
@@ -13415,6 +17907,254 @@ fn rna_read_progress_eta_text_reports_remaining_time_for_known_working_set() {
     assert_eq!(
         super::MainAreaDna::format_rna_read_progress_eta(100, 100, 10.0),
         Some("ETA: 0s".to_string())
+    );
+}
+
+#[test]
+fn feature_location_editor_uses_shared_preview_operation() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(50)).expect("sequence");
+    dna.features_mut().push(Feature {
+        kind: "gene".into(),
+        location: Location::simple_range(5, 20),
+        qualifiers: vec![("gene".into(), Some("TEST".to_string()))],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("seq".to_string(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let mut area = MainAreaDna::new(dna, Some("seq".to_string()), Some(engine));
+    area.focus_feature_location_editor(Some(0));
+    assert!(area.feature_location_editor_is_open());
+    assert_eq!(
+        area.feature_location_editor_ui.selected_feature_index,
+        Some(0)
+    );
+    assert_eq!(area.feature_location_editor_ui.start_1based, "6");
+    area.feature_location_editor_ui.start_1based = "7".to_string();
+    area.feature_location_editor_ui.end_1based_inclusive = "24".to_string();
+    area.run_feature_location_preview();
+    let preview = area
+        .feature_location_editor_ui
+        .preview
+        .as_ref()
+        .expect("preview");
+    assert_eq!(preview.after.start_1based, 7);
+    assert_eq!(preview.after.end_1based_inclusive, 24);
+}
+
+#[test]
+fn feature_location_editor_selects_compound_segments_and_invalidates_preview() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(80)).expect("sequence");
+    dna.features_mut().push(Feature {
+        kind: "mRNA".into(),
+        location: Location::Complement(Box::new(Location::Join(vec![
+            Location::simple_range(5, 20),
+            Location::simple_range(30, 45),
+        ]))),
+        qualifiers: vec![("transcript_id".into(), Some("TX1".to_string()))],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("seq".to_string(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let mut area = MainAreaDna::new(dna, Some("seq".to_string()), Some(engine));
+    area.focus_feature_location_editor(Some(0));
+    assert_eq!(
+        area.feature_location_editor_ui.selected_segment_index,
+        Some(0)
+    );
+    assert_eq!(area.feature_location_editor_ui.segment_options.len(), 2);
+    assert!(
+        area.feature_location_editor_ui.segment_options[0]
+            .label
+            .contains("biological 2")
+    );
+    area.run_feature_location_preview();
+    assert!(
+        area.feature_location_editor_ui.preview.is_some(),
+        "first segment preview"
+    );
+
+    area.select_feature_location_editor_segment(1);
+    assert!(area.feature_location_editor_ui.preview.is_none());
+    assert_eq!(
+        area.feature_location_editor_ui.selected_segment_index,
+        Some(1)
+    );
+    assert_eq!(area.feature_location_editor_ui.start_1based, "31");
+    area.run_feature_location_preview();
+    let preview = area
+        .feature_location_editor_ui
+        .preview
+        .as_ref()
+        .expect("second segment preview");
+    assert_eq!(
+        preview
+            .compound_context
+            .as_ref()
+            .expect("context")
+            .biological_segment_number,
+        1
+    );
+}
+
+#[test]
+fn feature_editor_create_mode_uses_shared_preview_apply_and_preserves_qualifiers() {
+    let dna = DNAsequence::from_sequence(&"A".repeat(50)).expect("sequence");
+    let mut state = ProjectState::default();
+    state.sequences.insert("seq".to_string(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let mut area = MainAreaDna::new(dna, Some("seq".to_string()), Some(engine.clone()));
+    area.focus_feature_record_create_editor(Some((9, 20)));
+    assert!(area.feature_location_editor_is_open());
+    assert_eq!(
+        area.feature_location_editor_ui.record.mode,
+        FeatureEditorMode::Create
+    );
+    area.feature_location_editor_ui.record.create_feature_kind = "exon".to_string();
+    area.feature_location_editor_ui.record.create_strand = FeatureLocationEditStrand::Reverse;
+    area.feature_location_editor_ui.record.create_qualifiers = vec![
+        FeatureRecordQualifierUiRow {
+            key: "gene".to_string(),
+            value: "TEST".to_string(),
+            has_value: true,
+        },
+        FeatureRecordQualifierUiRow {
+            key: "pseudo".to_string(),
+            value: String::new(),
+            has_value: false,
+        },
+    ];
+    area.run_feature_record_preview();
+    let preview = area
+        .feature_location_editor_ui
+        .record
+        .preview
+        .as_ref()
+        .expect("preview");
+    assert!(matches!(
+        preview.outcome,
+        FeatureRecordCurationOutcome::Create {
+            created_feature_index: None,
+            ..
+        }
+    ));
+    assert!(
+        engine.read().expect("engine").state().sequences["seq"]
+            .features()
+            .is_empty()
+    );
+
+    area.run_feature_record_apply();
+    let guard = engine.read().expect("engine");
+    let created = &guard.state().sequences["seq"].features()[0];
+    assert_eq!(
+        created.location,
+        Location::Complement(Box::new(Location::simple_range(9, 20)))
+    );
+    assert_eq!(
+        created.qualifiers,
+        vec![
+            ("gene".into(), Some("TEST".to_string())),
+            ("pseudo".into(), None),
+        ]
+    );
+}
+
+#[test]
+fn feature_editor_delete_mode_accepts_compound_feature_and_invalidates_preview() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(50)).expect("sequence");
+    dna.features_mut().push(Feature {
+        kind: "mRNA".into(),
+        location: Location::Join(vec![
+            Location::simple_range(5, 15),
+            Location::simple_range(25, 35),
+        ]),
+        qualifiers: vec![("transcript_id".into(), Some("TX1".to_string()))],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("seq".to_string(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let mut area = MainAreaDna::new(dna, Some("seq".to_string()), Some(engine.clone()));
+    area.focus_feature_record_delete_editor(Some(0));
+    assert_eq!(
+        area.feature_location_editor_ui.record.mode,
+        FeatureEditorMode::Delete
+    );
+    area.run_feature_record_preview();
+    assert!(area.feature_location_editor_ui.record.preview.is_some());
+    area.feature_location_editor_ui.record.delete_feature_index = None;
+    area.invalidate_feature_record_preview();
+    assert!(area.feature_location_editor_ui.record.preview.is_none());
+    area.feature_location_editor_ui.record.delete_feature_index = Some(0);
+    area.run_feature_record_preview();
+    area.run_feature_record_apply();
+    assert!(
+        engine.read().expect("engine").state().sequences["seq"]
+            .features()
+            .is_empty()
+    );
+}
+
+#[test]
+fn feature_editor_split_and_merge_modes_use_shared_preview_apply_contract() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(50)).expect("sequence");
+    dna.features_mut().push(Feature {
+        kind: "exon".into(),
+        location: Location::simple_range(5, 25),
+        qualifiers: vec![("gene".into(), Some("TEST".to_string()))],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("seq".to_string(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let mut area = MainAreaDna::new(dna, Some("seq".to_string()), Some(engine.clone()));
+
+    area.feature_location_editor_ui.record.mode = FeatureEditorMode::Split;
+    area.feature_location_editor_ui.record.split_feature_index = Some(0);
+    area.feature_location_editor_ui.record.split_before_1based = "16".to_string();
+    area.run_feature_record_preview();
+    assert!(matches!(
+        area.feature_location_editor_ui
+            .record
+            .preview
+            .as_ref()
+            .map(|preview| &preview.outcome),
+        Some(FeatureRecordCurationOutcome::Split {
+            resulting_feature_indices: [0, 1],
+            ..
+        })
+    ));
+    area.run_feature_record_apply();
+    assert_eq!(
+        engine.read().expect("engine").state().sequences["seq"]
+            .features()
+            .len(),
+        2
+    );
+
+    area.feature_location_editor_ui.record.mode = FeatureEditorMode::Merge;
+    area.feature_location_editor_ui
+        .record
+        .merge_first_feature_index = Some(0);
+    area.feature_location_editor_ui
+        .record
+        .merge_second_feature_index = Some(1);
+    area.run_feature_record_preview();
+    assert!(matches!(
+        area.feature_location_editor_ui
+            .record
+            .preview
+            .as_ref()
+            .map(|preview| &preview.outcome),
+        Some(FeatureRecordCurationOutcome::Merge {
+            resulting_feature_index: 0,
+            ..
+        })
+    ));
+    area.run_feature_record_apply();
+    let guard = engine.read().expect("engine");
+    assert_eq!(guard.state().sequences["seq"].features().len(), 1);
+    assert_eq!(
+        guard.state().sequences["seq"].features()[0].location,
+        Location::simple_range(5, 25)
     );
 }
 

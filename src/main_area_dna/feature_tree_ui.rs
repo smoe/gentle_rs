@@ -91,6 +91,7 @@ pub(super) struct FeatureTreeEntry {
     pub(super) feature_label_full: String,
     pub(super) feature_label: String,
     pub(super) range_label: String,
+    pub(super) transcript_summary: Option<String>,
     pub(super) subgroup_key: Option<String>,
     pub(super) subgroup_label: Option<String>,
     pub(super) prefer_grouped_label: bool,
@@ -104,11 +105,20 @@ pub(super) struct FeatureTreeEntry {
     pub(super) disable_grouping: bool,
     pub(super) supports_splicing_expert: bool,
     pub(super) supports_variant_followup: bool,
+    pub(super) supports_location_edit: bool,
+    pub(super) location_edit_unavailable_reason: Option<String>,
     pub(super) can_seed_promoter_anchor: bool,
     pub(super) regulatory_primary_group_key: Option<String>,
     pub(super) regulatory_primary_group_label: Option<String>,
     pub(super) regulatory_secondary_group_key: Option<String>,
     pub(super) regulatory_secondary_group_label: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum TranscriptSequenceAction {
+    CopySequence,
+    CopyFasta,
+    ExportFasta,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -230,7 +240,8 @@ pub(super) struct FeatureTreeKindGroup {
 pub(super) struct FeatureTreeCacheKey {
     pub(super) seq_len: usize,
     pub(super) feature_count: usize,
-    pub(super) viewport: Option<(usize, usize)>,
+    pub(super) feature_generation: u64,
+    pub(super) is_circular: bool,
     pub(super) grouping_mode: FeatureTreeGroupingMode,
     pub(super) feature_filter_text: String,
     pub(super) show_cds_features: bool,
@@ -255,10 +266,126 @@ pub(super) struct FeatureTreeComputedModel {
 #[derive(Clone, Debug)]
 pub(super) struct FeatureTreeCache {
     pub(super) key: FeatureTreeCacheKey,
+    pub(super) viewport: Option<(usize, usize)>,
     pub(super) model: FeatureTreeComputedModel,
 }
 
+impl FeatureTreeComputedModel {
+    /// Recount existing membership without rebuilding labels, filters or groups.
+    fn refresh_viewport(&mut self, dna: &DNAsequence, viewport: Option<(usize, usize)>) {
+        crate::gentle_gui_profile_scope!("FeatureTree::refresh_viewport");
+        for group in &mut self.groups {
+            for entry in &mut group.entries {
+                entry.visible_in_view = match viewport {
+                    Some((start, end)) => dna.features().get(entry.id).is_some_and(|feature| {
+                        MainAreaDna::feature_overlaps_linear_viewport(
+                            feature,
+                            dna.len(),
+                            start,
+                            end,
+                        )
+                    }),
+                    None => true,
+                };
+            }
+            let entries = &group.entries;
+            let count = |indices: &[usize]| {
+                indices
+                    .iter()
+                    .filter(|index| entries[**index].visible_in_view)
+                    .count()
+            };
+            group.visible_count = entries.iter().filter(|entry| entry.visible_in_view).count();
+            for subgroup in &mut group.grouped_entries {
+                subgroup.visible_count = count(&subgroup.entry_indices);
+            }
+            for primary in &mut group.regulatory_primary_groups {
+                primary.visible_count = count(&primary.entry_indices);
+                for secondary in &mut primary.secondary_groups {
+                    secondary.visible_count = count(&secondary.entry_indices);
+                }
+            }
+        }
+    }
+}
+
 impl MainAreaDna {
+    fn feature_tree_virtual_row_range(
+        list_top: f32,
+        clip_top: f32,
+        clip_bottom: f32,
+        row_height: f32,
+        row_count: usize,
+    ) -> std::ops::Range<usize> {
+        if row_count == 0 || row_height <= 0.0 {
+            return 0..0;
+        }
+        let first = (((clip_top - list_top) / row_height).floor() as isize).max(0) as usize;
+        let last = (((clip_bottom - list_top) / row_height).ceil() as isize).max(0) as usize;
+        first.saturating_sub(1).min(row_count)..last.saturating_add(1).min(row_count)
+    }
+
+    fn render_feature_tree_entry_indices(
+        ui: &mut egui::Ui,
+        entries: &[FeatureTreeEntry],
+        indices: &[usize],
+        pending_scroll_to: Option<usize>,
+        grouped_entry: bool,
+        show_range_only_when_grouped: bool,
+        render_entry: &mut impl FnMut(&mut egui::Ui, &FeatureTreeEntry, bool, bool),
+    ) {
+        const VIRTUALIZE_THRESHOLD: usize = 12;
+        let pending_is_here = pending_scroll_to
+            .is_some_and(|feature_id| indices.iter().any(|index| entries[*index].id == feature_id));
+        if indices.len() < VIRTUALIZE_THRESHOLD || pending_is_here {
+            for index in indices {
+                let entry = &entries[*index];
+                ui.push_id(("feature_tree_entry", entry.id), |ui| {
+                    render_entry(ui, entry, grouped_entry, show_range_only_when_grouped);
+                });
+            }
+            return;
+        }
+
+        crate::gentle_gui_profile_scope!("MainAreaDna::feature_tree_virtual_rows");
+        let row_height = (ui.spacing().interact_size.y + ui.spacing().item_spacing.y).max(20.0);
+        let width = ui.available_width().max(1.0);
+        let total_height = row_height * indices.len() as f32;
+        let (list_rect, _) =
+            ui.allocate_exact_size(egui::vec2(width, total_height), egui::Sense::hover());
+        let clip_rect = ui.clip_rect();
+        let visible_rows = Self::feature_tree_virtual_row_range(
+            list_rect.top(),
+            clip_rect.top(),
+            clip_rect.bottom(),
+            row_height,
+            indices.len(),
+        );
+        for row_index in visible_rows {
+            let entry = &entries[indices[row_index]];
+            let row_rect = egui::Rect::from_min_size(
+                egui::pos2(
+                    list_rect.left(),
+                    list_rect.top() + row_index as f32 * row_height,
+                ),
+                egui::vec2(width, row_height),
+            );
+            let mut row_ui = ui.new_child(
+                egui::UiBuilder::new()
+                    .id_salt(("feature_tree_virtual_entry", entry.id))
+                    .max_rect(row_rect)
+                    .layout(egui::Layout::top_down(egui::Align::Min)),
+            );
+            row_ui.set_clip_rect(row_rect.intersect(clip_rect));
+            render_entry(
+                &mut row_ui,
+                entry,
+                grouped_entry,
+                show_range_only_when_grouped,
+            );
+        }
+    }
+
     pub(super) fn format_feature_tree_count_label(
         label: &str,
         visible_count: usize,
@@ -575,6 +702,149 @@ impl MainAreaDna {
             return base_label.to_string();
         }
         format!("{base_label} [{discriminator}]")
+    }
+
+    pub(super) fn feature_tree_transcript_summary(feature: &gb_io::seq::Feature) -> Option<String> {
+        let kind = feature.kind.to_string().to_ascii_uppercase();
+        if !matches!(kind.as_str(), "MRNA" | "TRANSCRIPT") {
+            return None;
+        }
+        let mut ranges = Vec::new();
+        collect_location_ranges_usize(&feature.location, &mut ranges);
+        ranges.sort_unstable();
+        ranges.dedup();
+        let spliced_length = ranges
+            .iter()
+            .map(|(start, end)| end.saturating_sub(*start))
+            .sum::<usize>();
+        let transcript_name = Self::feature_tree_first_nonempty_qualifier(
+            feature,
+            &[
+                "transcript_name",
+                "isoform",
+                "standard_name",
+                "label",
+                "name",
+                "product",
+                "transcript_variant",
+                "variant",
+            ],
+        );
+        let mut parts = Vec::new();
+        if spliced_length > 0 {
+            parts.push(format!("{spliced_length} nt"));
+        }
+        if let Some(name) = transcript_name {
+            parts.push(name);
+        }
+        (!parts.is_empty()).then(|| parts.join(" · "))
+    }
+
+    fn derive_feature_transcript_sequence(
+        &self,
+        feature_id: usize,
+    ) -> Result<(String, String, String), String> {
+        let seq_id = self.seq_id.as_deref().unwrap_or("sequence");
+        let dna = self
+            .dna
+            .read()
+            .map_err(|_| "DNA lock poisoned".to_string())?;
+        let feature = dna
+            .features()
+            .get(feature_id)
+            .ok_or_else(|| format!("Feature #{} is no longer available", feature_id + 1))?;
+        if !matches!(
+            feature.kind.to_string().to_ascii_uppercase().as_str(),
+            "MRNA" | "TRANSCRIPT"
+        ) {
+            return Err(format!(
+                "Feature #{} is not an mRNA/transcript",
+                feature_id + 1
+            ));
+        }
+        let source = dna.get_forward_string().to_ascii_uppercase();
+        let (derived, transcript_id, transcript_label, _, _, _) =
+            GentleEngine::derive_transcript_sequence_from_feature(
+                source.as_bytes(),
+                feature,
+                dna.features(),
+                feature_id,
+                seq_id,
+            )
+            .map_err(|error| error.message)?;
+        Ok((
+            derived.get_forward_string().to_ascii_uppercase(),
+            transcript_id,
+            transcript_label,
+        ))
+    }
+
+    pub(super) fn handle_transcript_sequence_action(
+        &mut self,
+        ctx: &egui::Context,
+        feature_id: usize,
+        action: TranscriptSequenceAction,
+    ) {
+        let (sequence, transcript_id, transcript_label) =
+            match self.derive_feature_transcript_sequence(feature_id) {
+                Ok(result) => result,
+                Err(message) => {
+                    self.op_status = message.clone();
+                    self.op_error_popup = Some(message);
+                    return;
+                }
+            };
+        let fasta_label = if transcript_label.trim().is_empty() {
+            transcript_id.as_str()
+        } else {
+            transcript_label.as_str()
+        };
+        let fasta = format!(">{transcript_id} {fasta_label}\n{sequence}\n");
+        match action {
+            TranscriptSequenceAction::CopySequence => {
+                ctx.copy_text(sequence.clone());
+                self.op_status = format!(
+                    "Copied spliced mRNA sequence '{transcript_id}' ({} nt)",
+                    sequence.len()
+                );
+            }
+            TranscriptSequenceAction::CopyFasta => {
+                ctx.copy_text(fasta);
+                self.op_status = format!(
+                    "Copied spliced mRNA FASTA '{transcript_id}' ({} nt)",
+                    sequence.len()
+                );
+            }
+            TranscriptSequenceAction::ExportFasta => {
+                let default_name = format!(
+                    "{}.fasta",
+                    Self::sanitize_export_name_component(&transcript_id, "transcript")
+                );
+                let Some(path) = rfd::FileDialog::new()
+                    .add_filter("FASTA", &["fasta", "fa", "fna"])
+                    .set_file_name(default_name)
+                    .save_file()
+                else {
+                    self.op_status = "mRNA FASTA export canceled".to_string();
+                    return;
+                };
+                match std::fs::write(&path, fasta) {
+                    Ok(()) => {
+                        self.op_status = format!(
+                            "Exported spliced mRNA FASTA '{}' ({} nt) to {}",
+                            transcript_id,
+                            sequence.len(),
+                            path.display()
+                        );
+                    }
+                    Err(error) => {
+                        let message = format!("Could not export mRNA FASTA: {error}");
+                        self.op_status = message.clone();
+                        self.op_error_popup = Some(message);
+                    }
+                }
+            }
+        }
     }
 
     pub(super) fn trim_feature_tree_prefix_separators(value: &str) -> String {
@@ -1222,15 +1492,19 @@ impl MainAreaDna {
         self.save_engine_ops_state();
     }
 
-    pub(super) fn current_feature_tree_cache_key(
-        &self,
-        viewport: Option<(usize, usize)>,
-    ) -> FeatureTreeCacheKey {
-        let (seq_len, feature_count) = self
+    pub(super) fn current_feature_tree_cache_key(&self) -> FeatureTreeCacheKey {
+        let (seq_len, feature_count, feature_generation, is_circular) = self
             .dna
             .read()
-            .map(|dna| (dna.len(), dna.features().len()))
-            .unwrap_or((0, 0));
+            .map(|dna| {
+                (
+                    dna.len(),
+                    dna.features().len(),
+                    dna.feature_generation(),
+                    dna.is_circular(),
+                )
+            })
+            .unwrap_or((0, 0, 0, false));
         let (
             show_cds_features,
             show_gene_features,
@@ -1260,7 +1534,8 @@ impl MainAreaDna {
         FeatureTreeCacheKey {
             seq_len,
             feature_count,
-            viewport,
+            feature_generation,
+            is_circular,
             grouping_mode: self.feature_tree_grouping_mode,
             feature_filter_text: self.feature_tree_filter.trim().to_string(),
             show_cds_features,
@@ -1279,6 +1554,7 @@ impl MainAreaDna {
     pub(super) fn build_feature_tree_model(
         &self,
         key: &FeatureTreeCacheKey,
+        viewport: Option<(usize, usize)>,
     ) -> FeatureTreeComputedModel {
         crate::gentle_gui_profile_scope!("FeatureTree::build_model");
         let filter_active = !key.feature_filter_text.is_empty();
@@ -1342,7 +1618,7 @@ impl MainAreaDna {
                     if from < 0 || to < 0 {
                         return None;
                     }
-                    let visible_in_view = match key.viewport {
+                    let visible_in_view = match viewport {
                         Some((start, end)) => Self::feature_overlaps_linear_viewport(
                             feature,
                             sequence_length,
@@ -1403,6 +1679,14 @@ impl MainAreaDna {
                     let can_seed_promoter_anchor = kind_label.eq_ignore_ascii_case("mrna")
                         || kind_label.eq_ignore_ascii_case("transcript");
                     let disable_grouping = feature.kind.to_string().eq_ignore_ascii_case("GENE");
+                    let location_edit_unavailable_reason =
+                        crate::feature_location::editable_feature_location(
+                            feature,
+                            sequence_length,
+                            dna.is_circular(),
+                        )
+                        .err()
+                        .map(|error| error.message);
                     Some((
                         kind_label,
                         FeatureTreeEntry {
@@ -1410,6 +1694,7 @@ impl MainAreaDna {
                             feature_label_full: full_display_label,
                             feature_label: display_label,
                             range_label,
+                            transcript_summary: Self::feature_tree_transcript_summary(feature),
                             subgroup_key,
                             subgroup_label,
                             prefer_grouped_label: kind_upper.contains("RNA"),
@@ -1430,6 +1715,8 @@ impl MainAreaDna {
                             supports_variant_followup: Self::feature_kind_supports_variant_followup(
                                 kind_upper.as_str(),
                             ),
+                            supports_location_edit: location_edit_unavailable_reason.is_none(),
+                            location_edit_unavailable_reason,
                             can_seed_promoter_anchor,
                             regulatory_primary_group_key: regulatory_grouping
                                 .as_ref()
@@ -1649,18 +1936,27 @@ impl MainAreaDna {
 
     pub(super) fn ensure_feature_tree_cache_current(&mut self, viewport: Option<(usize, usize)>) {
         crate::gentle_gui_profile_scope!("FeatureTree::ensure_cache_current");
-        let next_key = self.current_feature_tree_cache_key(viewport);
-        let is_current = self
+        let next_key = self.current_feature_tree_cache_key();
+        if let Some(cache) = self
             .feature_tree_cache
-            .as_ref()
-            .map(|cache| cache.key == next_key)
-            .unwrap_or(false);
-        if is_current {
+            .as_mut()
+            .filter(|cache| cache.key == next_key)
+        {
+            if cache.viewport != viewport {
+                let dna = self.dna.read().expect("DNA lock poisoned");
+                cache.model.refresh_viewport(&dna, viewport);
+                cache.viewport = viewport;
+                self.feature_tree_viewport_updates =
+                    self.feature_tree_viewport_updates.saturating_add(1);
+            }
+            self.feature_tree_cache_hits = self.feature_tree_cache_hits.saturating_add(1);
             return;
         }
-        let model = self.build_feature_tree_model(&next_key);
+        self.feature_tree_cache_misses = self.feature_tree_cache_misses.saturating_add(1);
+        let model = self.build_feature_tree_model(&next_key, viewport);
         self.feature_tree_cache = Some(FeatureTreeCache {
             key: next_key,
+            viewport,
             model,
         });
     }
@@ -1747,6 +2043,21 @@ impl MainAreaDna {
                         .desired_width(220.0),
                 )
                 .on_hover_text(Self::feature_tree_filter_help_text());
+            #[cfg(feature = "gui-test-support")]
+            {
+                let subject_scope = crate::gui_test_support::pseudonymous_subject_scope(&[self
+                    .seq_id
+                    .as_deref()
+                    .unwrap_or("unnamed")]);
+                crate::gui_test_support::register_response(
+                    &response,
+                    "dna.feature_tree.filter",
+                    "window.dna_viewer",
+                    Some(&subject_scope),
+                    crate::gui_test_support::GuiTestWidgetKind::TextInput,
+                    false,
+                );
+            }
             if response.changed() {
                 self.pending_feature_tree_scroll_to = None;
                 self.save_engine_ops_state();
@@ -1848,9 +2159,13 @@ impl MainAreaDna {
         let mut open_rna_read_mapping_feature: Option<usize> = None;
         let mut open_dotplot_feature: Option<usize> = None;
         let mut copy_feature_payload: Option<(usize, FeatureCopyPayloadKind)> = None;
+        let mut transcript_sequence_action: Option<(usize, TranscriptSequenceAction)> = None;
         let mut focus_matching_array_feature: Option<usize> = None;
+        let mut edit_feature_location: Option<usize> = None;
+        let mut delete_feature_record: Option<usize> = None;
         let feature_font_size = feature_details_font_size;
         let kind_font_size = feature_font_size + 1.0;
+        let pending_feature_tree_scroll_to = self.pending_feature_tree_scroll_to;
         {
             let Some(model) = self.feature_tree_cache.as_ref().map(|cache| &cache.model) else {
                 return;
@@ -1866,7 +2181,7 @@ impl MainAreaDna {
                     .entries
                     .iter()
                     .any(|entry| selected_feature_ids.contains(&entry.id));
-                egui::CollapsingHeader::new(
+                let _kind_group = egui::CollapsingHeader::new(
                     egui::RichText::new(Self::format_feature_tree_count_label(
                         group.kind.as_str(),
                         group.visible_count,
@@ -1907,6 +2222,13 @@ impl MainAreaDna {
                             ui.horizontal(|ui| {
                                 let button = egui::Button::new(button_text).selected(selected);
                                 let mut response = ui.add(button);
+                                if let Some(summary) = &entry.transcript_summary {
+                                    ui.label(
+                                        egui::RichText::new(summary)
+                                            .size((feature_font_size - 1.0).max(8.0))
+                                            .color(egui::Color32::from_gray(105)),
+                                    );
+                                }
                                 let tail_width = ui.available_width().max(0.0);
                                 if tail_width > 1.0 {
                                     let tail_height =
@@ -1942,6 +2264,29 @@ impl MainAreaDna {
                                 }
                                 if !hover_lines.is_empty() {
                                     response = response.on_hover_text(hover_lines.join("\n"));
+                                }
+                                #[cfg(feature = "gui-test-support")]
+                                {
+                                    let feature_identity = self
+                                        .dna
+                                        .read()
+                                        .ok()
+                                        .and_then(|dna| dna.features().get(entry.id).cloned())
+                                        .and_then(|feature| serde_json::to_string(&feature).ok())
+                                        .unwrap_or_else(|| format!("missing-feature-{}", entry.id));
+                                    let subject_scope =
+                                        crate::gui_test_support::pseudonymous_subject_scope(&[
+                                            self.seq_id.as_deref().unwrap_or("unnamed"),
+                                            &feature_identity,
+                                        ]);
+                                    crate::gui_test_support::register_response(
+                                        &response,
+                                        "dna.feature_tree.row",
+                                        "window.dna_viewer",
+                                        Some(&subject_scope),
+                                        crate::gui_test_support::GuiTestWidgetKind::Row,
+                                        selected,
+                                    );
                                 }
                                 if selected && self.pending_feature_tree_scroll_to == Some(entry.id) {
                                     response.scroll_to_me(Some(egui::Align::Center));
@@ -2010,22 +2355,109 @@ impl MainAreaDna {
                                         }
                                         ui.separator();
                                     }
+                                    if entry.transcript_summary.is_some() {
+                                        if ui.button("Copy spliced mRNA sequence").clicked() {
+                                            transcript_sequence_action = Some((
+                                                entry.id,
+                                                TranscriptSequenceAction::CopySequence,
+                                            ));
+                                            ui.close();
+                                            return;
+                                        }
+                                        if ui.button("Copy spliced mRNA as FASTA").clicked() {
+                                            transcript_sequence_action = Some((
+                                                entry.id,
+                                                TranscriptSequenceAction::CopyFasta,
+                                            ));
+                                            ui.close();
+                                            return;
+                                        }
+                                        if ui.button("Export spliced mRNA FASTA...").clicked() {
+                                            transcript_sequence_action = Some((
+                                                entry.id,
+                                                TranscriptSequenceAction::ExportFasta,
+                                            ));
+                                            ui.close();
+                                            return;
+                                        }
+                                        ui.separator();
+                                    }
                                     for kind in [
                                         FeatureCopyPayloadKind::Identifier,
                                         FeatureCopyPayloadKind::Description,
                                         FeatureCopyPayloadKind::PopupText,
                                     ] {
-                                        if ui
+                                        let copy_response = ui
                                             .button(kind.menu_label())
-                                            .on_hover_text(kind.hover_text())
-                                            .clicked()
-                                        {
+                                            .on_hover_text(kind.hover_text());
+                                        #[cfg(feature = "gui-test-support")]
+                                        if matches!(
+                                            kind,
+                                            FeatureCopyPayloadKind::Identifier
+                                                | FeatureCopyPayloadKind::Description
+                                        ) {
+                                            let semantic_id = match kind {
+                                                FeatureCopyPayloadKind::Identifier => {
+                                                    "dna.feature_details.copy_id"
+                                                }
+                                                FeatureCopyPayloadKind::Description => {
+                                                    "dna.feature_details.copy_details"
+                                                }
+                                                FeatureCopyPayloadKind::PopupText => unreachable!(),
+                                            };
+                                            crate::gui_test_support::register_response(
+                                                &copy_response,
+                                                semantic_id,
+                                                "window.dna_viewer",
+                                                Some(&crate::gui_test_support::pseudonymous_subject_scope(
+                                                    &[
+                                                        self.seq_id
+                                                            .as_deref()
+                                                            .unwrap_or("unnamed"),
+                                                        &entry.id.to_string(),
+                                                    ],
+                                                )),
+                                                crate::gui_test_support::GuiTestWidgetKind::Button,
+                                                false,
+                                            );
+                                        }
+                                        if copy_response.clicked() {
                                             copy_feature_payload = Some((entry.id, kind));
                                             ui.close();
                                             return;
                                         }
                                     }
                                     ui.separator();
+                                    let edit_response = ui.add_enabled(
+                                        entry.supports_location_edit,
+                                        egui::Button::new("Edit feature location..."),
+                                    );
+                                    let edit_response = edit_response.on_hover_text(
+                                        if entry.supports_location_edit {
+                                            "Preview an exact simple or flat compound segment boundary edit before applying it"
+                                        } else {
+                                            entry
+                                                .location_edit_unavailable_reason
+                                                .as_deref()
+                                                .unwrap_or("This location is read-only")
+                                        },
+                                    );
+                                    if edit_response.clicked() {
+                                        clicked_feature = Some((entry.id, false));
+                                        edit_feature_location = Some(entry.id);
+                                        ui.close();
+                                    }
+                                    if ui
+                                        .button("Delete feature...")
+                                        .on_hover_text(
+                                            "Preview the complete feature record and related annotations before deletion",
+                                        )
+                                        .clicked()
+                                    {
+                                        clicked_feature = Some((entry.id, false));
+                                        delete_feature_record = Some(entry.id);
+                                        ui.close();
+                                    }
                                     let promoter_response = ui.add_enabled(
                                         entry.can_seed_promoter_anchor,
                                         egui::Button::new("Use as promoter anchor (Engine Ops)"),
@@ -2148,25 +2580,27 @@ impl MainAreaDna {
                                     None
                                 })
                                 .show(ui, |ui| {
-                                    for index in &secondary_group.entry_indices {
-                                        render_entry(
-                                            ui,
-                                            &group.entries[*index],
-                                            true,
-                                            false,
-                                        );
-                                    }
+                                    Self::render_feature_tree_entry_indices(
+                                        ui,
+                                        &group.entries,
+                                        &secondary_group.entry_indices,
+                                        pending_feature_tree_scroll_to,
+                                        true,
+                                        false,
+                                        &mut render_entry,
+                                    );
                                 });
                             }
 
-                            for index in &primary_group.ungrouped_entry_indices {
-                                render_entry(
-                                    ui,
-                                    &group.entries[*index],
-                                    false,
-                                    false,
-                                );
-                            }
+                            Self::render_feature_tree_entry_indices(
+                                ui,
+                                &group.entries,
+                                &primary_group.ungrouped_entry_indices,
+                                pending_feature_tree_scroll_to,
+                                false,
+                                false,
+                                &mut render_entry,
+                            );
                         });
                     }
 
@@ -2192,30 +2626,50 @@ impl MainAreaDna {
                         ))
                         .open(if subgroup_has_selected { Some(true) } else { None })
                         .show(ui, |ui| {
-                            for index in &subgroup.entry_indices {
-                                render_entry(
-                                    ui,
-                                    &group.entries[*index],
-                                    true,
-                                    true,
-                                );
-                            }
+                            Self::render_feature_tree_entry_indices(
+                                ui,
+                                &group.entries,
+                                &subgroup.entry_indices,
+                                pending_feature_tree_scroll_to,
+                                true,
+                                true,
+                                &mut render_entry,
+                            );
                         });
                     }
 
-                    for index in &group.ungrouped_entry_indices {
-                        render_entry(
-                            ui,
-                            &group.entries[*index],
-                            false,
-                            false,
-                        );
-                    }
+                    Self::render_feature_tree_entry_indices(
+                        ui,
+                        &group.entries,
+                        &group.ungrouped_entry_indices,
+                        pending_feature_tree_scroll_to,
+                        false,
+                        false,
+                        &mut render_entry,
+                    );
                 });
+                #[cfg(feature = "gui-test-support")]
+                {
+                    let scope = crate::gui_test_support::pseudonymous_subject_scope(&[
+                        self.seq_id.as_deref().unwrap_or("unnamed"),
+                        &group.kind,
+                    ]);
+                    crate::gui_test_support::register_response(
+                        &_kind_group.header_response,
+                        crate::tutorial_gui_semantics::DNA_FEATURE_TREE_GROUP,
+                        crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
+                        Some(&scope),
+                        crate::gui_test_support::GuiTestWidgetKind::Row,
+                        _kind_group.body_response.is_some(),
+                    );
+                }
             }
         }
         if let Some((feature_id, kind)) = copy_feature_payload {
             self.copy_feature_payload_to_clipboard(ui.ctx(), feature_id, kind);
+        }
+        if let Some((feature_id, action)) = transcript_sequence_action {
+            self.handle_transcript_sequence_action(ui.ctx(), feature_id, action);
         }
         if let Some((id, additive)) = clicked_feature {
             if additive {
@@ -2245,5 +2699,24 @@ impl MainAreaDna {
         if let Some(feature_id) = focus_matching_array_feature {
             self.focus_matching_array_features(feature_id);
         }
+        if let Some(feature_id) = edit_feature_location {
+            self.focus_feature_location_editor(Some(feature_id));
+        }
+        if let Some(feature_id) = delete_feature_record {
+            self.focus_feature_record_delete_editor(Some(feature_id));
+        }
+    }
+}
+
+#[cfg(test)]
+mod virtualization_tests {
+    use super::*;
+
+    #[test]
+    fn virtual_row_range_limits_dense_feature_groups_to_viewport() {
+        let rows = MainAreaDna::feature_tree_virtual_row_range(100.0, 340.0, 580.0, 24.0, 500);
+        assert!(rows.start <= 10);
+        assert!(rows.end >= 20);
+        assert!(rows.len() < 20);
     }
 }

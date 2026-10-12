@@ -1,0 +1,157 @@
+{
+  "schema": "gentle.gene_locus_evidence_display.v1",
+  "seq_id": "synthetic-minus-locus",
+  "gene_symbol": "SYNMINUS",
+  "panel_id": "synthetic-context",
+  "gene_strand": "-",
+  "sequence_binding": {
+    "sequence_sha256": "sha256:212ee15547dc9e525280f0b9c9c6f0fe42d4d6980b6058bd187762205c1e3bcf",
+    "sequence_length_bp": 17,
+    "genome_anchor": {
+      "genome_id": "synthetic-genome-v1",
+      "chromosome": "synthetic_chr",
+      "start_1based": 290,
+      "end_1based": 306,
+      "strand": "+"
+    }
+  },
+  "locus_local_start_1based": 1,
+  "locus_local_end_1based": 17,
+  "locus_genomic_start_1based": 290,
+  "locus_genomic_end_1based": 306,
+  "isoform_evidence": {
+    "assembly": "synthetic-assembly-v1",
+    "annotation_release": "synthetic-annotation-v1",
+    "gene_symbol": "SYNMINUS",
+    "chromosome": "synthetic_chr",
+    "splicing": {
+      "seq_id": "synthetic-minus-locus",
+      "target_feature_id": 0,
+      "group_label": "SYNMINUS",
+      "strand": "-",
+      "region_start_1based": 1,
+      "region_end_1based": 17,
+      "transcript_count": 1,
+      "unique_exon_count": 2,
+      "instruction": "Synthetic context, not genomic annotation",
+      "transcripts": [
+        {
+          "transcript_feature_id": 0,
+          "transcript_id": "synthetic.minus.tx1",
+          "label": "Synthetic minus transcript",
+          "strand": "-",
+          "exons": [
+            {
+              "start_1based": 4,
+              "end_1based": 6
+            },
+            {
+              "start_1based": 9,
+              "end_1based": 11
+            }
+          ],
+          "introns": [],
+          "has_target_feature": true
+        }
+      ],
+      "unique_exons": [],
+      "matrix_rows": [],
+      "boundaries": [],
+      "junctions": [],
+      "events": []
+    }
+  },
+  "transcript_metrics": [
+    {
+      "coding_status": "complete_cds",
+      "transcript_id": "synthetic.minus.tx1",
+      "cds_ranges_local_1based": [
+        [
+          5,
+          6
+        ],
+        [
+          9,
+          10
+        ]
+      ]
+    }
+  ],
+  "codon_markers": [
+    {
+      "transcript_id": "synthetic.minus.tx1",
+      "kind": "start",
+      "local_position_1based": 10,
+      "genomic_position_1based": 299,
+      "genomic_strand": "-",
+      "basis": "synthetic annotation marker, not a translated ORF"
+    },
+    {
+      "transcript_id": "synthetic.minus.tx1",
+      "kind": "stop",
+      "local_position_1based": 5,
+      "genomic_position_1based": 294,
+      "genomic_strand": "-",
+      "basis": "synthetic annotation marker, not a translated ORF"
+    }
+  ],
+  "occupancy_groups": [
+    {
+      "group_id": "synthetic-cutrun",
+      "label": "Synthetic CUT&RUN",
+      "scale_mode": "shared_group",
+      "group_abs_max_score": 10,
+      "lanes": [
+        {
+          "source_id": "synthetic-target-signal",
+          "source_assembly": "synthetic-assembly-v1",
+          "state": "available",
+          "role": "experimental",
+          "condition_label": "synthetic treatment",
+          "assay": "CUT&RUN",
+          "factor": "synthetic factor",
+          "display_abs_max_score": 10,
+          "lane": {
+            "lane_id": "treatment",
+            "track_name": "treatment",
+            "display_label": "Treatment",
+            "source_kind": "bedgraph",
+            "intervals": [
+              {
+                "interval_id": "signal-left",
+                "local_start_1based": 2,
+                "local_end_1based": 5,
+                "genomic_start_1based": 291,
+                "genomic_end_1based": 294,
+                "score": 8
+              },
+              {
+                "interval_id": "signal-right",
+                "local_start_1based": 10,
+                "local_end_1based": 11,
+                "genomic_start_1based": 299,
+                "genomic_end_1based": 300,
+                "score": 3
+              }
+            ]
+          }
+        },
+        {
+          "source_id": "synthetic-control",
+          "state": "not_prepared",
+          "role": "input_control",
+          "display_abs_max_score": 10,
+          "lane": {
+            "lane_id": "control",
+            "track_name": "control",
+            "display_label": "Control (not supplied)",
+            "source_kind": "bedgraph"
+          }
+        }
+      ]
+    }
+  ],
+  "warnings": [
+    "Entirely synthetic context: illustrates clipping, missing evidence and annotation markers; no biological claims."
+  ]
+}

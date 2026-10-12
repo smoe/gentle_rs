@@ -1,0 +1,75 @@
+{
+  "schema": "gentle.promoter_reporter_candidates.v1",
+  "seq_id": "synthetic_panel_source",
+  "sequence_length_bp": 151,
+  "generated_at_unix_ms": 0,
+  "anchor": {
+    "kind": "motif_hit",
+    "label": "synthetic p53-family response element",
+    "start_0based": 88,
+    "end_0based_exclusive": 108,
+    "strand": "+",
+    "motif_id": "synthetic_p53_family_re",
+    "evidence_kind": "sequence_motif_candidate",
+    "interpretation_tags": [
+      "candidate_not_occupancy_proof"
+    ]
+  },
+  "fragment_policy": {
+    "collapse_mode": "transcript",
+    "promoter_upstream_baseline_bp": 500,
+    "anchor_flank_bp": 150,
+    "max_fragment_length_bp": 5000
+  },
+  "variant_label": "",
+  "chosen_gene_label": "TP73_DEMO",
+  "chosen_transcript_id": "ENST_SYNTHETIC_TP73",
+  "chosen_transcript_label": "synthetic promoter transcript",
+  "transcript_ambiguity_status": "resolved_synthetic_fixture",
+  "retain_downstream_from_tss_bp": 0,
+  "retain_upstream_beyond_variant_bp": 0,
+  "max_candidates": 1,
+  "recommended_candidate_id": "tp73_demo_core",
+  "suggested_assay_ids": [],
+  "candidates": [
+    {
+      "candidate_id": "tp73_demo_core",
+      "gene_label": "TP73_DEMO",
+      "transcript_id": "ENST_SYNTHETIC_TP73",
+      "transcript_label": "synthetic promoter transcript",
+      "strand": "+",
+      "tss_local_0based": 0,
+      "promoter_class_id": "tp73_demo_core_promoter",
+      "transcript_count": 1,
+      "transcript_ids": [
+        "ENST_SYNTHETIC_TP73"
+      ],
+      "grouping_reason": "single synthetic tutorial transcript",
+      "anchor": {
+        "kind": "motif_hit",
+        "label": "synthetic p53-family response element",
+        "start_0based": 88,
+        "end_0based_exclusive": 108,
+        "strand": "+",
+        "motif_id": "synthetic_p53_family_re",
+        "evidence_kind": "sequence_motif_candidate",
+        "interpretation_tags": [
+          "candidate_not_occupancy_proof"
+        ]
+      },
+      "variant_start_0based": 88,
+      "variant_end_0based_exclusive": 108,
+      "start_0based": 0,
+      "end_0based_exclusive": 151,
+      "length_bp": 151,
+      "retain_downstream_from_tss_bp": 0,
+      "retain_upstream_beyond_variant_bp": 0,
+      "promoter_overlap": true,
+      "signed_tss_distance_bp": 88,
+      "rank": 1,
+      "recommended": true,
+      "rationale": "Synthetic whole-fragment candidate for deterministic panel planning."
+    }
+  ],
+  "rejected_candidates": []
+}

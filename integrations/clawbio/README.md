@@ -15,6 +15,11 @@ Current scaffold:
 - `skills/gentle-cloning/tests/*`
 - `skills/gentle-cloning/catalog_entry.json` (ready-to-paste
   `skills/catalog.json` entry)
+- `skills/gentle-pcr-primer-design/` (descriptor-only PCR/assay routing that
+  delegates execution to `gentle-cloning`)
+- `skills/gentle-tss-collection/` (descriptor-only tutorial 08.15 routing;
+  preview/list/inspection remain read-only while materialization and registry
+  removal use proposal-then-approved execution)
 - `experimental_followup_request_catalog.json` (machine-readable intent catalog
   for ClawBio planners, including optional decision contexts such as upstream
   variant-prioritization assumptions)
@@ -35,6 +40,10 @@ Current scaffold:
   runner instead of rediscovering or reimplementing the skill setup)
 
 Deployment into a ClawBio checkout:
+
+Install `gentle-cloning` as the execution delegate. Install either
+descriptor-only directory beside it when its focused natural-language routes
+are wanted; those directories contain no independent runner or biology.
 
 Choose one of these layouts:
 
@@ -112,6 +121,9 @@ Catalog registration:
    - `rsync`, tar, and copy setups place it under the ClawBio checkout
 2. Add the object under `skills[]` in `skills/catalog.json` (or regenerate
    catalog via ClawBio's `scripts/generate_catalog.py` flow).
+3. Repeat those two steps for each installed descriptor-only skill's own
+   `catalog_entry.json`; its `execution_delegate` must continue to resolve to
+   the co-installed `gentle-cloning` version declared by the contract.
 
 Shared skill-intent descriptor:
 
@@ -145,6 +157,19 @@ Local agent handoff:
   `skills/gentle-cloning/examples/*.json` request or construct the documented
   ClawBio request shape, then inspect `result.json`, `report.md`, preferred
   artifacts, and reproducibility files.
+- For caller-supplied external primer evidence, use the skill's
+  `external-primer-handoff` mode and its
+  [`references/external_primer_handoff.md`](skills/gentle-cloning/references/external_primer_handoff.md)
+  contract. This wrapper mode binds explicit source records to GENtle's native
+  external-primer result by stable IDs and hashes; it neither discovers caller
+  data nor performs permission, interpretation, or record-lifecycle work.
+- If that provider result must return to discussion-moderation, use the
+  post-run
+  [`discussion_moderation_handoff.py`](skills/gentle-cloning/discussion_moderation_handoff.py)
+  adapter and its
+  [handoff contract](skills/gentle-cloning/references/discussion_moderation_handoff.md).
+  It verifies explicit input/result hashes and emits an intake packet; the
+  ledger still owns permission checks, recording, replay, and freshness.
 
 Recognition smoke tests:
 
@@ -221,4 +246,11 @@ The wrapper emits the standard ClawBio-style bundle:
     replies
 - `reproducibility/commands.sh`
 - `reproducibility/environment.yml`
+- `reproducibility/execution_manifest.json`
 - `reproducibility/checksums.sha256`
+
+The execution manifest is a content-bound, topic-neutral provider receipt. For
+delegated skills it verifies the co-deployed source descriptor/catalog and
+records the selected intent and plan step; it does not claim to reproduce
+natural-language routing. Detailed contract:
+[`skills/gentle-cloning/references/execution_manifest.md`](skills/gentle-cloning/references/execution_manifest.md).

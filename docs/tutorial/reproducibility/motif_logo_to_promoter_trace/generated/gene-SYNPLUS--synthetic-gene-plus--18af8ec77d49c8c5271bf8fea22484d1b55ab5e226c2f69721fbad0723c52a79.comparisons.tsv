@@ -1,0 +1,18 @@
+# non_claims: JASPAR tracks are sequence-model predictions, not measured binding, affinity, occupancy, cofactor interaction, promoter activity or functional regulation. Cross-matrix magnitudes are not comparable without a documented calibration. Annotated transcript starts are TSS candidates, not experimentally established initiation sites. Correlation compares model outputs, not biological correctness or co-regulation. A factor also appearing as a target gene does not establish autoregulation.
+# coordinates: transcript-oriented window starts, local 0-based; TSS-relative and genomic 1-based coordinates use TssGeometry.relative_at/genomic_at. Genomic motif intervals are inclusive and ascending. Local reverse motifs have a distinct 5-prime endpoint, not a different common-axis start.
+# unavailable: literal null is not zero; non-fitting motif starts have null interval/endpoint and raw/display values.
+# methods: export copies raw report values and comparisons without rescoring. Comparison method, strand, sample/exclusion counts and undefined reason are retained per row; display clipping never changes comparison input.
+# score_kind: llr_bits
+# display_clip_negative: false (display_score only; raw_score is unchanged)
+# score_policy_json: {"ambiguous_windows":"unavailable_null_not_zero","background":"uniform_iid_ACGT_0.25","background_length_bp":"100000","background_seed":"6072614073404772913","background_tail_show_quantile":"0.95","correlation_signal":"unclipped_declared_score_kind; no_smoothing; common_valid_window_starts","modeled_quantum_bits":"0.001","modeled_tail_approximation":"inclusive_survival_upper_bound; sum_of_max_per_column_rounding_errors_plus_float_guard; log_survival_not_1_minus_cdf","modeled_tail_method":"uniform_iid_quantized_conservative_survival_v2","pseudocount":"pad_columns_to_max_total_then_add_max_total_times_1e-9_per_base"}
+# input_manifest_sha256: 4224a9f99a6a5e77125f30a8f3f43fc692e6bcfde35eabe74ae68e4ac92d38e8
+# source_revision: null
+# source_schema: gentle.tss_fasta_bundle.v1
+# dataset_id: null
+# bundle_source_producer_sha256: null
+# annotation_release: synthetic-annotation-v1
+# producer_revision: 0.1.0-internal.10+git.8b7b6b472c0d2df3177b31901ceab69932ab90b1
+# producer_executable_sha256: 4c7fe3968561168083bb54a7d09f4b4657857cb8a76f555b3d95da850f6703e4
+# missing_provenance: null means not assessed; source, profile producer and exporter identities are distinct.
+# selection_non_claim: Selection and recorded descriptive criteria do not establish TSS usage, direct binding or promoter activity.
+gene_id	gene_symbol	promoter_id	factor_id	left_accession	right_accession	local_strand	genomic_strand	input_score_kind	paired_window_count	excluded_window_count	pearson	spearman	undefined_reason	method	input_values	display_clip_negative	selected	selection_label	selection_legend	selection_criterion	selection_factor

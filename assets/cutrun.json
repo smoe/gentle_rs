@@ -1,1 +1,25 @@
-{}
+{
+  "tp73_release_smoke_synthetic": {
+    "description": "Tiny synthetic CUT&RUN proof dataset for exercising GENtle's offline V1-V3 integration. Peaks and paired reads are deterministic test evidence and must not be interpreted as experimental TP73 occupancy.",
+    "summary": "Offline TP73 CUT&RUN integration proof with synthetic BED peaks and reference-derived paired reads.",
+    "aliases": ["tp73_cutrun_offline_demo", "tp73_cutrun_release_proof"],
+    "tags": ["tp73", "cutrun", "offline", "synthetic", "release_proof"],
+    "search_terms": ["TP73", "GRCh38.p14", "CUT&RUN V1 V2 V3", "offline smoke"],
+    "species": "Homo sapiens",
+    "assembly_label": "GRCh38.p14 synthetic proof coordinates",
+    "target_factor": "TP73",
+    "sample_label": "GENtle synthetic TP73 CUT&RUN proof",
+    "tissue_or_cell_type": "synthetic proof only",
+    "condition": "offline integration smoke",
+    "replicate": "synthetic_1",
+    "assay_kind": "synthetic CUT&RUN integration proof",
+    "supported_reference_genome_ids": ["GRCh38.p14", "Human GRCh38 Ensembl 116", "Human GRCh38 NCBI RefSeq GCF_000001405.40", "GRCh38", "hg38"],
+    "provider": "GENtle synthetic fixture",
+    "source_accession": "synthetic:tp73_release_smoke_v1",
+    "reference_url": "https://www.ncbi.nlm.nih.gov/nuccore/NC_000001.11",
+    "peaks_local": "cutrun/tp73_release_smoke/tp73_release_smoke.peaks.bed",
+    "reads_r1_local": "cutrun/tp73_release_smoke/tp73_release_smoke.R1.fasta",
+    "reads_r2_local": "cutrun/tp73_release_smoke/tp73_release_smoke.R2.fasta",
+    "read_layout": "paired_end"
+  }
+}

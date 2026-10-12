@@ -1,0 +1,10 @@
+isoform_id	sample_label	value
+patz1_long	AdGFP	4.0
+patz1_long	TAp73alpha	8.0
+patz1_long	DNp73beta	3.0
+patz1_skip	AdGFP	2.0
+patz1_skip	TAp73alpha	1.5
+patz1_skip	DNp73beta	7.0
+patz1_alt	AdGFP	1.0
+patz1_alt	TAp73alpha	2.0
+patz1_alt	DNp73beta	2.5

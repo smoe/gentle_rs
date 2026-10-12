@@ -11,6 +11,32 @@
 
 use super::*;
 
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+
+const PRIMER3_PROGRESS_PREFIX: &str = "PRIMER3_PROGRESS=";
+#[cfg(not(test))]
+const PRIMER3_PROGRESS_SIGNAL_AFTER: Duration = Duration::from_secs(2);
+// Tests shorten the interval so a stalled-progress case does not take seconds,
+// but it must stay above the time a freshly spawned child needs to install its
+// SIGUSR1 handler. SIGUSR1 terminates a process that has not installed one yet,
+// so signalling too eagerly kills the child instead of polling it: at 100ms a
+// loaded machine could signal a Primer3 stand-in before it had even been
+// scheduled, which made these tests fail under parallel load.
+#[cfg(test)]
+const PRIMER3_PROGRESS_SIGNAL_AFTER: Duration = Duration::from_millis(750);
+const PRIMER3_PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(100);
+const PRIMER_DESIGN_CANCELLED_MESSAGE: &str = "Primer design cancelled during progress reporting";
+const PRIMER3_RUNTIME_REDUCTION_MESSAGE: &str =
+    "Primer3 bounded search stopped after suspicious runtime";
+
+struct Primer3ProcessOutput {
+    status: std::process::ExitStatus,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+    stdin_error: Option<String>,
+}
+
 pub(crate) struct PrimerDesignProgressContext<'a> {
     pub(crate) seq_id: &'a str,
     pub(crate) design_kind: &'static str,
@@ -19,6 +45,42 @@ pub(crate) struct PrimerDesignProgressContext<'a> {
     pub(crate) roi_start_0based: usize,
     pub(crate) roi_end_0based_exclusive: usize,
     pub(crate) max_output: usize,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PrimerSideSearchEstimate {
+    pub(crate) candidates: Vec<PrimerDesignCandidate>,
+    pub(crate) rejected_starts: Vec<(usize, String)>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Primer3PairDesignOptions {
+    /// Primer3 junction positions are one-based base indexes: a value N means
+    /// the splice boundary immediately after template base N.
+    pub(crate) overlap_junction_positions_1based: Vec<usize>,
+    pub(crate) min_3prime_overlap_bp: usize,
+    pub(crate) min_5prime_overlap_bp: usize,
+    pub(crate) max_junction_single_side_match_bp: Option<usize>,
+    /// Zero-based half-open allowed windows for left and right primers.
+    pub(crate) left_window_0based: Option<(usize, usize)>,
+    pub(crate) right_window_0based: Option<(usize, usize)>,
+    pub(crate) excluded_regions_0based: Vec<(usize, usize)>,
+    pub(crate) max_poly_x: Option<usize>,
+    pub(crate) chemistry_fields: Vec<TranscriptAssayPrimer3Field>,
+    pub(crate) runtime_policy: TranscriptAssayPrimerSearchPolicy,
+    pub(crate) search_target_id: Option<String>,
+    pub(crate) search_record_id: Option<String>,
+    pub(crate) bounded_record_ordinal: Option<usize>,
+    pub(crate) bounded_record_count: Option<usize>,
+    pub(crate) bounded_candidate_pair_upper_bound: Option<usize>,
+    pub(crate) bounded_candidate_pair_total_upper_bound: Option<usize>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(super) struct Primer3RuntimeAssessment {
+    pub(super) projected_total_ms: Option<u128>,
+    pub(super) status: &'static str,
+    pub(super) reduce: bool,
 }
 
 fn fact_subject(kind: FactSubjectKind, id: impl Into<String>) -> FactSubject {
@@ -87,6 +149,191 @@ fn sort_project_facts(facts: &mut Vec<ProjectFact>) {
                     ),
             )
     });
+}
+
+fn collect_config_param_values(
+    state: &ProjectState,
+) -> std::collections::BTreeMap<String, serde_json::Value> {
+    let mut values = std::collections::BTreeMap::<String, serde_json::Value>::new();
+    insert_serialized_config_object(&mut values, &state.parameters);
+    insert_serialized_config_object(&mut values, &state.display);
+    values.insert(
+        "blast_options_override".to_string(),
+        state
+            .metadata
+            .get("blast_options_override")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null),
+    );
+    values.insert(
+        "blast_options_defaults_path".to_string(),
+        state
+            .metadata
+            .get("blast_options_defaults_path")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null),
+    );
+    insert_config_param_aliases(&mut values);
+    values
+}
+
+fn insert_serialized_config_object(
+    values: &mut std::collections::BTreeMap<String, serde_json::Value>,
+    source: &impl serde::Serialize,
+) {
+    if let Ok(serde_json::Value::Object(object)) = serde_json::to_value(source) {
+        for (name, value) in object {
+            values.insert(name, value);
+        }
+    }
+}
+
+fn config_param_aliases() -> &'static [(&'static str, &'static [&'static str])] {
+    const ALIASES: &[(&str, &[&str])] = &[
+        (
+            "genome_anchor_prepared_fallback_policy",
+            &["genome_anchor_fallback_mode", "genome_anchor_prepared_mode"],
+        ),
+        (
+            "require_verified_genome_anchor_for_extension",
+            &[
+                "strict_genome_anchor_verification",
+                "strict_anchor_verification",
+            ],
+        ),
+        ("primer_design_backend", &["primers_design_backend"]),
+        (
+            "primer3_executable",
+            &["primer3_backend_executable", "primer3_path"],
+        ),
+        ("feature_details_font_size", &["feature_detail_font_size"]),
+        (
+            "linear_external_feature_label_font_size",
+            &["linear_feature_label_font_size", "feature_label_font_size"],
+        ),
+        (
+            "linear_external_feature_label_background_opacity",
+            &[
+                "linear_feature_label_background_opacity",
+                "feature_label_background_opacity",
+            ],
+        ),
+        (
+            "reverse_strand_visual_opacity",
+            &[
+                "linear_reverse_strand_visual_opacity",
+                "linear_reverse_strand_letter_opacity",
+                "reverse_strand_letter_opacity",
+            ],
+        ),
+        (
+            "regulatory_feature_max_view_span_bp",
+            &["regulatory_max_view_span_bp", "regulatory_max_span_bp"],
+        ),
+        (
+            "sequence_panel_max_text_length_bp",
+            &[
+                "sequence_text_panel_max_length_bp",
+                "sequence_panel_max_length_bp",
+            ],
+        ),
+        (
+            "linear_sequence_base_text_max_view_span_bp",
+            &[
+                "linear_base_text_max_view_span_bp",
+                "sequence_base_text_max_view_span_bp",
+            ],
+        ),
+        ("gc_content_bin_size_bp", &["gc_bin_size_bp"]),
+        (
+            "linear_sequence_helical_max_view_span_bp",
+            &["linear_helical_max_view_span_bp"],
+        ),
+        (
+            "linear_sequence_condensed_max_view_span_bp",
+            &["linear_condensed_max_view_span_bp"],
+        ),
+        (
+            "linear_sequence_letter_layout_mode",
+            &["linear_helical_letter_layout_mode"],
+        ),
+        (
+            "linear_sequence_helical_phase_offset_bp",
+            &["linear_helical_phase_offset_bp"],
+        ),
+        (
+            "restriction_enzyme_display_mode",
+            &["restriction_display_mode"],
+        ),
+        (
+            "show_restriction_enzymes",
+            &["show_restriction_enzyme_sites"],
+        ),
+        (
+            "linear_show_sequence_bases",
+            &[
+                "linear_show_sequence_letters",
+                "show_linear_sequence_bases",
+                "show_linear_sequence_letters",
+            ],
+        ),
+        (
+            "linear_show_double_strand_bases",
+            &[
+                "linear_show_reverse_strand_bases",
+                "show_linear_double_strand_bases",
+                "show_linear_reverse_strand_bases",
+            ],
+        ),
+        (
+            "linear_helical_parallel_strands",
+            &["linear_sequence_helical_parallel_strands"],
+        ),
+        (
+            "linear_hide_backbone_when_sequence_bases_visible",
+            &["hide_linear_backbone_when_bases_visible"],
+        ),
+        (
+            "linear_reverse_strand_use_upside_down_letters",
+            &["linear_reverse_strand_upside_down_letters"],
+        ),
+        (
+            "vcf_display_required_info_keys",
+            &[
+                "vcf_display_required_info_keys_csv",
+                "vcf_display_required_info",
+            ],
+        ),
+        (
+            "preferred_restriction_enzymes",
+            &[
+                "preferred_restriction_enzymes_csv",
+                "restriction_preferred_enzymes",
+            ],
+        ),
+    ];
+    ALIASES
+}
+
+impl GentleEngine {
+    /// Alias names for bounded context projection; canonical facts retain all aliases.
+    pub(crate) fn project_config_param_alias_names() -> std::collections::BTreeSet<&'static str> {
+        config_param_aliases()
+            .iter()
+            .flat_map(|(_, aliases)| aliases.iter().copied())
+            .collect()
+    }
+}
+
+fn insert_config_param_aliases(values: &mut std::collections::BTreeMap<String, serde_json::Value>) {
+    for (canonical, aliases) in config_param_aliases() {
+        let Some(value) = values.get(*canonical).cloned() else {
+            continue;
+        };
+        for alias in *aliases {
+            values.insert((*alias).to_string(), value.clone());
+        }
+    }
 }
 
 fn fact_range_contains(proven: Option<&FactRange>, required: Option<&FactRange>) -> bool {
@@ -559,26 +806,15 @@ impl GentleEngine {
     ) -> Result<Vec<DNAsequence>, EngineError> {
         let mut fragments = vec![dna.clone()];
         for enzyme in &enzymes {
-            println!("Digesting with enzyme: {}", enzyme.name);
             let mut seen_states: HashSet<u64> = HashSet::new();
             let mut rounds: usize = 0;
             let mut last_fragment_count = fragments.len();
-            let enzyme_started = Instant::now();
-            // Conservative guard against non-converging digest loops.
+            // Keep digest acceptance independent of machine load. Fragment,
+            // round, repeated-state, and progress guards bound the work
+            // deterministically for direct and collection callers alike.
             let max_rounds = max_fragments.min(1_024).max(64);
             loop {
                 rounds += 1;
-                if enzyme_started.elapsed().as_millis() > 750 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "Digest timed out for enzyme '{}' (>{} ms)",
-                            enzyme.name, 750
-                        ),
-
-                        cause_chain: vec![],
-                    });
-                }
                 if rounds > max_rounds {
                     return Err(EngineError {
                         code: ErrorCode::InvalidInput,
@@ -617,7 +853,11 @@ impl GentleEngine {
                 let mut found_one = false;
                 let mut new_fragments: Vec<DNAsequence> = vec![];
                 for seq in fragments.drain(..) {
-                    if let Some(site) = enzyme.get_sites(&seq, None).first() {
+                    if let Some(site) = enzyme
+                        .get_sites(&seq, None)
+                        .iter()
+                        .find(|site| site.can_cleave(seq.len(), seq.is_circular()))
+                    {
                         let split = seq.split_at_restriction_enzyme_site(site);
                         found_one = true;
                         new_fragments.extend(split);
@@ -641,10 +881,6 @@ impl GentleEngine {
                 let current_count = fragments.len();
 
                 if !found_one {
-                    println!(
-                        "Digest enzyme '{}' completed in {} round(s), fragments: {}",
-                        enzyme.name, rounds, current_count
-                    );
                     break;
                 }
                 // For linear-digest progression, total fragment count should increase.
@@ -775,6 +1011,24 @@ impl GentleEngine {
         Ok(samples)
     }
 
+    pub(crate) fn validate_arrangement_gel_mode(
+        arrangement_id: &str,
+        mode: &ArrangementMode,
+    ) -> Result<(), EngineError> {
+        if mode != &ArrangementMode::Serial {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Arrangement '{}' is mode '{:?}', only serial arrangements can render gels",
+                    arrangement_id, mode
+                ),
+
+                cause_chain: vec![],
+            });
+        }
+        Ok(())
+    }
+
     pub(super) fn gel_samples_from_arrangement(
         &self,
         arrangement_id: &str,
@@ -790,17 +1044,7 @@ impl GentleEngine {
 
                 cause_chain: vec![],
             })?;
-        if arrangement.mode != ArrangementMode::Serial {
-            return Err(EngineError {
-                code: ErrorCode::InvalidInput,
-                message: format!(
-                    "Arrangement '{}' is mode '{:?}', only serial arrangements can render gels",
-                    arrangement_id, arrangement.mode
-                ),
-
-                cause_chain: vec![],
-            });
-        }
+        Self::validate_arrangement_gel_mode(arrangement_id, &arrangement.mode)?;
         let mut samples = self.gel_samples_from_container_ids(&arrangement.lane_container_ids)?;
         for (idx, sample) in samples.iter_mut().enumerate() {
             sample.role_label = arrangement
@@ -973,12 +1217,12 @@ impl GentleEngine {
             }
         }
 
-        if found.is_empty() {
+        if !missing.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
-                    "None of the requested enzymes are known: {}",
-                    enzymes.join(",")
+                    "Unknown restriction enzyme(s) for Digest: {}",
+                    missing.join(", ")
                 ),
 
                 cause_chain: vec![],
@@ -1079,18 +1323,14 @@ impl GentleEngine {
             });
         }
 
-        if let Ok(serde_json::Value::Object(parameters)) =
-            serde_json::to_value(&self.state.parameters)
-        {
-            for (name, value) in parameters {
-                facts.push(ProjectFact {
-                    fact: "config.param".to_string(),
-                    domain: ProjectFactDomain::Config,
-                    subject: fact_subject(FactSubjectKind::Other, name),
-                    value: Some(value),
-                    ..ProjectFact::default()
-                });
-            }
+        for (name, value) in collect_config_param_values(&self.state) {
+            facts.push(ProjectFact {
+                fact: "config.param".to_string(),
+                domain: ProjectFactDomain::Config,
+                subject: fact_subject(FactSubjectKind::Other, name),
+                value: Some(value),
+                ..ProjectFact::default()
+            });
         }
 
         facts.push(ProjectFact {
@@ -1129,6 +1369,12 @@ impl GentleEngine {
 
         for report in self.list_primer_design_reports() {
             facts.push(ProjectFact {
+                fact: "primer_design_report.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Report, report.report_id.clone()),
+                value: Some(serde_json::json!(true)),
+                ..ProjectFact::default()
+            });
+            facts.push(ProjectFact {
                 fact: "report.exists".to_string(),
                 subject: fact_subject(FactSubjectKind::Report, report.report_id.clone()),
                 value: Some(serde_json::json!("primer_design")),
@@ -1138,6 +1384,25 @@ impl GentleEngine {
                     evidence_class: EvidenceClass::HardFact,
                     op_id: report.op_id,
                     run_id: report.run_id,
+                }),
+                ..ProjectFact::default()
+            });
+        }
+        for report in self
+            .read_primer_design_store()
+            .transcript_capture_pools
+            .into_values()
+        {
+            facts.push(ProjectFact {
+                fact: "report.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Report, report.report_id.clone()),
+                value: Some(serde_json::json!("transcript_capture_pool")),
+                basis: Some(FactBasis {
+                    report_id: report.report_id,
+                    report_kind: "transcript_capture_pool".to_string(),
+                    evidence_class: EvidenceClass::HardFact,
+                    op_id: Some(report.op_id),
+                    run_id: Some(report.run_id),
                 }),
                 ..ProjectFact::default()
             });
@@ -1375,6 +1640,21 @@ impl GentleEngine {
                 })),
                 ..ProjectFact::default()
             });
+        }
+        if let Some(collections) = self
+            .state
+            .metadata
+            .get("tss_collections_v1")
+            .and_then(|v| v.as_object())
+        {
+            for (id, report) in collections {
+                facts.push(ProjectFact {
+                    fact: "tss_collection.exists".into(),
+                    subject: fact_subject(FactSubjectKind::Other, id.clone()),
+                    value: Some(serde_json::json!({"member_count":report.get("members").and_then(|v| v.as_array()).map(Vec::len), "source_seq_id":report.pointer("/inventory/request/seq_id")})),
+                    ..ProjectFact::default()
+                });
+            }
         }
         for template in self.list_workflow_macro_templates() {
             facts.push(ProjectFact {
@@ -1622,6 +1902,7 @@ impl GentleEngine {
             if matching_hits.is_empty() {
                 facts.push(ProjectFact {
                     fact: "restriction_site.absent".to_string(),
+                    domain: ProjectFactDomain::Project,
                     subject: subject.clone(),
                     enzyme: Some(enzyme.clone()),
                     range: Some(range.clone()),
@@ -1633,6 +1914,7 @@ impl GentleEngine {
                 for hit in matching_hits {
                     facts.push(ProjectFact {
                         fact: "restriction_site.present".to_string(),
+                        domain: ProjectFactDomain::Project,
                         subject: subject.clone(),
                         enzyme: Some(hit.enzyme_name.clone()),
                         range: Some(FactRange::Span {
@@ -1677,7 +1959,7 @@ impl GentleEngine {
             report.scan_topology.as_str(),
             enzymes.join(",")
         );
-        Self::short_sha1_id("rsr", &raw)
+        Self::short_digest_id("rsr", &raw)
     }
 
     pub fn evaluate_fact_expression_against_graph(
@@ -1725,59 +2007,20 @@ impl GentleEngine {
                 }
                 truth
             }
-            FactExpression::All { all } => {
-                let mut saw_unknown = false;
-                for child in all {
-                    match Self::evaluate_fact_expression_inner(
-                        child,
-                        graph,
-                        unmet_atoms,
-                        unknown_atoms,
-                    ) {
-                        FactTruth::Unsatisfied => return FactTruth::Unsatisfied,
-                        FactTruth::Unknown => saw_unknown = true,
-                        FactTruth::Satisfied => {}
-                    }
-                }
-                if saw_unknown {
-                    FactTruth::Unknown
-                } else {
-                    FactTruth::Satisfied
-                }
-            }
-            FactExpression::Any { any } => {
-                let mut saw_unknown = false;
-                for child in any {
-                    match Self::evaluate_fact_expression_inner(
-                        child,
-                        graph,
-                        unmet_atoms,
-                        unknown_atoms,
-                    ) {
-                        FactTruth::Satisfied => return FactTruth::Satisfied,
-                        FactTruth::Unknown => saw_unknown = true,
-                        FactTruth::Unsatisfied => {}
-                    }
-                }
-                if saw_unknown {
-                    FactTruth::Unknown
-                } else {
-                    FactTruth::Unsatisfied
-                }
-            }
+            FactExpression::All { all } => FactTruth::all(all.iter().map(|child| {
+                Self::evaluate_fact_expression_inner(child, graph, unmet_atoms, unknown_atoms)
+            })),
+            FactExpression::Any { any } => FactTruth::any(any.iter().map(|child| {
+                Self::evaluate_fact_expression_inner(child, graph, unmet_atoms, unknown_atoms)
+            })),
             FactExpression::Not { not } => {
                 let before_unmet = unmet_atoms.len();
-                match Self::evaluate_fact_expression_inner(not, graph, unmet_atoms, unknown_atoms) {
-                    FactTruth::Satisfied => FactTruth::Unsatisfied,
-                    FactTruth::Unsatisfied => {
-                        unmet_atoms.truncate(before_unmet);
-                        FactTruth::Satisfied
-                    }
-                    FactTruth::Unknown => {
-                        unmet_atoms.truncate(before_unmet);
-                        FactTruth::Unknown
-                    }
+                let truth =
+                    Self::evaluate_fact_expression_inner(not, graph, unmet_atoms, unknown_atoms);
+                if truth != FactTruth::Satisfied {
+                    unmet_atoms.truncate(before_unmet);
                 }
+                truth.negated()
             }
         }
     }
@@ -1807,6 +2050,12 @@ impl GentleEngine {
             }
         }
         FactTruth::Unknown
+    }
+
+    /// Cheap molecule-kind lookup using the same classification as project facts.
+    /// Legacy sequences without molecule metadata retain their DNA classification.
+    pub fn sequence_kind(&self, seq_id: &str) -> Option<&'static str> {
+        self.state.sequences.get(seq_id).map(project_sequence_kind)
     }
 
     pub(super) fn canonical_fasta_molecule(raw: Option<&str>) -> &'static str {
@@ -2044,6 +2293,12 @@ impl GentleEngine {
             file_paths: vec![],
         };
         match op {
+            Operation::InspectTssInventory { request } => {
+                Self::push_unique_token(&mut summary.sequence_ids, &request.seq_id);
+            }
+            Operation::MaterializeTssWindows { request } => {
+                Self::push_unique_token(&mut summary.sequence_ids, &request.inventory.seq_id);
+            }
             Operation::LoadFile { path, .. } => {
                 Self::push_unique_token(&mut summary.file_paths, path);
             }
@@ -2081,6 +2336,25 @@ impl GentleEngine {
             | Operation::AnnotateTfbs { seq_id, .. } => {
                 Self::push_unique_token(&mut summary.sequence_ids, seq_id);
             }
+            Operation::ComparePromoterReporterArchitectures {
+                request,
+                path,
+                svg_path,
+            } => {
+                Self::push_unique_token(&mut summary.sequence_ids, &request.seq_id);
+                if let Some(input_path) = request.cutrun_catalog_path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, input_path);
+                }
+                if let Some(input_path) = request.cutrun_cache_dir.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, input_path);
+                }
+                if let Some(output_path) = path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, output_path);
+                }
+                if let Some(output_path) = svg_path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, output_path);
+                }
+            }
             Operation::FindRestrictionSites { target, .. }
             | Operation::ScanTfbsHits { target, .. }
             | Operation::SummarizeTfbsScoreTracks { target, .. }
@@ -2090,6 +2364,62 @@ impl GentleEngine {
                 }
                 SequenceScanTarget::InlineSequence { .. } => {}
             },
+            Operation::FindRestrictionSitesCollection {
+                collection_subject,
+                member_bindings,
+                ..
+            } => {
+                if let CollectionSubjectRef::ProjectSequences { seq_ids } = collection_subject {
+                    for seq_id in seq_ids {
+                        Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+                    }
+                }
+                for binding in member_bindings {
+                    Self::push_unique_token(&mut summary.sequence_ids, &binding.seq_id);
+                }
+            }
+            Operation::InspectConstructReasoningCollection {
+                collection_subject,
+                member_bindings,
+                ..
+            } => {
+                if let CollectionSubjectRef::ProjectSequences { seq_ids } = collection_subject {
+                    for seq_id in seq_ids {
+                        Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+                    }
+                }
+                for binding in member_bindings {
+                    Self::push_unique_token(&mut summary.sequence_ids, &binding.seq_id);
+                }
+            }
+            Operation::ScanTfbsHitsCollection {
+                collection_subject,
+                member_bindings,
+                ..
+            } => {
+                if let CollectionSubjectRef::ProjectSequences { seq_ids } = collection_subject {
+                    for seq_id in seq_ids {
+                        Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+                    }
+                }
+                for binding in member_bindings {
+                    Self::push_unique_token(&mut summary.sequence_ids, &binding.seq_id);
+                }
+            }
+            Operation::DigestCollection {
+                collection_subject,
+                member_bindings,
+                ..
+            } => {
+                if let CollectionSubjectRef::ProjectSequences { seq_ids } = collection_subject {
+                    for seq_id in seq_ids {
+                        Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+                    }
+                }
+                for binding in member_bindings {
+                    Self::push_unique_token(&mut summary.sequence_ids, &binding.seq_id);
+                }
+            }
             Operation::QueryRepeatAnnotations { genome_id, .. }
             | Operation::BuildRepeatEnvironmentCohort { genome_id, .. }
             | Operation::SummarizeWindowCohortTfbs {
@@ -2172,6 +2502,13 @@ impl GentleEngine {
                     Self::push_unique_token(&mut summary.sequence_ids, seq_id);
                 }
             }
+            Operation::ExportPoolCollection {
+                collection_subject, ..
+            } => {
+                if let CollectionSubjectRef::Container { container_id } = collection_subject {
+                    Self::push_unique_token(&mut summary.container_ids, container_id);
+                }
+            }
             Operation::PrepareGenome { genome_id, .. }
             | Operation::ExtractGenomeRegion { genome_id, .. }
             | Operation::ExtractGenomeGene { genome_id, .. } => {
@@ -2179,8 +2516,39 @@ impl GentleEngine {
             }
             Operation::AssessPrimerPairSpecificity {
                 target_genome_id, ..
+            }
+            | Operation::AssessPrimerPairSpecificityCollection {
+                target_genome_id, ..
+            }
+            | Operation::PreparePrimerPairSpecificityHandoff {
+                target_genome_id, ..
             } => {
                 Self::push_unique_token(&mut summary.genome_ids, target_genome_id);
+            }
+            Operation::ImportPrimerPairSpecificityHandoff { handoff_path, path } => {
+                Self::push_unique_token(&mut summary.file_paths, handoff_path);
+                if let Some(path) = path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+            }
+            Operation::PreparePrimerPairMultiReferenceSpecificityHandoff {
+                request,
+                output_dir,
+            } => {
+                for reference in &request.references {
+                    Self::push_unique_token(&mut summary.genome_ids, &reference.target_genome_id);
+                }
+                Self::push_unique_token(&mut summary.file_paths, output_dir);
+                if let Some(path) = &request.catalog_path {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+            }
+            Operation::ImportPrimerPairMultiReferenceSpecificity {
+                handoff_path,
+                manifest_path,
+            } => {
+                Self::push_unique_token(&mut summary.file_paths, handoff_path);
+                Self::push_unique_token(&mut summary.file_paths, manifest_path);
             }
             Operation::ImportUniprotSwissProt { path, .. } => {
                 Self::push_unique_token(&mut summary.file_paths, path);
@@ -2210,6 +2578,7 @@ impl GentleEngine {
                 candidate_set_path,
                 catalog_path,
                 reporter_backbone_load_path,
+                helper_catalog_path,
                 path,
                 ..
             } => {
@@ -2220,8 +2589,115 @@ impl GentleEngine {
                 if let Some(path) = reporter_backbone_load_path.as_deref() {
                     Self::push_unique_token(&mut summary.file_paths, path);
                 }
+                if let Some(path) = helper_catalog_path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
                 if let Some(path) = path.as_deref() {
                     Self::push_unique_token(&mut summary.file_paths, path);
+                }
+            }
+            Operation::PlanEvidenceGuidedFragmentCandidates { request, path } => {
+                Self::push_unique_token(&mut summary.file_paths, &request.locus.path);
+                if let Some(vector) = &request.vector {
+                    Self::push_unique_token(&mut summary.sequence_ids, &vector.seq_id);
+                    Self::push_unique_token(
+                        &mut summary.file_paths,
+                        vector
+                            .helper_catalog_path
+                            .as_deref()
+                            .unwrap_or("assets/helper_genomes.json"),
+                    );
+                }
+                if let Some(path) = path {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+            }
+            Operation::PlanPromoterReporterPanel { request, path } => {
+                Self::push_unique_token(&mut summary.sequence_ids, &request.vector_seq_id);
+                if let Some(path) = request.helper_catalog_path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+                for member in &request.members {
+                    Self::push_unique_token(&mut summary.file_paths, &member.candidate_set_path);
+                }
+                Self::push_unique_token(&mut summary.file_paths, &request.output_dir);
+                if let Some(path) = path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+            }
+            Operation::PlanRegulatoryFragmentPanel { request, path } => {
+                Self::push_unique_token(&mut summary.sequence_ids, &request.vector_seq_id);
+                for binding in &request.evidence_bindings {
+                    if let Some(path) = &binding.report_path {
+                        Self::push_unique_token(&mut summary.file_paths, path);
+                    }
+                }
+                if let Some(path) = request.helper_catalog_path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+                for fragment in &request.fragments {
+                    if let Some(projection) = fragment.region.local_projection.as_ref() {
+                        Self::push_unique_token(&mut summary.sequence_ids, &projection.seq_id);
+                    }
+                }
+                if let Some(path) = path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+            }
+            Operation::RenderRegulatoryFragmentPanelSvg { path, .. } => {
+                Self::push_unique_token(&mut summary.file_paths, path);
+            }
+            Operation::PlanRegulatoryFragmentMaterialization { .. }
+            | Operation::MaterializeRegulatoryFragmentPanel { .. } => {
+                let plan = match op {
+                    Operation::PlanRegulatoryFragmentMaterialization { plan, .. } => plan,
+                    Operation::MaterializeRegulatoryFragmentPanel { proposal, .. } => {
+                        &proposal.plan
+                    }
+                    _ => unreachable!(),
+                };
+                let nested = Self::summarize_run_bundle_operation_inputs(
+                    &Operation::PlanRegulatoryFragmentPanel {
+                        request: Box::new(plan.request.clone()),
+                        path: None,
+                    },
+                    op_id,
+                    run_id,
+                    record_index,
+                );
+                summary.sequence_ids = nested.sequence_ids;
+                summary.file_paths = nested.file_paths;
+            }
+            Operation::PlanDnaSequenceDesign { request, path } => {
+                if let gentle_protocol::sequence_design::DnaDesignTarget::LoadedSequence {
+                    seq_id,
+                } = &request.target
+                {
+                    Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+                }
+                if let Some(path) = path {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+            }
+            Operation::ApplyDnaSequenceDesign { proposal, .. } => {
+                if let gentle_protocol::sequence_design::DnaDesignTarget::LoadedSequence {
+                    seq_id,
+                } = &proposal.request.target
+                {
+                    Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+                }
+            }
+            Operation::MaterializePromoterReporterPanel { proposal, .. } => {
+                Self::push_unique_token(&mut summary.sequence_ids, &proposal.request.vector_seq_id);
+                if let Some(path) = proposal.request.helper_catalog_path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+                for member in &proposal.members {
+                    Self::push_unique_token(&mut summary.sequence_ids, &member.source_seq_id);
+                    Self::push_unique_token(&mut summary.file_paths, &member.candidate_set.path);
+                }
+                for artifact in &proposal.artifacts {
+                    Self::push_unique_token(&mut summary.file_paths, &artifact.path);
                 }
             }
             Operation::ValidateProtocolCartoonTemplate { template_path } => {
@@ -2266,6 +2742,10 @@ impl GentleEngine {
                 template: input, ..
             }
             | Operation::TestCdnaPcr { seq_id: input, .. }
+            | Operation::ImportExternalPrimerPairs {
+                request: ExternalPrimerPairImportRequest { seq_id: input, .. },
+                ..
+            }
             | Operation::TestCdnaQpcr { seq_id: input, .. }
             | Operation::ExtractRegion { input, .. }
             | Operation::ExtractAnchoredRegion { input, .. }
@@ -2275,6 +2755,14 @@ impl GentleEngine {
             | Operation::ReverseComplement { input, .. }
             | Operation::Branch { input, .. } => {
                 Self::push_unique_token(&mut summary.sequence_ids, input);
+            }
+            Operation::DesignPrimerGroupTarget { request, path } => {
+                for seq_id in &request.template_seq_ids {
+                    Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+                }
+                if let Some(path) = path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
             }
             Operation::DeleteCandidateSet { set_name }
             | Operation::ScoreCandidateSetExpression { set_name, .. }
@@ -2336,6 +2824,8 @@ impl GentleEngine {
         | Operation::ExportRnaReadSampleSheet { path, .. }
         | Operation::ExportRnaReadExonPathsTsv { path, .. }
         | Operation::ExportRnaReadExonAbundanceTsv { path, .. }
+        | Operation::ExportRnaReadDexseqAnnotationGff { path, .. }
+        | Operation::ExportRnaReadDexseqCountsTsv { path, .. }
         | Operation::ExportRnaReadScoreDensitySvg { path, .. }
         | Operation::ExportRnaReadAlignmentsTsv { path, .. }
         | Operation::ExportRnaReadIsoformTriageTsv { path, .. }
@@ -2376,6 +2866,18 @@ impl GentleEngine {
         if let Operation::FindRestrictionSites {
             path: Some(path), ..
         }
+        | Operation::FindRestrictionSitesCollection {
+            path: Some(path), ..
+        }
+        | Operation::InspectConstructReasoningCollection {
+            path: Some(path), ..
+        }
+        | Operation::ScanTfbsHitsCollection {
+            path: Some(path), ..
+        }
+        | Operation::DigestCollection {
+            path: Some(path), ..
+        }
         | Operation::ScanTfbsHits {
             path: Some(path), ..
         }
@@ -2400,10 +2902,22 @@ impl GentleEngine {
         summary
     }
 
-    pub(super) fn collect_run_bundle_export_paths(op: &Operation) -> Vec<String> {
+    /// Return every caller-selected path written by an operation.
+    ///
+    /// This list is safety-sensitive: run-bundle provenance uses it, and
+    /// per-gene continuation refuses operations reported here because an
+    /// in-memory rollback cannot revoke their filesystem effects. New
+    /// path-writing operation variants must be added here in the same change.
+    pub(crate) fn collect_run_bundle_export_paths(op: &Operation) -> Vec<String> {
         let mut paths: Vec<String> = vec![];
         let mut push = |path: &str| Self::push_unique_token(&mut paths, path);
         match op {
+            Operation::ExportGelImageAnalysis { request } => push(&request.path),
+            Operation::ComputeTssTfbsProfiles {
+                export: Some(request),
+                ..
+            }
+            | Operation::ExportTssTfbsProfiles { request, .. } => push(&request.output_dir),
             Operation::SaveFile { path, .. }
             | Operation::RenderSequenceSvg { path, .. }
             | Operation::RenderDotplotSvg { path, .. }
@@ -2424,12 +2938,25 @@ impl GentleEngine {
             | Operation::ExportDnaLadders { path, .. }
             | Operation::ExportRnaLadders { path, .. }
             | Operation::ExportPool { path, .. }
+            | Operation::ExportPoolCollection { path, .. }
             | Operation::ExportProcessRunBundle { path, .. }
             | Operation::ExportLabAssistantInstructions { path, .. }
             | Operation::ExportGuideOligos { path, .. }
             | Operation::ExportGuideProtocolText { path, .. }
             | Operation::ExportPrimerDesignReport { path, .. }
+            | Operation::DesignTranscriptAssayPanel {
+                path: Some(path), ..
+            }
+            | Operation::DesignPrimerGroupTarget {
+                path: Some(path), ..
+            }
             | Operation::AssessPrimerPairSpecificity {
+                path: Some(path), ..
+            }
+            | Operation::AssessPrimerPairSpecificityCollection {
+                path: Some(path), ..
+            }
+            | Operation::ImportPrimerPairSpecificityHandoff {
                 path: Some(path), ..
             }
             | Operation::ExportRnaReadReport { path, .. }
@@ -2437,13 +2964,19 @@ impl GentleEngine {
             | Operation::ExportRnaReadSampleSheet { path, .. }
             | Operation::ExportRnaReadExonPathsTsv { path, .. }
             | Operation::ExportRnaReadExonAbundanceTsv { path, .. }
+            | Operation::ExportRnaReadDexseqAnnotationGff { path, .. }
+            | Operation::ExportRnaReadDexseqCountsTsv { path, .. }
             | Operation::ExportRnaReadScoreDensitySvg { path, .. }
             | Operation::ExportRnaReadAlignmentsTsv { path, .. }
             | Operation::ExportRnaReadIsoformTriageTsv { path, .. }
             | Operation::ExportRnaReadAlignmentDotplotSvg { path, .. } => {
                 push(path);
             }
-            Operation::ExportSequenceContextBundle { output_dir, .. } => push(output_dir),
+            Operation::ExportSequenceContextBundle { output_dir, .. }
+            | Operation::PreparePrimerPairSpecificityHandoff { output_dir, .. }
+            | Operation::PreparePrimerPairMultiReferenceSpecificityHandoff { output_dir, .. } => {
+                push(output_dir)
+            }
             Operation::SummarizeRnaReadGeneSupport {
                 path: Some(path), ..
             } => push(path),
@@ -2451,6 +2984,18 @@ impl GentleEngine {
                 path: Some(path), ..
             } => push(path),
             Operation::FindRestrictionSites {
+                path: Some(path), ..
+            }
+            | Operation::FindRestrictionSitesCollection {
+                path: Some(path), ..
+            }
+            | Operation::InspectConstructReasoningCollection {
+                path: Some(path), ..
+            }
+            | Operation::ScanTfbsHitsCollection {
+                path: Some(path), ..
+            } => push(path),
+            Operation::DigestCollection {
                 path: Some(path), ..
             } => push(path),
             Operation::ScanTfbsHits {
@@ -2478,6 +3023,34 @@ impl GentleEngine {
             | Operation::PlanReporterConstructHandoff {
                 path: Some(path), ..
             } => push(path),
+            Operation::PlanEvidenceGuidedFragmentCandidates {
+                path: Some(path), ..
+            }
+            | Operation::PlanPromoterReporterPanel {
+                path: Some(path), ..
+            } => push(path),
+            Operation::PlanRegulatoryFragmentPanel { request, path } => {
+                if let Some(path) = request.helper_catalog_path.as_deref() {
+                    push(path);
+                }
+                if let Some(path) = path {
+                    push(path);
+                }
+            }
+            Operation::RenderRegulatoryFragmentPanelSvg { path, .. } => push(path),
+            Operation::ComparePromoterReporterArchitectures { path, svg_path, .. } => {
+                if let Some(path) = path {
+                    push(path);
+                }
+                if let Some(path) = svg_path {
+                    push(path);
+                }
+            }
+            Operation::MaterializePromoterReporterPanel { proposal, .. } => {
+                for artifact in &proposal.artifacts {
+                    push(&artifact.path);
+                }
+            }
             _ => {}
         }
         paths
@@ -3650,6 +4223,19 @@ impl GentleEngine {
                 Self::lab_join_or_dash(enzymes),
                 output_prefix.as_deref().unwrap_or("GENtle-generated")
             )],
+            Operation::DigestCollection {
+                collection_subject,
+                enzymes,
+                output_prefix,
+                dry_run,
+                ..
+            } => vec![format!(
+                "{} restriction digestion over the {:?} collection with {}; fragment prefix: `{}`.",
+                if *dry_run { "Preview" } else { "Apply" },
+                collection_subject.kind(),
+                Self::lab_join_or_dash(enzymes),
+                output_prefix.as_deref().unwrap_or("GENtle-generated")
+            )],
             Operation::Pcr {
                 template,
                 forward_primer,
@@ -4067,16 +4653,18 @@ impl GentleEngine {
             if matches!(trimmed.to_ascii_uppercase().as_str(), "ALL" | "*") {
                 for summary in crate::tf_motifs::list_motif_summaries() {
                     if seen.insert(summary.id.clone()) {
-                        expanded.push(summary.name.unwrap_or(summary.id));
+                        expanded.push(summary.id);
                     }
                 }
                 continue;
             }
             if tf_motifs::resolve_motif_definition(trimmed).is_some() {
-                let (tf_id, tf_name, _consensus, _matrix_counts) =
+                let (tf_id, _tf_name, _consensus, _matrix_counts) =
                     Self::resolve_tf_motif_for_scoring(trimmed)?;
                 if seen.insert(tf_id.clone()) {
-                    expanded.push(tf_name.unwrap_or(tf_id));
+                    // Names are not unique across matrix accessions. Retain the
+                    // resolved ID so downstream scoring cannot resolve another PFM.
+                    expanded.push(tf_id);
                 }
                 continue;
             }
@@ -4115,10 +4703,10 @@ impl GentleEngine {
                     } else {
                         matched.motif_id
                     };
-                let (tf_id, tf_name, _consensus, _matrix_counts) =
+                let (tf_id, _tf_name, _consensus, _matrix_counts) =
                     Self::resolve_tf_motif_for_scoring(&candidate_token)?;
                 if seen.insert(tf_id.clone()) {
-                    expanded.push(tf_name.unwrap_or(tf_id));
+                    expanded.push(tf_id);
                 }
             }
         }
@@ -4743,7 +5331,13 @@ impl GentleEngine {
             return Self::estimate_primer_tm_wallace_c(&canonical);
         }
         Self::estimate_primer_tm_nearest_neighbor_c(&canonical)
+            .map(Self::quantize_primer_metric)
             .unwrap_or_else(|| Self::estimate_primer_tm_wallace_c(&canonical))
+    }
+
+    fn quantize_primer_metric(value: f64) -> f64 {
+        const REPORTING_SCALE: f64 = 1_000_000_000.0;
+        (value * REPORTING_SCALE).round() / REPORTING_SCALE
     }
 
     fn canonical_dna_bases(primer: &[u8]) -> Option<Vec<u8>> {
@@ -4853,6 +5447,11 @@ impl GentleEngine {
         1.9872
     }
 
+    /// Return the longest exact run over every relative alignment shift.
+    ///
+    /// This compares bytes as supplied. Complementarity callers must pass the
+    /// reverse complement explicitly, which keeps strand policy visible at the
+    /// biological call site.
     pub(super) fn max_contiguous_match_run_with_shift(left: &[u8], right: &[u8]) -> usize {
         if left.is_empty() || right.is_empty() {
             return 0;
@@ -4880,6 +5479,11 @@ impl GentleEngine {
         best
     }
 
+    /// Return the longest 3'-terminal suffix of `source` found in `target`.
+    ///
+    /// Primer-dimer callers normally provide the other oligo's reverse
+    /// complement as `target`; this helper itself makes no complement or
+    /// thermodynamic claim.
     pub(super) fn longest_suffix_match_in_target(source: &[u8], target: &[u8]) -> usize {
         if source.is_empty() || target.is_empty() {
             return 0;
@@ -4893,6 +5497,8 @@ impl GentleEngine {
         0
     }
 
+    /// Compute the shared inexpensive sequence heuristics used to describe and
+    /// rank primer/oligo candidates before any optional external backend.
     pub(super) fn compute_primer_heuristic_metrics(sequence: &[u8]) -> PrimerHeuristicMetrics {
         let three_prime_base = sequence
             .last()
@@ -4915,6 +5521,11 @@ impl GentleEngine {
         }
     }
 
+    /// Compute symmetric pairwise complementarity diagnostics for two oligos.
+    ///
+    /// The result is a deterministic sequence heuristic, not a predicted
+    /// reaction yield or replacement for a later specificity/thermodynamic
+    /// screen.
     pub(super) fn compute_primer_pair_dimer_metrics(
         forward_sequence: &[u8],
         reverse_sequence: &[u8],
@@ -4936,6 +5547,8 @@ impl GentleEngine {
         }
     }
 
+    /// Measure the longest exact 3'-terminal run found in the oligo's reverse
+    /// complement as a deterministic self-extension-risk heuristic.
     pub(super) fn compute_primer_self_3prime_complementary_run(sequence: &[u8]) -> usize {
         if sequence.is_empty() {
             return 0;
@@ -5607,6 +6220,179 @@ impl GentleEngine {
         ret
     }
 
+    /// Cheap deterministic candidate enumeration used to budget Primer3.
+    ///
+    /// This mirrors the hard local sequence filters used by the internal
+    /// candidate generator, but indexes exact subsequences once so planning a
+    /// broad transcript does not become its own quadratic search.
+    pub(super) fn estimate_primer_side_search_candidates(
+        template: &[u8],
+        side: &PrimerDesignSideConstraint,
+        sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        reverse_orientation: bool,
+        max_homopolymer_run_bp: usize,
+    ) -> PrimerSideSearchEstimate {
+        if template.is_empty() || side.min_length > template.len() {
+            return PrimerSideSearchEstimate {
+                candidates: vec![],
+                rejected_starts: vec![],
+            };
+        }
+        let first_start = side.start_0based.unwrap_or(0).min(template.len());
+        let last_end = side
+            .end_0based
+            .unwrap_or(template.len())
+            .min(template.len());
+        let lengths = side.min_length..=side.max_length.min(template.len());
+        let mut occurrence_counts = HashMap::<usize, HashMap<Vec<u8>, usize>>::new();
+        for length in lengths.clone() {
+            let mut bounded_sequences = HashMap::<Vec<u8>, usize>::new();
+            for start in first_start..last_end {
+                if side
+                    .location_0based
+                    .is_some_and(|location| location != start)
+                {
+                    continue;
+                }
+                let Some(end) = start.checked_add(length) else {
+                    continue;
+                };
+                if end > last_end || end > template.len() {
+                    break;
+                }
+                let binding_window = &template[start..end];
+                if binding_window
+                    .iter()
+                    .all(|base| matches!(base, b'A' | b'C' | b'G' | b'T'))
+                    && Self::max_homopolymer_run(binding_window) <= max_homopolymer_run_bp
+                {
+                    bounded_sequences
+                        .entry(binding_window.to_vec())
+                        .or_insert(0);
+                }
+            }
+            if bounded_sequences.is_empty() {
+                continue;
+            }
+            for start in 0..=template.len().saturating_sub(length) {
+                if let Some(count) =
+                    bounded_sequences.get_mut(&template[start..start.saturating_add(length)])
+                {
+                    *count = count.saturating_add(1);
+                }
+            }
+            occurrence_counts.insert(length, bounded_sequences);
+        }
+
+        let mut candidates = vec![];
+        let mut rejected_starts = vec![];
+        for start in first_start..last_end {
+            if side
+                .location_0based
+                .is_some_and(|location| location != start)
+            {
+                continue;
+            }
+            let mut accepted_at_start = 0usize;
+            let mut saw_ambiguous = false;
+            let mut saw_low_complexity = false;
+            let mut saw_non_unique = false;
+            let mut saw_tm_or_gc = false;
+            let mut saw_sequence_constraint = false;
+            for length in lengths.clone() {
+                let Some(end) = start.checked_add(length) else {
+                    continue;
+                };
+                if end > last_end || end > template.len() {
+                    break;
+                }
+                let binding_window = &template[start..end];
+                if !binding_window
+                    .iter()
+                    .all(|base| matches!(base, b'A' | b'C' | b'G' | b'T'))
+                {
+                    saw_ambiguous = true;
+                    continue;
+                }
+                if Self::max_homopolymer_run(binding_window) > max_homopolymer_run_bp {
+                    saw_low_complexity = true;
+                    continue;
+                }
+                let anneal_hits = occurrence_counts
+                    .get(&length)
+                    .and_then(|counts| counts.get(binding_window))
+                    .copied()
+                    .unwrap_or(0);
+                if anneal_hits == 0 || anneal_hits > side.max_anneal_hits {
+                    saw_non_unique = true;
+                    continue;
+                }
+                let anneal_bytes = if reverse_orientation {
+                    Self::reverse_complement_bytes(binding_window)
+                } else {
+                    binding_window.to_vec()
+                };
+                let gc_fraction = Self::sequence_gc_fraction(&anneal_bytes).unwrap_or(0.0);
+                let tm_c = Self::estimate_primer_tm_c(&anneal_bytes);
+                if gc_fraction < side.min_gc_fraction
+                    || gc_fraction > side.max_gc_fraction
+                    || tm_c < side.min_tm_c
+                    || tm_c > side.max_tm_c
+                {
+                    saw_tm_or_gc = true;
+                    continue;
+                }
+                let mut primer_bytes = vec![];
+                if let Some(tail) = &sequence_constraints.non_annealing_5prime_tail {
+                    primer_bytes.extend_from_slice(tail.as_bytes());
+                }
+                primer_bytes.extend_from_slice(&anneal_bytes);
+                if !Self::primer_sequence_matches_side_constraints(
+                    &primer_bytes,
+                    sequence_constraints,
+                ) {
+                    saw_sequence_constraint = true;
+                    continue;
+                }
+                accepted_at_start = accepted_at_start.saturating_add(1);
+                candidates.push(PrimerDesignCandidate {
+                    sequence: String::from_utf8(primer_bytes).unwrap_or_default(),
+                    start_0based: start,
+                    end_0based_exclusive: end,
+                    tm_c,
+                    gc_fraction,
+                    anneal_hits,
+                });
+            }
+            if accepted_at_start == 0 {
+                let reason = if saw_ambiguous {
+                    "ambiguous_sequence"
+                } else if saw_low_complexity {
+                    "low_complexity_homopolymer"
+                } else if saw_non_unique {
+                    "local_non_unique_sequence"
+                } else if saw_sequence_constraint {
+                    "primer_sequence_constraint"
+                } else if saw_tm_or_gc {
+                    "tm_or_gc_out_of_range"
+                } else {
+                    "no_complete_primer_interval"
+                };
+                rejected_starts.push((start, reason.to_string()));
+            }
+        }
+        candidates.sort_by(|left, right| {
+            left.start_0based
+                .cmp(&right.start_0based)
+                .then(left.end_0based_exclusive.cmp(&right.end_0based_exclusive))
+                .then(left.sequence.cmp(&right.sequence))
+        });
+        PrimerSideSearchEstimate {
+            candidates,
+            rejected_starts,
+        }
+    }
+
     pub(super) fn primer_sequence_matches_side_constraints(
         primer_sequence: &[u8],
         constraints: &NormalizedPrimerSideSequenceConstraints,
@@ -5645,6 +6431,20 @@ impl GentleEngine {
             }
         }
         true
+    }
+
+    fn primer3_exact_input_primer<'a>(
+        side: &PrimerDesignSideConstraint,
+        constraints: &'a NormalizedPrimerSideSequenceConstraints,
+    ) -> Option<&'a str> {
+        let sequence = constraints.fixed_5prime.as_deref()?;
+        (constraints.non_annealing_5prime_tail.is_none()
+            && side.min_length == side.max_length
+            && sequence.len() == side.min_length
+            && sequence
+                .bytes()
+                .all(|base| matches!(base, b'A' | b'C' | b'G' | b'T')))
+        .then_some(sequence)
     }
 
     pub(super) fn render_primer_design_report_id(raw: Option<String>, template: &str) -> String {
@@ -5739,6 +6539,257 @@ impl GentleEngine {
         record
     }
 
+    fn primer_design_score_term(
+        term: &str,
+        raw_value: f64,
+        weight: f64,
+        detail: impl Into<String>,
+    ) -> PrimerDesignScoreTerm {
+        PrimerDesignScoreTerm {
+            term: term.to_string(),
+            raw_value,
+            weight,
+            contribution: raw_value * weight,
+            detail: detail.into(),
+        }
+    }
+
+    fn primer_design_score_terms(
+        forward: &PrimerDesignPrimerRecord,
+        reverse: &PrimerDesignPrimerRecord,
+        forward_metrics: PrimerHeuristicMetrics,
+        reverse_metrics: PrimerHeuristicMetrics,
+        dimer_metrics: PrimerPairDimerMetrics,
+        target_amplicon_bp: usize,
+        amplicon_length_bp: usize,
+        tm_delta_c: f64,
+    ) -> Vec<PrimerDesignScoreTerm> {
+        let primer_length_preference_points =
+            Self::preferred_primer_length_penalty(forward.anneal_length_bp)
+                + Self::preferred_primer_length_penalty(reverse.anneal_length_bp);
+        let extra_anneal_hits =
+            forward.anneal_hits.saturating_sub(1) + reverse.anneal_hits.saturating_sub(1);
+        let homopolymer_excess_bp = forward_metrics
+            .longest_homopolymer_run_bp
+            .saturating_sub(PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP)
+            + reverse_metrics
+                .longest_homopolymer_run_bp
+                .saturating_sub(PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP);
+        let self_complementarity_excess_bp = forward_metrics
+            .self_complementary_run_bp
+            .saturating_sub(PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP)
+            + reverse_metrics
+                .self_complementary_run_bp
+                .saturating_sub(PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP);
+        let pair_complementarity_excess_bp = dimer_metrics
+            .max_complementary_run_bp
+            .saturating_sub(PRIMER_RECOMMENDED_MAX_PAIR_DIMER_RUN_BP);
+        let pair_3prime_complementarity_excess_bp = dimer_metrics
+            .max_3prime_complementary_run_bp
+            .saturating_sub(PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP);
+        let gc_clamp_count = usize::from(forward_metrics.three_prime_gc_clamp)
+            + usize::from(reverse_metrics.three_prime_gc_clamp);
+
+        vec![
+            Self::primer_design_score_term(
+                "baseline",
+                1.0,
+                1000.0,
+                "Fixed baseline for the GENtle primer-pair ranking model.",
+            ),
+            Self::primer_design_score_term(
+                "tm_delta",
+                tm_delta_c,
+                -20.0,
+                "Absolute forward/reverse melting-temperature difference in degrees Celsius.",
+            ),
+            Self::primer_design_score_term(
+                "amplicon_length_fit",
+                amplicon_length_bp.abs_diff(target_amplicon_bp) as f64,
+                -0.1,
+                format!(
+                    "Absolute distance from the configured midpoint target of {target_amplicon_bp} bp."
+                ),
+            ),
+            Self::primer_design_score_term(
+                "extra_anneal_hits",
+                extra_anneal_hits as f64,
+                -10.0,
+                "Template-local annealing hits beyond one per primer.",
+            ),
+            Self::primer_design_score_term(
+                "primer_length_preference",
+                primer_length_preference_points,
+                -6.0,
+                format!(
+                    "Length-preference points outside {PRIMER_PREFERRED_MIN_LENGTH_BP}..={PRIMER_PREFERRED_MAX_LENGTH_BP} annealing bases."
+                ),
+            ),
+            Self::primer_design_score_term(
+                "homopolymer_excess",
+                homopolymer_excess_bp as f64,
+                -10.0,
+                format!(
+                    "Combined homopolymer-run excess above {PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP} bp."
+                ),
+            ),
+            Self::primer_design_score_term(
+                "self_complementarity_excess",
+                self_complementarity_excess_bp as f64,
+                -12.0,
+                format!(
+                    "Combined self-complementary-run excess above {PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP} bp."
+                ),
+            ),
+            Self::primer_design_score_term(
+                "pair_complementarity_excess",
+                pair_complementarity_excess_bp as f64,
+                -20.0,
+                format!(
+                    "Pair-complementary-run excess above {PRIMER_RECOMMENDED_MAX_PAIR_DIMER_RUN_BP} bp."
+                ),
+            ),
+            Self::primer_design_score_term(
+                "pair_three_prime_complementarity_excess",
+                pair_3prime_complementarity_excess_bp as f64,
+                -35.0,
+                format!(
+                    "Pair 3-prime complementary-run excess above {PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP} bp."
+                ),
+            ),
+            Self::primer_design_score_term(
+                "three_prime_gc_clamp_balance",
+                gc_clamp_count as f64 - 1.0,
+                16.0,
+                "Balance around one 3-prime GC clamp across the two primers.",
+            ),
+        ]
+    }
+
+    fn primer_design_near_miss_order(
+        left: &PrimerDesignRejectedCandidate,
+        right: &PrimerDesignRejectedCandidate,
+    ) -> Ordering {
+        match (left.score, right.score) {
+            (Some(left_score), Some(right_score)) => right_score.total_cmp(&left_score),
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (None, None) => Ordering::Equal,
+        }
+        .then(left.forward.start_0based.cmp(&right.forward.start_0based))
+        .then(left.reverse.start_0based.cmp(&right.reverse.start_0based))
+        .then(
+            left.amplicon_end_0based_exclusive
+                .saturating_sub(left.amplicon_start_0based)
+                .cmp(
+                    &right
+                        .amplicon_end_0based_exclusive
+                        .saturating_sub(right.amplicon_start_0based),
+                ),
+        )
+        .then(left.forward.sequence.cmp(&right.forward.sequence))
+        .then(left.reverse.sequence.cmp(&right.reverse.sequence))
+        .then(left.reasons.cmp(&right.reasons))
+        .then(left.failed_checks.cmp(&right.failed_checks))
+    }
+
+    fn retain_primer_design_near_miss(
+        collector: &mut PrimerDesignNearMissCollector,
+        candidate: PrimerDesignRejectedCandidate,
+    ) {
+        if collector.effective_limit == 0 {
+            return;
+        }
+        collector.eligible_candidate_count = collector.eligible_candidate_count.saturating_add(1);
+        if collector.rows.len() < collector.effective_limit {
+            collector.rows.push(candidate);
+            return;
+        }
+
+        let mut worst_index = 0usize;
+        for index in 1..collector.rows.len() {
+            collector.candidate_comparison_count =
+                collector.candidate_comparison_count.saturating_add(1);
+            if Self::primer_design_near_miss_order(
+                &collector.rows[index],
+                &collector.rows[worst_index],
+            ) == Ordering::Greater
+            {
+                worst_index = index;
+            }
+        }
+        collector.candidate_comparison_count =
+            collector.candidate_comparison_count.saturating_add(1);
+        if Self::primer_design_near_miss_order(&candidate, &collector.rows[worst_index])
+            == Ordering::Less
+        {
+            collector.rows[worst_index] = candidate;
+        }
+    }
+
+    fn finish_primer_design_near_miss_capture(
+        mut collector: PrimerDesignNearMissCollector,
+        status: PrimerPairCharacterizationStatus,
+        reason: impl Into<String>,
+    ) -> (
+        Vec<PrimerDesignRejectedCandidate>,
+        PrimerDesignNearMissCapture,
+    ) {
+        collector.rows.sort_by(Self::primer_design_near_miss_order);
+        let retained_candidate_count = collector.rows.len();
+        let capture = PrimerDesignNearMissCapture {
+            status,
+            scope: "evaluated_pair_candidates".to_string(),
+            reason: reason.into(),
+            requested_limit: collector.requested_limit,
+            effective_limit: collector.effective_limit,
+            eligible_candidate_count: collector.eligible_candidate_count,
+            retained_candidate_count,
+            omitted_candidate_count: collector
+                .eligible_candidate_count
+                .saturating_sub(retained_candidate_count),
+            candidate_comparison_count: collector.candidate_comparison_count,
+        };
+        (collector.rows, capture)
+    }
+
+    fn primer_record_from_design_candidate(
+        candidate: &PrimerDesignCandidate,
+    ) -> PrimerDesignPrimerRecord {
+        Self::annotate_primer_record_heuristics(
+            PrimerDesignPrimerRecord {
+                sequence: candidate.sequence.clone(),
+                start_0based: candidate.start_0based,
+                end_0based_exclusive: candidate.end_0based_exclusive,
+                tm_c: candidate.tm_c,
+                gc_fraction: candidate.gc_fraction,
+                anneal_hits: candidate.anneal_hits,
+                ..PrimerDesignPrimerRecord::default()
+            },
+            candidate
+                .end_0based_exclusive
+                .saturating_sub(candidate.start_0based),
+        )
+    }
+
+    fn rejected_primer_design_candidate_from_pair(
+        pair: &PrimerDesignPairRecord,
+        reason: PrimerDesignRejectionReason,
+        failed_checks: Vec<String>,
+        detail: impl Into<String>,
+    ) -> PrimerDesignRejectedCandidate {
+        PrimerDesignRejectedCandidate {
+            forward: pair.forward.clone(),
+            reverse: pair.reverse.clone(),
+            amplicon_start_0based: pair.amplicon_start_0based,
+            amplicon_end_0based_exclusive: pair.amplicon_end_0based_exclusive,
+            score: Some(pair.score),
+            reasons: vec![reason],
+            failed_checks,
+            detail: detail.into(),
+        }
+    }
+
     pub(super) fn sort_and_rank_primer_design_pairs(
         pairs: &mut Vec<PrimerDesignPairRecord>,
         max_pairs: usize,
@@ -5770,7 +6821,7 @@ impl GentleEngine {
         max_tm_delta_c: f64,
         target_amplicon_bp: usize,
     ) -> Option<PrimerDesignPairRecord> {
-        if reverse.end_0based_exclusive <= forward.start_0based {
+        if reverse.start_0based < forward.end_0based_exclusive {
             return None;
         }
         let forward_anneal_len = forward
@@ -5793,7 +6844,7 @@ impl GentleEngine {
         let roi_covered = amplicon_start <= roi_start_0based && amplicon_end >= roi_end_0based;
         let amplicon_size_ok =
             amplicon_length_bp >= min_amplicon_bp && amplicon_length_bp <= max_amplicon_bp;
-        let tm_delta_c = (forward.tm_c - reverse.tm_c).abs();
+        let tm_delta_c = Self::quantize_primer_metric((forward.tm_c - reverse.tm_c).abs());
         let tm_delta_ok = tm_delta_c <= max_tm_delta_c;
         let length_penalty = amplicon_length_bp.abs_diff(target_amplicon_bp) as f64;
         let primer_length_penalty = Self::preferred_primer_length_penalty(forward.anneal_length_bp)
@@ -5812,14 +6863,35 @@ impl GentleEngine {
         } else {
             -8.0
         };
-        let score = 1000.0
-            - (tm_delta_c * 20.0)
-            - (length_penalty * 0.1)
-            - (hit_penalty * 10.0)
-            - (primer_length_penalty * 6.0)
-            - secondary_penalty
-            - dimer_penalty
-            + gc_clamp_bonus;
+        let score = Self::quantize_primer_metric(
+            1000.0
+                - (tm_delta_c * 20.0)
+                - (length_penalty * 0.1)
+                - (hit_penalty * 10.0)
+                - (primer_length_penalty * 6.0)
+                - secondary_penalty
+                - dimer_penalty
+                + gc_clamp_bonus,
+        );
+        let score_terms = Self::primer_design_score_terms(
+            &forward,
+            &reverse,
+            forward_metrics,
+            reverse_metrics,
+            dimer_metrics,
+            target_amplicon_bp,
+            amplicon_length_bp,
+            tm_delta_c,
+        );
+        let decomposed_score = score_terms
+            .iter()
+            .map(|term| term.contribution)
+            .sum::<f64>();
+        debug_assert!(
+            (score - decomposed_score).abs()
+                <= PRIMER_DESIGN_SCORE_SUM_TOLERANCE * score.abs().max(1.0),
+            "primer-design score decomposition drifted from the ranking score"
+        );
         let forward_secondary_ok = forward_metrics.longest_homopolymer_run_bp
             <= PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
             && forward_metrics.self_complementary_run_bp
@@ -5835,6 +6907,7 @@ impl GentleEngine {
         Some(PrimerDesignPairRecord {
             rank: 0,
             score,
+            score_terms,
             forward,
             reverse,
             amplicon_start_0based: amplicon_start,
@@ -5919,40 +6992,65 @@ impl GentleEngine {
         roi_end_0based: usize,
         constraints: &NormalizedPrimerPairConstraints,
     ) -> bool {
+        Self::primer_pair_constraint_failures(
+            template,
+            pair,
+            roi_start_0based,
+            roi_end_0based,
+            constraints,
+        )
+        .is_empty()
+    }
+
+    fn primer_pair_constraint_failures(
+        template: &[u8],
+        pair: &PrimerDesignPairRecord,
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        constraints: &NormalizedPrimerPairConstraints,
+    ) -> Vec<String> {
+        let mut failures = Vec::new();
         if constraints.require_roi_flanking {
             let flanking = pair.forward.end_0based_exclusive <= roi_start_0based
                 && pair.reverse.start_0based >= roi_end_0based;
             if !flanking {
-                return false;
+                failures.push("roi_not_flanked".to_string());
             }
         }
         if let Some(expected_start) = constraints.fixed_amplicon_start_0based
             && pair.amplicon_start_0based != expected_start
         {
-            return false;
+            failures.push(format!(
+                "fixed_amplicon_start_mismatch:expected={expected_start}:observed={}",
+                pair.amplicon_start_0based
+            ));
         }
         if let Some(expected_end) = constraints.fixed_amplicon_end_0based_exclusive
             && pair.amplicon_end_0based_exclusive != expected_end
         {
-            return false;
+            failures.push(format!(
+                "fixed_amplicon_end_mismatch:expected={expected_end}:observed={}",
+                pair.amplicon_end_0based_exclusive
+            ));
         }
         if pair.amplicon_end_0based_exclusive > template.len()
             || pair.amplicon_start_0based >= pair.amplicon_end_0based_exclusive
         {
-            return false;
+            failures.push("invalid_amplicon_geometry".to_string());
+            return failures;
         }
         let amplicon = &template[pair.amplicon_start_0based..pair.amplicon_end_0based_exclusive];
         for motif in &constraints.required_amplicon_motifs {
             if !Self::contains_iupac_pattern(amplicon, motif.as_bytes()) {
-                return false;
+                failures.push(format!("required_amplicon_motif_absent:{motif}"));
             }
         }
         for motif in &constraints.forbidden_amplicon_motifs {
             if Self::contains_iupac_pattern(amplicon, motif.as_bytes()) {
-                return false;
+                failures.push(format!("forbidden_amplicon_motif_present:{motif}"));
             }
         }
-        true
+        failures
     }
 
     pub(super) fn primer_pair_heuristic_advisories(pair: &PrimerDesignPairRecord) -> Vec<String> {
@@ -6033,6 +7131,7 @@ impl GentleEngine {
             assay_candidate_combinations,
             assays_evaluated,
             accepted_assay_count,
+            primer3_progress: None,
             max_output: progress_context.max_output,
             done,
         };
@@ -6059,7 +7158,127 @@ impl GentleEngine {
         progress_context: Option<&PrimerDesignProgressContext<'_>>,
         on_progress: &mut dyn FnMut(PrimerDesignProgress) -> bool,
     ) -> Result<(Vec<PrimerDesignPairRecord>, PrimerDesignRejectionSummary), EngineError> {
+        Self::design_primer_pairs_internal_core_with_filter(
+            template_bytes,
+            roi_start_0based,
+            roi_end_0based,
+            forward,
+            forward_sequence_constraints,
+            reverse,
+            reverse_sequence_constraints,
+            pair_constraints,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_tm_delta_c,
+            max_pairs,
+            None,
+            progress_context,
+            on_progress,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn design_primer_pairs_internal_core_with_filter(
+        template_bytes: &[u8],
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        forward: &PrimerDesignSideConstraint,
+        forward_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        reverse: &PrimerDesignSideConstraint,
+        reverse_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        pair_constraints: &NormalizedPrimerPairConstraints,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        max_tm_delta_c: f64,
+        max_pairs: usize,
+        candidate_pair_filter: Option<PrimerDesignCandidatePairFilter<'_>>,
+        progress_context: Option<&PrimerDesignProgressContext<'_>>,
+        on_progress: &mut dyn FnMut(PrimerDesignProgress) -> bool,
+    ) -> Result<(Vec<PrimerDesignPairRecord>, PrimerDesignRejectionSummary), EngineError> {
+        let outcome = Self::design_primer_pairs_internal_core_with_filter_and_capture(
+            template_bytes,
+            roi_start_0based,
+            roi_end_0based,
+            forward,
+            forward_sequence_constraints,
+            reverse,
+            reverse_sequence_constraints,
+            pair_constraints,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_tm_delta_c,
+            max_pairs,
+            candidate_pair_filter,
+            0,
+            progress_context,
+            on_progress,
+        )?;
+        Ok((outcome.pairs, outcome.rejection_summary))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn design_primer_pairs_internal_core_with_capture(
+        template_bytes: &[u8],
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        forward: &PrimerDesignSideConstraint,
+        forward_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        reverse: &PrimerDesignSideConstraint,
+        reverse_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        pair_constraints: &NormalizedPrimerPairConstraints,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        max_tm_delta_c: f64,
+        max_pairs: usize,
+        near_miss_limit: usize,
+        progress_context: Option<&PrimerDesignProgressContext<'_>>,
+        on_progress: &mut dyn FnMut(PrimerDesignProgress) -> bool,
+    ) -> Result<PrimerDesignPairSearchOutcome, EngineError> {
+        Self::design_primer_pairs_internal_core_with_filter_and_capture(
+            template_bytes,
+            roi_start_0based,
+            roi_end_0based,
+            forward,
+            forward_sequence_constraints,
+            reverse,
+            reverse_sequence_constraints,
+            pair_constraints,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_tm_delta_c,
+            max_pairs,
+            None,
+            near_miss_limit,
+            progress_context,
+            on_progress,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn design_primer_pairs_internal_core_with_filter_and_capture(
+        template_bytes: &[u8],
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        forward: &PrimerDesignSideConstraint,
+        forward_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        reverse: &PrimerDesignSideConstraint,
+        reverse_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        pair_constraints: &NormalizedPrimerPairConstraints,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        max_tm_delta_c: f64,
+        max_pairs: usize,
+        candidate_pair_filter: Option<PrimerDesignCandidatePairFilter<'_>>,
+        near_miss_limit: usize,
+        progress_context: Option<&PrimerDesignProgressContext<'_>>,
+        on_progress: &mut dyn FnMut(PrimerDesignProgress) -> bool,
+    ) -> Result<PrimerDesignPairSearchOutcome, EngineError> {
         let mut rejection_summary = PrimerDesignRejectionSummary::default();
+        let mut near_miss_collector = PrimerDesignNearMissCollector {
+            requested_limit: near_miss_limit,
+            effective_limit: near_miss_limit.min(PRIMER_DESIGN_MAX_REJECTED_NEAR_MISS_LIMIT),
+            ..PrimerDesignNearMissCollector::default()
+        };
         let forward_candidates = Self::generate_primer_side_candidates(
             template_bytes,
             forward,
@@ -6150,11 +7369,62 @@ impl GentleEngine {
         )?;
         'pair_search: for fwd in &forward_candidates {
             for rev in &reverse_candidates {
+                if candidate_pair_filter.is_some_and(|filter| !filter(fwd, rev)) {
+                    continue;
+                }
                 if pair_evaluations >= pair_evaluation_limit {
                     pair_evaluation_limited = true;
                     break 'pair_search;
                 }
                 pair_evaluations = pair_evaluations.saturating_add(1);
+                let amplicon_length_bp = rev.end_0based_exclusive.saturating_sub(fwd.start_0based);
+                let mut geometry_failures = Vec::new();
+                if rev.start_0based < fwd.end_0based_exclusive {
+                    geometry_failures.push("primer_footprints_overlap".to_string());
+                }
+                if amplicon_length_bp < min_amplicon_bp {
+                    geometry_failures.push(format!(
+                        "amplicon_below_min:observed={amplicon_length_bp}:min={min_amplicon_bp}"
+                    ));
+                }
+                if amplicon_length_bp > max_amplicon_bp {
+                    geometry_failures.push(format!(
+                        "amplicon_above_max:observed={amplicon_length_bp}:max={max_amplicon_bp}"
+                    ));
+                }
+                if fwd.start_0based > roi_start_0based || rev.end_0based_exclusive < roi_end_0based
+                {
+                    geometry_failures.push("roi_not_covered".to_string());
+                }
+                let tm_delta_c = (fwd.tm_c - rev.tm_c).abs();
+                if tm_delta_c > max_tm_delta_c {
+                    geometry_failures.push(format!(
+                        "tm_delta_above_max:observed={tm_delta_c:.6}:max={max_tm_delta_c:.6}"
+                    ));
+                }
+                if !geometry_failures.is_empty() {
+                    rejection_summary.amplicon_or_roi_failure =
+                        rejection_summary.amplicon_or_roi_failure.saturating_add(1);
+                    if near_miss_collector.effective_limit > 0 {
+                        Self::retain_primer_design_near_miss(
+                            &mut near_miss_collector,
+                            PrimerDesignRejectedCandidate {
+                                forward: Self::primer_record_from_design_candidate(fwd),
+                                reverse: Self::primer_record_from_design_candidate(rev),
+                                amplicon_start_0based: fwd.start_0based,
+                                amplicon_end_0based_exclusive: rev.end_0based_exclusive,
+                                score: None,
+                                reasons: vec![PrimerDesignRejectionReason::AmpliconOrRoiFailure],
+                                detail: format!(
+                                    "Evaluated pair failed geometry or ROI requirements: {}.",
+                                    geometry_failures.join(", ")
+                                ),
+                                failed_checks: geometry_failures,
+                            },
+                        );
+                    }
+                    continue;
+                }
                 let Some(pair) = Self::build_primer_design_pair_record(
                     PrimerDesignPrimerRecord {
                         sequence: fwd.sequence.clone(),
@@ -6183,6 +7453,26 @@ impl GentleEngine {
                 ) else {
                     rejection_summary.amplicon_or_roi_failure =
                         rejection_summary.amplicon_or_roi_failure.saturating_add(1);
+                    if near_miss_collector.effective_limit > 0 {
+                        let failed_checks = vec!["pair_record_unavailable".to_string()];
+                        Self::retain_primer_design_near_miss(
+                            &mut near_miss_collector,
+                            PrimerDesignRejectedCandidate {
+                                forward: Self::primer_record_from_design_candidate(fwd),
+                                reverse: Self::primer_record_from_design_candidate(rev),
+                                amplicon_start_0based: fwd.start_0based,
+                                amplicon_end_0based_exclusive: rev.end_0based_exclusive,
+                                score: None,
+                                reasons: vec![
+                                    PrimerDesignRejectionReason::AmpliconOrRoiFailure,
+                                ],
+                                failed_checks,
+                                detail:
+                                    "Evaluated pair could not form non-overlapping amplicon geometry."
+                                        .to_string(),
+                            },
+                        );
+                    }
                     if pair_evaluations.is_multiple_of(pair_progress_stride) {
                         Self::emit_primer_design_progress(
                             progress_context,
@@ -6214,6 +7504,25 @@ impl GentleEngine {
                 {
                     rejection_summary.amplicon_or_roi_failure =
                         rejection_summary.amplicon_or_roi_failure.saturating_add(1);
+                    let mut failed_checks = Vec::new();
+                    if !pair.rule_flags.amplicon_size_in_range {
+                        failed_checks.push("amplicon_size_out_of_range".to_string());
+                    }
+                    if !pair.rule_flags.roi_covered {
+                        failed_checks.push("roi_not_covered".to_string());
+                    }
+                    if !pair.rule_flags.tm_delta_in_range {
+                        failed_checks.push("tm_delta_out_of_range".to_string());
+                    }
+                    Self::retain_primer_design_near_miss(
+                        &mut near_miss_collector,
+                        Self::rejected_primer_design_candidate_from_pair(
+                            &pair,
+                            PrimerDesignRejectionReason::AmpliconOrRoiFailure,
+                            failed_checks,
+                            "Evaluated pair failed one or more amplicon, ROI, or melting-temperature requirements.",
+                        ),
+                    );
                     if pair_evaluations.is_multiple_of(pair_progress_stride) {
                         Self::emit_primer_design_progress(
                             progress_context,
@@ -6239,15 +7548,28 @@ impl GentleEngine {
                     }
                     continue;
                 }
-                if !Self::primer_pair_matches_constraints(
+                let pair_constraint_failures = Self::primer_pair_constraint_failures(
                     template_bytes,
                     &pair,
                     roi_start_0based,
                     roi_end_0based,
                     pair_constraints,
-                ) {
+                );
+                if !pair_constraint_failures.is_empty() {
                     rejection_summary.pair_constraint_failure =
                         rejection_summary.pair_constraint_failure.saturating_add(1);
+                    Self::retain_primer_design_near_miss(
+                        &mut near_miss_collector,
+                        Self::rejected_primer_design_candidate_from_pair(
+                            &pair,
+                            PrimerDesignRejectionReason::PairConstraintFailure,
+                            pair_constraint_failures.clone(),
+                            format!(
+                                "Evaluated pair failed configured pair constraints: {}.",
+                                pair_constraint_failures.join(", ")
+                            ),
+                        ),
+                    );
                     if pair_evaluations.is_multiple_of(pair_progress_stride) {
                         Self::emit_primer_design_progress(
                             progress_context,
@@ -6333,7 +7655,37 @@ impl GentleEngine {
             None,
             None,
         )?;
-        Ok((pairs, rejection_summary))
+        let capture_status = if near_miss_collector.effective_limit == 0 {
+            PrimerPairCharacterizationStatus::NotRun
+        } else if pair_evaluation_limited {
+            PrimerPairCharacterizationStatus::Incomplete
+        } else {
+            PrimerPairCharacterizationStatus::Pass
+        };
+        let capture_reason = if near_miss_collector.effective_limit == 0 {
+            "Rejected pair-level near-miss retention was disabled by the design request."
+                .to_string()
+        } else if pair_evaluation_limited {
+            format!(
+                "Retained a bounded deterministic subset of evaluated pair-level rejections, but {} pair combinations were not evaluated; single-primer rejection classes remain aggregate-only.",
+                rejection_summary.pair_evaluation_limit_skipped
+            )
+        } else {
+            "Retained a bounded deterministic subset of evaluated pair-level rejections; single-primer rejection classes remain aggregate-only."
+                .to_string()
+        };
+        let (rejected_near_misses, near_miss_capture) =
+            Self::finish_primer_design_near_miss_capture(
+                near_miss_collector,
+                capture_status,
+                capture_reason,
+            );
+        Ok(PrimerDesignPairSearchOutcome {
+            pairs,
+            rejection_summary,
+            rejected_near_misses,
+            near_miss_capture,
+        })
     }
 
     #[allow(dead_code)]
@@ -6393,6 +7745,151 @@ impl GentleEngine {
         }
     }
 
+    fn qpcr_assay_score_terms(
+        pair: &PrimerDesignPairRecord,
+        probe: &PrimerDesignPrimerRecord,
+        probe_offset_penalty_c: f64,
+        probe_midpoint_distance_bp: usize,
+    ) -> Vec<PrimerDesignScoreTerm> {
+        let mut terms = pair.score_terms.clone();
+        terms.push(Self::primer_design_score_term(
+            "probe_tm_offset_from_preferred",
+            probe_offset_penalty_c,
+            -10.0,
+            format!(
+                "Absolute distance from the preferred probe-minus-primer-mean Tm offset of {QPCR_PREFERRED_PROBE_TM_OFFSET_C:.1} C."
+            ),
+        ));
+        terms.push(Self::primer_design_score_term(
+            "probe_amplicon_midpoint_distance",
+            probe_midpoint_distance_bp as f64,
+            -0.05,
+            "Absolute distance between probe and amplicon midpoints in bases.",
+        ));
+
+        let forward_probe = Self::compute_primer_pair_dimer_metrics(
+            pair.forward.sequence.as_bytes(),
+            probe.sequence.as_bytes(),
+        );
+        let reverse_probe = Self::compute_primer_pair_dimer_metrics(
+            pair.reverse.sequence.as_bytes(),
+            probe.sequence.as_bytes(),
+        );
+        terms.push(Self::primer_design_score_term(
+            "probe_self_complementarity_observed",
+            probe.self_complementary_run_bp as f64,
+            0.0,
+            "Observed probe self-complementary run. The v1 qPCR ranking model records but does not weight this diagnostic.",
+        ));
+        terms.push(Self::primer_design_score_term(
+            "probe_primer_complementarity_observed",
+            forward_probe
+                .max_complementary_run_bp
+                .max(reverse_probe.max_complementary_run_bp) as f64,
+            0.0,
+            "Maximum observed probe/primer complementary run. The v1 qPCR ranking model records but does not weight this diagnostic.",
+        ));
+        terms.push(Self::primer_design_score_term(
+            "probe_primer_three_prime_complementarity_observed",
+            forward_probe
+                .max_3prime_complementary_run_bp
+                .max(reverse_probe.max_3prime_complementary_run_bp) as f64,
+            0.0,
+            "Maximum observed 3-prime-anchored probe/primer complementary run. The v1 qPCR ranking model records but does not weight this diagnostic.",
+        ));
+        terms
+    }
+
+    fn qpcr_design_near_miss_order(
+        left: &QpcrDesignRejectedCandidate,
+        right: &QpcrDesignRejectedCandidate,
+    ) -> Ordering {
+        match (left.score, right.score) {
+            (Some(left_score), Some(right_score)) => right_score.total_cmp(&left_score),
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (None, None) => Ordering::Equal,
+        }
+        .then(left.forward.start_0based.cmp(&right.forward.start_0based))
+        .then(left.reverse.start_0based.cmp(&right.reverse.start_0based))
+        .then(
+            left.probe
+                .as_ref()
+                .map(|probe| probe.start_0based)
+                .cmp(&right.probe.as_ref().map(|probe| probe.start_0based)),
+        )
+        .then(left.forward.sequence.cmp(&right.forward.sequence))
+        .then(left.reverse.sequence.cmp(&right.reverse.sequence))
+        .then(
+            left.probe
+                .as_ref()
+                .map(|probe| probe.sequence.as_str())
+                .cmp(&right.probe.as_ref().map(|probe| probe.sequence.as_str())),
+        )
+        .then(left.reasons.cmp(&right.reasons))
+        .then(left.failed_checks.cmp(&right.failed_checks))
+    }
+
+    fn retain_qpcr_design_near_miss(
+        collector: &mut QpcrDesignNearMissCollector,
+        candidate: QpcrDesignRejectedCandidate,
+    ) {
+        if collector.effective_limit == 0 {
+            return;
+        }
+        collector.eligible_candidate_count = collector.eligible_candidate_count.saturating_add(1);
+        if collector.rows.len() < collector.effective_limit {
+            collector.rows.push(candidate);
+            return;
+        }
+
+        let mut worst_index = 0usize;
+        for index in 1..collector.rows.len() {
+            collector.candidate_comparison_count =
+                collector.candidate_comparison_count.saturating_add(1);
+            if Self::qpcr_design_near_miss_order(
+                &collector.rows[index],
+                &collector.rows[worst_index],
+            ) == Ordering::Greater
+            {
+                worst_index = index;
+            }
+        }
+        collector.candidate_comparison_count =
+            collector.candidate_comparison_count.saturating_add(1);
+        if Self::qpcr_design_near_miss_order(&candidate, &collector.rows[worst_index])
+            == Ordering::Less
+        {
+            collector.rows[worst_index] = candidate;
+        }
+    }
+
+    fn finish_qpcr_design_near_miss_capture(
+        mut collector: QpcrDesignNearMissCollector,
+        status: PrimerPairCharacterizationStatus,
+        reason: impl Into<String>,
+    ) -> (
+        Vec<QpcrDesignRejectedCandidate>,
+        PrimerDesignNearMissCapture,
+    ) {
+        collector.rows.sort_by(Self::qpcr_design_near_miss_order);
+        let retained_candidate_count = collector.rows.len();
+        let capture = PrimerDesignNearMissCapture {
+            status,
+            scope: "evaluated_pair_probe_assay_candidates".to_string(),
+            reason: reason.into(),
+            requested_limit: collector.requested_limit,
+            effective_limit: collector.effective_limit,
+            eligible_candidate_count: collector.eligible_candidate_count,
+            retained_candidate_count,
+            omitted_candidate_count: collector
+                .eligible_candidate_count
+                .saturating_sub(retained_candidate_count),
+            candidate_comparison_count: collector.candidate_comparison_count,
+        };
+        (collector.rows, capture)
+    }
+
     #[allow(dead_code)]
     pub(super) fn design_qpcr_assays_from_pairs(
         template_bytes: &[u8],
@@ -6435,9 +7932,46 @@ impl GentleEngine {
         progress_context: Option<&PrimerDesignProgressContext<'_>>,
         on_progress: &mut dyn FnMut(PrimerDesignProgress) -> bool,
     ) -> Result<(Vec<QpcrAssayRecord>, QpcrDesignRejectionSummary), EngineError> {
+        let outcome = Self::design_qpcr_assays_from_pairs_core_with_capture(
+            template_bytes,
+            roi_start_0based,
+            roi_end_0based,
+            probe,
+            probe_sequence_constraints,
+            max_probe_tm_delta_c,
+            max_assays,
+            pairs,
+            pair_rejections,
+            0,
+            progress_context,
+            on_progress,
+        )?;
+        Ok((outcome.assays, outcome.rejection_summary))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn design_qpcr_assays_from_pairs_core_with_capture(
+        template_bytes: &[u8],
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        probe: &PrimerDesignSideConstraint,
+        probe_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        max_probe_tm_delta_c: f64,
+        max_assays: usize,
+        pairs: Vec<PrimerDesignPairRecord>,
+        pair_rejections: PrimerDesignRejectionSummary,
+        near_miss_limit: usize,
+        progress_context: Option<&PrimerDesignProgressContext<'_>>,
+        on_progress: &mut dyn FnMut(PrimerDesignProgress) -> bool,
+    ) -> Result<QpcrAssaySearchOutcome, EngineError> {
         let mut rejection = QpcrDesignRejectionSummary {
             primer_pair: pair_rejections,
             ..QpcrDesignRejectionSummary::default()
+        };
+        let mut near_miss_collector = QpcrDesignNearMissCollector {
+            requested_limit: near_miss_limit,
+            effective_limit: near_miss_limit.min(PRIMER_DESIGN_MAX_REJECTED_NEAR_MISS_LIMIT),
+            ..QpcrDesignNearMissCollector::default()
         };
         let mut probe_candidate_rejections = PrimerDesignRejectionSummary::default();
         let probe_candidates = Self::generate_primer_side_candidates(
@@ -6506,66 +8040,20 @@ impl GentleEngine {
                 let probe_end = probe_candidate.end_0based_exclusive;
                 let probe_inside_amplicon = probe_start >= pair.forward.end_0based_exclusive
                     && probe_end <= pair.reverse.start_0based;
-                if !probe_inside_amplicon {
-                    rejection.probe_or_assay_failure =
-                        rejection.probe_or_assay_failure.saturating_add(1);
-                    if assays_evaluated.is_multiple_of(assay_progress_stride) {
-                        Self::emit_primer_design_progress(
-                            progress_context,
-                            on_progress,
-                            "assay_search",
-                            format!("Evaluated {} assay combination(s)", assays_evaluated),
-                            false,
-                            None,
-                            None,
-                            Some(probe_candidates.len()),
-                            None,
-                            None,
-                            None,
-                            None,
-                            None,
-                            Some(assay_candidate_combinations),
-                            Some(assays_evaluated),
-                            Some(assays.len()),
-                        )?;
-                    }
-                    continue;
-                }
-                let primer_mean_tm_c = (pair.forward.tm_c + pair.reverse.tm_c) / 2.0;
-                let probe_tm_offset_c = probe_candidate.tm_c - primer_mean_tm_c;
-                let probe_tm_delta_c = probe_tm_offset_c.abs();
+                let primer_mean_tm_c =
+                    Self::quantize_primer_metric((pair.forward.tm_c + pair.reverse.tm_c) / 2.0);
+                let probe_tm_offset_c =
+                    Self::quantize_primer_metric(probe_candidate.tm_c - primer_mean_tm_c);
+                let probe_tm_delta_c = Self::quantize_primer_metric(probe_tm_offset_c.abs());
                 let probe_tm_ok = probe_tm_delta_c <= max_probe_tm_delta_c;
-                if !probe_tm_ok {
-                    rejection.probe_or_assay_failure =
-                        rejection.probe_or_assay_failure.saturating_add(1);
-                    if assays_evaluated.is_multiple_of(assay_progress_stride) {
-                        Self::emit_primer_design_progress(
-                            progress_context,
-                            on_progress,
-                            "assay_search",
-                            format!("Evaluated {} assay combination(s)", assays_evaluated),
-                            false,
-                            None,
-                            None,
-                            Some(probe_candidates.len()),
-                            None,
-                            None,
-                            None,
-                            None,
-                            None,
-                            Some(assay_candidate_combinations),
-                            Some(assays_evaluated),
-                            Some(assays.len()),
-                        )?;
-                    }
-                    continue;
-                }
                 let probe_mid = (probe_start + probe_end) / 2;
                 let probe_mid_penalty = probe_mid.abs_diff(amplicon_mid) as f64;
-                let probe_offset_penalty_c =
-                    (probe_tm_offset_c - QPCR_PREFERRED_PROBE_TM_OFFSET_C).abs();
-                let score =
-                    pair.score - (probe_offset_penalty_c * 10.0) - (probe_mid_penalty * 0.05);
+                let probe_offset_penalty_c = Self::quantize_primer_metric(
+                    (probe_tm_offset_c - QPCR_PREFERRED_PROBE_TM_OFFSET_C).abs(),
+                );
+                let score = Self::quantize_primer_metric(
+                    pair.score - (probe_offset_penalty_c * 10.0) - (probe_mid_penalty * 0.05),
+                );
                 let probe_record = Self::annotate_primer_record_heuristics(
                     PrimerDesignPrimerRecord {
                         sequence: probe_candidate.sequence.clone(),
@@ -6578,9 +8066,77 @@ impl GentleEngine {
                     },
                     probe_end.saturating_sub(probe_start),
                 );
+                let score_terms = Self::qpcr_assay_score_terms(
+                    &pair,
+                    &probe_record,
+                    probe_offset_penalty_c,
+                    probe_mid_penalty as usize,
+                );
+                let decomposed_score = score_terms
+                    .iter()
+                    .map(|term| term.contribution)
+                    .sum::<f64>();
+                debug_assert!(
+                    (score - decomposed_score).abs()
+                        <= PRIMER_DESIGN_SCORE_SUM_TOLERANCE * score.abs().max(1.0),
+                    "qPCR assay score decomposition drifted from the ranking score"
+                );
+
+                let mut failed_checks = Vec::new();
+                if !probe_inside_amplicon {
+                    failed_checks.push("probe_outside_primer_bounded_amplicon".to_string());
+                }
+                if !probe_tm_ok {
+                    failed_checks.push(format!(
+                        "probe_tm_delta_above_max:observed={probe_tm_delta_c:.6}:max={max_probe_tm_delta_c:.6}"
+                    ));
+                }
+                if !failed_checks.is_empty() {
+                    rejection.probe_or_assay_failure =
+                        rejection.probe_or_assay_failure.saturating_add(1);
+                    Self::retain_qpcr_design_near_miss(
+                        &mut near_miss_collector,
+                        QpcrDesignRejectedCandidate {
+                            forward: pair.forward.clone(),
+                            reverse: pair.reverse.clone(),
+                            probe: Some(probe_record),
+                            amplicon_start_0based: pair.amplicon_start_0based,
+                            amplicon_end_0based_exclusive: pair.amplicon_end_0based_exclusive,
+                            score: Some(score),
+                            reasons: vec![QpcrDesignRejectionReason::ProbeOrAssayFailure],
+                            failed_checks: failed_checks.clone(),
+                            detail: format!(
+                                "Evaluated qPCR assay combination failed probe placement or Tm requirements: {}.",
+                                failed_checks.join(", ")
+                            ),
+                        },
+                    );
+                    if assays_evaluated.is_multiple_of(assay_progress_stride) {
+                        Self::emit_primer_design_progress(
+                            progress_context,
+                            on_progress,
+                            "assay_search",
+                            format!("Evaluated {} assay combination(s)", assays_evaluated),
+                            false,
+                            None,
+                            None,
+                            Some(probe_candidates.len()),
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                            Some(assay_candidate_combinations),
+                            Some(assays_evaluated),
+                            Some(assays.len()),
+                        )?;
+                    }
+                    continue;
+                }
                 assays.push(QpcrAssayRecord {
                     rank: 0,
                     score,
+                    score_terms,
                     forward: pair.forward.clone(),
                     reverse: pair.reverse.clone(),
                     probe: probe_record,
@@ -6640,7 +8196,28 @@ impl GentleEngine {
             Some(assays_evaluated),
             Some(assays.len()),
         )?;
-        Ok((assays, rejection))
+        let capture_status = if near_miss_collector.effective_limit == 0 {
+            PrimerPairCharacterizationStatus::NotRun
+        } else {
+            PrimerPairCharacterizationStatus::Pass
+        };
+        let capture_reason = if near_miss_collector.effective_limit == 0 {
+            "Rejected qPCR near-miss capture was disabled by a zero limit.".to_string()
+        } else {
+            "Captured a bounded deterministic subset of evaluated primer-pair/probe assay combinations rejected by qPCR placement or Tm checks. Probe candidate-generation failures remain aggregate-only."
+                .to_string()
+        };
+        let (rejected_near_misses, near_miss_capture) = Self::finish_qpcr_design_near_miss_capture(
+            near_miss_collector,
+            capture_status,
+            capture_reason,
+        );
+        Ok(QpcrAssaySearchOutcome {
+            assays,
+            rejection_summary: rejection,
+            rejected_near_misses,
+            near_miss_capture,
+        })
     }
 
     pub(super) fn parse_primer3_coord_pair(
@@ -6721,6 +8298,61 @@ impl GentleEngine {
             .map(|line| line.to_string())
     }
 
+    fn credible_primer3_version_line(stdout: &[u8], stderr: &[u8]) -> Option<String> {
+        for bytes in [stdout, stderr] {
+            for line in String::from_utf8_lossy(bytes).lines().map(str::trim) {
+                if line.is_empty() {
+                    continue;
+                }
+                let lower = line.to_ascii_lowercase();
+                if ["copyright", "licence", "license", "warranty"]
+                    .iter()
+                    .any(|marker| lower.contains(marker))
+                {
+                    continue;
+                }
+                let line_bytes = line.as_bytes();
+                let has_dotted_number = line_bytes.windows(3).any(|window| {
+                    window[0].is_ascii_digit() && window[1] == b'.' && window[2].is_ascii_digit()
+                });
+                let has_version_context = lower.contains("primer3")
+                    || lower.contains("release")
+                    || lower.contains("version");
+                let bare_version = line
+                    .strip_prefix('v')
+                    .or_else(|| line.strip_prefix('V'))
+                    .unwrap_or(line);
+                let is_bare_version = bare_version
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || matches!(byte, b'.' | b'-' | b'+'));
+                if has_dotted_number && (has_version_context || is_bare_version) {
+                    return Some(line.to_string());
+                }
+            }
+        }
+        None
+    }
+
+    fn primer3_probe_failure_detail(argument: &str, output: &std::process::Output) -> String {
+        let status = output
+            .status
+            .code()
+            .map(|code| code.to_string())
+            .unwrap_or_else(|| "terminated without an exit code".to_string());
+        let stdout_line = Self::first_nonempty_utf8_line(&output.stdout);
+        let stderr_line = Self::first_nonempty_utf8_line(&output.stderr);
+        let mut detail = format!("Primer3 {argument} probe exited {status}");
+        if let Some(line) = stdout_line.as_deref() {
+            detail.push_str(&format!("; stdout: {line}"));
+        }
+        if let Some(line) = stderr_line.as_deref()
+            && stdout_line.as_deref() != Some(line)
+        {
+            detail.push_str(&format!("; stderr: {line}"));
+        }
+        detail
+    }
+
     fn primer3_preflight_display_path(path: &Path) -> String {
         std::fs::canonicalize(path)
             .unwrap_or_else(|_| path.to_path_buf())
@@ -6740,13 +8372,315 @@ impl GentleEngine {
                 .then(|| Self::primer3_preflight_display_path(candidate));
         }
         let path_env = std::env::var_os("PATH")?;
+        let candidate_names = Self::primer3_executable_names_for_path_lookup(
+            trimmed,
+            Self::primer3_platform_path_extensions().as_deref(),
+        );
         for dir in std::env::split_paths(&path_env) {
-            let joined = dir.join(trimmed);
-            if joined.exists() {
-                return Some(Self::primer3_preflight_display_path(&joined));
+            for candidate_name in &candidate_names {
+                let joined = dir.join(candidate_name);
+                if joined.is_file() {
+                    return Some(Self::primer3_preflight_display_path(&joined));
+                }
             }
         }
         None
+    }
+
+    fn primer3_platform_path_extensions() -> Option<String> {
+        if !cfg!(windows) {
+            return None;
+        }
+        Some(std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string()))
+    }
+
+    /// Literal executable name plus platform launcher spellings such as
+    /// `primer3_core.exe`. The explicit spelling remains first and names that
+    /// already carry an extension are never rewritten.
+    pub(crate) fn primer3_executable_names_for_path_lookup(
+        name: &str,
+        path_extensions: Option<&str>,
+    ) -> Vec<String> {
+        let mut names = vec![name.to_string()];
+        if Path::new(name).extension().is_some() {
+            return names;
+        }
+        let mut seen = std::collections::BTreeSet::from([name.to_ascii_lowercase()]);
+        for extension in path_extensions
+            .into_iter()
+            .flat_map(|extensions| extensions.split(';'))
+            .map(str::trim)
+            .filter(|extension| !extension.is_empty())
+        {
+            let extension = if extension.starts_with('.') {
+                extension.to_string()
+            } else {
+                format!(".{extension}")
+            };
+            let candidate = format!("{name}{extension}");
+            if seen.insert(candidate.to_ascii_lowercase()) {
+                names.push(candidate);
+            }
+        }
+        names
+    }
+
+    fn primer3_progress_cache_key(executable: &str) -> String {
+        let resolved = Self::primer3_preflight_resolved_path(executable)
+            .unwrap_or_else(|| executable.trim().to_string());
+        let metadata = std::fs::metadata(&resolved).ok();
+        let length = metadata.as_ref().map(std::fs::Metadata::len);
+        let modified_ns = metadata
+            .and_then(|metadata| metadata.modified().ok())
+            .and_then(|modified| {
+                modified
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .ok()
+                    .map(|duration| duration.as_nanos())
+            });
+        format!("{resolved}|len={length:?}|mtime_ns={modified_ns:?}")
+    }
+
+    fn primer3_help_advertises_progress(stdout: &[u8], stderr: &[u8]) -> bool {
+        [stdout, stderr].into_iter().any(|bytes| {
+            String::from_utf8_lossy(bytes)
+                .split_ascii_whitespace()
+                .map(|token| {
+                    token.trim_matches(|ch: char| {
+                        !ch.is_ascii_alphanumeric() && !matches!(ch, '-' | '_')
+                    })
+                })
+                .any(|token| token == "--progress")
+        })
+    }
+
+    fn probe_primer3_progress_support(executable: &str) -> Option<bool> {
+        static CACHE: std::sync::OnceLock<
+            std::sync::Mutex<std::collections::HashMap<String, Option<bool>>>,
+        > = std::sync::OnceLock::new();
+
+        let key = Self::primer3_progress_cache_key(executable);
+        let cache = CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+        if let Ok(cache) = cache.lock()
+            && let Some(supported) = cache.get(&key)
+        {
+            return *supported;
+        }
+
+        let supported = Command::new(executable)
+            .arg("--help")
+            .output()
+            .ok()
+            .map(|output| Self::primer3_help_advertises_progress(&output.stdout, &output.stderr));
+        if let Ok(mut cache) = cache.lock() {
+            cache.insert(key, supported);
+        }
+        supported
+    }
+
+    /// Every executable named `name` reachable through `PATH`, in `PATH` order
+    /// and without duplicates.
+    fn primer3_path_candidates(name: &str) -> Vec<PathBuf> {
+        let Some(path_env) = std::env::var_os("PATH") else {
+            return vec![];
+        };
+        let candidate_names = Self::primer3_executable_names_for_path_lookup(
+            name,
+            Self::primer3_platform_path_extensions().as_deref(),
+        );
+        let mut seen = std::collections::BTreeSet::new();
+        let mut candidates = vec![];
+        for dir in std::env::split_paths(&path_env) {
+            for candidate_name in &candidate_names {
+                let joined = dir.join(candidate_name);
+                if !joined.is_file() {
+                    continue;
+                }
+                let canonical = std::fs::canonicalize(&joined).unwrap_or_else(|_| joined.clone());
+                if seen.insert(canonical.clone()) {
+                    candidates.push(canonical);
+                }
+            }
+        }
+        candidates
+    }
+
+    /// Comparable numeric form of a Primer3 version line.
+    ///
+    /// Primer3 reports versions inside prose such as `libprimer3 release
+    /// 2.6.1`, so the first dotted-number token is used and compared component
+    /// by component. A line without one sorts below every parsed version.
+    pub(crate) fn primer3_version_sort_key(version: Option<&str>) -> Vec<u64> {
+        let Some(version) = version else {
+            return vec![];
+        };
+        version
+            .split(|ch: char| !ch.is_ascii_digit() && ch != '.')
+            .find(|token| token.contains('.') && token.starts_with(|ch: char| ch.is_ascii_digit()))
+            .map(|token| {
+                token
+                    .split('.')
+                    .filter(|part| !part.is_empty())
+                    .filter_map(|part| part.parse::<u64>().ok())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Creation time as nanoseconds since the epoch.
+    ///
+    /// Not every platform and filesystem records a birth time; where it is
+    /// unavailable the modification time stands in, which keeps the ordering
+    /// total instead of dropping the candidate.
+    fn primer3_creation_unix_nanos(path: &Path) -> Option<u128> {
+        let metadata = std::fs::metadata(path).ok()?;
+        metadata
+            .created()
+            .or_else(|_| metadata.modified())
+            .ok()?
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .map(|duration| duration.as_nanos())
+    }
+
+    /// Rank one Primer3 candidate. Larger sorts better.
+    fn primer3_candidate_rank(path: &Path) -> (bool, Vec<u64>, u128) {
+        let display = path.display().to_string();
+        (
+            Self::probe_primer3_progress_support(&display).unwrap_or(false),
+            Self::primer3_version_sort_key(Self::probe_primer3_version(&display).as_deref()),
+            Self::primer3_creation_unix_nanos(path).unwrap_or(0),
+        )
+    }
+
+    /// Choose which Primer3 build GENtle should run.
+    ///
+    /// A configured value naming a path is authoritative and returned
+    /// unchanged; discovery would otherwise silently override an operator's
+    /// pin. A bare name is looked up across `PATH` and ranked: a build
+    /// advertising `--progress` beats one that does not, because GENtle's
+    /// bounded search reporting and SIGUSR1 status depend on it; then the
+    /// highest version wins; then the most recently created file.
+    pub(crate) fn resolve_primer3_executable(configured: &str) -> String {
+        let trimmed = configured.trim();
+        let name = if trimmed.is_empty() {
+            "primer3_core"
+        } else {
+            trimmed
+        };
+        if Path::new(name).components().count() > 1 {
+            return name.to_string();
+        }
+        let candidates = Self::primer3_path_candidates(name);
+        if candidates.len() < 2 {
+            return candidates
+                .first()
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|| name.to_string());
+        }
+
+        // Ranking spawns probe processes, and the choice has to stay identical
+        // for every operation in a run because checkpoint reuse binds the
+        // selected executable. The candidate set and each file's size/mtime key
+        // the cache, so a changed installation is still noticed.
+        static CACHE: std::sync::OnceLock<
+            std::sync::Mutex<std::collections::HashMap<String, String>>,
+        > = std::sync::OnceLock::new();
+        let cache_key = candidates
+            .iter()
+            .map(|path| Self::primer3_progress_cache_key(&path.display().to_string()))
+            .collect::<Vec<_>>()
+            .join(";");
+        let cache = CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+        if let Ok(cache) = cache.lock()
+            && let Some(selected) = cache.get(&cache_key)
+        {
+            return selected.clone();
+        }
+
+        let selected = Self::select_primer3_from_candidates(&candidates, name);
+        if let Ok(mut cache) = cache.lock() {
+            cache.insert(cache_key, selected.clone());
+        }
+        selected
+    }
+
+    /// Rank an explicit candidate list. Separated from `PATH` discovery so the
+    /// ordering can be exercised without mutating process-global environment.
+    pub(crate) fn select_primer3_from_candidates(candidates: &[PathBuf], name: &str) -> String {
+        // `max_by_key` keeps the last maximum, so the reversed index makes the
+        // earliest candidate win a complete tie rather than the last.
+        candidates
+            .iter()
+            .enumerate()
+            .max_by_key(|(index, path)| {
+                (
+                    Self::primer3_candidate_rank(path),
+                    std::cmp::Reverse(*index),
+                )
+            })
+            .map(|(_, path)| path.display().to_string())
+            .unwrap_or_else(|| name.to_string())
+    }
+
+    /// Describe the candidates a bare-name lookup weighed, and why the winner
+    /// won, so a reader can tell which Primer3 produced a result.
+    fn primer3_selection_provenance(
+        requested: &str,
+        selected: &str,
+    ) -> (Vec<Primer3CandidateSummary>, Option<String>) {
+        let trimmed = requested.trim();
+        let name = if trimmed.is_empty() {
+            "primer3_core"
+        } else {
+            trimmed
+        };
+        if Path::new(name).components().count() > 1 {
+            return (
+                vec![],
+                Some(format!(
+                    "configured executable '{name}' names a path and is used as configured"
+                )),
+            );
+        }
+        let candidates = Self::primer3_path_candidates(name);
+        if candidates.len() < 2 {
+            return (vec![], None);
+        }
+        let summaries = candidates
+            .iter()
+            .map(|path| {
+                let display = path.display().to_string();
+                Primer3CandidateSummary {
+                    progress_supported: Self::probe_primer3_progress_support(&display),
+                    version: Self::probe_primer3_version(&display),
+                    created_unix_ms: Self::primer3_creation_unix_nanos(path)
+                        .map(|nanos| nanos / 1_000_000),
+                    selected: display == selected,
+                    path: display,
+                }
+            })
+            .collect::<Vec<_>>();
+        let winner = summaries.iter().find(|entry| entry.selected);
+        let progress_capable = summaries
+            .iter()
+            .filter(|entry| entry.progress_supported == Some(true))
+            .count();
+        let reason = winner.map(|winner| {
+            let basis = if winner.progress_supported == Some(true) && progress_capable == 1 {
+                "it is the only candidate advertising --progress"
+            } else if winner.progress_supported == Some(true) {
+                "it advertises --progress and has the highest version, then the latest creation time"
+            } else {
+                "no candidate advertises --progress, so the highest version won, then the latest creation time"
+            };
+            format!(
+                "selected '{}' from {} PATH candidates for '{name}' because {basis}",
+                winner.path,
+                summaries.len()
+            )
+        });
+        (summaries, reason)
     }
 
     pub(super) fn probe_primer3_executable_status(executable: &str) -> Primer3PreflightReport {
@@ -6756,20 +8690,36 @@ impl GentleEngine {
             ..Primer3PreflightReport::default()
         };
         let started = Instant::now();
-        match Command::new(executable).arg("--version").output() {
-            Ok(output) => {
-                report.reachable = true;
-                report.status_code = output.status.code();
-                report.version_probe_ok = output.status.success();
-                let stdout_line = Self::first_nonempty_utf8_line(&output.stdout);
-                let stderr_line = Self::first_nonempty_utf8_line(&output.stderr);
-                report.version = stdout_line.or_else(|| stderr_line.clone());
-                if !report.version_probe_ok {
-                    report.detail = stderr_line.or_else(|| report.version.clone());
+        report.progress_supported = Self::probe_primer3_progress_support(executable);
+        let mut failure_details = Vec::new();
+        let mut spawn_errors = Vec::new();
+        for argument in ["--about", "--version"] {
+            match Command::new(executable).arg(argument).output() {
+                Ok(output) => {
+                    report.reachable = true;
+                    report.status_code = output.status.code();
+                    let version =
+                        Self::credible_primer3_version_line(&output.stdout, &output.stderr);
+                    if output.status.success() && version.is_some() {
+                        report.version_probe_ok = true;
+                        report.version = version;
+                        break;
+                    }
+                    failure_details.push(Self::primer3_probe_failure_detail(argument, &output));
+                }
+                Err(err) => {
+                    spawn_errors.push(format!(
+                        "Primer3 {argument} probe could not be started: {err}"
+                    ));
                 }
             }
-            Err(err) => {
-                report.error = Some(err.to_string());
+        }
+        if !report.version_probe_ok {
+            if !failure_details.is_empty() {
+                report.detail = Some(failure_details.join(" | "));
+            }
+            if !spawn_errors.is_empty() {
+                report.error = Some(spawn_errors.join(" | "));
             }
         }
         report.probe_time_ms = started.elapsed().as_millis();
@@ -6787,8 +8737,16 @@ impl GentleEngine {
             .unwrap_or_else(|| self.state.parameters.primer3_executable.trim());
         let configured_executable =
             (!configured_executable.is_empty()).then(|| configured_executable.to_string());
-        let executable = configured_executable.as_deref().unwrap_or("primer3_core");
-        let mut report = Self::probe_primer3_executable_status(executable);
+        let requested = configured_executable.as_deref().unwrap_or("primer3_core");
+        let executable = Self::resolve_primer3_executable(requested);
+        let mut report = Self::probe_primer3_executable_status(&executable);
+        // `executable` stays the name that was asked for; the build selection
+        // lands in `resolved_path` alongside the candidates it was chosen from.
+        report.executable = requested.to_string();
+        let (candidates, selection_reason) =
+            Self::primer3_selection_provenance(requested, &executable);
+        report.candidates = candidates;
+        report.selection_reason = selection_reason;
         report.backend = backend.as_str().to_string();
         report.configured_executable = configured_executable;
         report.used_default_executable = report.configured_executable.is_none();
@@ -6800,6 +8758,472 @@ impl GentleEngine {
 
     pub(super) fn probe_primer3_version(executable: &str) -> Option<String> {
         Self::probe_primer3_executable_status(executable).version
+    }
+
+    pub(super) fn parse_primer3_progress_line(line: &str) -> Option<Primer3Progress> {
+        let payload = line.trim().strip_prefix(PRIMER3_PROGRESS_PREFIX)?;
+        let mut fields = payload.split_whitespace();
+        let record = fields.next()?.strip_prefix("record=")?.parse().ok()?;
+        let work = fields.next()?;
+        if fields.next().is_some() {
+            return None;
+        }
+        let (completed, bound) = work.split_once('<')?;
+        let completed = completed.parse().ok()?;
+        let bound = bound.parse().ok()?;
+        (completed <= bound).then_some(Primer3Progress {
+            record,
+            completed,
+            bound,
+            ..Primer3Progress::default()
+        })
+    }
+
+    pub(super) fn assess_primer3_runtime(
+        progress: Option<&Primer3Progress>,
+        elapsed: Duration,
+        time_since_progress: Duration,
+        policy: &TranscriptAssayPrimerSearchPolicy,
+    ) -> Primer3RuntimeAssessment {
+        if time_since_progress >= Duration::from_secs(policy.runtime_no_progress_reduce_after_secs)
+        {
+            return Primer3RuntimeAssessment {
+                status: "runtime_reduction_no_progress",
+                reduce: true,
+                ..Primer3RuntimeAssessment::default()
+            };
+        }
+        let projected_total_ms = progress.and_then(|value| {
+            (value.completed > 0 && value.bound >= value.completed).then(|| {
+                elapsed.as_millis().saturating_mul(value.bound as u128) / value.completed as u128
+            })
+        });
+        let projected_total = projected_total_ms
+            .map(|millis| Duration::from_millis(millis.min(u64::MAX as u128) as u64));
+        if elapsed >= Duration::from_secs(policy.runtime_reduce_after_secs)
+            && projected_total.is_some_and(|projection| {
+                projection >= Duration::from_secs(policy.runtime_reduce_projected_total_secs)
+            })
+        {
+            return Primer3RuntimeAssessment {
+                projected_total_ms,
+                status: "runtime_reduction_projected_too_long",
+                reduce: true,
+            };
+        }
+        if elapsed >= Duration::from_secs(policy.runtime_warning_after_secs)
+            && projected_total.is_some_and(|projection| {
+                projection >= Duration::from_secs(policy.runtime_warning_projected_total_secs)
+            })
+        {
+            return Primer3RuntimeAssessment {
+                projected_total_ms,
+                status: "suspicious_runtime_projection",
+                reduce: false,
+            };
+        }
+        Primer3RuntimeAssessment {
+            projected_total_ms,
+            status: "within_runtime_policy",
+            reduce: false,
+        }
+    }
+
+    pub(crate) fn is_primer3_runtime_reduction_error(error: &EngineError) -> bool {
+        error.message.starts_with(PRIMER3_RUNTIME_REDUCTION_MESSAGE)
+    }
+
+    fn primer3_progress_flag_unsupported(output: &Primer3ProcessOutput) -> bool {
+        if output.status.success() {
+            return false;
+        }
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let lower = stderr.to_ascii_lowercase();
+        let explicitly_rejected = lower.contains("progress")
+            && [
+                "unknown option",
+                "unrecognized option",
+                "invalid option",
+                "illegal option",
+            ]
+            .iter()
+            .any(|marker| lower.contains(marker));
+        let legacy_usage = stderr.lines().any(|line| {
+            line.to_ascii_lowercase().contains("usage:") && !line.contains("--progress")
+        });
+        explicitly_rejected || legacy_usage
+    }
+
+    fn primer3_non_progress_stderr_detail(stderr: &[u8]) -> Option<String> {
+        String::from_utf8_lossy(stderr)
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty() && Self::parse_primer3_progress_line(line).is_none())
+            .map(ToOwned::to_owned)
+    }
+
+    pub(super) fn primer3_progress_parse_warning(stderr: &[u8]) -> Option<String> {
+        let malformed_count = String::from_utf8_lossy(stderr)
+            .lines()
+            .map(str::trim)
+            .filter(|line| {
+                line.starts_with(PRIMER3_PROGRESS_PREFIX)
+                    && Self::parse_primer3_progress_line(line).is_none()
+            })
+            .count();
+        (malformed_count > 0).then(|| {
+            format!(
+                "Primer3 emitted {malformed_count} unparsed PRIMER3_PROGRESS record(s); bounded work counters and runtime projections omit those records."
+            )
+        })
+    }
+
+    #[cfg(unix)]
+    fn configure_primer3_progress_signal(command: &mut Command) {
+        // GENtle blocks SIGUSR1 for its sigwait diagnostics. Child processes
+        // inherit that mask across exec, so explicitly unblock it before
+        // Primer3 installs its --progress handler.
+        unsafe {
+            command.pre_exec(|| {
+                let mut set = std::mem::zeroed::<libc::sigset_t>();
+                if libc::sigemptyset(&mut set) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                if libc::sigaddset(&mut set, libc::SIGUSR1) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                if libc::sigprocmask(libc::SIG_UNBLOCK, &set, std::ptr::null_mut()) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+    }
+
+    #[cfg(not(unix))]
+    fn configure_primer3_progress_signal(_command: &mut Command) {}
+
+    #[cfg(unix)]
+    fn request_primer3_progress(child_id: u32) {
+        let _ = unsafe { libc::kill(child_id as libc::pid_t, libc::SIGUSR1) };
+    }
+
+    #[cfg(not(unix))]
+    fn request_primer3_progress(_child_id: u32) {}
+
+    fn stop_primer3_process(child: &mut std::process::Child) {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    fn dispatch_primer3_progress_line(
+        line: &str,
+        on_progress: &mut Option<&mut dyn FnMut(Primer3Progress) -> bool>,
+    ) -> Option<bool> {
+        let progress = Self::parse_primer3_progress_line(line)?;
+        Some(match on_progress.as_deref_mut() {
+            Some(callback) => callback(progress),
+            None => true,
+        })
+    }
+
+    fn run_primer3_process_attempt(
+        primer3_executable: &str,
+        input: &str,
+        progress_enabled: bool,
+        runtime_policy: &TranscriptAssayPrimerSearchPolicy,
+        mut on_progress: Option<&mut dyn FnMut(Primer3Progress) -> bool>,
+    ) -> Result<Primer3ProcessOutput, EngineError> {
+        let mut command = Command::new(primer3_executable);
+        if progress_enabled {
+            command.arg("--progress");
+            Self::configure_primer3_progress_signal(&mut command);
+        }
+        let mut child = command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| EngineError {
+                code: if error.kind() == std::io::ErrorKind::NotFound {
+                    ErrorCode::Unsupported
+                } else {
+                    ErrorCode::Io
+                },
+                message: format!(
+                    "Primer3 backend executable '{}' is not available: {error}",
+                    primer3_executable
+                ),
+                cause_chain: vec![],
+            })?;
+
+        let Some(stdout) = child.stdout.take() else {
+            Self::stop_primer3_process(&mut child);
+            return Err(EngineError {
+                code: ErrorCode::Internal,
+                message: "Primer3 stdout pipe was unavailable".to_string(),
+                cause_chain: vec![],
+            });
+        };
+        let Some(stderr) = child.stderr.take() else {
+            Self::stop_primer3_process(&mut child);
+            return Err(EngineError {
+                code: ErrorCode::Internal,
+                message: "Primer3 stderr pipe was unavailable".to_string(),
+                cause_chain: vec![],
+            });
+        };
+
+        let stdout_reader = match std::thread::Builder::new()
+            .name("gentle-primer3-stdout".to_string())
+            .spawn(move || {
+                let mut reader = BufReader::new(stdout);
+                let mut bytes = Vec::new();
+                reader.read_to_end(&mut bytes).map(|_| bytes)
+            }) {
+            Ok(reader) => reader,
+            Err(error) => {
+                Self::stop_primer3_process(&mut child);
+                return Err(EngineError {
+                    code: ErrorCode::Io,
+                    message: format!("Could not start Primer3 stdout reader: {error}"),
+                    cause_chain: vec![],
+                });
+            }
+        };
+
+        let (stderr_tx, stderr_rx) = std::sync::mpsc::channel::<String>();
+        let stderr_reader = match std::thread::Builder::new()
+            .name("gentle-primer3-stderr".to_string())
+            .spawn(move || {
+                let mut reader = BufReader::new(stderr);
+                let mut bytes = Vec::new();
+                loop {
+                    let mut line = Vec::new();
+                    let read = reader.read_until(b'\n', &mut line)?;
+                    if read == 0 {
+                        break;
+                    }
+                    bytes.extend_from_slice(&line);
+                    let _ = stderr_tx.send(String::from_utf8_lossy(&line).trim().to_string());
+                }
+                Ok::<Vec<u8>, std::io::Error>(bytes)
+            }) {
+            Ok(reader) => reader,
+            Err(error) => {
+                Self::stop_primer3_process(&mut child);
+                let _ = stdout_reader.join();
+                return Err(EngineError {
+                    code: ErrorCode::Io,
+                    message: format!("Could not start Primer3 stderr reader: {error}"),
+                    cause_chain: vec![],
+                });
+            }
+        };
+
+        let stdin_error = child.stdin.take().and_then(|mut stdin| {
+            stdin
+                .write_all(input.as_bytes())
+                .err()
+                .map(|error| error.to_string())
+        });
+
+        let started = Instant::now();
+        let mut last_progress_at = started;
+        let mut last_signal_at = started;
+        let mut last_progress = None::<Primer3Progress>;
+        let mut stderr_open = true;
+        let mut cancelled = false;
+        let mut runtime_reduction_reason = None::<String>;
+        let status = loop {
+            if stderr_open {
+                match stderr_rx.recv_timeout(PRIMER3_PROCESS_POLL_INTERVAL) {
+                    Ok(line) => {
+                        if let Some(mut progress) = Self::parse_primer3_progress_line(&line) {
+                            last_progress_at = Instant::now();
+                            let assessment = Self::assess_primer3_runtime(
+                                Some(&progress),
+                                started.elapsed(),
+                                Duration::ZERO,
+                                runtime_policy,
+                            );
+                            progress.elapsed_ms = Some(started.elapsed().as_millis());
+                            progress.work_remaining =
+                                Some(progress.bound.saturating_sub(progress.completed));
+                            progress.projected_total_ms = assessment.projected_total_ms;
+                            progress.runtime_assessment = Some(assessment.status.to_string());
+                            let keep_running = on_progress
+                                .as_deref_mut()
+                                .is_none_or(|callback| callback(progress.clone()));
+                            last_progress = Some(progress);
+                            if !keep_running {
+                                cancelled = true;
+                            }
+                            if assessment.reduce {
+                                runtime_reduction_reason = Some(format!(
+                                    "{} after {} ms",
+                                    assessment.status,
+                                    started.elapsed().as_millis()
+                                ));
+                            }
+                        }
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                        stderr_open = false;
+                    }
+                }
+            } else {
+                std::thread::sleep(PRIMER3_PROCESS_POLL_INTERVAL);
+            }
+
+            if cancelled || runtime_reduction_reason.is_some() {
+                let _ = child.kill();
+                break child.wait().map_err(|error| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!("Could not stop cancelled Primer3 process: {error}"),
+                    cause_chain: vec![],
+                });
+            }
+            let runtime_assessment = Self::assess_primer3_runtime(
+                last_progress.as_ref(),
+                started.elapsed(),
+                last_progress_at.elapsed(),
+                runtime_policy,
+            );
+            if runtime_assessment.reduce {
+                runtime_reduction_reason = Some(format!(
+                    "{} after {} ms",
+                    runtime_assessment.status,
+                    started.elapsed().as_millis()
+                ));
+            }
+            match child.try_wait() {
+                Ok(Some(status)) => break Ok(status),
+                Ok(None) => {}
+                Err(error) => {
+                    Self::stop_primer3_process(&mut child);
+                    break Err(EngineError {
+                        code: ErrorCode::Io,
+                        message: format!("Could not inspect Primer3 process status: {error}"),
+                        cause_chain: vec![],
+                    });
+                }
+            }
+            if progress_enabled
+                && last_progress.is_some()
+                && last_progress_at.elapsed() >= PRIMER3_PROGRESS_SIGNAL_AFTER
+                && last_signal_at.elapsed() >= PRIMER3_PROGRESS_SIGNAL_AFTER
+            {
+                Self::request_primer3_progress(child.id());
+                last_signal_at = Instant::now();
+            }
+        };
+
+        let stdout = stdout_reader
+            .join()
+            .map_err(|_| EngineError {
+                code: ErrorCode::Internal,
+                message: "Primer3 stdout reader panicked".to_string(),
+                cause_chain: vec![],
+            })?
+            .map_err(|error| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not read Primer3 stdout: {error}"),
+                cause_chain: vec![],
+            })?;
+        let stderr = stderr_reader
+            .join()
+            .map_err(|_| EngineError {
+                code: ErrorCode::Internal,
+                message: "Primer3 stderr reader panicked".to_string(),
+                cause_chain: vec![],
+            })?
+            .map_err(|error| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not read Primer3 stderr: {error}"),
+                cause_chain: vec![],
+            })?;
+
+        while let Ok(line) = stderr_rx.try_recv() {
+            if let Some(keep_running) =
+                Self::dispatch_primer3_progress_line(&line, &mut on_progress)
+                && !keep_running
+            {
+                cancelled = true;
+            }
+        }
+        let status = status?;
+        if let Some(reason) = runtime_reduction_reason {
+            let progress_warning = Self::primer3_progress_parse_warning(&stderr)
+                .map(|warning| format!("; {warning}"))
+                .unwrap_or_default();
+            let exit_status = status
+                .code()
+                .map(|code| code.to_string())
+                .unwrap_or_else(|| "signal".to_string());
+            return Err(EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "{PRIMER3_RUNTIME_REDUCTION_MESSAGE}: {reason}{progress_warning}; child_status={exit_status}; stdout_bytes={}; stdout_sha256={}; stderr_bytes={}; stderr_sha256={}",
+                    stdout.len(),
+                    sha256_prefixed_bytes(&stdout),
+                    stderr.len(),
+                    sha256_prefixed_bytes(&stderr)
+                ),
+                cause_chain: vec![],
+            });
+        }
+        if cancelled {
+            return Err(EngineError {
+                code: ErrorCode::Internal,
+                message: PRIMER_DESIGN_CANCELLED_MESSAGE.to_string(),
+                cause_chain: vec![],
+            });
+        }
+
+        Ok(Primer3ProcessOutput {
+            status,
+            stdout,
+            stderr,
+            stdin_error,
+        })
+    }
+
+    fn run_primer3_process(
+        primer3_executable: &str,
+        input: &str,
+        runtime_policy: &TranscriptAssayPrimerSearchPolicy,
+        on_progress: Option<&mut dyn FnMut(Primer3Progress) -> bool>,
+    ) -> Result<Primer3ProcessOutput, EngineError> {
+        let progress_supported =
+            Self::probe_primer3_progress_support(primer3_executable).unwrap_or(false);
+        let output = Self::run_primer3_process_attempt(
+            primer3_executable,
+            input,
+            progress_supported,
+            runtime_policy,
+            on_progress,
+        )?;
+        let output = if progress_supported && Self::primer3_progress_flag_unsupported(&output) {
+            Self::run_primer3_process_attempt(
+                primer3_executable,
+                input,
+                false,
+                runtime_policy,
+                None,
+            )?
+        } else {
+            output
+        };
+        if let Some(error) = output.stdin_error.as_deref() {
+            return Err(EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not write Primer3 request to stdin: {error}"),
+                cause_chain: vec![],
+            });
+        }
+        Ok(output)
     }
 
     pub(super) fn design_primer_pairs_primer3(
@@ -6816,10 +9240,158 @@ impl GentleEngine {
         max_tm_delta_c: f64,
         max_pairs: usize,
         primer3_executable: &str,
+        on_progress: Option<&mut dyn FnMut(Primer3Progress) -> bool>,
     ) -> Result<
         (
             Vec<PrimerDesignPairRecord>,
             PrimerDesignRejectionSummary,
+            Option<String>,
+            Option<String>,
+            String,
+        ),
+        EngineError,
+    > {
+        Self::design_primer_pairs_primer3_with_options(
+            template_seq,
+            roi_start_0based,
+            roi_end_0based,
+            forward,
+            forward_sequence_constraints,
+            reverse,
+            reverse_sequence_constraints,
+            pair_constraints,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_tm_delta_c,
+            max_pairs,
+            primer3_executable,
+            &Primer3PairDesignOptions::default(),
+            on_progress,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn design_primer_pairs_primer3_with_options(
+        template_seq: &str,
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        forward: &PrimerDesignSideConstraint,
+        forward_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        reverse: &PrimerDesignSideConstraint,
+        reverse_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        pair_constraints: &NormalizedPrimerPairConstraints,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        max_tm_delta_c: f64,
+        max_pairs: usize,
+        primer3_executable: &str,
+        options: &Primer3PairDesignOptions,
+        on_progress: Option<&mut dyn FnMut(Primer3Progress) -> bool>,
+    ) -> Result<
+        (
+            Vec<PrimerDesignPairRecord>,
+            PrimerDesignRejectionSummary,
+            Option<String>,
+            Option<String>,
+            String,
+        ),
+        EngineError,
+    > {
+        let (outcome, version, explain, input) =
+            Self::design_primer_pairs_primer3_with_options_and_capture(
+                template_seq,
+                roi_start_0based,
+                roi_end_0based,
+                forward,
+                forward_sequence_constraints,
+                reverse,
+                reverse_sequence_constraints,
+                pair_constraints,
+                min_amplicon_bp,
+                max_amplicon_bp,
+                max_tm_delta_c,
+                max_pairs,
+                primer3_executable,
+                options,
+                0,
+                on_progress,
+            )?;
+        Ok((
+            outcome.pairs,
+            outcome.rejection_summary,
+            version,
+            explain,
+            input,
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn design_primer_pairs_primer3_with_capture(
+        template_seq: &str,
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        forward: &PrimerDesignSideConstraint,
+        forward_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        reverse: &PrimerDesignSideConstraint,
+        reverse_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        pair_constraints: &NormalizedPrimerPairConstraints,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        max_tm_delta_c: f64,
+        max_pairs: usize,
+        primer3_executable: &str,
+        near_miss_limit: usize,
+        on_progress: Option<&mut dyn FnMut(Primer3Progress) -> bool>,
+    ) -> Result<
+        (
+            PrimerDesignPairSearchOutcome,
+            Option<String>,
+            Option<String>,
+            String,
+        ),
+        EngineError,
+    > {
+        Self::design_primer_pairs_primer3_with_options_and_capture(
+            template_seq,
+            roi_start_0based,
+            roi_end_0based,
+            forward,
+            forward_sequence_constraints,
+            reverse,
+            reverse_sequence_constraints,
+            pair_constraints,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_tm_delta_c,
+            max_pairs,
+            primer3_executable,
+            &Primer3PairDesignOptions::default(),
+            near_miss_limit,
+            on_progress,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn design_primer_pairs_primer3_with_options_and_capture(
+        template_seq: &str,
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        forward: &PrimerDesignSideConstraint,
+        forward_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        reverse: &PrimerDesignSideConstraint,
+        reverse_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        pair_constraints: &NormalizedPrimerPairConstraints,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        max_tm_delta_c: f64,
+        max_pairs: usize,
+        primer3_executable: &str,
+        options: &Primer3PairDesignOptions,
+        near_miss_limit: usize,
+        on_progress: Option<&mut dyn FnMut(Primer3Progress) -> bool>,
+    ) -> Result<
+        (
+            PrimerDesignPairSearchOutcome,
             Option<String>,
             Option<String>,
             String,
@@ -6837,48 +9409,85 @@ impl GentleEngine {
         let max_gc_percent = forward.max_gc_fraction.max(reverse.max_gc_fraction) * 100.0;
         let num_return = max_pairs.saturating_mul(5).clamp(50, 1000);
 
-        let input = format!(
-            "SEQUENCE_ID=gentle_primer_design\nSEQUENCE_TEMPLATE={template_seq}\nSEQUENCE_TARGET={roi_start_0based},{target_len}\nPRIMER_TASK=generic\nPRIMER_PICK_LEFT_PRIMER=1\nPRIMER_PICK_RIGHT_PRIMER=1\nPRIMER_PICK_INTERNAL_OLIGO=0\nPRIMER_MIN_SIZE={min_size}\nPRIMER_MAX_SIZE={max_size}\nPRIMER_MIN_TM={min_tm:.3}\nPRIMER_MAX_TM={max_tm:.3}\nPRIMER_MIN_GC={min_gc_percent:.3}\nPRIMER_MAX_GC={max_gc_percent:.3}\nPRIMER_PRODUCT_SIZE_RANGE={min_amplicon_bp}-{max_amplicon_bp}\nPRIMER_NUM_RETURN={num_return}\nPRIMER_EXPLAIN_FLAG=1\n=\n"
-        );
-        let mut child = Command::new(primer3_executable)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| EngineError {
-                code: if e.kind() == std::io::ErrorKind::NotFound {
-                    ErrorCode::Unsupported
-                } else {
-                    ErrorCode::Io
-                },
-                message: format!(
-                    "Primer3 backend executable '{}' is not available: {e}",
-                    primer3_executable
-                ),
-
-                cause_chain: vec![],
-            })?;
-        if let Some(stdin) = child.stdin.as_mut() {
-            stdin.write_all(input.as_bytes()).map_err(|e| EngineError {
-                code: ErrorCode::Io,
-                message: format!("Could not write Primer3 request to stdin: {e}"),
-
-                cause_chain: vec![],
-            })?;
+        let mut sequence_tags = String::new();
+        if !options.overlap_junction_positions_1based.is_empty() {
+            let positions = options
+                .overlap_junction_positions_1based
+                .iter()
+                .map(|value| value.to_string())
+                .collect::<Vec<_>>()
+                .join(" ");
+            sequence_tags.push_str(&format!(
+                "SEQUENCE_OVERLAP_JUNCTION_LIST={positions}\nPRIMER_MIN_3_PRIME_OVERLAP_OF_JUNCTION={}\nPRIMER_MIN_5_PRIME_OVERLAP_OF_JUNCTION={}\n",
+                options.min_3prime_overlap_bp, options.min_5prime_overlap_bp
+            ));
         }
-        let output = child.wait_with_output().map_err(|e| EngineError {
-            code: ErrorCode::Io,
-            message: format!(
-                "Could not read Primer3 response from '{}': {e}",
-                primer3_executable
-            ),
-
-            cause_chain: vec![],
-        })?;
+        if let (Some((left_start, left_end)), Some((right_start, right_end))) =
+            (options.left_window_0based, options.right_window_0based)
+        {
+            let left_len = left_end.saturating_sub(left_start);
+            let right_len = right_end.saturating_sub(right_start);
+            if left_len > 0 && right_len > 0 {
+                sequence_tags.push_str(&format!(
+                    "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST={left_start},{left_len},{right_start},{right_len}\n"
+                ));
+            }
+        }
+        if !options.excluded_regions_0based.is_empty() {
+            let excluded = options
+                .excluded_regions_0based
+                .iter()
+                .filter(|(start, end)| start < end)
+                .map(|(start, end)| format!("{start},{}", end.saturating_sub(*start)))
+                .collect::<Vec<_>>()
+                .join(" ");
+            if !excluded.is_empty() {
+                sequence_tags.push_str(&format!("SEQUENCE_EXCLUDED_REGION={excluded}\n"));
+            }
+        }
+        if let Some(max_poly_x) = options.max_poly_x {
+            sequence_tags.push_str(&format!(
+                "PRIMER_MAX_POLY_X={max_poly_x}\nPRIMER_MAX_NS_ACCEPTED=0\n"
+            ));
+        }
+        for field in &options.chemistry_fields {
+            sequence_tags.push_str(&format!("{}={}\n", field.name, field.value));
+        }
+        if let Some(sequence) =
+            Self::primer3_exact_input_primer(forward, forward_sequence_constraints)
+        {
+            sequence_tags.push_str(&format!("SEQUENCE_PRIMER={sequence}\n"));
+        }
+        if let Some(sequence) =
+            Self::primer3_exact_input_primer(reverse, reverse_sequence_constraints)
+        {
+            sequence_tags.push_str(&format!("SEQUENCE_PRIMER_REVCOMP={sequence}\n"));
+        }
+        // A Primer3 target must be flanked by the pair, which conflicts with
+        // requiring either primer to overlap a splice junction at that target.
+        let target_tag = options
+            .overlap_junction_positions_1based
+            .is_empty()
+            .then(|| format!("SEQUENCE_TARGET={roi_start_0based},{target_len}\n"))
+            .unwrap_or_default();
+        let input = format!(
+            "SEQUENCE_ID=gentle_primer_design\nSEQUENCE_TEMPLATE={template_seq}\n{target_tag}{sequence_tags}PRIMER_TASK=generic\nPRIMER_PICK_LEFT_PRIMER=1\nPRIMER_PICK_RIGHT_PRIMER=1\nPRIMER_PICK_INTERNAL_OLIGO=0\nPRIMER_MIN_SIZE={min_size}\nPRIMER_MAX_SIZE={max_size}\nPRIMER_MIN_TM={min_tm:.3}\nPRIMER_MAX_TM={max_tm:.3}\nPRIMER_MIN_GC={min_gc_percent:.3}\nPRIMER_MAX_GC={max_gc_percent:.3}\nPRIMER_PRODUCT_SIZE_RANGE={min_amplicon_bp}-{max_amplicon_bp}\nPRIMER_NUM_RETURN={num_return}\nPRIMER_EXPLAIN_FLAG=1\n=\n"
+        );
+        let output = Self::run_primer3_process(
+            primer3_executable,
+            &input,
+            &options.runtime_policy,
+            on_progress,
+        )?;
         let stdout_text = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr_text = String::from_utf8_lossy(&output.stderr).to_string();
         let map = Self::parse_primer3_kv_output(&stdout_text);
-        let primer3_explain = Self::primer3_explain_summary(&map);
+        let mut primer3_explain = Self::primer3_explain_summary(&map);
+        if let Some(progress_warning) = Self::primer3_progress_parse_warning(&output.stderr) {
+            primer3_explain = Some(match primer3_explain {
+                Some(existing) => format!("{existing}; {progress_warning}"),
+                None => progress_warning,
+            });
+        }
 
         if let Some(primer_error) = map.get("PRIMER_ERROR") {
             return Err(EngineError {
@@ -6889,11 +9498,8 @@ impl GentleEngine {
             });
         }
         if !output.status.success() {
-            let detail = stderr_text
-                .lines()
-                .map(str::trim)
-                .find(|line| !line.is_empty())
-                .unwrap_or("no stderr detail");
+            let detail = Self::primer3_non_progress_stderr_detail(&output.stderr)
+                .unwrap_or_else(|| "no stderr detail".to_string());
             return Err(EngineError {
                 code: ErrorCode::Io,
                 message: format!(
@@ -6916,6 +9522,11 @@ impl GentleEngine {
             .and_then(|raw| raw.parse::<usize>().ok())
             .unwrap_or(0);
         let mut rejection_summary = PrimerDesignRejectionSummary::default();
+        let mut near_miss_collector = PrimerDesignNearMissCollector {
+            requested_limit: near_miss_limit,
+            effective_limit: near_miss_limit.min(PRIMER_DESIGN_MAX_REJECTED_NEAR_MISS_LIMIT),
+            ..PrimerDesignNearMissCollector::default()
+        };
         let mut pairs: Vec<PrimerDesignPairRecord> = vec![];
         let target_amplicon_bp = (min_amplicon_bp + max_amplicon_bp) / 2;
 
@@ -7107,51 +9718,83 @@ impl GentleEngine {
             {
                 rejection_summary.amplicon_or_roi_failure =
                     rejection_summary.amplicon_or_roi_failure.saturating_add(1);
+                let mut failed_checks = Vec::new();
+                if !pair.rule_flags.amplicon_size_in_range {
+                    failed_checks.push("amplicon_size_out_of_range".to_string());
+                }
+                if !pair.rule_flags.roi_covered {
+                    failed_checks.push("roi_not_covered".to_string());
+                }
+                if !pair.rule_flags.tm_delta_in_range {
+                    failed_checks.push("tm_delta_out_of_range".to_string());
+                }
+                Self::retain_primer_design_near_miss(
+                    &mut near_miss_collector,
+                    Self::rejected_primer_design_candidate_from_pair(
+                        &pair,
+                        PrimerDesignRejectionReason::AmpliconOrRoiFailure,
+                        failed_checks,
+                        "Primer3-returned pair failed GENtle amplicon, ROI, or melting-temperature requirements.",
+                    ),
+                );
                 continue;
             }
-            if !Self::primer_pair_matches_constraints(
+            let pair_constraint_failures = Self::primer_pair_constraint_failures(
                 template_bytes,
                 &pair,
                 roi_start_0based,
                 roi_end_0based,
                 pair_constraints,
-            ) {
+            );
+            if !pair_constraint_failures.is_empty() {
                 rejection_summary.pair_constraint_failure =
                     rejection_summary.pair_constraint_failure.saturating_add(1);
+                Self::retain_primer_design_near_miss(
+                    &mut near_miss_collector,
+                    Self::rejected_primer_design_candidate_from_pair(
+                        &pair,
+                        PrimerDesignRejectionReason::PairConstraintFailure,
+                        pair_constraint_failures.clone(),
+                        format!(
+                            "Primer3-returned pair failed configured GENtle pair constraints: {}.",
+                            pair_constraint_failures.join(", ")
+                        ),
+                    ),
+                );
                 continue;
             }
             pairs.push(pair);
         }
         Self::sort_and_rank_primer_design_pairs(&mut pairs, max_pairs);
+        let capture_status = if near_miss_collector.effective_limit == 0 {
+            PrimerPairCharacterizationStatus::NotRun
+        } else {
+            PrimerPairCharacterizationStatus::Incomplete
+        };
+        let capture_reason = if near_miss_collector.effective_limit == 0 {
+            "Rejected pair-level near-miss retention was disabled by the design request."
+                .to_string()
+        } else {
+            "Retained a bounded deterministic subset of Primer3-returned pairs rejected by GENtle post-filters; Primer3-internal and single-primer rejections remain aggregate-only."
+                .to_string()
+        };
+        let (rejected_near_misses, near_miss_capture) =
+            Self::finish_primer_design_near_miss_capture(
+                near_miss_collector,
+                capture_status,
+                capture_reason,
+            );
         Ok((
-            pairs,
-            rejection_summary,
+            PrimerDesignPairSearchOutcome {
+                pairs,
+                rejection_summary,
+                rejected_near_misses,
+                near_miss_capture,
+            },
             Self::probe_primer3_version(primer3_executable),
             primer3_explain,
             input,
         ))
-    }
-
-    pub(super) fn right_end_overhangs(dna: &DNAsequence) -> Vec<Vec<u8>> {
-        let mut ret = Vec::new();
-        if !dna.overhang().forward_3.is_empty() {
-            ret.push(dna.overhang().forward_3.clone());
-        }
-        if !dna.overhang().reverse_5.is_empty() {
-            ret.push(dna.overhang().reverse_5.clone());
-        }
-        ret
-    }
-
-    pub(super) fn left_end_overhangs(dna: &DNAsequence) -> Vec<Vec<u8>> {
-        let mut ret = Vec::new();
-        if !dna.overhang().forward_5.is_empty() {
-            ret.push(dna.overhang().forward_5.clone());
-        }
-        if !dna.overhang().reverse_3.is_empty() {
-            ret.push(dna.overhang().reverse_3.clone());
-        }
-        ret
     }
 
     pub(super) fn right_end_is_blunt(dna: &DNAsequence) -> bool {
@@ -7163,19 +9806,41 @@ impl GentleEngine {
     }
 
     pub(super) fn sticky_compatible(left: &DNAsequence, right: &DNAsequence) -> bool {
-        let right_opts = Self::right_end_overhangs(left);
-        let left_opts = Self::left_end_overhangs(right);
-        if right_opts.is_empty() || left_opts.is_empty() {
+        Self::sticky_ligation_junction_sequence(left, right).is_some()
+    }
+
+    pub(super) fn sticky_ligation_junction_sequence(
+        left: &DNAsequence,
+        right: &DNAsequence,
+    ) -> Option<Vec<u8>> {
+        let compatible = |a: &[u8], b: &[u8]| {
+            !a.is_empty()
+                && !b.is_empty()
+                && (b == Self::complement_bytes(a) || b == Self::reverse_complement_bytes(a))
+        };
+        if compatible(&left.overhang().forward_3, &right.overhang().reverse_3) {
+            return Some(left.overhang().forward_3.clone());
+        }
+        if compatible(&left.overhang().reverse_5, &right.overhang().forward_5) {
+            return Some(right.overhang().forward_5.clone());
+        }
+        None
+    }
+
+    pub(super) fn circular_sequences_are_rotations(left: &str, right: &str) -> bool {
+        if left.len() != right.len() {
             return false;
         }
-        for r in &right_opts {
-            let rc_r = Self::reverse_complement_bytes(r);
-            let c_r = Self::complement_bytes(r);
-            if left_opts.iter().any(|l| *l == rc_r || *l == c_r) {
-                return true;
-            }
+        if left.is_empty() {
+            return true;
         }
-        false
+        let mut doubled = Vec::with_capacity(left.len() * 2);
+        doubled.extend_from_slice(left.as_bytes());
+        doubled.extend_from_slice(left.as_bytes());
+        doubled
+            .windows(right.len())
+            .take(left.len())
+            .any(|window| window == right.as_bytes())
     }
 
     pub(super) fn find_anneal_sites(
@@ -7258,6 +9923,14 @@ mod tests {
     }
 
     #[test]
+    fn estimate_primer_tm_is_quantized_for_cross_platform_reports() {
+        assert_eq!(
+            GentleEngine::estimate_primer_tm_c(b"CGGATCCGATCGTAGCCTA"),
+            63.362778055
+        );
+    }
+
+    #[test]
     fn estimate_primer_tm_falls_back_for_too_short_oligos() {
         let primer = b"ATGC";
         assert_eq!(
@@ -7285,5 +9958,201 @@ mod tests {
         assert!(description.contains("500"));
         assert!(description.contains("high-fidelity"));
         assert!(description.contains("fall back"));
+    }
+
+    #[test]
+    fn primer_pair_score_terms_reconstruct_the_existing_rank_score() {
+        let pair = GentleEngine::build_primer_design_pair_record(
+            PrimerDesignPrimerRecord {
+                sequence: "ATGCGTACGTAGCTAGCTAA".to_string(),
+                start_0based: 4,
+                end_0based_exclusive: 24,
+                tm_c: 61.2,
+                gc_fraction: 0.45,
+                anneal_hits: 1,
+                ..PrimerDesignPrimerRecord::default()
+            },
+            PrimerDesignPrimerRecord {
+                sequence: "CGATCGTACGATCGTAGCTA".to_string(),
+                start_0based: 82,
+                end_0based_exclusive: 102,
+                tm_c: 60.1,
+                gc_fraction: 0.5,
+                anneal_hits: 2,
+                ..PrimerDesignPrimerRecord::default()
+            },
+            40,
+            70,
+            60,
+            120,
+            4.0,
+            90,
+        )
+        .expect("valid pair");
+
+        assert_eq!(pair.score_terms.first().unwrap().term, "baseline");
+        assert!(pair.score_terms.iter().all(|term| {
+            (term.contribution - term.raw_value * term.weight).abs()
+                <= PRIMER_DESIGN_SCORE_SUM_TOLERANCE * term.contribution.abs().max(1.0)
+        }));
+        let reconstructed = pair
+            .score_terms
+            .iter()
+            .map(|term| term.contribution)
+            .sum::<f64>();
+        assert!(
+            (pair.score - reconstructed).abs()
+                <= PRIMER_DESIGN_SCORE_SUM_TOLERANCE * pair.score.abs().max(1.0)
+        );
+    }
+
+    #[test]
+    fn rejected_near_miss_retention_is_bounded_and_input_order_independent() {
+        fn candidate(score: f64, start: usize) -> PrimerDesignRejectedCandidate {
+            PrimerDesignRejectedCandidate {
+                forward: PrimerDesignPrimerRecord {
+                    sequence: format!("F{start}"),
+                    start_0based: start,
+                    end_0based_exclusive: start + 20,
+                    ..PrimerDesignPrimerRecord::default()
+                },
+                reverse: PrimerDesignPrimerRecord {
+                    sequence: format!("R{start}"),
+                    start_0based: start + 80,
+                    end_0based_exclusive: start + 100,
+                    ..PrimerDesignPrimerRecord::default()
+                },
+                amplicon_start_0based: start,
+                amplicon_end_0based_exclusive: start + 100,
+                score: Some(score),
+                reasons: vec![PrimerDesignRejectionReason::PairConstraintFailure],
+                failed_checks: vec!["synthetic_constraint".to_string()],
+                detail: "Synthetic evaluated rejection.".to_string(),
+            }
+        }
+
+        let rows = vec![
+            candidate(10.0, 10),
+            candidate(40.0, 40),
+            candidate(30.0, 30),
+            candidate(20.0, 20),
+        ];
+        let collect = |input: Vec<PrimerDesignRejectedCandidate>| {
+            let mut collector = PrimerDesignNearMissCollector {
+                requested_limit: 2,
+                effective_limit: 2,
+                ..PrimerDesignNearMissCollector::default()
+            };
+            for row in input {
+                GentleEngine::retain_primer_design_near_miss(&mut collector, row);
+            }
+            GentleEngine::finish_primer_design_near_miss_capture(
+                collector,
+                PrimerPairCharacterizationStatus::Pass,
+                "complete synthetic capture",
+            )
+        };
+
+        let (forward_rows, forward_capture) = collect(rows.clone());
+        let (reverse_rows, reverse_capture) = collect(rows.into_iter().rev().collect());
+        assert_eq!(
+            serde_json::to_value(&forward_rows).unwrap(),
+            serde_json::to_value(&reverse_rows).unwrap()
+        );
+        assert_eq!(
+            forward_rows
+                .iter()
+                .map(|row| row.score.unwrap())
+                .collect::<Vec<_>>(),
+            vec![40.0, 30.0]
+        );
+        assert_eq!(forward_capture.eligible_candidate_count, 4);
+        assert_eq!(forward_capture.retained_candidate_count, 2);
+        assert_eq!(forward_capture.omitted_candidate_count, 2);
+        assert!(
+            forward_capture.candidate_comparison_count
+                <= forward_capture
+                    .eligible_candidate_count
+                    .saturating_mul(forward_capture.effective_limit)
+        );
+        assert_eq!(
+            forward_capture.candidate_comparison_count,
+            reverse_capture.candidate_comparison_count
+        );
+    }
+
+    #[test]
+    fn qpcr_rejected_near_miss_retention_is_bounded_and_input_order_independent() {
+        fn candidate(score: f64, start: usize) -> QpcrDesignRejectedCandidate {
+            QpcrDesignRejectedCandidate {
+                forward: PrimerDesignPrimerRecord {
+                    sequence: format!("F{start}"),
+                    start_0based: start,
+                    end_0based_exclusive: start + 20,
+                    ..PrimerDesignPrimerRecord::default()
+                },
+                reverse: PrimerDesignPrimerRecord {
+                    sequence: format!("R{start}"),
+                    start_0based: start + 80,
+                    end_0based_exclusive: start + 100,
+                    ..PrimerDesignPrimerRecord::default()
+                },
+                probe: Some(PrimerDesignPrimerRecord {
+                    sequence: format!("P{start}"),
+                    start_0based: start + 40,
+                    end_0based_exclusive: start + 60,
+                    ..PrimerDesignPrimerRecord::default()
+                }),
+                amplicon_start_0based: start,
+                amplicon_end_0based_exclusive: start + 100,
+                score: Some(score),
+                reasons: vec![QpcrDesignRejectionReason::ProbeOrAssayFailure],
+                failed_checks: vec!["synthetic_probe_constraint".to_string()],
+                detail: "Synthetic evaluated qPCR rejection.".to_string(),
+            }
+        }
+
+        let rows = vec![
+            candidate(10.0, 10),
+            candidate(40.0, 40),
+            candidate(30.0, 30),
+            candidate(20.0, 20),
+        ];
+        let collect = |input: Vec<QpcrDesignRejectedCandidate>| {
+            let mut collector = QpcrDesignNearMissCollector {
+                requested_limit: 2,
+                effective_limit: 2,
+                ..QpcrDesignNearMissCollector::default()
+            };
+            for row in input {
+                GentleEngine::retain_qpcr_design_near_miss(&mut collector, row);
+            }
+            GentleEngine::finish_qpcr_design_near_miss_capture(
+                collector,
+                PrimerPairCharacterizationStatus::Pass,
+                "complete synthetic qPCR capture",
+            )
+        };
+
+        let (forward_rows, forward_capture) = collect(rows.clone());
+        let (reverse_rows, reverse_capture) = collect(rows.into_iter().rev().collect());
+        assert_eq!(
+            serde_json::to_value(&forward_rows).unwrap(),
+            serde_json::to_value(&reverse_rows).unwrap()
+        );
+        assert_eq!(
+            forward_rows
+                .iter()
+                .map(|row| row.score.unwrap())
+                .collect::<Vec<_>>(),
+            vec![40.0, 30.0]
+        );
+        assert_eq!(forward_capture.eligible_candidate_count, 4);
+        assert_eq!(forward_capture.retained_candidate_count, 2);
+        assert_eq!(forward_capture.omitted_candidate_count, 2);
+        assert_eq!(
+            forward_capture.candidate_comparison_count,
+            reverse_capture.candidate_comparison_count
+        );
     }
 }

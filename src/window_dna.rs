@@ -14,6 +14,7 @@ use crate::{
     app::{request_open_graphics_settings_from_native_menu, request_open_help_from_native_menu},
     dna_sequence::DNAsequence,
     engine::GentleEngine,
+    gui_profiler::startup_trace::{self, Phase, TraceContext},
     main_area_dna::MainAreaDna,
     window_backdrop::{
         WindowBackdropKind, current_window_backdrop_settings, paint_window_backdrop,
@@ -27,13 +28,23 @@ use std::sync::{
     mpsc::{self, Receiver, TryRecvError},
 };
 use std::thread;
+use std::time::Duration;
+
+const DEFERRED_LOAD_REPAINT_INTERVAL: Duration = Duration::from_millis(100);
 
 #[derive(Clone, Debug)]
 enum DeferredAnalysisFocus {
     Dotplot(String),
     FlexibilityTrack(String),
+    CrypticSplicing,
+    TataBoxes,
+    TssInventory,
+    TssView,
+    SplicingExpert(usize),
+    GenomicRegionManager,
     RnaReadReport(String),
     PrimerDesign(String),
+    PrimerSpecificity(String),
     QpcrDesign(String),
     RestrictionCloningPcrHandoff(String),
     SequencingConfirmation(String),
@@ -58,59 +69,198 @@ enum DeferredAnalysisFocus {
 /// - `MainAreaDna` owns the actual sequence-window UI state and rendering.
 pub struct WindowDna {
     main_area: MainAreaDna,
+    startup_trace: TraceContext,
     pending_dna_load: Option<Arc<Mutex<Receiver<Result<DNAsequence, String>>>>>,
+    awaiting_first_content_paint: bool,
     deferred_load_message: Option<String>,
     deferred_analysis_focus: Option<DeferredAnalysisFocus>,
     close_requested: bool,
 }
 
 impl WindowDna {
+    /// Load a portable locus report into the real DNA-window presentation for
+    /// headless GUI benchmarks.
+    ///
+    /// This deliberately uses the same binding checks and presentation cache
+    /// as the interactive file-dialog path. It is only exposed to the separate
+    /// benchmark crate and does not create a second report-loading contract.
+    #[cfg(feature = "benchmark-support")]
+    pub fn load_locus_report_for_benchmark(
+        &mut self,
+        path: &std::path::Path,
+    ) -> Result<(), String> {
+        let document = crate::locus_report::read_document(path)?;
+        self.main_area.load_splicing_locus_document(document)
+    }
+
+    /// Observe the real map's wheel target and clamped viewport in CPU audits.
+    #[cfg(feature = "benchmark-support")]
+    pub fn scroll_target_for_benchmark(&self) -> (Option<egui::Pos2>, (usize, usize, usize)) {
+        (
+            self.main_area.latency_benchmark_hover_position(),
+            self.main_area.latency_benchmark_viewport(),
+        )
+    }
+
+    /// Snapshot sequence/annotation inputs outside timed loops to detect edits.
+    #[cfg(feature = "benchmark-support")]
+    pub fn sequence_content_for_benchmark(&self) -> Vec<u8> {
+        let dna = self
+            .main_area
+            .dna()
+            .read()
+            .expect("benchmark DNA lock poisoned");
+        serde_json::to_vec(&(
+            dna.forward_bytes(),
+            dna.features(),
+            dna.restriction_enzymes(),
+            dna.methylation_mode(),
+        ))
+        .expect("serialize benchmark sequence content")
+    }
+
+    pub(crate) fn apply_splicing_expert_intent(
+        &mut self,
+        action: crate::engine_shell::UiIntentAction,
+        feature_id: usize,
+    ) -> Result<String, String> {
+        if action == crate::engine_shell::UiIntentAction::Close {
+            if matches!(self.deferred_analysis_focus, Some(DeferredAnalysisFocus::SplicingExpert(id)) if id == feature_id)
+            {
+                self.deferred_analysis_focus = None;
+                return Ok("Cancelled pending Splicing Expert opening; sequence retained".into());
+            }
+        } else if self.pending_dna_load.is_some() {
+            self.deferred_analysis_focus = Some(DeferredAnalysisFocus::SplicingExpert(feature_id));
+            return Ok("Splicing Expert queued until the DNA sequence finishes loading".into());
+        }
+        self.main_area
+            .apply_splicing_expert_intent(action, feature_id)
+    }
+
+    pub(crate) fn focus_tss_view(&mut self) {
+        if self.pending_dna_load.is_some() {
+            self.deferred_analysis_focus = Some(DeferredAnalysisFocus::TssView);
+        } else if let Err(error) = self.main_area.set_tss_view(true) {
+            self.deferred_load_message = Some(error);
+        }
+    }
+    pub(crate) fn set_tss_view(&mut self, enabled: bool) -> Result<(), String> {
+        if self.pending_dna_load.is_some() {
+            return Err(
+                "DNA sequence is still loading; retry TSS view after loading finishes".into(),
+            );
+        }
+        self.main_area.set_tss_view(enabled)
+    }
+
+    pub(crate) fn queue_tss_profile(&mut self, path: std::path::PathBuf) -> Result<(), String> {
+        if self.pending_dna_load.is_some() {
+            return Err(
+                "DNA sequence is still loading; retry profile attachment after loading finishes"
+                    .into(),
+            );
+        }
+        self.main_area.queue_tss_profile(path)
+    }
+
+    pub(crate) fn queue_tss_local_score(
+        &mut self,
+        request: crate::tss_sequence_view::TssLocalScoreRequest,
+    ) -> Result<(), String> {
+        if self.pending_dna_load.is_some() {
+            return Err(
+                "DNA sequence is still loading; retry local scoring after loading finishes".into(),
+            );
+        }
+        self.main_area.queue_tss_local_score(request)
+    }
+
+    fn render_deferred_load_indicator(ui: &mut egui::Ui) {
+        let phase = ((ui.input(|input| input.time) * 10.0) as usize) % 4;
+        let marker = match phase {
+            0 => "[   ]",
+            1 => "[.  ]",
+            2 => "[.. ]",
+            _ => "[...]",
+        };
+        ui.monospace(marker);
+        ui.add_space(6.0);
+        ui.label(crate::i18n::tr("sequence.loading"));
+        ui.ctx()
+            .request_repaint_after(DEFERRED_LOAD_REPAINT_INTERVAL);
+    }
+
     /// Construct an eager sequence window when sequence content is already in hand.
     pub fn new(dna: DNAsequence, seq_id: String, engine: Arc<RwLock<GentleEngine>>) -> Self {
-        Self {
+        let startup_trace = startup_trace::context().child();
+        let construct = startup_trace.span(Phase::DnaConstruct);
+        let window = Self {
             main_area: MainAreaDna::new(dna, Some(seq_id), Some(engine)),
+            startup_trace,
             pending_dna_load: None,
+            awaiting_first_content_paint: true,
             deferred_load_message: None,
             deferred_analysis_focus: None,
             close_requested: false,
-        }
+        };
+        construct.finish(true);
+        window
     }
 
     /// Construct a lazy sequence window that resolves sequence payload from the
     /// shared engine in the background before handing off to `MainAreaDna`.
     pub fn new_lazy(seq_id: String, engine: Arc<RwLock<GentleEngine>>) -> Self {
+        let startup_trace = startup_trace::context().child();
+        let construct = startup_trace.span(Phase::DnaConstruct);
         let (tx, rx) = mpsc::channel::<Result<DNAsequence, String>>();
         let thread_engine = engine.clone();
         let thread_seq_id = seq_id.clone();
+        let thread_trace = startup_trace.clone();
+        startup_trace.checkpoint(Phase::DnaWorkerScheduled);
         thread::spawn(move || {
+            crate::gentle_gui_profile_scope!("WindowDna::deferred_load.lock_and_clone");
+            let lock = thread_trace.span(Phase::DnaEngineReadLock);
             let result = thread_engine
                 .read()
-                .map_err(|_| "Engine lock poisoned during deferred load".to_string())
-                .and_then(|guard| {
-                    guard
-                        .state()
-                        .sequences
-                        .get(&thread_seq_id)
-                        .cloned()
-                        .ok_or_else(|| {
-                            format!(
-                                "Sequence '{}' no longer exists while opening window",
-                                thread_seq_id
-                            )
-                        })
-                });
+                .map_err(|_| "Engine lock poisoned during deferred load".to_string());
+            lock.finish(result.is_ok());
+            let result = result.and_then(|guard| {
+                let clone = thread_trace.span(Phase::DnaSequenceClone);
+                let result = guard
+                    .state()
+                    .sequences
+                    .get(&thread_seq_id)
+                    .cloned()
+                    .ok_or_else(|| {
+                        format!(
+                            "Sequence '{}' no longer exists while opening window",
+                            thread_seq_id
+                        )
+                    });
+                clone.finish(result.is_ok());
+                result
+            });
+            thread_trace.checkpoint(Phase::DnaWorkerResult);
             let _ = tx.send(result);
         });
         let placeholder = DNAsequence::from_sequence("").expect("valid empty sequence");
+        crate::gentle_gui_profile_scope!("WindowDna::new_lazy.placeholder");
+        let placeholder_construct = startup_trace.span(Phase::DnaPlaceholderConstruct);
         let mut main_area = MainAreaDna::new(placeholder, Some(seq_id), Some(engine));
         main_area.defer_feature_tree_until_interaction();
-        Self {
+        placeholder_construct.finish(true);
+        let window = Self {
             main_area,
+            startup_trace,
             pending_dna_load: Some(Arc::new(Mutex::new(rx))),
+            awaiting_first_content_paint: true,
             deferred_load_message: None,
             deferred_analysis_focus: None,
             close_requested: false,
-        }
+        };
+        construct.finish(true);
+        window
     }
 
     fn apply_deferred_analysis_focus(&mut self) {
@@ -124,11 +274,28 @@ impl WindowDna {
             DeferredAnalysisFocus::FlexibilityTrack(track_id) => {
                 self.main_area.focus_flexibility_track_analysis(&track_id);
             }
+            DeferredAnalysisFocus::CrypticSplicing => {
+                self.main_area.focus_cryptic_splicing_screen();
+            }
+            DeferredAnalysisFocus::TataBoxes => self.main_area.open_tata_boxes(),
+            DeferredAnalysisFocus::TssInventory => self.main_area.open_tss_inventory(),
+            DeferredAnalysisFocus::TssView => self.focus_tss_view(),
+            DeferredAnalysisFocus::SplicingExpert(feature_id) => {
+                // A stale feature is an expert-action error, not a DNA load failure.
+                self.main_area
+                    .open_splicing_expert_for_feature(feature_id, "deferred UI intent");
+            }
+            DeferredAnalysisFocus::GenomicRegionManager => {
+                self.main_area.open_genomic_region_manager(None);
+            }
             DeferredAnalysisFocus::RnaReadReport(report_id) => {
                 self.main_area.focus_rna_read_report(&report_id);
             }
             DeferredAnalysisFocus::PrimerDesign(report_id) => {
                 self.main_area.focus_primer_design_report(&report_id);
+            }
+            DeferredAnalysisFocus::PrimerSpecificity(report_id) => {
+                self.main_area.focus_primer_specificity_report(&report_id);
             }
             DeferredAnalysisFocus::QpcrDesign(report_id) => {
                 self.main_area.focus_qpcr_design_report(&report_id);
@@ -177,23 +344,29 @@ impl WindowDna {
                 .map_err(|_| "Deferred sequence load lock poisoned".to_string());
             match recv_result {
                 Ok(Ok(Ok(dna))) => {
+                    crate::gentle_gui_profile_scope!("WindowDna::poll_deferred_load.hydrate");
+                    let hydrate = self.startup_trace.span(Phase::DnaHydrate);
                     self.main_area.replace_loaded_sequence(dna);
                     self.pending_dna_load = None;
                     self.deferred_load_message = None;
                     self.apply_deferred_analysis_focus();
+                    hydrate.finish(true);
                 }
                 Ok(Ok(Err(message))) => {
+                    self.startup_trace.checkpoint(Phase::DnaLoadFailed);
                     self.pending_dna_load = None;
                     self.deferred_load_message = Some(message);
                 }
                 Ok(Err(TryRecvError::Empty)) => {}
                 Ok(Err(TryRecvError::Disconnected)) => {
+                    self.startup_trace.checkpoint(Phase::DnaLoadFailed);
                     self.pending_dna_load = None;
                     self.deferred_load_message = Some(
                         "Deferred sequence load channel disconnected unexpectedly".to_string(),
                     );
                 }
                 Err(message) => {
+                    self.startup_trace.checkpoint(Phase::DnaLoadFailed);
                     self.pending_dna_load = None;
                     self.deferred_load_message = Some(message);
                 }
@@ -201,7 +374,15 @@ impl WindowDna {
         }
     }
 
+    fn finish_first_content_frame(&mut self, phase: Phase) {
+        if self.awaiting_first_content_paint {
+            self.startup_trace.checkpoint(phase);
+            self.awaiting_first_content_paint = false;
+        }
+    }
+
     fn render_nav_row(&mut self, ui: &mut egui::Ui) {
+        let agent_help_window_title = self.name();
         ui.horizontal(|ui| {
             if ui
                 .button(crate::i18n::tr("button.help"))
@@ -229,6 +410,11 @@ impl WindowDna {
             {
                 request_open_graphics_settings_from_native_menu();
             }
+            crate::agent_help::render_agent_help_button(
+                ui,
+                agent_help_window_title.clone(),
+                "window.dna_viewer",
+            );
             if ui
                 .button(crate::i18n::tr("button.close"))
                 .on_hover_text("Close this sequence window (Cmd/Ctrl+W)")
@@ -245,6 +431,8 @@ impl WindowDna {
     /// then delegates the actual sequence-window layout to `MainAreaDna`.
     pub fn update(&mut self, ctx: &egui::Context) {
         crate::gentle_gui_profile_scope!("WindowDna::update");
+        #[cfg(feature = "gui-test-support")]
+        crate::gui_test_support::begin_viewport_frame(ctx);
         self.poll_deferred_load();
         let result = catch_unwind(AssertUnwindSafe(|| {
             let open_help_f1 = egui::KeyboardShortcut::new(egui::Modifiers::NONE, egui::Key::F1);
@@ -285,14 +473,11 @@ impl WindowDna {
                         with_window_content_inset(ui, |ui| {
                             ui.vertical_centered(|ui| {
                                 ui.add_space(48.0);
-                                ui.add(egui::Spinner::new());
-                                ui.add_space(6.0);
-                                ui.label(crate::i18n::tr("sequence.loading"));
+                                Self::render_deferred_load_indicator(ui);
                             });
                         });
                     },
                 );
-                ctx.request_repaint();
             } else if let Some(message) = self.deferred_load_message.as_deref() {
                 crate::egui_compat::show_central_panel(
                     ctx,
@@ -307,10 +492,15 @@ impl WindowDna {
             } else {
                 // MainAreaDna owns the root panel layout for sequence windows.
                 self.main_area.render(ctx);
+                self.finish_first_content_frame(Phase::DnaNativeContentFrame);
             }
         }));
         if result.is_err() {
             eprintln!("E WindowDna: recovered from panic while rendering DNA window");
+        }
+        #[cfg(feature = "gui-test-support")]
+        if let Err(error) = crate::gui_test_support::finish_frame(ctx) {
+            eprintln!("W WindowDna: {error}");
         }
     }
 
@@ -360,14 +550,11 @@ impl WindowDna {
                         with_window_content_inset(ui, |ui| {
                             ui.vertical_centered(|ui| {
                                 ui.add_space(48.0);
-                                ui.add(egui::Spinner::new());
-                                ui.add_space(6.0);
-                                ui.label(crate::i18n::tr("sequence.loading"));
+                                Self::render_deferred_load_indicator(ui);
                             });
                         });
                     },
                 );
-                ui.ctx().request_repaint();
             } else if let Some(message) = self.deferred_load_message.as_deref() {
                 crate::egui_compat::show_central_panel_inside(
                     ui,
@@ -381,6 +568,7 @@ impl WindowDna {
                 );
             } else {
                 self.render_bounded_embedded_main_area(ui);
+                self.finish_first_content_frame(Phase::DnaEmbeddedContentFrame);
             }
         }));
         if result.is_err() {
@@ -425,8 +613,40 @@ impl WindowDna {
         self.main_area.window_title()
     }
 
+    pub(crate) fn open_window_registry_signature(&self) -> Option<u64> {
+        self.main_area.open_window_registry_signature()
+    }
+
     pub fn sequence_id(&self) -> Option<String> {
         self.main_area.sequence_id().map(|v| v.to_string())
+    }
+
+    pub fn is_opening(&self) -> bool {
+        self.deferred_load_message.is_none()
+            && (self.pending_dna_load.is_some() || self.awaiting_first_content_paint)
+    }
+
+    pub fn opening_phase(&self) -> &'static str {
+        if self.pending_dna_load.is_some() {
+            "payload-loading"
+        } else if self.deferred_load_message.is_some() {
+            "failed"
+        } else if self.awaiting_first_content_paint {
+            "first-paint"
+        } else {
+            "ready"
+        }
+    }
+
+    pub fn deferred_load_error(&self) -> Option<&str> {
+        self.deferred_load_message.as_deref()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn mark_first_content_painted_for_tests(&mut self) {
+        self.pending_dna_load = None;
+        self.deferred_load_message = None;
+        self.awaiting_first_content_paint = false;
     }
 
     pub fn take_close_requested(&mut self) -> bool {
@@ -441,6 +661,36 @@ impl WindowDna {
 
     pub fn selection_range_0based(&self) -> Option<(usize, usize)> {
         self.main_area.selection_range_0based()
+    }
+
+    pub fn focus_feature_location_editor(&mut self, feature_index: Option<usize>) {
+        self.main_area.focus_feature_location_editor(feature_index);
+    }
+
+    pub fn close_feature_location_editor(&mut self) -> bool {
+        self.main_area.close_feature_location_editor()
+    }
+
+    pub fn close_genomic_region_manager(&mut self) -> bool {
+        self.main_area.close_genomic_region_manager()
+    }
+
+    pub fn genomic_region_manager_is_open(&self) -> bool {
+        self.main_area.genomic_region_manager_is_open()
+    }
+
+    /// Whether the manager is queued to open once a pending sequence finishes
+    /// loading. Focus is deferred in that state, so "not open" is not the same
+    /// as "the request was dropped".
+    pub fn genomic_region_manager_focus_is_pending(&self) -> bool {
+        matches!(
+            self.deferred_analysis_focus,
+            Some(DeferredAnalysisFocus::GenomicRegionManager)
+        )
+    }
+
+    pub fn feature_location_editor_is_open(&self) -> bool {
+        self.main_area.feature_location_editor_is_open()
     }
 
     pub fn set_selection_range_0based(
@@ -476,7 +726,9 @@ impl WindowDna {
     }
 
     pub fn render_pcr_designer_specialist(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        self.main_area.set_rendering_pcr_specialist(true);
         self.main_area.render_pcr_designer_specialist(ui, ctx);
+        self.main_area.set_rendering_pcr_specialist(false);
     }
 
     pub fn render_sequencing_confirmation_specialist(
@@ -563,6 +815,54 @@ impl WindowDna {
         self.main_area.focus_flexibility_track_analysis(track_id);
     }
 
+    pub fn focus_cryptic_splicing_screen(&mut self) {
+        if self.pending_dna_load.is_some() {
+            self.deferred_analysis_focus = Some(DeferredAnalysisFocus::CrypticSplicing);
+            return;
+        }
+        self.main_area.focus_cryptic_splicing_screen();
+    }
+
+    pub fn focus_genomic_region_manager(&mut self) {
+        if self.pending_dna_load.is_some() {
+            self.deferred_analysis_focus = Some(DeferredAnalysisFocus::GenomicRegionManager);
+            return;
+        }
+        self.main_area.open_genomic_region_manager(None);
+    }
+
+    pub(crate) fn focus_tata_boxes(&mut self) {
+        if self.pending_dna_load.is_some() {
+            self.deferred_analysis_focus = Some(DeferredAnalysisFocus::TataBoxes);
+            return;
+        }
+        self.main_area.open_tata_boxes();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn tata_workspace_open_or_pending(&self) -> bool {
+        matches!(
+            self.deferred_analysis_focus,
+            Some(DeferredAnalysisFocus::TataBoxes)
+        ) || self.main_area.tata_workspace_open()
+    }
+
+    pub(crate) fn focus_tss_inventory(&mut self) {
+        if self.pending_dna_load.is_some() {
+            self.deferred_analysis_focus = Some(DeferredAnalysisFocus::TssInventory);
+            return;
+        }
+        self.main_area.open_tss_inventory();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn tss_inventory_workspace_open_or_pending(&self) -> bool {
+        matches!(
+            self.deferred_analysis_focus,
+            Some(DeferredAnalysisFocus::TssInventory)
+        ) || self.main_area.tss_inventory_workspace_open()
+    }
+
     pub fn focus_primer_design_report(&mut self, report_id: &str) {
         if self.pending_dna_load.is_some() {
             self.deferred_analysis_focus =
@@ -570,6 +870,16 @@ impl WindowDna {
             return;
         }
         self.main_area.focus_primer_design_report(report_id);
+    }
+
+    pub fn focus_primer_specificity_report(&mut self, report_id: &str) {
+        if self.pending_dna_load.is_some() {
+            self.deferred_analysis_focus = Some(DeferredAnalysisFocus::PrimerSpecificity(
+                report_id.to_string(),
+            ));
+            return;
+        }
+        self.main_area.focus_primer_specificity_report(report_id);
     }
 
     pub fn focus_rna_read_report(&mut self, report_id: &str) {
@@ -687,5 +997,222 @@ impl WindowDna {
     pub fn refresh_from_engine_state(&mut self) {
         self.main_area.refresh_from_engine_sequence_state();
         self.main_area.refresh_from_engine_settings();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::Engine;
+
+    fn startup_trace_frame(window: &mut WindowDna) {
+        let ctx = egui::Context::default();
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1200.0, 800.0),
+                )),
+                ..Default::default()
+            },
+            |ui| window.update_embedded(ui),
+        );
+        output.textures_delta.clear();
+    }
+
+    #[test]
+    fn startup_trace_lazy_window_records_clone_hydration_and_one_content_frame() {
+        // Synthetic sequence created through the same engine route as a pasted record.
+        let mut engine = GentleEngine::default();
+        engine
+            .apply(crate::engine::Operation::CreateSequenceFromText {
+                sequence_text: "GAATTCACGT".into(),
+                output_id: Some("private_sequence_name_not_for_trace".into()),
+                name: None,
+                circular: false,
+            })
+            .unwrap();
+        let engine = Arc::new(RwLock::new(engine));
+        let (_, report) = startup_trace::capture(|| {
+            let mut window =
+                WindowDna::new_lazy("private_sequence_name_not_for_trace".into(), engine);
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            while window.pending_dna_load.is_some() && std::time::Instant::now() < deadline {
+                window.poll_deferred_load();
+                thread::sleep(Duration::from_millis(1));
+            }
+            assert!(window.pending_dna_load.is_none());
+            assert!(window.deferred_load_message.is_none());
+            startup_trace_frame(&mut window);
+            startup_trace_frame(&mut window);
+            assert!(!window.is_opening());
+            assert_eq!(
+                window.main_area.dna().read().unwrap().get_forward_string(),
+                "GAATTCACGT"
+            );
+        });
+        let events = report["events"].as_array().unwrap();
+        for phase in [
+            "dna_construct",
+            "dna_engine_read_lock",
+            "dna_sequence_clone",
+            "dna_hydrate",
+        ] {
+            let count = events
+                .iter()
+                .filter(|event| event["phase"] == phase && event["kind"] == "completed")
+                .count();
+            assert!(
+                count == 1 || report["dropped_events"].as_u64().unwrap() > 0,
+                "{phase}: missing unreported observation"
+            );
+        }
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event["phase"] == "dna_embedded_content_frame")
+                .count(),
+            1
+        );
+        assert!(
+            events
+                .iter()
+                .all(|event| event["subject"] == events[0]["subject"])
+        );
+        assert!(
+            !report
+                .to_string()
+                .contains("private_sequence_name_not_for_trace")
+        );
+        assert!(!report.to_string().contains("GAATTCACGT"));
+    }
+
+    #[test]
+    fn startup_trace_loading_and_failed_windows_do_not_claim_content() {
+        let (_, report) = startup_trace::capture(|| {
+            let mut window = WindowDna::new(
+                DNAsequence::from_sequence("ACGT").unwrap(),
+                "seq1".into(),
+                Arc::new(RwLock::new(GentleEngine::default())),
+            );
+            let (sender, receiver) = mpsc::channel();
+            window.pending_dna_load = Some(Arc::new(Mutex::new(receiver)));
+            startup_trace_frame(&mut window);
+            assert!(window.is_opening());
+            sender.send(Err("synthetic load failure".into())).unwrap();
+            startup_trace_frame(&mut window);
+            assert!(window.deferred_load_message.is_some());
+        });
+        let events = report["events"].as_array().unwrap();
+        assert!(
+            events
+                .iter()
+                .any(|event| event["phase"] == "dna_load_failed")
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|event| event["phase"] == "dna_embedded_content_frame"
+                    || event["phase"] == "dna_native_content_frame")
+        );
+    }
+
+    #[test]
+    fn startup_trace_native_cpu_frame_is_distinct_from_embedded_path() {
+        let (_, report) = startup_trace::capture(|| {
+            let mut window = WindowDna::new(
+                DNAsequence::from_sequence("ACGT").unwrap(),
+                "seq1".into(),
+                Arc::new(RwLock::new(GentleEngine::default())),
+            );
+            let ctx = egui::Context::default();
+            for _ in 0..2 {
+                let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                    crate::egui_compat::with_current_root_ui(ui, |ctx| window.update(ctx));
+                });
+                output.textures_delta.clear();
+            }
+        });
+        let events = report["events"].as_array().unwrap();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event["phase"] == "dna_native_content_frame")
+                .count(),
+            1
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|event| event["phase"] == "dna_embedded_content_frame")
+        );
+    }
+
+    #[test]
+    fn splicing_expert_deferred_error_does_not_hide_loaded_dna() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let engine = Arc::new(RwLock::new(GentleEngine::default()));
+        let mut window = WindowDna::new(dna, "seq1".into(), engine);
+        window.deferred_analysis_focus = Some(DeferredAnalysisFocus::SplicingExpert(999));
+        window.apply_deferred_analysis_focus();
+        assert!(window.deferred_analysis_focus.is_none());
+        assert!(window.deferred_load_message.is_none());
+        assert_eq!(
+            window.main_area.dna().read().unwrap().get_forward_string(),
+            "ACGT"
+        );
+    }
+
+    #[test]
+    fn deferred_sequence_loading_uses_bounded_repaint_polling() {
+        assert!(DEFERRED_LOAD_REPAINT_INTERVAL >= Duration::from_millis(50));
+        assert!(DEFERRED_LOAD_REPAINT_INTERVAL <= Duration::from_millis(250));
+    }
+
+    #[test]
+    fn deferred_sequence_loading_preserves_populated_restriction_site_catalog() {
+        let mut engine = GentleEngine::default();
+        let result = engine
+            .apply(crate::engine::Operation::CreateSequenceFromText {
+                sequence_text: "GAATTC".to_string(),
+                output_id: Some("lazy_restriction_sites".to_string()),
+                name: None,
+                circular: false,
+            })
+            .expect("create prepared engine sequence");
+        let seq_id = result
+            .created_seq_ids
+            .first()
+            .expect("created sequence id")
+            .clone();
+        assert!(
+            !engine
+                .state()
+                .sequences
+                .get(&seq_id)
+                .expect("created engine sequence")
+                .restriction_enzyme_sites()
+                .is_empty(),
+            "the shared create operation must prepare the restriction-site catalog"
+        );
+        let engine = Arc::new(RwLock::new(engine));
+        let mut window = WindowDna::new_lazy(seq_id, engine);
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while window.pending_dna_load.is_some() && std::time::Instant::now() < deadline {
+            window.poll_deferred_load();
+            thread::sleep(Duration::from_millis(1));
+        }
+
+        assert!(
+            window.pending_dna_load.is_none(),
+            "deferred sequence load did not complete before the test deadline"
+        );
+        assert!(window.deferred_load_message.is_none());
+        let loaded = window.main_area.dna().read().expect("loaded DNA");
+        assert_eq!(loaded.get_forward_string(), "GAATTC");
+        assert!(
+            !loaded.restriction_enzyme_sites().is_empty(),
+            "replace_loaded_sequence must leave the lazy window with the engine sequence's populated restriction-site catalog"
+        );
     }
 }

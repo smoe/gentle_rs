@@ -185,7 +185,17 @@ Tests:
 
 ### Phase 3: gene-set collection inspector
 
-- Add a GUI inspector for existing gene-set operations:
+- Landed first consumer: `Genome > Gene Set Inspector...` reads existing
+  persisted gene-set resolutions, exposes explicit member-to-primer-report
+  bindings, and runs `collections run primer-specificity` through the shared
+  shell/engine path. It reports member execution separately from biological
+  specificity and never guesses a binding from the member symbol.
+- Landed source authoring/resolution controls for catalog groups, explicit
+  members, local external mappings, neighbors, and deterministic random sets.
+  The detached result is persisted and selected for the existing collection
+  workflow; resolved/unresolved rows, warnings, provenance, and JSON export are
+  available in the same inspector.
+- The GUI inspector now covers:
   - source kind: catalog group, explicit members, external mapping, neighbors,
     deterministic random
   - genome/catalog inputs
@@ -197,20 +207,21 @@ Tests:
 - Use `ResolveGeneSet` through the shared operation path.
 - Do not duplicate gene-group catalog logic in the GUI.
 
-File targets:
+Implementation files:
 
 - `src/app.rs`
-- `src/app/*_ui.rs` or a new focused `src/app/gene_set_ui.rs`
-- `src/engine_shell.rs`
-- `src/engine_shell/command_parsers.rs`
+- `src/app/gene_set_ui.rs`
+- `src/app/window_registry.rs`
+- `tests/capability_registry_parity.rs`
 - `docs/gui.md`
 - `docs/cli.md`
 
-Tests:
+Landed tests:
 
 - GUI/app helper test that collected form parameters create the same
   `ResolveGeneSet` operation as the shared shell parser
-- shell parser test for each source kind used by the GUI
+- operation-payload parity against the shell parser for every source kind used
+  by the GUI
 - capability/parity test proving the GUI affordance maps to `gene-sets resolve`
   or `ResolveGeneSet`
 
@@ -245,19 +256,50 @@ Tests:
 - GUI helper test that promoter derivation uses `BuildGeneSetPromoterCohort`
 - parity test for `gene-sets promoter-cohort` GUI affordance
 
-### Phase 5: collection operation launcher
+### Phase 5: collection operation launcher (gene-set A4a/A5/A6/A7/A9, container A8, and arrangement A10 landed)
 
-- Add a generic collection operation launcher that starts with a small curated
-  operation set:
-  - export FASTA / multi-record artifact
-  - digest per member
-  - BLAST per member
-  - promoter derivation from gene set
-  - pool/gel via explicit pool or arrangement action
-- The launcher displays the selected lifting mode before execution.
-- The launcher must not silently convert logical sets into physical pools.
-- Each operation row must show whether it is ready, requires materialization,
-  or is unsupported with a typed reason.
+- Landed A4a: the Gene Set Inspector projects every canonical gene-set
+  engine-operation policy and displays its lifting mode, payload kind, and
+  readiness without maintaining a second GUI operation catalog.
+- Typed adapters execute promoter derivation, primer specificity, and
+  restriction-site and TFBS hit scanning plus preview/apply restriction
+  digestion through shared shell commands over the complete selected
+  membership. The scan and digest adapters require explicit
+  member-to-sequence bindings. Scan wrappers own their child reports because
+  those domains have no persisted report stores, while the digest wrapper owns
+  planned/materialized fragment rows. TFBS scans also require explicit motifs
+  and distinguish retained aggregate counts from complete aggregate counts
+  when a cap stops motif iteration.
+- Restriction digestion is the first mutating collection lift. Its preview
+  locks exact source snapshots and deterministic fragment ids; apply creates
+  individually openable fragment sequences with per-source lineage and never
+  infers one pooled physical sample from a logical gene set.
+- Pool export, pooled-gel rendering, and serial arrangement are visible but
+  disabled with their canonical typed physical/materialization requirements;
+  the launcher does not silently convert logical sets into physical pools.
+- A8 adds the first supported physical-container collection route without
+  turning the Gene Set Inspector into a generic container launcher. The
+  Lineage `Containers` row invokes `collections run export-pool`, which wraps
+  the existing pool exporter as an atomic `combine`; registry projection still
+  exposes the supported container policy and preserves the gene-set
+  `requires_physical_pool` rejection. The same policy pass declares the
+  existing container pooled-gel action.
+- A9 adds explicit logical-to-physical pooling through `CreateGeneSetPool` and
+  `gene-sets create-pool`. A complete resolution binds every member to one
+  distinct exclusive singleton source container. Preview locks exact source
+  snapshots, derived aliquot ids, and the reserved pool id; apply retains the
+  source tubes and creates lineage-linked aliquots in one new physical pool.
+- A10 declares the already-shipped `RenderPoolGelSvg` arrangement route as a
+  context-agnostic ordered `arrange`, while the container form remains
+  `combine`. Project selections and logical gene sets retain explicit
+  `requires_physical_pool` rejections rather than being silently co-migrated.
+  The existing Lineage preview/export controls consume the engine's
+  serial-only readiness check and are disabled for plate arrangements. A
+  generic arrangement collection-launcher adapter and collection-report
+  wrapper remain future work; the registry reports the missing adapter without
+  hiding the executable shared-shell route.
+- Remaining Phase 5 work is to add shared engine policies/routes and typed GUI
+  adapters for BLAST and non-gene subjects when those contracts are ready.
 
 File targets:
 
@@ -276,7 +318,8 @@ Tests:
 ### Phase 6: containers, arrangements, and storage projections
 
 - Allow explicit conversion of logical collections into:
-  - a physical pool/container
+  - a physical pool/container (landed for complete gene-set resolutions via
+    explicit singleton source bindings and derived aliquots)
   - a serial arrangement
   - a rack/storage projection
 - Preserve original logical set identity and provenance.
@@ -318,20 +361,18 @@ Tests:
 
 ## Release-Oriented First Slice
 
-The smallest useful implementation PR after this plan should be:
+Current status: all five gene-set source forms, persisted resolution inspection,
+and the registry-projected A4a launcher are implemented. The launcher has typed
+adapters for promoter cohorts, primer specificity, restriction/TFBS scans, and
+fingerprint-locked restriction digestion, uses one detached shared-shell
+execution path, and preserves canonical typed rejections for operations that
+require physical or materialized members.
 
-1. Add collection lifting inventory metadata for the three gene-set operations
-   and one existing arrangement/pool operation.
-2. Add GUI helper code that converts a gene-set resolve form into
-   `Operation::ResolveGeneSet`.
-3. Add tests proving that the GUI helper and shared shell parser produce the
-   same operation payload for one catalog-group source and one explicit-members
-   source.
-4. Keep display minimal: status, warnings, resolved/unresolved member table,
-   and JSON export.
-
-This slice avoids broad collection launchers while proving the core parity
-shape.
+The next release-oriented slice should remain narrow: add one adapter only
+after its shared engine lifting policy, complete-membership route, portable
+result, and deterministic GUI-to-engine parity test exist. Export, BLAST,
+non-gene collection subjects, and physical materialization remain open;
+they should not be simulated by GUI-local member loops.
 
 ## Acceptance Criteria For The Full Plan
 

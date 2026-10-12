@@ -1,0 +1,7 @@
+{
+  "seq_id": "tp73_locus",
+  "gene_query": "TP73",
+  "collection_id": "tp73_tss",
+  "upstream_bp": 500,
+  "downstream_bp": 200
+}

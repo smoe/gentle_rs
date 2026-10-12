@@ -1,9 +1,9 @@
 {
   "schema": "gentle.workflow_example.v1",
   "id": "vkorc1_rs9923231_promoter_luciferase_assay_planning",
-  "title": "VKORC1 rs9923231 promoter-SNP-to-luciferase handoff (offline, promoter-aware baseline)",
+  "title": "VKORC1 rs9923231 promoter-SNP-to-luciferase handoff (online fetch, reproducible build)",
   "summary": "Starts from dbSNP-guided VKORC1 locus retrieval, derives promoter windows and variant-promoter context, suggests the reporter fragment deterministically, materializes matched reference/alternate inserts, loads a pinned local mammalian luciferase backbone, and exports promoter-context plus paired construct maps for a human-cell reporter-design handoff.",
-  "test_mode": "skip",
+  "test_mode": "online",
   "required_files": [
     "assets/genomes.json",
     "data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb"
@@ -17,7 +17,7 @@
     "luciferase",
     "gui",
     "parity",
-    "offline",
+    "online",
     "clawbio"
   ],
   "workflow": {
@@ -166,6 +166,7 @@
           "input": "vkorc1_rs9923231_promoter_fragment",
           "variant_label_or_id": "rs9923231",
           "allele": "alternate",
+          "alternate_allele": "T",
           "output_id": "vkorc1_rs9923231_promoter_alternate"
         }
       },

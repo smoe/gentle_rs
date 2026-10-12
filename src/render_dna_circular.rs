@@ -10,7 +10,6 @@ use crate::{
     gc_contents::{GcContents, GcRegion},
     render_dna::RenderDna,
     render_dna::RestrictionEnzymePosition,
-    restriction_enzyme::RestrictionEnzymeKey,
 };
 use eframe::egui::{
     self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Shape, Stroke, StrokeKind,
@@ -50,9 +49,9 @@ static ORF_COLORS: LazyLock<HashMap<i32, Color32>> = LazyLock::new(|| {
 /// Represents the position and attributes of a feature (e.g., gene, CDS) on the circular DNA.
 #[derive(Debug, Clone)]
 struct FeatureSegmentPosition {
-    // FIXME: Clarify if the first position is 0 or 1
+    /// 0-based start boundary, unrolled across the origin where necessary.
     from: i64,
-    // FIXME: Clarify if the first position is 0 or 1
+    /// Exclusive end boundary; may equal or exceed the molecule length.
     to: i64,
     to_90: i64,
     angle_start: f32,
@@ -63,9 +62,9 @@ struct FeatureSegmentPosition {
 #[derive(Debug, Clone)]
 struct FeaturePosition {
     feature_number: usize,
-    // FIXME: Clarify if the first position is 0 or 1
+    /// 0-based start boundary of the segment envelope, used for radial packing.
     from: i64,
-    // FIXME: Clarify if the first position is 0 or 1
+    /// Exclusive end of the unrolled envelope, not a 1-based base index.
     to: i64,
     /// Representation as segment - start (degree: 0-360)
     angle_start: f32,
@@ -136,6 +135,10 @@ pub struct RenderDnaCircular {
     hovered_feature_number: Option<usize>,
     hover_enzyme: Option<RestrictionEnzymePosition>,
     hovered_reasoning_evidence_id: Option<String>,
+    gc_cache_key: Option<(u64, usize, usize)>,
+    gc_cache: GcContents,
+    gc_cache_hits: u64,
+    gc_cache_misses: u64,
 }
 
 impl RenderDnaCircular {
@@ -156,7 +159,16 @@ impl RenderDnaCircular {
             hovered_feature_number: None,
             hover_enzyme: None,
             hovered_reasoning_evidence_id: None,
+            gc_cache_key: None,
+            gc_cache: GcContents::default(),
+            gc_cache_hits: 0,
+            gc_cache_misses: 0,
         }
+    }
+
+    pub fn invalidate_sequence_derived_caches(&mut self) {
+        self.gc_cache_key = None;
+        self.gc_cache = GcContents::default();
     }
 
     pub fn area(&self) -> &Rect {
@@ -480,7 +492,7 @@ impl RenderDnaCircular {
         if let Some(feature) = feature
             && let Ok((from, to)) = feature.location.find_bounds()
         {
-            let text = format!("{}: {}-{}", &fp.label, from, to);
+            let text = Self::feature_hover_text(&fp.label, from, to);
             let font = FontId {
                 size: 12.0,
                 family: FontFamily::Monospace,
@@ -493,6 +505,10 @@ impl RenderDnaCircular {
                 Color32::DARK_GRAY,
             );
         }
+    }
+
+    fn feature_hover_text(label: &str, from: i64, to: i64) -> String {
+        format!("{label}: {}-{to} bp", from.saturating_add(1))
     }
 
     /// Converts a position to an angle and geometric distance (Pythagoras) from the center.
@@ -508,71 +524,38 @@ impl RenderDnaCircular {
     /// Draws an arc with an arrow indicating direction
     fn draw_pointed_arc(
         &self,
-        from: i32,
-        to: i32,
+        from: i64,
+        to: i64,
         radius: f32,
         is_reverse: bool,
         stroke: Stroke,
         painter: &egui::Painter,
     ) {
-        // start <= end
-        let start = from.min(to);
-        let end = from.max(to);
-        if is_reverse {
-            let step = -10;
-            let mut pos = end;
-            let mut last_pos = pos;
-
-            // Draw starting point
-            let r0 = radius / 75.0;
-            let point = self.pos2xy(pos as i64, radius);
-            painter.circle_filled(point, r0, stroke.color.to_owned());
-
-            // Draw arc
-            while pos > start {
-                let point1 = self.pos2xy(last_pos as i64, radius);
-                let point2 = self.pos2xy(pos as i64, radius);
-                painter.line_segment([point1, point2], stroke.to_owned());
-                last_pos = pos;
-                pos += step;
-            }
-
-            // Draw arrow
-            last_pos = start + step * 2;
-            let point1 = self.pos2xy(last_pos as i64, radius * 0.98);
-            let point2 = self.pos2xy(start as i64, radius);
-            painter.line_segment([point1, point2], stroke.to_owned());
-            let point1 = self.pos2xy(last_pos as i64, radius * 1.02);
-            let point2 = self.pos2xy(start as i64, radius);
-            painter.line_segment([point1, point2], stroke.to_owned());
+        if from >= to {
+            return;
+        }
+        let span = to - from;
+        let steps = ((span + 9) / 10).clamp(1, 720);
+        let (start, tip) = if is_reverse { (to, from) } else { (from, to) };
+        let mut previous = self.pos2xy(start, radius);
+        painter.circle_filled(previous, radius / 75.0, stroke.color);
+        for step in 1..=steps {
+            let pos = start + (tip - start) * step / steps;
+            let point = self.pos2xy(pos, radius);
+            painter.line_segment([previous, point], stroke);
+            previous = point;
+        }
+        let tail = if is_reverse {
+            tip + span.min(20)
         } else {
-            let step = 10;
-            let mut pos = start;
-            let mut last_pos = pos;
-
-            // Draw starting point
-            let r0 = radius / 75.0;
-            let point = self.pos2xy(pos as i64, radius);
-            painter.circle_filled(point, r0, stroke.color.to_owned());
-
-            // Draw arc
-            while pos < end {
-                let point1 = self.pos2xy(last_pos as i64, radius);
-                let point2 = self.pos2xy(pos as i64, radius);
-                painter.line_segment([point1, point2], stroke.to_owned());
-                last_pos = pos;
-                pos += step;
-            }
-
-            // Draw arrow
-            last_pos = end - step * 2;
-            let point1 = self.pos2xy(last_pos as i64, radius * 0.98);
-            let point2 = self.pos2xy(end as i64, radius);
-            painter.line_segment([point1, point2], stroke.to_owned());
-            let point1 = self.pos2xy(last_pos as i64, radius * 1.02);
-            let point2 = self.pos2xy(end as i64, radius);
-            painter.line_segment([point1, point2], stroke.to_owned());
+            tip - span.min(20)
         };
+        for factor in [0.98, 1.02] {
+            painter.line_segment(
+                [self.pos2xy(tail, radius * factor), self.pos2xy(tip, radius)],
+                stroke,
+            );
+        }
     }
 
     /// Draws Open Reading Frames (ORFs) on the circular DNA
@@ -593,9 +576,14 @@ impl RenderDnaCircular {
             };
             let radius = self.radius * 1.1 + self.radius * 0.05 * (orf.frame() as f32);
             let stroke = Stroke::new(1.0_f32, color);
+            let Some((from, end)) =
+                orf.unrolled_bounds_0based(self.sequence_length.max(0) as usize)
+            else {
+                continue;
+            };
             self.draw_pointed_arc(
-                orf.from(),
-                orf.to(),
+                from as i64,
+                end as i64,
                 radius,
                 orf.is_reverse(),
                 stroke,
@@ -620,7 +608,8 @@ impl RenderDnaCircular {
     }
 
     /// Draws GC content regions on the circular DNA.
-    fn draw_gc_contents(&self, painter: &egui::Painter) {
+    fn draw_gc_contents(&mut self, painter: &egui::Painter) {
+        crate::gentle_gui_profile_scope!("RenderDnaCircular::gc_contents");
         let (show_gc, gc_content_bin_size_bp) = self
             .display
             .read()
@@ -631,17 +620,20 @@ impl RenderDnaCircular {
         }
         let radius = self.radius * 2.0 / 3.0;
         let mut last_point = self.pos2xy(0, radius);
-        let gc_content = self
-            .dna
-            .read()
-            .map(|dna| {
-                GcContents::new_from_sequence_with_bin_size(
+        if let Ok(dna) = self.dna.read() {
+            let key = (dna.feature_generation(), dna.len(), gc_content_bin_size_bp);
+            if self.gc_cache_key == Some(key) {
+                self.gc_cache_hits = self.gc_cache_hits.saturating_add(1);
+            } else {
+                self.gc_cache = GcContents::new_from_sequence_with_bin_size(
                     dna.forward_bytes(),
                     gc_content_bin_size_bp,
-                )
-            })
-            .unwrap_or_default();
-        for gc_region in gc_content.regions() {
+                );
+                self.gc_cache_key = Some(key);
+                self.gc_cache_misses = self.gc_cache_misses.saturating_add(1);
+            }
+        }
+        for gc_region in self.gc_cache.regions() {
             last_point = self.draw_gc_arc(gc_region, radius, painter, last_point);
         }
     }
@@ -729,28 +721,25 @@ impl RenderDnaCircular {
                 display.hidden_feature_kinds().clone(),
             )
         };
-        let features = self
-            .dna
-            .read()
-            .expect("DNA lock poisoned")
-            .features()
-            .to_owned();
-        for (feature_number, feature) in features.iter().enumerate() {
-            let fp_opt = self.layout_feature_from_location(
-                feature,
-                show_cds_features,
-                show_gene_features,
-                show_mrna_features,
-                show_repeat_features,
-                show_contextual_transcript_features,
-                show_tfbs,
-                tfbs_display_criteria,
-                vcf_display_criteria.clone(),
-                &hidden_feature_kinds,
-            );
-            if let Some(mut fp) = fp_opt {
-                fp.feature_number = feature_number;
-                self.features.push(fp);
+        {
+            let dna = self.dna.read().expect("DNA lock poisoned");
+            for (feature_number, feature) in dna.features().iter().enumerate() {
+                let fp_opt = self.layout_feature_from_location(
+                    feature,
+                    show_cds_features,
+                    show_gene_features,
+                    show_mrna_features,
+                    show_repeat_features,
+                    show_contextual_transcript_features,
+                    show_tfbs,
+                    tfbs_display_criteria,
+                    &vcf_display_criteria,
+                    &hidden_feature_kinds,
+                );
+                if let Some(mut fp) = fp_opt {
+                    fp.feature_number = feature_number;
+                    self.features.push(fp);
+                }
             }
         }
         self.compact_feature_bands();
@@ -1080,7 +1069,7 @@ impl RenderDnaCircular {
         show_contextual_transcript_features: bool,
         show_tfbs: bool,
         tfbs_display_criteria: TfbsDisplayCriteria,
-        vcf_display_criteria: VcfDisplayCriteria,
+        vcf_display_criteria: &VcfDisplayCriteria,
         hidden_feature_kinds: &BTreeSet<String>,
     ) -> Option<FeaturePosition> {
         if !Self::draw_feature(
@@ -1110,16 +1099,8 @@ impl RenderDnaCircular {
             return None;
         }
 
-        let feature_from = ranges
-            .iter()
-            .map(|(start, _)| start.rem_euclid(seq_len))
-            .min()
-            .unwrap_or(0);
-        let feature_to = ranges
-            .iter()
-            .map(|(_, end)| end.rem_euclid(seq_len))
-            .max()
-            .unwrap_or(feature_from);
+        let feature_from = ranges.first()?.0;
+        let feature_to = ranges.last()?.1;
 
         let feature_color = RenderDna::feature_color(feature);
         let (intron_arch_color, intron_arch_width, intron_arch_lift_factor) =
@@ -1534,15 +1515,6 @@ impl RenderDnaCircular {
             family: FontFamily::Proportional,
         };
 
-        let mut re_positions: Vec<RestrictionEnzymeKey> = self
-            .dna
-            .read()
-            .unwrap()
-            .restriction_enzyme_groups()
-            .keys()
-            .cloned()
-            .collect();
-        re_positions.sort();
         let (display_mode, preferred_restriction_enzymes) = self
             .display
             .read()
@@ -1553,22 +1525,29 @@ impl RenderDnaCircular {
                 )
             })
             .unwrap_or((RestrictionEnzymeDisplayMode::default(), vec![]));
-        let all_groups = self.dna.read().unwrap().restriction_enzyme_groups().clone();
-        let visible_groups = re_positions
-            .into_iter()
-            .filter_map(|key| {
-                let names = all_groups.get(&key)?;
-                DnaDisplay::restriction_group_matches_mode(
-                    display_mode,
-                    &preferred_restriction_enzymes,
-                    &key,
-                    names,
-                )
-                .then_some((key, names.clone()))
+        let (all_group_count, visible_groups) = self
+            .dna
+            .read()
+            .map(|dna| {
+                let groups = dna.restriction_enzyme_groups();
+                let mut visible_groups = groups
+                    .iter()
+                    .filter_map(|(key, names)| {
+                        DnaDisplay::restriction_group_matches_mode(
+                            display_mode,
+                            &preferred_restriction_enzymes,
+                            key,
+                            names,
+                        )
+                        .then(|| (key.clone(), names.clone()))
+                    })
+                    .collect::<Vec<_>>();
+                visible_groups.sort_by(|(left, _), (right, _)| left.cmp(right));
+                (groups.len(), visible_groups)
             })
-            .collect::<Vec<_>>();
+            .unwrap_or_default();
         if visible_groups.is_empty() {
-            let message = if all_groups.is_empty()
+            let message = if all_group_count == 0
                 || matches!(display_mode, RestrictionEnzymeDisplayMode::AllInView)
             {
                 RestrictionEnzymeDisplayMode::AllInView
@@ -1578,7 +1557,7 @@ impl RenderDnaCircular {
                 format!(
                     "{} {} total cut sites hidden by the current filter.",
                     display_mode.empty_state_label(),
-                    all_groups.len()
+                    all_group_count
                 )
             };
             painter.text(
@@ -1684,7 +1663,7 @@ impl RenderDnaCircular {
         show_contextual_transcript_features: bool,
         show_tfbs: bool,
         tfbs_display_criteria: TfbsDisplayCriteria,
-        vcf_display_criteria: VcfDisplayCriteria,
+        vcf_display_criteria: &VcfDisplayCriteria,
         hidden_feature_kinds: &BTreeSet<String>,
     ) -> bool {
         if RenderDna::is_source_feature(feature) {
@@ -1718,7 +1697,7 @@ impl RenderDnaCircular {
             return RenderDna::tfbs_feature_passes_display_filter(feature, tfbs_display_criteria);
         }
         if RenderDna::is_vcf_track_feature(feature) {
-            return RenderDna::vcf_feature_passes_display_filter(feature, &vcf_display_criteria);
+            return RenderDna::vcf_feature_passes_display_filter(feature, vcf_display_criteria);
         }
         true
     }
@@ -1771,6 +1750,68 @@ mod tests {
     }
 
     #[test]
+    fn circular_features_preserve_zero_based_half_open_terminal_bounds() {
+        for (start, end) in [(0, 1), (999, 1000), (0, 1000), (900, 1000)] {
+            let feature = make_test_feature(Location::simple_range(start, end));
+            let mut renderer = test_renderer_with_feature(feature, 1000);
+            renderer.layout_features();
+            let feature = &renderer.features[0];
+            assert_eq!((feature.from, feature.to), (start, end));
+            assert_eq!(
+                (feature.segments[0].from, feature.segments[0].to),
+                (start, end)
+            );
+            assert_eq!(
+                renderer.normalized_feature_range(feature.from, feature.to),
+                Some((start, end))
+            );
+        }
+        assert_eq!(
+            RenderDnaCircular::feature_hover_text("feature", 0, 1),
+            "feature: 1-1 bp"
+        );
+        assert_eq!(
+            RenderDnaCircular::feature_hover_text("feature", 999, 1000),
+            "feature: 1000-1000 bp"
+        );
+    }
+
+    #[test]
+    fn circular_orf_arc_crosses_origin_instead_of_drawing_the_complement() {
+        let renderer =
+            test_renderer_with_feature(make_test_feature(Location::simple_range(0, 1)), 1000);
+        for reverse in [false, true] {
+            let context = egui::Context::default();
+            let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+                renderer.draw_pointed_arc(
+                    990,
+                    1010,
+                    renderer.radius,
+                    reverse,
+                    Stroke::new(1.0, Color32::RED),
+                    ui.painter(),
+                );
+            });
+            let lines: Vec<_> = output
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    Shape::LineSegment { points, .. } => Some(points),
+                    _ => None,
+                })
+                .collect();
+            assert!(lines.len() >= 4);
+            assert!(
+                lines
+                    .iter()
+                    .flat_map(|points| points.iter())
+                    .all(|p| p.y < renderer.center.y - 200.0)
+            );
+            output.textures_delta.clear();
+        }
+    }
+
+    #[test]
     fn multipart_join_builds_segments_and_arches() {
         let feature = make_test_feature(Location::Join(vec![
             Location::simple_range(100, 150),
@@ -1816,6 +1857,29 @@ mod tests {
         let badge_size = RenderDnaCircular::mcs_label_badge_size(text_size);
         assert!(badge_size.x > text_size.x);
         assert!(badge_size.y > text_size.y);
+    }
+
+    #[test]
+    fn custom_gc_bins_are_cached_between_circular_render_passes() {
+        let feature = make_test_feature(Location::simple_range(10, 30));
+        let mut renderer = test_renderer_with_feature(feature, 240);
+        {
+            let mut display = renderer.display.write().expect("display");
+            display.set_show_gc_contents(true);
+            display.set_gc_content_bin_size_bp(17);
+        }
+        let ctx = egui::Context::default();
+        for _ in 0..2 {
+            ctx.begin_pass(egui::RawInput::default());
+            crate::egui_compat::show_central_panel_for_test_context(
+                &ctx,
+                egui::CentralPanel::default(),
+                |ui| renderer.draw_gc_contents(ui.painter()),
+            );
+            crate::egui_compat::discard_test_pass_output(&ctx);
+        }
+        assert_eq!(renderer.gc_cache_misses, 1);
+        assert!(renderer.gc_cache_hits >= 1);
     }
 
     #[test]

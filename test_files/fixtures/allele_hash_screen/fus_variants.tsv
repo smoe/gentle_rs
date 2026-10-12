@@ -1,0 +1,3 @@
+variant_id	transcript_id	cdna_pos_1based	ref	alt	genotype	phase_set
+v1	FUS_TX1	20	C	T	0|1	ps_fus_demo
+v2	FUS_TX1	45	A	G	1|0	ps_fus_demo

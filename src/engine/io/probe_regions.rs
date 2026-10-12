@@ -22,7 +22,7 @@ const PROBE_REGION_MATRIX_MANIFEST_SCHEMA: &str =
     "gentle.probe_region_normalized_matrix_manifest.v1";
 const PROBE_REGION_BACKEND_PROVENANCE_SCHEMA: &str = "gentle.probe_region_backend_provenance.v1";
 const PROBE_REGION_BACKEND_RUN_SCHEMA: &str = "gentle.probe_region_backend_run.v1";
-const PROBE_REGION_FINGERPRINT_SHA1_MAX_BYTES: u64 = 10 * 1024 * 1024;
+const PROBE_REGION_FINGERPRINT_DIGEST_MAX_BYTES: u64 = 10 * 1024 * 1024;
 const AFFYMETRIX_PLATFORM_REGISTRY_SCHEMA: &str = "gentle.affymetrix_platform_registry.v1";
 const AFFYMETRIX_PLATFORM_REGISTRY_JSON: &str =
     include_str!("../../../data/resources/affymetrix/platform_registry.json");
@@ -129,6 +129,8 @@ struct ProbeRegionProjectedEvidence {
     evidence_id: String,
     level: String,
     feature_id: String,
+    platform: Option<String>,
+    contrast: Option<String>,
     parent_feature_id: Option<String>,
     intensity_source: Option<String>,
     chromosome: Option<String>,
@@ -249,7 +251,7 @@ mod inspection;
 #[path = "probe_regions/interpretation.rs"]
 mod interpretation;
 #[path = "probe_regions/planning_backend.rs"]
-mod planning_backend;
+pub(crate) mod planning_backend;
 #[path = "probe_regions/projection.rs"]
 mod projection;
 #[path = "probe_regions/render_output_svg.rs"]

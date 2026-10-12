@@ -1,0 +1,75 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "tss_regulatory_view_gui",
+  "title": "Inspect TFBS scores and regulatory evidence at one annotated TSS",
+  "graphics": [
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tss_regulatory_view_gui/01-annotated-context.raw.png",
+      "caption": "Native TSS / Regulatory view before profile attachment: annotation, structure and signal remain distinct from a complete score trace.",
+      "illustrates_step": 2,
+      "capture_date": "2026-09-28"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tss_regulatory_view_gui/02-attached-profile.raw.png",
+      "caption": "The lower part of the same viewer after attaching its hash-bound profile report; the report-provided MA0004.1 lane is present without rescoring or a database query, and this tiny fixture's negative scores are explicitly clipped to a flat zero display trace.",
+      "illustrates_step": 3,
+      "capture_date": "2026-09-28"
+    }
+  ],
+  "catalog": {
+    "order": 94,
+    "path": "docs/tutorial/08-16_tss_regulatory_view_gui.md",
+    "type": "gui_cli_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": [
+      "gui_first",
+      "cli_first",
+      "agent_users",
+      "regulatory_analysis",
+      "wet_lab_biologists"
+    ],
+    "notes": "Offline synthetic native TSS-view walkthrough. Core steps attach a hash-bound score report without rescoring or database queries. An optional compatible DuckDB companion queries hand-crafted nonempty hits and separately binds full/partial reports without changing original curves or context; new query/export and native-hit acceptance pending. Headless and sequence-local shells retain an unapplied typed UI intent. No binding or biological TSS preference claim.",
+    "estimated_minutes": 10,
+    "difficulty": "intermediate",
+    "network": "offline",
+    "interfaces": ["GUI", "Agent Assistant / inner agent", "CLI / shared Shell (optional queries); CLI intent receipt"],
+    "starting_state": "Empty project and the retained public synthetic-minus annotated TSS/report pair",
+    "produces": ["interactive native TSS evidence view"],
+    "group": "08",
+    "group_position": 16,
+    "prerequisites": ["tss_collection_gui"],
+    "next_steps": ["tp73_dnp73_factor_curves"]
+  },
+  "agent_parity": {
+    "schema": "gentle.tutorial_agent_parity.v1",
+    "cases": [
+      {
+        "id": "load_synthetic_tss_record",
+        "command": "/open file docs/tutorial/reproducibility/tss_regulatory_view_gui/synthetic-minus.annotated-tss.gb --id synthetic_minus_tss",
+        "execution": "ask",
+        "mutating": true
+      },
+      {
+        "id": "open_synthetic_tss_window",
+        "command": "ui open sequence-window synthetic_minus_tss",
+        "execution": "ask",
+        "mutating": false
+      },
+      {
+        "id": "open_native_tss_view",
+        "command": "ui open tss-view",
+        "execution": "ask",
+        "mutating": false
+      },
+      {
+        "id": "attach_bound_profile_report",
+        "command": "ui open tss-view --report docs/tutorial/reproducibility/tss_regulatory_view_gui/synthetic-minus.profile-report.json",
+        "execution": "ask",
+        "mutating": false
+      }
+    ]
+  }
+}

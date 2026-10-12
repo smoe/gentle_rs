@@ -1,12 +1,25 @@
 //! Curated workflow example payloads and templates.
 
-use crate::engine::{Engine, GentleEngine, Operation, OperationProgress, ProjectState, Workflow};
+mod agent_parity;
+pub use agent_parity::{
+    TutorialAgentParityCheck, TutorialAgentParityFinding, TutorialAgentParitySummary,
+    check_tutorial_agent_parity,
+};
+
+use crate::engine::{
+    Engine, GentleEngine, Operation, OperationProgress, ProjectState, Workflow,
+    protocol::{FactComparison, FactExpression},
+};
+use crate::tutorial_gui_semantics::{
+    TutorialGuiInteractionKind, tutorial_gui_control, validate_replacement_text,
+};
+use gentle_protocol::FeatureExpertTarget;
 use serde::{Deserialize, Serialize};
-use sha1::{Digest, Sha1};
+use serde_json::Value;
 use std::{
+    borrow::Cow,
     collections::{BTreeMap, HashMap, HashSet},
     env, fs,
-    io::Read,
     path::{Path, PathBuf},
     process::Command,
     time::{SystemTime, UNIX_EPOCH},
@@ -29,6 +42,8 @@ pub const TUTORIAL_MANIFEST_SCHEMA: &str = "gentle.tutorial_manifest.v2";
 pub const LEGACY_TUTORIAL_MANIFEST_SCHEMA_V1: &str = "gentle.tutorial_manifest.v1";
 pub const TUTORIAL_GENERATION_REPORT_SCHEMA: &str = "gentle.tutorial_generation_report.v1";
 pub const TUTORIAL_REVIEW_MANIFEST_SCHEMA: &str = "gentle.tutorial_review_manifest.v1";
+pub const TUTORIAL_GUI_ACCEPTANCE_SCHEMA: &str = "gentle.tutorial_gui_acceptance.v1";
+pub const TUTORIAL_AGENT_PARITY_SCHEMA: &str = "gentle.tutorial_agent_parity.v1";
 pub const DEFAULT_TUTORIAL_CATALOG_PATH: &str = "docs/tutorial/catalog.json";
 pub const DEFAULT_TUTORIAL_CATALOG_META_PATH: &str = "docs/tutorial/sources/catalog_meta.json";
 pub const DEFAULT_TUTORIAL_SOURCE_DIR: &str = "docs/tutorial/sources";
@@ -41,6 +56,7 @@ pub const TUTORIAL_ARTIFACT_ISSUE_TEMPLATE_PATH: &str =
     ".github/ISSUE_TEMPLATE/tutorial-artifact-figure.md";
 pub const TUTORIAL_EXECUTION_ISSUE_TEMPLATE_PATH: &str =
     ".github/ISSUE_TEMPLATE/tutorial-execution-failure.md";
+const TUTORIAL_NAVIGATION_LINK_LIMIT: usize = 3;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TutorialCatalogGeneratedRuntime {
@@ -73,6 +89,24 @@ pub struct TutorialCatalogEntry {
     pub audiences: Vec<String>,
     #[serde(default)]
     pub notes: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub estimated_minutes: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub difficulty: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub interfaces: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub starting_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub produces: Vec<String>,
+    /// Tutorial ids that should normally be read or completed first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prerequisites: Vec<String>,
+    /// Tutorial ids that form the most useful continuation of this page.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub next_steps: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub review_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -170,6 +204,22 @@ pub struct TutorialSourceCatalogSection {
     pub audiences: Vec<String>,
     #[serde(default)]
     pub notes: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub estimated_minutes: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub difficulty: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub interfaces: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub starting_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub produces: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prerequisites: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub next_steps: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -187,10 +237,25 @@ pub struct TutorialSourceGeneratedChapterSection {
     pub use_cases: Vec<String>,
     #[serde(default)]
     pub gui_steps: Vec<String>,
+    /// Optional short, human-written headings for the corresponding GUI steps.
+    /// Missing headings are derived without truncating prose into an ellipsis.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub step_titles: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cli_steps: Vec<String>,
+    /// Natural-language examples for the in-app Agent Assistant. These are
+    /// displayed for review and are never executed by tutorial generation.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub agent_steps: Vec<String>,
+    /// Whether generated prose should advertise the canonical workflow through
+    /// an outer-agent replay. `None` preserves the default for ordinary
+    /// executable tutorials; `Some(false)` is an explicit editorial opt-out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outer_agent_replay: Option<bool>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub step_expectations: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub step_rationales: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub prerequisites: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -209,6 +274,204 @@ pub struct TutorialSourceGeneratedChapterSection {
     pub checkpoints: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub graphics: Vec<TutorialGraphic>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gui_acceptance: Option<TutorialGuiAcceptance>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TutorialGuiAcceptance {
+    pub schema: String,
+    pub profile: TutorialGuiAcceptanceProfile,
+    pub network: TutorialGuiNetworkPolicy,
+    /// A view-only contract proves navigation and interpretation without
+    /// claiming that opening or inspecting a workspace changed project state.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub view_only: bool,
+    pub starter: TutorialGuiProjectReference,
+    pub oracle: TutorialGuiProjectReference,
+    pub completion_condition: FactExpression,
+    pub steps: Vec<TutorialGuiAcceptanceStep>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum TutorialGuiAcceptanceProfile {
+    Smoke,
+    OfflineCore,
+    Full,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TutorialGuiNetworkPolicy {
+    Offline,
+    OnlineAllowed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TutorialGuiProjectReference {
+    pub example_id: String,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub seq_id_map: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TutorialGuiAcceptanceStep {
+    pub id: String,
+    pub prose_step: usize,
+    pub window: String,
+    pub target: String,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub subject: BTreeMap<String, String>,
+    pub interaction: TutorialGuiInteraction,
+    pub timeout_class: TutorialGuiTimeoutClass,
+    /// Whether the ordinary GUI action persists any project state, including
+    /// auxiliary GUI metadata that makes the project dirty.
+    pub persists_project_state: bool,
+    /// Whether the step establishes an engine-owned scientific result and must
+    /// therefore prove a before/after fact transition.
+    pub scientific_effect: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub allow_preexisting: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before: Option<FactExpression>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after: Option<FactExpression>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub verifiers: Vec<TutorialGuiVerifier>,
+    pub evidence: TutorialGuiEvidencePolicy,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum TutorialGuiInteraction {
+    Click,
+    RightClick,
+    DoubleClick,
+    /// Select the complete existing value before typing the supplied text.
+    ReplaceText {
+        text: String,
+    },
+    SetCheckbox {
+        selected: bool,
+    },
+    SelectTab,
+    PressKey {
+        key: String,
+    },
+    Scroll {
+        direction: TutorialGuiScrollDirection,
+        clicks: usize,
+    },
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TutorialGuiScrollDirection {
+    Up,
+    Down,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TutorialGuiTimeoutClass {
+    Instant,
+    Interactive,
+    Compute,
+    Io,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum TutorialGuiVerifier {
+    /// Exact visible DNA-window multiset, one subject-bound window per sequence.
+    /// This is visual evidence, not proof of sequence or collection contents.
+    DnaWindows {
+        seq_ids: Vec<String>,
+    },
+    Facts {
+        expression: FactExpression,
+    },
+    ExpectedEffects {
+        capability_id: String,
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        args: BTreeMap<String, String>,
+    },
+    Report {
+        report_id: String,
+        schema: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        required_fields: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        assertions: Vec<TutorialGuiReportAssertion>,
+    },
+    Artifact {
+        path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sha256: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        schema: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        required_attributes: Vec<String>,
+    },
+    State {
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        seq_ids: Vec<String>,
+        /// Compare bases, topology, end geometry and annotations to the isolated oracle.
+        #[serde(default, skip_serializing_if = "is_false")]
+        compare_with_oracle: bool,
+    },
+    VisibleClaim {
+        semantic_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        visible: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        enabled: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        selected: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        outcome_role: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum TutorialGuiReportAssertion {
+    /// Assert one scalar/container field by equality, numeric comparison, or
+    /// non-empty status. Multiple predicates on one field are conjunctive.
+    Value {
+        path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        equals: Option<serde_json::Value>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        compare: Option<FactComparison>,
+        #[serde(default, skip_serializing_if = "is_false")]
+        non_empty: bool,
+    },
+    /// Compare two numeric fields from the same report.
+    Relation {
+        left_path: String,
+        op: String,
+        right_path: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TutorialGuiEvidencePolicy {
+    pub screenshot: TutorialGuiEvidenceRequirement,
+    pub snapshot: TutorialGuiEvidenceRequirement,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TutorialGuiEvidenceRequirement {
+    Required,
+    Optional,
+    Omitted,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -227,6 +490,50 @@ pub struct TutorialSourceUnit {
     pub catalog: Option<TutorialSourceCatalogSection>,
     #[serde(default)]
     pub generated_chapter: Option<TutorialSourceGeneratedChapterSection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_parity: Option<TutorialAgentParityContract>,
+}
+
+/// Parser-level examples that bind tutorial prose to Agent Assistant commands.
+///
+/// These cases deliberately stop at GENtle's deterministic response boundary:
+/// they do not invoke a language model, execute a command, or claim scientific
+/// acceptance.  A model may phrase the surrounding explanation differently,
+/// but the suggested command and its review policy remain testable here.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TutorialAgentParityContract {
+    pub schema: String,
+    pub cases: Vec<TutorialAgentParityCase>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TutorialAgentParityCase {
+    pub id: String,
+    pub command: String,
+    pub execution: TutorialAgentExecutionIntent,
+    /// Biological/project mutation declared by the author. The shared parser
+    /// may conservatively classify additional commands as mutating.
+    pub mutating: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parser_payload: Option<TutorialAgentParserPayload>,
+}
+
+/// Bind a learner-created `@file` to a repository JSON template for parsing
+/// only. Its JSON must occur in the guide; approval placeholders stay intact.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TutorialAgentParserPayload {
+    pub file: String,
+    pub template: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TutorialAgentExecutionIntent {
+    Ask,
+    Auto,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -249,7 +556,13 @@ impl TutorialSourceCatalogSection {
         placement: TutorialPlacement,
         review: TutorialReviewProjection,
         graphics: Vec<TutorialGraphic>,
+        generated_prerequisites: Vec<String>,
     ) -> TutorialCatalogEntry {
+        let prerequisites = if self.prerequisites.is_empty() {
+            generated_prerequisites
+        } else {
+            self.prerequisites
+        };
         TutorialCatalogEntry {
             id,
             title,
@@ -264,6 +577,14 @@ impl TutorialSourceCatalogSection {
             source: self.source,
             audiences: self.audiences,
             notes: self.notes,
+            estimated_minutes: self.estimated_minutes,
+            difficulty: self.difficulty,
+            network: self.network,
+            interfaces: self.interfaces,
+            starting_state: self.starting_state,
+            produces: self.produces,
+            prerequisites,
+            next_steps: self.next_steps,
             review_status: Some(review.status),
             codex_reviewed_at: review.codex_reviewed_at,
             human_reviewed_at: review.human_reviewed_at,
@@ -301,8 +622,12 @@ impl TutorialSourceGeneratedChapterSection {
             narrative: self.narrative,
             use_cases: self.use_cases,
             gui_steps: self.gui_steps,
+            step_titles: self.step_titles,
             cli_steps: self.cli_steps,
+            agent_steps: self.agent_steps,
+            outer_agent_replay: self.outer_agent_replay,
             step_expectations: self.step_expectations,
+            step_rationales: self.step_rationales,
             prerequisites: self.prerequisites,
             local_execution_note: self.local_execution_note,
             learning_objectives: self.learning_objectives,
@@ -312,6 +637,7 @@ impl TutorialSourceGeneratedChapterSection {
             retain_outputs: self.retain_outputs,
             checkpoints: self.checkpoints,
             graphics,
+            gui_acceptance: self.gui_acceptance,
         }
     }
 }
@@ -363,11 +689,21 @@ impl TutorialSourceUnit {
                     &graphics,
                     repo_root,
                 ),
-            ),
+            )?,
         );
         Ok(Some({
             let order = catalog.order;
-            let entry = catalog.into_catalog_entry(id, title, placement, review, graphics);
+            let generated_prerequisites = generated_chapter
+                .map(|chapter| chapter.prerequisites)
+                .unwrap_or_default();
+            let entry = catalog.into_catalog_entry(
+                id,
+                title,
+                placement,
+                review,
+                graphics,
+                generated_prerequisites,
+            );
             (order, entry)
         }))
     }
@@ -479,9 +815,17 @@ pub struct TutorialChapter {
     #[serde(default)]
     pub gui_steps: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub step_titles: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cli_steps: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub agent_steps: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outer_agent_replay: Option<bool>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub step_expectations: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub step_rationales: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub prerequisites: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -500,6 +844,8 @@ pub struct TutorialChapter {
     pub checkpoints: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub graphics: Vec<TutorialGraphic>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gui_acceptance: Option<TutorialGuiAcceptance>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -592,6 +938,9 @@ pub struct TutorialGenerationReport {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
     pub chapters: Vec<TutorialGenerationChapter>,
+    /// Check-time diagnostics only; absent from generated tutorial artifacts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_parity: Option<TutorialAgentParitySummary>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -602,6 +951,8 @@ pub enum ExampleTestMode {
     Always,
     Skip,
     Online,
+    /// Documentation-only generation; runtime checks need already-installed BLAST+.
+    OptionalBlast,
 }
 
 impl ExampleTestMode {
@@ -610,13 +961,14 @@ impl ExampleTestMode {
             Self::Always => "always",
             Self::Skip => "skip",
             Self::Online => "online",
+            Self::OptionalBlast => "optional_blast",
         }
     }
 
     pub fn should_run(self, online_enabled: bool) -> bool {
         match self {
             Self::Always => true,
-            Self::Skip => false,
+            Self::Skip | Self::OptionalBlast => false,
             Self::Online => online_enabled,
         }
     }
@@ -859,6 +1211,54 @@ pub fn online_example_tests_enabled() -> bool {
 pub fn run_example_workflow(example: &WorkflowExample) -> Result<(), String> {
     let temp = TempDir::new().map_err(|e| format!("Could not create temp directory: {e}"))?;
     run_example_workflow_in_dir(example, Path::new("."), temp.path())
+}
+
+fn check_optional_blast_runtime_with(
+    mut probe: impl FnMut(&str) -> std::io::Result<bool>,
+    run: impl FnOnce() -> Result<(), String>,
+) -> Result<Option<String>, String> {
+    let mut missing = Vec::new();
+    for (key, default) in [
+        (
+            crate::genomes::MAKEBLASTDB_ENV_BIN,
+            crate::genomes::DEFAULT_MAKEBLASTDB_BIN,
+        ),
+        (
+            crate::genomes::BLASTDBCMD_ENV_BIN,
+            crate::genomes::DEFAULT_BLASTDBCMD_BIN,
+        ),
+        (
+            crate::genomes::BLASTN_ENV_BIN,
+            crate::genomes::DEFAULT_BLASTN_BIN,
+        ),
+    ] {
+        let executable = crate::tool_overrides::resolve_tool_executable(key, default);
+        match probe(&executable) {
+            Ok(true) => {}
+            Ok(false) => {
+                return Err(format!(
+                    "BLAST+ tool '{executable}' failed its version check"
+                ));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => missing.push(default),
+            Err(error) => return Err(format!("Could not run BLAST+ tool '{executable}': {error}")),
+        }
+    }
+    if !missing.is_empty() {
+        return Ok(Some(format!(
+            "Skipped optional BLAST+ runtime check: missing {}. No tools were installed; no BLAST acceptance is claimed.",
+            missing.join(", ")
+        )));
+    }
+    run()?;
+    Ok(None)
+}
+
+fn probe_blast_tool(executable: &str) -> std::io::Result<bool> {
+    Command::new(executable)
+        .arg("-version")
+        .output()
+        .map(|output| output.status.success())
 }
 
 /// Executes one workflow example with path rewriting and returns the resulting
@@ -1115,7 +1515,62 @@ pub fn load_tutorial_catalog(catalog_path: &Path) -> Result<TutorialCatalog, Str
             ));
         }
     }
+    validate_tutorial_catalog_navigation(&catalog.entries, &seen_ids).map_err(|error| {
+        format!(
+            "Tutorial catalog '{}' navigation validation error: {error}",
+            display_path(catalog_path)
+        )
+    })?;
     Ok(catalog)
+}
+
+fn validate_tutorial_catalog_navigation(
+    entries: &[TutorialCatalogEntry],
+    known_ids: &HashSet<String>,
+) -> Result<(), String> {
+    for entry in entries {
+        for (field, targets) in [
+            ("prerequisites", &entry.prerequisites),
+            ("next_steps", &entry.next_steps),
+        ] {
+            if targets.len() > TUTORIAL_NAVIGATION_LINK_LIMIT {
+                return Err(format!(
+                    "tutorial '{}' has {} {field} links (maximum {})",
+                    entry.id,
+                    targets.len(),
+                    TUTORIAL_NAVIGATION_LINK_LIMIT
+                ));
+            }
+            let mut seen_targets = HashSet::new();
+            for target in targets {
+                if target.trim().is_empty() {
+                    return Err(format!(
+                        "tutorial '{}' contains a blank {field} link",
+                        entry.id
+                    ));
+                }
+                if target == &entry.id {
+                    return Err(format!(
+                        "tutorial '{}' cannot link to itself in {field}",
+                        entry.id
+                    ));
+                }
+                if !seen_targets.insert(target) {
+                    return Err(format!(
+                        "tutorial '{}' repeats '{}' in {field}",
+                        entry.id, target
+                    ));
+                }
+                if !known_ids.contains(target) {
+                    return Err(format!(
+                        "tutorial '{}' references unknown {field} tutorial '{}'",
+                        entry.id, target
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 pub fn load_tutorial_catalog_meta(meta_path: &Path) -> Result<TutorialCatalogMeta, String> {
@@ -1279,6 +1734,45 @@ pub fn load_tutorial_source_units(source_dir: &Path) -> Result<Vec<TutorialSourc
                 ));
             }
         }
+        if let Some(agent_parity) = &unit.agent_parity {
+            if agent_parity.schema != TUTORIAL_AGENT_PARITY_SCHEMA {
+                return Err(format!(
+                    "Tutorial source '{}' uses unsupported agent parity schema '{}'; expected '{}'",
+                    display_path(&path),
+                    agent_parity.schema,
+                    TUTORIAL_AGENT_PARITY_SCHEMA
+                ));
+            }
+            if agent_parity.cases.is_empty() {
+                return Err(format!(
+                    "Tutorial source '{}' has an empty agent parity contract",
+                    display_path(&path)
+                ));
+            }
+            let mut case_ids = HashSet::new();
+            for case in &agent_parity.cases {
+                if case.id.trim().is_empty() || case.command.trim().is_empty() {
+                    return Err(format!(
+                        "Tutorial source '{}' has an agent parity case with a blank id or command",
+                        display_path(&path)
+                    ));
+                }
+                if !case_ids.insert(case.id.as_str()) {
+                    return Err(format!(
+                        "Tutorial source '{}' has duplicate agent parity case id '{}'",
+                        display_path(&path),
+                        case.id
+                    ));
+                }
+                if case.mutating && case.execution != TutorialAgentExecutionIntent::Ask {
+                    return Err(format!(
+                        "Tutorial source '{}' agent parity case '{}' is mutating and must use execution='ask'",
+                        display_path(&path),
+                        case.id
+                    ));
+                }
+            }
+        }
         if let Some(generated) = &unit.generated_chapter {
             if generated.example_id.trim().is_empty() {
                 return Err(format!(
@@ -1328,7 +1822,16 @@ pub fn generate_tutorial_catalog_from_sources(
     };
     let (review_by_id, review_warn_after_months) =
         tutorial_review_entries_for_source_dir(source_dir)?;
-    let review_today = current_utc_review_date();
+    let review_today = if review_by_id.values().any(|entry| {
+        entry
+            .human_reviewed_at
+            .as_deref()
+            .is_some_and(|date| !date.trim().is_empty())
+    }) {
+        Some(git_review_date(meta_path, false)?)
+    } else {
+        None
+    };
     let repo_root = tutorial_repo_root_for_source_dir(source_dir);
     let source_path_by_id = tutorial_source_path_lookup(source_dir);
     let mut entries = Vec::new();
@@ -1350,7 +1853,7 @@ pub fn generate_tutorial_catalog_from_sources(
             .cmp(&right.0)
             .then_with(|| left.1.id.cmp(&right.1.id))
     });
-    Ok(TutorialCatalog {
+    let catalog = TutorialCatalog {
         schema: TUTORIAL_CATALOG_SCHEMA.to_string(),
         description: meta.description,
         entry_page: meta.entry_page,
@@ -1359,7 +1862,14 @@ pub fn generate_tutorial_catalog_from_sources(
             .into_iter()
             .map(|(_, entry)| entry)
             .collect(),
-    })
+    };
+    let known_ids = catalog
+        .entries
+        .iter()
+        .map(|entry| entry.id.clone())
+        .collect::<HashSet<_>>();
+    validate_tutorial_catalog_navigation(&catalog.entries, &known_ids)?;
+    Ok(catalog)
 }
 
 pub fn generate_tutorial_manifest_from_sources(
@@ -1686,6 +2196,24 @@ pub fn load_tutorial_manifest(manifest_path: &Path) -> Result<TutorialManifest, 
                 ));
             }
         }
+        for (field, values) in [
+            ("step_titles", &chapter.step_titles),
+            ("agent_steps", &chapter.agent_steps),
+            ("step_rationales", &chapter.step_rationales),
+        ] {
+            if values.len() > chapter.gui_steps.len() {
+                return Err(format!(
+                    "Tutorial chapter '{}' has more {field} than gui_steps",
+                    chapter.id
+                ));
+            }
+            if values.iter().any(|value| value.trim().is_empty()) {
+                return Err(format!(
+                    "Tutorial chapter '{}' contains blank {field} entry",
+                    chapter.id
+                ));
+            }
+        }
         if chapter.cli_steps.len() > chapter.gui_steps.len() {
             return Err(format!(
                 "Tutorial chapter '{}' has more cli_steps than gui_steps",
@@ -1971,18 +2499,6 @@ fn review_date_after(left: (i32, u32, u32), right: (i32, u32, u32)) -> bool {
     left > right
 }
 
-fn system_time_review_date(time: SystemTime) -> Option<(i32, u32, u32)> {
-    let seconds = time.duration_since(UNIX_EPOCH).ok()?.as_secs();
-    Some(civil_from_unix_days((seconds / 86_400) as i64))
-}
-
-fn path_modified_review_date(path: &Path) -> Option<(i32, u32, u32)> {
-    fs::metadata(path)
-        .ok()
-        .and_then(|metadata| metadata.modified().ok())
-        .and_then(system_time_review_date)
-}
-
 fn git_repo_root_for_path(path: &Path) -> Option<PathBuf> {
     let absolute = if path.is_absolute() {
         path.to_path_buf()
@@ -1998,34 +2514,55 @@ fn git_repo_root_for_path(path: &Path) -> Option<PathBuf> {
     }
 }
 
-fn git_path_review_date(path: &Path) -> Option<(i32, u32, u32)> {
-    let repo_root = git_repo_root_for_path(path)?;
+fn git_review_date(path: &Path, path_history: bool) -> Result<(i32, u32, u32), String> {
+    let unavailable = || {
+        format!(
+            "Tutorial review history unavailable for '{}'; restore full Git history before generating or checking reviewed tutorials (checkout mtimes are not evidence)",
+            tutorial_review_dependency_path(path)
+        )
+    };
+    let repo_root = git_repo_root_for_path(path).ok_or_else(unavailable)?;
     let absolute = if path.is_absolute() {
         path.to_path_buf()
     } else {
-        env::current_dir().ok()?.join(path)
+        env::current_dir().map_err(|_| unavailable())?.join(path)
     };
-    let relative = absolute.strip_prefix(&repo_root).ok()?;
-    let output = Command::new("git")
+    let relative = absolute
+        .strip_prefix(&repo_root)
+        .map_err(|_| unavailable())?;
+    let mut command = Command::new("git");
+    command
+        .arg("--literal-pathspecs")
         .arg("-C")
         .arg(&repo_root)
         .arg("log")
         .arg("-1")
-        .arg("--format=%ct")
-        .arg("--")
-        .arg(relative)
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
+        .arg("--format=%ct");
+    if path_history {
+        command.arg("--").arg(relative);
     }
-    let stdout = String::from_utf8(output.stdout).ok()?;
-    let seconds = stdout.trim().parse::<i64>().ok()?;
-    Some(civil_from_unix_days(seconds / 86_400))
+    let output = command.output().map_err(|_| unavailable())?;
+    if !output.status.success() {
+        return Err(unavailable());
+    }
+    let stdout = String::from_utf8(output.stdout).map_err(|_| unavailable())?;
+    let seconds = stdout.trim().parse::<i64>().map_err(|_| unavailable())?;
+    Ok(civil_from_unix_days(seconds.div_euclid(86_400)))
 }
 
-fn path_review_change_date(path: &Path) -> Option<(i32, u32, u32)> {
-    git_path_review_date(path).or_else(|| path_modified_review_date(path))
+fn tutorial_review_dependency_path(path: &Path) -> String {
+    let absolute = if path.is_absolute() {
+        Some(path.to_path_buf())
+    } else {
+        env::current_dir().ok().map(|cwd| cwd.join(path))
+    };
+    absolute
+        .as_deref()
+        .and_then(|absolute| {
+            let root = git_repo_root_for_path(absolute)?;
+            Some(display_path(absolute.strip_prefix(root).ok()?))
+        })
+        .unwrap_or_else(|| display_path(path))
 }
 
 fn tutorial_repo_root_for_source_dir(source_dir: &Path) -> PathBuf {
@@ -2110,6 +2647,17 @@ pub fn validate_tutorial_manifest_against_examples(
                 loaded.example.test_mode.as_str()
             ));
         }
+        if loaded.example.test_mode == ExampleTestMode::OptionalBlast
+            && !chapter.retain_outputs.is_empty()
+        {
+            return Err(format!(
+                "Tutorial chapter '{}' uses optional_blast and cannot retain runtime outputs during documentation generation",
+                chapter.id
+            ));
+        }
+        if let Some(acceptance) = &chapter.gui_acceptance {
+            validate_tutorial_gui_acceptance(chapter, acceptance, &by_id)?;
+        }
         for concept_id in &chapter.concepts {
             if !concept_by_id.contains_key(concept_id) {
                 return Err(format!(
@@ -2126,6 +2674,501 @@ pub fn validate_tutorial_manifest_against_examples(
                 "Tutorial concept '{}' is defined but not used in any chapter",
                 concept_id
             ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_tutorial_gui_acceptance(
+    chapter: &TutorialChapter,
+    acceptance: &TutorialGuiAcceptance,
+    examples: &HashMap<String, LoadedWorkflowExample>,
+) -> Result<(), String> {
+    let context = format!("Tutorial chapter '{}' GUI acceptance", chapter.id);
+    if acceptance.schema != TUTORIAL_GUI_ACCEPTANCE_SCHEMA {
+        return Err(format!(
+            "{context} uses schema '{}' (expected '{}')",
+            acceptance.schema, TUTORIAL_GUI_ACCEPTANCE_SCHEMA
+        ));
+    }
+    for (role, project) in [
+        ("starter", &acceptance.starter),
+        ("oracle", &acceptance.oracle),
+    ] {
+        if project.example_id.trim().is_empty() {
+            return Err(format!("{context} {role}.example_id must not be empty"));
+        }
+        if !examples.contains_key(project.example_id.as_str()) {
+            return Err(format!(
+                "{context} {role} references unknown example id '{}'",
+                project.example_id
+            ));
+        }
+        for (source_seq_id, target_seq_id) in &project.seq_id_map {
+            if source_seq_id.trim().is_empty() || target_seq_id.trim().is_empty() {
+                return Err(format!(
+                    "{context} {role}.seq_id_map requires non-empty source and target sequence ids"
+                ));
+            }
+        }
+    }
+    validate_tutorial_fact_expression(
+        &format!("{context} completion_condition"),
+        &acceptance.completion_condition,
+    )?;
+    if acceptance.steps.is_empty() {
+        return Err(format!("{context} must declare at least one step"));
+    }
+    let mut step_ids = HashSet::new();
+    for step in &acceptance.steps {
+        if step.id.trim().is_empty() || !step_ids.insert(step.id.as_str()) {
+            return Err(format!(
+                "{context} contains an empty or duplicate step id '{}'",
+                step.id
+            ));
+        }
+        if step.prose_step == 0 || step.prose_step > chapter.gui_steps.len() {
+            return Err(format!(
+                "{context} step '{}' prose_step {} is outside gui_steps 1..={}",
+                step.id,
+                step.prose_step,
+                chapter.gui_steps.len()
+            ));
+        }
+        if step.window.trim().is_empty() || step.target.trim().is_empty() {
+            return Err(format!(
+                "{context} step '{}' requires non-empty window and target ids",
+                step.id
+            ));
+        }
+        let window_spec = tutorial_gui_control(step.window.as_str()).ok_or_else(|| {
+            format!(
+                "{context} step '{}' references uncatalogued window '{}'",
+                step.id, step.window
+            )
+        })?;
+        if window_spec.semantic_id != window_spec.window_id
+            || !window_spec.allowed_interactions.is_empty()
+        {
+            return Err(format!(
+                "{context} step '{}' window '{}' is not a catalogued window identity",
+                step.id, step.window
+            ));
+        }
+        let target_spec = tutorial_gui_control(step.target.as_str()).ok_or_else(|| {
+            format!(
+                "{context} step '{}' references tutorial-ineligible target '{}'",
+                step.id, step.target
+            )
+        })?;
+        if target_spec.window_id != step.window {
+            return Err(format!(
+                "{context} step '{}' target '{}' belongs to window '{}', not '{}'",
+                step.id, step.target, target_spec.window_id, step.window
+            ));
+        }
+        let feature_target = matches!(
+            step.target.as_str(),
+            "dna.feature_tree.row" | "dna.feature_tree.group"
+        );
+        if feature_target || step.subject.contains_key("feature_index") {
+            let index = step.subject.get("feature_index").and_then(|value| {
+                value
+                    .parse::<usize>()
+                    .ok()
+                    .filter(|index| index.to_string() == *value)
+            });
+            if !feature_target
+                || index.is_none()
+                || step
+                    .subject
+                    .get("sequence")
+                    .is_none_or(|value| value.trim().is_empty())
+            {
+                return Err(format!(
+                    "{context} step '{}' requires an exact sequence/feature_index binding for a feature-tree target",
+                    step.id
+                ));
+            }
+        }
+        let interaction_kind = tutorial_gui_interaction_kind(&step.interaction);
+        if !target_spec.allowed_interactions.contains(&interaction_kind) {
+            return Err(format!(
+                "{context} step '{}' interaction {:?} is not allowed for target '{}'",
+                step.id, interaction_kind, step.target
+            ));
+        }
+        if step.persists_project_state != target_spec.authority.persists_project_state() {
+            return Err(format!(
+                "{context} step '{}' persists_project_state={} disagrees with target '{}' authority ({})",
+                step.id,
+                step.persists_project_state,
+                step.target,
+                target_spec.authority.persists_project_state()
+            ));
+        }
+        if step.scientific_effect != target_spec.authority.requires_scientific_effect() {
+            return Err(format!(
+                "{context} step '{}' scientific_effect={} disagrees with target '{}' authority ({})",
+                step.id,
+                step.scientific_effect,
+                step.target,
+                target_spec.authority.requires_scientific_effect()
+            ));
+        }
+        if acceptance.view_only && (step.persists_project_state || step.scientific_effect) {
+            return Err(format!(
+                "{context} view-only step '{}' must not persist project or scientific state",
+                step.id
+            ));
+        }
+        match (
+            step.scientific_effect,
+            step.before.is_some(),
+            step.after.is_some(),
+        ) {
+            (true, true, true) => {}
+            (true, _, _) => {
+                return Err(format!(
+                    "{context} scientific-effect step '{}' requires before and after fact expressions",
+                    step.id
+                ));
+            }
+            (false, false, false) => {}
+            (false, _, _) => {
+                return Err(format!(
+                    "{context} step '{}' without a scientific effect must not declare before or after facts",
+                    step.id
+                ));
+            }
+        }
+        if step.allow_preexisting && !step.scientific_effect {
+            return Err(format!(
+                "{context} step '{}' without a scientific effect cannot allow a pre-existing effect",
+                step.id
+            ));
+        }
+        match &step.interaction {
+            TutorialGuiInteraction::ReplaceText { text } => {
+                let policy = target_spec.text_policy.ok_or_else(|| {
+                    format!(
+                        "{context} step '{}' target '{}' has no replacement-text policy",
+                        step.id, step.target
+                    )
+                })?;
+                validate_replacement_text(policy, text).map_err(|error| {
+                    format!(
+                        "{context} step '{}' replacement text is invalid for '{}': {error}",
+                        step.id, step.target
+                    )
+                })?;
+            }
+            TutorialGuiInteraction::PressKey { key } if key.trim().is_empty() => {
+                return Err(format!(
+                    "{context} step '{}' press_key value must not be empty",
+                    step.id
+                ));
+            }
+            TutorialGuiInteraction::Scroll { clicks, .. } if !(1..=20).contains(clicks) => {
+                return Err(format!(
+                    "{context} step '{}' scroll clicks must be in 1..=20",
+                    step.id
+                ));
+            }
+            _ => {}
+        }
+        if step.scientific_effect
+            && !step.verifiers.iter().any(|verifier| {
+                !matches!(
+                    verifier,
+                    TutorialGuiVerifier::VisibleClaim { .. }
+                        | TutorialGuiVerifier::DnaWindows { .. }
+                )
+            })
+        {
+            return Err(format!(
+                "{context} scientific-effect step '{}' requires at least one engine/report/artifact/state verifier",
+                step.id
+            ));
+        }
+        if let Some(before) = &step.before {
+            validate_tutorial_fact_expression(
+                &format!("{context} step '{}' before", step.id),
+                before,
+            )?;
+        }
+        if let Some(after) = &step.after {
+            validate_tutorial_fact_expression(
+                &format!("{context} step '{}' after", step.id),
+                after,
+            )?;
+        }
+        for verifier in &step.verifiers {
+            validate_tutorial_gui_verifier(&context, step, verifier)?;
+        }
+    }
+    Ok(())
+}
+
+fn tutorial_gui_interaction_kind(
+    interaction: &TutorialGuiInteraction,
+) -> TutorialGuiInteractionKind {
+    match interaction {
+        TutorialGuiInteraction::Click => TutorialGuiInteractionKind::Click,
+        TutorialGuiInteraction::RightClick => TutorialGuiInteractionKind::RightClick,
+        TutorialGuiInteraction::DoubleClick => TutorialGuiInteractionKind::DoubleClick,
+        TutorialGuiInteraction::ReplaceText { .. } => TutorialGuiInteractionKind::ReplaceText,
+        TutorialGuiInteraction::SetCheckbox { .. } => TutorialGuiInteractionKind::SetCheckbox,
+        TutorialGuiInteraction::SelectTab => TutorialGuiInteractionKind::SelectTab,
+        TutorialGuiInteraction::PressKey { .. } => TutorialGuiInteractionKind::PressKey,
+        TutorialGuiInteraction::Scroll { .. } => TutorialGuiInteractionKind::Scroll,
+    }
+}
+
+fn validate_tutorial_fact_expression(
+    context: &str,
+    expression: &FactExpression,
+) -> Result<(), String> {
+    match expression {
+        FactExpression::All { all } => {
+            if all.is_empty() {
+                return Err(format!(
+                    "{context} must not contain an empty all expression"
+                ));
+            }
+            for child in all {
+                validate_tutorial_fact_expression(context, child)?;
+            }
+        }
+        FactExpression::Any { any } => {
+            if any.is_empty() {
+                return Err(format!(
+                    "{context} must not contain an empty any expression"
+                ));
+            }
+            for child in any {
+                validate_tutorial_fact_expression(context, child)?;
+            }
+        }
+        FactExpression::Not { not } => validate_tutorial_fact_expression(context, not)?,
+        FactExpression::Atom(atom) => {
+            if atom.fact.trim().is_empty() {
+                return Err(format!(
+                    "{context} contains an atom with an empty fact name"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn valid_tutorial_json_path(path: &str) -> bool {
+    !path.is_empty()
+        && path.split('.').all(|segment| {
+            !segment.is_empty()
+                && segment
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+        })
+}
+
+fn valid_numeric_comparison_op(op: &str) -> bool {
+    matches!(
+        op,
+        "eq" | "=" | "==" | "ne" | "!=" | "gt" | ">" | "gte" | ">=" | "lt" | "<" | "lte" | "<="
+    )
+}
+
+fn validate_tutorial_gui_report_assertion(
+    context: &str,
+    assertion: &TutorialGuiReportAssertion,
+) -> Result<(), String> {
+    match assertion {
+        TutorialGuiReportAssertion::Value {
+            path,
+            equals,
+            compare,
+            non_empty,
+        } => {
+            if !valid_tutorial_json_path(path) {
+                return Err(format!("{context} has invalid report field path '{path}'"));
+            }
+            if equals.is_none() && compare.is_none() && !non_empty {
+                return Err(format!(
+                    "{context} report value assertion '{path}' must declare equals, compare, or non_empty"
+                ));
+            }
+            if let Some(compare) = compare {
+                if !valid_numeric_comparison_op(compare.op.as_str())
+                    || compare.value.as_f64().is_none()
+                {
+                    return Err(format!(
+                        "{context} report value assertion '{path}' requires a supported numeric comparison"
+                    ));
+                }
+            }
+        }
+        TutorialGuiReportAssertion::Relation {
+            left_path,
+            op,
+            right_path,
+        } => {
+            if !valid_tutorial_json_path(left_path) || !valid_tutorial_json_path(right_path) {
+                return Err(format!(
+                    "{context} report relation requires valid left_path and right_path"
+                ));
+            }
+            if !valid_numeric_comparison_op(op) {
+                return Err(format!(
+                    "{context} report relation uses unsupported comparison '{op}'"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_tutorial_gui_verifier(
+    context: &str,
+    step: &TutorialGuiAcceptanceStep,
+    verifier: &TutorialGuiVerifier,
+) -> Result<(), String> {
+    let verifier_context = format!("{context} step '{}' verifier", step.id);
+    match verifier {
+        TutorialGuiVerifier::Facts { expression } => {
+            validate_tutorial_fact_expression(&verifier_context, expression)?;
+        }
+        TutorialGuiVerifier::ExpectedEffects {
+            capability_id,
+            args,
+        } => {
+            if capability_id.trim().is_empty() {
+                return Err(format!(
+                    "{verifier_context} capability_id must not be empty"
+                ));
+            }
+            if args
+                .iter()
+                .any(|(key, value)| key.trim().is_empty() || value.trim().is_empty())
+            {
+                return Err(format!(
+                    "{verifier_context} expected-effect args must not contain empty keys or values"
+                ));
+            }
+        }
+        TutorialGuiVerifier::Report {
+            report_id,
+            schema,
+            required_fields,
+            assertions,
+        } => {
+            if report_id.trim().is_empty() || schema.trim().is_empty() {
+                return Err(format!(
+                    "{verifier_context} report_id and schema must not be empty"
+                ));
+            }
+            if required_fields.is_empty() && assertions.is_empty() {
+                return Err(format!(
+                    "{verifier_context} report must declare required_fields or assertions"
+                ));
+            }
+            for field in required_fields {
+                if !valid_tutorial_json_path(field) {
+                    return Err(format!(
+                        "{verifier_context} has invalid required report field '{field}'"
+                    ));
+                }
+            }
+            for assertion in assertions {
+                validate_tutorial_gui_report_assertion(&verifier_context, assertion)?;
+            }
+        }
+        TutorialGuiVerifier::Artifact {
+            path,
+            sha256,
+            schema,
+            required_attributes,
+        } => {
+            let artifact_path = Path::new(path);
+            if path.trim().is_empty()
+                || artifact_path.is_absolute()
+                || artifact_path.components().any(|component| {
+                    matches!(
+                        component,
+                        std::path::Component::ParentDir
+                            | std::path::Component::RootDir
+                            | std::path::Component::Prefix(_)
+                    )
+                })
+            {
+                return Err(format!(
+                    "{verifier_context} artifact path must stay relative to the isolated run directory"
+                ));
+            }
+            if let Some(sha256) = sha256
+                && (sha256.len() != 64 || !sha256.bytes().all(|byte| byte.is_ascii_hexdigit()))
+            {
+                return Err(format!(
+                    "{verifier_context} artifact sha256 must be exactly 64 hexadecimal characters"
+                ));
+            }
+            let structured = schema
+                .as_ref()
+                .is_some_and(|value| !value.trim().is_empty())
+                && !required_attributes.is_empty()
+                && required_attributes
+                    .iter()
+                    .all(|value| !value.trim().is_empty());
+            if sha256.is_none() && !structured {
+                return Err(format!(
+                    "{verifier_context} artifact requires sha256 or a schema with required_attributes"
+                ));
+            }
+        }
+        TutorialGuiVerifier::DnaWindows { seq_ids } => {
+            if seq_ids.is_empty()
+                || seq_ids.iter().any(|id| id.trim().is_empty())
+                || seq_ids.iter().collect::<HashSet<_>>().len() != seq_ids.len()
+            {
+                return Err(format!(
+                    "{verifier_context} DNA windows require non-empty, distinct seq_ids"
+                ));
+            }
+        }
+        TutorialGuiVerifier::State { seq_ids, .. } => {
+            if seq_ids.is_empty() || seq_ids.iter().any(|seq_id| seq_id.trim().is_empty()) {
+                return Err(format!(
+                    "{verifier_context} state verifier requires non-empty seq_ids"
+                ));
+            }
+        }
+        TutorialGuiVerifier::VisibleClaim {
+            semantic_id,
+            visible,
+            enabled,
+            selected,
+            outcome_role,
+        } => {
+            if tutorial_gui_control(semantic_id).is_none() {
+                return Err(format!(
+                    "{verifier_context} references uncatalogued semantic id '{semantic_id}'"
+                ));
+            }
+            if visible.is_none()
+                && enabled.is_none()
+                && selected.is_none()
+                && outcome_role.is_none()
+            {
+                return Err(format!(
+                    "{verifier_context} visible_claim must assert at least one state property"
+                ));
+            }
+            if outcome_role
+                .as_ref()
+                .is_some_and(|role| role.trim().is_empty())
+            {
+                return Err(format!("{verifier_context} outcome_role must not be empty"));
+            }
         }
     }
     Ok(())
@@ -2294,6 +3337,59 @@ fn resolve_input_path(path: &str, repo_root: &Path) -> String {
     display_path(&repo_root.join(raw))
 }
 
+fn resolve_digest_pinned_text_input_path(
+    path: &str,
+    expected_sha256: Option<&str>,
+    repo_root: &Path,
+    run_dir: &Path,
+) -> Result<String, String> {
+    let resolved = resolve_input_path(path, repo_root);
+    let Some(expected_sha256) = expected_sha256
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(resolved);
+    };
+    let Ok(bytes) = fs::read(&resolved) else {
+        return Ok(resolved);
+    };
+    if crate::digest_utils::sha256_prefixed_bytes(&bytes) == expected_sha256 {
+        return Ok(resolved);
+    }
+    let Ok(text) = std::str::from_utf8(&bytes) else {
+        return Ok(resolved);
+    };
+    let normalized = text.replace("\r\n", "\n");
+    if normalized.as_bytes() == bytes.as_slice()
+        || crate::digest_utils::sha256_prefixed_bytes(normalized.as_bytes()) != expected_sha256
+    {
+        return Ok(resolved);
+    }
+
+    let file_name = Path::new(&resolved)
+        .file_name()
+        .map(|value| value.to_string_lossy())
+        .unwrap_or_else(|| "digest-pinned-input.json".into());
+    let staged_dir = run_dir.join("normalized-inputs");
+    fs::create_dir_all(&staged_dir).map_err(|error| {
+        format!(
+            "Could not create tutorial normalized-input directory '{}': {error}",
+            display_path(&staged_dir)
+        )
+    })?;
+    let staged_path = staged_dir.join(format!(
+        "{}-{file_name}",
+        crate::digest_utils::short_sha256_id("input", &resolved)
+    ));
+    fs::write(&staged_path, normalized.as_bytes()).map_err(|error| {
+        format!(
+            "Could not stage line-ending-normalized tutorial input '{}': {error}",
+            display_path(&staged_path)
+        )
+    })?;
+    Ok(display_path(&staged_path))
+}
+
 fn resolve_output_path(path: &str, run_dir: &Path) -> String {
     let raw = Path::new(path);
     if raw.is_absolute() {
@@ -2362,9 +3458,67 @@ fn rewrite_example_paths_for_execution(
             ensure_parent_exists(path)?;
             continue;
         }
-        if let Operation::RenderFeatureExpertSvg { path, .. } = op {
+        if let Operation::RenderFeatureExpertSvg { target, path, .. } = op {
+            let isoform_request = match target {
+                FeatureExpertTarget::IsoformEvidence { request } => Some(request),
+                FeatureExpertTarget::GeneLocusEvidence { request } => {
+                    for source_path in &mut request.probe_effect_table_paths {
+                        *source_path = resolve_input_path(source_path, repo_root);
+                    }
+                    Some(&mut request.isoform_evidence)
+                }
+                _ => None,
+            };
+            if let Some(request) = isoform_request {
+                for source_path in &mut request.probe_evidence_paths {
+                    *source_path = resolve_input_path(source_path, repo_root);
+                }
+                for source_path in &mut request.cdna_est_resource_paths {
+                    *source_path = resolve_input_path(source_path, repo_root);
+                }
+                rewrite_optional_input_path(&mut request.expression_tsv_path, repo_root);
+            }
             *path = resolve_output_path(path, run_dir);
             ensure_parent_exists(path)?;
+            continue;
+        }
+        if let Operation::PrepareGeneLocusEvidence { request } = op {
+            rewrite_optional_input_path(&mut request.ensembl_entry_path, repo_root);
+            for track in &mut request.local_tracks {
+                track.path = resolve_input_path(&track.path, repo_root);
+            }
+            if let Some(regulation) = request.ensembl_regulation.as_mut() {
+                regulation.interval_index_path =
+                    resolve_input_path(&regulation.interval_index_path, repo_root);
+                rewrite_optional_input_path(&mut regulation.intervals_path, repo_root);
+            }
+            request.svg_path = resolve_output_path(&request.svg_path, run_dir);
+            ensure_parent_exists(&request.svg_path)?;
+            for path in [
+                &mut request.png_path,
+                &mut request.pdf_path,
+                &mut request.display_report_path,
+                &mut request.reporter_report_path,
+                &mut request.receipt_path,
+            ] {
+                rewrite_optional_output_path(path, run_dir);
+                if let Some(path) = path.as_deref() {
+                    ensure_parent_exists(path)?;
+                }
+            }
+            continue;
+        }
+        if let Operation::ExportGenomicRegionSet { request } = op {
+            for path in [
+                &mut request.json_path,
+                &mut request.bed_path,
+                &mut request.manifest_path,
+            ] {
+                rewrite_optional_output_path(path, run_dir);
+                if let Some(path) = path.as_deref() {
+                    ensure_parent_exists(path)?;
+                }
+            }
             continue;
         }
         if let Operation::RenderRnaStructureSvg { path, .. } = op {
@@ -2450,6 +3604,34 @@ fn rewrite_example_paths_for_execution(
             }
             continue;
         }
+        if let Operation::DesignTranscriptAssayPanel {
+            junction_evidence_paths,
+            path,
+            ..
+        } = op
+        {
+            for source_path in junction_evidence_paths {
+                *source_path = resolve_input_path(source_path, repo_root);
+            }
+            rewrite_optional_output_path(path, run_dir);
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
+        if let Operation::ComposeGeneTranscriptAssayRoutine { request, path } = op {
+            request.isoform_evidence_path = resolve_digest_pinned_text_input_path(
+                &request.isoform_evidence_path,
+                request.expected_isoform_evidence_sha256.as_deref(),
+                repo_root,
+                run_dir,
+            )?;
+            rewrite_optional_output_path(path, run_dir);
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
         if let Operation::ExportDnaLadders { path, .. } = op {
             *path = resolve_output_path(path, run_dir);
             ensure_parent_exists(path)?;
@@ -2511,6 +3693,27 @@ fn rewrite_example_paths_for_execution(
             if let Some(dir) = cache_dir {
                 ensure_directory_exists(dir)?;
             }
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
+        if let Operation::PlanRegulatoryFragmentPanel { request, path } = op {
+            rewrite_optional_input_path(&mut request.helper_catalog_path, repo_root);
+            rewrite_optional_output_path(path, run_dir);
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
+        if let Operation::PlanPromoterReporterPanel { request, path } = op {
+            rewrite_optional_input_path(&mut request.helper_catalog_path, repo_root);
+            for member in &mut request.members {
+                member.candidate_set_path =
+                    resolve_input_path(&member.candidate_set_path, repo_root);
+            }
+            request.output_dir = resolve_output_path(&request.output_dir, run_dir);
+            rewrite_optional_output_path(path, run_dir);
             if let Some(path) = path.as_deref() {
                 ensure_parent_exists(path)?;
             }
@@ -2618,24 +3821,9 @@ fn rewrite_example_paths_for_execution(
             }
             continue;
         }
-        if let Operation::ExportPromoterArtifactManifest {
-            artifacts, path, ..
-        } = op
-        {
-            let resolved_manifest_path = resolve_output_path(path, run_dir);
-            let manifest_parent = Path::new(&resolved_manifest_path)
-                .parent()
-                .map(Path::to_path_buf);
-            for artifact in artifacts {
-                let resolved_artifact_path =
-                    PathBuf::from(resolve_output_path(&artifact.path, run_dir));
-                artifact.path = manifest_parent
-                    .as_ref()
-                    .and_then(|parent| resolved_artifact_path.strip_prefix(parent).ok())
-                    .map(display_path)
-                    .unwrap_or_else(|| display_path(&resolved_artifact_path));
-            }
-            *path = resolved_manifest_path;
+        if let Operation::ExportPromoterArtifactManifest { path, .. } = op {
+            // Component paths are already manifest-relative (or absolute).
+            *path = resolve_output_path(path, run_dir);
             ensure_parent_exists(path)?;
             continue;
         }
@@ -2649,6 +3837,30 @@ fn rewrite_example_paths_for_execution(
             rewrite_optional_output_path(cache_dir, run_dir);
             if let Some(dir) = cache_dir {
                 ensure_directory_exists(dir)?;
+            }
+            continue;
+        }
+        if let Operation::ScreenGenomicRegionHomology { request, path } = op {
+            rewrite_optional_input_path(&mut request.catalog_path, repo_root);
+            rewrite_optional_output_path(&mut request.cache_dir, run_dir);
+            if let Some(dir) = request.cache_dir.as_deref() {
+                ensure_directory_exists(dir)?;
+            }
+            rewrite_optional_output_path(path, run_dir);
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
+        if let Operation::RenderGenomicRegionHomologySvg { path, .. } = op {
+            *path = resolve_output_path(path, run_dir);
+            ensure_parent_exists(path)?;
+            continue;
+        }
+        if let Operation::AssessPromoterConservedModules { path, .. } = op {
+            rewrite_optional_output_path(path, run_dir);
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
             }
             continue;
         }
@@ -2740,6 +3952,83 @@ fn rewrite_example_paths_for_execution(
             if let Some(dir) = cache_dir {
                 ensure_directory_exists(dir)?;
             }
+            continue;
+        }
+        if let Operation::ListCutRunDatasets { catalog_path, .. } = op {
+            rewrite_optional_input_path(catalog_path, repo_root);
+            continue;
+        }
+        if let Operation::ShowCutRunDatasetStatus {
+            catalog_path,
+            cache_dir,
+            ..
+        } = op
+        {
+            rewrite_optional_input_path(catalog_path, repo_root);
+            rewrite_optional_output_path(cache_dir, run_dir);
+            continue;
+        }
+        if let Operation::PrepareCutRunDataset {
+            catalog_path,
+            cache_dir,
+            ..
+        }
+        | Operation::ProjectCutRunDataset {
+            catalog_path,
+            cache_dir,
+            ..
+        } = op
+        {
+            rewrite_optional_input_path(catalog_path, repo_root);
+            rewrite_optional_output_path(cache_dir, run_dir);
+            if let Some(dir) = cache_dir {
+                ensure_directory_exists(dir)?;
+            }
+            continue;
+        }
+        if let Operation::InterpretCutRunReads {
+            input_r1_path,
+            input_r2_path,
+            catalog_path,
+            cache_dir,
+            checkpoint_path,
+            ..
+        } = op
+        {
+            rewrite_optional_input_path(input_r1_path, repo_root);
+            rewrite_optional_input_path(input_r2_path, repo_root);
+            rewrite_optional_input_path(catalog_path, repo_root);
+            rewrite_optional_output_path(cache_dir, run_dir);
+            if let Some(dir) = cache_dir {
+                ensure_directory_exists(dir)?;
+            }
+            rewrite_optional_output_path(checkpoint_path, run_dir);
+            if let Some(path) = checkpoint_path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
+        if let Operation::InspectCutRunRegulatorySupport {
+            catalog_path,
+            cache_dir,
+            path,
+            ..
+        } = op
+        {
+            rewrite_optional_input_path(catalog_path, repo_root);
+            rewrite_optional_output_path(cache_dir, run_dir);
+            if let Some(dir) = cache_dir {
+                ensure_directory_exists(dir)?;
+            }
+            rewrite_optional_output_path(path, run_dir);
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
+        if let Operation::ExportCutRunReadCoverage { path, .. } = op {
+            *path = resolve_output_path(path, run_dir);
+            ensure_parent_exists(path)?;
             continue;
         }
         if let Operation::ImportGenomeBedTrack { path, .. } = op {
@@ -3010,7 +4299,7 @@ fn truncate_markdown_one_line(value: &str, max_chars: usize) -> String {
 }
 
 fn truncate_at_a_glance_step(value: &str) -> String {
-    truncate_markdown_one_line(&value.replace('`', ""), 80)
+    normalize_markdown_one_line(&value.replace('`', ""))
 }
 
 fn markdown_inline_code(value: &str) -> String {
@@ -3697,15 +4986,35 @@ fn tutorial_step_at(steps: &[String], idx: usize) -> Option<&str> {
         .filter(|step| !step.is_empty())
 }
 
-fn tutorial_step_heading(gui_step: &str) -> String {
-    let mut heading = gui_step.trim().trim_end_matches('.').replace('`', "");
-    if heading.chars().count() > 80 {
-        heading = truncate_markdown_one_line(&heading, 80);
+fn tutorial_step_heading(chapter: &TutorialChapter, idx: usize, gui_step: &str) -> String {
+    if let Some(title) = tutorial_step_at(&chapter.step_titles, idx) {
+        return title.trim_end_matches('.').to_string();
     }
+    let normalized = normalize_markdown_one_line(&gui_step.replace('`', ""));
+    // Punctuation can belong to accessions, paths or coordinates. Only an
+    // explicit step title may abbreviate the source instruction.
+    let mut heading = normalized.trim_end_matches('.').to_string();
     if let Some(first) = heading.get_mut(0..1) {
         first.make_ascii_uppercase();
     }
     heading
+}
+
+fn tutorial_agent_step(chapter: &TutorialChapter, idx: usize, gui_step: &str) -> String {
+    tutorial_step_at(&chapter.agent_steps, idx)
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| {
+            format!(
+                "In the current GENtle project, help me perform this tutorial step: {} Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.",
+                gui_step.trim()
+            )
+        })
+}
+
+fn tutorial_cli_for_reader(command: &str) -> String {
+    command
+        .replace("cargo run --bin gentle_cli -- ", "gentle_cli ")
+        .replace("cargo run -q --bin gentle_cli -- ", "gentle_cli ")
 }
 
 fn tutorial_chapter_has_complete_cli_steps(chapter: &TutorialChapter) -> bool {
@@ -3780,7 +5089,8 @@ fn render_tutorial_inline_graphic(graphic: &TutorialGraphic, output_dir: &Path) 
         out.push('.');
     }
     out.push_str("*\n\n");
-    if retained_artifact_extension(&graphic.path) == "svg"
+    if graphic.kind.trim() == "generated"
+        && retained_artifact_extension(&graphic.path) == "svg"
         && let Some(preview) = retained_svg_text_preview(&graphic_path)
     {
         out.push_str("> SVG text labels: ");
@@ -3810,13 +5120,13 @@ fn render_tutorial_step_graphics(
 
 fn render_tutorial_gui_steps(chapter: &TutorialChapter, output_dir: &Path) -> String {
     let mut out = String::new();
-    out.push_str("\n## GUI First\n\n");
+    out.push_str("\n## Walkthrough: GUI, CLI and Inner Agent\n\n");
     if chapter.gui_steps.is_empty() {
-        out.push_str("- No GUI-first steps are required for this chapter.\n");
+        out.push_str("- No interactive steps are required for this chapter.\n");
         return out;
     }
     if !chapter.cli_steps.is_empty() {
-        out.push_str("CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.\n\n");
+        out.push_str("Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.\n\nIn the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.\n\n");
     }
     for (idx, step) in chapter.gui_steps.iter().enumerate() {
         let step = step.trim();
@@ -3832,24 +5142,66 @@ fn render_tutorial_gui_steps(chapter: &TutorialChapter, output_dir: &Path) -> St
         out.push_str(&format!(
             "### Step {}: {}\n\n",
             idx + 1,
-            tutorial_step_heading(step)
+            tutorial_step_heading(chapter, idx, step)
         ));
-        out.push_str("GUI: ");
+        out.push_str("**GUI**\n\n");
         out.push_str(step);
         out.push_str("\n\n");
         if let Some(cli_step) = cli_step {
-            out.push_str("CLI:\n\n");
+            out.push_str("**CLI (terminal)**\n\n");
             out.push_str("```bash\n");
-            out.push_str(cli_step);
+            out.push_str(&tutorial_cli_for_reader(cli_step));
             out.push_str("\n```\n\n");
         }
+        out.push_str("**Ask the inner agent**\n\n");
+        out.push_str("> ");
+        out.push_str(&tutorial_agent_step(chapter, idx, step));
+        out.push_str("\n\n");
         if let Some(expectation) = expectation {
-            out.push_str("> Expected: ");
+            out.push_str("**Expected**\n\n> ");
             out.push_str(expectation);
+            out.push_str("\n\n");
+        }
+        if let Some(rationale) = tutorial_step_at(&chapter.step_rationales, idx) {
+            out.push_str("**Why it matters**\n\n");
+            out.push_str(rationale);
             out.push_str("\n\n");
         }
         out.push_str(&render_tutorial_step_graphics(chapter, idx + 1, output_dir));
     }
+    out
+}
+
+fn render_tutorial_outer_agent_replay(chapter: &TutorialChapter, workflow_path: &str) -> String {
+    let state_name = chapter.id.replace('_', "-");
+    // Online chapters may need to populate multi-gigabyte reference caches.
+    // Keep the wrapper alive longer than the inner genome-prepare timeout;
+    // offline/core replays retain the tighter feedback loop.
+    let timeout_secs = match chapter.tier {
+        TutorialTier::Online => 7_200,
+        TutorialTier::Core | TutorialTier::Advanced => 300,
+    };
+    let mut out = String::new();
+    out.push_str("\n## Ask an Outer Agent (MCP or ClawBio/OpenClaw)\n\n");
+    out.push_str("An outer agent does not inherit the unsaved GUI project. Give it this chapter's canonical workflow and an explicit disposable state path; ask it to retain the structured result, artifacts and reproducibility receipt instead of replacing them with prose.\n\n");
+    out.push_str("> Use GENtle's `gentle-cloning` skill to replay `");
+    out.push_str(workflow_path);
+    out.push_str("` against a new disposable state. First report the exact workflow, inputs, state path, outputs and whether the selected route needs confirmation. Do not infer state from an open GUI. Return the structured result, produced artifacts and reproducibility receipt, and state any unmet prerequisite.\n\n");
+    out.push_str("Equivalent direct structured request for the generic wrapper:\n\n");
+    out.push_str("```json\n");
+    out.push_str("{\n");
+    out.push_str("  \"schema\": \"gentle.clawbio_skill_request.v1\",\n");
+    out.push_str("  \"mode\": \"workflow\",\n");
+    out.push_str("  \"state_path\": \"/tmp/gentle-");
+    out.push_str(&state_name);
+    out.push_str(".state.json\",\n");
+    out.push_str("  \"workflow_path\": \"");
+    out.push_str(workflow_path);
+    out.push_str("\",\n");
+    out.push_str(&format!("  \"timeout_secs\": {timeout_secs}\n"));
+    out.push_str("}\n");
+    out.push_str("```\n\n");
+    out.push_str("Submitting a direct structured request is an explicit wrapper invocation. If natural language selects a narrower delegated skill and that route mutates state, selects biological material or writes artifacts, the caller must preserve that skill's proposal/approval boundary and approve only the exact bound digest. This tutorial generation step does not invoke an agent or grant approval.\n");
     out
 }
 
@@ -4055,41 +5407,46 @@ fn render_tutorial_chapter_markdown(
         out.push('\n');
     }
     out.push_str(&render_tutorial_guided_walkthrough_see_also(chapter));
-    out.push_str(&render_tutorial_prerequisites(chapter, chapter_by_id)?);
-    out.push_str(&render_tutorial_local_execution_note(chapter));
-    out.push_str(&render_tutorial_parameters_that_matter(chapter));
-    out.push_str("\n## When This Routine Is Useful\n\n");
-    for use_case in &chapter.use_cases {
-        out.push_str("- ");
-        out.push_str(use_case.trim());
-        out.push('\n');
-    }
-    out.push_str("\n## What You Learn\n\n");
+    out.push_str("\n## What You Will Accomplish\n\n");
     for objective in &chapter.learning_objectives {
         out.push_str("- ");
         out.push_str(objective.trim());
         out.push('\n');
     }
-    out.push_str(&render_tutorial_concepts_compact(chapter, concept_by_id)?);
+    out.push_str("\n## Before You Start\n");
+    out.push_str(&render_tutorial_prerequisites(chapter, chapter_by_id)?);
+    out.push_str(&render_tutorial_local_execution_note(chapter));
+    out.push_str("\n**Useful when:**\n\n");
+    for use_case in &chapter.use_cases {
+        out.push_str("- ");
+        out.push_str(use_case.trim());
+        out.push('\n');
+    }
     out.push_str(&render_tutorial_at_a_glance(chapter));
     out.push_str(&render_tutorial_gui_steps(chapter, output_dir));
     if !tutorial_chapter_has_complete_cli_steps(chapter) {
-        out.push_str("\n## Command Equivalent (After GUI)\n\n");
-        out.push_str("Run the same routine non-interactively once the GUI flow is clear:\n\n");
+        out.push_str("\n## Complete Workflow Replay\n\n");
+        out.push_str("When an individual GUI gesture has no standalone shell command, replay the complete canonical workflow:\n\n");
         out.push_str("```bash\n");
-        out.push_str("cargo run --bin gentle_cli -- workflow @");
+        out.push_str("gentle_cli workflow @");
         out.push_str(&workflow_path);
         out.push('\n');
-        out.push_str("cargo run --bin gentle_cli -- shell 'workflow @");
+        out.push_str("gentle_cli shell 'workflow @");
         out.push_str(&workflow_path);
         out.push_str("'\n");
         out.push_str("```\n");
     }
+    if chapter.outer_agent_replay.unwrap_or(true) {
+        out.push_str(&render_tutorial_outer_agent_replay(chapter, &workflow_path));
+    }
+    out.push_str("\n## Interpretation and Reference\n");
+    out.push_str(&render_tutorial_parameters_that_matter(chapter));
+    out.push_str(&render_tutorial_concepts_compact(chapter, concept_by_id)?);
     if !chapter.follow_up_commands.is_empty() {
         out.push_str("\n## Follow-up Commands\n\n");
         out.push_str("```bash\n");
         for command in &chapter.follow_up_commands {
-            out.push_str(command.trim());
+            out.push_str(&tutorial_cli_for_reader(command.trim()));
             out.push('\n');
         }
         out.push_str("```\n");
@@ -4305,21 +5662,9 @@ fn collect_regular_files(root: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(files)
 }
 
-fn sha1_file(path: &Path) -> Result<String, String> {
-    let mut file = fs::File::open(path)
-        .map_err(|e| format!("Could not open '{}' for checksum: {e}", display_path(path)))?;
-    let mut hasher = Sha1::new();
-    let mut buffer = [0u8; 8192];
-    loop {
-        let read = file
-            .read(&mut buffer)
-            .map_err(|e| format!("Could not read '{}' for checksum: {e}", display_path(path)))?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..read]);
-    }
-    Ok(format!("{:x}", hasher.finalize()))
+fn digest_file(path: &Path) -> Result<String, String> {
+    crate::digest_utils::sha256_file_hex(path)
+        .map_err(|e| format!("Could not read '{}' for checksum: {e}", display_path(path)))
 }
 
 fn checksum_map(root: &Path, exclude_names: &[&str]) -> Result<BTreeMap<String, String>, String> {
@@ -4336,7 +5681,7 @@ fn checksum_map(root: &Path, exclude_names: &[&str]) -> Result<BTreeMap<String, 
         if excluded {
             continue;
         }
-        checksums.insert(rel_str, sha1_file(&file)?);
+        checksums.insert(rel_str, digest_file(&file)?);
     }
     Ok(checksums)
 }
@@ -4353,6 +5698,170 @@ fn directory_bytes_map(root: &Path) -> Result<BTreeMap<String, Vec<u8>>, String>
         map.insert(rel_str, bytes);
     }
     Ok(map)
+}
+
+fn is_tutorial_text_artifact(path: &str) -> bool {
+    Path::new(path)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            ["csv", "json", "md", "svg", "txt"]
+                .iter()
+                .any(|candidate| extension.eq_ignore_ascii_case(candidate))
+        })
+}
+
+fn normalize_crlf(bytes: &[u8]) -> Cow<'_, [u8]> {
+    if !bytes.windows(2).any(|pair| pair == b"\r\n") {
+        return Cow::Borrowed(bytes);
+    }
+
+    let mut normalized = Vec::with_capacity(bytes.len());
+    let mut offset = 0;
+    while offset < bytes.len() {
+        if bytes.get(offset..offset + 2) == Some(b"\r\n") {
+            normalized.push(b'\n');
+            offset += 2;
+        } else {
+            normalized.push(bytes[offset]);
+            offset += 1;
+        }
+    }
+    Cow::Owned(normalized)
+}
+
+const HISTORICAL_PANEL_REPORTS: [&str; 3] = [
+    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_endpoint_end_matrix.report.json",
+    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_routine_common_region_screen.report.json",
+    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json",
+];
+
+fn tutorial_panel_comparison_value(bytes: &[u8], require_current_generator: bool) -> Option<Value> {
+    static VERSION: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(
+            r"\A(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?\z",
+        )
+        .expect("literal generator version pattern")
+    });
+    let mut report: Value = serde_json::from_slice(bytes).ok()?;
+    if report.get("schema")?.as_str()? != "gentle.transcript_assay_panel.v2" {
+        return None;
+    }
+    let mut generator_identity = None;
+    for field in ["selected_assays", "short_sybr_junction_assays"] {
+        let assays = report.get_mut(field)?.as_array_mut()?;
+        if field == "selected_assays" && assays.is_empty() {
+            return None;
+        }
+        for assay in assays {
+            let summary = assay.get_mut("primer_pair_summary")?;
+            if summary.get("schema")?.as_str()? != "gentle.primer_pair_summary.v2" {
+                return None;
+            }
+            let version = summary
+                .pointer("/provenance/gentle_version")?
+                .as_str()?
+                .to_string();
+            let revision = summary
+                .get("selection_audit_generator_revision")?
+                .as_str()?
+                .to_string();
+            let valid_revision = revision == version
+                || revision
+                    .strip_prefix(&format!("{version}+git."))
+                    .is_some_and(|sha| {
+                        (7..=40).contains(&sha.len())
+                            && sha.bytes().all(|byte| byte.is_ascii_hexdigit())
+                    });
+            if !VERSION.is_match(&version) || !valid_revision {
+                return None;
+            }
+            if require_current_generator
+                && (version != env!("CARGO_PKG_VERSION")
+                    || revision != crate::about::GENTLE_SOURCE_REVISION)
+            {
+                return None;
+            }
+            let identity = (version, revision);
+            if generator_identity
+                .as_ref()
+                .is_some_and(|previous| previous != &identity)
+            {
+                return None;
+            }
+            generator_identity = Some(identity);
+            // Comparison-only projection: never rewrite stored provenance or
+            // ignore similarly named fields elsewhere in the report.
+            *summary.get_mut("selection_audit_generator_revision")? = Value::Null;
+            *summary.pointer_mut("/provenance/gentle_version")? = Value::Null;
+        }
+    }
+    Some(report)
+}
+
+fn tutorial_panel_reports_equal(expected: &[u8], actual: &[u8]) -> bool {
+    match (
+        tutorial_panel_comparison_value(expected, false),
+        tutorial_panel_comparison_value(actual, true),
+    ) {
+        (Some(expected), Some(actual)) => expected == actual,
+        _ => false,
+    }
+}
+
+fn tutorial_generation_ledger_equal(
+    expected: &BTreeMap<String, Vec<u8>>,
+    actual: &BTreeMap<String, Vec<u8>>,
+) -> bool {
+    let parse_ledger = |files: &BTreeMap<String, Vec<u8>>| -> Option<Value> {
+        let ledger: Value = serde_json::from_slice(files.get("report.json")?).ok()?;
+        (ledger.get("schema")?.as_str()? == TUTORIAL_GENERATION_REPORT_SCHEMA).then_some(ledger)
+    };
+    let (Some(mut expected_ledger), Some(mut actual_ledger)) =
+        (parse_ledger(expected), parse_ledger(actual))
+    else {
+        return false;
+    };
+    for path in HISTORICAL_PANEL_REPORTS {
+        if !expected.contains_key(path) && !actual.contains_key(path) {
+            continue;
+        }
+        let (Some(expected_bytes), Some(actual_bytes)) = (expected.get(path), actual.get(path))
+        else {
+            return false;
+        };
+        if !tutorial_panel_reports_equal(expected_bytes, actual_bytes) {
+            return false;
+        }
+        for (ledger, bytes) in [
+            (&mut expected_ledger, expected_bytes),
+            (&mut actual_ledger, actual_bytes),
+        ] {
+            let Some(checksum) = ledger
+                .get_mut("file_checksums")
+                .and_then(|map| map.get_mut(path))
+            else {
+                return false;
+            };
+            if checksum.as_str() != Some(crate::digest_utils::sha256_hex_bytes(bytes).as_str()) {
+                return false;
+            }
+            // Only after validating both original byte digests and replay
+            // compatibility may their different checksum values be projected.
+            *checksum = Value::Null;
+        }
+    }
+    expected_ledger == actual_ledger
+}
+
+fn tutorial_generated_bytes_equal(path: &str, expected: &[u8], actual: &[u8]) -> bool {
+    if HISTORICAL_PANEL_REPORTS.contains(&path) {
+        return tutorial_panel_reports_equal(expected, actual);
+    }
+    if !is_tutorial_text_artifact(path) {
+        return expected == actual;
+    }
+    normalize_crlf(expected) == normalize_crlf(actual)
 }
 
 fn summarize_path_list(paths: Vec<String>) -> String {
@@ -4536,12 +6045,15 @@ fn tutorial_source_dependencies(
 fn tutorial_review_dependency_stale_reason(
     entry: Option<&TutorialReviewEntry>,
     dependencies: &[TutorialReviewDependency],
-) -> Option<String> {
-    let reviewed_at = entry?.human_reviewed_at.as_deref()?.trim();
+) -> Result<Option<String>, String> {
+    let Some(reviewed_at) = entry.and_then(|entry| entry.human_reviewed_at.as_deref()) else {
+        return Ok(None);
+    };
+    let reviewed_at = reviewed_at.trim();
     if reviewed_at.is_empty() {
-        return None;
+        return Ok(None);
     }
-    let reviewed_date = parse_review_date(reviewed_at).ok()?;
+    let reviewed_date = parse_review_date(reviewed_at)?;
     let mut missing_graphics = dependencies
         .iter()
         .filter(|dependency| dependency.label.starts_with("declared graphic"))
@@ -4550,33 +6062,31 @@ fn tutorial_review_dependency_stale_reason(
             format!(
                 "{} '{}' is missing after human review date {}",
                 dependency.label,
-                display_path(&dependency.path),
+                tutorial_review_dependency_path(&dependency.path),
                 reviewed_at
             )
         })
         .collect::<Vec<_>>();
     missing_graphics.sort();
     if let Some(reason) = missing_graphics.into_iter().next() {
-        return Some(reason);
+        return Ok(Some(reason));
     }
-    let mut stale_dependencies = dependencies
-        .iter()
-        .filter_map(|dependency| {
-            let modified = path_review_change_date(&dependency.path)?;
-            review_date_after(modified, reviewed_date).then(|| {
-                (
-                    modified,
-                    tutorial_review_dependency_priority(&dependency.label),
-                    format!(
-                        "{} '{}' changed after human review date {}",
-                        dependency.label,
-                        display_path(&dependency.path),
-                        reviewed_at
-                    ),
-                )
-            })
-        })
-        .collect::<Vec<_>>();
+    let mut stale_dependencies = Vec::new();
+    for dependency in dependencies {
+        let modified = git_review_date(&dependency.path, true)?;
+        if review_date_after(modified, reviewed_date) {
+            stale_dependencies.push((
+                modified,
+                tutorial_review_dependency_priority(&dependency.label),
+                format!(
+                    "{} '{}' changed after human review date {}",
+                    dependency.label,
+                    tutorial_review_dependency_path(&dependency.path),
+                    reviewed_at
+                ),
+            ));
+        }
+    }
     stale_dependencies.sort_by(|left, right| {
         right
             .0
@@ -4584,10 +6094,10 @@ fn tutorial_review_dependency_stale_reason(
             .then_with(|| left.1.cmp(&right.1))
             .then_with(|| left.2.cmp(&right.2))
     });
-    stale_dependencies
+    Ok(stale_dependencies
         .into_iter()
         .next()
-        .map(|(_, _, reason)| reason)
+        .map(|(_, _, reason)| reason))
 }
 
 fn tutorial_review_dependency_priority(label: &str) -> usize {
@@ -4630,7 +6140,8 @@ fn tutorial_review_dependency_stale_reasons(
                     &unit.graphics,
                     &repo_root,
                 ),
-            ) else {
+            )?
+            else {
                 continue;
             };
             reasons.insert(unit.id, reason);
@@ -4651,7 +6162,7 @@ fn tutorial_review_dependency_stale_reasons(
         if let Some(reason) = tutorial_review_dependency_stale_reason(
             review_by_id.get(&chapter.id),
             &[workflow_dependency],
-        ) {
+        )? {
             reasons.insert(chapter.id.clone(), reason);
         }
     }
@@ -4830,7 +6341,10 @@ pub fn generate_tutorial_docs(
                 )
             })?
             .clone();
-        let mut executed = chapter.tier.should_execute(online_enabled);
+        // Keep committed documentation independent of optional native tools.
+        // Their real runtime check is separate in tutorial-check and the focused test.
+        let mut executed = chapter.tier.should_execute(online_enabled)
+            && loaded.example.test_mode != ExampleTestMode::OptionalBlast;
         if chapter.tier == TutorialTier::Online
             && !executed
             && chapter
@@ -4954,6 +6468,7 @@ pub fn generate_tutorial_docs(
         file_checksums,
         warnings,
         chapters: chapter_reports,
+        agent_parity: None,
     };
     let report_path = output_dir.join("report.json");
     let report_json = serde_json::to_string_pretty(&report)
@@ -4969,9 +6484,20 @@ pub fn check_tutorial_generated(
     expected_output_dir: &Path,
     repo_root: &Path,
 ) -> Result<TutorialGenerationReport, String> {
+    let tutorial_source_dir = tutorial_source_dir_for_manifest(manifest_path);
+    let parity_source_dir = repo_root.join(&tutorial_source_dir);
+    // Custom legacy manifests need not have tutorial sources. When present,
+    // validate all declared contracts before any workflow replay or writes.
+    let parity = if parity_source_dir.exists() {
+        check_tutorial_agent_parity(&load_tutorial_source_units(&parity_source_dir)?, repo_root)
+    } else {
+        TutorialAgentParityCheck::default()
+    };
+    if let Some(error) = parity.failure_message() {
+        return Err(error);
+    }
     let examples = load_workflow_examples(source_dir)?;
     let manifest = load_tutorial_manifest(manifest_path)?;
-    let tutorial_source_dir = tutorial_source_dir_for_manifest(manifest_path);
     if !expected_output_dir.exists() {
         return Err(format!(
             "Expected generated tutorial directory '{}' does not exist. Run `tutorial-generate` first.",
@@ -4980,24 +6506,24 @@ pub fn check_tutorial_generated(
     }
     let temp = TempDir::new().map_err(|e| format!("Could not create temp directory: {e}"))?;
     let generated_dir = temp.path().join("generated");
-    let report = generate_tutorial_docs(source_dir, manifest_path, &generated_dir, repo_root)
+    let mut report = generate_tutorial_docs(source_dir, manifest_path, &generated_dir, repo_root)
         .map_err(|error| {
-            let chapter_hint = extract_tutorial_chapter_id_from_error(&error);
-            format!(
-                "{}{}",
-                error,
-                tutorial_check_feedback_context(
-                    &manifest,
-                    &examples,
-                    &tutorial_source_dir,
-                    manifest_path,
-                    expected_output_dir,
-                    None,
-                    chapter_hint.as_deref(),
-                    "tutorial generation failed"
-                )
+        let chapter_hint = extract_tutorial_chapter_id_from_error(&error);
+        format!(
+            "{}{}",
+            error,
+            tutorial_check_feedback_context(
+                &manifest,
+                &examples,
+                &tutorial_source_dir,
+                manifest_path,
+                expected_output_dir,
+                None,
+                chapter_hint.as_deref(),
+                "tutorial generation failed"
             )
-        })?;
+        )
+    })?;
     let expected = directory_bytes_map(expected_output_dir)?;
     let actual = directory_bytes_map(&generated_dir)?;
     if expected.len() != actual.len() {
@@ -5041,7 +6567,12 @@ pub fn check_tutorial_generated(
                 )
             )
         })?;
-        if expected_bytes != actual_bytes {
+        let equivalent = if path == "report.json" {
+            tutorial_generation_ledger_equal(&expected, &actual)
+        } else {
+            tutorial_generated_bytes_equal(path, expected_bytes, actual_bytes)
+        };
+        if !equivalent {
             return Err(format!(
                 "{}{}",
                 format!(
@@ -5082,6 +6613,31 @@ pub fn check_tutorial_generated(
             ));
         }
     }
+    for chapter in &manifest.chapters {
+        let Some(loaded) = examples
+            .iter()
+            .find(|loaded| loaded.example.id == chapter.example_id)
+        else {
+            continue;
+        };
+        if loaded.example.test_mode == ExampleTestMode::OptionalBlast
+            && chapter.tier.should_execute(report.online_enabled)
+        {
+            validate_example_required_files(&loaded.example, repo_root)?;
+            let skipped = check_optional_blast_runtime_with(probe_blast_tool, || {
+                let run_dir =
+                    TempDir::new().map_err(|e| format!("Could not create temp directory: {e}"))?;
+                run_example_workflow_in_dir(&loaded.example, repo_root, run_dir.path())
+            })
+            .map_err(|error| format!("Tutorial '{}': {error}", chapter.id))?;
+            if let Some(reason) = skipped {
+                report
+                    .warnings
+                    .push(format!("Tutorial '{}': {reason}", chapter.id));
+            }
+        }
+    }
+    report.agent_parity = Some(parity.summary);
     Ok(report)
 }
 
@@ -5089,6 +6645,9 @@ fn test_mode_doc(test_mode: ExampleTestMode) -> &'static str {
     match test_mode {
         ExampleTestMode::Always => "always (included in default test runs)",
         ExampleTestMode::Skip => "skip (validated for syntax only)",
+        ExampleTestMode::OptionalBlast => {
+            "optional_blast (runtime checked only when BLAST+ tools are installed)"
+        }
         ExampleTestMode::Online => {
             "online (run only when GENTLE_TEST_ONLINE=1 with working internet)"
         }
@@ -5235,8 +6794,36 @@ pub fn generate_workflow_example_docs(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
+
+    #[test]
+    fn screenshot_svg_caption_does_not_mislabel_annotation_numbers_as_figure_text() {
+        let dir = TempDir::new().expect("temp screenshot dir");
+        let path = dir.path().join("context.svg");
+        fs::write(
+            &path,
+            r#"<svg xmlns="http://www.w3.org/2000/svg"><text>1</text></svg>"#,
+        )
+        .expect("write screenshot projection");
+        let graphic = TutorialGraphic {
+            kind: "screenshot".to_string(),
+            path: path.to_string_lossy().into_owned(),
+            caption: "Interaction context".to_string(),
+            illustrates_step: 1,
+            capture_date: Some("2026-09-08".to_string()),
+            regen_command: None,
+        };
+
+        let rendered = render_tutorial_inline_graphic(&graphic, dir.path());
+
+        assert!(rendered.contains("Interaction context"));
+        assert!(!rendered.contains("SVG text labels:"));
+    }
+    use crate::engine::{
+        GeneTranscriptAssayRoutineRequest, SequenceFeatureQualifierFilter, SequenceFeatureQuery,
+        TranscriptAssayKind, TranscriptAssayPanelCompletionStatus, TranscriptAssayPanelReport,
+    };
     use std::sync::Mutex;
+    use std::{collections::BTreeSet, path::Path};
 
     static TEST_ENV_LOCK: Mutex<()> = Mutex::new(());
 
@@ -5290,6 +6877,164 @@ mod tests {
         PathBuf::from(DEFAULT_TUTORIAL_OUTPUT_DIR)
     }
 
+    fn commit_synthetic_review_history(root: &Path, date: &str) {
+        for args in [
+            vec!["init", "--quiet"],
+            vec!["add", "--all"],
+            vec!["commit", "--quiet", "-m", "Synthetic review dependencies"],
+        ] {
+            let output = Command::new("git")
+                .arg("-C")
+                .arg(root)
+                .args([
+                    "-c",
+                    "core.autocrlf=false",
+                    "-c",
+                    "commit.gpgsign=false",
+                    "-c",
+                    "user.name=Synthetic test",
+                    "-c",
+                    "user.email=fixture@example.invalid",
+                    "-c",
+                    "core.hooksPath=.disabled-hooks",
+                ])
+                .args(args)
+                .env("GIT_AUTHOR_DATE", date)
+                .env("GIT_COMMITTER_DATE", date)
+                .output()
+                .expect("run synthetic Git fixture command");
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
+
+    fn synthetic_review_entry() -> TutorialReviewEntry {
+        TutorialReviewEntry {
+            tutorial_id: "synthetic_review".into(),
+            tutorial_kind: "guided_walkthrough".into(),
+            tutorial_status: "active".into(),
+            replaced_by: None,
+            codex_reviewed_at: None,
+            human_reviewed_at: Some("2024-01-01".into()),
+            human_reviewer: Some("synthetic".into()),
+        }
+    }
+
+    #[test]
+    fn tutorial_review_history_ignores_checkout_mtimes_and_absolute_path_spelling() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+        let source = root.join("source.json");
+        let graphic = root.join("graphic.png");
+        fs::write(&source, b"{}\n").unwrap();
+        fs::write(&graphic, b"synthetic image bytes").unwrap();
+        commit_synthetic_review_history(root, "2024-01-02T00:00:00Z");
+        fs::File::options()
+            .write(true)
+            .open(&graphic)
+            .unwrap()
+            .set_times(
+                fs::FileTimes::new()
+                    .set_modified(UNIX_EPOCH + std::time::Duration::from_secs(4_102_444_800)),
+            )
+            .unwrap();
+        let dependencies = [
+            TutorialReviewDependency {
+                label: "declared graphic".into(),
+                path: graphic.clone(),
+            },
+            TutorialReviewDependency {
+                label: "source JSON".into(),
+                path: source.clone(),
+            },
+        ];
+        let entry = synthetic_review_entry();
+        assert_eq!(git_review_date(&source, true).unwrap(), (2024, 1, 2));
+        assert_eq!(git_review_date(&graphic, true).unwrap(), (2024, 1, 2));
+        assert_eq!(git_review_date(&source, false).unwrap(), (2024, 1, 2));
+        assert_eq!(
+            tutorial_review_dependency_stale_reason(Some(&entry), &dependencies).unwrap(),
+            Some("source JSON 'source.json' changed after human review date 2024-01-01".into())
+        );
+        fs::write(&graphic, b"new synthetic image bytes").unwrap();
+        commit_synthetic_review_history(root, "2024-01-03T00:00:00Z");
+        assert!(
+            tutorial_review_dependency_stale_reason(Some(&entry), &dependencies)
+                .unwrap()
+                .unwrap()
+                .starts_with("declared graphic 'graphic.png'")
+        );
+        fs::remove_file(&graphic).unwrap();
+        assert_eq!(
+            tutorial_review_dependency_stale_reason(Some(&entry), &dependencies).unwrap(),
+            Some(
+                "declared graphic 'graphic.png' is missing after human review date 2024-01-01"
+                    .into()
+            )
+        );
+    }
+
+    #[test]
+    fn tutorial_review_history_unavailable_never_uses_checkout_time() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("source.json");
+        fs::write(&path, b"{}\n").unwrap();
+        let entry = synthetic_review_entry();
+        let dependencies = [TutorialReviewDependency {
+            label: "source JSON".into(),
+            path: path.clone(),
+        }];
+        // No repository, then an empty path history, then a failed Git lookup.
+        for phase in 0..3 {
+            if phase == 1 {
+                fs::write(dir.path().join("tracked.txt"), b"synthetic\n").unwrap();
+                fs::rename(&path, dir.path().join("pending.json")).unwrap();
+                commit_synthetic_review_history(dir.path(), "2024-01-02T00:00:00Z");
+                fs::rename(dir.path().join("pending.json"), &path).unwrap();
+            } else if phase == 2 {
+                fs::rename(dir.path().join(".git"), dir.path().join("saved-git")).unwrap();
+                fs::write(dir.path().join(".git"), b"gitdir: missing-git-directory\n").unwrap();
+            }
+            let error =
+                tutorial_review_dependency_stale_reason(Some(&entry), &dependencies).unwrap_err();
+            assert!(
+                error.contains("Tutorial review history unavailable"),
+                "{error}"
+            );
+            assert!(
+                error.contains("checkout mtimes are not evidence"),
+                "{error}"
+            );
+        }
+    }
+
+    fn tutorial_blast_tools() -> Vec<crate::tool_overrides::ScopedToolOverrideGuard> {
+        // These tutorials build real local indexes. Concurrent unit-test stubs
+        // must not replace makeblastdb, blastdbcmd, or blastn midway through a run.
+        [
+            (
+                crate::genomes::MAKEBLASTDB_ENV_BIN,
+                crate::genomes::DEFAULT_MAKEBLASTDB_BIN,
+            ),
+            (
+                crate::genomes::BLASTDBCMD_ENV_BIN,
+                crate::genomes::DEFAULT_BLASTDBCMD_BIN,
+            ),
+            (
+                crate::genomes::BLASTN_ENV_BIN,
+                crate::genomes::DEFAULT_BLASTN_BIN,
+            ),
+        ]
+        .into_iter()
+        .map(|(key, executable)| {
+            crate::tool_overrides::ScopedToolOverrideGuard::set(key, executable)
+        })
+        .collect()
+    }
+
     fn minimal_tutorial_chapter(id: &str) -> TutorialChapter {
         TutorialChapter {
             id: id.to_string(),
@@ -5307,8 +7052,12 @@ mod tests {
             narrative: "Synthetic tutorial narrative.".to_string(),
             use_cases: vec!["Exercise tutorial review metadata.".to_string()],
             gui_steps: vec!["Open the tutorial.".to_string()],
+            step_titles: vec![],
             cli_steps: vec![],
+            agent_steps: vec![],
+            outer_agent_replay: None,
             step_expectations: vec![],
+            step_rationales: vec![],
             prerequisites: vec![],
             local_execution_note: None,
             learning_objectives: vec!["Understand tutorial review metadata.".to_string()],
@@ -5318,6 +7067,7 @@ mod tests {
             retain_outputs: vec![],
             checkpoints: vec![],
             graphics: vec![],
+            gui_acceptance: None,
         }
     }
 
@@ -5391,6 +7141,255 @@ mod tests {
     }
 
     #[test]
+    fn optional_blast_tutorial_cannot_retain_runtime_outputs() {
+        let mut manifest = load_tutorial_manifest(&tutorial_manifest_path()).unwrap();
+        let examples = load_workflow_examples(&example_dir()).unwrap();
+        let chapter = manifest
+            .chapters
+            .iter_mut()
+            .find(|chapter| chapter.id == "region_homology_promoter_modules_offline")
+            .unwrap();
+        chapter
+            .retain_outputs
+            .push("artifacts/homology.json".to_string());
+        let error = validate_tutorial_manifest_against_examples(&manifest, &examples).unwrap_err();
+        assert!(
+            error.contains("optional_blast and cannot retain runtime outputs"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn optional_blast_runtime_skips_only_missing_tools() {
+        for absent_index in 0..3 {
+            let mut index = 0;
+            let mut ran = false;
+            let skipped = check_optional_blast_runtime_with(
+                |_| {
+                    let absent = index == absent_index;
+                    index += 1;
+                    if absent {
+                        Err(std::io::Error::from(std::io::ErrorKind::NotFound))
+                    } else {
+                        Ok(true)
+                    }
+                },
+                || {
+                    ran = true;
+                    Ok(())
+                },
+            )
+            .expect("missing tools are optional");
+            assert!(!ran);
+            assert!(skipped.unwrap().contains("no BLAST acceptance is claimed"));
+            assert_eq!(index, 3);
+        }
+    }
+
+    #[test]
+    fn optional_blast_runtime_runs_and_propagates_installed_tool_failures() {
+        let mut ran = false;
+        assert_eq!(
+            check_optional_blast_runtime_with(
+                |_| Ok(true),
+                || {
+                    ran = true;
+                    Ok(())
+                }
+            )
+            .unwrap(),
+            None
+        );
+        assert!(ran);
+        let broken = check_optional_blast_runtime_with(
+            |_| Ok(false),
+            || panic!("do not run with a broken tool"),
+        )
+        .unwrap_err();
+        assert!(broken.contains("failed its version check"));
+        let denied = check_optional_blast_runtime_with(
+            |_| Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied)),
+            || panic!("permission errors are not absence"),
+        )
+        .unwrap_err();
+        assert!(denied.contains("Could not run BLAST+ tool"));
+        assert_eq!(
+            check_optional_blast_runtime_with(
+                |_| Ok(true),
+                || { Err("invalid database".to_string()) }
+            )
+            .unwrap_err(),
+            "invalid database"
+        );
+    }
+
+    #[test]
+    fn tp73_blast_fixture_matches_declared_coding_sequences() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let fixture = root.join("test_files/fixtures/blast_tp73_isoforms");
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(fixture.join("manifest.json")).unwrap()).unwrap();
+        let fasta_path = fixture.join(manifest["fasta"].as_str().unwrap());
+        assert_eq!(digest_file(&fasta_path).unwrap(), manifest["fasta_sha256"]);
+        let records = fixture_fasta_records(&fasta_path);
+        let sources = fixture_fasta_records(&root.join(manifest["source_fasta"].as_str().unwrap()));
+        assert_eq!(records.len(), 3);
+        assert_eq!(records.len(), manifest["records"].as_array().unwrap().len());
+        let mut total = 0;
+        for record in manifest["records"].as_array().unwrap() {
+            let sequence = &records[record["id"].as_str().unwrap()];
+            let source = &sources[record["accession"].as_str().unwrap()];
+            let start = record["cds_start_1based"].as_u64().unwrap() as usize;
+            let end = record["cds_end_1based"].as_u64().unwrap() as usize;
+            assert_eq!(
+                crate::digest_utils::sha256_hex_str(source),
+                record["source_sequence_sha256"]
+            );
+            assert_eq!(sequence, &source[start - 1..end]);
+            assert_eq!(sequence.len() as u64, record["length_bp"].as_u64().unwrap());
+            assert_eq!(
+                crate::digest_utils::sha256_hex_str(sequence),
+                record["sequence_sha256"]
+            );
+            assert!(sequence.bytes().all(|base| b"ACGT".contains(&base)));
+            total += sequence.len();
+        }
+        assert_eq!(total as u64, manifest["total_bases"].as_u64().unwrap());
+    }
+
+    fn fixture_fasta_records(path: &Path) -> BTreeMap<String, String> {
+        let mut records = BTreeMap::new();
+        for record in fs::read_to_string(path).unwrap().split('>').skip(1) {
+            let mut lines = record.lines();
+            let id = lines.next().unwrap().split_whitespace().next().unwrap();
+            let sequence = lines
+                .filter(|line| !line.starts_with(';'))
+                .collect::<String>();
+            assert!(
+                records.insert(id.to_string(), sequence).is_none(),
+                "duplicate FASTA id"
+            );
+        }
+        records
+    }
+
+    #[test]
+    fn tp73_blast_fixture_builds_inspects_and_finds_all_self_matches() {
+        let _blast_tools = tutorial_blast_tools();
+        let skipped = check_optional_blast_runtime_with(probe_blast_tool, || {
+            let fasta = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("test_files/fixtures/blast_tp73_isoforms/cds.fasta");
+            let records = fixture_fasta_records(&fasta);
+            let temp = TempDir::new().unwrap();
+            let database = temp.path().join("tp73");
+            let run = |command: &mut Command| -> Result<String, String> {
+                let output = command.output().map_err(|error| error.to_string())?;
+                if !output.status.success() {
+                    return Err(format!(
+                        "{command:?} failed: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    ));
+                }
+                String::from_utf8(output.stdout).map_err(|error| error.to_string())
+            };
+            run(Command::new(crate::genomes::DEFAULT_MAKEBLASTDB_BIN)
+                .arg("-in")
+                .arg(&fasta)
+                .args([
+                    "-dbtype",
+                    "nucl",
+                    "-parse_seqids",
+                    "-blastdb_version",
+                    "5",
+                    "-out",
+                ])
+                .arg(&database))?;
+            let info = run(Command::new(crate::genomes::DEFAULT_BLASTDBCMD_BIN)
+                .arg("-db")
+                .arg(&database)
+                .arg("-info"))?;
+            assert!(info.contains("3 sequences"), "{info}");
+            let hits = run(Command::new(crate::genomes::DEFAULT_BLASTN_BIN)
+                .args(["-task", "megablast", "-dust", "no", "-query"])
+                .arg(&fasta)
+                .arg("-db")
+                .arg(&database)
+                .args([
+                    "-outfmt",
+                    "6 qseqid sseqid pident length qstart qend sstart send",
+                ]))?;
+            for (id, sequence) in records {
+                assert!(
+                    hits.lines().any(|line| {
+                        let fields = line.split_whitespace().collect::<Vec<_>>();
+                        fields.len() == 8
+                            && fields[0].trim_start_matches("lcl|") == id
+                            && fields[1].trim_start_matches("lcl|") == id
+                            && fields[2].parse::<f64>().ok() == Some(100.0)
+                            && fields[3].parse::<usize>().ok() == Some(sequence.len())
+                            && fields[4] == "1"
+                            && fields[5].parse::<usize>().ok() == Some(sequence.len())
+                            && fields[6] == "1"
+                            && fields[7].parse::<usize>().ok() == Some(sequence.len())
+                    }),
+                    "missing exact full-length self match for {id}: {hits}"
+                );
+            }
+            Ok(())
+        })
+        .expect("installed BLAST+ must pass the TP73 fixture check");
+        if let Some(reason) = skipped {
+            eprintln!("{reason}");
+        }
+    }
+
+    #[test]
+    fn workflow_examples_region_homology_uses_real_isolated_blast_indexes() {
+        let _outer_stub = crate::tool_overrides::ScopedToolOverrideGuard::set(
+            crate::genomes::BLASTDBCMD_ENV_BIN,
+            "__gentle_blastdbcmd_unavailable_test_stub__",
+        );
+        let _blast_tools = tutorial_blast_tools();
+        let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
+        let loaded = examples
+            .iter()
+            .find(|loaded| loaded.example.id == "region_homology_promoter_modules_offline")
+            .expect("synthetic region homology example");
+        assert_eq!(loaded.example.test_mode, ExampleTestMode::OptionalBlast);
+        let skipped = check_optional_blast_runtime_with(probe_blast_tool, || {
+            let run_dir = TempDir::new().expect("temp run dir");
+            run_example_workflow_in_dir(&loaded.example, Path::new("."), run_dir.path())
+                .expect("synthetic region homology workflow should execute");
+            let report: gentle_protocol::GenomicRegionHomologyScreenReport =
+                serde_json::from_slice(
+                    &fs::read(
+                        run_dir
+                            .path()
+                            .join("artifacts/region_homology_demo/homology_report.json"),
+                    )
+                    .expect("read homology report"),
+                )
+                .expect("typed homology report");
+            assert_eq!(report.targets.len(), 3);
+            assert!(!report.alignment_rows.is_empty());
+            assert!(
+                report
+                    .alignment_rows
+                    .iter()
+                    .all(|row| { row.query_projection.len() == report.query.sequence.len() })
+            );
+            assert!(report.loci.iter().any(|locus| {
+                locus.orthology_evidence_id.as_deref() == Some("synthetic_declared_orthology")
+            }));
+            Ok(())
+        })
+        .expect("installed BLAST+ must execute the real fixture successfully");
+        if let Some(reason) = skipped {
+            eprintln!("{reason}");
+        }
+    }
+
+    #[test]
     fn workflow_examples_isoform_protein_gel_demo_writes_svg() {
         let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
         let loaded = examples
@@ -5450,6 +7449,416 @@ mod tests {
     }
 
     #[test]
+    fn workflow_examples_patz1_locus_evidence_preserves_visual_evidence_classes() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload_builtin_for_test();
+        let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
+        let loaded = examples
+            .iter()
+            .find(|loaded| loaded.example.id == "patz1_gene_locus_evidence_offline")
+            .expect("PATZ1 locus-evidence example should exist");
+        let run_dir = TempDir::new().expect("temp run dir");
+        run_example_workflow_in_dir(&loaded.example, Path::new("."), run_dir.path())
+            .expect("PATZ1 locus-evidence workflow should execute");
+
+        let svg_path = run_dir.path().join("patz1_gene_locus_evidence.svg");
+        let svg = fs::read_to_string(&svg_path).expect("read PATZ1 locus-evidence SVG");
+        for marker in [
+            "gentle.gene_locus_evidence_display.v1",
+            "data-gentle-probe-class=\"psr\"",
+            "data-gentle-probe-class=\"juc\"",
+            "data-gentle-probe-effect-contrast=\"TAp73alpha_minus_GFP\"",
+            "data-gentle-probe-effect-contrast=\"DNp73beta_minus_GFP\"",
+            "data-gentle-probe-evidence-lane=\"abundance\"",
+            "data-gentle-probe-evidence-lane=\"differential\"",
+            "data-gentle-occupancy-group=\"saos2\"",
+            "data-gentle-occupancy-group=\"skmel29\"",
+            "data-gentle-motif-track=\"MA0861.2\"",
+            "data-gentle-provenance-source",
+            "Clariom evidence: abundance/splice geometry and differential activity",
+        ] {
+            assert!(svg.contains(marker), "expected SVG marker {marker}");
+        }
+        assert!(svg.contains("31326038") && svg.contains("31325801"));
+        assert!(!svg.contains("Probe evidence report targets sequence"));
+        let snapshot_path =
+            "artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg";
+        let committed = fs::read(tutorial_output_dir().join(snapshot_path))
+            .expect("read committed PATZ1 locus-evidence SVG");
+        assert!(
+            tutorial_generated_bytes_equal(
+                snapshot_path,
+                &committed,
+                normalize_retained_tutorial_artifact_text(&svg).as_bytes(),
+            ),
+            "PATZ1 tutorial snapshot must match the current bundled motif matrices; regenerate tutorial artifacts after model updates"
+        );
+    }
+
+    #[test]
+    fn workflow_examples_portable_genomic_regions_round_trip_and_render_offline() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload_builtin_for_test();
+        let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
+        let loaded = examples
+            .iter()
+            .find(|loaded| loaded.example.id == "portable_genomic_regions_offline")
+            .expect("portable genomic-region example should exist");
+        let run_dir = TempDir::new().expect("temp run dir");
+        run_example_workflow_in_dir(&loaded.example, Path::new("."), run_dir.path())
+            .expect("portable genomic-region workflow should execute");
+
+        let artifact_dir = run_dir.path().join("artifacts");
+        let set: gentle_protocol::GenomicRegionSet = serde_json::from_slice(
+            &fs::read(artifact_dir.join("portable_genomic_regions.region_set.json"))
+                .expect("read region-set JSON"),
+        )
+        .expect("parse region-set JSON");
+        assert_eq!(set.schema, gentle_protocol::GENOMIC_REGION_SET_SCHEMA);
+        assert_eq!(set.regions.len(), 3);
+        let methods = set
+            .regions
+            .iter()
+            .map(|region| region.selection_method.as_str())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            methods,
+            BTreeSet::from([
+                "manual_span",
+                "ensembl_regulatory_feature",
+                "cutrun_support_window",
+            ])
+        );
+        assert!(set.regions.iter().all(|region| {
+            region.interval.reference.species_scientific_name.as_deref() == Some("Homo sapiens")
+                && region.interval.reference.assembly_name == "GRCh38"
+                && region.interval.reference.contig_name == "7"
+        }));
+
+        let bed = fs::read(artifact_dir.join("portable_genomic_regions.bed"))
+            .expect("read region-set BED");
+        assert_eq!(
+            std::str::from_utf8(&bed)
+                .expect("BED UTF-8")
+                .lines()
+                .count(),
+            3
+        );
+        let manifest: gentle_protocol::GenomicRegionBedManifest = serde_json::from_slice(
+            &fs::read(artifact_dir.join("portable_genomic_regions.bed.manifest.json"))
+                .expect("read BED manifest"),
+        )
+        .expect("parse BED manifest");
+        assert_eq!(manifest.region_set, set);
+        assert_eq!(
+            manifest.bed_sha256,
+            crate::digest_utils::sha256_prefixed_bytes(&bed)
+        );
+
+        let svg = fs::read_to_string(artifact_dir.join("portable_genomic_regions.locus.svg"))
+            .expect("read locus SVG");
+        for marker in [
+            "data-gentle-saved-region-section=\"true\"",
+            "data-gentle-region-selection-method=\"manual_span\"",
+            "data-gentle-region-selection-method=\"ensembl_regulatory_feature\"",
+            "data-gentle-region-selection-method=\"cutrun_support_window\"",
+            "data-gentle-occupancy-group=\"synthetic_tp73_occupancy\"",
+            "data-gentle-regulatory-score-track=\"tp73_jaspar\"",
+            "data-gentle-transcript=",
+            "data-gentle-cds=",
+            "data-gentle-overlay-row=",
+        ] {
+            assert!(svg.contains(marker), "expected SVG marker {marker}");
+        }
+    }
+
+    #[test]
+    fn workflow_examples_regulatory_fragment_panel_is_bounded_read_only_and_replayable() {
+        use crate::engine::{
+            RegulatoryFragmentEvidenceDimensionKind as Dimension,
+            RegulatoryFragmentEvidenceState as State, RegulatoryFragmentPanelPlan,
+        };
+
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload_builtin_for_test();
+        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let examples = load_workflow_examples(&example_dir()).expect("load examples");
+        let loaded = examples
+            .iter()
+            .find(|loaded| loaded.example.id == "regulatory_fragment_panel_planning_offline")
+            .expect("regulatory panel tutorial exists");
+        let run_dir = TempDir::new().expect("isolated tutorial run");
+        let mut rewritten =
+            rewrite_example_paths_for_execution(&loaded.example, repo_root, run_dir.path())
+                .expect("rewrite tutorial input/output paths");
+        let planning_op = rewritten
+            .workflow
+            .ops
+            .pop()
+            .expect("final planning operation");
+        let Operation::PlanRegulatoryFragmentPanel { request, path } = &planning_op else {
+            panic!("tutorial must end with the shared read-only planner");
+        };
+        assert_eq!(
+            request.helper_catalog_path.as_deref(),
+            Some(
+                resolve_input_path(
+                    "docs/examples/assets/promoter_reporter_panel_demo_helper_vectors.json",
+                    repo_root,
+                )
+                .as_str()
+            )
+        );
+        let artifact_dir = run_dir.path().join("artifacts");
+        let plan_path = artifact_dir.join("regulatory_fragment_panel.plan.json");
+        assert_eq!(path.as_deref().map(Path::new), Some(plan_path.as_path()));
+
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        engine
+            .apply_workflow(rewritten.workflow)
+            .expect("prepare offline tutorial");
+        let before = serde_json::to_vec(engine.state()).expect("prepared state");
+        engine
+            .apply(planning_op.clone())
+            .expect("plan tutorial panel");
+        let bytes = fs::read(&plan_path).expect("plan stays inside tutorial run directory");
+        let plan: RegulatoryFragmentPanelPlan = serde_json::from_slice(&bytes).expect("plan JSON");
+        assert_eq!(plan.members.len(), 8);
+        assert_eq!(plan.contrasts.len(), 6);
+        assert!(plan.uncovered_questions.is_empty());
+        assert_eq!(
+            plan.contrasts
+                .iter()
+                .map(|row| row.question)
+                .collect::<BTreeSet<_>>(),
+            plan.request
+                .questions
+                .iter()
+                .copied()
+                .collect::<BTreeSet<_>>()
+        );
+        assert!(plan.approval_required);
+        assert!(plan.materialization_supported);
+
+        // Every declared geometry occurs exactly once, with no implicit spacer or orientation.
+        for geometry in plan
+            .request
+            .reference_combination
+            .iter()
+            .chain(&plan.request.requested_variants)
+        {
+            let matches = plan
+                .members
+                .iter()
+                .filter(|member| {
+                    member.instances.len() == geometry.instances.len()
+                        && member.instances.iter().zip(&geometry.instances).all(
+                            |(actual, expected)| {
+                                actual.fragment_id == expected.fragment_id
+                                    && actual.orientation == expected.orientation
+                                    && actual.spacer_before == expected.spacer_before
+                            },
+                        )
+                })
+                .count();
+            assert_eq!(matches, 1, "geometry {}", geometry.variant_id);
+        }
+        let spacers = plan
+            .members
+            .iter()
+            .flat_map(|member| &member.instances)
+            .filter(|instance| !instance.spacer_before.is_empty())
+            .collect::<Vec<_>>();
+        assert_eq!(spacers.len(), 1);
+        assert_eq!(spacers[0].fragment_id, "partner_b");
+        assert_eq!(spacers[0].spacer_before, "GCGCGC");
+        assert_eq!(plan.evidence_dimensions.len(), 8);
+        for (kind, expected) in [
+            (Dimension::ReferenceGenomicUniqueness, State::Evaluated),
+            (Dimension::PanelSequenceSimilarity, State::Evaluated),
+            (Dimension::RepeatsAndLowComplexity, State::Evaluated),
+            (Dimension::PairSpecificJunctionUniqueness, State::Evaluated),
+            (Dimension::RestrictionAndCloningRisk, State::Evaluated),
+            (Dimension::EnsemblRegulatoryOverlap, State::NotEvaluated),
+            (Dimension::TfbsModelScoreContext, State::NotEvaluated),
+            (Dimension::CutrunAndChromatinContext, State::NotEvaluated),
+        ] {
+            let lane = plan
+                .evidence_dimensions
+                .iter()
+                .find(|lane| lane.kind == kind)
+                .expect("all eight evidence lanes retained");
+            assert_eq!(lane.state, expected, "{kind:?}");
+        }
+        let svg_path = artifact_dir.join("regulatory_fragment_panel.plan.svg");
+        engine
+            .apply(Operation::RenderRegulatoryFragmentPanelSvg {
+                plan: Box::new(plan.clone()),
+                path: display_path(&svg_path),
+            })
+            .expect("render the JSON-round-tripped plan with its original digest");
+        let svg = fs::read_to_string(&svg_path).expect("read plan figure");
+        assert!(svg.contains("gentle.regulatory_fragment_panel_plan.v1"));
+        assert!(svg.contains("Independent evidence lanes"));
+        engine
+            .apply(planning_op)
+            .expect("repeat identical planning");
+        assert_eq!(fs::read(plan_path).expect("replayed artifact"), bytes);
+        assert_eq!(
+            serde_json::to_vec(engine.state()).expect("final state"),
+            before
+        );
+        let locus = fs::read_to_string(artifact_dir.join("regulatory_fragment_panel.locus.svg"))
+            .expect("retained locus figure");
+        for id in ["candidate_a_roi", "partner_b_roi", "minimal_promoter_roi"] {
+            assert!(locus.contains(id), "saved region {id} is displayed");
+        }
+    }
+
+    #[test]
+    fn patz1_probe_fixture_digest_matches_retained_tutorial_provenance() {
+        let report: TranscriptAssayPanelReport = serde_json::from_slice(
+            &fs::read(tutorial_output_dir().join(
+                "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_routine_common_region_screen.report.json",
+            ))
+            .expect("read retained common-region report"),
+        )
+        .expect("parse retained common-region report");
+        assert_eq!(report.provenance.junction_sources.len(), 1);
+        for source in &report.provenance.junction_sources {
+            let bytes = fs::read(source.path.as_deref().expect("bound evidence path"))
+                .expect("read synthetic probe evidence");
+            assert_eq!(
+                crate::digest_utils::sha256_prefixed_bytes(&bytes),
+                source.sha256.as_deref().expect("bound evidence digest"),
+                "PATZ1 input bytes must match retained provenance; preserve the fixture's LF checkout rule in .gitattributes"
+            );
+        }
+    }
+
+    #[test]
+    fn retained_panel_baselines_keep_valid_historical_provenance_and_hashes() {
+        let root = tutorial_output_dir();
+        let ledger: Value =
+            serde_json::from_slice(&fs::read(root.join("report.json")).unwrap()).unwrap();
+        for path in HISTORICAL_PANEL_REPORTS {
+            let bytes = fs::read(root.join(path)).expect("read historical panel baseline");
+            assert!(
+                tutorial_panel_comparison_value(&bytes, false).is_some(),
+                "{path}"
+            );
+            assert_eq!(
+                ledger["file_checksums"][path].as_str(),
+                Some(crate::digest_utils::sha256_hex_bytes(&bytes).as_str()),
+                "historical bytes must retain their own checksum; preserve the LF checkout rule for {path}"
+            );
+        }
+    }
+
+    #[test]
+    fn workflow_examples_patz1_endpoint_and_sybr_panels_are_explicit_and_primer_only() {
+        let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
+        let loaded = examples
+            .iter()
+            .find(|loaded| {
+                loaded.example.id == "patz1_endpoint_sybr_transcript_assay_panel_offline"
+            })
+            .expect("PATZ1 endpoint/SYBR example should exist");
+        let run_dir = TempDir::new().expect("temp run dir");
+        run_example_workflow_in_dir(&loaded.example, Path::new("."), run_dir.path())
+            .expect("PATZ1 endpoint/SYBR workflow should execute");
+
+        let endpoint: TranscriptAssayPanelReport = serde_json::from_slice(
+            &fs::read(
+                run_dir
+                    .path()
+                    .join("artifacts/patz1_endpoint_end_matrix.report.json"),
+            )
+            .expect("read endpoint report"),
+        )
+        .expect("parse endpoint report");
+        assert_eq!(endpoint.assay_kind, TranscriptAssayKind::EndpointRtPcr);
+        assert_eq!(
+            endpoint.completion_status,
+            TranscriptAssayPanelCompletionStatus::Complete
+        );
+        assert_eq!(endpoint.max_amplicon_bp, 10_000);
+        assert!(
+            endpoint
+                .selected_assays
+                .iter()
+                .all(|assay| { assay.probe.is_none() && assay.assay.is_none() })
+        );
+        assert!(
+            endpoint
+                .end_reactions
+                .iter()
+                .all(|reaction| reaction.status == "designed")
+        );
+        let band_sizes = endpoint
+            .band_size_matrix
+            .iter()
+            .flat_map(|row| row.predicted_band_sizes_bp.iter().copied())
+            .collect::<BTreeSet<_>>();
+        assert!(
+            band_sizes.len() >= 3,
+            "expected isoform-resolving band sizes"
+        );
+        assert!(
+            endpoint
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("reverse-transcription completeness"))
+        );
+
+        let sybr: TranscriptAssayPanelReport = serde_json::from_slice(
+            &fs::read(
+                run_dir
+                    .path()
+                    .join("artifacts/patz1_sybr_juc_panel.report.json"),
+            )
+            .expect("read SYBR report"),
+        )
+        .expect("parse SYBR report");
+        assert_eq!(sybr.assay_kind, TranscriptAssayKind::SybrQpcr);
+        assert!(
+            sybr.selected_assays
+                .iter()
+                .all(|assay| { assay.probe.is_none() && assay.assay.is_none() })
+        );
+        assert!(
+            sybr.junction_evaluations
+                .iter()
+                .any(|row| row.source_kind == "clariom_juc"
+                    && row.status == "selected_spanning_assay")
+        );
+        assert!(!sybr.short_sybr_junction_assays.is_empty());
+
+        for filename in [
+            "patz1_endpoint_end_matrix.report.json",
+            "patz1_sybr_juc_panel.report.json",
+            "patz1_routine_common_region_screen.report.json",
+        ] {
+            let actual = fs::read_to_string(run_dir.path().join("artifacts").join(filename))
+                .expect("read fresh PATZ1 report");
+            let expected = fs::read(
+                tutorial_output_dir()
+                    .join("artifacts/patz1_transcript_assay_panels_cli/artifacts")
+                    .join(filename),
+            )
+            .expect("read retained PATZ1 report");
+            assert!(
+                tutorial_generated_bytes_equal(
+                    &format!("artifacts/patz1_transcript_assay_panels_cli/artifacts/{filename}"),
+                    &expected,
+                    normalize_retained_tutorial_artifact_text(&actual).as_bytes(),
+                ),
+                "PATZ1 report {filename} must match the retained tutorial, including input hashes"
+            );
+        }
+    }
+
+    #[test]
     fn workflow_examples_simple_pcr_primer_design_exports_figure_and_report() {
         let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
         let loaded = examples
@@ -5484,7 +7893,7 @@ mod tests {
     }
 
     #[test]
-    fn workflow_examples_tp73_evidence_viewer_release_proof_writes_artifacts_and_features() {
+    fn workflow_examples_tp73_cutrun_release_proof_writes_artifacts_and_features() {
         let _serial = lock_jaspar_registry_for_test();
         crate::tf_motifs::reload_builtin_for_test();
         let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
@@ -5503,6 +7912,10 @@ mod tests {
             "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.tfbs_score_tracks.svg",
             "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.repeat_materialization.json",
             "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.tfbs_score_tracks.json",
+            "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.cutrun_regulatory_support.json",
+            "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.cutrun_coverage.tsv",
+            "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.cutrun_cut_sites.tsv",
+            "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.cutrun_fragments.tsv",
         ] {
             let path = run_dir.path().join(relative);
             assert!(path.exists(), "expected workflow artifact {relative}");
@@ -5524,6 +7937,7 @@ mod tests {
             Some("gentle.repeat_feature_materialization.v1")
         );
         assert_eq!(repeat_report["added_feature_count"].as_u64(), Some(3));
+        assert_eq!(repeat_report["matched_repeat_count"].as_u64(), Some(3));
 
         let engine = GentleEngine::from_state(state.clone());
         let anchor = engine
@@ -5533,6 +7947,116 @@ mod tests {
         assert_eq!(anchor.chromosome, "1");
         assert_eq!(anchor.start_1based, 3652516);
         assert_eq!(anchor.end_1based, 3736201);
+
+        let cutrun_reads = engine
+            .get_cutrun_read_report("tp73_release_smoke_reads")
+            .expect("offline TP73 CUT&RUN read report");
+        assert_eq!(cutrun_reads.total_units, 4);
+        assert_eq!(cutrun_reads.mapped_units, 4);
+        assert_eq!(cutrun_reads.concordant_pair_count, 4);
+        assert_eq!(cutrun_reads.fragment_count, 4);
+        assert_eq!(cutrun_reads.support_clusters.len(), 2);
+
+        let cutrun_support: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(run_dir.path().join(
+                "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.cutrun_regulatory_support.json",
+            ))
+            .expect("read CUT&RUN regulatory-support report"),
+        )
+        .expect("parse CUT&RUN regulatory-support report");
+        assert_eq!(
+            cutrun_support["schema"].as_str(),
+            Some("gentle.cutrun_regulatory_support.v1")
+        );
+        assert_eq!(
+            cutrun_support["evidence_sources"].as_array().map(Vec::len),
+            Some(2)
+        );
+        assert_eq!(
+            cutrun_support["support_windows"].as_array().map(Vec::len),
+            Some(2)
+        );
+        assert!(
+            cutrun_support["catalog_path"]
+                .as_str()
+                .is_some_and(|path| path.ends_with("assets/cutrun.json"))
+        );
+
+        let has_qualifier =
+            |row: &gentle_protocol::SequenceFeatureQueryRow, key: &str, expected: &str| {
+                row.qualifiers
+                    .get(key)
+                    .map(|values| values.iter().any(|value| value == expected))
+                    .unwrap_or(false)
+            };
+        let repeat_query = engine
+            .query_sequence_features(SequenceFeatureQuery {
+                seq_id: "tp73_evidence_viewer".to_string(),
+                include_qualifiers: true,
+                qualifier_filters: vec![SequenceFeatureQualifierFilter {
+                    key: "gentle_generated".to_string(),
+                    value_contains: Some("ucsc_rmsk".to_string()),
+                    ..SequenceFeatureQualifierFilter::default()
+                }],
+                limit: Some(10),
+                ..SequenceFeatureQuery::default()
+            })
+            .expect("agent-facing repeat feature query should execute");
+        assert_eq!(repeat_query.matched_count, 3);
+        assert!(repeat_query.rows.iter().any(|row| {
+            has_qualifier(row, "rmsk_class", "SINE")
+                && has_qualifier(row, "rmsk_family", "Alu")
+                && row.qualifiers.contains_key("score")
+                && row.qualifiers.contains_key("rmsk_divergence_percent")
+        }));
+        let array_query = engine
+            .query_sequence_features(SequenceFeatureQuery {
+                seq_id: "tp73_evidence_viewer".to_string(),
+                include_qualifiers: true,
+                qualifier_filters: vec![SequenceFeatureQualifierFilter {
+                    key: "gentle_track_source".to_string(),
+                    value_contains: Some("Array".to_string()),
+                    ..SequenceFeatureQualifierFilter::default()
+                }],
+                limit: Some(10),
+                ..SequenceFeatureQuery::default()
+            })
+            .expect("agent-facing array feature query should execute");
+        assert_eq!(array_query.matched_count, 4);
+        assert!(array_query.rows.iter().any(|row| {
+            has_qualifier(row, "gentle_array_contrast", "AdTAp73alpha-AdGFP")
+                && has_qualifier(row, "feature_id", "PSR_TP73_0001")
+                && row.qualifiers.contains_key("logFC")
+                && row.qualifiers.contains_key("adj_P_Val")
+                && row.qualifiers.contains_key("transcript_cluster_id")
+                && row.qualifiers.contains_key("exon_id")
+                && row
+                    .qualifiers
+                    .contains_key("gentle_array_projection_status")
+        }));
+        let bed_query = engine
+            .query_sequence_features(SequenceFeatureQuery {
+                seq_id: "tp73_evidence_viewer".to_string(),
+                include_qualifiers: true,
+                qualifier_filters: vec![SequenceFeatureQualifierFilter {
+                    key: "gentle_track_source".to_string(),
+                    value_contains: Some("BED".to_string()),
+                    ..SequenceFeatureQualifierFilter::default()
+                }],
+                limit: Some(10),
+                ..SequenceFeatureQuery::default()
+            })
+            .expect("agent-facing BED feature query should execute");
+        assert_eq!(bed_query.matched_count, 2);
+        assert!(bed_query.rows.iter().any(|row| {
+            has_qualifier(
+                row,
+                "gentle_track_name",
+                "tp73_release_smoke_synthetic peaks",
+            ) && has_qualifier(row, "score", "650.000000")
+                && has_qualifier(row, "bed_strand", "+")
+                && row.qualifiers.contains_key("gentle_track_file")
+        }));
 
         let dna = state
             .sequences
@@ -5547,23 +8071,157 @@ mod tests {
             .count();
         assert_eq!(repeat_count, 3);
 
-        assert!(dna.features().iter().any(|feature| {
+        let array_features = dna
+            .features()
+            .iter()
+            .filter(|feature| {
+                first_qualifier(feature, "gentle_track_source").as_deref() == Some("Array")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(array_features.len(), 4);
+        let array_contrasts = array_features
+            .iter()
+            .filter_map(|feature| first_qualifier(feature, "gentle_array_contrast"))
+            .collect::<HashSet<_>>();
+        assert_eq!(
+            array_contrasts,
+            HashSet::from([
+                "AdTAp73alpha-AdGFP".to_string(),
+                "AdTAp73beta-AdGFP".to_string(),
+            ])
+        );
+        assert!(array_features.iter().any(|feature| {
             first_qualifier(feature, "gentle_track_source").as_deref() == Some("Array")
                 && first_qualifier(feature, "gentle_array_dataset").as_deref()
                     == Some("E-MTAB-14704")
                 && first_qualifier(feature, "feature_id").as_deref() == Some("PSR_TP73_0001")
                 && first_qualifier(feature, "logFC").is_some()
         }));
-        assert!(dna.features().iter().any(|feature| {
+
+        let bed_features = dna
+            .features()
+            .iter()
+            .filter(|feature| {
+                first_qualifier(feature, "gentle_track_source").as_deref() == Some("BED")
+                    && first_qualifier(feature, "gentle_track_name").as_deref()
+                        == Some("tp73_release_smoke_synthetic peaks")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(bed_features.len(), 2);
+        let bed_scores = bed_features
+            .iter()
+            .filter_map(|feature| first_qualifier(feature, "score"))
+            .collect::<HashSet<_>>();
+        assert_eq!(
+            bed_scores,
+            HashSet::from(["540.000000".to_string(), "650.000000".to_string()])
+        );
+        assert!(bed_features.iter().any(|feature| {
             first_qualifier(feature, "gentle_track_source").as_deref() == Some("BED")
                 && first_qualifier(feature, "gentle_track_name").as_deref()
-                    == Some("TP73 CUT&RUN proof BED")
+                    == Some("tp73_release_smoke_synthetic peaks")
                 && first_qualifier(feature, "score").as_deref() == Some("650.000000")
         }));
         assert!(dna.features().iter().any(|feature| {
             feature.kind.to_string().eq_ignore_ascii_case("TFBS")
                 || first_qualifier(feature, "gentle_generated").as_deref() == Some("tfbs_scan")
         }));
+
+        let linear_svg = fs::read_to_string(
+            run_dir
+                .path()
+                .join("artifacts/tp73_evidence_viewer/tp73_evidence_viewer.linear.svg"),
+        )
+        .expect("read TP73 linear evidence SVG");
+        assert!(linear_svg.contains("data-gentle-role=\"linear-evidence-legend-panel\""));
+        assert!(linear_svg.contains("kinked arrow marks transcription start site"));
+        assert!(linear_svg.contains("TFBS motif hits: thin green blocks"));
+        assert!(
+            linear_svg.contains("External evidence tracks: BED/other imported evidence is grey")
+        );
+        assert!(linear_svg.contains("Array E-MTAB-14704 AdTAp73alpha-AdGFP"));
+        assert!(
+            linear_svg.contains("tp73_release_smoke_synthetic"),
+            "CUT&RUN dataset is absent from the external-evidence legend"
+        );
+        assert!(
+            linear_svg.contains("tp73_release_smoke.peaks.bed"),
+            "CUT&RUN projected-file provenance is absent from the external-evidence legend"
+        );
+        assert!(linear_svg.contains("Provenance: sequence NC_000001"));
+        assert!(linear_svg.contains("data-gentle-role=\"linear-transcription-start-halo\""));
+
+        let tfbs_report: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(run_dir.path().join(
+                "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.tfbs_score_tracks.json",
+            ))
+            .expect("read TFBS score-track report"),
+        )
+        .expect("parse TFBS score-track report");
+        assert_eq!(
+            tfbs_report["schema"].as_str(),
+            Some("gentle.tfbs_score_tracks.v1")
+        );
+        assert_eq!(tfbs_report["seq_id"].as_str(), Some("tp73_evidence_viewer"));
+        assert_eq!(tfbs_report["target_kind"].as_str(), Some("seq_id"));
+        assert_eq!(
+            tfbs_report["target_label"].as_str(),
+            Some("tp73_evidence_viewer")
+        );
+        assert_eq!(tfbs_report["view_start_0based"].as_u64(), Some(0));
+        assert_eq!(
+            tfbs_report["view_end_0based_exclusive"].as_u64(),
+            Some(1200)
+        );
+        let motifs_requested = tfbs_report["motifs_requested"]
+            .as_array()
+            .expect("TFBS score-track report should list requested motifs")
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .collect::<Vec<_>>();
+        assert_eq!(motifs_requested, vec!["TP73", "TP53", "TP63"]);
+        let tfbs_tracks = tfbs_report["tracks"]
+            .as_array()
+            .expect("TFBS score-track report should contain tracks");
+        assert_eq!(tfbs_tracks.len(), 3);
+        let tfbs_track_names = tfbs_tracks
+            .iter()
+            .filter_map(|track| track["tf_name"].as_str())
+            .collect::<HashSet<_>>();
+        assert_eq!(tfbs_track_names, HashSet::from(["TP73", "TP53", "TP63"]));
+        for track in tfbs_tracks {
+            let scored_window_count = track["scored_window_count"]
+                .as_u64()
+                .expect("TFBS track should expose scored_window_count");
+            assert!(scored_window_count > 0);
+            assert_eq!(track["track_start_0based"].as_u64(), Some(0));
+            assert_eq!(
+                track["forward_scores"].as_array().map(Vec::len),
+                Some(scored_window_count as usize)
+            );
+            assert_eq!(
+                track["reverse_scores"].as_array().map(Vec::len),
+                Some(scored_window_count as usize)
+            );
+            assert!(
+                track["top_peaks"]
+                    .as_array()
+                    .map(|peaks| !peaks.is_empty())
+                    .unwrap_or(false),
+                "TFBS score-track should expose at least one peak per motif"
+            );
+        }
+        let tfbs_svg = fs::read_to_string(
+            run_dir
+                .path()
+                .join("artifacts/tp73_evidence_viewer/tp73_evidence_viewer.tfbs_score_tracks.svg"),
+        )
+        .expect("read TFBS score-track SVG");
+        assert!(tfbs_svg.contains("target=tp73_evidence_viewer | span=0..1200"));
+        assert!(tfbs_svg.contains("data-gentle-role=\"tfbs-score-track-logo\""));
+        assert!(tfbs_svg.contains("TP73 (MA0861.2)"));
+        assert!(tfbs_svg.contains("TP53 (MA0106.3)"));
+        assert!(tfbs_svg.contains("TP63 (MA0525.2)"));
         assert!(state.display.show_repeat_features);
         assert!(state.display.show_array_features);
         assert!(state.display.show_tfbs);
@@ -5611,6 +8269,774 @@ mod tests {
     }
 
     #[test]
+    fn tutorial_gui_acceptance_contract_has_no_executable_text_fields() {
+        fn assert_no_execution_keys(value: &serde_json::Value) {
+            match value {
+                serde_json::Value::Object(map) => {
+                    for (key, child) in map {
+                        assert!(
+                            !matches!(key.as_str(), "command" | "exec" | "script" | "shell"),
+                            "GUI acceptance contracts must not carry executable field '{key}'"
+                        );
+                        assert_no_execution_keys(child);
+                    }
+                }
+                serde_json::Value::Array(values) => {
+                    for child in values {
+                        assert_no_execution_keys(child);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let manifest =
+            load_tutorial_manifest(&tutorial_manifest_path()).expect("load tutorial manifest");
+        let acceptances = manifest
+            .chapters
+            .iter()
+            .filter_map(|chapter| chapter.gui_acceptance.as_ref())
+            .collect::<Vec<_>>();
+        assert!(
+            !acceptances.is_empty(),
+            "at least one committed GUI acceptance contract"
+        );
+        for acceptance in acceptances {
+            let value =
+                serde_json::to_value(acceptance).expect("serialize GUI acceptance contract");
+            assert_no_execution_keys(&value);
+        }
+    }
+
+    #[test]
+    fn tutorial_gui_acceptance_profile_rejects_unknown_values() {
+        let manifest =
+            load_tutorial_manifest(&tutorial_manifest_path()).expect("load tutorial manifest");
+        let acceptance = manifest
+            .chapters
+            .iter()
+            .find_map(|chapter| chapter.gui_acceptance.as_ref())
+            .expect("at least one committed GUI acceptance contract");
+        let mut value =
+            serde_json::to_value(acceptance).expect("serialize GUI acceptance contract");
+        value["profile"] = serde_json::json!("smkoe");
+
+        let error = serde_json::from_value::<TutorialGuiAcceptance>(value)
+            .expect_err("unknown GUI acceptance profile must be rejected");
+        assert!(
+            error.to_string().contains("unknown variant `smkoe`"),
+            "unexpected profile error: {error}"
+        );
+    }
+
+    #[test]
+    fn tutorial_gui_acceptance_feature_targets_require_exact_binding() {
+        for index in [None, Some("-1"), Some("00"), Some("0")] {
+            let mut manifest = load_tutorial_manifest(&tutorial_manifest_path()).unwrap();
+            let acceptance = manifest
+                .chapters
+                .iter_mut()
+                .find_map(|chapter| chapter.gui_acceptance.as_mut())
+                .unwrap();
+            let step = acceptance
+                .steps
+                .iter_mut()
+                .find(|step| !step.persists_project_state)
+                .unwrap();
+            step.window = "window.dna_viewer".into();
+            step.target = "dna.feature_tree.row".into();
+            step.interaction = TutorialGuiInteraction::Click;
+            step.subject
+                .insert("sequence".into(), "fixture_sequence".into());
+            if let Some(index) = index {
+                step.subject.insert("feature_index".into(), index.into());
+            }
+            let examples = load_workflow_examples(&example_dir()).unwrap();
+            let result = validate_tutorial_manifest_against_examples(&manifest, &examples);
+            if index == Some("0") {
+                result.unwrap();
+            } else {
+                assert!(
+                    result
+                        .unwrap_err()
+                        .contains("exact sequence/feature_index binding")
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn tutorial_gui_acceptance_rejects_scientific_effect_without_before_and_after_facts() {
+        let mut manifest =
+            load_tutorial_manifest(&tutorial_manifest_path()).expect("load tutorial manifest");
+        let acceptance = manifest
+            .chapters
+            .iter_mut()
+            .find_map(|chapter| chapter.gui_acceptance.as_mut())
+            .expect("at least one committed GUI acceptance contract");
+        let step = acceptance
+            .steps
+            .iter_mut()
+            .find(|step| step.scientific_effect)
+            .expect("at least one scientific-effect GUI acceptance step");
+        step.before = None;
+
+        let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
+        let error = validate_tutorial_manifest_against_examples(&manifest, &examples)
+            .expect_err("scientific-effect step without before facts must be rejected");
+        assert!(
+            error.contains("requires before and after fact expressions"),
+            "unexpected validation error: {error}"
+        );
+    }
+
+    #[test]
+    fn tutorial_gui_acceptance_rejects_unknown_targets_and_persistence_mismatches() {
+        let manifest =
+            load_tutorial_manifest(&tutorial_manifest_path()).expect("load tutorial manifest");
+        let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
+
+        let mut unknown = manifest.clone();
+        unknown
+            .chapters
+            .iter_mut()
+            .find_map(|chapter| chapter.gui_acceptance.as_mut())
+            .expect("GUI acceptance")
+            .steps[0]
+            .target = "agent.command.input".to_string();
+        let error = validate_tutorial_manifest_against_examples(&unknown, &examples)
+            .expect_err("uncatalogued control must be rejected");
+        assert!(error.contains("tutorial-ineligible target"), "{error}");
+
+        let mut mismatched = manifest;
+        let step = mismatched
+            .chapters
+            .iter_mut()
+            .find_map(|chapter| chapter.gui_acceptance.as_mut())
+            .expect("GUI acceptance")
+            .steps
+            .iter_mut()
+            .find(|step| step.persists_project_state)
+            .expect("persistent GUI acceptance step");
+        step.persists_project_state = false;
+        let error = validate_tutorial_manifest_against_examples(&mismatched, &examples)
+            .expect_err("incorrect persistence declaration must be rejected");
+        assert!(
+            error.contains("persists_project_state=false disagrees"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn tutorial_gui_acceptance_window_checks_are_visual_not_scientific() {
+        let mut manifest = load_tutorial_manifest(&tutorial_manifest_path()).unwrap();
+        let examples = load_workflow_examples(&example_dir()).unwrap();
+        let step = manifest
+            .chapters
+            .iter_mut()
+            .filter_map(|chapter| chapter.gui_acceptance.as_mut())
+            .flat_map(|acceptance| acceptance.steps.iter_mut())
+            .find(|step| step.scientific_effect)
+            .unwrap();
+        step.verifiers = vec![TutorialGuiVerifier::DnaWindows {
+            seq_ids: vec!["toy".into()],
+        }];
+        assert!(
+            validate_tutorial_manifest_against_examples(&manifest, &examples)
+                .unwrap_err()
+                .contains("requires at least one engine/report/artifact/state verifier")
+        );
+        let step = &manifest
+            .chapters
+            .iter()
+            .find_map(|chapter| chapter.gui_acceptance.as_ref())
+            .unwrap()
+            .steps[0];
+        for ids in [vec![], vec!["".into()], vec!["toy".into(), "toy".into()]] {
+            assert!(
+                validate_tutorial_gui_verifier(
+                    "test",
+                    step,
+                    &TutorialGuiVerifier::DnaWindows { seq_ids: ids }
+                )
+                .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn tutorial_gui_acceptance_rejects_vacuous_report_verifiers() {
+        let mut manifest =
+            load_tutorial_manifest(&tutorial_manifest_path()).expect("load tutorial manifest");
+        let report_verifier = manifest
+            .chapters
+            .iter_mut()
+            .filter_map(|chapter| chapter.gui_acceptance.as_mut())
+            .flat_map(|acceptance| acceptance.steps.iter_mut())
+            .flat_map(|step| step.verifiers.iter_mut())
+            .find(|verifier| matches!(verifier, TutorialGuiVerifier::Report { .. }))
+            .expect("report verifier");
+        let TutorialGuiVerifier::Report {
+            required_fields,
+            assertions,
+            ..
+        } = report_verifier
+        else {
+            unreachable!()
+        };
+        required_fields.clear();
+        assertions.clear();
+
+        let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
+        let error = validate_tutorial_manifest_against_examples(&manifest, &examples)
+            .expect_err("vacuous report verifier must be rejected");
+        assert!(
+            error.contains("must declare required_fields or assertions"),
+            "{error}"
+        );
+    }
+
+    fn tutorial_json_path<'a>(
+        value: &'a serde_json::Value,
+        path: &str,
+    ) -> Option<&'a serde_json::Value> {
+        path.split('.')
+            .try_fold(value, |current, segment| match current {
+                serde_json::Value::Object(map) => map.get(segment),
+                serde_json::Value::Array(values) => segment
+                    .parse::<usize>()
+                    .ok()
+                    .and_then(|index| values.get(index)),
+                _ => None,
+            })
+    }
+
+    fn tutorial_numeric_comparison(actual: f64, op: &str, expected: f64) -> bool {
+        match op {
+            "eq" | "=" | "==" => (actual - expected).abs() < f64::EPSILON,
+            "ne" | "!=" => (actual - expected).abs() >= f64::EPSILON,
+            "gt" | ">" => actual > expected,
+            "gte" | ">=" => actual >= expected,
+            "lt" | "<" => actual < expected,
+            "lte" | "<=" => actual <= expected,
+            _ => false,
+        }
+    }
+
+    fn assert_tutorial_report_verifier(
+        report: &serde_json::Value,
+        required_fields: &[String],
+        assertions: &[TutorialGuiReportAssertion],
+    ) {
+        for path in required_fields {
+            assert!(
+                tutorial_json_path(report, path).is_some(),
+                "oracle report is missing required path '{path}'"
+            );
+        }
+        for assertion in assertions {
+            match assertion {
+                TutorialGuiReportAssertion::Value {
+                    path,
+                    equals,
+                    compare,
+                    non_empty,
+                } => {
+                    let actual = tutorial_json_path(report, path).unwrap_or_else(|| {
+                        panic!("oracle report is missing asserted path '{path}'")
+                    });
+                    if let Some(expected) = equals {
+                        assert_eq!(actual, expected, "report equality failed at '{path}'");
+                    }
+                    if let Some(compare) = compare {
+                        assert!(
+                            tutorial_numeric_comparison(
+                                actual.as_f64().expect("numeric report value"),
+                                &compare.op,
+                                compare.value.as_f64().expect("numeric expected value"),
+                            ),
+                            "report numeric comparison failed at '{path}'"
+                        );
+                    }
+                    if *non_empty {
+                        let populated = match actual {
+                            serde_json::Value::Array(values) => !values.is_empty(),
+                            serde_json::Value::Object(values) => !values.is_empty(),
+                            serde_json::Value::String(value) => !value.is_empty(),
+                            _ => false,
+                        };
+                        assert!(populated, "report value at '{path}' must be non-empty");
+                    }
+                }
+                TutorialGuiReportAssertion::Relation {
+                    left_path,
+                    op,
+                    right_path,
+                } => {
+                    let left = tutorial_json_path(report, left_path)
+                        .and_then(serde_json::Value::as_f64)
+                        .unwrap_or_else(|| panic!("missing numeric left path '{left_path}'"));
+                    let right = tutorial_json_path(report, right_path)
+                        .and_then(serde_json::Value::as_f64)
+                        .unwrap_or_else(|| panic!("missing numeric right path '{right_path}'"));
+                    assert!(
+                        tutorial_numeric_comparison(left, op, right),
+                        "report relation failed: {left_path} {op} {right_path}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn vkorc1_pair_gui_starter_and_oracle_are_independent_and_base_bound() {
+        let source: TutorialSourceUnit = serde_json::from_str(include_str!(
+            "../docs/tutorial/sources/08-04_vkorc1_warfarin_promoter_luciferase_gui.json"
+        ))
+        .unwrap();
+        let contract = source.generated_chapter.unwrap().gui_acceptance.unwrap();
+        let examples = load_workflow_examples(&example_dir()).unwrap();
+        let by_id = example_lookup(&examples);
+        let starter_dir = TempDir::new().unwrap();
+        let oracle_dir = TempDir::new().unwrap();
+        let starter = run_example_workflow_for_project_state(
+            &by_id[&contract.starter.example_id].example,
+            Path::new("."),
+            starter_dir.path(),
+        )
+        .unwrap();
+        let oracle = run_example_workflow_for_project_state(
+            &by_id[&contract.oracle.example_id].example,
+            Path::new("."),
+            oracle_dir.path(),
+        )
+        .unwrap();
+        let starter = GentleEngine::from_state(starter);
+        let oracle = GentleEngine::from_state(oracle);
+        let input = "vkorc1_rs9923231_promoter_fragment";
+        let reference = "vkorc1_rs9923231_promoter_reference";
+        let alternate = "vkorc1_rs9923231_promoter_alternate";
+        assert_eq!(starter.state().sequences.len(), 1);
+        assert_eq!(oracle.state().sequences.len(), 3);
+        assert_eq!(
+            starter
+                .evaluate_fact_expression(&contract.completion_condition, &[])
+                .truth,
+            crate::engine::protocol::FactTruth::Unsatisfied
+        );
+        assert_eq!(
+            oracle
+                .evaluate_fact_expression(&contract.completion_condition, &[])
+                .truth,
+            crate::engine::protocol::FactTruth::Satisfied
+        );
+        let source_bases = starter.state().sequences[input].forward_bytes();
+        assert_eq!(source_bases, b"aaaaaacaaaaaaaaaaaaa");
+        assert_eq!(
+            source_bases,
+            oracle.state().sequences[input].forward_bytes()
+        );
+        // GenBank preserves input case; materialization writes the selected base uppercase.
+        let mut reference_bases = source_bases.to_vec();
+        reference_bases[6] = b'C';
+        assert_eq!(
+            reference_bases,
+            oracle.state().sequences[reference].forward_bytes()
+        );
+        let differences: Vec<_> = reference_bases
+            .iter()
+            .zip(oracle.state().sequences[alternate].forward_bytes())
+            .enumerate()
+            .filter(|(_, (before, after))| before != after)
+            .map(|(position, (before, after))| (position, *before, *after))
+            .collect();
+        assert_eq!(differences, vec![(6, b'C', b'T')]);
+        assert_eq!(oracle.state().sequences[alternate].len(), 20);
+        assert!(contract.steps.iter().any(|step| {
+            matches!(&step.interaction, TutorialGuiInteraction::ReplaceText { text } if text == "T")
+        }));
+        let path = oracle_dir.path().join("reopened.json");
+        oracle.state().save_to_path(path.to_str().unwrap()).unwrap();
+        let reopened = ProjectState::load_from_path(path.to_str().unwrap()).unwrap();
+        for seq_id in [input, reference, alternate] {
+            assert_eq!(
+                reopened.sequences[seq_id].forward_bytes(),
+                oracle.state().sequences[seq_id].forward_bytes()
+            );
+            assert_eq!(
+                serde_json::to_value(reopened.sequences[seq_id].features()).unwrap(),
+                serde_json::to_value(oracle.state().sequences[seq_id].features()).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn tss_gui_acceptance_starter_and_oracle_are_independent_and_report_bound() {
+        let source: TutorialSourceUnit = serde_json::from_str(include_str!(
+            "../docs/tutorial/sources/08-15_tss_collection_gui.json"
+        ))
+        .unwrap();
+        let contract = source.generated_chapter.unwrap().gui_acceptance.unwrap();
+        let examples = load_workflow_examples(&example_dir()).unwrap();
+        let by_id = example_lookup(&examples);
+        let starter_dir = TempDir::new().unwrap();
+        let oracle_dir = TempDir::new().unwrap();
+        let starter = run_example_workflow_for_project_state(
+            &by_id[&contract.starter.example_id].example,
+            Path::new("."),
+            starter_dir.path(),
+        )
+        .unwrap();
+        let oracle = run_example_workflow_for_project_state(
+            &by_id[&contract.oracle.example_id].example,
+            Path::new("."),
+            oracle_dir.path(),
+        )
+        .unwrap();
+        let starter = GentleEngine::from_state(starter);
+        let mut oracle = GentleEngine::from_state(oracle);
+        assert_eq!(starter.state().sequences.len(), 1);
+        assert_eq!(oracle.state().sequences.len(), 4);
+        assert_eq!(
+            starter
+                .evaluate_fact_expression(&contract.completion_condition, &[])
+                .truth,
+            crate::engine::protocol::FactTruth::Unsatisfied
+        );
+        assert_eq!(
+            oracle
+                .evaluate_fact_expression(&contract.completion_condition, &[])
+                .truth,
+            crate::engine::protocol::FactTruth::Satisfied
+        );
+        let report = oracle.get_tss_collection("tss_windows").unwrap();
+        let json = serde_json::to_value(&report).unwrap();
+        for step in &contract.steps {
+            for verifier in &step.verifiers {
+                if let TutorialGuiVerifier::Report {
+                    schema,
+                    required_fields,
+                    assertions,
+                    ..
+                } = verifier
+                {
+                    assert_eq!(schema, "gentle.tss_collection.v1");
+                    assert_tutorial_report_verifier(&json, required_fields, assertions);
+                } else if let TutorialGuiVerifier::State { seq_ids, .. }
+                | TutorialGuiVerifier::DnaWindows { seq_ids } = verifier
+                {
+                    for seq_id in seq_ids {
+                        assert!(
+                            oracle.state().sequences.contains_key(seq_id),
+                            "TSS tutorial state verifier references missing oracle sequence {seq_id}"
+                        );
+                    }
+                }
+            }
+        }
+        let path = oracle_dir.path().join("reopened.json");
+        oracle.state().save_to_path(path.to_str().unwrap()).unwrap();
+        let state = ProjectState::load_from_path(path.to_str().unwrap()).unwrap();
+        let reopened = GentleEngine::from_state(state);
+        assert_eq!(
+            serde_json::to_value(reopened.get_tss_collection("tss_windows").unwrap()).unwrap(),
+            json
+        );
+        // Registry recovery remains contributor coverage even though the
+        // learner tutorial no longer includes Forget/Undo interaction steps.
+        let intact = serde_json::to_value(oracle.state()).unwrap();
+        oracle
+            .apply(Operation::ForgetTssCollection {
+                collection_id: "tss_windows".into(),
+            })
+            .unwrap();
+        assert_eq!(
+            oracle
+                .evaluate_fact_expression(&contract.completion_condition, &[])
+                .truth,
+            crate::engine::protocol::FactTruth::Unsatisfied,
+            "forget must remove the collection from the registry"
+        );
+        assert_eq!(
+            serde_json::to_value(&oracle.state().sequences).unwrap(),
+            intact["sequences"]
+        );
+        oracle.undo_last_operation().unwrap();
+        assert_eq!(serde_json::to_value(oracle.state()).unwrap(), intact);
+        assert_eq!(
+            oracle
+                .evaluate_fact_expression(&contract.completion_condition, &[])
+                .truth,
+            crate::engine::protocol::FactTruth::Satisfied,
+            "undo must restore the collection's completion fact"
+        );
+        let member = &report.members[0].tss.output_seq_id;
+        oracle
+            .state_mut()
+            .sequences
+            .get_mut(member)
+            .unwrap()
+            .features_mut()
+            .clear();
+        assert!(
+            oracle
+                .get_tss_collection("tss_windows")
+                .unwrap_err()
+                .message
+                .contains("edited")
+        );
+        let before = serde_json::to_value(oracle.state()).unwrap();
+        oracle
+            .apply(Operation::ForgetTssCollection {
+                collection_id: "tss_windows".into(),
+            })
+            .unwrap();
+        assert!(
+            oracle
+                .list_tss_collections()
+                .unwrap()
+                .collections
+                .is_empty()
+        );
+        assert_eq!(oracle.state().sequences.len(), 4);
+        oracle.undo_last_operation().unwrap();
+        assert_eq!(serde_json::to_value(oracle.state()).unwrap(), before);
+        assert!(
+            oracle.get_tss_collection("tss_windows").is_err(),
+            "undo restores registry metadata, not stale biological content"
+        );
+    }
+
+    #[test]
+    fn simple_pcr_gui_acceptance_starter_and_oracle_bound_completion_fact() {
+        let manifest =
+            load_tutorial_manifest(&tutorial_manifest_path()).expect("load tutorial manifest");
+        let chapter = manifest
+            .chapters
+            .iter()
+            .find(|chapter| chapter.id == "simple_pcr_selection_gui")
+            .expect("simple PCR GUI tutorial chapter");
+        let acceptance = chapter
+            .gui_acceptance
+            .as_ref()
+            .expect("simple PCR GUI acceptance contract");
+        let opening_step = acceptance.steps.first().expect("opening GUI step");
+        assert_eq!(
+            opening_step.window,
+            crate::tutorial_gui_semantics::WINDOW_MAIN
+        );
+        assert_eq!(
+            opening_step.target,
+            crate::tutorial_gui_semantics::MAIN_PROJECT_SEQUENCE_OPEN
+        );
+        assert!(matches!(
+            opening_step.interaction,
+            TutorialGuiInteraction::DoubleClick
+        ));
+        let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
+        let by_id = example_lookup(&examples);
+
+        let starter_dir = TempDir::new().expect("starter run dir");
+        let starter = run_example_workflow_for_project_state(
+            &by_id
+                .get(acceptance.starter.example_id.as_str())
+                .expect("starter workflow")
+                .example,
+            Path::new("."),
+            starter_dir.path(),
+        )
+        .expect("run starter workflow");
+        let compact_template = starter.sequences.get("tp73_locus").expect("compact TP73");
+        assert_eq!(
+            compact_template.len(),
+            800,
+            "GUI smoke must not design on the full locus"
+        );
+        let compact_bases = compact_template.forward_bytes().to_vec();
+        let full_source = starter
+            .sequences
+            .get("simple_pcr_source_locus")
+            .expect("TP73 source");
+        assert_eq!(compact_bases, full_source.forward_bytes()[61520..62320]);
+        assert_eq!(
+            acceptance
+                .oracle
+                .seq_id_map
+                .get("tp73_locus")
+                .map(String::as_str),
+            Some("simple_pcr_template"),
+        );
+        assert!(acceptance.steps.iter().any(|step| matches!(
+            &step.interaction,
+            TutorialGuiInteraction::ReplaceText { text } if text == "=201 .. 600"
+        )));
+        let starter_sequence_ids = starter.sequences.keys().cloned().collect::<HashSet<_>>();
+        let starter_engine = GentleEngine::from_state(starter);
+        assert_eq!(
+            starter_engine
+                .evaluate_fact_expression(&acceptance.completion_condition, &[])
+                .truth,
+            crate::engine::protocol::FactTruth::Unsatisfied,
+            "the GUI starter must not already satisfy the tutorial completion condition"
+        );
+        for step in acceptance
+            .steps
+            .iter()
+            .filter(|step| step.scientific_effect)
+        {
+            let truth = starter_engine
+                .evaluate_fact_expression(step.before.as_ref().expect("validated before"), &[])
+                .truth;
+            if step.allow_preexisting {
+                assert_ne!(
+                    truth,
+                    crate::engine::protocol::FactTruth::Unknown,
+                    "scientific-effect step '{}' may allow pre-existing state but not unknown readiness",
+                    step.id
+                );
+            } else {
+                assert_eq!(
+                    truth,
+                    crate::engine::protocol::FactTruth::Unsatisfied,
+                    "scientific-effect step '{}' must have an unsatisfied starter precondition",
+                    step.id
+                );
+            }
+        }
+
+        let oracle_dir = TempDir::new().expect("oracle run dir");
+        let oracle = run_example_workflow_for_project_state(
+            &by_id
+                .get(acceptance.oracle.example_id.as_str())
+                .expect("oracle workflow")
+                .example,
+            Path::new("."),
+            oracle_dir.path(),
+        )
+        .expect("run oracle workflow");
+        assert_eq!(
+            compact_bases,
+            oracle
+                .sequences
+                .get("simple_pcr_template")
+                .expect("oracle template")
+                .forward_bytes(),
+            "GUI and oracle must design on identical compact TP73 sequence content",
+        );
+        let oracle_sequence_ids = oracle.sequences.keys().cloned().collect::<HashSet<_>>();
+        for (starter_seq_id, oracle_seq_id) in &acceptance.oracle.seq_id_map {
+            assert!(
+                starter_sequence_ids.contains(starter_seq_id),
+                "seq_id_map source '{starter_seq_id}' must exist in starter state"
+            );
+            assert!(
+                oracle_sequence_ids.contains(oracle_seq_id),
+                "seq_id_map target '{oracle_seq_id}' must exist in oracle state"
+            );
+        }
+        let oracle_engine = GentleEngine::from_state(oracle);
+        assert_eq!(
+            oracle_engine
+                .evaluate_fact_expression(&acceptance.completion_condition, &[])
+                .truth,
+            crate::engine::protocol::FactTruth::Satisfied,
+            "the oracle must satisfy the tutorial completion condition"
+        );
+        for step in acceptance
+            .steps
+            .iter()
+            .filter(|step| step.scientific_effect)
+        {
+            assert_eq!(
+                oracle_engine
+                    .evaluate_fact_expression(step.after.as_ref().expect("validated after"), &[])
+                    .truth,
+                crate::engine::protocol::FactTruth::Satisfied,
+                "scientific-effect step '{}' must have a satisfied oracle postcondition",
+                step.id
+            );
+            for verifier in &step.verifiers {
+                if let TutorialGuiVerifier::Report {
+                    report_id,
+                    schema,
+                    required_fields,
+                    assertions,
+                } = verifier
+                {
+                    let report = oracle_engine
+                        .get_primer_design_report(report_id)
+                        .expect("oracle primer-design report");
+                    assert_eq!(report.schema, *schema);
+                    let report = serde_json::to_value(report).expect("serialize oracle report");
+                    assert_tutorial_report_verifier(&report, required_fields, assertions);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn cloning_gui_acceptance_starters_do_not_presatisfy_oracles() {
+        let manifest = load_tutorial_manifest(&tutorial_manifest_path()).expect("manifest");
+        let examples = load_workflow_examples(&example_dir()).expect("examples");
+        let by_id = example_lookup(&examples);
+        for id in [
+            "load_branch_reverse_complement_pgex_fasta",
+            "load_and_digest_pgex",
+        ] {
+            let acceptance = manifest
+                .chapters
+                .iter()
+                .find(|c| c.id == id)
+                .and_then(|c| c.gui_acceptance.as_ref())
+                .expect("cloning acceptance");
+            let starter_dir = TempDir::new().expect("starter");
+            let oracle_dir = TempDir::new().expect("oracle");
+            let run = |id: &str, path: &Path| {
+                GentleEngine::from_state(
+                    run_example_workflow_for_project_state(
+                        &by_id[id].example,
+                        Path::new("."),
+                        path,
+                    )
+                    .expect("workflow"),
+                )
+            };
+            let starter = run(&acceptance.starter.example_id, starter_dir.path());
+            let oracle = run(&acceptance.oracle.example_id, oracle_dir.path());
+            assert_eq!(
+                starter
+                    .evaluate_fact_expression(&acceptance.completion_condition, &[])
+                    .truth,
+                crate::engine::protocol::FactTruth::Unsatisfied,
+                "{id}"
+            );
+            assert_eq!(
+                oracle
+                    .evaluate_fact_expression(&acceptance.completion_condition, &[])
+                    .truth,
+                crate::engine::protocol::FactTruth::Satisfied,
+                "{id}"
+            );
+            for step in acceptance.steps.iter().filter(|s| s.scientific_effect) {
+                assert_eq!(
+                    starter
+                        .evaluate_fact_expression(step.before.as_ref().expect("before"), &[])
+                        .truth,
+                    crate::engine::protocol::FactTruth::Unsatisfied
+                );
+                assert_eq!(
+                    oracle
+                        .evaluate_fact_expression(step.after.as_ref().expect("after"), &[])
+                        .truth,
+                    crate::engine::protocol::FactTruth::Satisfied
+                );
+                assert!(step.verifiers.iter().any(|v| matches!(v,
+                    TutorialGuiVerifier::State { seq_ids, compare_with_oracle: true } if !seq_ids.is_empty())));
+            }
+        }
+    }
+
+    #[test]
     fn tutorial_catalog_parses_and_paths_exist() {
         let catalog =
             load_tutorial_catalog(&tutorial_catalog_path()).expect("load tutorial catalog");
@@ -5638,6 +9064,121 @@ mod tests {
             "catalog manifest path should exist: '{}'",
             display_path(&generated_manifest)
         );
+    }
+
+    #[test]
+    fn tutorial_catalog_navigation_is_bounded_and_resolves_ids() {
+        let catalog =
+            load_tutorial_catalog(&tutorial_catalog_path()).expect("load tutorial catalog");
+        let by_id = catalog
+            .entries
+            .iter()
+            .map(|entry| (entry.id.as_str(), entry))
+            .collect::<HashMap<_, _>>();
+
+        let tss_collection = by_id
+            .get("tss_collection_gui")
+            .expect("TSS collection tutorial");
+        assert_eq!(
+            tss_collection.prerequisites,
+            ["motif_logo_to_promoter_trace"]
+        );
+        assert_eq!(tss_collection.next_steps, ["tss_regulatory_view_gui"]);
+
+        let generated_prerequisite = by_id
+            .get("gibson_specialist_testing_baseline")
+            .expect("generated Gibson baseline");
+        assert_eq!(
+            generated_prerequisite.prerequisites,
+            ["gibson_two_fragment_overlap_preview"]
+        );
+        assert_eq!(
+            generated_prerequisite.next_steps,
+            ["gibson_specialist_testing_gui"]
+        );
+
+        let known_ids = by_id.keys().map(|id| (*id).to_string()).collect();
+        let mut invalid = catalog.entries.clone();
+        invalid[0].next_steps = vec!["missing_tutorial".to_string()];
+        let error = validate_tutorial_catalog_navigation(&invalid, &known_ids)
+            .expect_err("unknown navigation target should fail");
+        assert!(error.contains("missing_tutorial"), "{error}");
+    }
+
+    #[test]
+    fn tutorial_catalog_navigation_load_rejects_invalid_links_in_both_directions() {
+        let catalog = load_tutorial_catalog(&tutorial_catalog_path()).unwrap();
+        let base = serde_json::to_value(&catalog).unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("catalog.json");
+        let other = &catalog.entries[1].id;
+        for field in ["prerequisites", "next_steps"] {
+            for (targets, expected) in [
+                (vec![String::new()], "blank"),
+                (vec!["   ".to_string()], "blank"),
+                (vec![other.clone(), other.clone()], "repeats"),
+                (vec![catalog.entries[0].id.clone()], "itself"),
+                (vec!["missing_tutorial".to_string()], "unknown"),
+                (
+                    catalog.entries[1..5].iter().map(|e| e.id.clone()).collect(),
+                    "maximum 3",
+                ),
+            ] {
+                let mut value = base.clone();
+                value["entries"][0][field] = serde_json::json!(targets);
+                fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+                let error = load_tutorial_catalog(&path).unwrap_err();
+                assert!(error.contains("navigation validation error"), "{error}");
+                assert!(error.contains(field), "{error}");
+                assert!(error.contains(expected), "{error}");
+            }
+            let mut value = base.clone();
+            value["entries"][0][field] = serde_json::json!(
+                catalog.entries[1..4]
+                    .iter()
+                    .map(|e| &e.id)
+                    .collect::<Vec<_>>()
+            );
+            fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+            assert!(
+                load_tutorial_catalog(&path).is_ok(),
+                "three {field} allowed"
+            );
+        }
+    }
+
+    #[test]
+    fn tutorial_catalog_without_navigation_still_loads() {
+        let mut value =
+            serde_json::to_value(load_tutorial_catalog(&tutorial_catalog_path()).unwrap()).unwrap();
+        for entry in value["entries"].as_array_mut().unwrap() {
+            let entry = entry.as_object_mut().unwrap();
+            entry.remove("prerequisites");
+            entry.remove("next_steps");
+        }
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("catalog.json");
+        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        let catalog = load_tutorial_catalog(&path).unwrap();
+        assert!(
+            catalog
+                .entries
+                .iter()
+                .all(|entry| { entry.prerequisites.is_empty() && entry.next_steps.is_empty() })
+        );
+    }
+
+    #[test]
+    fn tss_tutorial_agent_drafts_parse_and_keep_mutations_reviewed() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let units = load_tutorial_source_units(&root.join(DEFAULT_TUTORIAL_SOURCE_DIR))
+            .expect("load tutorial sources");
+        let check = check_tutorial_agent_parity(&units, root);
+        assert!(check.findings.is_empty(), "{:?}", check.findings);
+        assert_eq!(check.summary.tutorials, 5);
+        assert_eq!(check.summary.cases, 27);
+        assert_eq!(check.summary.declared_mutating, 8);
+        assert_eq!(check.summary.parser_state_mutating, 15);
     }
 
     #[test]
@@ -5825,8 +9366,16 @@ mod tests {
     #[test]
     fn tutorial_review_manifest_stale_date_warns() {
         let dir = TempDir::new().expect("temp tutorial dir");
-        let manifest_path = dir.path().join("manifest.json");
-        let review_path = dir.path().join("review_manifest.json");
+        let tutorial_dir = dir.path().join("docs/tutorial");
+        let manifest_path = tutorial_dir.join("manifest.json");
+        let review_path = tutorial_dir.join("review_manifest.json");
+        let workflow_path = dir
+            .path()
+            .join(DEFAULT_WORKFLOW_EXAMPLE_DIR)
+            .join("minimal_example.json");
+        fs::create_dir_all(&tutorial_dir).unwrap();
+        fs::create_dir_all(workflow_path.parent().unwrap()).unwrap();
+        fs::write(&workflow_path, b"{}\n").unwrap();
         let manifest = TutorialManifest {
             schema: TUTORIAL_MANIFEST_SCHEMA.to_string(),
             description: "test manifest".to_string(),
@@ -5857,6 +9406,7 @@ mod tests {
 "#,
         )
         .expect("write review manifest");
+        commit_synthetic_review_history(dir.path(), "2023-12-31T00:00:00Z");
 
         let context =
             tutorial_review_context_for_date(&manifest_path, &manifest, Some((2026, 5, 21)))
@@ -5941,6 +9491,7 @@ mod tests {
             chapters: vec![],
         };
 
+        commit_synthetic_review_history(repo_root, "2024-01-02T00:00:00Z");
         let context =
             tutorial_review_context_for_date(&manifest_path, &manifest, Some((2024, 1, 2)))
                 .expect("review context");
@@ -6073,6 +9624,7 @@ mod tests {
         )
         .expect("write review manifest");
 
+        commit_synthetic_review_history(repo_root, "2024-01-02T00:00:00Z");
         let catalog = generate_tutorial_catalog_from_sources(&meta_path, &source_dir)
             .expect("generate tutorial catalog");
         let entry = catalog
@@ -6093,6 +9645,22 @@ mod tests {
         assert_eq!(
             entry.review_issue_template_path.as_deref(),
             Some(TUTORIAL_CONFUSION_ISSUE_TEMPLATE_PATH)
+        );
+
+        let mut review: Value = serde_json::from_slice(&fs::read(&review_path).unwrap()).unwrap();
+        review["warn_after_months"] = Value::from(12);
+        review["entries"][0]["human_reviewed_at"] = Value::from("2024-01-02");
+        fs::write(&review_path, serde_json::to_vec(&review).unwrap()).unwrap();
+        commit_synthetic_review_history(repo_root, "2024-01-02T01:00:00Z");
+        let catalog = generate_tutorial_catalog_from_sources(&meta_path, &source_dir).unwrap();
+        let entry = catalog
+            .entries
+            .iter()
+            .find(|entry| entry.id == "stale_catalog")
+            .unwrap();
+        assert!(
+            !entry.review_stale,
+            "catalog age uses the revision date, not wall time"
         );
     }
 
@@ -6183,6 +9751,7 @@ mod tests {
         )
         .expect("write review manifest");
 
+        commit_synthetic_review_history(repo_root, "2026-03-22T00:00:00Z");
         let catalog = generate_tutorial_catalog_from_sources(&meta_path, &source_dir)
             .expect("generate tutorial catalog");
         let entry = catalog
@@ -6393,6 +9962,7 @@ mod tests {
 
     #[test]
     fn tutorial_generate_is_deterministic() {
+        let _blast_tools = tutorial_blast_tools();
         let _serial = lock_jaspar_registry_for_test();
         crate::tf_motifs::reload_builtin_for_test();
         let source = example_dir();
@@ -6402,8 +9972,29 @@ mod tests {
         let second_dir = TempDir::new().expect("create second temp dir");
         let first_out = first_dir.path().join("generated");
         let second_out = second_dir.path().join("generated");
-        generate_tutorial_docs(&source, &manifest, &first_out, repo_root)
+        let report = generate_tutorial_docs(&source, &manifest, &first_out, repo_root)
             .expect("first generation should pass");
+        assert!(
+            !report
+                .chapters
+                .iter()
+                .find(|chapter| { chapter.id == "region_homology_promoter_modules_offline" })
+                .unwrap()
+                .executed
+        );
+        let _missing_tools: Vec<_> = [
+            crate::genomes::MAKEBLASTDB_ENV_BIN,
+            crate::genomes::BLASTDBCMD_ENV_BIN,
+            crate::genomes::BLASTN_ENV_BIN,
+        ]
+        .into_iter()
+        .map(|key| {
+            crate::tool_overrides::ScopedToolOverrideGuard::set(
+                key,
+                "gentle-missing-blast-test-tool",
+            )
+        })
+        .collect();
         generate_tutorial_docs(&source, &manifest, &second_out, repo_root)
             .expect("second generation should pass");
         let first = directory_bytes_map(&first_out).expect("collect first outputs");
@@ -6415,7 +10006,72 @@ mod tests {
     }
 
     #[test]
+    fn tutorial_step_headings_preserve_accessions_ranges_paths_and_complete_instructions() {
+        let mut chapter = minimal_tutorial_chapter("heading_contract");
+        for instruction in [
+            "Fetch GenBank accession NM_001126241.3.",
+            "Open test_files/pGEX_3X.fasta.",
+            "Paint the upstream window 61720..62000, then inspect chr1:62000.",
+            "Inspect A. Keep the complete instruction, including its second sentence.",
+            "Open Patterns -> PCR Designer with the current selection before adjusting the flank windows for the selected core region.",
+        ] {
+            assert_eq!(
+                tutorial_step_heading(&chapter, 0, instruction),
+                instruction.trim_end_matches('.')
+            );
+        }
+        chapter.step_titles.push("Open the PCR Designer".into());
+        assert_eq!(
+            tutorial_step_heading(&chapter, 0, "A longer fallback instruction."),
+            "Open the PCR Designer"
+        );
+    }
+
+    #[test]
+    fn tutorial_walkthrough_distinguishes_terminal_commands_from_gui_shell_intents() {
+        let mut chapter = minimal_tutorial_chapter("interface_contract");
+        chapter.gui_steps = vec!["Open the PCR Designer.".into()];
+        chapter.cli_steps = vec!["gentle_cli shell 'ui open pcr-design'".into()];
+        let markdown = render_tutorial_gui_steps(&chapter, Path::new("."));
+        assert!(markdown.contains("**CLI (terminal)**"));
+        assert!(!markdown.contains("**CLI / GUI Shell**"));
+        assert!(markdown.contains("without the executable prefix or outer quotes"));
+        assert!(markdown.contains("a headless CLI returns the UI intent but does not open a GUI"));
+        assert!(markdown.contains("does not inherit the open GUI project's unsaved state"));
+        assert!(markdown.contains("a listing command only inspects results"));
+    }
+
+    #[test]
+    fn tutorial_outer_agent_replay_binds_workflow_and_separates_gui_state() {
+        let chapter = minimal_tutorial_chapter("outer_agent_contract");
+        let workflow_path = "docs/examples/workflows/minimal_example.json";
+        let markdown = render_tutorial_outer_agent_replay(&chapter, workflow_path);
+
+        assert!(markdown.contains("## Ask an Outer Agent (MCP or ClawBio/OpenClaw)"));
+        assert!(markdown.contains("does not inherit the unsaved GUI project"));
+        assert!(markdown.contains(workflow_path));
+        assert!(markdown.contains("/tmp/gentle-outer-agent-contract.state.json"));
+        assert!(markdown.contains("gentle.clawbio_skill_request.v1"));
+        assert!(markdown.contains("proposal/approval boundary"));
+        assert!(markdown.contains("does not invoke an agent or grant approval"));
+        assert!(markdown.contains("\"timeout_secs\": 300"));
+    }
+
+    #[test]
+    fn tutorial_outer_agent_replay_allows_online_cache_preparation() {
+        let mut chapter = minimal_tutorial_chapter("online_outer_agent_contract");
+        chapter.tier = TutorialTier::Online;
+        let markdown = render_tutorial_outer_agent_replay(
+            &chapter,
+            "docs/examples/workflows/prepare_reference_genome_online.json",
+        );
+
+        assert!(markdown.contains("\"timeout_secs\": 7200"));
+    }
+
+    #[test]
     fn tutorial_generated_chapter_includes_narrative_concepts_and_objectives() {
+        let _blast_tools = tutorial_blast_tools();
         let _serial = lock_jaspar_registry_for_test();
         crate::tf_motifs::reload_builtin_for_test();
         let source = example_dir();
@@ -6436,14 +10092,33 @@ mod tests {
         let chapter = generated.join("chapters/02-01_load_branch_reverse_complement_pgex_fasta.md");
         let markdown = std::fs::read_to_string(&chapter).expect("read generated chapter markdown");
         assert!(markdown.starts_with("---\nchapter_id: "));
-        assert!(markdown.contains("## What You Learn"));
+        assert!(markdown.contains("## What You Will Accomplish"));
         assert!(markdown.contains("## Applied Concepts"));
         assert!(!markdown.contains("Reoccurs in:"));
-        assert!(markdown.contains("## GUI First"));
+        assert!(markdown.contains("## Walkthrough: GUI, CLI and Inner Agent"));
+        assert!(markdown.contains("**Ask the inner agent**"));
+        assert!(markdown.contains("Do not execute it until I approve."));
+        assert!(markdown.contains("## Ask an Outer Agent (MCP or ClawBio/OpenClaw)"));
+        assert!(
+            markdown
+                .contains("docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json")
+        );
+        assert!(markdown.contains("does not inherit the unsaved GUI project"));
+
+        let contributor_chapter =
+            generated.join("chapters/01-02_contribute_to_gentle_development.md");
+        let contributor_markdown = std::fs::read_to_string(&contributor_chapter)
+            .expect("read contributor chapter markdown");
+        assert!(
+            !contributor_markdown.contains("## Ask an Outer Agent (MCP or ClawBio/OpenClaw)"),
+            "the explicitly opted-out contributor chapter must not advertise an outer-agent replay"
+        );
         assert!(markdown.contains("## Parameters That Matter"));
         assert!(
-            markdown.find("## Parameters That Matter").unwrap()
-                < markdown.find("## GUI First").unwrap()
+            markdown
+                .find("## Walkthrough: GUI, CLI and Inner Agent")
+                .unwrap()
+                < markdown.find("## Parameters That Matter").unwrap()
         );
         assert!(markdown.contains("## Tutorial Provenance"));
         assert!(markdown.contains("review_status: "));
@@ -6456,9 +10131,12 @@ mod tests {
             std::fs::read_to_string(&online_chapter).expect("read online chapter markdown");
         assert!(online_markdown.contains("> **How to Run This Locally**"));
         assert!(online_markdown.contains("### Step 1:"));
-        assert!(online_markdown.contains("CLI:\n\n```bash\nGENTLE_TEST_ONLINE=1 cargo run"));
-        assert!(online_markdown.contains("> Expected:"));
-        assert!(!online_markdown.contains("## Command Equivalent (After GUI)"));
+        assert!(
+            online_markdown
+                .contains("**CLI (terminal)**\n\n```bash\nGENTLE_TEST_ONLINE=1 gentle_cli")
+        );
+        assert!(online_markdown.contains("**Expected**\n\n>"));
+        assert!(!online_markdown.contains("## Complete Workflow Replay"));
 
         let simple_pcr_chapter = generated.join("chapters/04-01_simple_pcr_selection_gui.md");
         let simple_pcr_markdown =
@@ -6472,12 +10150,9 @@ mod tests {
             std::fs::read_to_string(&promoter_chapter).expect("read promoter chapter markdown");
         assert!(promoter_markdown.contains("**Prerequisites:** Read [Chapter 1:"));
         assert!(promoter_markdown.contains("### Step 8:"));
-        assert!(promoter_markdown.contains("CLI:\n\n```bash\ncargo run --bin gentle_cli"));
-        assert!(
-            promoter_markdown
-                .contains("CLI snippets use GENtle's default `.gentle_state.json` state")
-        );
-        assert!(promoter_markdown.contains("> Expected: `tfbs_score_tracks.svg`"));
+        assert!(promoter_markdown.contains("**CLI (terminal)**\n\n```bash\ngentle_cli"));
+        assert!(promoter_markdown.contains("CLI snippets assume an installed `gentle_cli`"));
+        assert!(promoter_markdown.contains("**Expected**\n\n> `tfbs_score_tracks.svg`"));
         assert!(!promoter_markdown.contains("## Command Equivalent (After GUI)"));
         assert!(promoter_markdown.contains("## What This Chapter Produces"));
         assert!(promoter_markdown.contains("> SVG text labels:"));
@@ -6587,6 +10262,248 @@ mod tests {
     }
 
     #[test]
+    fn rewrite_example_paths_handles_gene_transcript_assay_routine_io() {
+        let example = WorkflowExample {
+            schema: WORKFLOW_EXAMPLE_SCHEMA.to_string(),
+            id: "gene_transcript_assay_routine_path_rewrite_test".to_string(),
+            title: "gene transcript assay routine path rewrite test".to_string(),
+            summary: String::new(),
+            test_mode: ExampleTestMode::Skip,
+            required_files: vec!["fixtures/isoform_evidence.json".to_string()],
+            tags: vec![],
+            workflow: Workflow {
+                run_id: "gene_transcript_assay_routine_path_rewrite_test".to_string(),
+                ops: vec![Operation::ComposeGeneTranscriptAssayRoutine {
+                    request: GeneTranscriptAssayRoutineRequest {
+                        label: "Synthetic routine".to_string(),
+                        isoform_evidence_path: "fixtures/isoform_evidence.json".to_string(),
+                        transcript_assay_panel_report_ids: vec!["panel_a".to_string()],
+                        ..GeneTranscriptAssayRoutineRequest::default()
+                    },
+                    path: Some("artifacts/routine.json".to_string()),
+                }],
+            },
+        };
+        let repo_root = std::env::current_dir().expect("cwd");
+        let run_dir = TempDir::new().expect("temp run dir");
+        let rewritten =
+            rewrite_example_paths_for_execution(&example, repo_root.as_path(), run_dir.path())
+                .expect("rewrite should succeed");
+
+        match &rewritten.workflow.ops[0] {
+            Operation::ComposeGeneTranscriptAssayRoutine { request, path } => {
+                assert!(Path::new(&request.isoform_evidence_path).is_absolute());
+                assert!(
+                    path.as_deref()
+                        .is_some_and(|path| path.starts_with(&display_path(run_dir.path())))
+                );
+            }
+            other => panic!("unexpected operation: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rewrite_example_paths_normalizes_only_digest_matching_crlf_input() {
+        let repo_root = TempDir::new().expect("temp repo root");
+        let run_dir = TempDir::new().expect("temp run dir");
+        let fixture_path = repo_root.path().join("fixtures/isoform_evidence.json");
+        fs::create_dir_all(fixture_path.parent().expect("fixture parent"))
+            .expect("create fixture parent");
+        let lf_content = "{\n  \"schema\": \"synthetic.fixture.v1\"\n}\n";
+        let expected_sha256 = crate::digest_utils::sha256_prefixed_bytes(lf_content.as_bytes());
+        fs::write(&fixture_path, lf_content.replace('\n', "\r\n")).expect("write CRLF fixture");
+
+        let build_example = |expected_sha256: String| WorkflowExample {
+            schema: WORKFLOW_EXAMPLE_SCHEMA.to_string(),
+            id: "digest_pinned_crlf_rewrite_test".to_string(),
+            title: "digest-pinned CRLF rewrite test".to_string(),
+            summary: String::new(),
+            test_mode: ExampleTestMode::Skip,
+            required_files: vec!["fixtures/isoform_evidence.json".to_string()],
+            tags: vec![],
+            workflow: Workflow {
+                run_id: "digest_pinned_crlf_rewrite_test".to_string(),
+                ops: vec![Operation::ComposeGeneTranscriptAssayRoutine {
+                    request: GeneTranscriptAssayRoutineRequest {
+                        label: "Synthetic routine".to_string(),
+                        isoform_evidence_path: "fixtures/isoform_evidence.json".to_string(),
+                        expected_isoform_evidence_sha256: Some(expected_sha256),
+                        ..GeneTranscriptAssayRoutineRequest::default()
+                    },
+                    path: None,
+                }],
+            },
+        };
+
+        let rewritten = rewrite_example_paths_for_execution(
+            &build_example(expected_sha256.clone()),
+            repo_root.path(),
+            run_dir.path(),
+        )
+        .expect("matching normalized digest should stage input");
+        let Operation::ComposeGeneTranscriptAssayRoutine { request, .. } =
+            &rewritten.workflow.ops[0]
+        else {
+            panic!("unexpected operation: {:?}", rewritten.workflow.ops[0]);
+        };
+        assert!(
+            request
+                .isoform_evidence_path
+                .starts_with(&display_path(&run_dir.path().join("normalized-inputs")))
+        );
+        let staged = fs::read(&request.isoform_evidence_path).expect("read staged LF input");
+        assert_eq!(staged, lf_content.as_bytes());
+        assert_eq!(
+            crate::digest_utils::sha256_prefixed_bytes(&staged),
+            expected_sha256
+        );
+
+        fs::write(
+            &fixture_path,
+            lf_content
+                .replace("synthetic.fixture.v1", "changed.fixture.v1")
+                .replace('\n', "\r\n"),
+        )
+        .expect("write semantically changed CRLF fixture");
+        let rewritten = rewrite_example_paths_for_execution(
+            &build_example(expected_sha256),
+            repo_root.path(),
+            run_dir.path(),
+        )
+        .expect("mismatched digest should retain engine validation path");
+        let Operation::ComposeGeneTranscriptAssayRoutine { request, .. } =
+            &rewritten.workflow.ops[0]
+        else {
+            panic!("unexpected operation: {:?}", rewritten.workflow.ops[0]);
+        };
+        assert_eq!(
+            request.isoform_evidence_path,
+            display_path(&fixture_path),
+            "semantic mismatches must not be normalized around engine digest validation"
+        );
+    }
+
+    #[test]
+    fn rewrite_example_paths_handles_cutrun_catalog_status_and_cache() {
+        let example = WorkflowExample {
+            schema: WORKFLOW_EXAMPLE_SCHEMA.to_string(),
+            id: "cutrun_path_rewrite_test".to_string(),
+            title: "CUT&RUN path rewrite test".to_string(),
+            summary: String::new(),
+            test_mode: ExampleTestMode::Skip,
+            required_files: vec!["assets/cutrun.json".to_string()],
+            tags: vec![],
+            workflow: Workflow {
+                run_id: "cutrun_path_rewrite_test".to_string(),
+                ops: vec![
+                    Operation::ListCutRunDatasets {
+                        filter: Some("TP73".to_string()),
+                        catalog_path: Some("assets/cutrun.json".to_string()),
+                    },
+                    Operation::ShowCutRunDatasetStatus {
+                        dataset_id: "tp73_release_smoke_synthetic".to_string(),
+                        catalog_path: Some("assets/cutrun.json".to_string()),
+                        cache_dir: Some("artifacts/cutrun_cache".to_string()),
+                    },
+                ],
+            },
+        };
+        let repo_root = std::env::current_dir().expect("cwd");
+        let run_dir = TempDir::new().expect("temp run dir");
+        let rewritten =
+            rewrite_example_paths_for_execution(&example, repo_root.as_path(), run_dir.path())
+                .expect("rewrite should succeed");
+
+        for op in &rewritten.workflow.ops {
+            let catalog_path = match op {
+                Operation::ListCutRunDatasets { catalog_path, .. }
+                | Operation::ShowCutRunDatasetStatus { catalog_path, .. } => catalog_path
+                    .as_deref()
+                    .expect("CUT&RUN catalog path should remain present"),
+                other => panic!("unexpected operation: {other:?}"),
+            };
+            assert!(Path::new(catalog_path).is_absolute());
+        }
+        match &rewritten.workflow.ops[1] {
+            Operation::ShowCutRunDatasetStatus { cache_dir, .. } => assert!(
+                cache_dir
+                    .as_deref()
+                    .is_some_and(|path| path.starts_with(&display_path(run_dir.path())))
+            ),
+            other => panic!("unexpected operation: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rewrite_example_paths_handles_region_homology_io() {
+        let example = WorkflowExample {
+            schema: WORKFLOW_EXAMPLE_SCHEMA.to_string(),
+            id: "region_homology_path_rewrite_test".to_string(),
+            title: "region homology path rewrite test".to_string(),
+            summary: String::new(),
+            test_mode: ExampleTestMode::Skip,
+            required_files: vec!["assets/genomes.json".to_string()],
+            tags: vec![],
+            workflow: Workflow {
+                run_id: "region_homology_path_rewrite_test".to_string(),
+                ops: vec![
+                    Operation::ScreenGenomicRegionHomology {
+                        request: gentle_protocol::GenomicRegionHomologyScreenRequest {
+                            catalog_path: Some("assets/genomes.json".to_string()),
+                            cache_dir: Some("artifacts/genome_cache".to_string()),
+                            ..Default::default()
+                        },
+                        path: Some("artifacts/homology.json".to_string()),
+                    },
+                    Operation::RenderGenomicRegionHomologySvg {
+                        report: Box::default(),
+                        path: "artifacts/homology.svg".to_string(),
+                    },
+                    Operation::AssessPromoterConservedModules {
+                        request: Default::default(),
+                        path: Some("artifacts/modules.json".to_string()),
+                    },
+                ],
+            },
+        };
+        let repo_root = std::env::current_dir().expect("cwd");
+        let run_dir = TempDir::new().expect("temp run dir");
+        let rewritten =
+            rewrite_example_paths_for_execution(&example, repo_root.as_path(), run_dir.path())
+                .expect("rewrite should succeed");
+
+        match &rewritten.workflow.ops[0] {
+            Operation::ScreenGenomicRegionHomology { request, path } => {
+                assert!(
+                    request
+                        .catalog_path
+                        .as_deref()
+                        .is_some_and(|value| Path::new(value).is_absolute())
+                );
+                assert!(
+                    request
+                        .cache_dir
+                        .as_deref()
+                        .is_some_and(|value| value.starts_with(&display_path(run_dir.path())))
+                );
+                assert!(
+                    path.as_deref()
+                        .is_some_and(|value| value.starts_with(&display_path(run_dir.path())))
+                );
+            }
+            other => panic!("unexpected operation: {other:?}"),
+        }
+        for op in &rewritten.workflow.ops[1..] {
+            let path = match op {
+                Operation::RenderGenomicRegionHomologySvg { path, .. } => Some(path.as_str()),
+                Operation::AssessPromoterConservedModules { path, .. } => path.as_deref(),
+                other => panic!("unexpected operation: {other:?}"),
+            };
+            assert!(path.is_some_and(|value| value.starts_with(&display_path(run_dir.path()))));
+        }
+    }
+
+    #[test]
     fn rewrite_example_paths_handles_promoter_and_handoff_outputs() {
         let example = WorkflowExample {
             schema: WORKFLOW_EXAMPLE_SCHEMA.to_string(),
@@ -6641,7 +10558,7 @@ mod tests {
                         artifacts: vec![crate::engine::PromoterArtifactManifestEntry {
                             artifact_id: "evidence_matrix".to_string(),
                             artifact_kind: "promoter_evidence_matrix".to_string(),
-                            path: "artifacts/evidence_matrix.json".to_string(),
+                            path: "evidence_matrix.json".to_string(),
                             schema_hint: Some("gentle.promoter_evidence_matrix.v1".to_string()),
                             label: None,
                             recommended_use: None,
@@ -6681,26 +10598,374 @@ mod tests {
                 "output path should be rewritten into run dir: {path}"
             );
             if let Operation::ExportPromoterArtifactManifest { artifacts, .. } = op {
-                assert!(
-                    artifacts
-                        .iter()
-                        .all(|artifact| !Path::new(&artifact.path).is_absolute()
-                            && !artifact.path.starts_with(&display_path(run_dir.path()))),
-                    "manifest artifact paths should stay portable relative paths: {artifacts:?}"
-                );
+                assert_eq!(artifacts[0].path, "evidence_matrix.json");
             }
         }
     }
 
     #[test]
-    fn retained_tutorial_artifact_normalization_removes_wall_clock_fields() {
-        let raw = "- Generated (Unix ms): `1777756509715`\n{\n  \"generated_at_unix_ms\": 1777756511961,\n}\n\n";
+    fn promoter_manifest_paths_match_in_direct_and_tutorial_replay() {
+        let example: WorkflowExample = serde_json::from_slice(
+            &fs::read(example_dir().join("promoter_design_artifact_slice_offline.json"))
+                .expect("canonical promoter workflow"),
+        )
+        .expect("workflow JSON");
+        let repo_root = std::env::current_dir().expect("cwd");
+        let component_names = [
+            "tp73_promoter_artifact_demo.alternative_promoters.json",
+            "tp73_promoter_artifact_demo.evidence_matrix.json",
+            "tp73_promoter_artifact_demo.isoform_promoter_comparison.json",
+            "tp73_promoter_artifact_demo.promoter_expression_evidence.json",
+            "tp73_promoter_artifact_demo.tfbs_score_tracks.svg",
+            "tp73_promoter_artifact_demo.tfbs_similarity.json",
+        ];
+        for replay in [false, true] {
+            let run_dir = TempDir::new().expect("isolated output root");
+            let prepared = if replay {
+                rewrite_example_paths_for_execution(&example, &repo_root, run_dir.path())
+                    .expect("tutorial replay paths")
+            } else {
+                example.clone()
+            };
+            let mut operation = prepared
+                .workflow
+                .ops
+                .into_iter()
+                .find(|op| matches!(op, Operation::ExportPromoterArtifactManifest { .. }))
+                .expect("canonical manifest operation");
+            if let Operation::ExportPromoterArtifactManifest { path, .. } = &mut operation
+                && !replay
+            {
+                // Relocate only the destination, as a direct caller can do;
+                // component references must not require the tutorial adapter.
+                *path = display_path(&run_dir.path().join(&*path));
+            }
+            let artifacts = run_dir.path().join("artifacts");
+            fs::create_dir_all(&artifacts).expect("artifact directory");
+            // Synthetic placeholders exercise path existence, not biology or
+            // content validation. They are removed with the temporary root.
+            for name in component_names {
+                fs::write(artifacts.join(name), "synthetic artifact\n")
+                    .expect("component placeholder");
+            }
+            let mut state = ProjectState::default();
+            state.sequences.insert(
+                "tp73_promoter_artifact_demo".to_string(),
+                crate::dna_sequence::DNAsequence::from_sequence("ACGT").expect("synthetic DNA"),
+            );
+            let result = GentleEngine::from_state(state)
+                .apply(operation)
+                .expect("export through public operation");
+            let report = result.promoter_artifact_manifest.expect("manifest report");
+            assert_eq!(report.present_artifact_count, 6, "replay={replay}");
+            assert_eq!(report.missing_required_artifact_count, 0, "replay={replay}");
+            assert!(report.warnings.is_empty(), "replay={replay}");
+            assert_eq!(
+                report
+                    .artifacts
+                    .iter()
+                    .map(|row| row.path.as_str())
+                    .collect::<Vec<_>>(),
+                component_names,
+                "replay={replay}"
+            );
+            let manifest_path =
+                artifacts.join("tp73_promoter_artifact_demo.promoter_artifact_manifest.json");
+            let persisted: serde_json::Value =
+                serde_json::from_slice(&fs::read(manifest_path).expect("saved manifest"))
+                    .expect("manifest JSON");
+            assert_eq!(
+                persisted,
+                serde_json::to_value(report).expect("result JSON")
+            );
+        }
+    }
+
+    #[test]
+    fn historical_panel_comparison_ignores_only_valid_generator_identity() {
+        for path in HISTORICAL_PANEL_REPORTS {
+            let expected = fs::read(tutorial_output_dir().join(path)).unwrap();
+            let mut current: Value = serde_json::from_slice(&expected).unwrap();
+            set_test_panel_generator(
+                &mut current,
+                env!("CARGO_PKG_VERSION"),
+                crate::about::GENTLE_SOURCE_REVISION,
+            );
+            let current_bytes = serde_json::to_vec(&current).unwrap();
+            assert!(tutorial_generated_bytes_equal(
+                path,
+                &expected,
+                &current_bytes
+            ));
+            assert!(tutorial_generated_bytes_equal(
+                path,
+                String::from_utf8(expected.clone())
+                    .unwrap()
+                    .replace('\n', "\r\n")
+                    .as_bytes(),
+                &current_bytes
+            ));
+            assert!(!tutorial_generated_bytes_equal(
+                "artifacts/unrelated.report.json",
+                &expected,
+                &current_bytes
+            ));
+
+            for pointer in [
+                "/max_amplicon_bp",
+                "/operation_sha256",
+                "/selected_assays/0/primer_pair",
+                "/selected_assays/0/primer_pair_summary/tm_delta_c",
+                "/selected_assays/0/primer_pair_summary/provenance/annotation_release",
+                "/unresolved_group_pairs",
+            ] {
+                let mut changed = current.clone();
+                *changed.pointer_mut(pointer).expect("retained field") =
+                    Value::String("changed".into());
+                assert!(
+                    !tutorial_generated_bytes_equal(
+                        path,
+                        &expected,
+                        &serde_json::to_vec(&changed).unwrap()
+                    ),
+                    "{path}: {pointer}"
+                );
+            }
+            for pointer in [
+                "/schema",
+                "/selected_assays/0/primer_pair_summary/schema",
+                "/selected_assays/0/primer_pair_summary/provenance/gentle_version",
+                "/selected_assays/0/primer_pair_summary/selection_audit_generator_revision",
+            ] {
+                for bad in [
+                    Value::Null,
+                    Value::String(String::new()),
+                    Value::String("garbage".into()),
+                ] {
+                    let mut changed = current.clone();
+                    *changed.pointer_mut(pointer).unwrap() = bad;
+                    assert!(
+                        !tutorial_generated_bytes_equal(
+                            path,
+                            &expected,
+                            &serde_json::to_vec(&changed).unwrap()
+                        ),
+                        "{path}: {pointer}"
+                    );
+                    assert!(
+                        tutorial_panel_comparison_value(
+                            &serde_json::to_vec(&changed).unwrap(),
+                            false
+                        )
+                        .is_none()
+                    );
+                }
+            }
+            let mut missing = current.clone();
+            missing["selected_assays"][0]["primer_pair_summary"]["provenance"]
+                .as_object_mut()
+                .unwrap()
+                .remove("gentle_version");
+            assert!(
+                tutorial_panel_comparison_value(&serde_json::to_vec(&missing).unwrap(), false)
+                    .is_none()
+            );
+
+            let mut mixed = current.clone();
+            let mut other = mixed["selected_assays"][0].clone();
+            other["primer_pair_summary"]["provenance"]["gentle_version"] =
+                Value::String("0.0.0".into());
+            other["primer_pair_summary"]["selection_audit_generator_revision"] =
+                Value::String("0.0.0".into());
+            mixed["selected_assays"].as_array_mut().unwrap().push(other);
+            assert!(
+                tutorial_panel_comparison_value(&serde_json::to_vec(&mixed).unwrap(), false)
+                    .is_none(),
+                "individually valid but mixed identities must be rejected"
+            );
+
+            let mut stale = current.clone();
+            set_test_panel_generator(&mut stale, "0.0.0", "0.0.0");
+            assert!(!tutorial_generated_bytes_equal(
+                path,
+                &expected,
+                &serde_json::to_vec(&stale).unwrap()
+            ));
+            let mut wrong_revision = current.clone();
+            set_test_panel_generator(
+                &mut wrong_revision,
+                env!("CARGO_PKG_VERSION"),
+                &format!("{}+git.abcdef0", env!("CARGO_PKG_VERSION")),
+            );
+            assert!(!tutorial_generated_bytes_equal(
+                path,
+                &expected,
+                &serde_json::to_vec(&wrong_revision).unwrap()
+            ));
+
+            // Fields with the same name outside the two authorized locations
+            // remain ordinary result data, not a recursive ignore list.
+            let mut extra_expected: Value = serde_json::from_slice(&expected).unwrap();
+            extra_expected["gentle_version"] = Value::String("original".into());
+            current["gentle_version"] = Value::String("changed".into());
+            assert!(!tutorial_generated_bytes_equal(
+                path,
+                &serde_json::to_vec(&extra_expected).unwrap(),
+                &serde_json::to_vec(&current).unwrap()
+            ));
+        }
+    }
+
+    fn set_test_panel_generator(report: &mut Value, version: &str, revision: &str) {
+        for field in ["selected_assays", "short_sybr_junction_assays"] {
+            for assay in report[field].as_array_mut().unwrap() {
+                assay["primer_pair_summary"]["provenance"]["gentle_version"] =
+                    Value::String(version.into());
+                assay["primer_pair_summary"]["selection_audit_generator_revision"] =
+                    Value::String(revision.into());
+            }
+        }
+    }
+
+    fn test_panel_ledger(files: &mut BTreeMap<String, Vec<u8>>) {
+        let checksums: BTreeMap<_, _> = files
+            .iter()
+            .filter(|(path, _)| path.as_str() != "report.json")
+            .map(|(path, bytes)| (path.clone(), crate::digest_utils::sha256_hex_bytes(bytes)))
+            .collect();
+        files.insert(
+            "report.json".into(),
+            serde_json::to_vec(&serde_json::json!({
+                "schema": TUTORIAL_GENERATION_REPORT_SCHEMA,
+                "file_checksums": checksums,
+                "chapter_count": 29,
+            }))
+            .unwrap(),
+        );
+    }
+
+    #[test]
+    fn historical_panel_ledger_checks_both_hashes_before_comparing_results() {
+        let mut expected = BTreeMap::new();
+        let mut actual = BTreeMap::new();
+        for path in HISTORICAL_PANEL_REPORTS {
+            let bytes = fs::read(tutorial_output_dir().join(path)).unwrap();
+            let mut current: Value = serde_json::from_slice(&bytes).unwrap();
+            set_test_panel_generator(
+                &mut current,
+                env!("CARGO_PKG_VERSION"),
+                crate::about::GENTLE_SOURCE_REVISION,
+            );
+            expected.insert(path.into(), bytes);
+            actual.insert(path.into(), serde_json::to_vec(&current).unwrap());
+        }
+        for files in [&mut expected, &mut actual] {
+            files.insert("unrelated.json".into(), b"{}".to_vec());
+            test_panel_ledger(files);
+        }
+        assert!(tutorial_generation_ledger_equal(&expected, &actual));
+        for corrupt_expected in [true, false] {
+            let mut left = expected.clone();
+            let mut right = actual.clone();
+            let files = if corrupt_expected {
+                &mut left
+            } else {
+                &mut right
+            };
+            let mut ledger: Value = serde_json::from_slice(&files["report.json"]).unwrap();
+            ledger["file_checksums"][HISTORICAL_PANEL_REPORTS[0]] = Value::String("wrong".into());
+            files.insert("report.json".into(), serde_json::to_vec(&ledger).unwrap());
+            assert!(!tutorial_generation_ledger_equal(&left, &right));
+        }
+        let mut changed = actual.clone();
+        let mut report: Value =
+            serde_json::from_slice(&changed[HISTORICAL_PANEL_REPORTS[0]]).unwrap();
+        report["max_amplicon_bp"] = serde_json::json!(1);
+        changed.insert(
+            HISTORICAL_PANEL_REPORTS[0].into(),
+            serde_json::to_vec(&report).unwrap(),
+        );
+        test_panel_ledger(&mut changed);
+        assert!(
+            !tutorial_generation_ledger_equal(&expected, &changed),
+            "fresh valid hash must not hide a changed result"
+        );
+        let mut changed = actual.clone();
+        changed.insert("unrelated.json".into(), b"{\"changed\":true}".to_vec());
+        test_panel_ledger(&mut changed);
+        assert!(!tutorial_generation_ledger_equal(&expected, &changed));
+        let mut changed = actual.clone();
+        let mut ledger: Value = serde_json::from_slice(&changed["report.json"]).unwrap();
+        ledger["chapter_count"] = serde_json::json!(30);
+        changed.insert("report.json".into(), serde_json::to_vec(&ledger).unwrap());
+        assert!(
+            !tutorial_generation_ledger_equal(&expected, &changed),
+            "ledger metadata is not a generator-identity exception"
+        );
+        let mut missing = actual.clone();
+        missing.remove(HISTORICAL_PANEL_REPORTS[0]);
+        test_panel_ledger(&mut missing);
+        assert!(!tutorial_generation_ledger_equal(&expected, &missing));
+    }
+
+    #[test]
+    fn retained_tutorial_artifact_normalization_preserves_generator_identity() {
+        let raw = concat!(
+            "- Generated (Unix ms): `1777756509715`\n",
+            "{\n",
+            "  \"generated_at_unix_ms\": 1777756511961,\n",
+            "  \"selection_audit_generator_revision\": \"0.1.0-internal.10+git.0123456789abcdef\"\n",
+            "}\n\n"
+        );
         let normalized = normalize_retained_tutorial_artifact_text(raw);
         assert!(normalized.contains("- Generated (Unix ms): `0`"));
         assert!(normalized.contains("\"generated_at_unix_ms\": 0,"));
+        assert!(normalized.contains(
+            "\"selection_audit_generator_revision\": \"0.1.0-internal.10+git.0123456789abcdef\""
+        ));
         assert!(!normalized.contains("1777756509715"));
         assert!(!normalized.contains("1777756511961"));
         assert!(!normalized.ends_with("\n\n"));
+    }
+
+    #[test]
+    fn tutorial_generated_text_comparison_accepts_crlf_checkout_content() {
+        for path in [
+            "README.md",
+            "report.json",
+            "artifacts/export.csv",
+            "artifacts/figure.svg",
+            "artifacts/protocol.txt",
+        ] {
+            assert!(
+                tutorial_generated_bytes_equal(path, b"first\nsecond\n", b"first\r\nsecond\r\n"),
+                "expected line-ending-insensitive comparison for {path}"
+            );
+        }
+        assert!(!tutorial_generated_bytes_equal(
+            "README.md",
+            b"first\nsecond\n",
+            b"first\r\nchanged\r\n"
+        ));
+        assert!(!tutorial_generated_bytes_equal(
+            "README.md",
+            b"first\nsecond\n",
+            b"first\rsecond\r"
+        ));
+    }
+
+    #[test]
+    fn tutorial_generated_binary_comparison_remains_byte_exact() {
+        assert!(!tutorial_generated_bytes_equal(
+            "artifacts/preview.png",
+            b"binary\nbytes",
+            b"binary\r\nbytes"
+        ));
+        assert!(tutorial_generated_bytes_equal(
+            "artifacts/preview.png",
+            b"same\r\nbytes",
+            b"same\r\nbytes"
+        ));
     }
 
     #[test]
@@ -6780,6 +11045,7 @@ mod tests {
 
     #[test]
     fn tutorial_check_passes_on_committed_tree() {
+        let _blast_tools = tutorial_blast_tools();
         let _serial = lock_jaspar_registry_for_test();
         crate::tf_motifs::reload_builtin_for_test();
         check_tutorial_generated(

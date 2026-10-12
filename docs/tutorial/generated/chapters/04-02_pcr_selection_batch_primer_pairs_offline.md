@@ -1,203 +1,302 @@
 ---
 chapter_id: "pcr_selection_batch_primer_pairs_offline"
-title: "Selection-first PCR batch primer design (offline)"
+title: "Determine and review PCR primer pairs (offline)"
 tier: "core"
 example_id: "pcr_selection_batch_primer_pairs_offline"
 source_example: "docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json"
 example_test_mode: "always"
 executed_during_generation: true
 automated_status: "passing"
-review_status: "unreviewed"
+review_status: "codex_reviewed"
 review_stale: false
-codex_reviewed_at: null
+codex_reviewed_at: "2026-10-01"
 human_reviewed_at: null
 human_reviewer: null
 review_stale_reason: null
-review_issue_template: "Tutorial confusion"
-review_issue_template_path: ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+review_issue_template: null
+review_issue_template_path: null
 generated_artifact_dir: "docs/tutorial/generated/artifacts/pcr_selection_batch_primer_pairs_offline"
 ---
 
-# Selection-first PCR batch primer design (offline)
+# Determine and review PCR primer pairs (offline)
 
-Use paint-first PCR Designer controls on local TP73 context to queue ROIs and run deterministic batch primer-pair reports, with optional extracted-region copies.
+Separate the indispensable biological ROI from primer-search flanks, generate real ranked candidates on local TP73 context, and decide what the report does and does not justify before ordering primers.
 
-This chapter is PCR-focused and biology-anchored without requiring genome mapping mechanics. You work directly on local TP73 locus sequence (`test_files/tp73.ncbi.gb`), open the dedicated PCR Designer, paint semantic regions on the linear map (`ROI` green, upstream primer window red, downstream primer window blue), queue promoter-proximal targets around TP73-AS2, and run one shared primer-constraint set across queued regions. Results remain deterministic (`..._r01`, `..._r02`) and can be shown/exported for handoff before entering the separate luciferase cloning tutorial.
+Primer-pair determination begins with geometry, not with a request for two oligos. The green ROI is the smallest biological interval that every acceptable amplicon must contain. The upstream and downstream search windows are separate intervals in which GENtle may place the forward and reverse primers. Treating a broad context interval as the ROI while also placing primers inside it can make the request impossible; this chapter deliberately avoids that common mistake.
+
+The canonical offline workflow uses two GC-rich TP73-AS2 promoter-proximal examples and the deterministic internal backend. Each run returns five ranked pairs and a complete `gentle.primer_design_report.v1` JSON artifact. The first rank-1 pair satisfies every reported heuristic flag. The second rank-1 pair carries a homopolymer/secondary-structure advisory, which demonstrates why rank 1 means only 'best under these stated constraints and scoring rules.' It is not an order recommendation, proof of amplification, or genome-wide specificity result. Review the sequences, coordinates, Tm/GC balance, local annealing-hit counts, 3-prime clamps, self- and pair-complementarity, amplicon geometry, backend provenance, and rejection summary together. External genomic specificity and wet-lab validation remain separate follow-up steps.
+
+## What You Will Accomplish
+
+- Separate a biologically indispensable core ROI from the two allowed primer-placement windows.
+- Read a complete primer-design report and explain why a pair received its rank.
+- Compare candidate pairs using amplicon geometry, Tm/GC, local annealing hits, clamps, secondary-structure proxies, dimer proxies, and rule flags.
+- Recognize that an accepted or top-ranked in-silico pair can still carry advisories and still requires external specificity and experimental validation.
+- Reproduce the same determination through GUI, CLI, workflow, and exported JSON.
+
+## Before You Start
 
 **Prerequisites:** Read [Chapter 1: Load FASTA, branch, and reverse-complement](./02-01_load_branch_reverse_complement_pgex_fasta.md) first.
 
+**Useful when:**
+
+- You want to understand why the biological ROI and the two primer-search windows must be distinct.
+- You want to determine and compare several candidate pairs rather than accepting the first sequences returned.
+- You want to inspect the evidence behind pair ranking: product geometry, Tm/GC balance, local uniqueness, clamps, complementary runs, and rule flags.
+- You want to learn from both a clean top-ranked candidate and a top-ranked candidate that still has a heuristic advisory.
+- You want deterministic report IDs and complete JSON artifacts for review or downstream handoff.
+- You want to distinguish local candidate generation from later whole-genome specificity and wet-lab validation.
+
+## At a Glance
+
+1. Load test_files/tp73.ncbi.gb, then open Patterns -> PCR Designer... (or command palette PCR Designer) and keep the map in linear mode.
+2. For the first example, paint only the indispensable core 61820..61920 as the green ROI. The broader copied context 61720..62120 is not the ROI.
+3. Paint the upstream search window 61720..61745 red and the downstream search window 62000..62040 blue. Confirm in the live cartoon that both primer windows lie outside and flank the ROI.
+4. Set primer length 18..24 nt, Tm 55..78 C, GC fraction 0.30..0.80, maximum local annealing hits 1, amplicon length 90..350 bp, maximum pair Tm difference 5 C, backend internal, and maximum returned pairs 5.
+5. Run the first design and inspect report tp73_as2_promoter_batch_r01. Confirm that it contains five pairs, records the internal backend, and did not skip candidate combinations because of the evaluation limit.
+6. Open rank 1 and review both oligos plus the pair: sequences and binding coordinates, 310 bp amplicon, Tm/GC values, one local annealing hit per primer, 3-prime clamps, homopolymer/self-complementary runs, pair-complementary runs, score, and every rule flag. Compare ranks 1-3 instead of treating rank 1 as automatically order-ready.
+7. Repeat with ROI 62040..62140, upstream 61940..61965, and downstream 62158..62188. In tp73_as2_promoter_batch_r02, notice that the top forward primer has a five-base homopolymer and forward_secondary_structure_ok: false; the report preserves this advisory even though the pair ranks first.
+8. Use Export to retain each full JSON report. Record why you selected or rejected a candidate, then perform the separate genomic-specificity handoff and wet-lab validation before procurement.
+
+## Walkthrough: GUI, CLI and Inner Agent
+
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
+
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Load test_files/tp73.ncbi.gb, then open Patterns -> PCR Designer... (or command palette PCR Designer) and keep the map in linear mode
+
+**GUI**
+
+Load `test_files/tp73.ncbi.gb`, then open `Patterns -> PCR Designer...` (or command palette `PCR Designer`) and keep the map in linear mode.
+
+**CLI (terminal)**
+
+```bash
+gentle_cli --state /tmp/gentle-primer-pair-tutorial.json workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json
+```
+
+**Ask the inner agent**
+
+> Check that `test_files/tp73.ncbi.gb` is available, then propose `LoadFile` as `tp73_locus` and `SetParameter` with `primer_design_backend=internal`. Treat loading and parameter mutation as the approval boundary; do not execute either operation until I approve.
+
+**Expected**
+
+> The workflow creates two complete reports and exports both as retained tutorial artifacts.
+
+### Step 2: For the first example, paint only the indispensable core 61820..61920 as the green ROI. The broader copied context 61720..62120 is not the ROI
+
+**GUI**
+
+For the first example, paint only the indispensable core `61820..61920` as the green ROI. The broader copied context `61720..62120` is not the ROI.
+
+**CLI (terminal)**
+
+```bash
+jq '{report_id,template,required_roi:[.roi_start_0based,.roi_end_0based]}' docs/tutorial/generated/artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r01.report.json
+```
+
+**Ask the inner agent**
+
+> Inspect `tp73_locus` without changing it. Propose the first indispensable core ROI as `[61820,61920)` and distinguish it from the broader copied context `[61720,62120)`. Return the coordinates for review; do not run primer design.
+
+**Expected**
+
+> The first report records the indispensable core as `61820..61920`; the broader extracted context is not silently substituted as the ROI.
+
+### Step 3: Paint the upstream search window 61720..61745 red and the downstream search window 62000..62040 blue. Confirm in the live cartoon that both primer windows lie outside and flank the ROI
+
+**GUI**
+
+Paint the upstream search window `61720..61745` red and the downstream search window `62000..62040` blue. Confirm in the live cartoon that both primer windows lie outside and flank the ROI.
+
+**CLI (terminal)**
+
+```bash
+jq '{required_roi:[.roi_start_0based,.roi_end_0based],forward_window:[.forward.start_0based,.forward.end_0based],reverse_window:[.reverse.start_0based,.reverse.end_0based],require_roi_flanking:.pair_constraints.require_roi_flanking}' docs/tutorial/generated/artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r01.report.json
+```
+
+**Ask the inner agent**
+
+> For the first ROI, propose forward window `[61720,61745)` and reverse window `[62000,62040)` with `require_roi_flanking=true`. Verify that both windows lie outside the core and show the exact typed fields; do not mutate state.
+
+**Expected**
+
+> The upstream and downstream windows lie outside the required ROI, and `require_roi_flanking` is true.
+
+### Step 4: Set primer length 18..24 nt, Tm 55..78 C, GC fraction 0.30..0.80, maximum local annealing hits 1, amplicon length 90..350 bp, maximum pair Tm difference 5 C, backend internal, and maximum returned pairs 5
+
+**GUI**
+
+Set primer length `18..24 nt`, Tm `55..78 C`, GC fraction `0.30..0.80`, maximum local annealing hits `1`, amplicon length `90..350 bp`, maximum pair Tm difference `5 C`, backend `internal`, and maximum returned pairs `5`.
+
+**CLI (terminal)**
+
+```bash
+jq '{primer_length:[.forward.min_length,.forward.max_length],primer_tm_c:[.forward.min_tm_c,.forward.max_tm_c],primer_gc_fraction:[.forward.min_gc_fraction,.forward.max_gc_fraction],max_local_hits:.forward.max_anneal_hits,amplicon_bp:[.min_amplicon_bp,.max_amplicon_bp],max_tm_delta_c,max_pairs}' docs/tutorial/generated/artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r01.report.json
+```
+
+**Ask the inner agent**
+
+> Complete the first `DesignPrimerPairs` proposal with primer length 18..24 nt, Tm 55..78 C, GC fraction 0.30..0.80, `max_anneal_hits=1`, amplicon length 90..350 bp, `max_tm_delta_c=5`, `max_pairs=5`, backend `internal` and report id `tp73_as2_promoter_batch_r01`. Show the full payload and wait for approval.
+
+**Expected**
+
+> The report preserves the exact primer, amplicon, Tm-difference, local-hit, and result-count limits used for determination.
+
+### Step 5: Run the first design and inspect report tp73_as2_promoter_batch_r01. Confirm that it contains five pairs, records the internal backend, and did not skip candidate combinations because of the evaluation limit
+
+**GUI**
+
+Run the first design and inspect report `tp73_as2_promoter_batch_r01`. Confirm that it contains five pairs, records the internal backend, and did not skip candidate combinations because of the evaluation limit.
+
+**CLI (terminal)**
+
+```bash
+jq '{pair_count,backend,rejection_summary}' docs/tutorial/generated/artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r01.report.json
+```
+
+**Ask the inner agent**
+
+> After approval, run only the bound first design. Return the structured `gentle.primer_design_report.v1` result and confirm five pairs, the internal backend and `pair_evaluation_limit_skipped=0`; do not export files or start the second design.
+
+**Expected**
+
+> The first report has five candidates, records the internal backend, and has `pair_evaluation_limit_skipped: 0`.
+
+### Step 6: Open rank 1 and review both oligos plus the pair: sequences and binding coordinates, 310 bp amplicon, Tm/GC values, one local annealing hit per primer, 3-prime clamps, homopolymer/self-complementary runs, pair-complementary runs, score, and every rule flag. Compare ranks 1-3 instead of treating rank 1 as automatically order-ready
+
+**GUI**
+
+Open rank 1 and review both oligos plus the pair: sequences and binding coordinates, 310 bp amplicon, Tm/GC values, one local annealing hit per primer, 3-prime clamps, homopolymer/self-complementary runs, pair-complementary runs, score, and every rule flag. Compare ranks 1-3 instead of treating rank 1 as automatically order-ready.
+
+**CLI (terminal)**
+
+```bash
+jq '{top_pair:(.pairs[0]|{rank,score,amplicon:[.amplicon_start_0based,.amplicon_end_0based_exclusive,.amplicon_length_bp],tm_delta_c,forward,reverse,primer_pair_complementary_run_bp,primer_pair_3prime_complementary_run_bp,rule_flags}),alternatives:[.pairs[0:3][]|{rank,score,amplicon_length_bp,tm_delta_c}]}' docs/tutorial/generated/artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r01.report.json
+```
+
+**Ask the inner agent**
+
+> Inspect ranks 1 through 3 of `tp73_as2_promoter_batch_r01` without rerunning design. Compare amplicon geometry, both oligos, Tm/GC, local hits, clamps, self- and pair-complementarity and every rule flag. State explicitly that local ranking is not an order recommendation or genome-wide specificity result.
+
+**Expected**
+
+> Rank 1 exposes both full oligo diagnostics and pair diagnostics, while ranks 1-3 remain directly comparable.
+
+### Step 7: Repeat with ROI 62040..62140, upstream 61940..61965, and downstream 62158..62188. In tp73_as2_promoter_batch_r02, notice that the top forward primer has a five-base homopolymer and forward_secondary_structure_ok: false; the report preserves this advisory even though the pair ranks first
+
+**GUI**
+
+Repeat with ROI `62040..62140`, upstream `61940..61965`, and downstream `62158..62188`. In `tp73_as2_promoter_batch_r02`, notice that the top forward primer has a five-base homopolymer and `forward_secondary_structure_ok: false`; the report preserves this advisory even though the pair ranks first.
+
+**CLI (terminal)**
+
+```bash
+jq '{pair_count,rejection_summary,top_forward:(.pairs[0].forward|{sequence,tm_c,gc_fraction,anneal_hits,longest_homopolymer_run_bp,self_complementary_run_bp}),top_flags:.pairs[0].rule_flags}' docs/tutorial/generated/artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r02.report.json
+```
+
+**Ask the inner agent**
+
+> Propose a separate second `DesignPrimerPairs` request with ROI `[62040,62140)`, forward window `[61940,61965)`, reverse window `[62158,62188)` and report id `tp73_as2_promoter_batch_r02`, retaining the first request's remaining constraints. Wait for approval, then report the five-base forward homopolymer and `forward_secondary_structure_ok=false` rather than hiding the advisory behind rank 1.
+
+**Expected**
+
+> The second report exposes a real advisory (`forward_secondary_structure_ok: false`) rather than hiding it behind the rank.
+
+### Step 8: Use Export to retain each full JSON report. Record why you selected or rejected a candidate, then perform the separate genomic-specificity handoff and wet-lab validation before procurement
+
+**GUI**
+
+Use `Export` to retain each full JSON report. Record why you selected or rejected a candidate, then perform the separate genomic-specificity handoff and wet-lab validation before procurement.
+
+**CLI (terminal)**
+
+```bash
+gentle_cli --state /tmp/gentle-primer-pair-tutorial.json shell 'primers export-report tp73_as2_promoter_batch_r01 /tmp/tp73_as2_promoter_batch_r01.json'
+```
+
+**Ask the inner agent**
+
+> Propose export paths for both complete JSON reports and show the exact file writes before execution. Keep candidate selection rationale, whole-genome specificity planning, procurement and wet-lab validation as separate decisions; do not claim them from these local reports.
+
+**Expected**
+
+> The shared export route writes the same engine-owned report shown by the GUI and retained by the tutorial generator.
+
+
+## Ask an Outer Agent (MCP or ClawBio/OpenClaw)
+
+An outer agent does not inherit the unsaved GUI project. Give it this chapter's canonical workflow and an explicit disposable state path; ask it to retain the structured result, artifacts and reproducibility receipt instead of replacing them with prose.
+
+> Use GENtle's `gentle-cloning` skill to replay `docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json` against a new disposable state. First report the exact workflow, inputs, state path, outputs and whether the selected route needs confirmation. Do not infer state from an open GUI. Return the structured result, produced artifacts and reproducibility receipt, and state any unmet prerequisite.
+
+Equivalent direct structured request for the generic wrapper:
+
+```json
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "state_path": "/tmp/gentle-pcr-selection-batch-primer-pairs-offline.state.json",
+  "workflow_path": "docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json",
+  "timeout_secs": 300
+}
+```
+
+Submitting a direct structured request is an explicit wrapper invocation. If natural language selects a narrower delegated skill and that route mutates state, selects biological material or writes artifacts, the caller must preserve that skill's proposal/approval boundary and approve only the exact bound digest. This tutorial generation step does not invoke an agent or grant approval.
+
+## Interpretation and Reference
+
 ## Parameters That Matter
 
-- `TP73-AS2 promoter-proximal ROI window, for example 61720..62120` (where used: painted ROI role and Design primer pairs ROI fields around TP73-AS2)
-  - Why it matters: Keeps PCR targets tied to a biologically meaningful promoter-proximal context that can later feed luciferase planning.
-  - How to derive it: Anchor on TP73-AS2 annotation in `test_files/tp73.ncbi.gb` (gene/ncRNA at lines ~1257-1270), then choose a local promoter-proximal window around the antisense 5' boundary.
-- `Paint roles: ROI green, Upstream red, Downstream blue` (where used: PCR Designer map interaction + live pair-PCR cartoon geometry)
-  - Why it matters: Separates biological target interval from allowed primer-placement windows and makes constraint intent visible before design execution.
-  - How to derive it: Paint ROI over the target biology first, then paint upstream/downstream windows that bound forward/reverse primer search space.
-- `DesignPrimerPairs.report_id base` (where used: batch execution in Design primer pairs form)
-  - Why it matters: Batch runs derive deterministic report IDs from this base with `_rNN` suffixes.
-  - How to derive it: Pick one short base tied to experiment context (for example `tp73_as2_promoter_batch`).
-- `PCR queue copy toggle: Also create extracted region copies` (where used: batch execution in Design primer pairs form)
-  - Why it matters: Enables per-region `ExtractRegion` artifacts before/alongside primer report generation.
-  - How to derive it: Enable when downstream steps need sequence artifacts; leave off for report-only planning (default off).
-- `Queue source mode: painted ROI vs selected feature fallback` (where used: queue rows before batch execution)
-  - Why it matters: Preserves coordinate provenance for each batch row and keeps mixed ad hoc + annotation flows inspectable.
-  - How to derive it: Use paint-first for custom windows; use selected-feature fallback for annotation-defined intervals.
-
-## When This Routine Is Useful
-
-- You want a mouse-first way to assign PCR ROI and primer-window coordinates with immediate visual feedback.
-- You want to combine one ad hoc painted selection with one or more annotation-driven queue rows in one PCR batch run.
-- You want to amplify TP73-AS2 promoter-proximal windows from local TP73 sequence context.
-- You want to design primer pairs for several selected regions without retyping ROI coordinates.
-- You want PCR-first preparation that cleanly feeds later promoter-luciferase planning.
-- You need copied sequence artifacts for each PCR target before forwarding to other workflows.
-- You want deterministic report IDs for review and export.
-
-## What You Learn
-
-- Capture PCR queue regions from paint-first map interaction and selected-feature fallback actions.
-- Use semantic painted intervals to preview pair-PCR geometry before execution.
-- Run deterministic multi-region primer design in one batch action with stable `_rNN` report suffixes.
-- Use batch-results actions (`Show`, `Export`, `Open`) for validation and downstream handoff.
+- `Core ROI: 61820..61920 or 62040..62140` (where used: green ROI and `DesignPrimerPairs.roi_start_0based` / `roi_end_0based`)
+  - Why it matters: The ROI is the indispensable biology every product must include. Making the whole context the ROI can make flanking-primer geometry impossible.
+  - How to derive it: Choose the smallest interval needed to answer the experiment, then verify that an acceptable product can place one primer on each side.
+- `Primer-search windows` (where used: red/blue paint and forward/reverse `start_0based` / `end_0based` constraints)
+  - Why it matters: They delimit candidate binding sites independently of the core ROI and keep the search small enough to evaluate exhaustively.
+  - How to derive it: Place non-overlapping windows outside the ROI, with enough room for 18..24 nt primers and an allowed product no longer than 350 bp.
+- `Primer limits: 18..24 nt, 55..78 C, GC 0.30..0.80, local annealing hits <= 1` (where used: forward and reverse side constraints)
+  - Why it matters: They define which oligos enter pair scoring. The deliberately broad upper Tm accommodates this GC-rich teaching locus; it is not a universal laboratory default.
+  - How to derive it: Choose limits from template composition, chemistry, and intended cycling conditions, then record the actual values used rather than relying on hidden defaults.
+- `Pair limits: 90..350 bp product, <= 5 C Tm difference, maximum 5 returned pairs` (where used: pair constraints and candidate ranking)
+  - Why it matters: The product limit keeps the assay practical; the Tm-difference bound checks pair compatibility; retaining alternatives supports review rather than blind rank-1 acceptance.
+  - How to derive it: Set product length from the experimental workflow and keep enough alternatives to inspect meaningful trade-offs.
+- `Heuristic rule flags and rejection summary` (where used: ranked pair rows and report-level diagnostics)
+  - Why it matters: A high score can coexist with a secondary-structure or homopolymer advisory. Rejection counts explain the search but do not establish whole-genome specificity.
+  - How to derive it: Review every flag and both primers before selection; preserve a concise selection/rejection rationale with the exported report.
 
 ## Applied Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
-- **Sequence Lineage** (`sequence_lineage`): Derived sequences are explicit products linked to upstream inputs and operations.
-
-## At a Glance
-
-1. Load test_files/tp73.ncbi.gb, then open Patterns -> PCR Designer... (or comma...
-2. Keep the map in linear mode. Choose paint role ROI (green) and drag over one ...
-3. Choose paint role Upstream (red) and drag one upstream primer-window interval...
-4. Use post-drag actions (Set PCR ROI, Add ROI to Queue, Open PCR Designer) or S...
-5. Add one annotation-driven queue row via DNA-window fallback (PCR ROI -> Add s...
-6. In Design primer pairs, set shared constraints and a report_id base (for exam...
-7. Optionally enable Also create extracted region copies, then run Design Primer...
-8. In PCR batch results, use Show for report summary, Export for JSON output, an...
-
-## GUI First
-
-CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
-
-### Step 1: Load test_files/tp73.ncbi.gb, then open Patterns -> PCR Designer... (or comma...
-
-GUI: Load `test_files/tp73.ncbi.gb`, then open `Patterns -> PCR Designer...` (or command palette `PCR Designer`).
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- op '{"LoadFile":{"path":"test_files/tp73.ncbi.gb","as_id":"tp73_locus"}}'
-```
-
-> Expected: The local TP73 GenBank record is available as `tp73_locus`, and the PCR Designer can use the same state.
-
-### Step 2: Keep the map in linear mode. Choose paint role ROI (green) and drag over one ...
-
-GUI: Keep the map in linear mode. Choose paint role `ROI` (green) and drag over one TP73-AS2 promoter-proximal window (for example around `61720..62120`).
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- op '{"ExtractRegion":{"input":"tp73_locus","from":61720,"to":62120,"output_id":"tp73_as2_promoter_roi_1"}}'
-```
-
-> Expected: The CLI materializes the first painted ROI as `tp73_as2_promoter_roi_1`, mirroring the green target interval.
-
-### Step 3: Choose paint role Upstream (red) and drag one upstream primer-window interval...
-
-GUI: Choose paint role `Upstream` (red) and drag one upstream primer-window interval. Choose `Downstream` (blue) and drag one downstream primer-window interval.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json
-```
-
-> Expected: The canonical workflow records the upstream/downstream primer-window geometry used for the first primer-pair report.
-
-### Step 4: Use post-drag actions (Set PCR ROI, Add ROI to Queue, Open PCR Designer) or S...
-
-GUI: Use post-drag actions (`Set PCR ROI`, `Add ROI to Queue`, `Open PCR Designer`) or `Shift+drag` on ROI for immediate queue append.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json
-```
-
-> Expected: The canonical workflow preserves deterministic queue semantics even when the GUI path uses post-drag queue actions.
-
-### Step 5: Add one annotation-driven queue row via DNA-window fallback (PCR ROI -> Add s...
-
-GUI: Add one annotation-driven queue row via DNA-window fallback (`PCR ROI -> Add selected feature(s) to queue`) so queue sources include both painted and feature-driven entries.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- op '{"ExtractRegion":{"input":"tp73_locus","from":61940,"to":62340,"output_id":"tp73_as2_promoter_roi_2"}}'
-```
-
-> Expected: The second ROI copy `tp73_as2_promoter_roi_2` represents the annotation-driven queue row.
-
-### Step 6: In Design primer pairs, set shared constraints and a report_id base (for exam...
-
-GUI: In `Design primer pairs`, set shared constraints and a `report_id` base (for example `tp73_as2_promoter_batch`). The right pane live cartoon should reflect painted ROI/window geometry.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json
-```
-
-> Expected: Reports `tp73_as2_promoter_batch_r01` and `tp73_as2_promoter_batch_r02` are produced with the shared constraint set.
-
-### Step 7: Optionally enable Also create extracted region copies, then run Design Primer...
-
-GUI: Optionally enable `Also create extracted region copies`, then run `Design Primer Pairs for queued regions`.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json
-```
-
-> Expected: Extracted-region copies and primer reports are present after the workflow replay.
-
-### Step 8: In PCR batch results, use Show for report summary, Export for JSON output, an...
-
-GUI: In `PCR batch results`, use `Show` for report summary, `Export` for JSON output, and `Open` to jump to the extracted copy (or template when copy mode is off).
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- shell 'primers show-report tp73_as2_promoter_batch_r01'
-```
-
-> Expected: `primers show-report` prints the selected report so it can be reviewed or exported without hand-editing JSON.
-
+- **Artifact Exports** (`artifact_exports`): Representative outputs (CSV/protocol/SVG/text) are retained for auditability and sharing.
+- **Tutorial Drift Checks** (`tutorial_drift_checks`): Tutorial content is generated from executable examples and verified in automated checks.
 
 ## Follow-up Commands
 
 ```bash
-cargo run --bin gentle_cli -- shell 'ui open pcr-design'
-cargo run --bin gentle_cli -- shell 'ui focus pcr-design'
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json
-cargo run --bin gentle_cli -- shell 'primers list-reports'
-cargo run --bin gentle_cli -- shell 'primers show-report tp73_as2_promoter_batch_r01'
-cargo run --bin gentle_cli -- shell 'primers export-report tp73_as2_promoter_batch_r01 tp73_as2_promoter_batch_r01.json'
+gentle_cli shell 'ui open pcr-design'
+gentle_cli shell 'ui focus pcr-design'
+gentle_cli --state /tmp/gentle-primer-pair-tutorial.json workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json
+gentle_cli --state /tmp/gentle-primer-pair-tutorial.json shell 'primers list-reports'
+gentle_cli --state /tmp/gentle-primer-pair-tutorial.json shell 'primers show-report tp73_as2_promoter_batch_r01'
+gentle_cli --state /tmp/gentle-primer-pair-tutorial.json shell 'primers export-report tp73_as2_promoter_batch_r01 /tmp/tp73_as2_promoter_batch_r01.json'
+gentle_cli --state /tmp/gentle-primer-pair-tutorial.json shell 'primers specificity-plan tp73_as2_promoter_batch_r01 --pair-rank 1 --target-genome GRCh38.p14 --output-dir /tmp/tp73_primer_specificity'
 ```
 
 ## Checkpoints
 
-- PCR queue rows include both `painted ROI` and selected-feature source labels.
-- Live pair-PCR cartoon preview updates when ROI/upstream/downstream paint intervals change.
-- Two primer reports are created with deterministic `_r01`/`_r02` suffixes and appear in batch results.
-- If your runtime falls back to the internal primer backend, reports may validly contain zero accepted pairs under strict constraints; report creation/export behavior remains deterministic.
-- If copy toggle is enabled, each batch-results row includes a copy ID and `Open` jumps to that extracted sequence.
-- At least one report can be shown and exported from the batch-results row actions without manual JSON editing.
+- The first report deterministically contains five pairs, uses the internal backend, and has `pair_evaluation_limit_skipped: 0`.
+- The first rank-1 pair spans 310 bp, has one local annealing hit per primer, and has every reported rule flag set to true.
+- The second report also contains five pairs without evaluation-limit skipping.
+- The second rank-1 forward primer has a five-base homopolymer and `forward_secondary_structure_ok: false`; the tutorial therefore does not call it order-ready.
+- Both JSON exports preserve the ROI, primer-window constraints, backend provenance, ranked alternatives, diagnostics, and rejection summary.
+- The chapter explicitly distinguishes deterministic local ranking from whole-genome specificity, successful amplification, and experimental validation.
+
+## What This Chapter Produces
+
+- [`artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r01.report.json`](../artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r01.report.json) - schema: `gentle.primer_design_report.v1`
+- [`artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r02.report.json`](../artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r02.report.json) - schema: `gentle.primer_design_report.v1`
 
 ## Tutorial Provenance
 
@@ -210,8 +309,8 @@ cargo run --bin gentle_cli -- shell 'primers export-report tp73_as2_promoter_bat
 - Example test_mode: `always`
 - Executed during generation: `yes`
 - Automated status: `passing`
-- Review status: `unreviewed`
-- Codex reviewed at: `not recorded`
+- Review status: `codex_reviewed`
+- Codex reviewed at: `2026-10-01`
 - Human reviewed at: `not recorded`
 - Inspect the source JSON when you need full option-level detail.
 
@@ -219,7 +318,7 @@ cargo run --bin gentle_cli -- shell 'primers export-report tp73_as2_promoter_bat
 
 If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context below.
 
-- Tutorial title: `Selection-first PCR batch primer design (offline)`
+- Tutorial title: `Determine and review PCR primer pairs (offline)`
 - Tutorial/chapter id: `pcr_selection_batch_primer_pairs_offline`
 - Step reached:
 - Expected vs. actual:

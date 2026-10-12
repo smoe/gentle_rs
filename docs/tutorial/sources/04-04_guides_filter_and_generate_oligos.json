@@ -1,7 +1,7 @@
 {
   "schema": "gentle.tutorial_source.v4",
   "id": "guides_filter_and_generate_oligos",
-  "title": "Guide practical filtering and oligo generation",
+  "title": "Filter declared guides and format cloning oligos",
   "catalog": {
     "order": 28,
     "path": "docs/tutorial/generated/chapters/04-04_guides_filter_and_generate_oligos.md",
@@ -13,7 +13,13 @@
       "cli_first",
       "contributors"
     ],
-    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+    "notes": "Machine-checked registry demonstration with declared guide candidates. It verifies practical filter decisions and template formatting, not target identity, off-target safety, cloning success or order readiness; no typed GUI screenshot acceptance is claimed.",
+    "interfaces": [
+      "GUI",
+      "CLI / workflow",
+      "inner agent",
+      "ClawBio / outer agent"
+    ],
     "group": "04",
     "group_position": 4
   },
@@ -21,8 +27,8 @@
     "order": 5,
     "example_id": "guides_filter_and_generate_oligos",
     "tier": "core",
-    "summary": "Apply practical guide constraints and produce cloning-ready oligo candidates.",
-    "narrative": "For CRISPR-style cloning, guide quality control is where many downstream failures are prevented. This routine demonstrates how to encode practical constraints directly in operations, then generate oligos from the passed candidates.",
+    "summary": "Apply explicit practical filters to three declared guide candidates and format only the passing guides with one named cloning template.",
+    "narrative": "For CRISPR-style cloning, practical sequence filtering can prevent avoidable downstream failures, but it is only one review layer. This offline registry demonstration declares three guide records without loading or validating a TP73 reference sequence. It then records why `g2` fails the U6 `TTTT` rule, retains `g1` and `g3`, and formats those two candidates with `lenti_bsmbi_u6_default`. The resulting oligos are deterministic template-formatted candidates, not proof of target identity, genome-wide specificity, nuclease activity, cloning success or order readiness.",
     "use_cases": [
       "You need a transparent guide filtering step before oligo ordering.",
       "You want to document why specific guides were excluded.",
@@ -38,17 +44,22 @@
       "cargo run --bin gentle_cli -- guides filter tp73_guides --config '{\"gc_min\":0.3,\"gc_max\":0.7,\"max_homopolymer_run\":4,\"reject_ambiguous_bases\":true,\"avoid_u6_terminator_tttt\":true,\"u6_terminator_window\":\"spacer_plus_tail\",\"required_5prime_base\":\"G\",\"allow_5prime_g_extension\":true}' --output-set tp73_guides_pass",
       "cargo run --bin gentle_cli -- guides oligos-generate tp73_guides lenti_bsmbi_u6_default --apply-5prime-g-extension --output-oligo-set tp73_lenti --passed-only"
     ],
+    "agent_steps": [
+      "Propose `UpsertGuideSet` for exactly `g1`, `g2` and `g3` as declared demo records under `tp73_guides`. State that no TP73 reference is loaded and that the supplied `seq_id` and coordinates are not validated in this chapter; show the full records and wait for approval before registry mutation.",
+      "Propose `FilterGuidesPractical` on `tp73_guides` with GC 0.30..0.70, maximum homopolymer 4, ambiguous-base rejection, U6 `TTTT` avoidance over `spacer_plus_tail`, required 5-prime G and allowed G extension, writing subset `tp73_guides_pass`. Show the configuration first; after approval, report that `g1` and `g3` pass while `g2` fails `u6_terminator_t4`.",
+      "Propose `GenerateGuideOligos` from `tp73_guides` with template `lenti_bsmbi_u6_default`, `passed_only=true`, 5-prime-G extension enabled and output id `tp73_lenti`. Explain that `passed_only` reads the stored filter report on the source set, predict records only for `g1` and `g3`, and wait for separate approval. Return the exact oligo records without calling them target-validated or order-ready."
+    ],
     "step_expectations": [
       "The guide registry contains `tp73_guides` with three ranked guide candidates.",
-      "The filter report records pass/fail decisions and writes the passing subset as `tp73_guides_pass`.",
-      "The oligo registry contains `tp73_lenti`, generated only from guides that passed the practical filter."
+      "The filter report records that `g1` and `g3` pass and `g2` fails `u6_terminator_t4`, and writes the passing subset as `tp73_guides_pass`.",
+      "The oligo registry contains two `tp73_lenti` records, generated only for `g1` and `g3` by consulting the filter report stored on `tp73_guides`."
     ],
     "prerequisites": [
       "load_branch_reverse_complement_pgex_fasta"
     ],
     "learning_objectives": [
       "Create and filter guide sets through explicit engine operations.",
-      "Generate oligo records from filtered guide candidates.",
+      "Generate template-formatted oligo records from filtered guide candidates without confusing formatting with target validation.",
       "Connect guide workflows to the same deterministic operation model used for cloning steps."
     ],
     "concepts": [
@@ -73,7 +84,8 @@
     "retain_outputs": [],
     "checkpoints": [
       "Guide set and passed guide set are present in metadata.",
-      "Oligo set generation succeeds for passed guides."
+      "Oligo set generation yields exactly two records for `g1` and `g3`; `g2` remains excluded by its U6 `TTTT` failure.",
+      "The chapter explicitly states that its declared coordinates are not checked against a loaded TP73 reference and that local filtering does not establish off-target safety, activity, cloning success or order readiness."
     ]
   }
 }

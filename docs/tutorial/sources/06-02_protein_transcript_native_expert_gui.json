@@ -2,6 +2,22 @@
   "schema": "gentle.tutorial_source.v4",
   "id": "protein_transcript_native_expert_gui",
   "title": "Transcript-Native Protein Expert Sanity Check",
+  "graphics": [
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/protein_transcript_native_expert_gui/01-filter-ready.png",
+      "caption": "The native Protein Evidence controls bound to local project sequence tp73.ncbi and the reviewed NM_005427.4 transcript filter. The first pass uses the same controls with the transcript field empty.",
+      "illustrates_step": 2,
+      "capture_date": "2026-10-01"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/protein_transcript_native_expert_gui/02-filtered-derived-expert.png",
+      "caption": "The actual filtered Protein Expert: TP73 title, one NM_005427.4 row, 636 aa, Standard translation table from standard_default, human speed hint from source organism, inferred_orf mode, derived-only status and the missing-CDS warning.",
+      "illustrates_step": 4,
+      "capture_date": "2026-10-01"
+    }
+  ],
   "catalog": {
     "order": 19,
     "path": "docs/tutorial/06-02_protein_transcript_native_expert_gui.md",
@@ -13,7 +29,13 @@
       "sequence_analysis",
       "contributors"
     ],
-    "notes": "Local-first manual check for transcript-native Protein Expert opening, provenance visibility, and derived-only SVG export.",
+    "notes": "Local-first manual check for transcript-native Protein Expert opening, provenance visibility, filtering, and derived-only SVG export. Reviewed with 15 unfiltered rows and one 636-aa NM_005427.4 inferred-ORF row; shared-shell SVG export passed, while the native save dialog remained unaccepted in Xvfb.",
+    "interfaces": [
+      "native GUI",
+      "CLI / shared shell",
+      "Agent Assistant (inner, review-first)",
+      "ClawBio / outer agent"
+    ],
     "group": "06",
     "group_position": 2
   }

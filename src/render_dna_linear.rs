@@ -14,12 +14,14 @@ use crate::{
     gc_contents::{DEFAULT_SECTION_SIZE_BP, GcContents},
     iupac_code::IupacCode,
     linear_base_routing::{
-        AUTO_HELICAL_MAX_DENSITY, AUTO_STANDARD_MAX_DENSITY, LinearBaseRoutingDecision,
+        AUTO_HELICAL_MAX_DENSITY, AUTO_STANDARD_MAX_DENSITY,
+        LinearBaseRenderMode as RoutingBaseRenderMode, LinearBaseRoutingDecision,
         LinearBaseRoutingInput, decide_linear_base_routing, mode_setting_label,
     },
     open_reading_frame::OpenReadingFrame,
     render_dna::RenderDna,
     render_dna::{HoveredExonFrameCue, RestrictionEnzymePosition},
+    restriction_enzyme::RestrictionEnzymeKey,
 };
 use eframe::egui::{
     self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Stroke, StrokeKind, Vec2,
@@ -72,7 +74,9 @@ const CONDENSED_HELICAL_ROW_SPACING_SCALE: f32 = 1.05;
 const CONDENSED_HELICAL_ROW_COUNT: usize = 10;
 const CONDENSED_HELICAL_SINGLE_ROW_MIN_STEP: f32 = 12.0;
 const CONDENSED_HELICAL_STRAND_GAP: f32 = 6.0;
-const CONDENSED_FEATURE_CLEARANCE_PADDING: f32 = 8.0;
+const SEQUENCE_BASE_FEATURE_CLEARANCE_PADDING: f32 = 8.0;
+#[cfg(test)]
+const CONDENSED_FEATURE_CLEARANCE_PADDING: f32 = SEQUENCE_BASE_FEATURE_CLEARANCE_PADDING;
 const FEATURE_INLINE_LABEL_FONT_SIZE: f32 = 10.0;
 const FEATURE_EXTERNAL_LABEL_FONT_SIZE: f32 = 11.0;
 const FEATURE_EXTERNAL_LABEL_HEIGHT: f32 = 16.0;
@@ -83,6 +87,7 @@ const MCS_INLINE_BADGE_PAD_Y: f32 = 3.0;
 const VARIATION_MIN_WIDTH_PX: f32 = 7.0;
 const VARIATION_MARKER_STROKE_WIDTH: f32 = 2.0;
 const VARIATION_MARKER_OVERSHOOT_PX: f32 = 5.0;
+const JUNCTION_ARRAY_PROBE_ARM_BP: usize = 25;
 const CONSTRUCT_REASONING_TRACK_HEIGHT: f32 = 6.0;
 const CONSTRUCT_REASONING_TRACK_MARGIN: f32 = 14.0;
 const CONSTRUCT_REASONING_TRACK_GAP: f32 = 10.0;
@@ -96,13 +101,47 @@ struct LinearViewport {
     span: usize,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct LinearDetailLevel {
     show_feature_labels: bool,
     show_restriction_sites: bool,
     show_restriction_labels: bool,
     show_methylation_sites: bool,
     show_open_reading_frames: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct IntronConnectorSeed {
+    start_bp: usize,
+    end_bp: usize,
+    visible_x1: f32,
+    visible_x2: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct IntronConnectorPosition {
+    points: [Pos2; 3],
+    point_count: usize,
+}
+
+impl IntronConnectorPosition {
+    fn line(start: Pos2, end: Pos2) -> Self {
+        Self {
+            points: [start, end, end],
+            point_count: 2,
+        }
+    }
+
+    fn wedge(start: Pos2, apex: Pos2, end: Pos2) -> Self {
+        Self {
+            points: [start, apex, end],
+            point_count: 3,
+        }
+    }
+
+    fn points(&self) -> &[Pos2] {
+        &self.points[..self.point_count]
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -115,6 +154,7 @@ struct FeaturePosition {
     color: Color32,
     is_regulatory: bool,
     is_array_track: bool,
+    is_junction_array_probe: bool,
     array_stroke: Option<Stroke>,
     is_mcs: bool,
     is_variation: bool,
@@ -123,7 +163,207 @@ struct FeaturePosition {
     rect: Rect,
     exon_rects: Vec<Rect>,
     exon_length_mod3_cues: Vec<Option<u8>>,
-    intron_connectors: Vec<[Pos2; 3]>,
+    intron_connectors: Vec<IntronConnectorPosition>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FeatureIntervalIndexEntry {
+    start: usize,
+    end: usize,
+    feature_idx: usize,
+}
+
+#[derive(Debug, Clone)]
+struct FeatureIntervalIndexNode {
+    center: usize,
+    overlaps_by_start: Vec<FeatureIntervalIndexEntry>,
+    overlaps_by_end_desc: Vec<FeatureIntervalIndexEntry>,
+    left: Option<Box<FeatureIntervalIndexNode>>,
+    right: Option<Box<FeatureIntervalIndexNode>>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct FeatureIntervalIndex {
+    generation: Option<u64>,
+    root: Option<Box<FeatureIntervalIndexNode>>,
+}
+
+impl FeatureIntervalIndex {
+    fn rebuild(&mut self, generation: u64, mut entries: Vec<FeatureIntervalIndexEntry>) {
+        entries.sort_unstable_by(|left, right| {
+            left.start
+                .cmp(&right.start)
+                .then(left.end.cmp(&right.end))
+                .then(left.feature_idx.cmp(&right.feature_idx))
+        });
+        self.root = Self::build_node(entries);
+        self.generation = Some(generation);
+    }
+
+    fn build_node(
+        entries: Vec<FeatureIntervalIndexEntry>,
+    ) -> Option<Box<FeatureIntervalIndexNode>> {
+        if entries.is_empty() {
+            return None;
+        }
+        let mut midpoints = entries
+            .iter()
+            .map(|entry| entry.start.saturating_add(entry.end) / 2)
+            .collect::<Vec<_>>();
+        midpoints.sort_unstable();
+        let center = midpoints[midpoints.len() / 2];
+        let mut left = Vec::new();
+        let mut right = Vec::new();
+        let mut overlaps = Vec::new();
+        for entry in entries {
+            if entry.end <= center {
+                left.push(entry);
+            } else if entry.start > center {
+                right.push(entry);
+            } else {
+                overlaps.push(entry);
+            }
+        }
+        let mut overlaps_by_start = overlaps.clone();
+        overlaps_by_start.sort_unstable_by(|left, right| {
+            left.start
+                .cmp(&right.start)
+                .then(left.end.cmp(&right.end))
+                .then(left.feature_idx.cmp(&right.feature_idx))
+        });
+        let mut overlaps_by_end_desc = overlaps;
+        overlaps_by_end_desc.sort_unstable_by(|left, right| {
+            right
+                .end
+                .cmp(&left.end)
+                .then(left.start.cmp(&right.start))
+                .then(left.feature_idx.cmp(&right.feature_idx))
+        });
+        Some(Box::new(FeatureIntervalIndexNode {
+            center,
+            overlaps_by_start,
+            overlaps_by_end_desc,
+            left: Self::build_node(left),
+            right: Self::build_node(right),
+        }))
+    }
+
+    fn query(&self, start: usize, end: usize) -> Vec<usize> {
+        if end <= start {
+            return Vec::new();
+        }
+        let mut out = Vec::new();
+        if let Some(root) = &self.root {
+            root.query(start, end, &mut out);
+        }
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
+}
+
+impl FeatureIntervalIndexNode {
+    fn query(&self, start: usize, end: usize, out: &mut Vec<usize>) {
+        if end <= self.center {
+            for entry in &self.overlaps_by_start {
+                if entry.start >= end {
+                    break;
+                }
+                if entry.end > start {
+                    out.push(entry.feature_idx);
+                }
+            }
+            if let Some(left) = &self.left {
+                left.query(start, end, out);
+            }
+        } else if start > self.center {
+            for entry in &self.overlaps_by_end_desc {
+                if entry.end <= start {
+                    break;
+                }
+                if entry.start < end {
+                    out.push(entry.feature_idx);
+                }
+            }
+            if let Some(right) = &self.right {
+                right.query(start, end, out);
+            }
+        } else {
+            out.extend(self.overlaps_by_start.iter().map(|entry| entry.feature_idx));
+            if let Some(left) = &self.left {
+                left.query(start, end, out);
+            }
+            if let Some(right) = &self.right {
+                right.query(start, end, out);
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct RestrictionGroupIndexEntry {
+    pos: usize,
+    key: RestrictionEnzymeKey,
+    names: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct ConstructReasoningOverlayPresentationCacheKey {
+    viewport: LinearViewport,
+    area: Rect,
+    baseline_y_bits: u32,
+    sequence_length: usize,
+    display_revision: u64,
+    overlay_graph_id: Option<String>,
+    overlay_evidence_count: usize,
+}
+
+impl ConstructReasoningOverlayPresentationCacheKey {
+    fn matches(
+        &self,
+        viewport: LinearViewport,
+        area: Rect,
+        baseline_y: f32,
+        sequence_length: usize,
+        display_revision: u64,
+        overlay_graph_id: Option<&str>,
+        overlay_evidence_count: usize,
+    ) -> bool {
+        self.viewport == viewport
+            && self.area == area
+            && self.baseline_y_bits == baseline_y.to_bits()
+            && self.sequence_length == sequence_length
+            && self.display_revision == display_revision
+            && self.overlay_graph_id.as_deref() == overlay_graph_id
+            && self.overlay_evidence_count == overlay_evidence_count
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct RestrictionSitePresentationCacheKey {
+    viewport: LinearViewport,
+    area: Rect,
+    baseline_y_bits: u32,
+    detail: LinearDetailLevel,
+    restriction_generation: u64,
+    sequence_length: usize,
+    display_revision: u64,
+}
+
+#[derive(Debug, Clone)]
+struct RestrictionSiteLabelPresentation {
+    rect: Rect,
+    galley: Arc<egui::Galley>,
+}
+
+#[derive(Debug, Clone)]
+struct RestrictionSitePresentation {
+    top_x: f32,
+    bottom_x: f32,
+    y: f32,
+    group_color: Color32,
+    cut_color: Color32,
+    label: Option<RestrictionSiteLabelPresentation>,
 }
 
 impl FeaturePosition {
@@ -157,7 +397,7 @@ struct ConstructReasoningOverlayPosition {
     evidence_id: String,
     rect: Rect,
     fill: Color32,
-    stroke: Stroke,
+    base_stroke: Stroke,
     label: String,
     start_0based: usize,
     end_0based_exclusive: usize,
@@ -182,6 +422,7 @@ enum SequenceBaseRenderMode {
 struct SequenceBaseRenderStatus {
     active_mode: SequenceBaseRenderMode,
     mode_setting: LinearSequenceLetterLayoutMode,
+    sequence_bases_enabled: bool,
     helical_enabled: bool,
     helical_parallel_strands: bool,
     reverse_strand_opacity: f32,
@@ -245,7 +486,15 @@ pub struct RenderDnaLinear {
     area: Rect,
     baseline_y: f32,
     features: Vec<FeaturePosition>,
+    feature_interval_index: FeatureIntervalIndex,
     restriction_enzyme_sites: Vec<RestrictionEnzymePosition>,
+    restriction_group_index: Vec<RestrictionGroupIndexEntry>,
+    restriction_group_index_generation: Option<u64>,
+    restriction_site_presentations: Vec<RestrictionSitePresentation>,
+    restriction_site_presentation_message: Option<String>,
+    restriction_site_presentation_cache_key: Option<RestrictionSitePresentationCacheKey>,
+    restriction_site_presentation_cache_hits: u64,
+    restriction_site_presentation_cache_misses: u64,
     selected_feature_number: Option<usize>,
     selected_enzyme: Option<RestrictionEnzymePosition>,
     selected_reasoning_evidence_id: Option<String>,
@@ -255,8 +504,18 @@ pub struct RenderDnaLinear {
     hovered_reasoning_evidence_id: Option<String>,
     external_labeled_feature_numbers: BTreeSet<usize>,
     cached_construct_reasoning_overlay_positions: Vec<ConstructReasoningOverlayPosition>,
+    construct_reasoning_overlay_presentation_cache_key:
+        Option<ConstructReasoningOverlayPresentationCacheKey>,
+    construct_reasoning_overlay_presentation_cache_hits: u64,
+    construct_reasoning_overlay_presentation_cache_misses: u64,
     last_hover_probe_pos: Option<Pos2>,
     last_hover_probe_viewport: Option<LinearViewport>,
+    gc_cache_key: Option<(u64, usize, usize)>,
+    gc_cache: GcContents,
+    gc_cache_hits: u64,
+    gc_cache_misses: u64,
+    layout_builds: u64,
+    interval_index_builds: u64,
 }
 
 impl RenderDnaLinear {
@@ -280,6 +539,7 @@ impl RenderDnaLinear {
     fn sequence_base_render_status(&self, viewport: LinearViewport) -> SequenceBaseRenderStatus {
         let (
             mode_setting,
+            sequence_bases_enabled,
             helical_enabled,
             helical_parallel_strands,
             reverse_strand_opacity,
@@ -290,6 +550,7 @@ impl RenderDnaLinear {
             .map(|display| {
                 (
                     display.linear_sequence_letter_layout_mode(),
+                    display.linear_show_sequence_bases(),
                     display.linear_sequence_helical_letters_enabled(),
                     display.linear_helical_parallel_strands(),
                     display.reverse_strand_visual_opacity(),
@@ -300,10 +561,11 @@ impl RenderDnaLinear {
                 LinearSequenceLetterLayoutMode::AutoAdaptive,
                 true,
                 true,
+                true,
                 0.55,
                 false,
             ));
-        let routing = decide_linear_base_routing(LinearBaseRoutingInput {
+        let mut routing = decide_linear_base_routing(LinearBaseRoutingInput {
             span_bp: viewport.span,
             viewport_width_px: self.area.width(),
             compression_enabled: helical_enabled,
@@ -312,10 +574,16 @@ impl RenderDnaLinear {
             min_font_size_px: SEQUENCE_BASE_TEXT_MIN_FONT_SIZE,
             max_font_size_px: SEQUENCE_BASE_TEXT_MAX_FONT_SIZE,
         });
+        if !sequence_bases_enabled {
+            routing.active_mode = RoutingBaseRenderMode::Off;
+            routing.decision_reason =
+                "inactive: DNA sequence letters disabled by display setting".to_string();
+        }
         let active_mode = Self::render_mode_from_routing(routing.active_mode);
         SequenceBaseRenderStatus {
             active_mode,
             mode_setting,
+            sequence_bases_enabled,
             helical_enabled,
             helical_parallel_strands,
             reverse_strand_opacity,
@@ -333,7 +601,15 @@ impl RenderDnaLinear {
             area: Rect::NOTHING,
             baseline_y: 0.0,
             features: vec![],
+            feature_interval_index: FeatureIntervalIndex::default(),
             restriction_enzyme_sites: vec![],
+            restriction_group_index: vec![],
+            restriction_group_index_generation: None,
+            restriction_site_presentations: vec![],
+            restriction_site_presentation_message: None,
+            restriction_site_presentation_cache_key: None,
+            restriction_site_presentation_cache_hits: 0,
+            restriction_site_presentation_cache_misses: 0,
             selected_feature_number: None,
             selected_enzyme: None,
             selected_reasoning_evidence_id: None,
@@ -343,13 +619,128 @@ impl RenderDnaLinear {
             hovered_reasoning_evidence_id: None,
             external_labeled_feature_numbers: BTreeSet::new(),
             cached_construct_reasoning_overlay_positions: Vec::new(),
+            construct_reasoning_overlay_presentation_cache_key: None,
+            construct_reasoning_overlay_presentation_cache_hits: 0,
+            construct_reasoning_overlay_presentation_cache_misses: 0,
             last_hover_probe_pos: None,
             last_hover_probe_viewport: None,
+            gc_cache_key: None,
+            gc_cache: GcContents::default(),
+            gc_cache_hits: 0,
+            gc_cache_misses: 0,
+            layout_builds: 0,
+            interval_index_builds: 0,
         }
+    }
+
+    pub fn invalidate_sequence_derived_caches(&mut self) {
+        self.feature_interval_index = FeatureIntervalIndex::default();
+        self.restriction_group_index.clear();
+        self.restriction_group_index_generation = None;
+        self.restriction_enzyme_sites.clear();
+        self.restriction_site_presentations.clear();
+        self.restriction_site_presentation_message = None;
+        self.restriction_site_presentation_cache_key = None;
+        self.cached_construct_reasoning_overlay_positions.clear();
+        self.construct_reasoning_overlay_presentation_cache_key = None;
+        self.gc_cache_key = None;
+        self.gc_cache = GcContents::default();
     }
 
     pub fn area(&self) -> &Rect {
         &self.area
+    }
+
+    pub(crate) fn cache_diagnostics(&self) -> crate::gui_profiler::LinearCacheDiagnostics {
+        crate::gui_profiler::LinearCacheDiagnostics {
+            layouts: self.layout_builds,
+            interval_index_builds: self.interval_index_builds,
+            restriction_hits: self.restriction_site_presentation_cache_hits,
+            restriction_builds: self.restriction_site_presentation_cache_misses,
+            overlay_hits: self.construct_reasoning_overlay_presentation_cache_hits,
+            overlay_builds: self.construct_reasoning_overlay_presentation_cache_misses,
+            gc_hits: self.gc_cache_hits,
+            gc_builds: self.gc_cache_misses,
+        }
+    }
+
+    fn refresh_feature_interval_index(&mut self, dna: &DNAsequence) {
+        let generation = dna.feature_generation();
+        if self.feature_interval_index.generation == Some(generation) {
+            return;
+        }
+        crate::gentle_gui_profile_scope!("RenderDnaLinear::build_feature_interval_index");
+        self.interval_index_builds = self.interval_index_builds.saturating_add(1);
+        let mut entries = Vec::with_capacity(dna.features().len());
+        for (feature_idx, feature) in dna.features().iter().enumerate() {
+            let Ok((raw_from, raw_to)) = feature.location.find_bounds() else {
+                continue;
+            };
+            if raw_from < 0 || raw_to < 0 {
+                continue;
+            }
+            let mut start = raw_from as usize;
+            let mut end = raw_to as usize;
+            if end < start {
+                std::mem::swap(&mut start, &mut end);
+            }
+            if start >= self.sequence_length {
+                continue;
+            }
+            end = end.min(self.sequence_length);
+            if end <= start {
+                continue;
+            }
+            entries.push(FeatureIntervalIndexEntry {
+                start,
+                end,
+                feature_idx,
+            });
+        }
+        self.feature_interval_index.rebuild(generation, entries);
+    }
+
+    fn feature_indices_overlapping_viewport(&self, viewport: LinearViewport) -> Vec<usize> {
+        self.feature_interval_index
+            .query(viewport.start, viewport.end)
+    }
+
+    fn refresh_restriction_group_index(&mut self, dna: &DNAsequence) {
+        let generation = dna.restriction_enzyme_group_generation();
+        if self.restriction_group_index_generation == Some(generation) {
+            return;
+        }
+        self.restriction_group_index = dna
+            .restriction_enzyme_groups()
+            .iter()
+            .filter_map(|(key, names)| {
+                let pos = self.normalize_pos(key.pos());
+                (pos < self.sequence_length).then(|| RestrictionGroupIndexEntry {
+                    pos,
+                    key: key.clone(),
+                    names: names.clone(),
+                })
+            })
+            .collect();
+        self.restriction_group_index
+            .sort_by(|left, right| left.pos.cmp(&right.pos).then(left.key.cmp(&right.key)));
+        self.restriction_group_index_generation = Some(generation);
+    }
+
+    fn restriction_group_index_range(
+        &self,
+        viewport: LinearViewport,
+    ) -> &[RestrictionGroupIndexEntry] {
+        if viewport.end <= viewport.start {
+            return &self.restriction_group_index[..0];
+        }
+        let start = self
+            .restriction_group_index
+            .partition_point(|entry| entry.pos < viewport.start);
+        let end = self
+            .restriction_group_index
+            .partition_point(|entry| entry.pos < viewport.end);
+        &self.restriction_group_index[start..end]
     }
 
     pub fn visible_feature_bounds_y(&self) -> Option<(f32, f32)> {
@@ -372,9 +763,9 @@ impl RenderDnaLinear {
                 include_span(exon_rect.top(), exon_rect.bottom());
             }
             for connector in &feature.intron_connectors {
-                include_span(connector[0].y, connector[0].y);
-                include_span(connector[1].y, connector[1].y);
-                include_span(connector[2].y, connector[2].y);
+                for point in connector.points() {
+                    include_span(point.y, point.y);
+                }
             }
         }
         for restriction_site in &self.restriction_enzyme_sites {
@@ -395,15 +786,9 @@ impl RenderDnaLinear {
                 .map(|dna| dna.open_reading_frames().clone())
                 .unwrap_or_default();
             for orf in &orfs {
-                let from = self.normalize_pos(orf.from() as isize);
-                let to = self.normalize_pos(orf.to() as isize);
-                let start = from.min(to);
-                let end_exclusive = from.max(to).saturating_add(1).min(self.sequence_length);
-                if start >= end_exclusive {
-                    continue;
-                }
-                if Self::range_overlap(start, end_exclusive, viewport.start, viewport.end).is_none()
-                {
+                if !orf.spans_0based(self.sequence_length).any(|(start, end)| {
+                    Self::range_overlap(start, end, viewport.start, viewport.end).is_some()
+                }) {
                     continue;
                 }
                 let frame_abs = orf.frame().unsigned_abs() as f32;
@@ -417,6 +802,40 @@ impl RenderDnaLinear {
         }
         for overlay in self.compute_construct_reasoning_overlay_positions(viewport) {
             include_span(overlay.rect.top(), overlay.rect.bottom());
+        }
+
+        if min_y.is_finite() && max_y.is_finite() && min_y <= max_y {
+            Some((min_y, max_y))
+        } else {
+            None
+        }
+    }
+
+    pub fn feature_bounds_y(&self, feature_number: usize) -> Option<(f32, f32)> {
+        if !Self::is_rect_usable(self.area) {
+            return None;
+        }
+        let feature = self
+            .features
+            .iter()
+            .find(|feature| feature.feature_number == feature_number)?;
+        let mut min_y = f32::INFINITY;
+        let mut max_y = f32::NEG_INFINITY;
+        let mut include_span = |top: f32, bottom: f32| {
+            if top.is_finite() && bottom.is_finite() {
+                min_y = min_y.min(top);
+                max_y = max_y.max(bottom);
+            }
+        };
+
+        include_span(feature.rect.top(), feature.rect.bottom());
+        for exon_rect in &feature.exon_rects {
+            include_span(exon_rect.top(), exon_rect.bottom());
+        }
+        for connector in &feature.intron_connectors {
+            for point in connector.points() {
+                include_span(point.y, point.y);
+            }
         }
 
         if min_y.is_finite() && max_y.is_finite() && min_y <= max_y {
@@ -498,6 +917,59 @@ impl RenderDnaLinear {
         }
         let frac = (bp.saturating_sub(viewport.start)) as f32 / viewport.span as f32;
         self.area.left() + frac * self.area.width()
+    }
+
+    fn fractional_bp_to_x(&self, bp: f64, viewport: LinearViewport) -> f32 {
+        if viewport.span == 0 {
+            return self.area.left();
+        }
+        let frac = (bp - viewport.start as f64) / viewport.span as f64;
+        (self.area.left() as f64 + frac * self.area.width() as f64) as f32
+    }
+
+    fn visible_intron_connector(
+        &self,
+        intron_start: usize,
+        intron_end: usize,
+        viewport: LinearViewport,
+        center_y: f32,
+        apex_y: f32,
+    ) -> Option<IntronConnectorPosition> {
+        let (visible_start, visible_end) =
+            Self::range_overlap(intron_start, intron_end, viewport.start, viewport.end)?;
+        let intron_start = intron_start as f64;
+        let intron_end = intron_end as f64;
+        let midpoint = (intron_start + intron_end) * 0.5;
+        let point_at = |bp: f64| {
+            let lift = if bp <= midpoint {
+                (bp - intron_start) / (midpoint - intron_start)
+            } else {
+                (intron_end - bp) / (intron_end - midpoint)
+            }
+            .clamp(0.0, 1.0) as f32;
+            Pos2::new(
+                self.fractional_bp_to_x(bp, viewport)
+                    .clamp(self.area.left(), self.area.right()),
+                center_y + (apex_y - center_y) * lift,
+            )
+        };
+
+        let visible_start = visible_start as f64;
+        let visible_end = visible_end as f64;
+        let start = point_at(visible_start);
+        let end = point_at(visible_end);
+        if end.x <= start.x {
+            return None;
+        }
+        if midpoint > visible_start && midpoint < visible_end {
+            Some(IntronConnectorPosition::wedge(
+                start,
+                point_at(midpoint),
+                end,
+            ))
+        } else {
+            Some(IntronConnectorPosition::line(start, end))
+        }
     }
 
     fn x_to_bp(&self, x: f32, viewport: LinearViewport) -> usize {
@@ -740,21 +1212,6 @@ impl RenderDnaLinear {
                     + CONSTRUCT_REASONING_TRACK_MARGIN
                     + CONSTRUCT_REASONING_TRACK_GAP * lane as f32
             };
-            let selected =
-                self.selected_reasoning_evidence_id.as_deref() == Some(span.evidence_id.as_str());
-            let hovered =
-                self.hovered_reasoning_evidence_id.as_deref() == Some(span.evidence_id.as_str());
-            let stroke = if selected {
-                Stroke::new(2.0_f32, Color32::YELLOW)
-            } else if hovered {
-                Stroke::new(1.6_f32, Color32::WHITE)
-            } else {
-                Self::construct_reasoning_overlay_stroke(
-                    span.role,
-                    span.evidence_class,
-                    span.editable_status,
-                )
-            };
             positions.push(ConstructReasoningOverlayPosition {
                 evidence_id: span.evidence_id.clone(),
                 rect: Rect::from_min_max(
@@ -766,7 +1223,11 @@ impl RenderDnaLinear {
                     span.evidence_class,
                     span.editable_status,
                 ),
-                stroke,
+                base_stroke: Self::construct_reasoning_overlay_stroke(
+                    span.role,
+                    span.evidence_class,
+                    span.editable_status,
+                ),
                 label: Self::construct_reasoning_overlay_label(&span),
                 start_0based: span.start_0based,
                 end_0based_exclusive: span.end_0based_exclusive,
@@ -776,8 +1237,62 @@ impl RenderDnaLinear {
     }
 
     fn refresh_construct_reasoning_overlay_positions(&mut self, viewport: LinearViewport) {
+        let display = Arc::clone(&self.display);
+        let Ok(display) = display.read() else {
+            self.cached_construct_reasoning_overlay_positions.clear();
+            self.construct_reasoning_overlay_presentation_cache_key = None;
+            return;
+        };
+        let display_revision = display.revision();
+        let overlay_graph_id = display
+            .construct_reasoning_overlay()
+            .map(|overlay| overlay.graph_id.as_str());
+        let overlay_evidence_count = display
+            .construct_reasoning_overlay()
+            .map(|overlay| overlay.evidence.len())
+            .unwrap_or_default();
+        let baseline_y = self.baseline_y();
+        if self
+            .construct_reasoning_overlay_presentation_cache_key
+            .as_ref()
+            .is_some_and(|key| {
+                key.matches(
+                    viewport,
+                    self.area,
+                    baseline_y,
+                    self.sequence_length,
+                    display_revision,
+                    overlay_graph_id,
+                    overlay_evidence_count,
+                )
+            })
+        {
+            self.construct_reasoning_overlay_presentation_cache_hits = self
+                .construct_reasoning_overlay_presentation_cache_hits
+                .saturating_add(1);
+            return;
+        }
+        let overlay_graph_id = overlay_graph_id.map(str::to_owned);
+        drop(display);
+
+        crate::gentle_gui_profile_scope!(
+            "RenderDnaLinear::construct_reasoning_overlay_presentation_cache_miss"
+        );
+        self.construct_reasoning_overlay_presentation_cache_misses = self
+            .construct_reasoning_overlay_presentation_cache_misses
+            .saturating_add(1);
         self.cached_construct_reasoning_overlay_positions =
             self.compute_construct_reasoning_overlay_positions(viewport);
+        self.construct_reasoning_overlay_presentation_cache_key =
+            Some(ConstructReasoningOverlayPresentationCacheKey {
+                viewport,
+                area: self.area,
+                baseline_y_bits: baseline_y.to_bits(),
+                sequence_length: self.sequence_length,
+                display_revision,
+                overlay_graph_id,
+                overlay_evidence_count,
+            });
     }
 
     fn feature_external_label_fill(fill: Color32, alpha: u8, emphasize: bool) -> Color32 {
@@ -822,7 +1337,7 @@ impl RenderDnaLinear {
         show_contextual_transcript_features: bool,
         show_tfbs: bool,
         tfbs_display_criteria: TfbsDisplayCriteria,
-        vcf_display_criteria: VcfDisplayCriteria,
+        vcf_display_criteria: &VcfDisplayCriteria,
         hidden_feature_kinds: &BTreeSet<String>,
     ) -> bool {
         if RenderDna::is_source_feature(feature) {
@@ -859,7 +1374,7 @@ impl RenderDnaLinear {
             return RenderDna::tfbs_feature_passes_display_filter(feature, tfbs_display_criteria);
         }
         if RenderDna::is_vcf_track_feature(feature) {
-            return RenderDna::vcf_feature_passes_display_filter(feature, &vcf_display_criteria);
+            return RenderDna::vcf_feature_passes_display_filter(feature, vcf_display_criteria);
         }
         true
     }
@@ -954,13 +1469,154 @@ impl RenderDnaLinear {
         }
     }
 
+    fn feature_qualifier_text(feature: &Feature, key: &str) -> Option<String> {
+        feature
+            .qualifier_values(key)
+            .map(|value| value.split_whitespace().collect::<Vec<_>>().join(" "))
+            .map(|value| value.trim().to_string())
+            .find(|value| !value.is_empty() && value != "---")
+    }
+
+    fn feature_qualifier_usize(feature: &Feature, key: &str) -> Option<usize> {
+        Self::feature_qualifier_text(feature, key).and_then(|value| value.parse::<usize>().ok())
+    }
+
+    fn is_junction_array_probe_feature(feature: &Feature) -> bool {
+        if !RenderDna::is_array_track_feature(feature) {
+            return false;
+        }
+        let has_edges = Self::feature_qualifier_usize(feature, "junction_start_edge").is_some()
+            && Self::feature_qualifier_usize(feature, "junction_stop_edge").is_some();
+        let probe_type_is_junction =
+            Self::feature_qualifier_text(feature, "gentle_array_probe_type")
+                .or_else(|| Self::feature_qualifier_text(feature, "probe_type"))
+                .map(|value| value.to_ascii_lowercase().contains("junction"))
+                .unwrap_or(false);
+        has_edges || probe_type_is_junction
+    }
+
+    fn genomic_probe_edge_to_local_0based(
+        feature: &Feature,
+        genomic_1based: usize,
+        feature_from: usize,
+        sequence_len: usize,
+    ) -> Option<usize> {
+        if let (Some(anchor_start), Some(anchor_end)) = (
+            Self::feature_qualifier_usize(feature, "gentle_array_anchor_start_1based"),
+            Self::feature_qualifier_usize(feature, "gentle_array_anchor_end_1based"),
+        ) {
+            if genomic_1based < anchor_start || genomic_1based > anchor_end {
+                return None;
+            }
+            let anchor_strand = Self::feature_qualifier_text(feature, "gentle_array_anchor_strand")
+                .and_then(|value| value.chars().next())
+                .unwrap_or('+');
+            let local = if anchor_strand == '-' {
+                anchor_end.saturating_sub(genomic_1based)
+            } else {
+                genomic_1based.saturating_sub(anchor_start)
+            };
+            return (local < sequence_len).then_some(local);
+        }
+
+        if let Some(genomic_start) = Self::feature_qualifier_usize(feature, "genomic_start_1based")
+            .or_else(|| Self::feature_qualifier_usize(feature, "start_1based"))
+        {
+            let local = if genomic_1based >= genomic_start {
+                feature_from.saturating_add(genomic_1based - genomic_start)
+            } else {
+                feature_from.checked_sub(genomic_start - genomic_1based)?
+            };
+            return (local < sequence_len).then_some(local);
+        }
+
+        (genomic_1based > 0 && genomic_1based <= sequence_len).then_some(genomic_1based - 1)
+    }
+
+    fn junction_array_probe_edge_ranges(
+        feature: &Feature,
+        feature_from: usize,
+        sequence_len: usize,
+    ) -> Option<Vec<(usize, usize)>> {
+        let start_edge = Self::feature_qualifier_usize(feature, "junction_start_edge")?;
+        let stop_edge = Self::feature_qualifier_usize(feature, "junction_stop_edge")?;
+        let left_base = Self::genomic_probe_edge_to_local_0based(
+            feature,
+            start_edge,
+            feature_from,
+            sequence_len,
+        )?;
+        let right_base = Self::genomic_probe_edge_to_local_0based(
+            feature,
+            stop_edge,
+            feature_from,
+            sequence_len,
+        )?;
+        let (left_base, right_base) = if left_base <= right_base {
+            (left_base, right_base)
+        } else {
+            (right_base, left_base)
+        };
+        if right_base <= left_base.saturating_add(1) {
+            return None;
+        }
+
+        let left_end = left_base.saturating_add(1).min(sequence_len);
+        let left_start = left_end.saturating_sub(JUNCTION_ARRAY_PROBE_ARM_BP);
+        let right_start = right_base.min(sequence_len);
+        let right_end = right_start
+            .saturating_add(JUNCTION_ARRAY_PROBE_ARM_BP)
+            .min(sequence_len);
+        if left_start < left_end && right_start < right_end && left_end <= right_start {
+            Some(vec![(left_start, left_end), (right_start, right_end)])
+        } else {
+            None
+        }
+    }
+
+    fn junction_array_probe_fallback_ranges(
+        feature_from: usize,
+        feature_to: usize,
+    ) -> Vec<(usize, usize)> {
+        let len = feature_to.saturating_sub(feature_from);
+        if len < 6 {
+            return vec![(feature_from, feature_to)];
+        }
+        let gap = (len / 3).clamp(2, 20);
+        let arm_len = ((len - gap) / 2).max(1);
+        let left = (feature_from, feature_from + arm_len);
+        let right = (feature_to.saturating_sub(arm_len), feature_to);
+        if left.1 < right.0 {
+            vec![left, right]
+        } else {
+            vec![(feature_from, feature_to)]
+        }
+    }
+
+    fn junction_array_probe_visual_ranges(
+        feature: &Feature,
+        feature_from: usize,
+        feature_to: usize,
+        sequence_len: usize,
+    ) -> Option<Vec<(usize, usize)>> {
+        if !Self::is_junction_array_probe_feature(feature) {
+            return None;
+        }
+        Self::junction_array_probe_edge_ranges(feature, feature_from, sequence_len).or_else(|| {
+            Some(Self::junction_array_probe_fallback_ranges(
+                feature_from,
+                feature_to,
+            ))
+        })
+    }
+
     fn condensed_row_step(font_size: f32, _show_double_strand: bool) -> f32 {
         (font_size * CONDENSED_HELICAL_ROW_SPACING_SCALE).max(CONDENSED_HELICAL_SINGLE_ROW_MIN_STEP)
     }
 
-    fn condensed_helical_text_half_extent(&self, viewport: LinearViewport) -> Option<f32> {
+    fn sequence_base_text_half_extent(&self, viewport: LinearViewport) -> Option<f32> {
         let status = self.sequence_base_render_status(viewport);
-        if status.active_mode != SequenceBaseRenderMode::Condensed10Row {
+        if status.active_mode == SequenceBaseRenderMode::Off {
             return None;
         }
         let show_double_strand = self
@@ -973,17 +1629,35 @@ impl RenderDnaLinear {
             SEQUENCE_BASE_TEXT_MIN_FONT_SIZE,
             SEQUENCE_BASE_TEXT_MAX_FONT_SIZE,
         );
-        let row_step = Self::condensed_row_step(font_size, show_double_strand);
-        let row_offset_max = row_step * CONDENSED_HELICAL_ROW_COUNT.saturating_sub(1) as f32;
         let strand_half_gap = if show_double_strand {
             CONDENSED_HELICAL_STRAND_GAP * 0.5
         } else {
             0.0
         };
-        Some(font_size + strand_half_gap + row_offset_max)
+        let mode_extra = match status.active_mode {
+            SequenceBaseRenderMode::Off => return None,
+            SequenceBaseRenderMode::StandardLinear => 0.0,
+            SequenceBaseRenderMode::ContinuousHelical => font_size,
+            SequenceBaseRenderMode::Condensed10Row => {
+                let row_step = Self::condensed_row_step(font_size, show_double_strand);
+                row_step * CONDENSED_HELICAL_ROW_COUNT.saturating_sub(1) as f32
+            }
+        };
+        Some(font_size + strand_half_gap + mode_extra)
+    }
+
+    #[cfg(test)]
+    fn condensed_helical_text_half_extent(&self, viewport: LinearViewport) -> Option<f32> {
+        let status = self.sequence_base_render_status(viewport);
+        if status.active_mode != SequenceBaseRenderMode::Condensed10Row {
+            return None;
+        }
+        self.sequence_base_text_half_extent(viewport)
     }
 
     fn layout_features(&mut self, viewport: LinearViewport) {
+        crate::gentle_gui_profile_scope!("RenderDnaLinear::layout_features");
+        self.layout_builds = self.layout_builds.saturating_add(1);
         self.features.clear();
         self.baseline_y = self.area.center().y;
         if self.sequence_length == 0 {
@@ -1000,7 +1674,7 @@ impl RenderDnaLinear {
             to: usize,
             exon_segments: Vec<(f32, f32)>,
             exon_length_mod3_cues: Vec<Option<u8>>,
-            connector_segments: Vec<(f32, f32)>,
+            connector_segments: Vec<IntronConnectorSeed>,
             x1: f32,
             x2: f32,
             label: String,
@@ -1010,6 +1684,7 @@ impl RenderDnaLinear {
             is_reverse: bool,
             is_regulatory: bool,
             is_array_track: bool,
+            is_junction_array_probe: bool,
             array_stroke: Option<Stroke>,
             is_mcs: bool,
             is_variation: bool,
@@ -1044,6 +1719,7 @@ impl RenderDnaLinear {
             regulatory_tracks_near_baseline,
             regulatory_feature_max_view_span_bp,
             hidden_feature_kinds,
+            show_restriction_enzyme_sites,
         ) = self
             .display
             .read()
@@ -1061,6 +1737,7 @@ impl RenderDnaLinear {
                     display.regulatory_tracks_near_baseline(),
                     display.regulatory_feature_max_view_span_bp(),
                     display.hidden_feature_kinds().clone(),
+                    display.show_restriction_enzyme_sites(),
                 )
             })
             .unwrap_or((
@@ -1076,238 +1753,267 @@ impl RenderDnaLinear {
                 false,
                 50_000,
                 BTreeSet::new(),
+                false,
             ));
-        let features = self
-            .dna
-            .read()
-            .map(|dna| dna.features().to_owned())
-            .unwrap_or_default();
-        for (feature_number, feature) in features.iter().enumerate() {
-            if !Self::draw_feature(
-                feature,
-                show_cds_features,
-                show_gene_features,
-                show_mrna_features,
-                show_repeat_features,
-                show_array_features,
-                show_contextual_transcript_features,
-                show_tfbs,
-                tfbs_display_criteria,
-                vcf_display_criteria.clone(),
-                &hidden_feature_kinds,
-            ) {
-                continue;
-            }
-            if !RenderDna::feature_visible_for_view_span(
-                feature,
-                viewport.span,
-                regulatory_feature_max_view_span_bp,
-            ) {
-                continue;
-            }
-
-            let (raw_from, raw_to) = match feature.location.find_bounds() {
-                Ok(bounds) => bounds,
-                Err(_) => continue,
-            };
-            if raw_from < 0 || raw_to < 0 {
-                continue;
-            }
-
-            let mut from = raw_from as usize;
-            let mut to = raw_to as usize;
-            if to < from {
-                std::mem::swap(&mut to, &mut from);
-            }
-            if from >= self.sequence_length {
-                continue;
-            }
-            if to > self.sequence_length {
-                to = self.sequence_length;
-            }
-            if to <= from {
-                continue;
-            }
-
-            let label = RenderDna::feature_name(feature);
-            let is_mcs = RenderDna::is_mcs_feature(feature);
-            let is_variation = RenderDna::is_variation_feature(feature);
-            let show_exon_length_cues = RenderDna::is_exon_length_frame_cue_feature(feature);
-            let mut exon_ranges: Vec<(usize, usize)> = vec![];
-            collect_location_ranges_usize(&feature.location, &mut exon_ranges);
-            if exon_ranges.is_empty() {
-                exon_ranges.push((from, to));
-            }
-            exon_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-
-            let mut exon_segments: Vec<(f32, f32)> = Vec::new();
-            let mut exon_length_mod3_cues: Vec<Option<u8>> = Vec::new();
-            let mut exon_visibility: Vec<Option<(f32, f32)>> =
-                Vec::with_capacity(exon_ranges.len());
-            for (exon_start, exon_end_exclusive) in exon_ranges.iter().copied() {
-                if exon_start >= self.sequence_length {
-                    exon_visibility.push(None);
-                    continue;
-                }
-                let exon_end_exclusive = exon_end_exclusive.min(self.sequence_length);
-                if exon_end_exclusive <= exon_start {
-                    exon_visibility.push(None);
-                    continue;
-                }
-                let Some((visible_start, visible_end)) = Self::range_overlap(
-                    exon_start,
-                    exon_end_exclusive,
-                    viewport.start,
-                    viewport.end,
-                ) else {
-                    exon_visibility.push(None);
+        let mut has_restriction_sites = false;
+        let dna = Arc::clone(&self.dna);
+        if let Ok(dna) = dna.read() {
+            self.refresh_feature_interval_index(&dna);
+            has_restriction_sites =
+                show_restriction_enzyme_sites && !dna.restriction_enzyme_groups().is_empty();
+            let feature_indices = self.feature_indices_overlapping_viewport(viewport);
+            for feature_number in feature_indices {
+                let Some(feature) = dna.features().get(feature_number) else {
                     continue;
                 };
-                let seg_x1 = self.bp_to_x(visible_start, viewport).max(self.area.left());
-                let seg_x2 = self
-                    .bp_to_x(visible_end, viewport)
-                    .max(seg_x1 + 1.0)
-                    .min(self.area.right());
-                exon_segments.push((seg_x1, seg_x2));
-                exon_length_mod3_cues.push(show_exon_length_cues.then(|| {
-                    RenderDna::exon_length_mod3_for_range(exon_start, exon_end_exclusive)
-                }));
-                exon_visibility.push(Some((seg_x1, seg_x2)));
-            }
-            let mut exon_segments_with_cues: Vec<((f32, f32), Option<u8>)> = exon_segments
-                .into_iter()
-                .zip(exon_length_mod3_cues)
-                .collect();
-            exon_segments_with_cues.sort_by(|left, right| {
-                let ((left_x1, left_x2), _) = left;
-                let ((right_x1, right_x2), _) = right;
-                left_x1
-                    .total_cmp(right_x1)
-                    .then(left_x2.total_cmp(right_x2))
-            });
-            let (mut exon_segments, exon_length_mod3_cues): (Vec<_>, Vec<_>) =
-                exon_segments_with_cues.into_iter().unzip();
+                if !Self::draw_feature(
+                    feature,
+                    show_cds_features,
+                    show_gene_features,
+                    show_mrna_features,
+                    show_repeat_features,
+                    show_array_features,
+                    show_contextual_transcript_features,
+                    show_tfbs,
+                    tfbs_display_criteria,
+                    &vcf_display_criteria,
+                    &hidden_feature_kinds,
+                ) {
+                    continue;
+                }
+                if !RenderDna::feature_visible_for_view_span(
+                    feature,
+                    viewport.span,
+                    regulatory_feature_max_view_span_bp,
+                ) {
+                    continue;
+                }
 
-            let mut connector_segments: Vec<(f32, f32)> = Vec::new();
-            for exon_idx in 0..exon_ranges.len().saturating_sub(1) {
-                let (left_start, left_end_exclusive) = exon_ranges[exon_idx];
-                let (right_start, _right_end_exclusive) = exon_ranges[exon_idx + 1];
-                if left_start >= self.sequence_length {
+                let (raw_from, raw_to) = match feature.location.find_bounds() {
+                    Ok(bounds) => bounds,
+                    Err(_) => continue,
+                };
+                if raw_from < 0 || raw_to < 0 {
                     continue;
                 }
-                let intron_start = left_end_exclusive.min(self.sequence_length);
-                let intron_end = right_start.min(self.sequence_length);
-                if intron_end <= intron_start {
-                    continue;
-                }
-                if Self::range_overlap(intron_start, intron_end, viewport.start, viewport.end)
-                    .is_none()
-                {
-                    continue;
-                }
-                let start_x = exon_visibility[exon_idx]
-                    .map(|(_, x2)| x2)
-                    .unwrap_or_else(|| self.area.left());
-                let end_x = exon_visibility[exon_idx + 1]
-                    .map(|(x1, _)| x1)
-                    .unwrap_or_else(|| self.area.right());
-                if end_x <= start_x {
-                    continue;
-                }
-                connector_segments.push((start_x, end_x));
-            }
-            if exon_segments.is_empty() && connector_segments.is_empty() {
-                continue;
-            }
 
-            let mut x1 = exon_segments
-                .iter()
-                .map(|(sx1, _)| *sx1)
-                .chain(connector_segments.iter().map(|(sx1, _)| *sx1))
-                .fold(f32::INFINITY, f32::min);
-            let mut x2 = exon_segments
-                .iter()
-                .map(|(_, sx2)| *sx2)
-                .chain(connector_segments.iter().map(|(_, sx2)| *sx2))
-                .fold(f32::NEG_INFINITY, f32::max);
-            if !x1.is_finite() || !x2.is_finite() {
-                continue;
-            }
-            if is_variation && connector_segments.is_empty() && !exon_segments.is_empty() {
-                let center_x = (x1 + x2) * 0.5;
-                let half_width = (VARIATION_MIN_WIDTH_PX * 0.5).max((x2 - x1) * 0.5);
-                let expanded_left = (center_x - half_width).max(self.area.left());
-                let expanded_right = (center_x + half_width).min(self.area.right());
-                if let Some(first_segment) = exon_segments.first_mut() {
-                    *first_segment = (expanded_left, expanded_right.max(expanded_left + 1.0));
+                let mut from = raw_from as usize;
+                let mut to = raw_to as usize;
+                if to < from {
+                    std::mem::swap(&mut to, &mut from);
                 }
-                x1 = expanded_left;
-                x2 = expanded_right.max(expanded_left + 1.0);
-            }
-            let kind = feature.kind.to_string().to_ascii_uppercase();
-            let is_array_track = RenderDna::is_array_track_feature(feature);
-            let is_high_priority_feature = is_mcs
-                || is_variation
-                || is_array_track
-                || matches!(kind.as_str(), "CDS" | "GENE" | "MRNA");
-            if !is_high_priority_feature && (x2 - x1) < low_value_feature_min_width_px {
-                continue;
-            }
+                if from >= self.sequence_length {
+                    continue;
+                }
+                if to > self.sequence_length {
+                    to = self.sequence_length;
+                }
+                if to <= from {
+                    continue;
+                }
 
-            seeds.push(Seed {
-                feature_number,
-                from,
-                to,
-                exon_segments,
-                exon_length_mod3_cues,
-                connector_segments,
-                x1,
-                x2,
-                label,
-                kind_upper: kind.clone(),
-                color: RenderDna::feature_color(feature),
-                is_pointy: RenderDna::is_feature_pointy(feature),
-                is_reverse: feature_is_reverse(feature),
-                is_regulatory: RenderDna::is_regulatory_feature(feature) || is_array_track,
-                is_array_track,
-                array_stroke: RenderDna::array_feature_confidence_stroke(feature),
-                is_mcs,
-                is_variation,
-            });
+                let label = RenderDna::feature_name(feature);
+                let is_mcs = RenderDna::is_mcs_feature(feature);
+                let is_variation = RenderDna::is_variation_feature(feature);
+                let show_exon_length_cues = RenderDna::is_exon_length_frame_cue_feature(feature);
+                let is_array_track = RenderDna::is_array_track_feature(feature);
+                let is_junction_array_probe = Self::is_junction_array_probe_feature(feature);
+                let mut exon_ranges: Vec<(usize, usize)> = vec![];
+                collect_location_ranges_usize(&feature.location, &mut exon_ranges);
+                if let Some(junction_ranges) = Self::junction_array_probe_visual_ranges(
+                    feature,
+                    from,
+                    to,
+                    self.sequence_length,
+                ) {
+                    exon_ranges = junction_ranges;
+                }
+                if exon_ranges.is_empty() {
+                    exon_ranges.push((from, to));
+                }
+                exon_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+                let visual_from = exon_ranges
+                    .iter()
+                    .map(|(start, _)| *start)
+                    .min()
+                    .unwrap_or(from);
+                let visual_to = exon_ranges.iter().map(|(_, end)| *end).max().unwrap_or(to);
+
+                let mut exon_segments: Vec<(f32, f32)> = Vec::new();
+                let mut exon_length_mod3_cues: Vec<Option<u8>> = Vec::new();
+                for (exon_start, exon_end_exclusive) in exon_ranges.iter().copied() {
+                    if exon_start >= self.sequence_length {
+                        continue;
+                    }
+                    let exon_end_exclusive = exon_end_exclusive.min(self.sequence_length);
+                    if exon_end_exclusive <= exon_start {
+                        continue;
+                    }
+                    let Some((visible_start, visible_end)) = Self::range_overlap(
+                        exon_start,
+                        exon_end_exclusive,
+                        viewport.start,
+                        viewport.end,
+                    ) else {
+                        continue;
+                    };
+                    let seg_x1 = self.bp_to_x(visible_start, viewport).max(self.area.left());
+                    let seg_x2 = self
+                        .bp_to_x(visible_end, viewport)
+                        .max(seg_x1 + 1.0)
+                        .min(self.area.right());
+                    exon_segments.push((seg_x1, seg_x2));
+                    exon_length_mod3_cues.push(show_exon_length_cues.then(|| {
+                        RenderDna::exon_length_mod3_for_range(exon_start, exon_end_exclusive)
+                    }));
+                }
+                let mut exon_segments_with_cues: Vec<((f32, f32), Option<u8>)> = exon_segments
+                    .into_iter()
+                    .zip(exon_length_mod3_cues)
+                    .collect();
+                exon_segments_with_cues.sort_by(|left, right| {
+                    let ((left_x1, left_x2), _) = left;
+                    let ((right_x1, right_x2), _) = right;
+                    left_x1
+                        .total_cmp(right_x1)
+                        .then(left_x2.total_cmp(right_x2))
+                });
+                let (mut exon_segments, exon_length_mod3_cues): (Vec<_>, Vec<_>) =
+                    exon_segments_with_cues.into_iter().unzip();
+
+                let mut connector_segments: Vec<IntronConnectorSeed> = Vec::new();
+                for exon_idx in 0..exon_ranges.len().saturating_sub(1) {
+                    let (left_start, left_end_exclusive) = exon_ranges[exon_idx];
+                    let (right_start, _right_end_exclusive) = exon_ranges[exon_idx + 1];
+                    if left_start >= self.sequence_length {
+                        continue;
+                    }
+                    let intron_start = left_end_exclusive.min(self.sequence_length);
+                    let intron_end = right_start.min(self.sequence_length);
+                    if intron_end <= intron_start {
+                        continue;
+                    }
+                    let Some((visible_start, visible_end)) =
+                        Self::range_overlap(intron_start, intron_end, viewport.start, viewport.end)
+                    else {
+                        continue;
+                    };
+                    let visible_x1 = self
+                        .bp_to_x(visible_start, viewport)
+                        .clamp(self.area.left(), self.area.right());
+                    let visible_x2 = self
+                        .bp_to_x(visible_end, viewport)
+                        .clamp(self.area.left(), self.area.right());
+                    if visible_x2 <= visible_x1 {
+                        continue;
+                    }
+                    connector_segments.push(IntronConnectorSeed {
+                        start_bp: intron_start,
+                        end_bp: intron_end,
+                        visible_x1,
+                        visible_x2,
+                    });
+                }
+                if exon_segments.is_empty() && connector_segments.is_empty() {
+                    continue;
+                }
+
+                let mut x1 = exon_segments
+                    .iter()
+                    .map(|(sx1, _)| *sx1)
+                    .chain(
+                        connector_segments
+                            .iter()
+                            .map(|connector| connector.visible_x1),
+                    )
+                    .fold(f32::INFINITY, f32::min);
+                let mut x2 = exon_segments
+                    .iter()
+                    .map(|(_, sx2)| *sx2)
+                    .chain(
+                        connector_segments
+                            .iter()
+                            .map(|connector| connector.visible_x2),
+                    )
+                    .fold(f32::NEG_INFINITY, f32::max);
+                if !x1.is_finite() || !x2.is_finite() {
+                    continue;
+                }
+                if is_variation && connector_segments.is_empty() && !exon_segments.is_empty() {
+                    let center_x = (x1 + x2) * 0.5;
+                    let half_width = (VARIATION_MIN_WIDTH_PX * 0.5).max((x2 - x1) * 0.5);
+                    let expanded_left = (center_x - half_width).max(self.area.left());
+                    let expanded_right = (center_x + half_width).min(self.area.right());
+                    if let Some(first_segment) = exon_segments.first_mut() {
+                        *first_segment = (expanded_left, expanded_right.max(expanded_left + 1.0));
+                    }
+                    x1 = expanded_left;
+                    x2 = expanded_right.max(expanded_left + 1.0);
+                }
+                let kind = feature.kind.to_string().to_ascii_uppercase();
+                let is_high_priority_feature = is_mcs
+                    || is_variation
+                    || is_array_track
+                    || matches!(kind.as_str(), "CDS" | "GENE" | "MRNA");
+                if !is_high_priority_feature && (x2 - x1) < low_value_feature_min_width_px {
+                    continue;
+                }
+
+                seeds.push(Seed {
+                    feature_number,
+                    from: visual_from,
+                    to: visual_to,
+                    exon_segments,
+                    exon_length_mod3_cues,
+                    connector_segments,
+                    x1,
+                    x2,
+                    label,
+                    kind_upper: kind.clone(),
+                    color: RenderDna::feature_color(feature),
+                    is_pointy: RenderDna::is_feature_pointy(feature),
+                    is_reverse: feature_is_reverse(feature),
+                    // Array projections are evidence tracks, not regulatory annotations. Keep
+                    // them in the coordinate-aligned feature stack instead of the detached
+                    // regulatory band at the top of the canvas.
+                    is_regulatory: RenderDna::is_regulatory_feature(feature) && !is_array_track,
+                    is_array_track,
+                    is_junction_array_probe,
+                    array_stroke: RenderDna::array_feature_confidence_stroke(feature),
+                    is_mcs,
+                    is_variation,
+                });
+            }
         }
 
         let mut feature_lanes_top: Vec<f32> = vec![];
         let mut feature_lanes_bottom: Vec<f32> = vec![];
         let mut feature_lanes_regulatory_top: Vec<f32> = vec![];
         let has_regulatory_features = seeds.iter().any(|seed| seed.is_regulatory);
-        let has_restriction_sites = self
-            .display
-            .read()
-            .map(|display| display.show_restriction_enzyme_sites())
-            .unwrap_or(false)
-            && self
-                .dna
-                .read()
-                .map(|dna| !dna.restriction_enzyme_groups().is_empty())
-                .unwrap_or(false);
         let compact_feature_spacing = !has_regulatory_features && !has_restriction_sites;
         let mut lane_seed: Vec<PositionedSeed> = Vec::with_capacity(seeds.len());
         let mut lane_order = seeds.clone();
         lane_order.sort_by(|a, b| {
             a.is_regulatory
                 .cmp(&b.is_regulatory)
+                .then_with(|| a.is_array_track.cmp(&b.is_array_track))
                 .then_with(|| a.x1.total_cmp(&b.x1))
                 .then_with(|| (b.x2 - b.x1).total_cmp(&(a.x2 - a.x1)))
                 .then_with(|| a.feature_number.cmp(&b.feature_number))
         });
 
         for seed in lane_order {
-            let lane_padding = if seed.is_regulatory {
+            let lane_padding = if seed.is_regulatory || seed.is_array_track {
                 REGULATORY_LANE_PADDING
             } else {
                 FEATURE_LANE_PADDING
             };
-            let (lane_side, feature_lane) = if seed.is_regulatory {
+            let (lane_side, feature_lane) = if seed.is_array_track {
+                (
+                    LaneSide::Top,
+                    Self::allocate_lane(&mut feature_lanes_top, seed.x1, seed.x2, lane_padding),
+                )
+            } else if seed.is_regulatory {
                 if regulatory_tracks_near_baseline {
                     (LaneSide::RegulatoryNearBaseline, 0)
                 } else {
@@ -1378,17 +2084,17 @@ impl RenderDnaLinear {
         let bottom_natural_extent =
             Self::side_extent(bottom_lane_count, default_style).max(BASELINE_SIDE_MIN_EXTENT);
         let natural_total = (top_natural_extent + bottom_natural_extent).max(1.0);
-        let condensed_text_half_extent = self.condensed_helical_text_half_extent(viewport);
-        let condensed_band_total = condensed_text_half_extent.unwrap_or(0.0) * 2.0;
+        let sequence_text_half_extent = self.sequence_base_text_half_extent(viewport);
+        let sequence_text_band_total = sequence_text_half_extent.unwrap_or(0.0) * 2.0;
         let available_total = (self.area.height()
             - BASELINE_TOP_PADDING
             - BASELINE_BOTTOM_PADDING
-            - condensed_band_total)
+            - sequence_text_band_total)
             .max(40.0);
         let top_target_extent = available_total * (top_natural_extent / natural_total);
         let bottom_target_extent = available_total * (bottom_natural_extent / natural_total);
 
-        let reserved_half = condensed_text_half_extent.unwrap_or(0.0);
+        let reserved_half = sequence_text_half_extent.unwrap_or(0.0);
         let baseline = self.area.top() + BASELINE_TOP_PADDING + reserved_half + top_target_extent;
         let baseline_min = self.area.top() + BASELINE_TOP_PADDING + reserved_half;
         let baseline_max = self.area.bottom() - BASELINE_BOTTOM_PADDING - reserved_half;
@@ -1439,10 +2145,10 @@ impl RenderDnaLinear {
             MIN_REGULATORY_FEATURE_GAP,
             MIN_REGULATORY_FEATURE_HEIGHT,
         );
-        let condensed_feature_clearance = self
-            .condensed_helical_text_half_extent(viewport)
-            .map(|half_extent| half_extent + CONDENSED_FEATURE_CLEARANCE_PADDING);
-        if let Some(min_clearance) = condensed_feature_clearance {
+        let sequence_feature_clearance = self
+            .sequence_base_text_half_extent(viewport)
+            .map(|half_extent| half_extent + SEQUENCE_BASE_FEATURE_CLEARANCE_PADDING);
+        if let Some(min_clearance) = sequence_feature_clearance {
             top_style.margin = top_style.margin.max(min_clearance + top_style.height * 0.5);
             bottom_style.margin = bottom_style
                 .margin
@@ -1451,7 +2157,7 @@ impl RenderDnaLinear {
                 .margin
                 .max(min_clearance + regulatory_top_style.height * 0.5);
         }
-        let regulatory_near_baseline_margin = condensed_feature_clearance
+        let regulatory_near_baseline_margin = sequence_feature_clearance
             .map(|min_clearance| {
                 (min_clearance + REGULATORY_FEATURE_HEIGHT * 0.5).max(REGULATORY_BASELINE_MARGIN)
             })
@@ -1488,7 +2194,7 @@ impl RenderDnaLinear {
                         } else {
                             0.0
                         };
-                    if let Some(min_clearance) = condensed_feature_clearance {
+                    if let Some(min_clearance) = sequence_feature_clearance {
                         required_clearance =
                             required_clearance.max(min_clearance + side_style.height * 0.5);
                     }
@@ -1510,8 +2216,9 @@ impl RenderDnaLinear {
                 LaneSide::RegulatoryNearBaseline => self.baseline_y() - side_style.margin,
             };
             let lane_is_bottom_side = matches!(item.lane_side, LaneSide::Bottom);
-            let suppress_introns =
-                seed.is_array_track || matches!(item.lane_side, LaneSide::RegulatoryNearBaseline);
+            let suppress_introns = !seed.is_junction_array_probe
+                && (seed.is_array_track
+                    || matches!(item.lane_side, LaneSide::RegulatoryNearBaseline));
             let exon_rects: Vec<Rect> = seed
                 .exon_segments
                 .iter()
@@ -1526,7 +2233,12 @@ impl RenderDnaLinear {
             let rect = if exon_rects.is_empty() {
                 let (min_x, max_x) = seed.connector_segments.iter().fold(
                     (f32::INFINITY, f32::NEG_INFINITY),
-                    |(min_x, max_x), (start_x, end_x)| (min_x.min(*start_x), max_x.max(*end_x)),
+                    |(min_x, max_x), connector| {
+                        (
+                            min_x.min(connector.visible_x1),
+                            max_x.max(connector.visible_x2),
+                        )
+                    },
                 );
                 if !min_x.is_finite() || !max_x.is_finite() || max_x <= min_x {
                     continue;
@@ -1549,17 +2261,18 @@ impl RenderDnaLinear {
             } else {
                 center_y - connector_delta
             };
-            let mut intron_connectors: Vec<[Pos2; 3]> = Vec::new();
+            let mut intron_connectors: Vec<IntronConnectorPosition> = Vec::new();
             if !suppress_introns {
-                for (start_x, end_x) in &seed.connector_segments {
-                    if end_x <= start_x {
-                        continue;
+                for connector in &seed.connector_segments {
+                    if let Some(position) = self.visible_intron_connector(
+                        connector.start_bp,
+                        connector.end_bp,
+                        viewport,
+                        center_y,
+                        connector_apex_y,
+                    ) {
+                        intron_connectors.push(position);
                     }
-                    let start = Pos2::new(*start_x, center_y);
-                    let end = Pos2::new(*end_x, center_y);
-                    let apex_x = (start.x + end.x) * 0.5;
-                    let apex = Pos2::new(apex_x, connector_apex_y);
-                    intron_connectors.push([start, apex, end]);
                 }
             }
 
@@ -1572,6 +2285,7 @@ impl RenderDnaLinear {
                 color: seed.color,
                 is_regulatory: seed.is_regulatory,
                 is_array_track: seed.is_array_track,
+                is_junction_array_probe: seed.is_junction_array_probe,
                 array_stroke: seed.array_stroke,
                 is_mcs: seed.is_mcs,
                 is_variation: seed.is_variation,
@@ -2266,6 +2980,7 @@ impl RenderDnaLinear {
             },
             Color32::BLACK,
         );
+        self.draw_array_color_legend(painter);
         painter.text(
             Pos2::new(self.area.right() - 6.0, self.area.top() + 6.0),
             Align2::RIGHT_TOP,
@@ -2307,9 +3022,10 @@ impl RenderDnaLinear {
             Pos2::new(self.area.right() - 6.0, self.area.top() + 34.0),
             Align2::RIGHT_TOP,
             format!(
-                "route: {} | setting: {} | compressed={} | parallel={} | rev-alpha={:.2} | hide-pref={} | backbone={}",
+                "route: {} | setting: {} | letters={} | compressed={} | parallel={} | rev-alpha={:.2} | hide-pref={} | backbone={}",
                 status.route_policy_label(),
                 status.mode_setting_label(),
+                status.sequence_bases_enabled,
                 status.helical_enabled,
                 status.helical_parallel_strands,
                 status.reverse_strand_opacity,
@@ -2351,23 +3067,66 @@ impl RenderDnaLinear {
             },
             Color32::from_gray(110),
         );
-        if cfg!(debug_assertions) {
+    }
+
+    fn draw_array_color_legend(&self, painter: &egui::Painter) {
+        if !self.features.iter().any(|feature| feature.is_array_track) {
+            return;
+        }
+        let origin = Pos2::new(self.area.left() + 6.0, self.area.top() + 26.0);
+        let panel = Rect::from_min_size(origin, Vec2::new(422.0, 32.0));
+        painter.rect_filled(
+            panel,
+            4.0,
+            Color32::from_rgba_unmultiplied(255, 255, 255, 210),
+        );
+        painter.rect_stroke(
+            panel,
+            4.0,
+            Stroke::new(0.6_f32, Color32::from_rgba_unmultiplied(80, 80, 80, 70)),
+            StrokeKind::Outside,
+        );
+        painter.text(
+            origin + Vec2::new(7.0, 5.0),
+            Align2::LEFT_TOP,
+            "Array: logFC",
+            FontId {
+                size: 9.5,
+                family: FontFamily::Monospace,
+            },
+            Color32::from_gray(55),
+        );
+        let swatches = [
+            (Color32::from_rgb(220, 38, 38), "+"),
+            (Color32::from_rgb(150, 150, 150), "~0"),
+            (Color32::from_rgb(37, 99, 235), "-"),
+        ];
+        let mut x = origin.x + 92.0;
+        for (color, label) in swatches {
+            let rect = Rect::from_min_size(Pos2::new(x, origin.y + 7.0), Vec2::new(15.0, 10.0));
+            painter.rect_filled(rect, 1.5, color);
             painter.text(
-                Pos2::new(self.area.right() - 6.0, self.area.top() + 73.0),
-                Align2::RIGHT_TOP,
-                format!(
-                    "tiers: std<= {:.2} hel<= {:.2} cond<= {:.2}",
-                    status.routing.tier_standard_max_density,
-                    status.routing.tier_helical_max_density,
-                    status.routing.tier_condensed_max_density
-                ),
+                Pos2::new(x + 19.0, origin.y + 4.0),
+                Align2::LEFT_TOP,
+                label,
                 FontId {
                     size: 9.0,
                     family: FontFamily::Monospace,
                 },
-                Color32::from_gray(110),
+                Color32::from_gray(55),
             );
+            x += if label == "~0" { 45.0 } else { 32.0 };
         }
+        painter.text(
+            Pos2::new(origin.x + 218.0, origin.y + 5.0),
+            Align2::LEFT_TOP,
+            "darker/outlined = stronger or adj.P.Val<=0.05",
+            FontId {
+                size: 9.0,
+                family: FontFamily::Monospace,
+            },
+            Color32::from_gray(65),
+        );
     }
 
     fn orf_color(frame: i32) -> Option<Color32> {
@@ -2389,65 +3148,67 @@ impl RenderDnaLinear {
         color: Color32,
         viewport: LinearViewport,
     ) {
-        let from = self.normalize_pos(orf.from() as isize);
-        let to = self.normalize_pos(orf.to() as isize);
-        let start = from.min(to);
-        let end_exclusive = from.max(to).saturating_add(1).min(self.sequence_length);
-        if start >= end_exclusive {
-            return;
-        }
+        for (start, end_exclusive) in orf.spans_0based(self.sequence_length) {
+            let Some((draw_start, draw_end)) =
+                Self::range_overlap(start, end_exclusive, viewport.start, viewport.end)
+            else {
+                continue;
+            };
 
-        let Some((draw_start, draw_end)) =
-            Self::range_overlap(start, end_exclusive, viewport.start, viewport.end)
-        else {
-            return;
-        };
+            let x1 = self.bp_to_x(draw_start, viewport);
+            let x2 = self.bp_to_x(draw_end, viewport).max(x1 + 1.0);
+            let frame_abs = orf.frame().unsigned_abs() as f32;
+            let y = if orf.is_reverse() {
+                self.baseline_y() + 10.0 + frame_abs * 7.0
+            } else {
+                self.baseline_y() - 10.0 - frame_abs * 7.0
+            };
 
-        let x1 = self.bp_to_x(draw_start, viewport);
-        let x2 = self.bp_to_x(draw_end, viewport).max(x1 + 1.0);
-        let frame_abs = orf.frame().unsigned_abs() as f32;
-        let y = if orf.is_reverse() {
-            self.baseline_y() + 10.0 + frame_abs * 7.0
-        } else {
-            self.baseline_y() - 10.0 - frame_abs * 7.0
-        };
-
-        let rect = Rect::from_min_max(
-            Pos2::new(x1, y - ORF_HEIGHT / 2.0),
-            Pos2::new(x2, y + ORF_HEIGHT / 2.0),
-        );
-        painter.rect_filled(rect, 1.0, color);
-
-        let tip = if orf.is_reverse() {
-            Pos2::new(x1 - 5.0, y)
-        } else {
-            Pos2::new(x2 + 5.0, y)
-        };
-        let base_x = if orf.is_reverse() { x1 } else { x2 };
-        painter.add(egui::Shape::convex_polygon(
-            vec![
-                Pos2::new(base_x, y - ORF_HEIGHT / 2.0),
-                tip,
-                Pos2::new(base_x, y + ORF_HEIGHT / 2.0),
-            ],
-            color,
-            Stroke::NONE,
-        ));
-
-        let label = format!("ORF {}", orf.frame());
-        let label_width = Self::estimate_label_width(&label);
-        if (x2 - x1) >= label_width + 6.0 {
-            let label_pos = Pos2::new((x1 + x2) / 2.0, y);
-            painter.text(
-                label_pos,
-                Align2::CENTER_CENTER,
-                label,
-                FontId {
-                    size: 8.0,
-                    family: FontFamily::Monospace,
-                },
-                Color32::BLACK,
+            let rect = Rect::from_min_max(
+                Pos2::new(x1, y - ORF_HEIGHT / 2.0),
+                Pos2::new(x2, y + ORF_HEIGHT / 2.0),
             );
+            painter.rect_filled(rect, 1.0, color);
+
+            let tip = if orf.is_reverse() {
+                Pos2::new(x1 - 5.0, y)
+            } else {
+                Pos2::new(x2 + 5.0, y)
+            };
+            let base_x = if orf.is_reverse() { x1 } else { x2 };
+            // Do not put a stop-direction arrow at a clipped or split-origin edge.
+            let terminal = if orf.is_reverse() {
+                draw_start == orf.from() as usize
+            } else {
+                draw_end == orf.to() as usize + 1
+            };
+            if terminal {
+                painter.add(egui::Shape::convex_polygon(
+                    vec![
+                        Pos2::new(base_x, y - ORF_HEIGHT / 2.0),
+                        tip,
+                        Pos2::new(base_x, y + ORF_HEIGHT / 2.0),
+                    ],
+                    color,
+                    Stroke::NONE,
+                ));
+            }
+
+            let label = format!("ORF {}", orf.frame());
+            let label_width = Self::estimate_label_width(&label);
+            if (x2 - x1) >= label_width + 6.0 {
+                let label_pos = Pos2::new((x1 + x2) / 2.0, y);
+                painter.text(
+                    label_pos,
+                    Align2::CENTER_CENTER,
+                    label,
+                    FontId {
+                        size: 8.0,
+                        family: FontFamily::Monospace,
+                    },
+                    Color32::BLACK,
+                );
+            }
         }
     }
 
@@ -2478,7 +3239,8 @@ impl RenderDnaLinear {
         }
     }
 
-    fn draw_gc_contents(&self, painter: &egui::Painter, viewport: LinearViewport) {
+    fn draw_gc_contents(&mut self, painter: &egui::Painter, viewport: LinearViewport) {
+        crate::gentle_gui_profile_scope!("RenderDnaLinear::gc_contents");
         let (show_gc, gc_content_bin_size_bp) = self
             .display
             .read()
@@ -2492,20 +3254,30 @@ impl RenderDnaLinear {
         let Ok(dna) = self.dna.read() else {
             return;
         };
-        let computed_gc_contents;
         let cached_gc_regions = dna.gc_content().regions();
-        let gc_regions = if Self::can_reuse_cached_gc_contents(
+        if Self::can_reuse_cached_gc_contents(
             gc_content_bin_size_bp,
             cached_gc_regions.is_empty(),
             dna.is_empty(),
         ) {
-            cached_gc_regions
+            self.gc_cache_key = None;
         } else {
-            computed_gc_contents = GcContents::new_from_sequence_with_bin_size(
-                dna.forward_bytes(),
-                gc_content_bin_size_bp,
-            );
-            computed_gc_contents.regions()
+            let key = (dna.feature_generation(), dna.len(), gc_content_bin_size_bp);
+            if self.gc_cache_key == Some(key) {
+                self.gc_cache_hits = self.gc_cache_hits.saturating_add(1);
+            } else {
+                self.gc_cache = GcContents::new_from_sequence_with_bin_size(
+                    dna.forward_bytes(),
+                    gc_content_bin_size_bp,
+                );
+                self.gc_cache_key = Some(key);
+                self.gc_cache_misses = self.gc_cache_misses.saturating_add(1);
+            }
+        }
+        let gc_regions = if self.gc_cache_key.is_some() {
+            self.gc_cache.regions()
+        } else {
+            cached_gc_regions
         };
         for region in gc_regions {
             let region_end_exclusive = region.to().saturating_add(1).min(self.sequence_length);
@@ -2579,8 +3351,19 @@ impl RenderDnaLinear {
     fn draw_construct_reasoning_overlay(&self, painter: &egui::Painter, viewport: LinearViewport) {
         let show_labels = self.bp_per_px(viewport) <= CONSTRUCT_REASONING_LABEL_MAX_BP_PER_PX;
         for overlay in &self.cached_construct_reasoning_overlay_positions {
+            let stroke = if self.selected_reasoning_evidence_id.as_deref()
+                == Some(overlay.evidence_id.as_str())
+            {
+                Stroke::new(2.0_f32, Color32::YELLOW)
+            } else if self.hovered_reasoning_evidence_id.as_deref()
+                == Some(overlay.evidence_id.as_str())
+            {
+                Stroke::new(1.6_f32, Color32::WHITE)
+            } else {
+                overlay.base_stroke
+            };
             painter.rect_filled(overlay.rect, 2.5, overlay.fill);
-            painter.rect_stroke(overlay.rect, 2.5, overlay.stroke, StrokeKind::Inside);
+            painter.rect_stroke(overlay.rect, 2.5, stroke, StrokeKind::Inside);
             if !show_labels || overlay.label.is_empty() {
                 continue;
             }
@@ -2602,6 +3385,7 @@ impl RenderDnaLinear {
     }
 
     fn draw_features(&self, painter: &egui::Painter, detail: LinearDetailLevel) {
+        crate::gentle_gui_profile_scope!("RenderDnaLinear::draw_features");
         let (show_features, external_font_size, external_bg_opacity) = self
             .display
             .read()
@@ -2721,15 +3505,15 @@ impl RenderDnaLinear {
                     Stroke::new(1.5_f32, feature.color),
                 );
             }
+            let connector_stroke = if feature.is_junction_array_probe {
+                Stroke::new(1.3_f32, Color32::from_rgb(124, 58, 237))
+            } else {
+                Stroke::new(1.0_f32, Color32::DARK_GRAY)
+            };
             for connector in &feature.intron_connectors {
-                painter.line_segment(
-                    [connector[0], connector[1]],
-                    Stroke::new(1.0_f32, Color32::DARK_GRAY),
-                );
-                painter.line_segment(
-                    [connector[1], connector[2]],
-                    Stroke::new(1.0_f32, Color32::DARK_GRAY),
-                );
+                for segment in connector.points().windows(2) {
+                    painter.line_segment([segment[0], segment[1]], connector_stroke);
+                }
             }
 
             if selected || hovered {
@@ -2944,90 +3728,101 @@ impl RenderDnaLinear {
         }
     }
 
-    fn draw_restriction_enzyme_sites(
+    fn refresh_restriction_site_presentations(
         &mut self,
         painter: &egui::Painter,
         viewport: LinearViewport,
         detail: LinearDetailLevel,
     ) {
-        self.restriction_enzyme_sites.clear();
+        let display = Arc::clone(&self.display);
+        let Ok(display) = display.read() else {
+            self.restriction_enzyme_sites.clear();
+            self.restriction_site_presentations.clear();
+            self.restriction_site_presentation_message = None;
+            self.restriction_site_presentation_cache_key = None;
+            return;
+        };
+        let dna = Arc::clone(&self.dna);
+        let Ok(dna) = dna.read() else {
+            self.restriction_enzyme_sites.clear();
+            self.restriction_site_presentations.clear();
+            self.restriction_site_presentation_message = None;
+            self.restriction_site_presentation_cache_key = None;
+            return;
+        };
+        let cache_key = RestrictionSitePresentationCacheKey {
+            viewport,
+            area: self.area,
+            baseline_y_bits: self.baseline_y().to_bits(),
+            detail,
+            restriction_generation: dna.restriction_enzyme_group_generation(),
+            sequence_length: self.sequence_length,
+            display_revision: display.revision(),
+        };
+        if self.restriction_site_presentation_cache_key.as_ref() == Some(&cache_key) {
+            self.restriction_site_presentation_cache_hits = self
+                .restriction_site_presentation_cache_hits
+                .saturating_add(1);
+            return;
+        }
 
-        if !self
-            .display
-            .read()
-            .map(|display| display.show_restriction_enzyme_sites())
-            .unwrap_or(false)
-        {
+        let show_restriction_enzyme_sites = display.show_restriction_enzyme_sites();
+        let display_mode = display.restriction_enzyme_display_mode();
+        let preferred_restriction_enzymes = display.preferred_restriction_enzymes().to_vec();
+        drop(display);
+
+        crate::gentle_gui_profile_scope!(
+            "RenderDnaLinear::restriction_site_presentation_cache_miss"
+        );
+        self.restriction_site_presentation_cache_misses = self
+            .restriction_site_presentation_cache_misses
+            .saturating_add(1);
+        self.restriction_enzyme_sites.clear();
+        self.restriction_site_presentations.clear();
+        self.restriction_site_presentation_message = None;
+        self.restriction_site_presentation_cache_key = Some(cache_key);
+
+        if !show_restriction_enzyme_sites {
             return;
         }
         if !detail.show_restriction_sites {
-            painter.text(
-                Pos2::new(self.area.left() + 6.0, self.area.bottom() - 6.0),
-                Align2::LEFT_BOTTOM,
-                "Restriction sites hidden at this zoom; zoom in to inspect cut sites.",
-                FontId {
-                    size: 10.0,
-                    family: FontFamily::Monospace,
-                },
-                Color32::DARK_GRAY,
+            self.restriction_site_presentation_message = Some(
+                "Restriction sites hidden at this zoom; zoom in to inspect cut sites.".to_string(),
             );
             return;
         }
 
-        let (display_mode, preferred_restriction_enzymes) = self
-            .display
-            .read()
-            .map(|display| {
-                (
-                    display.restriction_enzyme_display_mode(),
-                    display.preferred_restriction_enzymes().to_vec(),
-                )
-            })
-            .unwrap_or((RestrictionEnzymeDisplayMode::default(), vec![]));
-
         let mut visible_groups: Vec<_> = Vec::new();
         let mut total_groups_in_view = 0usize;
-        if let Ok(dna) = self.dna.read() {
-            for (key, names) in dna.restriction_enzyme_groups() {
-                let pos = self.normalize_pos(key.pos());
-                if pos < viewport.start || pos >= viewport.end {
-                    continue;
-                }
-                total_groups_in_view = total_groups_in_view.saturating_add(1);
-                if DnaDisplay::restriction_group_matches_mode(
-                    display_mode,
-                    &preferred_restriction_enzymes,
-                    key,
-                    names,
-                ) {
-                    visible_groups.push((key.clone(), names.clone()));
-                }
+        self.refresh_restriction_group_index(&dna);
+        drop(dna);
+        for entry in self.restriction_group_index_range(viewport) {
+            total_groups_in_view = total_groups_in_view.saturating_add(1);
+            if DnaDisplay::restriction_group_matches_mode(
+                display_mode,
+                &preferred_restriction_enzymes,
+                &entry.key,
+                &entry.names,
+            ) {
+                visible_groups.push((entry.key.clone(), entry.names.clone()));
             }
         }
         visible_groups.sort_by(|(left, _), (right, _)| left.cmp(right));
         if visible_groups.is_empty() {
-            let empty_text = if total_groups_in_view == 0
-                || matches!(display_mode, RestrictionEnzymeDisplayMode::AllInView)
-            {
-                RestrictionEnzymeDisplayMode::AllInView
-                    .empty_state_label()
-                    .to_string()
-            } else {
-                format!(
-                    "{} {} total cut sites hidden by the current filter.",
-                    display_mode.empty_state_label(),
-                    total_groups_in_view
-                )
-            };
-            painter.text(
-                Pos2::new(self.area.left() + 6.0, self.area.bottom() - 6.0),
-                Align2::LEFT_BOTTOM,
-                empty_text,
-                FontId {
-                    size: 10.0,
-                    family: FontFamily::Monospace,
+            self.restriction_site_presentation_message = Some(
+                if total_groups_in_view == 0
+                    || matches!(display_mode, RestrictionEnzymeDisplayMode::AllInView)
+                {
+                    RestrictionEnzymeDisplayMode::AllInView
+                        .empty_state_label()
+                        .to_string()
+                } else {
+                    format!(
+                        "{} {} total cut sites hidden by the current filter.",
+                        display_mode.empty_state_label(),
+                        total_groups_in_view
+                    )
                 },
-                Color32::DARK_GRAY,
             );
             return;
         }
@@ -3040,53 +3835,12 @@ impl RenderDnaLinear {
             let center_x = (top_x + bottom_x) * 0.5;
             let y = self.baseline_y();
             let group_color = DnaDisplay::restriction_enzyme_group_color(key.number_of_cuts());
-            let selected_here = self
-                .selected_enzyme
-                .as_ref()
-                .map(|selected| selected.key == *key)
-                .unwrap_or(false);
-            let label_color = if selected_here {
-                Color32::BLACK
-            } else {
-                group_color
-            };
-            let cut_color = if selected_here {
-                Color32::BLACK
-            } else {
-                DnaDisplay::restriction_enzyme_geometry_color(key.cut_geometry())
-            };
-            let stroke_width = if selected_here { 2.0_f32 } else { 1.0_f32 };
-
-            if (top_x - bottom_x).abs() < 0.5 {
-                painter.line_segment(
-                    [Pos2::new(top_x, y - 8.0), Pos2::new(top_x, y + 8.0)],
-                    Stroke::new(stroke_width, cut_color),
-                );
-            } else {
-                painter.line_segment(
-                    [Pos2::new(top_x, y - 8.0), Pos2::new(top_x, y)],
-                    Stroke::new(stroke_width, cut_color),
-                );
-                painter.line_segment(
-                    [Pos2::new(top_x, y), Pos2::new(bottom_x, y)],
-                    Stroke::new(stroke_width, cut_color),
-                );
-                painter.line_segment(
-                    [Pos2::new(bottom_x, y), Pos2::new(bottom_x, y + 8.0)],
-                    Stroke::new(stroke_width, cut_color),
-                );
-            }
-
-            if let Some(hovered) = &self.hover_enzyme
-                && hovered.key == *key
-            {
-                painter.rect_filled(hovered.area, 1.0, Color32::LIGHT_YELLOW);
-            }
+            let cut_color = DnaDisplay::restriction_enzyme_geometry_color(key.cut_geometry());
             let tick_rect = Rect::from_min_max(
                 Pos2::new(top_x.min(bottom_x) - 3.0, y - 9.0),
                 Pos2::new(top_x.max(bottom_x) + 3.0, y + 9.0),
             );
-            let (area, hit_areas) = if detail.show_restriction_labels {
+            let (area, hit_areas, label) = if detail.show_restriction_labels {
                 let label = names.join(",");
                 let label_width = Self::estimate_label_width(&label);
                 let label_left = center_x - label_width / 2.0;
@@ -3107,20 +3861,26 @@ impl RenderDnaLinear {
                 } else {
                     Align2::CENTER_TOP
                 };
-                let text_rect = painter.text(
-                    Pos2::new(center_x, label_y),
-                    align,
+                let galley = painter.layout_no_wrap(
                     label,
                     FontId {
                         size: 9.0,
                         family: FontFamily::Monospace,
                     },
-                    label_color,
+                    Color32::PLACEHOLDER,
                 );
+                let text_rect = align.anchor_size(Pos2::new(center_x, label_y), galley.size());
                 let label_rect = text_rect.expand(2.0);
-                (label_rect.union(tick_rect), vec![tick_rect, label_rect])
+                (
+                    label_rect.union(tick_rect),
+                    vec![tick_rect, label_rect],
+                    Some(RestrictionSiteLabelPresentation {
+                        rect: text_rect,
+                        galley,
+                    }),
+                )
             } else {
-                (tick_rect, vec![tick_rect])
+                (tick_rect, vec![tick_rect], None)
             };
             self.restriction_enzyme_sites
                 .push(RestrictionEnzymePosition::with_hit_areas(
@@ -3128,6 +3888,102 @@ impl RenderDnaLinear {
                     key.clone(),
                     hit_areas,
                 ));
+            self.restriction_site_presentations
+                .push(RestrictionSitePresentation {
+                    top_x,
+                    bottom_x,
+                    y,
+                    group_color,
+                    cut_color,
+                    label,
+                });
+        }
+    }
+
+    fn draw_restriction_enzyme_sites(
+        &mut self,
+        painter: &egui::Painter,
+        viewport: LinearViewport,
+        detail: LinearDetailLevel,
+    ) {
+        self.refresh_restriction_site_presentations(painter, viewport, detail);
+
+        if let Some(message) = &self.restriction_site_presentation_message {
+            painter.text(
+                Pos2::new(self.area.left() + 6.0, self.area.bottom() - 6.0),
+                Align2::LEFT_BOTTOM,
+                message,
+                FontId {
+                    size: 10.0,
+                    family: FontFamily::Monospace,
+                },
+                Color32::DARK_GRAY,
+            );
+            return;
+        }
+
+        for (site, presentation) in self
+            .restriction_enzyme_sites
+            .iter()
+            .zip(&self.restriction_site_presentations)
+        {
+            let selected_here = self
+                .selected_enzyme
+                .as_ref()
+                .is_some_and(|selected| selected.key == site.key);
+            let cut_color = if selected_here {
+                Color32::BLACK
+            } else {
+                presentation.cut_color
+            };
+            let stroke_width = if selected_here { 2.0_f32 } else { 1.0_f32 };
+            if (presentation.top_x - presentation.bottom_x).abs() < 0.5 {
+                painter.line_segment(
+                    [
+                        Pos2::new(presentation.top_x, presentation.y - 8.0),
+                        Pos2::new(presentation.top_x, presentation.y + 8.0),
+                    ],
+                    Stroke::new(stroke_width, cut_color),
+                );
+            } else {
+                painter.line_segment(
+                    [
+                        Pos2::new(presentation.top_x, presentation.y - 8.0),
+                        Pos2::new(presentation.top_x, presentation.y),
+                    ],
+                    Stroke::new(stroke_width, cut_color),
+                );
+                painter.line_segment(
+                    [
+                        Pos2::new(presentation.top_x, presentation.y),
+                        Pos2::new(presentation.bottom_x, presentation.y),
+                    ],
+                    Stroke::new(stroke_width, cut_color),
+                );
+                painter.line_segment(
+                    [
+                        Pos2::new(presentation.bottom_x, presentation.y),
+                        Pos2::new(presentation.bottom_x, presentation.y + 8.0),
+                    ],
+                    Stroke::new(stroke_width, cut_color),
+                );
+            }
+
+            if self
+                .hover_enzyme
+                .as_ref()
+                .is_some_and(|hovered| hovered.key == site.key)
+            {
+                painter.rect_filled(site.area, 1.0, Color32::LIGHT_YELLOW);
+            }
+            if let Some(label) = &presentation.label {
+                let label_color = if selected_here {
+                    Color32::BLACK
+                } else {
+                    presentation.group_color
+                };
+                painter.galley(label.rect.min, Arc::clone(&label.galley), label_color);
+            }
         }
     }
 
@@ -3182,6 +4038,50 @@ mod tests {
         }
     }
 
+    fn make_array_junction_feature(
+        location: Location,
+        extra_qualifiers: Vec<(&str, &str)>,
+    ) -> Feature {
+        let mut qualifiers = vec![
+            ("label".into(), Some("junction probe".to_string())),
+            ("gentle_track_source".into(), Some("Array".to_string())),
+            (
+                "gentle_generated".into(),
+                Some("microarray_track_projection".to_string()),
+            ),
+            (
+                "gentle_array_probe_type".into(),
+                Some("junction".to_string()),
+            ),
+        ];
+        qualifiers.extend(
+            extra_qualifiers
+                .into_iter()
+                .map(|(key, value)| (key.to_string().into(), Some(value.to_string()))),
+        );
+        Feature {
+            kind: "track".into(),
+            location,
+            qualifiers,
+        }
+    }
+
+    fn make_array_feature(location: Location) -> Feature {
+        Feature {
+            kind: "track".into(),
+            location,
+            qualifiers: vec![
+                ("label".into(), Some("array interval".to_string())),
+                ("gentle_track_source".into(), Some("Array".to_string())),
+                (
+                    "gentle_generated".into(),
+                    Some("microarray_track_projection".to_string()),
+                ),
+                ("logFC".into(), Some("1.5".to_string())),
+            ],
+        }
+    }
+
     fn test_renderer_with_feature(feature: Feature, sequence_len: usize) -> RenderDnaLinear {
         test_renderer_with_features(vec![feature], sequence_len)
     }
@@ -3206,6 +4106,190 @@ mod tests {
         renderer
     }
 
+    fn test_construct_reasoning_overlay(
+        graph_id: &str,
+        evidence_id: &str,
+        start_0based: usize,
+    ) -> ConstructReasoningOverlay {
+        ConstructReasoningOverlay {
+            graph_id: graph_id.to_string(),
+            seq_id: "seq1".to_string(),
+            objective_title: "Inspect construct".to_string(),
+            objective_goal: "Cache overlay presentation".to_string(),
+            evidence: vec![ConstructReasoningOverlaySpan {
+                annotation_id: format!("annotation_{evidence_id}"),
+                evidence_id: evidence_id.to_string(),
+                summary_id: format!("summary_{evidence_id}"),
+                summary_title: "Promoter".to_string(),
+                summary_subtitle: "Promoter candidate".to_string(),
+                summary_candidate_count: 1,
+                summary_review_status: "draft".to_string(),
+                start_0based,
+                end_0based_exclusive: start_0based + 80,
+                strand: Some("+".to_string()),
+                role: ConstructRole::Promoter,
+                evidence_class: EvidenceClass::ReliableAnnotation,
+                label: "Promoter".to_string(),
+                rationale: String::new(),
+                score: None,
+                confidence: None,
+                context_tags: vec![],
+                provenance_kind: String::new(),
+                provenance_refs: vec![],
+                source_kind: "generated_annotation".to_string(),
+                supporting_fact_labels: vec![],
+                supporting_decision_titles: vec![],
+                transcript_context_status: None,
+                effect_tags: vec![],
+                editable_status: crate::engine::EditableStatus::Draft,
+                warnings: vec![],
+                notes: vec![],
+            }],
+        }
+    }
+
+    fn render_test_pass(ctx: &egui::Context, renderer: &mut RenderDnaLinear) {
+        ctx.begin_pass(egui::RawInput::default());
+        crate::egui_compat::show_central_panel_for_test_context(
+            ctx,
+            egui::CentralPanel::default(),
+            |ui| renderer.render(ui, renderer.area),
+        );
+        crate::egui_compat::discard_test_pass_output(ctx);
+    }
+
+    fn refresh_test_feature_index(renderer: &mut RenderDnaLinear) {
+        let dna = Arc::clone(&renderer.dna);
+        let dna = dna.read().expect("read test dna");
+        renderer.refresh_feature_interval_index(&dna);
+    }
+
+    fn refresh_test_restriction_group_index(renderer: &mut RenderDnaLinear) {
+        let dna = Arc::clone(&renderer.dna);
+        let dna = dna.read().expect("read test dna");
+        renderer.refresh_restriction_group_index(&dna);
+    }
+
+    #[derive(Debug)]
+    struct DeterministicLcg(u64);
+
+    impl DeterministicLcg {
+        fn new(seed: u64) -> Self {
+            Self(seed)
+        }
+
+        fn next_u64(&mut self) -> u64 {
+            self.0 = self
+                .0
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            self.0
+        }
+
+        fn below(&mut self, upper_exclusive: usize) -> usize {
+            assert!(upper_exclusive > 0);
+            (self.next_u64() % upper_exclusive as u64) as usize
+        }
+    }
+
+    fn random_non_empty_range(rng: &mut DeterministicLcg, sequence_len: usize) -> (usize, usize) {
+        let start = rng.below(sequence_len);
+        let end = start + 1 + rng.below(sequence_len - start);
+        (start, end)
+    }
+
+    fn random_feature_location(
+        rng: &mut DeterministicLcg,
+        sequence_len: usize,
+        ordinal: usize,
+    ) -> Location {
+        match ordinal % 9 {
+            0 => {
+                let (start, end) = random_non_empty_range(rng, sequence_len);
+                Location::simple_range(start as i64, end as i64)
+            }
+            1 | 2 => {
+                let mut ranges = (0..3)
+                    .map(|_| random_non_empty_range(rng, sequence_len))
+                    .collect::<Vec<_>>();
+                ranges.sort_unstable();
+                let joined = Location::Join(
+                    ranges
+                        .into_iter()
+                        .map(|(start, end)| Location::simple_range(start as i64, end as i64))
+                        .collect(),
+                );
+                if ordinal % 9 == 2 {
+                    Location::Complement(Box::new(joined))
+                } else {
+                    joined
+                }
+            }
+            3 => {
+                let (start, end) = random_non_empty_range(rng, sequence_len);
+                Location::simple_range(end as i64, start as i64)
+            }
+            4 => {
+                let pos = rng.below(sequence_len + 1);
+                Location::simple_range(pos as i64, pos as i64)
+            }
+            5 => Location::simple_range(-(rng.below(32) as i64) - 1, rng.below(32) as i64),
+            6 => {
+                let start = if ordinal.is_multiple_of(2) {
+                    sequence_len.saturating_sub(16)
+                } else {
+                    sequence_len + rng.below(32)
+                };
+                Location::simple_range(start as i64, (sequence_len + 1 + rng.below(64)) as i64)
+            }
+            7 => Location::simple_range(0, (sequence_len + rng.below(64)) as i64),
+            _ => Location::Join(Vec::new()),
+        }
+    }
+
+    fn normalized_feature_bounds(feature: &Feature, sequence_len: usize) -> Option<(usize, usize)> {
+        let (raw_start, raw_end) = feature.location.find_bounds().ok()?;
+        if raw_start < 0 || raw_end < 0 {
+            return None;
+        }
+        let mut start = raw_start as usize;
+        let mut end = raw_end as usize;
+        if end < start {
+            std::mem::swap(&mut start, &mut end);
+        }
+        if start >= sequence_len {
+            return None;
+        }
+        end = end.min(sequence_len);
+        (end > start).then_some((start, end))
+    }
+
+    fn brute_force_feature_overlaps(
+        features: &[Feature],
+        sequence_len: usize,
+        viewport: LinearViewport,
+    ) -> Vec<usize> {
+        if viewport.end <= viewport.start {
+            return Vec::new();
+        }
+        features
+            .iter()
+            .enumerate()
+            .filter_map(|(feature_idx, feature)| {
+                let (start, end) = normalized_feature_bounds(feature, sequence_len)?;
+                (start < viewport.end && end > viewport.start).then_some(feature_idx)
+            })
+            .collect()
+    }
+
+    fn test_viewport(start: usize, end: usize) -> LinearViewport {
+        LinearViewport {
+            start,
+            end,
+            span: end.saturating_sub(start),
+        }
+    }
+
     fn restriction_ready_renderer(sequence: &str) -> RenderDnaLinear {
         let mut dna = DNAsequence::from_sequence(sequence).expect("valid DNA");
         *dna.restriction_enzymes_mut() = active_restriction_enzymes();
@@ -3216,6 +4300,410 @@ mod tests {
         let mut renderer = RenderDnaLinear::new(dna, display);
         renderer.area = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1200.0, 600.0));
         renderer
+    }
+
+    #[test]
+    fn feature_interval_index_returns_exact_overlaps_for_viewport() {
+        let features = vec![
+            make_test_feature(Location::simple_range(10, 20)),
+            make_test_feature(Location::simple_range(80, 200)),
+            make_test_feature(Location::simple_range(110, 120)),
+            make_test_feature(Location::simple_range(150, 180)),
+            make_test_feature(Location::Join(vec![
+                Location::simple_range(40, 60),
+                Location::simple_range(220, 240),
+            ])),
+            make_test_feature(Location::Complement(Box::new(Location::Join(vec![
+                Location::simple_range(300, 320),
+                Location::simple_range(360, 380),
+            ])))),
+        ];
+        let mut renderer = test_renderer_with_features(features, 500);
+        refresh_test_feature_index(&mut renderer);
+
+        let hits = renderer.feature_indices_overlapping_viewport(LinearViewport {
+            start: 100,
+            end: 150,
+            span: 50,
+        });
+        assert_eq!(hits, vec![1, 2, 4]);
+
+        let complement_join_hits = renderer.feature_indices_overlapping_viewport(LinearViewport {
+            start: 340,
+            end: 350,
+            span: 10,
+        });
+        assert_eq!(complement_join_hits, vec![5]);
+    }
+
+    #[test]
+    fn feature_interval_index_matches_brute_force_oracle() {
+        const SEQUENCE_LEN: usize = 1_000;
+        const FEATURE_SET_COUNT: usize = 32;
+        const RANDOM_FEATURE_COUNT: usize = 72;
+        const RANDOM_VIEWPORT_COUNT: usize = 96;
+
+        let mut rng = DeterministicLcg::new(0x5eed_fea7_1a7e_2026);
+        let fixed_viewports = [
+            test_viewport(0, 0),
+            test_viewport(0, 1),
+            test_viewport(0, SEQUENCE_LEN),
+            test_viewport(SEQUENCE_LEN - 1, SEQUENCE_LEN),
+            test_viewport(SEQUENCE_LEN, SEQUENCE_LEN),
+            test_viewport(SEQUENCE_LEN, SEQUENCE_LEN + 1),
+            test_viewport(50, 100),
+            test_viewport(100, 200),
+            test_viewport(150, 160),
+            test_viewport(199, 201),
+            test_viewport(200, 300),
+            test_viewport(300, 200),
+            test_viewport(50, 350),
+        ];
+
+        for feature_set in 0..FEATURE_SET_COUNT {
+            let mut features = vec![
+                make_test_feature(Location::simple_range(0, SEQUENCE_LEN as i64)),
+                make_test_feature(Location::simple_range(0, 1)),
+                make_test_feature(Location::simple_range(100, 300)),
+                make_test_feature(Location::Join(vec![
+                    Location::simple_range(25, 75),
+                    Location::simple_range(225, 275),
+                ])),
+                make_test_feature(Location::Complement(Box::new(Location::Join(vec![
+                    Location::simple_range(400, 450),
+                    Location::simple_range(600, 650),
+                ])))),
+                make_test_feature(Location::simple_range(700, 700)),
+                make_test_feature(Location::simple_range(-10, 10)),
+                make_test_feature(Location::simple_range(
+                    SEQUENCE_LEN as i64,
+                    SEQUENCE_LEN as i64 + 20,
+                )),
+            ];
+            features.extend((0..RANDOM_FEATURE_COUNT).map(|ordinal| {
+                make_test_feature(random_feature_location(
+                    &mut rng,
+                    SEQUENCE_LEN,
+                    feature_set * RANDOM_FEATURE_COUNT + ordinal,
+                ))
+            }));
+
+            let mut renderer = test_renderer_with_features(features.clone(), SEQUENCE_LEN);
+            refresh_test_feature_index(&mut renderer);
+
+            for viewport in fixed_viewports
+                .into_iter()
+                .chain((0..RANDOM_VIEWPORT_COUNT).map(|_| {
+                    let first = rng.below(SEQUENCE_LEN + 101);
+                    let second = rng.below(SEQUENCE_LEN + 101);
+                    if rng.below(5) == 0 {
+                        test_viewport(first, second)
+                    } else {
+                        test_viewport(first.min(second), first.max(second))
+                    }
+                }))
+            {
+                let expected = brute_force_feature_overlaps(&features, SEQUENCE_LEN, viewport);
+                let actual = renderer.feature_indices_overlapping_viewport(viewport);
+                assert_eq!(
+                    actual, expected,
+                    "feature-set {feature_set}, viewport [{}, {})",
+                    viewport.start, viewport.end
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn feature_interval_index_obeys_half_open_edges_and_empty_queries() {
+        let mut empty_renderer = test_renderer(100);
+        refresh_test_feature_index(&mut empty_renderer);
+        assert!(
+            empty_renderer
+                .feature_indices_overlapping_viewport(test_viewport(20, 40))
+                .is_empty()
+        );
+        assert!(
+            empty_renderer
+                .feature_indices_overlapping_viewport(test_viewport(40, 20))
+                .is_empty()
+        );
+
+        let mut renderer = test_renderer_with_features(
+            vec![make_test_feature(Location::simple_range(10, 20))],
+            100,
+        );
+        refresh_test_feature_index(&mut renderer);
+        assert!(
+            renderer
+                .feature_indices_overlapping_viewport(test_viewport(0, 10))
+                .is_empty(),
+            "touching the feature start has no overlapping base"
+        );
+        assert!(
+            renderer
+                .feature_indices_overlapping_viewport(test_viewport(20, 30))
+                .is_empty(),
+            "touching the feature end has no overlapping base"
+        );
+        assert_eq!(
+            renderer.feature_indices_overlapping_viewport(test_viewport(9, 11)),
+            vec![0]
+        );
+        assert_eq!(
+            renderer.feature_indices_overlapping_viewport(test_viewport(19, 21)),
+            vec![0]
+        );
+    }
+
+    #[test]
+    fn feature_mutation_generation_rebuilds_interval_index() {
+        let mut renderer = test_renderer_with_features(
+            vec![make_test_feature(Location::simple_range(10, 20))],
+            200,
+        );
+        refresh_test_feature_index(&mut renderer);
+        let initial_generation = renderer.feature_interval_index.generation;
+        assert_eq!(
+            renderer.feature_indices_overlapping_viewport(LinearViewport {
+                start: 100,
+                end: 120,
+                span: 20,
+            }),
+            Vec::<usize>::new()
+        );
+
+        {
+            let mut dna = renderer.dna.write().expect("write test dna");
+            let before = dna.feature_generation();
+            dna.features_mut()
+                .push(make_test_feature(Location::simple_range(105, 115)));
+            assert_ne!(dna.feature_generation(), before);
+        }
+        refresh_test_feature_index(&mut renderer);
+
+        assert_ne!(
+            renderer.feature_interval_index.generation,
+            initial_generation
+        );
+        assert_eq!(
+            renderer.feature_indices_overlapping_viewport(LinearViewport {
+                start: 100,
+                end: 120,
+                span: 20,
+            }),
+            vec![1]
+        );
+    }
+
+    #[test]
+    fn restriction_group_index_ranges_match_viewport_and_generation() {
+        let mut renderer = restriction_ready_renderer("AAAAAGAATTCTTTTTTTTTTTTTGAATTC");
+        refresh_test_restriction_group_index(&mut renderer);
+        assert!(
+            !renderer.restriction_group_index.is_empty(),
+            "test sequence should have restriction groups"
+        );
+        let initial_generation = renderer.restriction_group_index_generation;
+        let first_pos = renderer.restriction_group_index[0].pos;
+        let viewport = LinearViewport {
+            start: first_pos,
+            end: first_pos.saturating_add(1),
+            span: 1,
+        };
+        let expected = renderer
+            .restriction_group_index
+            .iter()
+            .filter(|entry| entry.pos >= viewport.start && entry.pos < viewport.end)
+            .map(|entry| entry.key.clone())
+            .collect::<Vec<_>>();
+        let hits = renderer
+            .restriction_group_index_range(viewport)
+            .iter()
+            .map(|entry| entry.key.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(hits, expected);
+
+        {
+            let mut dna = renderer.dna.write().expect("write test dna");
+            let before = dna.restriction_enzyme_group_generation();
+            dna.restriction_enzymes_mut().clear();
+            dna.update_computed_features();
+            assert_ne!(dna.restriction_enzyme_group_generation(), before);
+        }
+        refresh_test_restriction_group_index(&mut renderer);
+        assert_ne!(
+            renderer.restriction_group_index_generation,
+            initial_generation
+        );
+        assert!(renderer.restriction_group_index.is_empty());
+    }
+
+    #[test]
+    fn restriction_group_index_range_matches_brute_force_oracle() {
+        const SEQUENCE_LEN: usize = 1_000;
+        const INDEX_COUNT: usize = 32;
+        const RANDOM_ENTRY_COUNT: usize = 160;
+        const RANDOM_VIEWPORT_COUNT: usize = 128;
+
+        let mut rng = DeterministicLcg::new(0xc011_ec7e_57a7_2026);
+        for index_number in 0..INDEX_COUNT {
+            let mut renderer = test_renderer(SEQUENCE_LEN);
+            renderer.restriction_group_index = (0..RANDOM_ENTRY_COUNT)
+                .map(|ordinal| {
+                    let pos = match ordinal {
+                        0 => 0,
+                        1 => SEQUENCE_LEN - 1,
+                        _ => rng.below(SEQUENCE_LEN),
+                    };
+                    RestrictionGroupIndexEntry {
+                        pos,
+                        key: RestrictionEnzymeKey::new(
+                            pos as isize,
+                            pos as isize + (ordinal % 3) as isize,
+                            ordinal as isize,
+                            1,
+                            ordinal as isize,
+                            ordinal as isize + 1,
+                        ),
+                        names: vec![format!("enzyme_{ordinal}")],
+                    }
+                })
+                .collect();
+            renderer
+                .restriction_group_index
+                .sort_by(|left, right| left.pos.cmp(&right.pos).then(left.key.cmp(&right.key)));
+
+            let fixed_viewports = [
+                test_viewport(0, 0),
+                test_viewport(0, 1),
+                test_viewport(0, SEQUENCE_LEN),
+                test_viewport(SEQUENCE_LEN - 1, SEQUENCE_LEN),
+                test_viewport(SEQUENCE_LEN, SEQUENCE_LEN),
+                test_viewport(SEQUENCE_LEN, SEQUENCE_LEN + 1),
+                test_viewport(250, 250),
+                test_viewport(750, 250),
+            ];
+            for viewport in fixed_viewports
+                .into_iter()
+                .chain((0..RANDOM_VIEWPORT_COUNT).map(|_| {
+                    let first = rng.below(SEQUENCE_LEN + 101);
+                    let second = rng.below(SEQUENCE_LEN + 101);
+                    if rng.below(5) == 0 {
+                        test_viewport(first, second)
+                    } else {
+                        test_viewport(first.min(second), first.max(second))
+                    }
+                }))
+            {
+                let expected = if viewport.end <= viewport.start {
+                    Vec::new()
+                } else {
+                    renderer
+                        .restriction_group_index
+                        .iter()
+                        .filter(|entry| entry.pos >= viewport.start && entry.pos < viewport.end)
+                        .map(|entry| (entry.pos, entry.key.clone(), entry.names.clone()))
+                        .collect::<Vec<_>>()
+                };
+                let actual = renderer
+                    .restriction_group_index_range(viewport)
+                    .iter()
+                    .map(|entry| (entry.pos, entry.key.clone(), entry.names.clone()))
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    actual, expected,
+                    "restriction index {index_number}, viewport [{}, {})",
+                    viewport.start, viewport.end
+                );
+            }
+        }
+
+        let renderer = test_renderer(SEQUENCE_LEN);
+        assert!(
+            renderer
+                .restriction_group_index_range(test_viewport(0, SEQUENCE_LEN))
+                .is_empty()
+        );
+        assert!(
+            renderer
+                .restriction_group_index_range(test_viewport(100, 10))
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn restriction_site_presentation_cache_hits_and_invalidates() {
+        let mut renderer = restriction_ready_renderer("AAAAAGAATTCTTTTTTTTTTTTTGAATTC");
+        let ctx = egui::Context::default();
+
+        render_test_pass(&ctx, &mut renderer);
+        assert_eq!(renderer.restriction_site_presentation_cache_misses, 1);
+        assert_eq!(renderer.restriction_site_presentation_cache_hits, 0);
+        assert!(!renderer.restriction_enzyme_sites.is_empty());
+        let initial_sites = renderer.restriction_enzyme_sites.clone();
+        let initial_label_galley = renderer
+            .restriction_site_presentations
+            .iter()
+            .find_map(|presentation| presentation.label.as_ref())
+            .map(|label| Arc::clone(&label.galley))
+            .expect("restriction label galley");
+
+        render_test_pass(&ctx, &mut renderer);
+        assert_eq!(renderer.restriction_site_presentation_cache_misses, 1);
+        assert_eq!(renderer.restriction_site_presentation_cache_hits, 1);
+        assert_eq!(renderer.restriction_enzyme_sites, initial_sites);
+        let cached_label_galley = renderer
+            .restriction_site_presentations
+            .iter()
+            .find_map(|presentation| presentation.label.as_ref())
+            .map(|label| Arc::clone(&label.galley))
+            .expect("cached restriction label galley");
+        assert!(Arc::ptr_eq(&initial_label_galley, &cached_label_galley));
+
+        renderer.select_restriction_enzyme(initial_sites.first().cloned());
+        render_test_pass(&ctx, &mut renderer);
+        assert_eq!(
+            renderer.restriction_site_presentation_cache_misses, 1,
+            "selection styling must not rebuild restriction geometry"
+        );
+        assert_eq!(renderer.restriction_site_presentation_cache_hits, 2);
+
+        renderer.area = Rect::from_min_max(Pos2::new(5.0, 5.0), Pos2::new(1205.0, 605.0));
+        render_test_pass(&ctx, &mut renderer);
+        assert_eq!(renderer.restriction_site_presentation_cache_misses, 2);
+
+        renderer
+            .display
+            .write()
+            .expect("display")
+            .set_linear_viewport(1, 20);
+        render_test_pass(&ctx, &mut renderer);
+        assert_eq!(renderer.restriction_site_presentation_cache_misses, 3);
+
+        renderer
+            .display
+            .write()
+            .expect("display")
+            .set_restriction_enzyme_display_mode(RestrictionEnzymeDisplayMode::AllInView);
+        render_test_pass(&ctx, &mut renderer);
+        assert_eq!(renderer.restriction_site_presentation_cache_misses, 4);
+
+        {
+            let mut dna = renderer.dna.write().expect("write test dna");
+            let before = dna.restriction_enzyme_group_generation();
+            dna.restriction_enzymes_mut().clear();
+            dna.update_computed_features();
+            assert_ne!(dna.restriction_enzyme_group_generation(), before);
+        }
+        render_test_pass(&ctx, &mut renderer);
+        assert_eq!(renderer.restriction_site_presentation_cache_misses, 5);
+        assert!(renderer.restriction_enzyme_sites.is_empty());
+
+        renderer.invalidate_sequence_derived_caches();
+        assert!(renderer.restriction_site_presentation_cache_key.is_none());
+        render_test_pass(&ctx, &mut renderer);
+        assert_eq!(renderer.restriction_site_presentation_cache_misses, 6);
     }
 
     #[test]
@@ -3316,6 +4804,24 @@ mod tests {
         assert!(top < bottom);
         assert!(top.is_finite());
         assert!(bottom.is_finite());
+    }
+
+    #[test]
+    fn selected_feature_bounds_are_available_after_layout() {
+        let feature = make_test_feature(Location::simple_range(150, 280));
+        let mut renderer = test_renderer_with_feature(feature, 1000);
+        renderer.layout_features(LinearViewport {
+            start: 0,
+            end: 1000,
+            span: 1000,
+        });
+        let bounds = renderer.feature_bounds_y(0);
+        assert!(bounds.is_some());
+        let (top, bottom) = bounds.expect("feature bounds");
+        assert!(top < bottom);
+        assert!(top.is_finite());
+        assert!(bottom.is_finite());
+        assert!(renderer.feature_bounds_y(1).is_none());
     }
 
     #[test]
@@ -3561,6 +5067,114 @@ mod tests {
     }
 
     #[test]
+    fn construct_reasoning_overlay_presentation_cache_hits_and_invalidates() {
+        let mut renderer = test_renderer(1000);
+        renderer
+            .display
+            .write()
+            .expect("display")
+            .set_construct_reasoning_overlay(Some(test_construct_reasoning_overlay(
+                "graph1", "promoter", 100,
+            )));
+        let viewport = LinearViewport {
+            start: 0,
+            end: 1000,
+            span: 1000,
+        };
+        renderer.layout_features(viewport);
+
+        renderer.refresh_construct_reasoning_overlay_positions(viewport);
+        assert_eq!(
+            renderer.construct_reasoning_overlay_presentation_cache_misses,
+            1
+        );
+        assert_eq!(
+            renderer.construct_reasoning_overlay_presentation_cache_hits,
+            0
+        );
+        let initial_positions = renderer
+            .cached_construct_reasoning_overlay_positions
+            .clone();
+
+        renderer.refresh_construct_reasoning_overlay_positions(viewport);
+        assert_eq!(
+            renderer.construct_reasoning_overlay_presentation_cache_misses,
+            1
+        );
+        assert_eq!(
+            renderer.construct_reasoning_overlay_presentation_cache_hits,
+            1
+        );
+        assert_eq!(
+            renderer.cached_construct_reasoning_overlay_positions.len(),
+            initial_positions.len()
+        );
+
+        renderer.select_reasoning_evidence(Some("promoter".to_string()));
+        renderer.refresh_construct_reasoning_overlay_positions(viewport);
+        assert_eq!(
+            renderer.construct_reasoning_overlay_presentation_cache_misses, 1,
+            "selection styling must not rebuild overlay geometry"
+        );
+        assert_eq!(
+            renderer.construct_reasoning_overlay_presentation_cache_hits,
+            2
+        );
+
+        let moved_viewport = LinearViewport {
+            start: 50,
+            end: 950,
+            span: 900,
+        };
+        renderer.refresh_construct_reasoning_overlay_positions(moved_viewport);
+        assert_eq!(
+            renderer.construct_reasoning_overlay_presentation_cache_misses,
+            2
+        );
+
+        renderer.area = Rect::from_min_max(Pos2::new(10.0, 5.0), Pos2::new(1210.0, 605.0));
+        renderer.refresh_construct_reasoning_overlay_positions(moved_viewport);
+        assert_eq!(
+            renderer.construct_reasoning_overlay_presentation_cache_misses,
+            3
+        );
+
+        renderer
+            .display
+            .write()
+            .expect("display")
+            .set_construct_reasoning_overlay(Some(test_construct_reasoning_overlay(
+                "graph2",
+                "promoter2",
+                200,
+            )));
+        renderer.refresh_construct_reasoning_overlay_positions(moved_viewport);
+        assert_eq!(
+            renderer.construct_reasoning_overlay_presentation_cache_misses,
+            4
+        );
+        assert_eq!(
+            renderer
+                .construct_reasoning_overlay_presentation_cache_key
+                .as_ref()
+                .and_then(|key| key.overlay_graph_id.as_deref()),
+            Some("graph2")
+        );
+
+        renderer.invalidate_sequence_derived_caches();
+        assert!(
+            renderer
+                .construct_reasoning_overlay_presentation_cache_key
+                .is_none()
+        );
+        renderer.refresh_construct_reasoning_overlay_positions(moved_viewport);
+        assert_eq!(
+            renderer.construct_reasoning_overlay_presentation_cache_misses,
+            5
+        );
+    }
+
+    #[test]
     fn multipart_join_creates_exon_rects_and_intron_connectors() {
         let feature = make_test_feature(Location::Join(vec![
             Location::simple_range(100, 160),
@@ -3579,6 +5193,96 @@ mod tests {
         assert_eq!(fp.intron_connectors.len(), 2);
         assert!(fp.exon_rects[0].width() > 0.0);
         assert!(fp.exon_rects[1].left() > fp.exon_rects[0].right());
+    }
+
+    #[test]
+    fn array_junction_probe_edges_create_split_arms_and_connector() {
+        let feature = make_array_junction_feature(
+            Location::simple_range(534, 610),
+            vec![
+                ("junction_start_edge", "3653049"),
+                ("junction_stop_edge", "3653126"),
+                ("gentle_array_anchor_start_1based", "3652516"),
+                ("gentle_array_anchor_end_1based", "3653515"),
+                ("gentle_array_anchor_strand", "+"),
+            ],
+        );
+        let mut renderer = test_renderer_with_feature(feature, 1000);
+        renderer.layout_features(LinearViewport {
+            start: 480,
+            end: 660,
+            span: 180,
+        });
+
+        assert_eq!(renderer.features.len(), 1);
+        let fp = &renderer.features[0];
+        assert!(fp.is_array_track);
+        assert!(fp.is_junction_array_probe);
+        assert_eq!(fp.exon_rects.len(), 2);
+        assert_eq!(fp.intron_connectors.len(), 1);
+        assert_eq!(fp.from, 509);
+        assert_eq!(fp.to, 635);
+        assert!(fp.exon_rects[0].right() < fp.exon_rects[1].left());
+        let connector = &fp.intron_connectors[0];
+        let points = connector.points();
+        assert!((points[0].x - fp.exon_rects[0].right()).abs() < 0.01);
+        assert!((points[2].x - fp.exon_rects[1].left()).abs() < 0.01);
+    }
+
+    #[test]
+    fn array_junction_probe_without_edges_uses_split_interval_fallback() {
+        let feature = make_array_junction_feature(Location::simple_range(200, 260), vec![]);
+        let mut renderer = test_renderer_with_feature(feature, 1000);
+        renderer.layout_features(LinearViewport {
+            start: 150,
+            end: 300,
+            span: 150,
+        });
+
+        assert_eq!(renderer.features.len(), 1);
+        let fp = &renderer.features[0];
+        assert!(fp.is_array_track);
+        assert!(fp.is_junction_array_probe);
+        assert_eq!(fp.exon_rects.len(), 2);
+        assert_eq!(fp.intron_connectors.len(), 1);
+        assert_eq!(fp.from, 200);
+        assert_eq!(fp.to, 260);
+        assert!(fp.exon_rects[0].right() < fp.exon_rects[1].left());
+    }
+
+    #[test]
+    fn array_track_joins_coordinate_feature_stack_instead_of_regulatory_ceiling() {
+        let transcript = make_test_feature(Location::simple_range(100, 900));
+        let array = make_array_feature(Location::simple_range(220, 320));
+        let mut renderer = test_renderer_with_features(vec![transcript, array], 1000);
+        renderer
+            .display
+            .write()
+            .expect("display")
+            .set_linear_show_sequence_bases(false);
+        renderer.layout_features(LinearViewport {
+            start: 0,
+            end: 1000,
+            span: 1000,
+        });
+
+        let transcript = renderer
+            .features
+            .iter()
+            .find(|feature| feature.kind_upper == "MRNA")
+            .expect("transcript feature");
+        let array = renderer
+            .features
+            .iter()
+            .find(|feature| feature.is_array_track)
+            .expect("array feature");
+        assert!(!array.is_regulatory);
+        assert!(array.rect.center().y < transcript.rect.center().y);
+        let lane_separation = transcript.rect.center().y - array.rect.center().y;
+        assert!(
+            (MIN_FEATURE_GAP - 0.01..=FEATURE_GAP + 0.01).contains(&lane_separation),
+            "array and transcript should occupy adjacent lanes in one stack, separation={lane_separation}"
+        );
     }
 
     #[test]
@@ -3690,7 +5394,7 @@ mod tests {
     }
 
     #[test]
-    fn intron_connector_remains_visible_when_adjacent_exon_is_offscreen() {
+    fn intron_connector_preserves_true_slope_when_right_exon_is_offscreen() {
         let feature = make_test_feature(Location::Join(vec![
             Location::simple_range(100, 160),
             Location::simple_range(520, 580),
@@ -3705,10 +5409,16 @@ mod tests {
         let fp = &renderer.features[0];
         assert_eq!(fp.exon_rects.len(), 1);
         assert_eq!(fp.intron_connectors.len(), 1);
-        let connector = fp.intron_connectors[0];
-        assert!((connector[0].x - fp.exon_rects[0].right()).abs() < 0.01);
-        assert!((connector[2].x - renderer.area.right()).abs() < 0.01);
-        assert!(connector[0].x < connector[2].x);
+        let connector = &fp.intron_connectors[0];
+        let points = connector.points();
+        assert_eq!(points.len(), 2, "the true intron midpoint is off-screen");
+        assert!((points[0].x - fp.exon_rects[0].right()).abs() < 0.01);
+        assert!((points[1].x - renderer.area.right()).abs() < 0.01);
+        assert!((points[0].y - fp.exon_rects[0].center().y).abs() < 0.01);
+        assert!(
+            points[1].y < points[0].y,
+            "the visible connector must keep rising toward its off-screen true midpoint"
+        );
     }
 
     #[test]
@@ -3727,10 +5437,95 @@ mod tests {
         let fp = &renderer.features[0];
         assert!(fp.exon_rects.is_empty());
         assert_eq!(fp.intron_connectors.len(), 1);
-        let connector = fp.intron_connectors[0];
-        assert!((connector[0].x - renderer.area.left()).abs() < 0.01);
-        assert!((connector[2].x - renderer.area.right()).abs() < 0.01);
-        assert!(connector[0].x < connector[2].x);
+        let connector = &fp.intron_connectors[0];
+        let points = connector.points();
+        assert_eq!(points.len(), 3, "the true intron midpoint is visible");
+        assert!((points[0].x - renderer.area.left()).abs() < 0.01);
+        assert!((points[2].x - renderer.area.right()).abs() < 0.01);
+        assert!(points[0].x < points[1].x && points[1].x < points[2].x);
+        assert!(points[1].y < points[0].y && points[1].y < points[2].y);
+        assert!(
+            points[0].y < fp.rect.center().y && points[2].y < fp.rect.center().y,
+            "clipped intron endpoints must retain their interpolated lift"
+        );
+    }
+
+    #[test]
+    fn intron_connector_preserves_true_slope_when_left_exon_is_offscreen() {
+        let feature = make_test_feature(Location::Join(vec![
+            Location::simple_range(100, 160),
+            Location::simple_range(520, 580),
+        ]));
+        let mut renderer = test_renderer_with_feature(feature, 1000);
+        renderer.layout_features(LinearViewport {
+            start: 450,
+            end: 590,
+            span: 140,
+        });
+
+        let fp = &renderer.features[0];
+        assert_eq!(fp.exon_rects.len(), 1);
+        let points = fp.intron_connectors[0].points();
+        assert_eq!(points.len(), 2, "the true intron midpoint is off-screen");
+        assert!((points[0].x - renderer.area.left()).abs() < 0.01);
+        assert!((points[1].x - fp.exon_rects[0].left()).abs() < 0.01);
+        assert!(points[0].y < points[1].y);
+        assert!((points[1].y - fp.exon_rects[0].center().y).abs() < 0.01);
+    }
+
+    #[test]
+    fn farther_offscreen_exon_produces_shallower_connector_slope() {
+        let edge_lift = |next_exon_start: i64| {
+            let feature = make_test_feature(Location::Join(vec![
+                Location::simple_range(100, 160),
+                Location::simple_range(next_exon_start, next_exon_start + 60),
+            ]));
+            let mut renderer = test_renderer_with_feature(feature, 1200);
+            renderer.layout_features(LinearViewport {
+                start: 90,
+                end: 250,
+                span: 160,
+            });
+            let fp = &renderer.features[0];
+            let points = fp.intron_connectors[0].points();
+            (fp.exon_rects[0].center().y - points[1].y).abs()
+        };
+
+        let near_lift = edge_lift(520);
+        let far_lift = edge_lift(920);
+        assert!(
+            near_lift > far_lift,
+            "nearer exon should produce a steeper visible slope ({near_lift} <= {far_lift})"
+        );
+    }
+
+    #[test]
+    fn intron_connector_height_is_continuous_across_pan_boundary() {
+        let feature = make_test_feature(Location::Join(vec![
+            Location::simple_range(100, 160),
+            Location::simple_range(840, 900),
+        ]));
+        let mut renderer = test_renderer_with_feature(feature, 1200);
+        renderer.layout_features(LinearViewport {
+            start: 300,
+            end: 500,
+            span: 200,
+        });
+        let left_edge_y = *renderer.features[0].intron_connectors[0]
+            .points()
+            .last()
+            .expect("left viewport connector endpoint");
+
+        renderer.layout_features(LinearViewport {
+            start: 500,
+            end: 700,
+            span: 200,
+        });
+        let right_edge_y = renderer.features[0].intron_connectors[0].points()[0];
+        assert!(
+            (left_edge_y.y - right_edge_y.y).abs() < 0.01,
+            "the true apex height must not jump while panning"
+        );
     }
 
     #[test]
@@ -3806,6 +5601,53 @@ mod tests {
             end: 5000,
             span: 5000,
         }));
+    }
+
+    #[test]
+    fn sequence_base_track_visibility_flag_overrides_forced_modes() {
+        let renderer = test_renderer(5000);
+        {
+            let mut display = renderer.display.write().expect("display");
+            display.set_linear_show_sequence_bases(false);
+            display.set_linear_sequence_letter_layout_mode(
+                LinearSequenceLetterLayoutMode::Condensed10Row,
+            );
+        }
+        let viewport = LinearViewport {
+            start: 0,
+            end: 5000,
+            span: 5000,
+        };
+        let status = renderer.sequence_base_render_status(viewport);
+        assert!(!status.bases_visible());
+        assert!(status.decision_reason_text().contains("disabled"));
+        assert!(renderer.should_draw_backbone(viewport));
+    }
+
+    #[test]
+    fn linear_map_header_omits_build_diagnostics() {
+        let renderer = test_renderer(200);
+        let ctx = egui::Context::default();
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(renderer.area),
+            ..Default::default()
+        });
+        renderer.draw_name_and_length(
+            &ctx.layer_painter(egui::LayerId::background()),
+            test_viewport(0, 200),
+        );
+        let output = crate::egui_compat::end_test_pass(&ctx);
+        let labels = output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) => Some(text.galley.job.text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(labels.iter().any(|label| label.contains("200 bp")));
+        assert!(labels.iter().any(|label| label.starts_with("DNA MODE:")));
+        assert!(labels.iter().all(|label| !label.contains("tiers:")));
     }
 
     #[test]
@@ -3940,7 +5782,7 @@ mod tests {
                 renderer.render(ui, renderer.area);
             },
         );
-        let _ = ctx.end_pass();
+        crate::egui_compat::discard_test_pass_output(&ctx);
 
         let site = renderer
             .restriction_enzyme_sites
@@ -3962,6 +5804,86 @@ mod tests {
             !site.contains(gap_point),
             "separate restriction hit areas should not treat the inter-label gap as hovered"
         );
+    }
+
+    #[test]
+    fn latency_counters_separate_relayout_from_feature_index_rebuild() {
+        let mut renderer = test_renderer_with_features(
+            vec![make_test_feature(Location::simple_range(10, 20))],
+            200,
+        );
+        renderer
+            .display
+            .write()
+            .unwrap()
+            .update_layout_mut()
+            .update_all();
+        let ctx = egui::Context::default();
+        render_test_pass(&ctx, &mut renderer);
+        let first = renderer.cache_diagnostics();
+        assert_eq!(first.layouts, 1);
+        assert_eq!(first.interval_index_builds, 1);
+        render_test_pass(&ctx, &mut renderer);
+        assert_eq!(renderer.cache_diagnostics().layouts, first.layouts);
+        assert_eq!(
+            renderer.cache_diagnostics().interval_index_builds,
+            first.interval_index_builds
+        );
+
+        let resized = renderer.area.shrink2(egui::vec2(20.0, 10.0));
+        ctx.begin_pass(egui::RawInput::default());
+        crate::egui_compat::show_central_panel_for_test_context(
+            &ctx,
+            egui::CentralPanel::default(),
+            |ui| renderer.render(ui, resized),
+        );
+        crate::egui_compat::discard_test_pass_output(&ctx);
+        assert_eq!(renderer.cache_diagnostics().layouts, first.layouts + 1);
+        assert_eq!(
+            renderer.cache_diagnostics().interval_index_builds,
+            first.interval_index_builds
+        );
+
+        renderer
+            .dna
+            .write()
+            .unwrap()
+            .features_mut()
+            .push(make_test_feature(Location::simple_range(30, 40)));
+        renderer
+            .display
+            .write()
+            .unwrap()
+            .update_layout_mut()
+            .update_all();
+        render_test_pass(&ctx, &mut renderer);
+        assert_eq!(renderer.cache_diagnostics().layouts, first.layouts + 2);
+        assert_eq!(
+            renderer.cache_diagnostics().interval_index_builds,
+            first.interval_index_builds + 1
+        );
+    }
+
+    #[test]
+    fn custom_gc_bins_are_cached_between_render_passes() {
+        let mut renderer = test_renderer(240);
+        renderer
+            .display
+            .write()
+            .expect("display")
+            .set_gc_content_bin_size_bp(17);
+        let ctx = egui::Context::default();
+        for _ in 0..2 {
+            ctx.begin_pass(egui::RawInput::default());
+            crate::egui_compat::show_central_panel_for_test_context(
+                &ctx,
+                egui::CentralPanel::default(),
+                |ui| renderer.render(ui, renderer.area),
+            );
+            crate::egui_compat::discard_test_pass_output(&ctx);
+        }
+        assert_eq!(renderer.gc_cache_misses, 1);
+        assert!(renderer.gc_cache_hits >= 1);
     }
 
     #[test]
@@ -4276,6 +6198,37 @@ mod tests {
         } else {
             assert!((baseline - renderer.area.center().y).abs() <= 0.5);
         }
+    }
+
+    #[test]
+    fn helical_base_letters_reserve_clearance_for_promoter_lane() {
+        let feature = make_test_feature_with_kind("promoter", Location::simple_range(120, 260));
+        let mut renderer = test_renderer_with_feature(feature, 5000);
+        let viewport = LinearViewport {
+            start: 0,
+            end: 1500,
+            span: 1500,
+        };
+        {
+            let mut display = renderer.display.write().expect("display");
+            display.set_linear_sequence_base_text_max_view_span_bp(500);
+            display.set_linear_sequence_helical_letters_enabled(true);
+            display.set_linear_sequence_helical_max_view_span_bp(2000);
+            display.set_linear_sequence_letter_layout_mode(
+                LinearSequenceLetterLayoutMode::ContinuousHelical,
+            );
+        }
+        renderer.layout_features(viewport);
+
+        assert_eq!(renderer.features.len(), 1);
+        let half_extent = renderer
+            .sequence_base_text_half_extent(viewport)
+            .expect("helical sequence base extent");
+        let clearance = renderer.baseline_y() - renderer.features[0].rect.bottom();
+        assert!(
+            clearance >= half_extent + SEQUENCE_BASE_FEATURE_CLEARANCE_PADDING - 0.5,
+            "feature clearance {clearance:.2} should reserve base-letter half extent {half_extent:.2}"
+        );
     }
 
     #[test]

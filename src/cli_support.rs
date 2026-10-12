@@ -274,6 +274,7 @@ mod tests {
             font_face_count: 7,
             page_width_pt: "75.00".to_string(),
             page_height_pt: "37.50".to_string(),
+            uri_link_count: 0,
         };
         let value = svg_pdf_summary_json(&summary);
         assert_eq!(value["status"], "ok");

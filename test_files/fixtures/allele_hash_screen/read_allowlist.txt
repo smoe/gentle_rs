@@ -1,0 +1,5 @@
+fus_hap1_alt_v2
+fus_hap2_alt_v1
+fus_shared_region
+fus_off_target
+fus_short_uninformative

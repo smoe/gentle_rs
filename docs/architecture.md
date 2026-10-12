@@ -1,5 +1,13 @@
 # GENtle Architecture (Working Draft)
 
+## Publication projections
+
+Multi-gene publication output follows a request → resolved report → renderer
+boundary. File resolution and primer-table normalisation happen once. Web and
+print renderers consume the same record, preserving gene order, primer rows,
+captions, figure inventory, and provenance. Bespoke analysis scripts may
+prepare evidence inputs but must not maintain a second publication data model.
+
 Last updated: 2026-05-07
 
 This document describes how GENtle is intended to work and the durable
@@ -80,6 +88,12 @@ Sequence collection subject rule (target model):
   explicit members, local external mappings, genomic neighborhoods, or
   deterministic samples into auditable member rows. They are not a separate GUI
   object class with private behavior.
+- Portable collection members refer to report-owned biological-context rows
+  rather than duplicating assembly/annotation metadata on every member.
+  Coordinate- or reference-sensitive lifted operations must declare whether
+  they require a homogeneous context and reject missing or mixed contexts
+  before biological work begins. A membership-only fingerprint is never a
+  substitute for comparing those contexts.
 - Existing collection-like concepts keep their own semantics:
   - logical sets preserve membership and provenance without implying physical
     mixing
@@ -91,6 +105,13 @@ Sequence collection subject rule (target model):
     promoter windows, fragments, amplicons, and neighboring loci
   - storage collections preserve physical placement through containers,
     arrangements, racks, and future inventory/freezer views
+- Cross-species ortholog mappings remain a specialized, evidence-bearing
+  contract rather than a generic relationship inferred from matching symbols.
+  Mapping endpoints may cite report-owned biological contexts; context
+  agreement constrains taxon/reference interpretation but does not itself
+  establish orthology, paralogy, or functional equivalence. Provider-specific
+  relationship/confidence values remain preservable even when GENtle cannot
+  classify them into a canonical vocabulary.
 - Any operation that is valid for one stored sequence should declare how it
   lifts over a collection before a prominent GUI affordance is added:
   map per member, combine/pool, compare/align, arrange/place, derive new
@@ -245,6 +266,38 @@ Strategic aims:
    - promoting an inline/stateless inspection result into project state
      remains an explicit second step, not an automatic side effect
 
+Biological-extension composition rule:
+
+- A request for a related assay, adjusted search policy, or new evidence
+  interpretation must first be classified as an existing parameter, a
+  composition of existing engine services, or a missing biological primitive.
+- Reusable transcript, coordinate, candidate, scoring, and evidence helpers may
+  remain non-exported source-level seams. Document their biological invariant
+  for `cargo doc --document-private-items`, but do not expose private Rust names
+  through runtime introspection as an accidental wire contract.
+- Promote only the stable biological decision to a versioned request/report
+  and shared `Operation`. Adapters collect inputs and present the report; they
+  do not reproduce the constituent biology.
+- Capability descriptions, readiness, protocol docs, explicit non-claims, and
+  deterministic edge tests must make the extension understandable without
+  reverse-engineering a frontend callback.
+- The implementation workflow and current source seam inventory are documented
+  in `docs/biological_extension_guide.md`.
+
+Circular ORF / map coordinate invariant:
+
+- The legacy `OpenReadingFrame` record retains 0-based inclusive `from`/`to`
+  bounds in reference-strand order, including the stop codon. `from > to`
+  means an origin crossing on either strand, not reversed bounds to sort.
+- Shared ORF helpers convert these records to half-open, unrolled bounds or
+  origin-split spans for GUI and SVG consumers. Detection reads every codon
+  base topology-aware and limits a prediction to one molecule-length traversal.
+- Feature segments use 0-based half-open boundaries; an exclusive end equal
+  to sequence length must not collapse to zero. Human feature hover labels
+  convert to 1-based inclusive coordinates only at presentation.
+- Predicted ORFs remain separate from annotation-backed CDS interpretation;
+  their existence does not establish translation or protein function.
+
 Test-data provenance rule:
 
 - Every committed test fixture (for example under `test_files/` or `tests/`)
@@ -258,10 +311,13 @@ Test-data provenance rule:
 - New fixture files are not considered done until this provenance note exists
   in a nearby README or equivalent fixture manifest.
 
-Import-format policy (GenBank-first, XML additive):
+Sequence-format policy (shared annotated records, XML additive):
 
-- GenBank remains the canonical annotation import format in current production
-  paths.
+- GenBank and EMBL are peer annotated nucleotide interchange formats over the
+  same internal record. Format-specific adapters must not duplicate annotation
+  biology; both exporters share INSDC location/qualifier serialization. FASTA
+  is deliberately sequence-only, not an equivalent annotation export. See
+  [parity scope and metadata limitations](sequence_format_parity.md).
 - XML support is additive and must normalize to the same internal structures
   used by GenBank import before touching business logic.
 - The first XML scope is sequence + feature/annotation import only (no
@@ -269,7 +325,7 @@ Import-format policy (GenBank-first, XML additive):
 - XML parser adapters should target explicit NCBI dialects (`GBSet/GBSeq`,
   `INSDSet/INSDSeq`) and reject unknown dialects with clear diagnostics.
 - Cross-format fixtures must remain small and paired (same biological content
-  across `.fa`, `.gb`, `.xml`) so parity tests can detect semantic drift.
+  across `.fa`, `.gb`, `.embl`, `.xml`) so parity tests can detect semantic drift.
 - Proprietary or binary parser logic that has value beyond GENtle itself
   should live in a headless reusable crate whenever practical.
 - GENtle should then depend on that crate only through a thin adapter boundary
@@ -506,6 +562,29 @@ Operation graph-inspectability rule:
 - Frontends must not keep operation outcomes only in status text; graph
   projection is a definition-of-done requirement.
 
+Historical tutorial baseline rule:
+
+- Retained tutorial outputs are historical references, not evidence that every
+  later package version generated them. A version bump alone must neither
+  invalidate nor relabel their generator provenance.
+- For the three explicitly allowlisted synthetic transcript-panel reports,
+  tutorial replay compares parsed results while projecting only
+  `primer_pair_summary.selection_audit_generator_revision` and
+  `primer_pair_summary.provenance.gentle_version` in `selected_assays` and
+  `short_sybr_junction_assays`. Both fields must exist and form one valid,
+  consistent generator identity per report. Fresh output must match the
+  executing binary's package and source revision; schemas and all other data
+  remain part of the comparison, including input hashes and scientific results.
+- Validate each side's original raw-file checksum before projecting the three
+  corresponding checksum values in the generation ledger. No blanket version,
+  provenance or checksum exclusion is permitted. LF-pinned baselines and
+  LF/CRLF negative controls preserve the raw-byte integrity contract.
+- Newly generated files retain their actual source revision. Existing
+  timestamp normalization is separate; it must not overwrite generator identity.
+  A changed scientific result requires explicit review and legitimate baseline
+  regeneration, not a broader ignore list. Replay compatibility, historical
+  provenance and native-package/scientific acceptance are separate verdicts.
+
 Computational artifact provenance rule:
 
 - Persisted non-sequence computational outputs that may influence sample
@@ -525,6 +604,16 @@ Computational artifact provenance rule:
     (path/accession/import id and checksum when practical)
   - generated timestamp
   - request/effective parameter summary or a pointer to the stored request
+- Legacy SHA-1 compatibility fields must not be computed in-process for
+  external-download verification. If SHA-1 is the only available upstream
+  checksum, GENtle delegates to platform tools; without such a tool the file is
+  recorded as not SHA-1 verified and relies only on basic corruption/parse
+  checks. `GENTLE_SHA1_TOOL` can override tool discovery, and
+  `GENTLE_DISABLE_LEGACY_SHA1=1` disables legacy SHA-1 checks explicitly.
+- Legacy field names such as `*_sha1` may remain readable for persisted
+  compatibility, but regenerated local provenance fingerprints should carry an
+  algorithm-prefixed stronger digest, currently `sha256:<hex>`, and must not
+  reintroduce the Rust `sha1` crate.
 - If the output is persisted and sample-relevant, it should project as a
   graph-visible analysis artifact node rather than living only in a hidden
   metadata store.
@@ -554,9 +643,11 @@ Rules:
 
 - default Cargo builds should optimize for GUI/CLI/MCP/docs workflows and must
   not require JS/Lua runtime dependencies
-- release packaging builds may opt back into the embedded scripting feature set
-  (`script-interfaces`) so published release builds validate against the
-  broader adapter surface
+- current native release packaging builds only `gentle`, `gentle_cli`,
+  `gentle_mcp`, `gentle_examples_docs` and `gentle_publication_report` with
+  default desktop features; embedded JS/Lua binaries are not packaged
+- source builds may opt into `script-interfaces`; their separate CI checks
+  remain required rather than adding those dependencies to release packaging
 - embedded JS/Lua adapter modules and binaries may be feature-gated, but their
   engine contracts must remain identical when enabled
 - Python remains a separate thin wrapper over `gentle_cli`
@@ -564,6 +655,40 @@ Rules:
   logic into a dedicated Python build path
 - feature-gating adapters must never be used to fork engine behavior or create
   adapter-only business logic
+
+Compile, bundle, smoke and staging paths must agree on the effective profile.
+After the successful `.11` `dev` artifact cycle, the owner's 2026-10-01 first
+optimization step selects `package-opt1` and `target/package-opt1` for native
+installers and the headless container, irrespective of label/publication mode
+(see [release process](release.md)). Archives carry `-package-opt1`; collection
+rejects recipes inconsistent with the current policy. The explicit profile
+inherits `dev`, sets `opt-level=1`, `lto="off"`, 256 codegen units,
+`incremental=false`, `debug=0`, assertions/overflow checks on, panic unwinding
+and no stripping. Receipts bind all these settings. Rust-built package helpers
+also use unoptimized installation; distribution-provided dependencies are unchanged.
+The unused release profile still disables all LTO with `lto="off"`, retaining
+other defaults rather than forcing a single codegen unit. Do not substitute
+`lto=false`, which permits within-crate thin LTO. The explicit `release-fast`
+and `bench-audit` profiles retain their definitions but are not artifact-build
+profiles for this first optimization step. Package receipts bind
+the profile, default-feature selection, additional features and binary list;
+changing that recipe requires fresh exact-candidate package acceptance.
+
+Cargo profiles must not select normal user-facing content or scientific export
+content. In particular, internal `dev` installers use the same DNA-map labels,
+SVG composition and RNA-read progress policy as `release`; `debug_assertions`
+is not a UI feature flag. This applies to pre-1.0 packages as well, with no
+automatic diagnostic-mode switch at 1.0. Explicitly requested tracing/profiling
+may record the actual build configuration. Keep invariant and overflow checks
+as development error detectors rather than disabling them for presentation
+parity; their failure behavior and optimization-dependent timing remain distinct
+from the ordinary UI/export contract.
+
+Workspace extraction follows DEC-006/007 and does not imply dynamic linking.
+Root-independent engine modules compile as ordinary Rust library crates and are
+statically linked into the packaged binaries; the root crate may preserve their
+public paths through compatibility re-exports. Rust `dylib` ABI coupling and
+cross-platform loader policy are not accepted merely as build-memory tactics.
 
 ### Container/distribution policy
 
@@ -573,11 +698,11 @@ Rules:
 
 - maintain one primary OCI image definition (`Dockerfile`) rather than
   parallel Dockerfile + Apptainer/Singularity recipes by default
-- the primary image should include complete end-user functionality:
-  - GUI
+- the published image is genuinely headless, built with `--no-default-features`
+  and an explicit binary list, without GUI or embedded JS/Lua dependencies:
   - CLI
   - MCP server
-  - embedded JS/Lua shells in release-style container builds
+  - documentation/example helper
   - Python wrapper availability
   - helper-tool integrations already expected by the engine (`blastn`,
     `makeblastdb`, `primer3`, BigWig conversion, RNA structure)
@@ -585,9 +710,9 @@ Rules:
   builder stages should come from Debian `rust-all`
 - non-Debian additions are acceptable only as narrow, explicit exceptions when
   a shipped GENtle feature would otherwise be unavailable in the image
-- cross-platform GUI container access should default to browser-served
-  Linux desktop export (`Xvfb` + lightweight WM + VNC/noVNC) rather than
-  host-specific X11 forwarding as the primary documented path
+- GUI remains in native desktop packages; embedded scripting remains an
+  optional source build. Do not build or redistribute either, Xvfb or VNC/noVNC
+  in the OCI image
 - Linux/Apptainer support should consume the same OCI image whenever possible
   (`docker://` / `docker-archive://`) rather than creating a separate
   packaging logic path prematurely
@@ -664,6 +789,110 @@ This enables:
 - machine-to-machine use
 - operation-level undo/redo and replay support
 
+Scientific workflows that need human review before mutation may compose these
+operations through a content-addressed proposal. Regulatory reporter-panel
+planning, for example, runs native-fragment extraction, optional explicitly
+scoped motif-control mutation, primer design, cloning, product validation, and
+export planning in a detached engine; the reporter modality is a catalog-bound
+vector choice rather than a separate biological contract. Candidate anchors
+and response/motif/occupancy evidence remain distinct, provenance-bearing
+records in the proposal; independent study evidence is bound through member
+requests and merged without replacing sequence-derived rows. No adapter may
+upgrade a motif hit to occupancy or causality. The live project and planned
+construct-artifact paths remain unchanged. An
+adapter may write the proposal JSON itself when the caller supplies an explicit
+proposal path. The separate materialization operation recomputes the complete
+proposal against current project state and bound input files, requires the
+exact proposal digest, refuses existing output paths, and commits the detached
+state only after every artifact is written.
+Adapters may present or transport that contract but must not reconstruct the
+biology or reduce approval to a boolean.
+
+Multi-fragment regulatory-panel planning is a separate, read-only consumer of
+exact persisted genomic regions. It binds both ROI identity and current
+content, rejects stale local projections and mixed assemblies/releases, and
+selects a bounded deterministic cover of explicitly requested pairwise
+contrasts. Each sequence/context evidence family remains an independent typed
+lane; unevaluated evidence cannot become a pass. Ordered fragment instances,
+orientations, and spacers are not forced through the legacy single-fragment
+promoter-panel materializer. A separate exact-product proposal binds full DNA,
+annotations, ordered instances, omitted vector annotations and output IDs.
+Its digest must be explicitly approved; fresh source validation and detached
+execution make all products one atomic, undoable change. Exact designed
+context replacement is not a simulated cloning reaction or a product-QA pass.
+
+Sequence-computable regulatory-fragment evidence is populated in the same
+read-only engine operation and stored as typed, content-addressed observations.
+The shared renderer is a passive projection of that plan. It never recomputes
+evidence or promotes an opaque report citation to evaluated status. External
+Ensembl, TFBS, CUT&RUN, or chromatin content must arrive through a typed report
+resolver before its lane can leave `not_evaluated`. The initial resolver accepts
+hash-bound typed locus/reporter documents, checks their current sequence/anchor,
+assembly and gene-annotation release, and retains original layer content and
+availability. It neither runs new analyses nor equates overlap with activity.
+
+Portable locus-evidence composition also fails closed. Every requested
+occupancy/chromatin source remains represented with a typed availability state
+instead of disappearing when unavailable. Predicted regulatory-score rows may
+share a scale across different matrices, models, or providers only through an
+exact typed cross-source calibration id and digest; display labels,
+calibration prose, and matching units are not calibration contracts.
+
+### Asynchronous Command Lifecycle
+
+The system-wide rule is [DEC-048](decisions.md#dec-048-command-submission-and-observation-never-wait-for-execution):
+command submission, execution and observation are separate across GUI, inner
+agent, CLI, shared shell, MCP, JS, Lua and Python. A caller does not need to
+choose a special background command to preserve responsiveness.
+
+- Submission returns promptly with a stable command identity and current state,
+  or a bounded structured rejection. Immediate feedback means independence
+  from work duration, not a promise of zero wall-clock latency. Only bounded
+  local admission work belongs on this path; network/disk access, large-input
+  hashing, executable probes and resource validation are execution phases.
+- Status/progress reads return the latest timestamped, revisioned snapshot,
+  including unavailable/stale observations, without waiting for the worker,
+  fresh I/O or its engine lock. Result retrieval is separate and reports when
+  a result is not ready; it must not implicitly wait for completion.
+- The lifecycle distinguishes acceptance/queueing, validation, waiting for
+  approval or a dependency/resource, running, cancellation/termination in
+  progress, and terminal success/failure/cancellation/interruption. Waiting
+  states expose blockers and what can unblock them. These are semantic
+  requirements, not a new wire enum declared by this document.
+- A command's wait never creates application-wide or conversation-wide
+  modality. Unrelated commands remain usable; conflicting/dependent commands
+  are explicitly queued or blocked. Execution uses short commit locks and
+  existing versioned-snapshot rules, never a live engine lock for a long run.
+- Submission is not execution approval, completion or scientific readiness.
+  Scheduling preserves the approved operation payload and bindings. A cancel
+  request is not confirmed cancellation; results are published only under the
+  operation's existing validation and atomicity rules.
+- Waiting for a final result is an explicit caller-side policy, including CLI
+  convenience wrappers. Worker ownership and lifetime are reported explicitly;
+  returning a job ID must not imply survival after its host exits.
+- Nonblocking execution does not require queued/completed message noise for
+  quick work. A presentation grace period may show only the final result, but
+  must never wait on the UI thread. A workflow is one managed activity even if
+  each child step is quick; observation/control and conversation remain usable.
+
+Migration status: this invariant governs implementation but is not yet enforced
+universally. The managed Agent Assistant families and interactive BLAST use
+background workers; unaudited command families can still execute under the
+engine write lock. Expanded-stack shell workers are synchronously joined; they are
+stack protection, not background submission. BLAST-specific async routes are
+existing migration foundations, not a caller obligation or a general solution.
+The first prerequisites preserve complete macro history on rollback and treat
+BLAST job-store transitions as auxiliary metadata, not structural edits.
+BLAST admission now captures only the bounded project BLAST settings; executable
+probes run in workers. Its bounded FIFO progresses independently of observation.
+Status/list read cached observations without dispatch or persistence. Compact
+start/cancel receipts omit full result reports, which must be exported explicitly.
+This remains a process-scoped service, not durable general job admission;
+the detached display/metadata merge remains the project commit contract.
+Track the runtime correction and missing regressions in [roadmap.md](roadmap.md).
+The [review draft](asynchronous_command_execution_plan.md) separates button/text
+submission, presentation timing, workflow supervision and conversation ownership.
+
 Progress/cancellation contract:
 
 - Engine progress callbacks are cooperative and return `bool`.
@@ -688,6 +917,42 @@ Interactive orchestration contract:
 - Long-running jobs are surfaced in one GUI background-jobs panel with progress
   snapshots and cancel/retry controls where the engine callback contract
   supports cancellation.
+- Long-running GUI workers execute from immutable/versioned engine snapshots.
+  Mutating results use an optimistic short-lock commit and are rejected as
+  stale if project structure or journal history changed meanwhile. Concurrent
+  viewport/display changes and disjoint persisted UI/session metadata are
+  retained in both the committed state and its new undo checkpoints.
+  Detached forks exclude inherited undo/redo checkpoints; successful commits
+  preserve the live history and append only checkpoints created by detached
+  operations.
+- Detached baselines also bind a process-local project-instance identity. New
+  engines and deserialization get fresh identities; clones and verified checkpoint
+  imports within one detached execution retain ownership. Matching revisions alone
+  never authorize a result after project replacement. This identity is not serialized
+  and does not alter scientific request/approval digests.
+- `command_execution` places bounded host admission above the synchronous shell
+  executor. Worker-owned snapshots preserve the expanded-stack executor's immediate
+  join safety. Cached receipts and cancellation use a separate control lock;
+  publication serializes cancellation with the existing guarded engine commit.
+  Failed/cancelled managed commands discard unpublished engine deltas, not external
+  effects. Blocking CLI callers retain their prior nontransactional prefix semantics.
+- Read-only background computation uses the same engine execution baseline but
+  clones no inherited undo/redo checkpoints and never enters the commit path.
+  Raw full-engine clones are not permitted in GUI workers: retaining unneeded
+  shared history can keep complete historical project snapshots alive.
+- Persisted metadata edits made outside `apply` go through the engine auxiliary
+  metadata accessor. They advance the mutation revision and invalidate redo,
+  because an older redo checkpoint could otherwise restore stale metadata.
+- The engine exposes separate execution, persisted-state mutation, and
+  structural revisions.
+  GUI dirty-state detection compares the mutation revision with the last saved
+  revision instead of serializing and hashing the complete project on a timer.
+- Root-frame orchestration is O(1) unless a cheap revision/count stamp changes.
+  Expensive signatures, serialization, disk/network I/O, and subprocess
+  preflight belong behind such a gate or in a background worker.
+- Presentation caches are sparse/lazy where the conceptual model is dense:
+  unsupported exon transitions, for example, are represented by a shared
+  render-time sentinel rather than cached per-cell strings.
 - Operation history is surfaced in a dedicated GUI panel backed by engine
   operation journal + checkpoint stacks.
 
@@ -822,6 +1087,13 @@ Practical rule:
   - tutorial generator/check commands:
     - `gentle_examples_docs tutorial-generate`
     - `gentle_examples_docs tutorial-check`
+  - tutorial visual integrity uses the same source/catalog/manifest and existing
+    `graphics.kind` contract, not a separate coverage registry. Offline checks
+    validate local asset roots, structure, step placement and retained archive
+    hashes. Historical captures, date-only legacy images and deterministic
+    figures remain distinct; none establishes current-candidate GUI acceptance.
+    Reference chapters need not contain decorative images. Capture policy is
+    unchanged.
   - test gating by example metadata:
     - `always`: execute in default test runs
     - `online`: execute only with `GENTLE_TEST_ONLINE=1`
@@ -834,6 +1106,23 @@ Practical rule:
       reference guides must be linked from the same entry point
     - distinction between tutorial, recipe, and reference material should be
       explicit in page metadata/catalog text
+    - each generated step keeps its GUI action, related terminal command or
+      guidance, inner-Agent-Assistant request, expected result and rationale
+      adjacent; distinguish terminal wrappers from GUI Shell syntax, UI intents
+      from GUI effects, and CLI state from the GUI's unsaved state
+    - heading fallbacks preserve complete instructions, including accession
+      versions, paths and coordinate ranges; concise headings are explicit data
+    - inner-agent examples request an exact operation for human review and do
+      not authorize execution; tutorial generation never invokes a provider
+    - learner-facing pages lead with outcome, prerequisites and the shortest
+      path; detailed parameters, provenance and maintainer evidence follow the
+      walkthrough rather than obstructing it
+    - light tutorial navigation is catalog-owned: each page may name at most
+      three prerequisite and three continuation tutorial ids. Generated
+      chapter prerequisites project into the same catalog fields, while manual
+      pages declare them in their catalog source. Consumers resolve ids against
+      the catalog rather than inferring a sequence from filenames or decimal
+      numbering
 - Screenshot bridge status (temporarily disabled by security policy):
   - historical implementation existed as a compile-time + runtime gated adapter
     bridge (`screenshot-capture` feature + `--allow-screenshots` startup flag)
@@ -892,6 +1181,92 @@ Implementation direction:
 - avoid OS shell screenshot utilities in the primary path
 - keep screenshot capture behind explicit runtime/feature opt-in policy gates
   even after relaunch
+
+Tutorial review projection invariant:
+
+- Generated review metadata uses committed Git dates and repository-relative
+  dependency paths, never checkout mtimes. The committed catalog's review-age
+  reference is the checked-out commit date; live warnings use the current date.
+- Unavailable dependency history is an explicit generation/check failure, not
+  evidence that a reviewed tutorial is fresh. Missing graphics remain the first
+  staleness reason, followed by newest UTC commit date and dependency priority.
+
+### Context-labelled tutorial action graph (design direction)
+
+Tutorials will often reuse the same engine capability in different biological,
+experimental, and teaching contexts. The capability meaning must remain
+canonical rather than being restated independently by every tutorial. A future
+tutorial-source revision should therefore separate:
+
+- **episode context**: goal, biological setting, material, assay, constraints,
+  evidence assumptions, and audience;
+- **action identity**: a stable capability/intent reference plus argument
+  bindings and declared preconditions/effects;
+- **interface projection**: GUI instructions, CLI/shared-shell syntax, and an
+  agent-facing verbal request derived from that same action;
+- **episode outcome**: accepted success, conditional success, rejection,
+  failure, or a teaching-only explanatory step.
+
+The context should be introduced once in human prose. Individual steps should
+repeat only context deltas, exceptions, and explicit operands needed for
+execution. This keeps the generated chapter readable while preserving complete
+machine bindings.
+
+The motivating analogy is the coloured-tool account of K-lines in Minsky's
+*Society of Mind*: a hand marked before bicycle repair transfers the same colour
+to every tool used, while a tool used for several jobs accumulates several
+colours. See Marvin Minsky, *The Society of Mind* (1986), section 8.1; an
+[MIT-hosted later discussion](https://www.mit.edu/~dxh/marvin/web.media.mit.edu/~minsky/eb8.html)
+revisits the same account. For GENtle, colours are semantic labels rather than
+display colours. The tutorial is the worked episode; the derived skill or
+context-sensitive selector is closer to the K-line.
+
+Two complementary label forms are needed. A unique episode label preserves
+which tutorial contributed an observation, while structured context facets
+allow generalization across episodes. Each action occurrence belongs to an
+episode, carries its bindings/order/outcome, and references one canonical
+capability. The capability's many-colour profile is derived from those
+occurrences; it must not mutate or duplicate the capability descriptor itself.
+
+This produces a labelled, ordered tutorial-action graph with two useful query
+directions:
+
+- **forward activation**: start from a user's goal and current context, then
+  retrieve previously useful actions or action paths whose labels and
+  preconditions fit;
+- **inverse construction**: start from an action, inspect the different
+  contexts and neighboring actions in which it succeeded, and identify
+  reusable action bundles or candidate paths for a new workflow.
+
+Useful graph signals include independent episode support, context diversity per
+action, transitions reused across independent contexts, and stable action
+subsequences shared by several tutorials. These are discovery and ranking
+signals only. They do not establish biological validity or causality, and raw
+tutorial counts must be deduplicated by semantic episode/context identity so
+copied examples do not manufacture support.
+
+The graph must retain negative and conditional evidence. A failed, rejected,
+or counterproductive action is not given the same positive label as an accepted
+step. Inferred paths must preserve ordering, dependency, provenance, and
+approval requirements. Before execution, every candidate path is rebound to
+the current project and checked through capability readiness and the fact graph;
+inverse construction never bypasses confirmation or becomes an autonomous
+execution policy.
+
+This direction continues the precondition/capability model from
+[Möller et al. (1999), *EDITtoTrEMBL: a distributed approach to high-quality automated protein sequence annotation*](https://doi.org/10.1093/bioinformatics/15.3.219).
+EDITtoTrEMBL selected analysis modules according to declared capabilities,
+preconditions, dependencies, and the properties of the actual sequence. GENtle
+retains that input-bound discipline and adds tutorial episodes as contextual
+evidence about how validated capabilities have been composed.
+
+In agent terminology, a capability is a tool, a tutorial is a worked episode,
+and a skill is a curated generalization over applicable episodes. Codex,
+Claude, ClawBio, or OpenClaw may use context labels to discover the skill and
+propose a bound action path; GENtle remains authoritative for current facts,
+readiness, execution, and verified effects. No new versioned schema should be
+declared until a pilot over an existing tutorial proves the context taxonomy,
+projection rules, and graph queries.
 
 ### MCP server (implemented parity-expanded baseline)
 
@@ -959,6 +1334,12 @@ Current baseline:
   - `ui intents`
   - `ui open TARGET ...`
   - `ui focus TARGET ...`
+  - `ui open recent-project ITEM_ID`
+  - `ui open tutorial-project CHAPTER_ID`
+  - `ui open tutorial-guide TUTORIAL_ID`
+  - `ui open configuration [SECTION]`
+  - `ui focus configuration [SECTION]`
+  - `ui close configuration`
   - `ui open sequence-window SEQ_ID`
   - `ui focus sequence-window SEQ_ID`
   - `ui close TARGET`
@@ -970,6 +1351,12 @@ Current baseline:
   intents to existing dialog openers/closers (Prepared References,
   prepare/retrieve/blast, track import, agent assistant, helper-genome dialogs)
   and close individual DNA sequence windows through an explicit `SEQ_ID`.
+- Recent-project ids are opaque, path-free GUI-host tokens. The shared shell and
+  MCP can parse and report them, but only the live GUI host resolves a token
+  against its current Open Recent Project list. Tutorial chapter ids resolve
+  through the same generated catalog used by the File menu. Configuration
+  sections use the shared `UiConfigurationSection` vocabulary and route to the
+  existing Apply/Cancel window rather than mutating global settings silently.
 - GUI-side selection handlers set or report an active DNA sequence-window
   selection through the same shared command plane; feature-layer display
   visibility stays an engine-owned `SetDisplayVisibility` operation exposed by
@@ -1065,6 +1452,13 @@ ClawBio/OpenClaw compatibility direction:
   (`commands.sh`, `environment.yml`, checksums).
 - Keep command contracts explicit in request payloads so orchestration layers
   can route high-level asks while execution remains replayable.
+- The wrapper is also the process-supervision boundary. Status-only `SIGUSR1`
+  targets the exact active GENtle child, never its process group; GENtle owns
+  any downstream Primer3 status request. `SIGINT`/`SIGTERM` terminate the
+  child-owned execution group with bounded escalation, and timeout or
+  interruption remains a failed wrapper outcome even when the child exits
+  zero. Signal events belong to orchestration provenance, not scientific
+  claims.
 
 Current work satisfies (1) through (4) for most operations; remaining gaps are
 mainly view-model formalization and promoting remaining adapter-level utility
@@ -1094,6 +1488,25 @@ AI role split (durable rule):
   share the typed planner/transport boundary rather than nesting GENtle's chat
   assistant runtime.
 
+Agent conversation ownership (durable rule):
+
+- Provider processes may be stateless or ephemeral. GENtle, not a provider-
+  specific session id, owns the inner Agent Assistant transcript.
+- Successful user/assistant turns are stored as versioned project metadata and
+  reloaded with the project; credentials, API keys, endpoint overrides, and
+  other session-only provider configuration are never stored in that record.
+  User prompt text is stored verbatim, so users must not paste secrets into a
+  prompt.
+- A bounded recent transcript is sent as the `x_conversation` extension of the
+  next `gentle.agent_request.v1` payload. This gives Codex Local and native or
+  OpenAI-compatible adapters the same follow-up context with a deterministic
+  turn-count limit.
+- The GUI keeps provider setup in `Configuration -> Agent Systems`; the Agent
+  Assistant window is reserved for conversation and reviewed actions.
+- Agent-proposed undo/redo transitions are never auto-executed. They require an
+  explicit user action, and GUI execution must use the same background-job
+  guard plus window/cache refresh path as the regular Edit-menu history action.
+
 ### Agent assistant bridge (implemented)
 
 GENtle now provides a shared agent-assistance bridge across GUI and CLI shell:
@@ -1102,13 +1515,25 @@ GENtle now provides a shared agent-assistance bridge across GUI and CLI shell:
   - `agents list [--catalog PATH]`
   - `agents preflight SYSTEM_ID [--live] [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N]`
   - `agents discover-models SYSTEM_ID [--catalog PATH] [--base-url URL]`
-  - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
+  - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--allow-web-research] [--execute-all] [--execute-index N ...] [--no-state-summary]`
   - `agents plan SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--max-candidates N] [--no-state-summary] [--no-mutating-candidates]`
   - `agents execute-plan PLAN_JSON_OR_@FILE --candidate-id ID [--confirm]`
 - Catalog source defaults to `assets/agent_systems.json`.
 - Catalog entries describe transport and invocation details:
   - `builtin_echo` (offline/demo transport)
   - `external_json_stdio` (external adapter command over stdin/stdout JSON)
+    - co-shipped local harnesses include Codex Local and Pi Local
+    - both run in isolated temporary working directories and receive only the
+      explicit GENtle request; Pi Local disables sessions, built-in tools,
+      extension discovery, skills, prompt templates, and project-context
+      discovery. When the user explicitly enables public-web research for one
+      request, GENtle loads only its co-shipped search/page extension and
+      allowlists only those two tools; shell, project-file, credential, and
+      private-network access remain unavailable. Prompt-derived search terms
+      may leave the machine, so sensitive projects should keep this opt-in off
+    - Pi Local live preflight checks the exact intended no-tools/no-session Pi
+      command shape with `--help`, so unsupported local CLI flags are reported
+      without sending a prompt to a model
   - `native_openai` / `native_openai_compat` (built-in HTTP adapters with optional per-request base URL/model override)
   - `native_openai_compat` is the preferred path for OpenAI-compatible hosted
     providers (including [clawbio.ai](https://clawbio.ai/)) through explicit
@@ -1121,6 +1546,90 @@ GENtle now provides a shared agent-assistance bridge across GUI and CLI shell:
 - Agent request payload includes:
   - system id and prompt
   - optional project state summary context
+  - when project context is enabled, an additive `x_introspection` extension
+    built from the same engine snapshot:
+    - the complete registered fact-type count map,
+    - a deterministic bounded sample of current project facts,
+    - explicit included/omitted counts and a truncation flag,
+    - read-only command routes for complete fact projection, expression
+      evaluation, capability readiness, and effect verification
+  - an always-present, prompt-matched `x_helper_catalog` projection of at most
+    six records from GENtle's own helper/vector catalog, including exact known
+    product, catalogue, accession, constraints, provenance URLs, and valid
+    GENtle retrieval routes. Matching also considers the bounded recent
+    conversation so a short follow-up remains grounded
+  - for systems that declare web-research support, an `x_web_access` capability
+    record. It is disabled unless the user opts in for that request and grants
+    only bounded public HTTP/HTTPS search and page reading; agents are forbidden
+    from transmitting sequences, local paths, credentials, personal data, or
+    confidential project details in queries or URLs
+  - an optional `x_local_documents` extension when the current prompt names an
+    exact absolute path to a supported text document:
+    - GENtle reads and validates the document rather than granting the provider
+      filesystem access,
+    - at most four documents, 128 KiB per document, and 256 KiB total are
+      included, with UTF-8 validation, truncation state, and SHA-256 provenance,
+    - one level of prioritized local Markdown guide/runbook links may be
+      included when they remain under the explicitly named document's directory
+      tree and within the same limits,
+    - missing/unreadable documents become typed request warnings rather than
+      silent omissions or filesystem searches.
+  - an optional GUI-only `x_gui_context` extension containing bounded mirrors
+    of the live host's recent-project rows, executable tutorial catalog,
+    tutorial guides/references, deterministic prompt-matched recommendations,
+    and Configuration sections:
+    - recent projects expose an opaque id, path-free display metadata, file
+      availability/size/time, and an exact host intent command,
+    - executable tutorial rows retain chapter/example identity, summary, tier,
+      use cases, objectives, concepts, prerequisites, expected outcomes,
+      GUI-acceptance profile, online and review status,
+    - guide/reference rows retain catalog identity and an exact Help-opening
+      command without exposing repository paths,
+    - a bounded lexical shortlist is computed before provider invocation from
+      the current request, using recent user turns only to resolve a
+      context-light follow-up; it reports matched terms and fields, remains a
+      retrieval score rather than biological confidence, and does not replace
+      the longer-term context-labelled action graph,
+    - Configuration rows provide exact tab-opening commands; opening a tab does
+      not itself change credentials, executable paths, or other global state.
+- The system prompt embeds an engine-generated fact vocabulary and a compact
+  introspection control card. It does not rely on the provider being able to
+  open repository documentation files; remote HTTP models and the isolated
+  Codex Local bridge receive the same runtime guidance.
+- `x_introspection` is advisory model context, not an execution bypass. Missing
+  open-world facts remain unknown, parser/engine validation remains
+  authoritative, and suggested commands keep their existing confirmation
+  policy.
+- `x_local_documents` is explicit request context, not ambient project access.
+  Its contents are sent to the selected provider, are treated as untrusted
+  reference material, and cannot raise the provider's command or confirmation
+  permissions. Sequence files continue through GENtle import operations rather
+  than this text-document channel.
+- `x_helper_catalog` is catalog knowledge, not loaded project state. Agents
+  consult it before guessing or searching externally and must not claim a
+  catalogued sequence is loaded until a GENtle retrieval operation succeeds.
+- Public-web research belongs to the selected inner-agent transport, not to a
+  general GENtle browser. The Pi adapter is the first capable transport. Its
+  bridge records actual searches and pages after tool execution as
+  `x_web_research`; model-authored provenance from native HTTP replies is
+  discarded. Web content remains untrusted evidence and cannot increase
+  command-execution authority.
+- GUI provider selection is durable but credentials are not:
+  - the selected catalog system id may be stored in GUI settings
+  - manual API-key, endpoint, model, and runtime overrides remain session-only
+  - native providers resolve credentials in deterministic order: GUI session
+    override, provider environment variable, then a bounded conventional token
+    file read (`~/.codex_token`, `~/.claude_token`, or `~/.mistral_token`)
+  - token-file contents are never written to project state, settings, logs, or
+    diagnostics; Codex Local continues to use its CLI/App login and does not
+    consume the OpenAI token-file fallback
+  - Pi Local likewise delegates credentials to Pi and does not read or persist
+    Pi's authentication store; GENtle owns conversation persistence for this
+    stateless adapter invocation
+- Agent Assistant provider adapters are not source-editing agents. Any future
+  inner coding-agent mode must define a separate engine-facing contract for
+  workspace scope, tool permission, patch review, tests, and rollback rather
+  than inheriting Agent Assistant command execution rights.
 - Agent response payload supports mixed outcomes per reply:
   - plain assistant message (`chat`)
   - follow-up questions (`ask`)
@@ -1136,11 +1645,17 @@ Execution safety model:
 - Execution is evaluated per returned suggestion:
   - explicit user-run by index (`--execute-index`, GUI per-row Run)
   - bulk explicit run (`--execute-all`)
-  - auto-only when caller enables `--allow-auto-exec` and suggestion intent is
-    `auto`
+  - auto-only when caller enables `--allow-auto-exec`, suggestion intent is
+    `auto`, and the shared parser classifies the command as non-mutating;
+    mutating suggestions remain reviewable but require an explicit row/index or
+    bulk execution action
 - Nested/recursive `agents ask` execution is blocked in suggested-command runs.
 - Suggested commands are executed through the same shared shell parser/executor
   used by GUI shell and `gentle_cli shell`.
+- The GUI keeps the per-suggestion action visible in a wrapping card. A
+  suggestion is runnable only after the shared parser accepts it and its
+  execution intent is not `chat`; malformed model output remains inspectable
+  but cannot bypass parser validation.
 - This includes BLAST shell routes (`genomes blast`, `helpers blast`,
   `genomes blast-track`, `helpers blast-track`) when agents suggest them.
 - Async BLAST job contract baseline is now available through shared shell:
@@ -1154,6 +1669,8 @@ Execution safety model:
 - The same async BLAST surface is exposed through MCP tools
   (`blast_async_start|status|cancel|list`) with shared parser/executor parity.
 - Remaining limitation:
+  - the system-wide asynchronous lifecycle above is not yet implemented for
+    every command; the agent is not responsible for choosing an async variant.
   - agent auto-execution currently runs one suggested command at a time and does
     not yet orchestrate multi-step poll/wait loops automatically for async jobs.
   - planned primer-pair multi-BLAST specificity fan-out still needs dedicated
@@ -1168,8 +1685,11 @@ Minimal-success rollout profile (recommended):
   rather than ad-hoc RAG/training.
 - Keep default interaction mode at `chat` + `ask`; enable `auto` only for
   tightly allowlisted low-risk commands.
-- Include compact machine context (`state_summary`) instead of large free-form
-  project dumps to keep prompts deterministic and understandable.
+- Include compact machine context (`state_summary` plus bounded
+  `x_introspection`) instead of large free-form project dumps to keep prompts
+  deterministic and understandable. Fact-type counts and truncation metadata
+  tell the model when it must ask for a read-only introspection command rather
+  than guess from an omitted fact.
 - For local/small models, provide a domain bootstrap package:
   - command glossary and operand conventions: `docs/glossary.json` plus
     `docs/cli.md`
@@ -1401,6 +1921,12 @@ Sequence-linked construct reasoning graph direction:
   - helper/vector semantics should normalize into engine-owned portable records
     (affordances, constraints, functional components, and typed relationships)
     rather than living only in adapter prompts or free-text notes
+  - exact commercial-vector planning must use catalog-owned, versioned sequence
+    expectations rather than product-specific constants in engine code. A
+    supplied or explicitly fetched sequence is checked against those portable
+    expectations, and unresolved or rejected identity fails closed before
+    construct commands are emitted; sequence validation is not a claim about
+    physical stock identity
   - helper list/status surfaces now carry the first normalized helper
     `interpretation` record; new adapters and future planner routes should
     extend that shared record instead of inventing parallel helper-meaning
@@ -1633,18 +2159,21 @@ This enables reusable query composition:
 4. filter by absolute threshold and/or quantile
 5. intersect/union/subtract with other candidate sets
 
-### Primer/qPCR design report command contract (baseline)
+### Primer/qPCR and sequence-specific RT-primer report command contract (baseline)
 
-Primer-pair and qPCR design are first-class engine operations plus shared-shell
-inspection/export paths:
+Primer-pair, qPCR, and terminal-exon sequence-specific RT-primer-pool design are
+first-class engine operations plus shared-shell inspection/export paths:
 
 - Engine operation:
   - `DesignPrimerPairs { template, roi_start_0based, roi_end_0based, forward, reverse, pair_constraints?, min_amplicon_bp, max_amplicon_bp, max_tm_delta_c?, max_pairs?, report_id? }`
+  - `DesignTerminalExonRtPrimerPool { request }`
+  - `ExportTerminalExonRtPrimerPoolReport { report_id, path }`
   - `PcrOverlapExtensionMutagenesis { template, edit_start_0based, edit_end_0based_exclusive, insert_sequence?, constraints?, output_prefix? }`
   - `DesignQpcrAssays { template, roi_start_0based, roi_end_0based, forward, reverse, probe, pair_constraints?, min_amplicon_bp, max_amplicon_bp, max_tm_delta_c?, max_probe_tm_delta_c?, max_assays?, report_id? }`
   - `TestCdnaPcr { seq_id, source_feature_id, forward_primer, reverse_primer, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path?, svg_path?, materialize_products?, product_output_prefix?, product_gel_svg_path?, product_gel_ladders? }`
   - `TestCdnaQpcr { seq_id, source_feature_id, forward_primer, reverse_primer, probe, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path?, svg_path?, materialize_products?, product_output_prefix?, product_gel_svg_path?, product_gel_ladders? }`
   - `BuildTranscriptQpcrPanel { seq_id, source_feature_id, shared_qpcr_report_id, path? }`
+  - `DesignTranscriptAssayPanel { seq_id, source_feature_id, assay_kind?, cdna_synthesis?, objective, coverage_policy, forward, reverse, probe, pair_constraints?, min_amplicon_bp?, max_amplicon_bp?, max_tm_delta_c?, max_probe_tm_delta_c?, max_assays_per_class?, max_mismatches?, require_3prime_exact_bases?, oligo_dt_5prime_risk_threshold_bp?, junctions[], junction_evidence_paths[], junction_evidence_priority?, min_3prime_junction_overlap_bp?, min_5prime_junction_overlap_bp?, annotation_release?, report_id?, path? }`
   - `TestCdnaQpcrFasta { cdna_fasta_paths[], forward_primer, reverse_primer, probe, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path?, svg_path? }`
   - `forward`/`reverse` side constraints now include optional sequence-level filters:
     `fixed_5prime`, `fixed_3prime`, `required_motifs[]`, `forbidden_motifs[]`,
@@ -1655,6 +2184,42 @@ inspection/export paths:
     the same primer/probe/product scanner for broad Ensembl cDNA/ncRNA screens;
     adapters may choose how to present reports, but must not construct
     competing cDNA products or transcript hit geometry locally.
+  - terminal-exon RT-primer-pool design composes the same engine-owned
+    Splicing Expert grouping, mature-transcript construction, strand-aware
+    exon mapping, primer heuristics, operation history, and report persistence.
+    The GUI and command adapters supply ordered target identities and display
+    the resulting report; they must not independently infer a terminal exon,
+    reverse-complement a target window, or rerank pool members.
+  - each terminal-exon target resolves one explicit transcript. Candidate
+    windows are wholly within its terminal exon and are measured from that
+    exon's transcript-oriented start, including for reverse-strand genes. The
+    sequence-specific 3-prime segment is the reverse complement of the selected
+    mature-transcript window and the complete oligo is the fixed 5-prime
+    adapter followed by that segment.
+  - terminal-exon RT-primer-pool selection is deliberately priority ordered:
+    earlier request targets are fixed before later targets are ranked against
+    the existing pool. Fixed-adapter, self-, and prior-pool complementarity are
+    ranked before distance from the terminal-exon start. Tm is retained as a
+    descriptive metric but is not a ranking input in this workflow.
+  - this initial RT-primer-pool operation does not claim whole-transcriptome or
+    whole-genome specificity. Such evidence must remain a separate explicit
+    screen rather than being inferred from terminal-exon geometry or low local
+    complementarity scores.
+  - multi-transcript assay panels group transcripts as fundamentally
+    indistinguishable only when their normalized mature cDNA bytes are
+    identical. Near matches remain separate design classes.
+  - multi-transcript assay kind is additive and backward compatible: omitted
+    mode remains TaqMan, while endpoint RT-PCR and SYBR qPCR use primer-only
+    records. Endpoint first x terminal combinations come only from annotated
+    mature transcripts; requested junctions are evaluated outside the bounded
+    automatic-anchor search and retain explicit required/preferred outcomes.
+  - oligo-dT RT completeness is represented per transcript-by-assay cell as
+    annotation-derived 3-prime-to-5-prime reach. Categorical risk requires an
+    explicit experiment-specific threshold; structural target absence and
+    geometrically indeterminate no-product outcomes remain distinct.
+  - exact-hit prefilters may only prove negative cases. When mismatch-tolerant
+    amplification is permitted, the full cDNA assay scanner remains the source
+    of truth and candidates are not discarded for lacking an exact hit.
   - transcript-derived cDNA PCR/qPCR assay tests are intentionally
     non-mutating unless `materialize_products` is set or `product_gel_svg_path`
     is requested. In the materializing path, GENtle derives each detected
@@ -1693,9 +2258,15 @@ inspection/export paths:
   - `primer_design_reports` (`gentle.primer_design_reports.v1`)
   - `qpcr_design_reports` (`gentle.qpcr_design_reports.v1`)
   - report payload schema: `gentle.primer_design_report.v1`
+  - terminal-exon RT-primer request schema:
+    `gentle.terminal_exon_rt_primer_pool_request.v1`
+  - terminal-exon RT-primer report schema:
+    `gentle.terminal_exon_rt_primer_pool.v1`
   - report payload schema: `gentle.qpcr_design_report.v1`
+  - transcript assay panel payload schema: `gentle.transcript_assay_panel.v2`
 - Shared-shell commands:
   - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
+  - `primers design-terminal-exon-rt-pool REQUEST_JSON_OR_@FILE`
   - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [...] [--svg OUTPUT.svg] [--materialize-products] [--product-gel-svg OUTPUT.svg]`
   - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [...] [--svg OUTPUT.svg] [--materialize-products] [--product-gel-svg OUTPUT.svg]`
@@ -1713,8 +2284,11 @@ Adapter contract:
 
 - `gentle_cli` exposes this surface directly (`gentle_cli primers ...`) by
   forwarding into the same shared-shell parser/executor path.
-- JS/Lua adapters consume the same operation contract via `apply_operation`
-  and can use the same shared-shell routes for report inspection/export.
+- JS/Lua adapters consume the same operation contract via `apply_operation`;
+  Python uses `GentleClient.op(...)`; and MCP/agent callers use the published
+  typed operation through the generic MCP `op` tool. All can use the same
+  report inspection/export routes; the specialized shell spelling need not be
+  duplicated as a dedicated MCP tool.
 - No adapter-specific primer-design business logic is permitted.
 - ROI seed helpers are intentionally non-mutating and return seed payload
   schema `gentle.primer_seed_request.v1` with ready-to-run operation JSON for
@@ -1728,8 +2302,29 @@ Primer3 wrapper integration status (baseline implemented):
 - Engine backend selection is now explicit and deterministic via parameters:
   - `primer_design_backend = auto|internal|primer3`
   - `primer3_executable` (default `primer3_core`)
+- The GUI's `Primer backend and Primer3 preflight` panel already exposes
+  backend/executable settings and an explicit `Probe Primer3` action. It calls
+  the shared engine preflight and displays reachability, version/progress
+  capability, resolved path, working directory and probe diagnostics. The
+  shared-shell equivalent is `primers preflight`; implementation does not
+  establish current-candidate native GUI acceptance.
 - `auto` mode attempts Primer3 and deterministically falls back to the internal
   backend with explicit warning text when Primer3 is unavailable.
+- GENtle probes `primer3_core --help` once per resolved executable identity and
+  enables `--progress` only when that option is advertised. Its bounded
+  per-record work counters are parsed from stderr without mixing status lines
+  into Boulder output or backend error text. These counters describe candidate
+  evaluations, not elapsed time or an ETA.
+- On Unix, GENtle explicitly unblocks `SIGUSR1` in the child before `exec` so
+  Primer3's progress handler remains usable even though GENtle reserves that
+  signal for its own diagnostics. Once a valid progress row has established
+  support, a stalled status stream is prompted with `SIGUSR1`; GENtle does not
+  signal a binary before support has been observed.
+- A legacy Primer3 binary whose help omits `--progress` is launched directly
+  without the flag. If a binary advertises the option but rejects it at run
+  time, GENtle retries once without the flag. Cancellation of a progress-
+  capable run terminates and reaps the child and is never reinterpreted by
+  `auto` mode as permission to fall back to the internal backend.
 - Primer3 outputs are normalized into the existing
   `gentle.primer_design_report.v1` pair schema with shared deterministic
   ranking/tie-break behavior.
@@ -1741,7 +2336,6 @@ Primer3 wrapper integration status (baseline implemented):
 - Remaining work:
   - deeper Primer3 constraint mapping parity for edge-case constraints
   - broader fixture-backed equivalence matrix between internal and Primer3
-  - dedicated preflight/status views in GUI configuration panels
   - multi-BLAST specificity tiers integrated into primer-pair post-filtering
 
 ### Primer/PCR/BLAST UI and internal BLAST abstraction plan (new)
@@ -1865,6 +2459,13 @@ Important separation:
 - Rendering remains presentation-centric
 - Image interpretation remains probabilistic and should output proposals,
   not direct mutations without confirmation
+- Local sequence orientation and genomic strand are independent contracts.
+  Engine-owned locus reports must state both the genomic gene strand and the
+  direction in which local coordinates increase on the display. Renderers use
+  the latter exactly once; they must not infer a second reversal from genomic
+  strand after an import has already produced a gene-oriented reverse
+  complement. Coordinate-bearing strand metadata should expose explicit local
+  and genomic values rather than one frame-ambiguous field.
 
 ### Feature expert view contract (implemented baseline)
 
@@ -1893,6 +2494,10 @@ TFBS expert semantics:
   base segment in each column.
 - Instruction text is part of the shared model so GUI and exported SVG can show
   consistent explanatory wording.
+- A versioned motif ID identifies one matrix, not a factor-name alias for a
+  different release. Compact resource supplementation must match the exact ID;
+  explicit runtime PFMs take precedence over bundled values. Historical matrix
+  versions must not be silently substituted for current IDs or vice versa.
 
 Motif-layering rule:
 
@@ -1934,6 +2539,13 @@ Splicing expert semantics:
 - Mark donor/acceptor boundaries with canonical/non-canonical motif context.
 - Summarize alternative-splicing events and transcript-vs-exon membership in a
   matrix.
+- Loaded UniProt evidence is relevant only through an exact normalized xref to
+  an explicitly identified transcript in the displayed locus, or an exact
+  stable Ensembl gene-ID xref to its unambiguous annotated gene ID. Names,
+  labels, lengths and projections do not establish relevance. Without either
+  relation, transcript reference status stays `not_evaluated`; a gene-only
+  relation never establishes a transcript xref. The engine owns classification
+  and content-bound evidence shared by all presentation adapters.
 - Render junction-support arcs from the same engine payload used by GUI and
   SVG export.
 
@@ -1995,6 +2607,62 @@ Interaction and export semantics:
   - inspect splicing view payload (`inspect-feature-expert ... splicing ...`)
   - render splicing view SVG from the same payload
     (`render-feature-expert-svg ... splicing ...`).
+
+Transcript coding identity is separate from shared exon/locus overlap. CDS
+derivation and exon-skip planning use the selected transcript's explicit coding
+ranges or a unique compatible annotation association, never the union of locus
+CDS features. An exact transcript ID takes precedence; unlabeled RefSeq CDS
+records may bind through the same gene and explicit transcript-variant token,
+with strand and complete exon containment checked. A same-gene, exon-contained
+CDS without a variant link is admitted only when unique. Conflicting identities,
+overlapping coding alternatives or translation tables are not silently merged.
+Explicitly transcript-bound, disjoint CDS fragments remain one coding model.
+
+Exon-skip materialization resolves that coding model before deletion and
+projects it onto retained exons in transcript order. Lost annotated coding ends
+are partial-fragment warnings, not permission to choose a new ORF or borrow
+another isoform's CDS. Retain phase/translation-table context and an explicit
+empty coding-range marker when all coding bases are lost; unannotated transcripts
+remain eligible for disclosed ORF inference. Generated phase-trimmed CDS ranges
+use `codon_start=1`, with the input offset recorded as `source_codon_start`, so
+re-derivation never trims the same phase twice. Synthetic partial translations
+must not inherit the source protein accession as their own identity.
+
+Derived cDNA bases and synthetic mRNA/exon/CDS locations are already in
+transcript orientation. Their active `strand` is therefore local `+`;
+`source_strand` records orientation relative to the immediate `source_seq_id`,
+not necessarily an absolute genomic strand. It is provenance only, never a
+request to reverse-complement the derived bases again. Genomic source features
+retain their original locations and strand.
+
+### Source-coherent locus transcript presentation
+
+The optional `gentle.transcript_structure_presentation.v1` layer is separate
+from `SplicingExpertView` and PCR mature-cDNA equivalence. Physical exon IDs bind
+assembly/chromosome/strand/exact intervals; structure groups bind full ordered
+exon chains and independently keyed CDS geometry/availability. Source records,
+designations, releases and hashes never become a consensus or preferred TSS.
+Clipping cannot determine equivalence; wire identities are rebuilt at ingestion.
+Locus and detailed TSS SVGs use one shared projection. Payload omissions are
+typed unassessed coverage, not per-transcript absence warnings. See
+[source mappings and export contract](transcript_source_presentation.md).
+
+Native DNA-map and Splicing Expert comparison lanes consume one engine-owned
+local projection. Use the sequence anchor orientation exactly once, preserve
+uncropped chain identities and require a live sequence/anchor binding for
+navigation. The presentation assembly must exactly match the enclosing locus
+assembly and the declared annotation build. The anchor's `genome_id` is a
+catalog key, not an independent assembly identifier, and must not be compared
+to that assembly label. Live navigation still requires the exact saved catalog
+key, chromosome, interval, orientation and sequence binding. Independent
+catalog-to-assembly authority is not yet retained in this report: identical
+sequence bytes do not prove that a caller's assembly declaration is correct.
+Do not infer that authority from substring matching or aliases. Comparison rows
+never acquire project feature IDs and must not
+enter support matrices, transcript derivation or primer-design scope. Only
+complete-chain/strand matches may link a loaded transcript to comparison rows;
+CDS equivalence is a separate question. Filters and row highlights are display
+state, not scientific selection or materialization.
 
 ### RNA-seq evidence direction for cloning-candidate regions (planned)
 

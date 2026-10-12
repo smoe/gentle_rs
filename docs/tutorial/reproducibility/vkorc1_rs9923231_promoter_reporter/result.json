@@ -40,7 +40,8 @@
     },
     "allele_specific_inserts": {
       "reference": "vkorc1_rs9923231_promoter_reference",
-      "alternate": "vkorc1_rs9923231_promoter_alternate"
+      "alternate": "vkorc1_rs9923231_promoter_alternate",
+      "alternate_allele": "T"
     },
     "backbone": {
       "sequence_id": "gentle_mammalian_luciferase_backbone_v1",
@@ -53,7 +54,7 @@
       ]
     },
     "construct_previews": {
-      "status": "expected_from_full_workflow_replay",
+      "status": "historical_unverified_wip",
       "reference": {
         "sequence_id": "vkorc1_rs9923231_reporter_reference",
         "expected_svg_path": "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_reference.svg"
@@ -67,6 +68,8 @@
     "suggested_assay_family": "allele_paired_promoter_luciferase_reporter"
   },
   "explicit_assumptions": [
+    "Retained previews originate from Glen's WIP 40430f98, without a complete input-state/binary receipt; current-revision replay remains pending.",
+    "The backbone is synthetic planning data; output _1 and a circular SVG do not prove insert orientation, insertion site or circular molecular topology.",
     "This is a human-cell regulatory assay planning story, not a bacterial-expression story.",
     "The tutorial ends at a reproducible construct-design handoff point.",
     "Drug treatment is a later assay condition, not the first claim of this workflow.",

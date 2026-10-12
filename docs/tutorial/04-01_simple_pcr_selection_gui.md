@@ -20,6 +20,10 @@ GENtle now supports that flow directly from a selection context menu, so you do
 not have to translate the selection into PCR form fields by hand before you
 start.
 
+> **One idea to keep in mind:** the selected **core ROI is the interval that
+> every acceptable product must contain**. It is not the whole amplicon and it
+> is not a primer-search window.
+
 ## What You Will Do
 
 By the end of this tutorial, you should be able to:
@@ -36,42 +40,101 @@ Use one local committed sequence so the tutorial works offline:
 
 - [`test_files/tp73.ncbi.gb`](../../test_files/tp73.ncbi.gb)
 
-Any local sequence works, but `tp73.ncbi.gb` is a stable bundled example with
-enough annotated context to make the selection easy.
+The tutorial workflow extracts bases [61520, 62320) (0-based, end-exclusive)
+from that file into the 800-base sequence `tp73_locus`. It retains the full
+sequence as `simple_pcr_source_locus` for provenance. Open the compact extract
+for this walkthrough, not the full source. The scripted PCR oracle uses the
+same bases under the name `simple_pcr_template`.
+
+The fixed smoke selection is `=201 .. 600` in the selection formula field
+(1-based inclusive), which becomes engine ROI [200, 600). This leaves 200 bases
+on each side for primer search. It is a real TP73 interval used for teaching,
+not a validated assay or evidence of whole-genome specificity.
 
 ## Fastest Path
 
-1. open `File -> Open Tutorial Project... -> Core -> 18. Simple PCR From a Selected Core Region`
-2. keep the loaded TP73 map in linear mode
-3. drag-select one short core region of interest
+1. open `File -> Open Tutorial Project... -> Core -> Simple PCR From a Selected Core Region`
+2. open the 800-base `tp73_locus` extract and keep its map in linear mode
+3. enter `=201 .. 600` in the selection formula field and apply it, or drag-select that core
 4. right-click that selection
 5. choose `Simple PCR from selection`
 6. in `PCR Designer`, adjust:
    - `max primer distance from core`
    - `max amplicon`
-7. click `Design Primer Pairs`
+7. set report ID `simple_pcr_demo_primers`, click `Design Primer Pairs`, and
+   find that ID in the visible `Primer report preview`
 
-If you prefer to start without the tutorial menu, you can instead open
-[`test_files/tp73.ncbi.gb`](../../test_files/tp73.ncbi.gb) directly and follow
-the same steps.
+For the scripted starter, run the workflow linked by the executable reference
+chapter. Opening the full GenBank locus directly is a separate, larger-input
+exercise; its runtime is not covered by the bounded beginner smoke.
 
 ## Step-by-Step
+
+Each step pairs **GUI** instructions with **CLI (terminal)** commands or
+guidance and **Ask the inner agent** prompts. Agent examples request a proposal
+for review; they do not authorize execution. CLI examples assume an installed
+`gentle_cli`; from a source checkout, replace it with
+`cargo run --bin gentle_cli --`. CLI state defaults to `.gentle_state.json`;
+use `--project PATH` for a saved project. A separate CLI process does not
+inherit the GUI's unsaved project or current selection.
+
+In the **GUI Shell**, enter only the command inside `gentle_cli shell '...'`,
+without that wrapper. Other terminal commands cannot simply be pasted there.
 
 ### Step 1: Open One Sequence
 
 GUI:
 
-1. `File -> Open Sequence...`
-2. choose [`test_files/tp73.ncbi.gb`](../../test_files/tp73.ncbi.gb)
+1. open the tutorial project through the menu above
+2. open the compact `tp73_locus` sequence (800 bases)
+
+The number shown before a tutorial title is its current catalog position and
+may move as chapters are added. Match the title rather than memorizing `18`.
+
+CLI (terminal):
+
+```bash
+gentle_cli workflow @docs/examples/workflows/simple_pcr_selection_gui.json
+```
+
+Ask the inner agent:
+
+> Open the Simple PCR tutorial project and tell me which compact sequence I
+> should inspect. Show the exact GENtle operation for review; do not execute it
+> until I approve.
 
 ### Step 2: Select the Core Region
 
 GUI:
 
 1. switch the DNA view to `Linear` if needed
-2. drag over the exact region that must be present in the PCR product
+2. apply `=201 .. 600` in the selection formula field, or drag over those bases
 
 This selection is your **core ROI**.
+
+For this exercise, the geometry is:
+
+```text
+bases 51..200       bases 201..600          bases 601..750
+[forward search] | [must-cover core ROI] | [reverse search]
+       150 bp              400 bp                  150 bp
+```
+
+GENtle stores those same half-open engine coordinates as `[50, 200)`,
+`[200, 600)`, and `[600, 750)`. The GUI keeps the human-facing 1-based ranges
+visible; the report preserves the engine coordinates for reproducibility.
+
+CLI / GUI Shell guidance:
+
+There is no standalone shell command for the drag gesture. Scripted callers
+encode the same interval as `core_start=200` and `core_end=600` in the
+primer-design request.
+
+Ask the inner agent:
+
+> For the open `tp73_locus` tutorial sequence, explain how to select bases 201
+> through 600 as the required core ROI. Show the exact operation for review;
+> do not execute it.
 
 Keep it simple:
 
@@ -85,7 +148,26 @@ GUI:
 1. right-click on the map while the selection is active
 2. choose `Simple PCR from selection`
 
-What GENtle does for you:
+GUI Shell (opens the designer, but does not copy a map selection):
+
+```text
+ui open pcr-design
+```
+
+CLI (terminal; returns a UI intent without opening a window):
+
+```bash
+gentle_cli shell 'ui open pcr-design'
+```
+
+Ask the inner agent:
+
+> Propose the GENtle operation that opens Simple PCR from my current
+> selection. Explain which shared UI-intent route it uses; do not execute it.
+
+![The selected core region's context menu. Choose Simple PCR from selection; the surrounding advanced map actions are unrelated to this walkthrough.](../screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.context.svg)
+
+What the GUI's `Simple PCR from selection` action does for you:
 
 - copies the selection into the PCR ROI fields
 - enables `require ROI flanking`
@@ -97,6 +179,10 @@ What GENtle does for you:
 ### Step 4: Interpret the Three Main Inputs
 
 Inside `PCR Designer`, the beginner path is now the `Simple PCR starter` block.
+
+The designer intentionally also contains advanced constraints. For this first
+walkthrough, stay with the three inputs below; you do not need to understand or
+change the other panels shown around them.
 
 Use it like this:
 
@@ -119,15 +205,59 @@ Important translation:
 So the simple controls are still deterministic and inspectable: they just write
 the existing forward/reverse side-window fields for you.
 
+With this tutorial's default `D = 150`, that translation produces forward
+search bases `51..200` and reverse search bases `601..750` in the GUI. If you
+change `D`, click `Apply simple flank windows` and confirm those fields change
+before running the design.
+
+CLI / GUI Shell guidance:
+
+Use the typed `DesignPrimerPairs` request with explicit core, flank-window and
+maximum-amplicon values. The executable companion chapter preserves the exact
+request shape.
+
+Ask the inner agent:
+
+> Using the selected core ROI, propose practical flank-window and
+> maximum-amplicon settings. Show the resulting GENtle request for review; do
+> not run primer design.
+
+![PCR Designer starter controls after seeding the selected core region.](../screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/seed_simple_pcr.context.svg)
+
 ### Step 5: Run Primer Design
 
 GUI:
 
 1. keep or adjust `max amplicon`
-2. optionally reduce `max pairs` if you want a shorter result list
-3. click `Design Primer Pairs`
+2. set `max pairs` to `5` for this walkthrough
+3. set report ID to `simple_pcr_demo_primers`
+4. click `Design Primer Pairs`
+
+CLI / GUI Shell guidance:
+
+Use the same typed `DesignPrimerPairs` request described above; this step has
+no separate command because the design parameters belong to one atomic engine
+operation.
+
+Ask the inner agent:
+
+> Propose the command that designs the primer pairs and the command that lists
+> the saved reports. State the expected report fields; do not execute either
+> command.
+
+`max pairs` limits the returned report, not the search effort. The 800-base
+template and its 200-base flanks bound the search here. The Linux acceptance
+runner still requires a non-empty primer report within its ten-minute compute
+budget; a timeout is a failure, not a skipped or successful tutorial.
 
 ### Step 6: Review the Result
+
+Do not stop at the status text or assume that a click produced a useful assay.
+Scroll to the in-panel `Primer report preview` and first confirm:
+
+- report ID is `simple_pcr_demo_primers`
+- `pairs` is greater than zero
+- the first row says `yes` under `flanks`
 
 Inspect the returned primer-pair report for:
 
@@ -143,6 +273,72 @@ GENtle now keeps that beginner wording visible in two places:
 
 - the in-panel `Primer report preview` inside `PCR Designer`
 - shared-shell `primers show-report REPORT_ID` as `simple_pcr_pairs`
+
+GUI Shell (lists reports in the current project):
+
+```text
+primers list-reports
+```
+
+CLI (terminal; lists reports in the CLI state or specified saved project):
+
+```bash
+gentle_cli shell 'primers list-reports'
+```
+
+Ask the inner agent:
+
+> Show the saved primer-pair reports and explain amplicon length, distance from
+> the core ROI, flanking status, Tm and GC values. Do not run a new design or
+> export anything until I approve.
+
+![The saved primer-report preview after design. The automated check requires at least one pair and verifies that the first pair flanks the core ROI.](../screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/inspect_primer_report.context.svg)
+
+## Automated Checkpoint
+
+The executable GUI acceptance follows the same path with the committed offline
+fixture. It does not merely test that the button can be clicked. It requires a
+persisted `gentle.primer_design_report.v1` report, a non-empty pair list, a
+visible report-preview panel, and an explicit recorded scroll to its result
+rows. It verifies that the first forward primer ends at or before the core
+while the first reverse primer begins at or after it.
+
+That establishes tutorial consistency and flanking geometry for this fixture;
+it does **not** establish whole-genome specificity or validate a wet-lab assay.
+
+## Outer-Agent Boundary
+
+An outer agent does not inherit the unsaved selection in an open GENtle
+window. The canonical workflow for this chapter prepares the 800-base starter
+sequence and selects the internal backend; its receipt is therefore setup
+evidence, **not** evidence that primers were designed.
+
+To reproduce the design outside the GUI, ask the outer agent to propose a
+fully typed `DesignPrimerPairs` request with:
+
+- core ROI `[200, 600)`
+- forward search window `[50, 200)`
+- reverse search window `[600, 750)`
+- the chosen maximum amplicon length and all remaining primer constraints
+
+Review that exact payload before approving mutation of the disposable state,
+then require a persisted `gentle.primer_design_report.v1` report rather than a
+prose summary. Tutorial 04.02 is the fully scripted companion when you want
+that payload and its deterministic replay already supplied.
+
+Neither a successful setup receipt nor a saved primer report establishes
+whole-genome specificity, wet-lab performance or assay fitness.
+
+## If Your Screen Does Not Match
+
+- No `Simple PCR from selection`: apply a non-empty selection and right-click
+  inside the highlighted span in the linear map.
+- Wrong flank windows: re-enter the distance and click
+  `Apply simple flank windows` before designing.
+- No accepted pairs: restore the tutorial defaults before widening advanced
+  constraints; the automated fixture is expected to produce at least one pair.
+- A report exists but is not visible: scroll below `Design Primer Pairs` to the
+  `Primer report preview`; do not start a second design merely to reveal it.
 
 For this beginner flow, the most important question is simply:
 

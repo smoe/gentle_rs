@@ -1,0 +1,25 @@
+{
+  "schema": "gentle.tss_detail_context_inputs.v1",
+  "reference": {
+    "genome_id": "synthetic-genome-v1",
+    "assembly": "synthetic-assembly-v1",
+    "annotation_release": "synthetic-annotation-v1"
+  },
+  "genes": [
+    {
+      "gene_id": "synthetic-gene-minus",
+      "locus_report": {
+        "path": "locus.json",
+        "sha256": "bcfac1e94205be15fa9a3365271a8707ba9e9c9394219bc5a2cda1485aa645c5"
+      },
+      "locus_fasta": {
+        "path": "locus.fa",
+        "sha256": "2b9149e057aef6f4e915b597272a7d7068eb68fa2fc2a3e015d7c1a19ba70538"
+      },
+      "tata_report": {
+        "path": "tata.json",
+        "sha256": "36b57fe393190616128b6473973cda08f6d6e011d891653523ceda2d53bacef7"
+      }
+    }
+  ]
+}

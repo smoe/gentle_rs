@@ -9,7 +9,7 @@ use gentle::{
     },
     app,
     cli_support::{SingleProjectCliOptions, parse_single_project_cli_args},
-    gui_profiler,
+    gui_profiler, runtime_status,
 };
 use std::{
     backtrace::Backtrace,
@@ -17,7 +17,6 @@ use std::{
     fs::OpenOptions,
     io::Write,
     panic,
-    path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -26,53 +25,15 @@ fn configure_macos_process_name() {
     use objc2_foundation::{NSProcessInfo, ns_string};
     // Winit builds the macOS app menu title from NSProcessInfo::processName.
     // Set it early so the native menu shows "About GENtle" instead of "About gentle".
-    unsafe {
-        NSProcessInfo::processInfo().setProcessName(ns_string!("GENtle"));
-    }
+    NSProcessInfo::processInfo().setProcessName(ns_string!("GENtle"));
 }
 
 #[cfg(not(target_os = "macos"))]
 fn configure_macos_process_name() {}
 
-fn resolve_runtime_asset_path_from(
-    path: &str,
-    current_exe: Option<&Path>,
-    manifest_dir: Option<&Path>,
-) -> PathBuf {
-    let direct = PathBuf::from(path);
-    if direct.exists() {
-        return direct;
-    }
-    if let Some(manifest_dir) = manifest_dir {
-        let repo_relative = manifest_dir.join(path);
-        if repo_relative.exists() {
-            return repo_relative;
-        }
-    }
-    if let Some(exe_path) = current_exe
-        && let Some(exe_dir) = exe_path.parent()
-    {
-        let mut candidates: Vec<PathBuf> = Vec::new();
-        if let Some(parent) = exe_dir.parent() {
-            candidates.push(parent.join("Resources").join(path));
-            if let Some(grandparent) = parent.parent() {
-                candidates.push(grandparent.join(path));
-            }
-        }
-        for candidate in candidates {
-            if candidate.exists() {
-                return candidate;
-            }
-        }
-    }
-    PathBuf::from(path)
-}
-
-fn resolve_runtime_asset_path(path: &str) -> PathBuf {
-    let current_exe = env::current_exe().ok();
-    let manifest_dir = option_env!("CARGO_MANIFEST_DIR").map(Path::new);
-    resolve_runtime_asset_path_from(path, current_exe.as_deref(), manifest_dir)
-}
+use gentle::runtime_assets::resolve_runtime_asset_path;
+#[cfg(test)]
+use gentle::runtime_assets::resolve_runtime_asset_path_from;
 
 fn load_icon(path: &str) -> Option<egui::IconData> {
     let icon_path = resolve_runtime_asset_path(path);
@@ -153,11 +114,13 @@ Agent Assistant API environment:\n  \
 {AGENT_MODEL_ENV}     optional model override\n\n\
 GUI diagnostics:\n  \
 {gui_profile_env}=1    enable Puffin GUI profiling when built with --features gui-profiler\n  \
-{gui_profile_addr_env}  optional profiler bind address (default {gui_profile_addr})\n\n  \
+{gui_profile_addr_env}  optional profiler bind address (default {gui_profile_addr})\n  \
+{startup_trace_env}=PATH  write bounded CPU startup checkpoints to a new JSON file on exit\n\n  \
 ChatGPT, Claude.ai/Claude Code, and Le Chat subscription/login tokens are not API keys.",
         gui_profile_env = gui_profiler::GUI_PROFILER_ENV,
         gui_profile_addr_env = gui_profiler::GUI_PROFILER_ADDR_ENV,
-        gui_profile_addr = gui_profiler::DEFAULT_GUI_PROFILER_ADDR
+        gui_profile_addr = gui_profiler::DEFAULT_GUI_PROFILER_ADDR,
+        startup_trace_env = gui_profiler::startup_trace::STARTUP_TRACE_ENV,
     )
 }
 
@@ -170,9 +133,14 @@ fn persist_root_window_state() -> bool {
 }
 
 fn main() -> eframe::Result<()> {
+    let main_entered = std::time::Instant::now();
+    let _startup_trace = gui_profiler::startup_trace::start_from_env(main_entered);
     install_panic_logging();
     gui_profiler::init_from_env();
     configure_macos_process_name();
+    if let Err(error) = runtime_status::install_sigusr1_stderr_dump_thread() {
+        eprintln!("Warning: could not install SIGUSR1 runtime-status diagnostics: {error}");
+    }
 
     let args: Vec<String> = env::args().skip(1).collect();
     let cli = match parse_single_project_cli_args(&args, SingleProjectCliOptions::gui()) {
@@ -205,7 +173,9 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
 
-    eframe::run_native(
+    let native_run =
+        gui_profiler::startup_trace::span(gui_profiler::startup_trace::Phase::NativeRun);
+    let result = eframe::run_native(
         "GENtle",
         options,
         Box::new(move |_cc| {
@@ -213,7 +183,9 @@ fn main() -> eframe::Result<()> {
                 cli.project_path.as_deref(),
             )))
         }),
-    )
+    );
+    native_run.finish(result.is_ok());
+    result
 }
 
 #[cfg(test)]
@@ -284,6 +256,7 @@ mod tests {
         assert!(help.contains(gentle::agent_bridge::MISTRAL_API_KEY_ENV));
         assert!(help.contains(gentle::gui_profiler::GUI_PROFILER_ENV));
         assert!(help.contains(gentle::gui_profiler::GUI_PROFILER_ADDR_ENV));
+        assert!(help.contains(gentle::gui_profiler::startup_trace::STARTUP_TRACE_ENV));
         assert!(help.contains("subscription/login tokens are not API keys"));
     }
 }

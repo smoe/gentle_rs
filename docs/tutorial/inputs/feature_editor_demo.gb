@@ -1,0 +1,19 @@
+LOCUS       FEATURE_EDITOR_DEMO      120 bp    DNA     linear   SYN 10-SEP-2026
+DEFINITION  Synthetic annotation-curation teaching sequence; not a gene model.
+ACCESSION   GENTLE_FEATURE_EDITOR_DEMO
+VERSION     GENTLE_FEATURE_EDITOR_DEMO.1
+KEYWORDS    synthetic; annotation curation tutorial.
+COMMENT     Bases are ACGT repeated 30 times. All features are invented.
+FEATURES             Location/Qualifiers
+     gene            11..100
+                     /gene="DEMO"
+     misc_feature    21..40
+                     /label="segment_A"
+                     /gene="DEMO"
+     misc_feature    complement(61..80)
+                     /label="reverse_control"
+                     /gene="CONTROL"
+ORIGIN
+        1 acgtacgtac gtacgtacgt acgtacgtac gtacgtacgt acgtacgtac gtacgtacgt
+       61 acgtacgtac gtacgtacgt acgtacgtac gtacgtacgt acgtacgtac gtacgtacgt
+//

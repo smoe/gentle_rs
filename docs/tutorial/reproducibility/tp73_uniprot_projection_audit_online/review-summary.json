@@ -1,0 +1,52 @@
+{
+  "schema": "gentle.tutorial_review_evidence.v1",
+  "tutorial_id": "tp73_uniprot_projection_audit_cli",
+  "reviewed_at": "2026-10-01",
+  "reference": {
+    "genome_id": "Human GRCh38 Ensembl 116",
+    "sequence_sha1": "294c432b69a88521437ffe2a9080e08d3f84902c",
+    "annotation_sha1": "1cc995089649e7d6bc291b12947f2fe98989975f",
+    "annotation_scope": "full",
+    "transcript_features": 20,
+    "exon_features": 222,
+    "cds_features": 187
+  },
+  "uniprot": {
+    "accession": "O15350",
+    "primary_id": "P73_HUMAN",
+    "entry_id": "TP73_UNIPROT",
+    "sequence_length_aa": 636,
+    "projection_id": "tp73_uniprot_o15350",
+    "projected_transcript_count": 10
+  },
+  "accounting": [
+    {"transcript_id":"ENST00000354437","translated_nt":1497,"expected_aa":499,"derived_aa":499,"divisible_by_3":true},
+    {"transcript_id":"ENST00000378285","translated_nt":1350,"expected_aa":450,"derived_aa":450,"divisible_by_3":true},
+    {"transcript_id":"ENST00000378288","translated_nt":1761,"expected_aa":587,"derived_aa":587,"divisible_by_3":true},
+    {"transcript_id":"ENST00000378290","translated_nt":1695,"expected_aa":565,"derived_aa":565,"divisible_by_3":true},
+    {"transcript_id":"ENST00000378295","translated_nt":1908,"expected_aa":636,"derived_aa":636,"divisible_by_3":true},
+    {"transcript_id":"ENST00000604074","translated_nt":1209,"expected_aa":403,"derived_aa":403,"divisible_by_3":true},
+    {"transcript_id":"ENST00000604479","translated_nt":1620,"expected_aa":540,"derived_aa":540,"divisible_by_3":true},
+    {"transcript_id":"ENST00000713570","translated_nt":1908,"expected_aa":636,"derived_aa":636,"divisible_by_3":true},
+    {"transcript_id":"ENST00000713572","translated_nt":1908,"expected_aa":636,"derived_aa":636,"divisible_by_3":true},
+    {"transcript_id":"ENST00000917569","translated_nt":1908,"expected_aa":636,"derived_aa":636,"divisible_by_3":true}
+  ],
+  "audit": {
+    "row_count": 10,
+    "mismatch_count": 6,
+    "missing_evidence_count": 4,
+    "direct_compare_match_count": 4,
+    "global_alignment_length_mismatch_count": 6,
+    "ensembl_provider_status": "unavailable_http_500",
+    "maintainer_email_draft": "local_unsent"
+  },
+  "parity": {
+    "row_count": 10,
+    "divergent_row_count": 0,
+    "all_statuses_match": true,
+    "all_accounting_match": true,
+    "all_mismatch_reasons_match": true,
+    "all_comparison_modes_match": true,
+    "email_draft_transcripts_match": true
+  }
+}

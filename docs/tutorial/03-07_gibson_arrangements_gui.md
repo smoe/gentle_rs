@@ -37,7 +37,7 @@ Recommended route:
 3. the Help window should open automatically on this arrangement guide
 4. continue below from `Step 1`
 
-The same starter baseline is described here:
+The two related setup layers are described here:
 
 - [`docs/tutorial/generated/chapters/03-04_gibson_specialist_testing_baseline.md`](./generated/chapters/03-04_gibson_specialist_testing_baseline.md)
 - [`docs/tutorial/generated/chapters/03-06_gibson_arrangements_baseline.md`](./generated/chapters/03-06_gibson_arrangements_baseline.md)
@@ -194,6 +194,12 @@ What to verify in the SVG:
 This is the practical payoff of storing the arrangement: you no longer have to
 reconstruct the lane order by hand each time.
 
+![Deterministic arrangement gel with flanking ladders and vector, insert and assembled-product sample lanes](../figures/gibson_single_insert_arrangement_gel.svg)
+
+This is an engine-generated SVG, not a GUI screenshot. Its lane order and
+labels are the useful evidence; a screenshot of the export dialog would add no
+scientific information.
+
 ## Step 6: Inspect the Graph View
 
 GUI:
@@ -214,6 +220,30 @@ Interpretation:
 - the arrangement is a reusable downstream plan for lane ordering and gel export
 - keeping them separate is useful because the same output sequences could later
   participate in more than one arrangement
+
+## Inner and Outer Agents
+
+The **inner agent** can inspect the open project's arrangement and linked
+containers. Keep inspection separate from file creation:
+
+> Inspect the Gibson serial arrangement in the current project. Return its
+> arrangement ID, ordered lane container IDs, representative sequence IDs and
+> ladder policy. Confirm the order vector → insert → assembled product. Do not
+> change the arrangement or write an SVG until I approve the exact arrangement
+> and output path.
+
+The **outer agent** cannot inherit an unsaved GUI arrangement. Give it the
+canonical workflow and a fresh state path:
+
+> Use GENtle's `gentle-cloning` skill to replay
+> `docs/examples/workflows/gibson_arrangements_baseline.json` into a new
+> disposable state. Return the structured workflow result and reproducibility
+> receipt. Then propose—but do not yet write—an arrangement gel for
+> `arrangement-1`, including the exact output path and lane order.
+
+Workflow replay mutates only the disposable state; SVG export is a separate
+file write. Approve each exact bound action separately. Neither route proves
+that physical samples occupy those lanes.
 
 ## CLI Parity
 

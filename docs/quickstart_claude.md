@@ -111,6 +111,8 @@ command and it should not include `gentle_cli`. Prefer `execution: "ask"` so
 the user reviews before running. Use `execution: "auto"` only for safe,
 read-only commands where the system explicitly allows auto execution. Use
 `execution: "chat"` when the command is explanatory and should not run.
+GENtle enforces the same boundary: a parser-classified mutating suggestion is
+not auto-executed even if a provider returns `execution: "auto"`.
 
 Agent-suggested commands must not recursively invoke `agents ask`,
 `agents plan`, or `agents execute-plan`; GENtle blocks those nested routes.

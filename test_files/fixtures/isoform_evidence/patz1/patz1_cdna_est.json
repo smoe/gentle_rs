@@ -1,0 +1,48 @@
+{
+  "schema": "gentle.cdna_est_evidence_resource.v1",
+  "resource_id": "patz1_synthetic_cdna_est_v1",
+  "source": "hand-crafted synthetic fixture",
+  "annotation_release": "Ensembl116-like synthetic model",
+  "records": [
+    {
+      "evidence_id": "cdna_synthetic_long_alt_shared_junction",
+      "kind": "cdna",
+      "source": "synthetic full-length cDNA record",
+      "accession": "SYN_CDNA_PATZ1_001",
+      "assembly": "GRCh38.p14",
+      "chromosome": "22",
+      "strand": "-",
+      "genomic_start_1based": 31325940,
+      "genomic_end_1based": 31325979,
+      "junction_ids": ["JCT:GRCh38.p14:31325940-31325979:-"],
+      "support_count": 2,
+      "alignment_identity_fraction": 1.0,
+      "alignment_coverage_fraction": 1.0,
+      "notes": ["Synthetic support row for deterministic tests only."]
+    },
+    {
+      "evidence_id": "est_synthetic_long_exon",
+      "kind": "est",
+      "source": "synthetic EST record",
+      "accession": "SYN_EST_PATZ1_001",
+      "assembly": "GRCh38.p14",
+      "chromosome": "22",
+      "strand": "-",
+      "exon_family_ids": ["EXF:GRCh38.p14:31325900-31325939:-"],
+      "support_count": 1,
+      "notes": ["Synthetic support row for deterministic tests only."]
+    },
+    {
+      "evidence_id": "cdna_synthetic_wrong_assembly",
+      "kind": "cdna",
+      "source": "synthetic coordinate-mismatch control",
+      "accession": "SYN_CDNA_PATZ1_WRONG_ASSEMBLY",
+      "assembly": "GRCh37",
+      "chromosome": "22",
+      "strand": "-",
+      "junction_ids": ["JCT:GRCh38.p14:31325940-31325979:-"],
+      "support_count": 1,
+      "notes": ["Negative control: a valid geometry id paired with mismatched assembly provenance must remain unknown."]
+    }
+  ]
+}

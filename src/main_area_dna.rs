@@ -50,6 +50,8 @@
 
 #[path = "main_area_dna/auxiliary_workspaces.rs"]
 mod auxiliary_workspaces;
+mod tata_box_ui;
+mod tss_workspace_ui;
 
 #[path = "main_area_dna/cutrun_support.rs"]
 mod cutrun_support;
@@ -57,14 +59,32 @@ mod cutrun_support;
 #[path = "main_area_dna/feature_actions.rs"]
 mod feature_actions;
 
+#[path = "main_area_dna/feature_location_editor_ui.rs"]
+mod feature_location_editor_ui;
+
 #[path = "main_area_dna/feature_tree_ui.rs"]
 mod feature_tree_ui;
 
+#[cfg(feature = "benchmark-support")]
+pub mod latency_benchmark;
+mod latency_diagnostics;
+
 #[path = "main_area_dna/formula_controls.rs"]
 mod formula_controls;
+mod selection_navigation;
 
+mod conservation_alignment_ui;
+mod conservation_request_ui;
+#[path = "main_area_dna/genomic_regions_ui.rs"]
+mod genomic_regions_ui;
+mod locus_inspector;
+mod source_annotation;
+mod tss_view;
+
+mod gene_assay_study_ui;
 #[path = "main_area_dna/primer_design_ui.rs"]
 mod primer_design_ui;
+mod transcript_assay_report_ui;
 
 #[path = "main_area_dna/sequencing_confirmation_ui.rs"]
 mod sequencing_confirmation_ui;
@@ -77,6 +97,8 @@ mod rna_read_mapping_ui;
 
 #[path = "main_area_dna/variant_followup.rs"]
 mod variant_followup;
+
+use feature_location_editor_ui::FeatureLocationEditorUiState;
 
 use crate::{
     app::{
@@ -94,45 +116,58 @@ use crate::{
         AttractPwmMappingPolicy, AttractRegionClass, AttractSplicingEvidenceHitRow,
         AttractSplicingEvidenceSettings, AttractSplicingEvidenceView,
         CandidateFeatureStrandRelation, CandidateRecord, CandidateSetOperator,
-        ConstructReasoningGraph, ConstructReasoningInspectionAction, ConstructRole,
+        ConstructReasoningActionDotplotRequest, ConstructReasoningGraph,
+        ConstructReasoningGraphFreshness, ConstructReasoningGraphSnapshotStatus,
+        ConstructReasoningInspectionAction, ConstructReasoningTaskSeverity, ConstructRole,
         CutRunMotifAbsentOccupancyInterpretation, CutRunMotifContextScope,
         CutRunRegulatoryEvidenceSourceKind, CutRunRegulatorySupportReport,
         CutRunRegulatoryTfbsConfirmationStatus, CutRunSupportStrength, DecisionMethod,
-        DesignDecisionNode, DesignFact, DisplaySettings, DisplayTarget, DotplotMode,
-        DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine,
-        EngineError, ErrorCode, EvidenceClass, ExonSkipSelectionCriterion, ExonSkipSelectionPlan,
-        ExportFormat, FlexibilityModel, FlexibilityTrack, GenomeAnchorPreparedFallbackPolicy,
-        GenomeAnchorSide, GentleEngine, IsoformPromoterComparisonGroup,
-        IsoformPromoterComparisonReport, JasparCatalogRemoteSummary, LigationProtocol,
-        LinearSequenceLetterLayoutMode, MAX_DOTPLOT_PAIR_EVALUATIONS, MicroarrayProjectionReport,
-        OpResult, Operation, OperationProgress, PairwiseAlignmentMode, PcrPrimerSpec,
-        PrimerDesignBackend, PrimerDesignBaseLock, PrimerDesignPairConstraint,
+        DesignDecisionNode, DesignFact, DisplaySettings, DisplayTarget,
+        DotplotInspectionRequestSnapshot, DotplotMode, DotplotOverlayAnchorExonRef,
+        DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine, EngineError, ErrorCode,
+        EvidenceClass, ExonSkipSelectionCriterion, ExonSkipSelectionPlan,
+        ExperimentalAssayHandoffReport, ExperimentalAssayReadinessPolicy,
+        ExperimentalAssayReadinessState, ExportFormat, FlexibilityModel, FlexibilityTrack,
+        GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide, GenomicMotifEvidenceAvailability,
+        GenomicMotifEvidenceReport, GenomicMotifEvidenceRequest, GenomicMotifEvidenceTarget,
+        GentleEngine, IsoformPromoterComparisonGroup, IsoformPromoterComparisonReport,
+        JasparCatalogRemoteSummary, LigationProtocol, LinearSequenceLetterLayoutMode,
+        MAX_DOTPLOT_PAIR_EVALUATIONS, MAX_GENOMIC_MOTIF_EVIDENCE_QUERY_MOTIFS,
+        MicroarrayProjectionReport, OpResult, Operation, OperationProgress, PairwiseAlignmentMode,
+        PcrPrimerSpec, PrimerDesignBackend, PrimerDesignBaseLock, PrimerDesignPairConstraint,
         PrimerDesignProgress, PrimerDesignReport, PrimerDesignSideConstraint,
         PrimerSpecificityPolicy, ProbeRegionAptImportReport, ProbeRegionBackendRunReport,
         ProbeRegionEvidenceInterpretationReport, ProbeRegionEvidenceMappingRow,
         ProbeRegionEvidenceSvgExport, ProbeRegionEvidenceTranscriptMapping,
         ProbeRegionOutputInspection, PromoterEvidenceMatrixReport, PromoterEvidenceMatrixRow,
         PromoterExpressionEvidenceInput, PromoterExpressionEvidenceReport,
-        PromoterReporterCandidateSet, PromoterWindowCollapseMode, ProtocolCartoonPreviewTelemetry,
-        QpcrDesignReport, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting,
-        QpcrTranscriptTargetingMode, RenderSvgMode, RestrictionCloningPcrHandoffMode,
-        RestrictionCloningPcrHandoffReport, RestrictionCloningPcrHandoffSeedRequest,
-        RestrictionCloningVectorEnzymeSuggestions, RestrictionEnzymeDisplayMode,
-        RestrictionSiteScanReport, RnaReadAlignConfig, RnaReadAlignmentDisplay,
-        RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
-        RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
-        RnaReadAlignmentInspectionSubsetSpec, RnaReadConcatemerInspection,
-        RnaReadConcatemerInspectionSettings, RnaReadExonSupportFrequency,
-        RnaReadGeneSupportCompleteRule, RnaReadGeneSupportSummary, RnaReadHitSelection,
-        RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
-        RnaReadInterpretationProfile, RnaReadInterpretationReport,
+        PromoterReporterArchitectureComparisonReport,
+        PromoterReporterArchitectureComparisonRequest, PromoterReporterCandidateSet,
+        PromoterReporterPanelProposal, PromoterReporterPanelReceipt, PromoterReporterPanelRequest,
+        PromoterWindowCollapseMode, ProtocolCartoonPreviewTelemetry, QpcrDesignReport,
+        QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
+        RegulatoryFragmentBinding, RegulatoryFragmentGeometryKind,
+        RegulatoryFragmentGeometryRequest, RegulatoryFragmentInstanceRequest,
+        RegulatoryFragmentMaterializationProposal, RegulatoryFragmentMaterializationReceipt,
+        RegulatoryFragmentOrientation, RegulatoryFragmentPanelPlan, RegulatoryFragmentPanelRequest,
+        RegulatoryFragmentQuestion, RegulatoryFragmentRole, RenderSvgMode,
+        RestrictionCloningPcrHandoffMode, RestrictionCloningPcrHandoffReport,
+        RestrictionCloningPcrHandoffSeedRequest, RestrictionCloningVectorEnzymeSuggestions,
+        RestrictionEnzymeDisplayMode, RestrictionSiteScanReport, RnaReadAlignConfig,
+        RnaReadAlignmentDisplay, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
+        RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionRow,
+        RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
+        RnaReadConcatemerInspection, RnaReadConcatemerInspectionSettings,
+        RnaReadExonSupportFrequency, RnaReadGeneSupportCompleteRule, RnaReadGeneSupportSummary,
+        RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretProgress,
+        RnaReadInterpretationHit, RnaReadInterpretationProfile, RnaReadInterpretationReport,
         RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadIsoformTriageBin,
         RnaReadJunctionSupportFrequency, RnaReadLengthDistributionSummary, RnaReadOriginMode,
         RnaReadPairwiseAlignmentDetail, RnaReadReportMode, RnaReadScoreDensityScale,
         RnaReadScoreDensityVariant, RnaReadSeedFilterConfig, RnaReadTopHitPreview,
         RnaSeedHashCatalogEntry, RnaSeedHashTemplateAuditEntry, SequenceAlignmentReport,
-        SequenceFeatureQuery, SequenceGenomeAnchorSummary, SequenceScanTarget,
-        SequencingConfirmationDiscrepancy, SequencingConfirmationReadResult,
+        SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceGenomeAnchorSummary,
+        SequenceScanTarget, SequencingConfirmationDiscrepancy, SequencingConfirmationReadResult,
         SequencingConfirmationReport, SequencingConfirmationReportSummary,
         SequencingConfirmationStatus, SequencingConfirmationTargetKind,
         SequencingConfirmationTargetResult, SequencingConfirmationTargetSpec,
@@ -140,11 +175,20 @@ use crate::{
         SequencingPrimerOverlayReport, SequencingPrimerOverlaySuggestion,
         SequencingPrimerProblemKind, SequencingPrimerProposalRow, SequencingReadOrientation,
         SequencingTraceRecord, SequencingTraceSummary, SnpMutationSpec, SplicingRange,
-        SplicingScopePreset, TfThresholdOverride, TfbsHitScanReport, TfbsProgress,
+        SplicingScopePreset, TERMINAL_EXON_RT_PRIMER_POOL_REQUEST_SCHEMA,
+        TerminalExonRtPrimerPoolReport, TerminalExonRtPrimerPoolRequest,
+        TerminalExonRtPrimerTarget, TfThresholdOverride, TfbsHitScanReport, TfbsProgress,
         TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource,
         TfbsScoreTrackReport, TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
-        TfbsTrackSimilarityReport, TfbsTrackSimilarityRow, VariantAlleleChoice,
-        VariantPromoterContextReport, Workflow, construct_reasoning_action_dotplot_request,
+        TfbsTrackSimilarityReport, TfbsTrackSimilarityRow, TranscriptAssayAmpliconRange,
+        TranscriptAssayCdnaSynthesis, TranscriptAssayCoveragePolicy,
+        TranscriptAssayDetectionStatus, TranscriptAssayJunctionPriority,
+        TranscriptAssayJunctionRequest, TranscriptAssayKind, TranscriptAssayOligoDtReachStatus,
+        TranscriptAssayPanelObjective, TranscriptAssayPanelReport,
+        TranscriptAssayPracticalityClassification, TranscriptAssayPracticalityPolicy,
+        TranscriptAssayUseTier, VariantAlleleChoice, VariantPromoterContextReport, Workflow,
+        construct_reasoning_action_dotplot_request,
+        construct_reasoning_dotplot_inspection_provenance,
         resolve_formula_roi_range_inputs_0based_on_sequence,
         resolve_selection_formula_range_0based_on_sequence,
     },
@@ -155,11 +199,17 @@ use crate::{
     enzymes::active_restriction_enzymes,
     exon_frame::{ExonLengthFrameCue, phase_entry_hint, transcript_entry_phase},
     feature_expert::{
-        FeatureExpertTarget, FeatureExpertView, IsoformArchitectureExpertView,
-        RestrictionSiteExpertView, SplicingBoundaryMarker, SplicingExonSummary, SplicingExpertView,
-        SplicingIntronSignal, TfbsExpertView, compute_splicing_exon_transition_matrix,
+        FeatureExpertTarget, FeatureExpertView, GeneIsoformAssayCandidate,
+        GeneIsoformEvidenceReport, GeneIsoformEvidenceRequest, GeneIsoformJunctionRow,
+        GeneLocusEvidenceDisplayReport, GeneLocusEvidenceDisplayRequest, GeneLocusOccupancyLayout,
+        GeneLocusRegulatoryScoreTrackRequest, GeneLocusScaleBarMode, GeneLocusScaleBarPolicy,
+        IsoformArchitectureExpertView, IsoformEvidenceAssessmentStatus, RestrictionSiteExpertView,
+        SplicingBoundaryMarker, SplicingExonSummary, SplicingExpertView, SplicingIntronSignal,
+        TfbsExpertView, compute_supported_splicing_exon_transitions,
     },
-    feature_location::{collect_location_ranges_usize, feature_is_reverse},
+    feature_location::{
+        collect_location_ranges_usize, feature_is_reverse, location_overlaps_usize,
+    },
     gc_contents::GcContents,
     icons::*,
     iupac_code::IupacCode,
@@ -188,14 +238,21 @@ use crate::{
 use eframe::egui::{self, Frame, PointerState, Vec2};
 use gentle_gui::theme;
 use gentle_protocol::{
-    GeneSetCohortRelationship, OrthologAmbiguityPolicy, OrthologCutRunSupportStatus,
+    CrypticSplicingEvidenceOverlayReport, CrypticSplicingEvidenceOverlayRequest,
+    CrypticSplicingModelPolicy, CrypticSplicingModelStatus, CrypticSplicingProteinProjectionReport,
+    CrypticSplicingProteinProjectionRequest, CrypticSplicingProteinProjectionStatus,
+    CrypticSplicingRnaEvidenceStatus, CrypticSplicingScreenRequest, CrypticSplicingScreenView,
+    CrypticSplicingSignalStatus, CrypticSplicingSpan, CrypticSplicingStrand,
+    GeneSetCohortRelationship, OrthologAmbiguityPolicy, OrthologCutRunNormalizationInput,
+    OrthologCutRunQuantitativeComparisonStatus, OrthologCutRunSupportStatus,
     OrthologPromoterCohortReport, OrthologPromoterComparisonReport,
 };
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, hash_map::DefaultHasher},
     env, fs,
+    hash::{Hash, Hasher},
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex, RwLock,
@@ -218,6 +275,7 @@ enum PrimaryMapMode {
     Standard,
     Splicing,
     Dotplot,
+    Tss,
 }
 
 impl PrimaryMapMode {
@@ -226,6 +284,7 @@ impl PrimaryMapMode {
             Self::Standard => "Standard map",
             Self::Splicing => "Splicing map",
             Self::Dotplot => "Dotplot map",
+            Self::Tss => "TSS / Regulatory",
         }
     }
 }
@@ -390,6 +449,8 @@ struct EngineOpsUiState {
     selection_formula_text: String,
     #[serde(default)]
     qpcr_design_ui: QpcrDesignOpsUiState,
+    #[serde(default)]
+    transcript_assay_panel_ui: TranscriptAssayPanelUiState,
     #[serde(default)]
     sequencing_confirmation_ui: SequencingConfirmationUiState,
     #[serde(default = "default_primer_backend_auto")]
@@ -586,6 +647,10 @@ struct EngineOpsUiState {
     cutrun_regulatory_dataset_ids: String,
     #[serde(default)]
     cutrun_regulatory_read_report_ids: String,
+    #[serde(default)]
+    cutrun_regulatory_catalog_path: String,
+    #[serde(default)]
+    cutrun_regulatory_cache_dir: String,
     #[serde(default)]
     cutrun_regulatory_promoter_start_0based: String,
     #[serde(default)]
@@ -845,9 +910,9 @@ const ENABLE_LINEAR_VERTICAL_PAN: bool = true;
 const ENABLE_SEQUENCE_WINDOW_BACKDROP_IMAGES: bool = true;
 const EXTENDED_TOP_PANEL_DEFAULT_HEIGHT_PX: f32 = 420.0;
 const EXTENDED_TOP_PANEL_MIN_HEIGHT_PX: f32 = 180.0;
-const EXTENDED_TOP_PANEL_HANDLE_HEIGHT_PX: f32 = 8.0;
 const FEATURE_TREE_DEFAULT_WIDTH_PX: f32 = 320.0;
 const FEATURE_TREE_MIN_WIDTH_PX: f32 = 180.0;
+const FEATURE_TREE_DEFERRED_AUTO_LOAD_MAX_FEATURES: usize = 300;
 // The map pane already has its own minimum width; avoid an extra small absolute
 // cap that makes the splitter feel stuck on wide windows.
 const FEATURE_TREE_MAX_WIDTH_PX: f32 = UI_SIZE_MAX_PX;
@@ -976,6 +1041,17 @@ struct SplicingLaneCanvasStyle {
 }
 
 impl SplicingLaneCanvasStyle {
+    fn lane_height_for_layout(
+        self,
+        layout: &gentle_protocol::splicing_presentation::SplicingPresentationLayout,
+    ) -> f32 {
+        if layout.show_headers || layout.lanes.iter().any(|lane| lane.badge.is_some()) {
+            self.lane_height_px.max(36.0)
+        } else {
+            self.lane_height_px
+        }
+    }
+
     fn expert() -> Self {
         Self {
             label_column_width_px: 220.0,
@@ -1046,6 +1122,15 @@ struct SplicingIntronSignalKey {
     acceptor_position_1based: usize,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum SplicingExpertTab {
+    #[default]
+    Structure,
+    Evidence,
+    LocusFigure,
+    CrypticScreen,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 struct ArrayProbeGeometryUiRow {
     evidence_id: String,
@@ -1054,6 +1139,8 @@ struct ArrayProbeGeometryUiRow {
     transcript_id: String,
     level: String,
     intensity_source: String,
+    evidence_kind: String,
+    logfc: Option<f64>,
     coordinate_label: String,
     mapping_kind: String,
     mapping_status: String,
@@ -1081,6 +1168,7 @@ struct LayerVisibilityCounts {
     repeat_feature_kind_counts: HashMap<String, usize>,
     repeat_feature_count: usize,
     array_feature_count: usize,
+    array_feature_total_count: usize,
     construct_reasoning_evidence_count: usize,
     contextual_transcript_feature_count: usize,
     regulatory_feature_count: usize,
@@ -1115,6 +1203,10 @@ impl LayerVisibilityCounts {
         self.array_feature_count
     }
 
+    fn array_total_count(&self) -> usize {
+        self.array_feature_total_count
+    }
+
     fn construct_reasoning_evidence_count(&self) -> usize {
         self.construct_reasoning_evidence_count
     }
@@ -1126,6 +1218,47 @@ impl LayerVisibilityCounts {
     fn contextual_transcript_count(&self) -> usize {
         self.contextual_transcript_feature_count
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LayerVisibilityCacheKey {
+    display_revision: u64,
+    feature_generation: u64,
+    restriction_generation: u64,
+    sequence_length: usize,
+    viewport: Option<(usize, usize)>,
+}
+
+#[derive(Clone, Debug)]
+struct LayerVisibilityCache {
+    key: LayerVisibilityCacheKey,
+    counts: LayerVisibilityCounts,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct EngineDisplaySyncKey {
+    engine_mutation_revision: u64,
+    engine_structural_revision: u64,
+    feature_generation: u64,
+    is_circular: bool,
+    dna_presentation_mode: DnaPresentationMode,
+    show_all_contextual_transcripts: bool,
+    compact_lane_layout: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct WindowTitleCacheKey {
+    display_name: String,
+    seq_id: Option<String>,
+    engine_revision: u64,
+}
+
+#[derive(Clone, Debug, Default)]
+struct WindowTitleCache {
+    key: Option<WindowTitleCacheKey>,
+    title: String,
+    hits: u64,
+    misses: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -1152,6 +1285,7 @@ enum TfbsTaskKind {
     Annotation,
     ActiveSequenceScoreTracks { source_label: String },
     ActiveSequenceTrackSimilarity { source_label: String },
+    ActiveSequenceGenomicMotifEvidence { source_label: String },
     VariantFollowupScoreTracks,
     VariantFollowupTrackSimilarity,
 }
@@ -1242,6 +1376,38 @@ struct PrimerDesignTask {
 }
 
 #[derive(Clone, Debug)]
+struct CrypticSplicingTask {
+    started: Instant,
+    label: String,
+    receiver: Arc<Mutex<Receiver<Result<CrypticSplicingTaskCompletion, EngineError>>>>,
+}
+
+#[derive(Clone, Debug)]
+enum GenomicRegionHomologyTaskMessage {
+    Progress(crate::engine::GenomicRegionHomologyProgress),
+    Done(Result<gentle_protocol::GenomicRegionHomologyScreenReport, EngineError>),
+}
+
+#[derive(Clone, Debug)]
+struct GenomicRegionHomologyTask {
+    started: Instant,
+    cancel: Arc<std::sync::atomic::AtomicBool>,
+    receiver: Arc<Mutex<Receiver<GenomicRegionHomologyTaskMessage>>>,
+}
+
+#[derive(Clone, Debug)]
+enum CrypticSplicingTaskCompletion {
+    Screen(CrypticSplicingScreenView),
+    EvidenceOverlay(CrypticSplicingEvidenceOverlayReport),
+    ProteinProjection(CrypticSplicingProteinProjectionReport),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct CrypticSplicingCacheKey {
+    effective_input_sha256: String,
+}
+
+#[derive(Clone, Debug)]
 /// Stateful controller for one main DNA/sequence window.
 ///
 /// This type is intentionally large because it stores nearly all mutable UI
@@ -1253,6 +1419,7 @@ pub struct MainAreaDna {
     engine: Option<Arc<RwLock<GentleEngine>>>,
     seq_id: Option<String>,
     window_scope_id: String,
+    rendering_pcr_specialist: bool,
     map_dna: RenderDna,
     map_sequence: RenderSequence,
     show_sequence: bool, // TODO move to DnaDisplay
@@ -1260,6 +1427,8 @@ pub struct MainAreaDna {
     compact_lane_layout: bool,
     primary_map_mode: PrimaryMapMode,
     dna_presentation_mode: DnaPresentationMode,
+    tss_ui: tss_view::TssUiState,
+    tss_svg_export: Option<tss_view::SvgExportReceiver>,
     show_all_contextual_transcripts: bool,
     dotplot_ui: DotplotOpsUiState,
     dotplot_query_override_seq_id: String,
@@ -1268,6 +1437,7 @@ pub struct MainAreaDna {
     rna_read_evidence_ui: RnaReadEvidenceUiState,
     rna_read_concatemer_ui: RnaReadConcatemerUiState,
     show_engine_ops: bool,
+    probe_region_setup_requested: bool,
     show_shell: bool,
     shell_command_text: String,
     shell_preview_text: String,
@@ -1322,6 +1492,13 @@ pub struct MainAreaDna {
     pcr_paint_last_drag_start_text: String,
     pcr_paint_last_drag_end_text: String,
     qpcr_design_ui: QpcrDesignOpsUiState,
+    cached_primer_design_report: Option<Arc<PrimerDesignReport>>,
+    cached_qpcr_design_report: Option<Arc<QpcrDesignReport>>,
+    cached_terminal_exon_rt_primer_pool_report: Option<Arc<TerminalExonRtPrimerPoolReport>>,
+    transcript_assay_panel_ui: TranscriptAssayPanelUiState,
+    cached_transcript_assay_panel_report: Option<Arc<TranscriptAssayPanelReport>>,
+    gene_assay_study_ui: gene_assay_study_ui::GeneAssayStudyUi,
+    cached_experimental_assay_handoff: Option<Arc<ExperimentalAssayHandoffReport>>,
     sequencing_confirmation_ui: SequencingConfirmationUiState,
     primer_backend: PrimerDesignBackend,
     primer3_executable: String,
@@ -1422,6 +1599,8 @@ pub struct MainAreaDna {
     tfbs_track_similarity_ranking_metric: TfbsTrackSimilarityRankingMetric,
     cutrun_regulatory_dataset_ids: String,
     cutrun_regulatory_read_report_ids: String,
+    cutrun_regulatory_catalog_path: String,
+    cutrun_regulatory_cache_dir: String,
     cutrun_regulatory_promoter_start_0based: String,
     cutrun_regulatory_promoter_end_0based_exclusive: String,
     cutrun_regulatory_neighbor_window_bp: String,
@@ -1460,16 +1639,24 @@ pub struct MainAreaDna {
     cached_probe_region_interpretation: Option<ProbeRegionEvidenceInterpretationReport>,
     cached_restriction_site_scan: Option<RestrictionSiteScanReport>,
     cached_tfbs_hit_scan: Option<TfbsHitScanReport>,
+    cached_genomic_motif_evidence: Option<GenomicMotifEvidenceReport>,
     cached_tfbs_score_tracks: Option<TfbsScoreTrackReport>,
     cached_tfbs_track_similarity: Option<TfbsTrackSimilarityReport>,
     tfbs_task: Option<TfbsTask>,
     tfbs_progress: Option<TfbsProgress>,
     primer_design_task: Option<PrimerDesignTask>,
     rna_read_task: Option<RnaReadTask>,
+    rna_read_task_repaint_delay: Duration,
     rna_read_progress: Option<RnaReadInterpretProgress>,
     cached_saved_rna_read_report: Option<CachedRnaReadReport>,
     cached_rna_read_report_summaries: Option<CachedRnaReadReportSummaries>,
     cached_saved_rna_read_progress: Option<CachedRnaReadProgress>,
+    cached_rna_read_seed_histogram: Option<CachedRnaReadSeedHistogramPresentation>,
+    rna_read_seed_histogram_data_revision: u64,
+    rna_read_seed_histogram_cache_hits: u64,
+    rna_read_seed_histogram_cache_misses: u64,
+    rna_read_seed_histogram_pixel_cache_hits: u64,
+    rna_read_seed_histogram_pixel_cache_misses: u64,
     cached_rna_read_gene_support_summary: Option<CachedRnaReadGeneSupportSummary>,
     cached_rna_read_alignment_inspections: Vec<CachedRnaReadAlignmentInspection>,
     cached_rna_read_alignment_detail: Option<CachedRnaReadAlignmentDetail>,
@@ -1531,9 +1718,23 @@ pub struct MainAreaDna {
     feature_tree_panel_width: f32,
     feature_tree_split_fraction: f32,
     pending_feature_tree_scroll_to: Option<usize>,
+    pending_linear_vertical_fit_feature_id: Option<usize>,
     focused_feature_id: Option<usize>,
     multi_selected_feature_ids: BTreeSet<usize>,
     feature_tree_cache: Option<FeatureTreeCache>,
+    feature_tree_cache_hits: u64,
+    feature_tree_cache_misses: u64,
+    feature_tree_viewport_updates: u64,
+    layer_visibility_cache: Option<LayerVisibilityCache>,
+    layer_visibility_cache_hits: u64,
+    layer_visibility_cache_misses: u64,
+    layer_visibility_feature_visits: u64,
+    layer_visibility_gc_bases: u64,
+    engine_display_sync_key: Option<EngineDisplaySyncKey>,
+    engine_display_sync_cache_hits: u64,
+    engine_display_sync_cache_misses: u64,
+    engine_display_sync_apply_count: u64,
+    window_title_cache: Arc<Mutex<WindowTitleCache>>,
     description_cache_initialized: bool,
     description_cache_selected_id: Option<usize>,
     description_cache_selected_reasoning_evidence_id: Option<String>,
@@ -1550,10 +1751,110 @@ pub struct MainAreaDna {
     construct_reasoning_overlay_sync_key: Option<ConstructReasoningOverlaySyncKey>,
     show_dotplot_window: bool,
     show_splicing_expert_window: bool,
+    show_genomic_region_manager: bool,
+    genomic_region_default_set_id: String,
+    genomic_region_default_set_label: String,
+    genomic_region_new_label: String,
+    genomic_region_new_purpose: gentle_protocol::GenomicRegionPurpose,
+    genomic_region_new_color_hex: String,
+    genomic_region_pending_color: Option<genomic_regions_ui::StagedGenomicRegionColor>,
+    genomic_region_pending_selection: Option<(usize, usize)>,
+    genomic_region_pending_locus_report: Option<Arc<GeneLocusEvidenceDisplayReport>>,
+    genomic_region_store_cache: Option<gentle_protocol::GenomicRegionStore>,
+    genomic_region_status: String,
+    show_genomic_region_conservation: bool,
+    genomic_region_conservation_set_id: String,
+    genomic_region_conservation_region_id: String,
+    genomic_region_conservation_expected_sha256: Option<String>,
+    genomic_region_conservation_request: gentle_protocol::GenomicRegionHomologyScreenRequest,
+    genomic_region_conservation_report:
+        Option<Arc<gentle_protocol::GenomicRegionHomologyScreenReport>>,
+    genomic_region_conservation_selected_block_id: Option<String>,
+    genomic_region_conservation_alignment_jump: Option<usize>,
+    genomic_region_conservation_evidence_region_ids: BTreeSet<String>,
+    genomic_region_conservation_module_assessment:
+        Option<Arc<gentle_protocol::PromoterModuleAssessmentReport>>,
+    genomic_region_conservation_status: String,
+    genomic_region_conservation_progress: Option<crate::engine::GenomicRegionHomologyProgress>,
+    genomic_region_conservation_task: Option<GenomicRegionHomologyTask>,
     splicing_expert_window_pending_initial_render: bool,
     splicing_expert_window_focus_requested: bool,
     splicing_expert_window_feature_id: Option<usize>,
     splicing_expert_window_view: Option<Arc<SplicingExpertView>>,
+    splicing_expert_tab: SplicingExpertTab,
+    splicing_isoform_evidence_panel_id: String,
+    splicing_isoform_evidence_annotation_release: String,
+    splicing_isoform_evidence_rna_report_ids: String,
+    splicing_isoform_evidence_qpcr_report_ids: String,
+    splicing_isoform_evidence_probe_paths: String,
+    splicing_isoform_evidence_cdna_est_paths: String,
+    splicing_isoform_evidence_expression_path: String,
+    splicing_isoform_evidence_occupancy_tracks: String,
+    splicing_isoform_evidence_svg_path: String,
+    splicing_isoform_evidence_report: Option<Arc<GeneIsoformEvidenceReport>>,
+    splicing_isoform_evidence_status: String,
+    splicing_locus_upstream_bp: String,
+    splicing_locus_downstream_bp: String,
+    splicing_locus_probe_effect_paths: String,
+    splicing_locus_probe_effect_contrasts: String,
+    splicing_locus_probe_effect_coordinate_system: String,
+    splicing_locus_occupancy_layout_path: String,
+    splicing_locus_motifs: String,
+    splicing_locus_motif_add: String,
+    splicing_locus_motif_score_kind: String,
+    splicing_locus_motif_clip_negative: bool,
+    splicing_locus_motif_threshold: String,
+    splicing_locus_motif_top_hits: String,
+    splicing_locus_regulatory_tracks_path: String,
+    splicing_locus_annotation_sources_path: String,
+    splicing_locus_source_filter: locus_inspector::AnnotationFilter,
+    source_annotation_selected_structure: Option<String>,
+    splicing_locus_region_set_ids: String,
+    splicing_locus_homology_report_paths: String,
+    splicing_locus_scale_bar_mode: String,
+    splicing_locus_scale_bar_bp: String,
+    splicing_locus_svg_path: String,
+    splicing_locus_report: Option<Arc<GeneLocusEvidenceDisplayReport>>,
+    splicing_locus_imported_document: Option<Arc<crate::locus_report::LocusDocument>>,
+    splicing_locus_binding_cache: Option<locus_inspector::LocusBindingCache>,
+    splicing_locus_presentation: Arc<locus_inspector::LocusPresentation>,
+    splicing_locus_preview_png: Option<Arc<[u8]>>,
+    splicing_locus_preview_generation: u64,
+    splicing_locus_inspector_start_1based: usize,
+    splicing_locus_inspector_end_1based: usize,
+    splicing_locus_inspector_selection: Option<(usize, usize)>,
+    splicing_locus_inspector_drag_anchor: Option<usize>,
+    splicing_locus_inspector_hidden_scores: BTreeSet<String>,
+    splicing_locus_inspector_hidden_ensembl: BTreeSet<String>,
+    splicing_locus_inspector_show_sequence: bool,
+    splicing_locus_status: String,
+    cryptic_splicing_start_1based: String,
+    cryptic_splicing_end_1based: String,
+    cryptic_splicing_reverse: bool,
+    cryptic_splicing_insert_start_1based: String,
+    cryptic_splicing_insert_end_1based: String,
+    cryptic_splicing_cds_feature_id: String,
+    cryptic_splicing_min_intron_bp: String,
+    cryptic_splicing_max_intron_bp: String,
+    cryptic_splicing_max_candidates: String,
+    cryptic_splicing_use_maxent: bool,
+    cryptic_splicing_expected_model_fingerprint: String,
+    cryptic_splicing_rna_report_ids: String,
+    cryptic_splicing_rna_nearby_tolerance_bp: String,
+    cryptic_splicing_uniprot_projection_id: String,
+    cryptic_splicing_svg_path: String,
+    cryptic_splicing_task: Option<CrypticSplicingTask>,
+    cryptic_splicing_cache_key: Option<CrypticSplicingCacheKey>,
+    cryptic_splicing_report: Option<Arc<CrypticSplicingScreenView>>,
+    cryptic_splicing_evidence_overlay: Option<Arc<CrypticSplicingEvidenceOverlayReport>>,
+    cryptic_splicing_protein_projection: Option<Arc<CrypticSplicingProteinProjectionReport>>,
+    cryptic_splicing_status: String,
+    tata_ui: tata_box_ui::TataBoxWorkspace,
+    tss_inventory_ui: tss_workspace_ui::TssWorkspace,
+    cryptic_splicing_focus_requested: bool,
+    cached_splicing_expert_presentations: Vec<CachedSplicingExpertPresentation>,
+    splicing_expert_presentation_cache_hits: u64,
+    splicing_expert_presentation_cache_misses: u64,
     splicing_expert_selected_transcript_feature_id: Option<usize>,
     splicing_exon_skip_selected_candidate_ids: BTreeSet<String>,
     splicing_exon_skip_overlap_kind: String,
@@ -1573,12 +1874,16 @@ pub struct MainAreaDna {
     show_isoform_expert_window: bool,
     isoform_expert_window_panel_id: Option<String>,
     isoform_expert_window_view: Option<Arc<IsoformArchitectureExpertView>>,
+    show_feature_location_editor: bool,
+    feature_location_editor_ui: FeatureLocationEditorUiState,
     linear_drag_selection_anchor_bp: Option<usize>,
     linear_selection_resize_drag: Option<LinearSelectionResizeDrag>,
     linear_pan_drag_origin_bp: Option<(usize, f32)>,
     linear_view_start_1based_input: String,
     linear_view_end_1based_input: String,
     last_linear_map_width_px: f32,
+    #[cfg(feature = "benchmark-support")]
+    benchmark_map_interact_rect: Option<egui::Rect>,
     dotplot_cached_view: Option<DotplotView>,
     dotplot_cached_flex_track: Option<FlexibilityTrack>,
     dotplot_cache_seq_id: String,
@@ -1601,6 +1906,7 @@ struct ConstructReasoningInspectorEntry {
     editable_status: Option<EditableStatus>,
     source_kind: Option<String>,
     dotplot_actions: Vec<ConstructReasoningDotplotAction>,
+    task_severities: Vec<ConstructReasoningTaskSeverity>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -1608,6 +1914,8 @@ struct ConstructReasoningInspectorCache {
     graph_id: String,
     objective_title: String,
     objective_goal: String,
+    snapshot_freshness: ConstructReasoningGraphFreshness,
+    snapshot_status_lines: Vec<String>,
     annotation_summary_entries: Vec<ConstructReasoningInspectorEntry>,
     annotation_entries: Vec<ConstructReasoningInspectorEntry>,
     fact_entries: Vec<ConstructReasoningInspectorEntry>,
@@ -1616,6 +1924,14 @@ struct ConstructReasoningInspectorCache {
 }
 
 type ConstructReasoningDotplotAction = ConstructReasoningInspectionAction;
+
+#[derive(Clone, Debug)]
+struct ConstructReasoningDotplotProvenanceContext {
+    graph: ConstructReasoningGraph,
+    action: ConstructReasoningInspectionAction,
+    snapshot_status: ConstructReasoningGraphSnapshotStatus,
+    resolved_request: ConstructReasoningActionDotplotRequest,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ConstructReasoningOverlaySyncKey {
@@ -1713,6 +2029,8 @@ struct VariantFollowupUiState {
     ortholog_cache_dir: String,
     ortholog_cutrun_dataset_ids: String,
     ortholog_cutrun_read_report_ids: String,
+    ortholog_cutrun_normalization_json: String,
+    ortholog_ambiguity_policy: OrthologAmbiguityPolicy,
     ortholog_relationship: GeneSetCohortRelationship,
     tfbs_focus_half_window_bp: String,
     retain_downstream_from_tss_bp: String,
@@ -1721,9 +2039,34 @@ struct VariantFollowupUiState {
     fragment_output_id: String,
     reference_output_id: String,
     alternate_output_id: String,
+    alternate_allele: String,
     reporter_backbone_seq_id: String,
     reporter_backbone_path: String,
     reporter_output_prefix: String,
+    promoter_reporter_architecture_request_json: String,
+    promoter_reporter_architecture_json_path: String,
+    promoter_reporter_architecture_svg_path: String,
+    promoter_reporter_panel_request_json: String,
+    promoter_reporter_panel_approval_digest: String,
+    regulatory_fragment_plan_id: String,
+    regulatory_fragment_candidate_roi: String,
+    regulatory_fragment_partner_roi: String,
+    regulatory_fragment_minimal_promoter_roi: String,
+    regulatory_fragment_reference_control_roi: String,
+    regulatory_fragment_reference_release: String,
+    regulatory_fragment_vector_seq_id: String,
+    regulatory_fragment_vector_catalog_id: String,
+    regulatory_fragment_helper_catalog_path: String,
+    regulatory_fragment_max_panel_members: String,
+    regulatory_fragment_max_construct_length_bp: String,
+    regulatory_fragment_partner_dependence: bool,
+    regulatory_fragment_order_dependence: bool,
+    regulatory_fragment_orientation_dependence: bool,
+    regulatory_fragment_spacing_dependence: bool,
+    regulatory_fragment_controlled_spacer: String,
+    regulatory_fragment_approval_digest: String,
+    regulatory_fragment_product_prefix: String,
+    regulatory_fragment_product_approval_digest: String,
     cached_score_tracks: Option<TfbsScoreTrackReport>,
     cached_tfbs_track_similarity: Option<TfbsTrackSimilarityReport>,
     cached_report: Option<VariantPromoterContextReport>,
@@ -1734,6 +2077,13 @@ struct VariantFollowupUiState {
     cached_ortholog_promoter_cohort: Option<OrthologPromoterCohortReport>,
     cached_ortholog_promoter_comparison: Option<OrthologPromoterComparisonReport>,
     cached_candidates: Option<PromoterReporterCandidateSet>,
+    cached_promoter_reporter_architecture_comparison:
+        Option<PromoterReporterArchitectureComparisonReport>,
+    cached_promoter_reporter_panel_proposal: Option<PromoterReporterPanelProposal>,
+    cached_promoter_reporter_panel_receipt: Option<PromoterReporterPanelReceipt>,
+    cached_regulatory_fragment_panel_plan: Option<RegulatoryFragmentPanelPlan>,
+    cached_regulatory_fragment_products: Option<RegulatoryFragmentMaterializationProposal>,
+    cached_regulatory_fragment_receipt: Option<RegulatoryFragmentMaterializationReceipt>,
 }
 
 impl Default for VariantFollowupUiState {
@@ -1769,10 +2119,35 @@ impl Default for VariantFollowupUiState {
             fragment_output_id: String::new(),
             reference_output_id: String::new(),
             alternate_output_id: String::new(),
+            alternate_allele: String::new(),
             reporter_backbone_seq_id: "gentle_mammalian_luciferase_backbone_v1".to_string(),
             reporter_backbone_path:
                 "data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb".to_string(),
             reporter_output_prefix: String::new(),
+            promoter_reporter_architecture_request_json: String::new(),
+            promoter_reporter_architecture_json_path: String::new(),
+            promoter_reporter_architecture_svg_path: String::new(),
+            promoter_reporter_panel_request_json: String::new(),
+            promoter_reporter_panel_approval_digest: String::new(),
+            regulatory_fragment_plan_id: "regulatory_fragment_panel".to_string(),
+            regulatory_fragment_candidate_roi: String::new(),
+            regulatory_fragment_partner_roi: String::new(),
+            regulatory_fragment_minimal_promoter_roi: String::new(),
+            regulatory_fragment_reference_control_roi: String::new(),
+            regulatory_fragment_reference_release: String::new(),
+            regulatory_fragment_vector_seq_id: String::new(),
+            regulatory_fragment_vector_catalog_id: String::new(),
+            regulatory_fragment_helper_catalog_path: String::new(),
+            regulatory_fragment_max_panel_members: "12".to_string(),
+            regulatory_fragment_max_construct_length_bp: "5000".to_string(),
+            regulatory_fragment_partner_dependence: false,
+            regulatory_fragment_order_dependence: false,
+            regulatory_fragment_orientation_dependence: false,
+            regulatory_fragment_spacing_dependence: false,
+            regulatory_fragment_controlled_spacer: "GG".to_string(),
+            regulatory_fragment_approval_digest: String::new(),
+            regulatory_fragment_product_prefix: "regulatory_design".to_string(),
+            regulatory_fragment_product_approval_digest: String::new(),
             cached_score_tracks: None,
             cached_tfbs_track_similarity: None,
             cached_report: None,
@@ -1791,10 +2166,18 @@ impl Default for VariantFollowupUiState {
             ortholog_cache_dir: String::new(),
             ortholog_cutrun_dataset_ids: String::new(),
             ortholog_cutrun_read_report_ids: String::new(),
+            ortholog_cutrun_normalization_json: String::new(),
+            ortholog_ambiguity_policy: OrthologAmbiguityPolicy::Reject,
             ortholog_relationship: GeneSetCohortRelationship::Unspecified,
             cached_ortholog_promoter_cohort: None,
             cached_ortholog_promoter_comparison: None,
             cached_candidates: None,
+            cached_promoter_reporter_architecture_comparison: None,
+            cached_promoter_reporter_panel_proposal: None,
+            cached_promoter_reporter_panel_receipt: None,
+            cached_regulatory_fragment_panel_plan: None,
+            cached_regulatory_fragment_products: None,
+            cached_regulatory_fragment_receipt: None,
         }
     }
 }
@@ -1880,49 +2263,6 @@ impl MainAreaDna {
             && (self.show_engine_ops || self.show_shell)
     }
 
-    fn preferred_extended_top_panel_height(total_height: f32, sequence_panel_visible: bool) -> f32 {
-        let safe_total = if total_height.is_finite() {
-            total_height.clamp(EXTENDED_TOP_PANEL_MIN_HEIGHT_PX * 2.0, 6000.0)
-        } else {
-            900.0
-        };
-        let fraction = if sequence_panel_visible { 0.48 } else { 0.60 };
-        let floor = if sequence_panel_visible { 400.0 } else { 460.0 };
-        (safe_total * fraction).clamp(floor, safe_total * 0.72)
-    }
-
-    fn max_extended_top_panel_height(total_height: f32, sequence_panel_visible: bool) -> f32 {
-        let safe_total = if total_height.is_finite() {
-            total_height.clamp(EXTENDED_TOP_PANEL_MIN_HEIGHT_PX * 2.0, 6000.0)
-        } else {
-            900.0
-        };
-        let fraction = if sequence_panel_visible { 0.62 } else { 0.82 };
-        (safe_total * fraction).clamp(EXTENDED_TOP_PANEL_MIN_HEIGHT_PX + 120.0, safe_total - 80.0)
-    }
-
-    fn clamp_extended_top_panel_height(
-        height: f32,
-        total_height: f32,
-        sequence_panel_visible: bool,
-    ) -> f32 {
-        let min_height = EXTENDED_TOP_PANEL_MIN_HEIGHT_PX;
-        let max_height = Self::max_extended_top_panel_height(total_height, sequence_panel_visible);
-        if height.is_finite() {
-            height.clamp(min_height, max_height)
-        } else {
-            Self::preferred_extended_top_panel_height(total_height, sequence_panel_visible)
-        }
-    }
-
-    fn clamp_extended_top_panel_scroll_height(available_height: f32) -> f32 {
-        if available_height.is_finite() {
-            available_height.clamp(72.0, 2400.0)
-        } else {
-            520.0
-        }
-    }
-
     fn sanitize_widget_size(size: Vec2) -> Vec2 {
         let sanitize = |value: f32| -> f32 {
             if value.is_finite() {
@@ -1964,7 +2304,9 @@ impl MainAreaDna {
         seq_id: Option<String>,
         engine: Option<Arc<RwLock<GentleEngine>>>,
     ) -> Self {
+        crate::gentle_gui_profile_scope!("MainAreaDna::new");
         let initial_is_circular = dna.is_circular();
+        let initial_sequence_len = dna.len();
         let seq_id_for_defaults = seq_id.clone();
         let dna = Arc::new(RwLock::new(dna));
         let dna_display = Arc::new(RwLock::new(DnaDisplay::default()));
@@ -1974,6 +2316,7 @@ impl MainAreaDna {
             engine,
             seq_id,
             window_scope_id: String::new(),
+            rendering_pcr_specialist: false,
             map_dna: RenderDna::new(dna.clone(), dna_display.clone()),
             map_sequence: RenderSequence::new_single_sequence(dna, dna_display),
             show_sequence: initial_is_circular,
@@ -1981,6 +2324,8 @@ impl MainAreaDna {
             compact_lane_layout: false,
             primary_map_mode: PrimaryMapMode::Standard,
             dna_presentation_mode: DnaPresentationMode::Region,
+            tss_ui: tss_view::TssUiState::default(),
+            tss_svg_export: None,
             show_all_contextual_transcripts: false,
             dotplot_ui: DotplotOpsUiState::default(),
             dotplot_query_override_seq_id: String::new(),
@@ -1989,6 +2334,7 @@ impl MainAreaDna {
             rna_read_evidence_ui: RnaReadEvidenceUiState::default(),
             rna_read_concatemer_ui: RnaReadConcatemerUiState::default(),
             show_engine_ops: false,
+            probe_region_setup_requested: false,
             show_shell: false,
             shell_command_text: "state-summary".to_string(),
             shell_preview_text: String::new(),
@@ -2043,6 +2389,13 @@ impl MainAreaDna {
             pcr_paint_last_drag_start_text: String::new(),
             pcr_paint_last_drag_end_text: String::new(),
             qpcr_design_ui: QpcrDesignOpsUiState::default(),
+            cached_primer_design_report: None,
+            cached_qpcr_design_report: None,
+            cached_terminal_exon_rt_primer_pool_report: None,
+            transcript_assay_panel_ui: TranscriptAssayPanelUiState::default(),
+            cached_transcript_assay_panel_report: None,
+            gene_assay_study_ui: Default::default(),
+            cached_experimental_assay_handoff: None,
             sequencing_confirmation_ui: SequencingConfirmationUiState::default(),
             primer_backend: PrimerDesignBackend::Auto,
             primer3_executable: "primer3_core".to_string(),
@@ -2145,6 +2498,8 @@ impl MainAreaDna {
                 TfbsTrackSimilarityRankingMetric::SmoothedSpearman,
             cutrun_regulatory_dataset_ids: String::new(),
             cutrun_regulatory_read_report_ids: String::new(),
+            cutrun_regulatory_catalog_path: String::new(),
+            cutrun_regulatory_cache_dir: String::new(),
             cutrun_regulatory_promoter_start_0based: String::new(),
             cutrun_regulatory_promoter_end_0based_exclusive: String::new(),
             cutrun_regulatory_neighbor_window_bp: default_cutrun_neighbor_window_bp_text(),
@@ -2186,16 +2541,24 @@ impl MainAreaDna {
             cached_probe_region_interpretation: None,
             cached_restriction_site_scan: None,
             cached_tfbs_hit_scan: None,
+            cached_genomic_motif_evidence: None,
             cached_tfbs_score_tracks: None,
             cached_tfbs_track_similarity: None,
             tfbs_task: None,
             tfbs_progress: None,
             primer_design_task: None,
             rna_read_task: None,
+            rna_read_task_repaint_delay: Duration::from_millis(700),
             rna_read_progress: None,
             cached_saved_rna_read_report: None,
             cached_rna_read_report_summaries: None,
             cached_saved_rna_read_progress: None,
+            cached_rna_read_seed_histogram: None,
+            rna_read_seed_histogram_data_revision: 0,
+            rna_read_seed_histogram_cache_hits: 0,
+            rna_read_seed_histogram_cache_misses: 0,
+            rna_read_seed_histogram_pixel_cache_hits: 0,
+            rna_read_seed_histogram_pixel_cache_misses: 0,
             cached_rna_read_gene_support_summary: None,
             cached_rna_read_alignment_inspections: vec![],
             cached_rna_read_alignment_detail: None,
@@ -2257,9 +2620,23 @@ impl MainAreaDna {
             feature_tree_panel_width: FEATURE_TREE_DEFAULT_WIDTH_PX,
             feature_tree_split_fraction: FEATURE_TREE_DEFAULT_SPLIT_FRACTION,
             pending_feature_tree_scroll_to: None,
+            pending_linear_vertical_fit_feature_id: None,
             focused_feature_id: None,
             multi_selected_feature_ids: BTreeSet::new(),
             feature_tree_cache: None,
+            feature_tree_cache_hits: 0,
+            feature_tree_cache_misses: 0,
+            feature_tree_viewport_updates: 0,
+            layer_visibility_cache: None,
+            layer_visibility_cache_hits: 0,
+            layer_visibility_cache_misses: 0,
+            layer_visibility_feature_visits: 0,
+            layer_visibility_gc_bases: 0,
+            engine_display_sync_key: None,
+            engine_display_sync_cache_hits: 0,
+            engine_display_sync_cache_misses: 0,
+            engine_display_sync_apply_count: 0,
+            window_title_cache: Arc::new(Mutex::new(WindowTitleCache::default())),
             description_cache_initialized: false,
             description_cache_selected_id: None,
             description_cache_selected_reasoning_evidence_id: None,
@@ -2276,10 +2653,109 @@ impl MainAreaDna {
             construct_reasoning_overlay_sync_key: None,
             show_dotplot_window: false,
             show_splicing_expert_window: false,
+            show_genomic_region_manager: false,
+            genomic_region_default_set_id: "saved_regions".to_string(),
+            genomic_region_default_set_label: "Saved genomic regions".to_string(),
+            genomic_region_new_label: String::new(),
+            genomic_region_new_purpose:
+                gentle_protocol::GenomicRegionPurpose::CandidateCisRegulatoryRegion,
+            genomic_region_new_color_hex: "#C2410C".to_string(),
+            genomic_region_pending_color: None,
+            genomic_region_pending_selection: None,
+            genomic_region_pending_locus_report: None,
+            genomic_region_store_cache: None,
+            genomic_region_status: String::new(),
+            show_genomic_region_conservation: false,
+            genomic_region_conservation_set_id: String::new(),
+            genomic_region_conservation_region_id: String::new(),
+            genomic_region_conservation_expected_sha256: None,
+            genomic_region_conservation_request: Default::default(),
+            genomic_region_conservation_report: None,
+            genomic_region_conservation_selected_block_id: None,
+            genomic_region_conservation_alignment_jump: None,
+            genomic_region_conservation_evidence_region_ids: BTreeSet::new(),
+            genomic_region_conservation_module_assessment: None,
+            genomic_region_conservation_status: String::new(),
+            genomic_region_conservation_progress: None,
+            genomic_region_conservation_task: None,
             splicing_expert_window_pending_initial_render: false,
             splicing_expert_window_focus_requested: false,
             splicing_expert_window_feature_id: None,
             splicing_expert_window_view: None,
+            splicing_expert_tab: SplicingExpertTab::Structure,
+            splicing_isoform_evidence_panel_id: String::new(),
+            splicing_isoform_evidence_annotation_release: String::new(),
+            splicing_isoform_evidence_rna_report_ids: String::new(),
+            splicing_isoform_evidence_qpcr_report_ids: String::new(),
+            splicing_isoform_evidence_probe_paths: String::new(),
+            splicing_isoform_evidence_cdna_est_paths: String::new(),
+            splicing_isoform_evidence_expression_path: String::new(),
+            splicing_isoform_evidence_occupancy_tracks: String::new(),
+            splicing_isoform_evidence_svg_path: "isoform-evidence.svg".to_string(),
+            splicing_isoform_evidence_report: None,
+            splicing_isoform_evidence_status: String::new(),
+            splicing_locus_upstream_bp: "5000".to_string(),
+            splicing_locus_downstream_bp: "1000".to_string(),
+            splicing_locus_probe_effect_paths: String::new(),
+            splicing_locus_probe_effect_contrasts: String::new(),
+            splicing_locus_probe_effect_coordinate_system: String::new(),
+            splicing_locus_occupancy_layout_path: String::new(),
+            splicing_locus_motifs: "TP73".to_string(),
+            splicing_locus_motif_add: String::new(),
+            splicing_locus_motif_score_kind: "llr_background_tail_log10".to_string(),
+            splicing_locus_motif_clip_negative: true,
+            splicing_locus_motif_threshold: String::new(),
+            splicing_locus_motif_top_hits: "5".to_string(),
+            splicing_locus_regulatory_tracks_path: String::new(),
+            splicing_locus_annotation_sources_path: String::new(),
+            splicing_locus_source_filter: locus_inspector::AnnotationFilter::All,
+            source_annotation_selected_structure: None,
+            splicing_locus_region_set_ids: String::new(),
+            splicing_locus_homology_report_paths: String::new(),
+            splicing_locus_scale_bar_mode: "hidden".to_string(),
+            splicing_locus_scale_bar_bp: "1000".to_string(),
+            splicing_locus_svg_path: "gene-locus-evidence.svg".to_string(),
+            splicing_locus_report: None,
+            splicing_locus_imported_document: None,
+            splicing_locus_binding_cache: None,
+            splicing_locus_presentation: Arc::default(),
+            splicing_locus_preview_png: None,
+            splicing_locus_preview_generation: 0,
+            splicing_locus_inspector_start_1based: 1,
+            splicing_locus_inspector_end_1based: initial_sequence_len.max(1),
+            splicing_locus_inspector_selection: None,
+            splicing_locus_inspector_drag_anchor: None,
+            splicing_locus_inspector_hidden_scores: BTreeSet::new(),
+            splicing_locus_inspector_hidden_ensembl: BTreeSet::new(),
+            splicing_locus_inspector_show_sequence: true,
+            splicing_locus_status: String::new(),
+            cryptic_splicing_start_1based: "1".to_string(),
+            cryptic_splicing_end_1based: initial_sequence_len.to_string(),
+            cryptic_splicing_reverse: false,
+            cryptic_splicing_insert_start_1based: String::new(),
+            cryptic_splicing_insert_end_1based: String::new(),
+            cryptic_splicing_cds_feature_id: String::new(),
+            cryptic_splicing_min_intron_bp: "50".to_string(),
+            cryptic_splicing_max_intron_bp: "5000".to_string(),
+            cryptic_splicing_max_candidates: "1000".to_string(),
+            cryptic_splicing_use_maxent: false,
+            cryptic_splicing_expected_model_fingerprint: String::new(),
+            cryptic_splicing_rna_report_ids: String::new(),
+            cryptic_splicing_rna_nearby_tolerance_bp: "2".to_string(),
+            cryptic_splicing_uniprot_projection_id: String::new(),
+            cryptic_splicing_svg_path: "cryptic-splicing-screen.svg".to_string(),
+            cryptic_splicing_task: None,
+            cryptic_splicing_cache_key: None,
+            cryptic_splicing_report: None,
+            cryptic_splicing_evidence_overlay: None,
+            cryptic_splicing_protein_projection: None,
+            cryptic_splicing_status: String::new(),
+            tata_ui: tata_box_ui::TataBoxWorkspace::default(),
+            tss_inventory_ui: tss_workspace_ui::TssWorkspace::default(),
+            cryptic_splicing_focus_requested: false,
+            cached_splicing_expert_presentations: Vec::new(),
+            splicing_expert_presentation_cache_hits: 0,
+            splicing_expert_presentation_cache_misses: 0,
             splicing_expert_selected_transcript_feature_id: None,
             splicing_exon_skip_selected_candidate_ids: BTreeSet::new(),
             splicing_exon_skip_overlap_kind: String::new(),
@@ -2299,12 +2775,16 @@ impl MainAreaDna {
             show_isoform_expert_window: false,
             isoform_expert_window_panel_id: None,
             isoform_expert_window_view: None,
+            show_feature_location_editor: false,
+            feature_location_editor_ui: FeatureLocationEditorUiState::default(),
             linear_drag_selection_anchor_bp: None,
             linear_selection_resize_drag: None,
             linear_pan_drag_origin_bp: None,
             linear_view_start_1based_input: String::new(),
             linear_view_end_1based_input: String::new(),
             last_linear_map_width_px: 0.0,
+            #[cfg(feature = "benchmark-support")]
+            benchmark_map_interact_rect: None,
             dotplot_cached_view: None,
             dotplot_cached_flex_track: None,
             dotplot_cache_seq_id: String::new(),
@@ -2316,7 +2796,7 @@ impl MainAreaDna {
             dotplot_locked_crosshair_bp: None,
             dotplot_last_compute_status: String::new(),
         };
-        ret.ensure_full_restriction_site_catalog_current();
+        ret.ensure_local_restriction_site_catalog_current();
         ret.sync_from_engine_display();
         ret.load_engine_ops_state();
         let default_report_id = ret.sequencing_confirmation_default_report_id();
@@ -2333,6 +2813,7 @@ impl MainAreaDna {
         }
         ret.sync_contextual_transcript_visibility_filter();
         ret.sync_primer_backend_controls_from_engine();
+        ret.seed_splicing_isoform_panel_from_current_sequence();
         ret
     }
 
@@ -2349,6 +2830,19 @@ impl MainAreaDna {
 
     pub fn set_window_scope_id(&mut self, scope_id: impl Into<String>) {
         self.window_scope_id = scope_id.into();
+    }
+
+    #[cfg(feature = "gui-test-support")]
+    fn semantic_control_window_id(&self) -> &'static str {
+        if self.rendering_pcr_specialist {
+            crate::tutorial_gui_semantics::WINDOW_PCR_DESIGN
+        } else {
+            crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER
+        }
+    }
+
+    pub fn set_rendering_pcr_specialist(&mut self, value: bool) {
+        self.rendering_pcr_specialist = value;
     }
 
     pub fn panel_scope_key(&self) -> String {
@@ -2382,6 +2876,7 @@ impl MainAreaDna {
             transcript_count: 0,
             unique_exon_count: 0,
             instruction: "test".to_string(),
+            presentation_fingerprint_sha256: String::new(),
             transcripts: vec![],
             unique_exons: vec![],
             matrix_rows: vec![],
@@ -2414,6 +2909,7 @@ impl MainAreaDna {
             transcript_count: 0,
             unique_exon_count: 0,
             instruction: "test".to_string(),
+            presentation_fingerprint_sha256: String::new(),
             transcripts: vec![],
             unique_exons: vec![],
             matrix_rows: vec![],
@@ -2458,15 +2954,10 @@ impl MainAreaDna {
         &self.dna
     }
 
-    fn ensure_full_restriction_site_catalog_current(&mut self) {
-        if let Some(engine) = &self.engine
-            && let Some(seq_id) = self.seq_id.as_deref()
-            && let Ok(mut guard) = engine.write()
-            && let Some(dna) = guard.state_mut().sequences.get_mut(seq_id)
-        {
-            dna.set_max_restriction_enzyme_sites(None);
-            dna.update_computed_features();
-        }
+    fn ensure_local_restriction_site_catalog_current(&mut self) {
+        crate::gentle_gui_profile_scope!(
+            "MainAreaDna::ensure_local_restriction_site_catalog_current"
+        );
         if let Ok(mut dna) = self.dna.write() {
             dna.set_max_restriction_enzyme_sites(None);
             dna.update_computed_features();
@@ -2515,6 +3006,13 @@ impl MainAreaDna {
         self.open_dotplot_window();
     }
 
+    pub fn focus_cryptic_splicing_screen(&mut self) {
+        self.show_engine_ops = true;
+        self.cryptic_splicing_focus_requested = true;
+        self.op_status = "Opened cryptic-splicing structural screen".to_string();
+        self.save_engine_ops_state();
+    }
+
     pub fn focus_primer_design_report(&mut self, report_id: &str) {
         let normalized_id = report_id.trim();
         if !normalized_id.is_empty() {
@@ -2523,6 +3021,30 @@ impl MainAreaDna {
         self.pcr_designer_mode = PcrDesignerMode::PrimerPairs;
         self.show_engine_ops = true;
         self.show_primer_design_report(normalized_id);
+    }
+
+    pub fn focus_primer_specificity_report(&mut self, report_id: &str) {
+        let normalized_id = report_id.trim();
+        if normalized_id.is_empty() {
+            self.op_status =
+                "Could not open primer-specificity evidence: report_id is empty".to_string();
+            return;
+        }
+        let report = self.engine.as_ref().and_then(|engine| {
+            engine
+                .read()
+                .ok()
+                .and_then(|engine| engine.get_primer_specificity_report(normalized_id).ok())
+        });
+        if let Some(report) = report.as_ref()
+            && let Some(primer_report_id) = report.design_provenance.primer_report_id.as_deref()
+        {
+            self.primer_design_ui.report_id = primer_report_id.to_string();
+        }
+        self.primer_design_ui.specificity_report_id = normalized_id.to_string();
+        self.pcr_designer_mode = PcrDesignerMode::PrimerPairs;
+        self.show_engine_ops = true;
+        self.show_primer_specificity_report(normalized_id);
     }
 
     pub fn focus_qpcr_design_report(&mut self, report_id: &str) {
@@ -2675,6 +3197,10 @@ impl MainAreaDna {
         }
     }
 
+    fn deferred_feature_tree_requires_explicit_load(feature_count: usize) -> bool {
+        feature_count > FEATURE_TREE_DEFERRED_AUTO_LOAD_MAX_FEATURES
+    }
+
     pub fn refresh_from_engine_sequence_state(&mut self) {
         let Some(seq_id) = self.seq_id.clone() else {
             return;
@@ -2708,6 +3234,7 @@ impl MainAreaDna {
     }
 
     fn replace_active_dna(&mut self, dna: DNAsequence, clear_feature_focus: bool) {
+        crate::gentle_gui_profile_scope!("MainAreaDna::replace_active_dna");
         let previous_is_circular = self
             .dna
             .read()
@@ -2724,6 +3251,9 @@ impl MainAreaDna {
             self.log_topology_transition_status("replace_active_dna: begin");
         }
         *self.dna.write().expect("DNA lock poisoned") = dna;
+        self.tss_ui = tss_view::TssUiState::default();
+        self.invalidate_engine_display_sync();
+        self.map_dna.invalidate_sequence_derived_caches();
         if clear_feature_focus {
             self.clear_feature_focus();
         }
@@ -2735,6 +3265,7 @@ impl MainAreaDna {
         self.invalidate_feature_tree_cache();
         self.cached_restriction_site_scan = None;
         self.cached_tfbs_hit_scan = None;
+        self.cached_genomic_motif_evidence = None;
         self.cached_tfbs_score_tracks = None;
         self.cached_tfbs_track_similarity = None;
         self.mark_dna_layout_dirty();
@@ -2768,6 +3299,7 @@ impl MainAreaDna {
 
     fn invalidate_feature_tree_cache(&mut self) {
         self.feature_tree_cache = None;
+        self.layer_visibility_cache = None;
     }
 
     fn mark_dna_layout_dirty(&self) {
@@ -2788,6 +3320,7 @@ impl MainAreaDna {
         previous_len: usize,
         previous_is_circular: bool,
     ) {
+        crate::gentle_gui_profile_scope!("MainAreaDna::hydrate.reconcile_viewport");
         if self.is_circular() {
             return;
         }
@@ -2982,12 +3515,14 @@ impl MainAreaDna {
     }
 
     pub fn refresh_from_engine_settings(&mut self) {
+        self.invalidate_engine_display_sync();
         self.sync_from_engine_display();
         self.update_dna_map();
         self.sync_linear_external_feature_labels();
     }
 
-    fn refresh_construct_reasoning_overlay_if_needed(&mut self, force: bool) {
+    fn refresh_construct_reasoning_overlay_if_needed(&mut self, force: bool) -> bool {
+        crate::gentle_gui_profile_scope!("MainAreaDna::refresh_construct_reasoning_overlay");
         let overlay_visible = self
             .dna_display
             .read()
@@ -2995,7 +3530,7 @@ impl MainAreaDna {
             .unwrap_or(false);
         if !overlay_visible {
             self.construct_reasoning_overlay_sync_key = None;
-            return;
+            return true;
         }
         let Some(seq_id) = self
             .seq_id
@@ -3004,20 +3539,20 @@ impl MainAreaDna {
             .filter(|value| !value.is_empty())
         else {
             if force {
-                self.refresh_construct_reasoning_overlay();
+                return self.refresh_construct_reasoning_overlay();
             }
             self.construct_reasoning_overlay_sync_key = None;
-            return;
+            return true;
         };
         let Some(engine) = &self.engine else {
             if force {
-                self.refresh_construct_reasoning_overlay();
+                return self.refresh_construct_reasoning_overlay();
             }
             self.construct_reasoning_overlay_sync_key = None;
-            return;
+            return true;
         };
         let Ok(guard) = engine.try_read() else {
-            return;
+            return false;
         };
         let next_key = ConstructReasoningOverlaySyncKey {
             seq_id: seq_id.to_string(),
@@ -3026,16 +3561,20 @@ impl MainAreaDna {
         };
         drop(guard);
         if !force && self.construct_reasoning_overlay_sync_key.as_ref() == Some(&next_key) {
-            return;
+            return true;
         }
-        self.refresh_construct_reasoning_overlay();
-        self.construct_reasoning_overlay_sync_key = Some(next_key);
+        if self.refresh_construct_reasoning_overlay() {
+            self.construct_reasoning_overlay_sync_key = Some(next_key);
+            true
+        } else {
+            false
+        }
     }
 
-    fn refresh_construct_reasoning_overlay(&mut self) {
+    fn refresh_construct_reasoning_overlay(&mut self) -> bool {
         let overlay = if let (Some(engine), Some(seq_id)) = (&self.engine, self.seq_id.as_deref()) {
             let Ok(mut guard) = engine.try_write() else {
-                return;
+                return false;
             };
             let graph = if let Some(graph_id) = self.focused_construct_reasoning_graph_id.as_deref()
             {
@@ -3055,8 +3594,11 @@ impl MainAreaDna {
         };
         if let Ok(mut display) = self.dna_display.write() {
             display.set_construct_reasoning_overlay(overlay);
+        } else {
+            return false;
         }
         self.description_cache_initialized = false;
+        true
     }
 
     fn active_sequence_is_genome_anchored(&self, engine: &GentleEngine) -> bool {
@@ -3085,13 +3627,6 @@ impl MainAreaDna {
         let engine = self.engine.as_ref()?;
         let guard = engine.try_read().ok()?;
         guard.sequence_genome_anchor_summary(seq_id).ok()
-    }
-
-    fn active_sequence_has_gene_annotations(&self) -> bool {
-        self.dna
-            .read()
-            .map(|dna| dna.features().iter().any(RenderDna::is_gene_feature))
-            .unwrap_or(false)
     }
 
     fn should_show_contextual_transcript_features(&self) -> bool {
@@ -3127,61 +3662,33 @@ impl MainAreaDna {
         a_start < b_end_exclusive && a_end_exclusive > b_start
     }
 
-    fn splicing_lane_index_at_y(
-        y: f32,
-        lanes_top: f32,
-        lane_height_px: f32,
-        lane_count: usize,
-    ) -> Option<usize> {
-        if lane_count == 0
-            || !y.is_finite()
-            || !lanes_top.is_finite()
-            || !lane_height_px.is_finite()
-            || lane_height_px <= 0.0
-        {
-            return None;
-        }
-        let lane_f = ((y - lanes_top) / lane_height_px).floor();
-        if !lane_f.is_finite() || lane_f < 0.0 {
-            return None;
-        }
-        let lane = lane_f as usize;
-        if lane < lane_count { Some(lane) } else { None }
-    }
-
     fn feature_overlaps_linear_viewport(
         feature: &gb_io::seq::Feature,
         sequence_length: usize,
         viewport_start: usize,
         viewport_end: usize,
     ) -> bool {
-        let mut ranges: Vec<(usize, usize)> = vec![];
-        collect_location_ranges_usize(&feature.location, &mut ranges);
-        if ranges.is_empty()
-            && let Ok((raw_from, raw_to)) = feature.location.find_bounds()
-            && raw_from >= 0
-            && raw_to >= 0
+        if let Some(overlaps) =
+            location_overlaps_usize(&feature.location, viewport_start, viewport_end)
         {
-            let mut from = raw_from as usize;
-            let mut to = raw_to as usize;
-            if to < from {
-                std::mem::swap(&mut from, &mut to);
-            }
-            ranges.push((from, to));
+            return overlaps;
         }
-        ranges.into_iter().any(|(mut from, mut to)| {
-            if to < from {
-                std::mem::swap(&mut from, &mut to);
-            }
-            if from >= sequence_length {
-                return false;
-            }
-            to = to.min(sequence_length);
-            if to <= from {
-                return false;
-            }
-            Self::ranges_overlap(from, to, viewport_start, viewport_end)
-        })
+        let Ok((raw_from, raw_to)) = feature.location.find_bounds() else {
+            return false;
+        };
+        if raw_from < 0 || raw_to < 0 {
+            return false;
+        }
+        let mut from = raw_from as usize;
+        let mut to = raw_to as usize;
+        if to < from {
+            std::mem::swap(&mut from, &mut to);
+        }
+        if from >= sequence_length {
+            return false;
+        }
+        to = to.min(sequence_length);
+        to > from && Self::ranges_overlap(from, to, viewport_start, viewport_end)
     }
 
     fn orf_overlaps_linear_viewport(
@@ -3190,23 +3697,8 @@ impl MainAreaDna {
         viewport_start: usize,
         viewport_end: usize,
     ) -> bool {
-        if sequence_length == 0 {
-            return false;
-        }
-        let from = orf.from().max(0) as usize;
-        let to = orf.to().max(0) as usize;
-        if to >= from {
-            let from = from.min(sequence_length);
-            let to = to.min(sequence_length);
-            if to <= from {
-                return false;
-            }
-            return Self::ranges_overlap(from, to, viewport_start, viewport_end);
-        }
-        let wrapped_left = from.min(sequence_length);
-        let wrapped_right = to.min(sequence_length);
-        Self::ranges_overlap(wrapped_left, sequence_length, viewport_start, viewport_end)
-            || Self::ranges_overlap(0, wrapped_right, viewport_start, viewport_end)
+        orf.spans_0based(sequence_length)
+            .any(|(from, end)| Self::ranges_overlap(from, end, viewport_start, viewport_end))
     }
 
     fn normalize_restriction_group_cut_pos_0based(
@@ -3245,8 +3737,43 @@ impl MainAreaDna {
         })
     }
 
-    fn compute_layer_visibility_counts(&self) -> LayerVisibilityCounts {
+    fn compute_layer_visibility_counts(&mut self) -> LayerVisibilityCounts {
+        crate::gentle_gui_profile_scope!("MainAreaDna::layer_visibility_counts");
         let viewport = self.active_linear_viewport_range();
+        let display_revision = self
+            .dna_display
+            .read()
+            .map(|display| display.revision())
+            .unwrap_or_default();
+        let dna_cache_identity = self.dna.read().ok().map(|dna| {
+            (
+                dna.feature_generation(),
+                dna.restriction_enzyme_group_generation(),
+                dna.len(),
+            )
+        });
+        if let Some((feature_generation, restriction_generation, sequence_length)) =
+            dna_cache_identity
+        {
+            let key = LayerVisibilityCacheKey {
+                display_revision,
+                feature_generation,
+                restriction_generation,
+                sequence_length,
+                viewport,
+            };
+            if let Some(counts) = self
+                .layer_visibility_cache
+                .as_ref()
+                .filter(|cache| cache.key == key)
+                .map(|cache| cache.counts.clone())
+            {
+                self.layer_visibility_cache_hits =
+                    self.layer_visibility_cache_hits.saturating_add(1);
+                return counts;
+            }
+        }
+        self.layer_visibility_cache_misses = self.layer_visibility_cache_misses.saturating_add(1);
         let (
             tfbs_display_criteria,
             vcf_display_criteria,
@@ -3296,9 +3823,17 @@ impl MainAreaDna {
         let mut counts = LayerVisibilityCounts::default();
         if let Ok(dna) = self.dna.read() {
             let sequence_length = dna.len();
+            self.layer_visibility_feature_visits = self
+                .layer_visibility_feature_visits
+                .saturating_add(dna.features().len() as u64);
             for feature in dna.features() {
                 if RenderDna::is_source_feature(feature) {
                     continue;
+                }
+                let is_array_track = RenderDna::is_array_track_feature(feature);
+                if is_array_track {
+                    counts.array_feature_total_count =
+                        counts.array_feature_total_count.saturating_add(1);
                 }
                 if let Some((start, end)) = viewport
                     && !Self::feature_overlaps_linear_viewport(feature, sequence_length, start, end)
@@ -3323,7 +3858,7 @@ impl MainAreaDna {
                         .entry(kind.clone())
                         .or_insert(0) += 1;
                 }
-                if RenderDna::is_array_track_feature(feature) {
+                if is_array_track {
                     counts.array_feature_count = counts.array_feature_count.saturating_add(1);
                 }
                 let is_contextual_transcript = RenderDna::is_contextual_transcript_feature(feature);
@@ -3387,17 +3922,11 @@ impl MainAreaDna {
                     counts.restriction_site_count = counts.restriction_site_count.saturating_add(1);
                 }
             }
-            counts.gc_region_count = GcContents::new_from_sequence_with_bin_size(
-                dna.forward_bytes(),
+            counts.gc_region_count = GcContents::region_count_for_viewport(
+                sequence_length,
                 gc_content_bin_size_bp,
-            )
-            .regions()
-            .iter()
-            .filter(|region| match viewport {
-                Some((start, end)) => Self::ranges_overlap(region.from(), region.to(), start, end),
-                None => true,
-            })
-            .count();
+                viewport,
+            );
             counts.orf_count = dna
                 .open_reading_frames()
                 .iter()
@@ -3438,6 +3967,20 @@ impl MainAreaDna {
                         }
                 })
                 .count();
+        }
+        if let Some((feature_generation, restriction_generation, sequence_length)) =
+            dna_cache_identity
+        {
+            self.layer_visibility_cache = Some(LayerVisibilityCache {
+                key: LayerVisibilityCacheKey {
+                    display_revision,
+                    feature_generation,
+                    restriction_generation,
+                    sequence_length,
+                    viewport,
+                },
+                counts: counts.clone(),
+            });
         }
         counts
     }
@@ -3861,10 +4404,36 @@ impl MainAreaDna {
     /// root panels before delegating into the specialized render helpers below.
     pub fn render(&mut self, ctx: &egui::Context) {
         crate::gentle_gui_profile_scope!("MainAreaDna::render");
+        #[cfg(feature = "gui-test-support")]
+        {
+            let subject_scope = crate::gui_test_support::pseudonymous_subject_scope(&[self
+                .seq_id
+                .as_deref()
+                .unwrap_or("unnamed")]);
+            crate::gui_test_support::register_rect(
+                ctx.clone(),
+                "window.dna_viewer",
+                "window.dna_viewer",
+                Some(&subject_scope),
+                crate::gui_test_support::GuiTestWidgetKind::Window,
+                ctx.content_rect(),
+                true,
+                true,
+                true,
+                Some("ready"),
+            );
+            if self.feature_tree_deferred_until_interaction {
+                crate::gui_test_support::mark_unsettled(ctx);
+            }
+        }
         self.prefill_container_ids();
         self.poll_tfbs_task(ctx);
         self.poll_primer_design_task(ctx);
         self.poll_rna_read_task(ctx);
+        self.poll_cryptic_splicing_task(ctx);
+        self.poll_tata_task(ctx);
+        self.poll_tss_task(ctx);
+        self.poll_genomic_region_homology_task(ctx);
         self.sync_from_engine_display();
         let backdrop_kind = if self.opened_from_pool_context {
             WindowBackdropKind::Pool
@@ -3892,17 +4461,14 @@ impl MainAreaDna {
         let auto_hidden_sequence_panel = self.should_auto_hide_sequence_panel();
         let full_height = ctx.content_rect().height().max(240.0);
         let sequence_panel_visible = self.show_sequence && !auto_hidden_sequence_panel;
-        let mut top_panel = egui::Panel::top(top_panel_id).frame(Frame::NONE);
-        if self.extended_top_panel_visible() {
-            self.extended_top_panel_height_px = Self::clamp_extended_top_panel_height(
-                self.extended_top_panel_height_px,
-                full_height,
-                sequence_panel_visible,
-            );
-            top_panel = top_panel
-                .min_size(EXTENDED_TOP_PANEL_MIN_HEIGHT_PX)
-                .exact_size(self.extended_top_panel_height_px);
-        }
+        let (top_panel_default, top_panel_min, top_panel_max) =
+            Self::top_panel_height_range(full_height);
+        let top_panel = egui::Panel::top(top_panel_id)
+            .frame(Frame::NONE)
+            .resizable(true)
+            .default_size(top_panel_default)
+            .min_size(top_panel_min)
+            .max_size(top_panel_max);
         crate::egui_compat::show_top_panel(ctx, top_panel_id, top_panel, |ui| {
             crate::gentle_gui_profile_scope!("MainAreaDna::render.top_panel");
             paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
@@ -3992,17 +4558,14 @@ impl MainAreaDna {
         let auto_hidden_sequence_panel = self.should_auto_hide_sequence_panel();
         let full_height = ui.available_height().max(240.0);
         let sequence_panel_visible = self.show_sequence && !auto_hidden_sequence_panel;
-        let mut top_panel = egui::Panel::top(top_panel_id).frame(Frame::NONE);
-        if self.extended_top_panel_visible() {
-            self.extended_top_panel_height_px = Self::clamp_extended_top_panel_height(
-                self.extended_top_panel_height_px,
-                full_height,
-                sequence_panel_visible,
-            );
-            top_panel = top_panel
-                .min_size(EXTENDED_TOP_PANEL_MIN_HEIGHT_PX)
-                .exact_size(self.extended_top_panel_height_px);
-        }
+        let (top_panel_default, top_panel_min, top_panel_max) =
+            Self::top_panel_height_range(full_height);
+        let top_panel = egui::Panel::top(top_panel_id)
+            .frame(Frame::NONE)
+            .resizable(true)
+            .default_size(top_panel_default)
+            .min_size(top_panel_min)
+            .max_size(top_panel_max);
         crate::egui_compat::show_top_panel_inside(ui, top_panel, |ui| {
             crate::gentle_gui_profile_scope!("MainAreaDna::render_inside.top_panel");
             paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
@@ -4056,17 +4619,192 @@ impl MainAreaDna {
         self.poll_tfbs_task(ctx);
         self.poll_primer_design_task(ctx);
         self.poll_rna_read_task(ctx);
+        self.poll_cryptic_splicing_task(ctx);
+        self.poll_tata_task(ctx);
+        self.poll_tss_task(ctx);
+        self.poll_genomic_region_homology_task(ctx);
         self.sync_from_engine_display();
         self.render_dotplot_window(ctx);
         self.render_splicing_expert_window(ctx);
+        self.render_genomic_region_manager(ctx);
+        self.render_genomic_region_conservation_workspace(ctx);
+        self.render_tata_workspace(ctx);
+        self.render_tss_workspace(ctx);
         self.render_rna_read_mapping_window(ctx);
         self.render_variant_followup_window(ctx);
         self.render_isoform_expert_window(ctx);
+        self.render_feature_location_editor(ctx);
         self.render_error_popup(ctx);
         self.render_anchor_prepared_choice_popup(ctx);
     }
 
+    fn array_layer_button_label(in_view: usize, total: usize) -> String {
+        if total == 0 {
+            "Array setup...".to_string()
+        } else if in_view == total {
+            format!("Array ({total})")
+        } else {
+            format!("Array ({in_view}/{total})")
+        }
+    }
+
+    fn ensure_clariom_d_array_defaults(&mut self) {
+        if self.probe_region_apt_platform.trim().is_empty() {
+            self.probe_region_apt_platform = "Clariom_D_Human".to_string();
+        }
+        if self.probe_region_apt_normalization.trim().is_empty() {
+            self.probe_region_apt_normalization = "rma-sketch".to_string();
+        }
+        if self.probe_region_apt_coordinate_system.trim().is_empty() {
+            self.probe_region_apt_coordinate_system = "hg38".to_string();
+        }
+        if self.probe_region_apt_genome_build.trim().is_empty() {
+            self.probe_region_apt_genome_build = "GRCh38".to_string();
+        }
+        if self.probe_region_output_dir.trim().is_empty() {
+            self.probe_region_output_dir = "analysis/probe_regions".to_string();
+        }
+        if self.probe_region_projection_seq_id.trim().is_empty() {
+            self.probe_region_projection_seq_id = self.seq_id.clone().unwrap_or_default();
+        }
+    }
+
+    fn restore_clariom_d_array_defaults(&mut self) {
+        self.probe_region_apt_platform = "Clariom_D_Human".to_string();
+        self.probe_region_apt_normalization = "rma-sketch".to_string();
+        self.probe_region_apt_coordinate_system = "hg38".to_string();
+        self.probe_region_apt_genome_build = "GRCh38".to_string();
+        self.probe_region_output_dir = "analysis/probe_regions".to_string();
+        self.probe_region_projection_seq_id = self.seq_id.clone().unwrap_or_default();
+        self.cached_probe_region_apt_import = None;
+        self.cached_probe_region_output_inspection = None;
+        self.cached_probe_region_projection = None;
+        self.cached_probe_region_interpretation = None;
+    }
+
+    fn open_array_setup(&mut self) {
+        self.ensure_clariom_d_array_defaults();
+        self.show_engine_ops = true;
+        self.probe_region_setup_requested = true;
+        self.op_status = "Opened Engine Ops > Clariom D / probe-region evidence. The built-in Clariom D Human profile is ready; project prepared output to create visible Array features."
+            .to_string();
+        self.save_engine_ops_state();
+    }
+
+    fn array_navigation_anchor_0based(&self) -> Option<(usize, &'static str)> {
+        if let Some((start, end_exclusive)) = self.current_selection_range_0based() {
+            return Some((
+                start.saturating_add(end_exclusive.saturating_sub(start) / 2),
+                "current selection",
+            ));
+        }
+        if let Some((start, end_exclusive)) = self.active_linear_viewport_range() {
+            return Some((
+                start.saturating_add(end_exclusive.saturating_sub(start) / 2),
+                "visible span",
+            ));
+        }
+        let sequence_length = self.dna.read().ok()?.len();
+        (sequence_length > 0).then_some((sequence_length / 2, "sequence midpoint"))
+    }
+
+    fn query_nearest_array_feature(
+        &self,
+        point_0based: usize,
+    ) -> Result<Option<(usize, usize, String)>, String> {
+        let seq_id = self
+            .seq_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| "The active DNA window has no sequence id".to_string())?;
+        let engine = self
+            .engine
+            .as_ref()
+            .ok_or_else(|| "No shared engine is attached to this DNA window".to_string())?;
+        let engine = engine
+            .read()
+            .map_err(|_| "Engine lock poisoned while querying array features".to_string())?;
+        let mut nearest: Option<(usize, usize, String)> = None;
+        for (key, value) in [
+            ("gentle_track_source", "Array"),
+            ("gentle_generated", "microarray_track_projection"),
+        ] {
+            let result = engine
+                .query_sequence_features(SequenceFeatureQuery {
+                    seq_id: seq_id.to_string(),
+                    qualifier_filters: vec![SequenceFeatureQualifierFilter {
+                        key: key.to_string(),
+                        value_contains: Some(value.to_string()),
+                        ..SequenceFeatureQualifierFilter::default()
+                    }],
+                    nearest_to_0based: Some(point_0based),
+                    limit: Some(1),
+                    ..SequenceFeatureQuery::default()
+                })
+                .map_err(|err| err.to_string())?;
+            let Some(row) = result.rows.into_iter().next() else {
+                continue;
+            };
+            let candidate = (
+                row.feature_id,
+                row.distance_to_query_bp.unwrap_or(usize::MAX),
+                row.label,
+            );
+            let replace = nearest
+                .as_ref()
+                .is_none_or(|current| (candidate.1, candidate.0) < (current.1, current.0));
+            if replace {
+                nearest = Some(candidate);
+            }
+        }
+        Ok(nearest)
+    }
+
+    fn focus_nearest_array_feature(&mut self) {
+        let Some((point_0based, anchor_label)) = self.array_navigation_anchor_0based() else {
+            self.op_status =
+                "Could not choose a coordinate for nearest-array navigation".to_string();
+            return;
+        };
+        match self.query_nearest_array_feature(point_0based) {
+            Ok(Some((feature_id, distance_bp, label))) => {
+                self.focus_feature(feature_id);
+                self.op_status = format!(
+                    "Focused nearest array feature n-{feature_id} '{label}': {distance_bp} bp from {anchor_label} midpoint at local coordinate {point_0based} (0-based)"
+                );
+            }
+            Ok(None) => self.open_array_setup(),
+            Err(err) => self.op_status = format!("Could not query nearest array feature: {err}"),
+        }
+    }
+
     pub fn render_top_panel(&mut self, ui: &mut egui::Ui) {
+        let width = ui.available_width().min(ui.clip_rect().width()).max(1.0);
+        let max_height = (ui.ctx().content_rect().height() * 0.45).clamp(100.0, 420.0);
+        egui::ScrollArea::vertical()
+            .id_salt(("dna_toolbar_scroll", self.panel_scope_key()))
+            .max_width(width)
+            .max_height(max_height)
+            .auto_shrink([false, true])
+            .show(ui, |ui| {
+                ui.set_max_width(width);
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+                self.render_top_panel_contents(ui);
+                if crate::gui_profiler::dna_cache_diagnostics_enabled() {
+                    self.render_cache_diagnostics(ui);
+                }
+            });
+    }
+
+    fn top_panel_height_range(full_height: f32) -> (f32, f32, f32) {
+        let max_height = (full_height * 0.45).clamp(100.0, 420.0);
+        let min_height = 100.0_f32.min(max_height);
+        let default_height = (full_height * 0.30).max(180.0).min(max_height);
+        (default_height, min_height, max_height)
+    }
+
+    fn render_top_panel_contents(&mut self, ui: &mut egui::Ui) {
         let icon_size = Self::top_panel_icon_size(ui);
         let layer_counts = self.compute_layer_visibility_counts();
         let allow_roi_tools = self.dna_presentation_mode.allows_roi_tools();
@@ -4190,6 +4928,11 @@ impl MainAreaDna {
 
             if !self.is_circular() {
                 let mut next_mode = self.primary_map_mode;
+                if self.tss_view_available() && ui.selectable_label(
+                    matches!(self.primary_map_mode, PrimaryMapMode::Tss), "TSS / Regulatory",
+                ).on_hover_text("Inspect TSS, transcript structure, CUT&RUN/chromatin intervals and stored peaks. Load the matching TSS report.json for full TFBS curves and imported DuckDB hits on the same axis. No rescoring.").clicked() {
+                    next_mode = PrimaryMapMode::Tss;
+                }
                 if ui
                     .selectable_label(
                         matches!(self.primary_map_mode, PrimaryMapMode::Standard),
@@ -4289,6 +5032,7 @@ impl MainAreaDna {
                     {
                         self.fit_linear_features_in_view();
                     }
+                    self.render_selection_navigation_controls(ui, true);
                     let view_end = start_bp.saturating_add(span_bp).min(sequence_length);
                     ui.monospace(format!(
                         "view {}..{} ({} bp)",
@@ -4301,7 +5045,7 @@ impl MainAreaDna {
                     {
                         self.sync_linear_view_input_fields_to_viewport();
                     }
-                    ui.horizontal(|ui| {
+                    {
                         ui.label(Self::tr("sequence.go"));
                         let start_response = ui
                             .add(
@@ -4329,16 +5073,9 @@ impl MainAreaDna {
                             self.apply_linear_viewport_from_input_fields();
                         }
                         if !start_response.has_focus() && !end_response.has_focus() {
-                            let current_start = start_bp.saturating_add(1).to_string();
-                            let current_end = view_end.to_string();
-                            if self.linear_view_start_1based_input != current_start
-                                || self.linear_view_end_1based_input != current_end
-                            {
-                                self.linear_view_start_1based_input = current_start;
-                                self.linear_view_end_1based_input = current_end;
-                            }
+                            self.sync_linear_view_input_fields_to_viewport();
                         }
-                    });
+                    }
                 }
             }
 
@@ -4420,6 +5157,7 @@ impl MainAreaDna {
                     ui.separator();
                     ui.label(Self::tr("sequence.linear_dna_letters"));
                     let (
+                        mut show_sequence_letters,
                         mut show_reverse_strand_letters,
                         mut helical_parallel_strands,
                         mut reverse_strand_opacity,
@@ -4437,6 +5175,7 @@ impl MainAreaDna {
                         .read()
                         .map(|display| {
                             (
+                                display.linear_show_sequence_bases(),
                                 display.linear_show_double_strand_bases(),
                                 display.linear_helical_parallel_strands(),
                                 display.reverse_strand_visual_opacity(),
@@ -4454,6 +5193,7 @@ impl MainAreaDna {
                         .unwrap_or((
                             true,
                             true,
+                            true,
                             0.55,
                             false,
                             true,
@@ -4465,6 +5205,22 @@ impl MainAreaDna {
                             11.0,
                             0.9,
                         ));
+                    if ui
+                        .checkbox(
+                            &mut show_sequence_letters,
+                            Self::tr("sequence.show_sequence_letters"),
+                        )
+                        .on_hover_text(
+                            "Hide or show DNA base letters in the linear map while keeping features, tracks, and the backbone visible.",
+                        )
+                        .changed()
+                    {
+                        self.dna_display
+                            .write()
+                            .expect("DNA display lock poisoned")
+                            .set_linear_show_sequence_bases(show_sequence_letters);
+                        self.sync_linear_sequence_base_visibility_to_engine(show_sequence_letters);
+                    }
                     if ui
                         .checkbox(
                             &mut show_reverse_strand_letters,
@@ -4704,9 +5460,10 @@ impl MainAreaDna {
                     let view_end_bp = view_start_bp.saturating_add(view_span_bp);
                     ui.colored_label(status_color, format!("Active render: {active_mode_label}"));
                     ui.monospace(format!(
-                        "route={} | setting={} | compressed={} | reverse={} | parallel={} | rev-opacity={:.2} | hide-backbone={} | backbone={} | span={} bp ({}..{} of {} bp) | map_w={:.0}px | density={:.2} | cols-fit={:.0} | glyph={:.2}px",
+                        "route={} | setting={} | letters={} | compressed={} | reverse={} | parallel={} | rev-opacity={:.2} | hide-backbone={} | backbone={} | span={} bp ({}..{} of {} bp) | map_w={:.0}px | density={:.2} | cols-fit={:.0} | glyph={:.2}px",
                         routing.route_policy.label(),
                         mode_setting_label(helical_layout_mode),
+                        show_sequence_letters,
                         helical_letters_enabled,
                         show_reverse_strand_letters,
                         helical_parallel_strands,
@@ -4895,6 +5652,20 @@ impl MainAreaDna {
                 .on_hover_text(format!(
                     "Show or hide rmsk/RepeatMasker repeat features ({repeat_count} in current view)"
                 ));
+            #[cfg(feature = "gui-test-support")]
+            {
+                let subject_scope = crate::gui_test_support::pseudonymous_subject_scope(&[
+                    self.seq_id.as_deref().unwrap_or("unnamed"),
+                ]);
+                crate::gui_test_support::register_response(
+                    &repeat_response,
+                    "dna.display.repeats",
+                    "window.dna_viewer",
+                    Some(&subject_scope),
+                    crate::gui_test_support::GuiTestWidgetKind::Checkbox,
+                    repeat_active,
+                );
+            }
             if repeat_response.clicked() {
                 let visible = {
                     let display = self.dna_display.read().expect("DNA display lock poisoned");
@@ -4913,21 +5684,93 @@ impl MainAreaDna {
                 .expect("DNA display lock poisoned")
                 .show_array_features();
             let array_count = layer_counts.array_count();
-            let array_response = ui
-                .selectable_label(array_active, format!("Array ({array_count})"))
-                .on_hover_text(format!(
-                    "Show or hide genome-projected microarray contrast features ({array_count} in current view)"
-                ));
+            let array_total_count = layer_counts.array_total_count();
+            let array_label = Self::array_layer_button_label(array_count, array_total_count);
+            let array_response = if array_total_count == 0 {
+                ui.button(array_label).on_hover_text(
+                    "No genome-projected microarray features are loaded on this sequence. Open Engine Ops > Clariom D / probe-region evidence to inspect, import, and project array data.",
+                )
+            } else {
+                ui.selectable_label(array_active, array_label)
+                    .on_hover_text(format!(
+                        "Show or hide genome-projected microarray contrast features ({array_count} in the current view; {array_total_count} on the full sequence)"
+                    ))
+            };
+            #[cfg(feature = "gui-test-support")]
+            {
+                let subject_scope = crate::gui_test_support::pseudonymous_subject_scope(&[
+                    self.seq_id.as_deref().unwrap_or("unnamed"),
+                ]);
+                crate::gui_test_support::register_response(
+                    &array_response,
+                    "dna.display.arrays",
+                    "window.dna_viewer",
+                    Some(&subject_scope),
+                    crate::gui_test_support::GuiTestWidgetKind::Checkbox,
+                    array_active,
+                );
+            }
             if array_response.clicked() {
-                let visible = {
-                    let display = self.dna_display.read().expect("DNA display lock poisoned");
-                    !display.show_array_features()
-                };
-                self.dna_display
-                    .write()
-                    .expect("DNA display lock poisoned")
-                    .set_show_array_features(visible);
-                self.set_display_visibility(DisplayTarget::ArrayFeatures, visible);
+                if array_total_count == 0 {
+                    self.open_array_setup();
+                } else {
+                    let visible = {
+                        let display = self.dna_display.read().expect("DNA display lock poisoned");
+                        !display.show_array_features()
+                    };
+                    self.dna_display
+                        .write()
+                        .expect("DNA display lock poisoned")
+                        .set_show_array_features(visible);
+                    self.set_display_visibility(DisplayTarget::ArrayFeatures, visible);
+                }
+            }
+            let mut focus_nearest_array = false;
+            let mut open_array_setup = false;
+            let mut restore_clariom_defaults = false;
+            array_response.context_menu(|ui| {
+                if array_total_count > 0 {
+                    if ui
+                        .button("Focus nearest array feature")
+                        .on_hover_text(
+                            "Use the current selection midpoint, otherwise the visible-span midpoint, and run the shared nearest feature query",
+                        )
+                        .clicked()
+                    {
+                        focus_nearest_array = true;
+                        ui.close();
+                    }
+                    ui.separator();
+                }
+                if ui
+                    .button("Open Clariom D / array setup")
+                    .on_hover_text(
+                        "Open Engine Ops directly at Clariom D / probe-region evidence",
+                    )
+                    .clicked()
+                {
+                    open_array_setup = true;
+                    ui.close();
+                }
+                if ui
+                    .button("Restore Clariom D defaults")
+                    .on_hover_text(
+                        "Restore Clariom_D_Human, rma-sketch, hg38/GRCh38, and the default output directory",
+                    )
+                    .clicked()
+                {
+                    restore_clariom_defaults = true;
+                    ui.close();
+                }
+            });
+            if focus_nearest_array {
+                self.focus_nearest_array_feature();
+            }
+            if restore_clariom_defaults {
+                self.restore_clariom_d_array_defaults();
+                self.open_array_setup();
+            } else if open_array_setup {
+                self.open_array_setup();
             }
 
             let construct_reasoning_active = self
@@ -4999,6 +5842,20 @@ impl MainAreaDna {
                 .on_hover_text(format!(
                     "Show or hide computed TFBS features ({tfbs_count} in current view)"
                 ));
+            #[cfg(feature = "gui-test-support")]
+            {
+                let subject_scope = crate::gui_test_support::pseudonymous_subject_scope(&[
+                    self.seq_id.as_deref().unwrap_or("unnamed"),
+                ]);
+                crate::gui_test_support::register_response(
+                    &response,
+                    "dna.display.tfbs",
+                    "window.dna_viewer",
+                    Some(&subject_scope),
+                    crate::gui_test_support::GuiTestWidgetKind::Checkbox,
+                    tfbs_active,
+                );
+            }
             if response.clicked() {
                 let visible = {
                     let display = self.dna_display.read().expect("DNA display lock poisoned");
@@ -5321,7 +6178,6 @@ impl MainAreaDna {
                 if select_visible_response.clicked() {
                     self.select_current_visible_span();
                 }
-
                 let extract_selection_response = ui.add_enabled(
                     selection_roi.is_some(),
                     egui::Button::new("Extract Sel"),
@@ -5413,7 +6269,28 @@ impl MainAreaDna {
                     }
                 });
                 let tfbs_scan_ready = self.has_tfbs_scan_motifs_configured();
-                ui.menu_button("TFBS scan", |ui| {
+                let precomputed_genomic_motif_count = if self.tfbs_use_all_motifs {
+                    usize::MAX
+                } else {
+                    Self::parse_ids(&self.tfbs_motifs).len()
+                };
+                let precomputed_genomic_motif_ready =
+                    (1..=MAX_GENOMIC_MOTIF_EVIDENCE_QUERY_MOTIFS)
+                        .contains(&precomputed_genomic_motif_count);
+                let _tss_menu = ui.menu_button("TFBS scan", |ui| {
+                    let tss_open = ui.button("Transcript starts / TSS windows...");
+                    #[cfg(feature = "gui-test-support")]
+                    crate::gui_test_support::register_response(&tss_open, crate::tutorial_gui_semantics::DNA_TSS_OPEN, crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
+                        Some(&crate::gui_test_support::pseudonymous_subject_scope(&[self.seq_id.as_deref().unwrap_or("unnamed")])), crate::gui_test_support::GuiTestWidgetKind::Button, false);
+                    if tss_open.clicked() {
+                        self.open_tss_inventory();
+                        ui.close();
+                    }
+                    if ui.button(Self::tr("tata.title")).clicked() {
+                        self.open_tata_boxes();
+                        ui.close();
+                    }
+                    ui.separator();
                     ui.small(
                         "Uses current TFBS/JASPAR motif and threshold settings from the TFBS annotation panel.",
                     );
@@ -5486,7 +6363,61 @@ impl MainAreaDna {
                         self.scan_whole_sequence_for_tfbs_hits();
                         ui.close();
                     }
+
+                    ui.separator();
+                    ui.small("Optional precomputed whole-genome evidence");
+                    ui.small(
+                        "Uses a configured jaspar-mapping package in a background task. Local GENtle scoring remains available when the package or DuckDB is absent.",
+                    );
+                    let selection_response = ui
+                        .add_enabled(
+                            selection_roi.is_some() && precomputed_genomic_motif_ready,
+                            egui::Button::new("Precomputed hits in selection"),
+                        )
+                        .on_hover_text(if precomputed_genomic_motif_ready {
+                            "Query exact inventory-selected package files for the current selection"
+                        } else {
+                            "Select between 1 and 64 explicit JASPAR motif IDs; the all-motifs option is intentionally unavailable for row queries"
+                        });
+                    if selection_response.clicked() {
+                        self.query_selection_genomic_motif_evidence();
+                        ui.close();
+                    }
+                    let visible_response = ui
+                        .add_enabled(
+                            visible_span_roi.is_some() && precomputed_genomic_motif_ready,
+                            egui::Button::new("Precomputed hits in visible span"),
+                        )
+                        .on_hover_text(if precomputed_genomic_motif_ready {
+                            "Query exact inventory-selected package files for the visible linear span"
+                        } else {
+                            "Select between 1 and 64 explicit JASPAR motif IDs"
+                        });
+                    if visible_response.clicked() {
+                        self.query_visible_span_genomic_motif_evidence();
+                        ui.close();
+                    }
+                    let whole_response = ui
+                        .add_enabled(
+                            self.seq_id
+                                .as_deref()
+                                .is_some_and(|value| !value.trim().is_empty())
+                                && precomputed_genomic_motif_ready,
+                            egui::Button::new("Precomputed hits in whole sequence"),
+                        )
+                        .on_hover_text(if precomputed_genomic_motif_ready {
+                            "Query exact inventory-selected package files for the active anchored sequence"
+                        } else {
+                            "Select between 1 and 64 explicit JASPAR motif IDs"
+                        });
+                    if whole_response.clicked() {
+                        self.query_whole_sequence_genomic_motif_evidence();
+                        ui.close();
+                    }
                 });
+                #[cfg(feature = "gui-test-support")]
+                crate::gui_test_support::register_response(&_tss_menu.response, crate::tutorial_gui_semantics::DNA_TFBS_MENU, crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
+                    Some(&crate::gui_test_support::pseudonymous_subject_scope(&[self.seq_id.as_deref().unwrap_or("unnamed")])), crate::gui_test_support::GuiTestWidgetKind::Button, false);
                 ui.menu_button("TFBS score tracks", |ui| {
                     ui.small(
                         "Uses the current TFBS/JASPAR motif selection from the TFBS annotation panel plus the score-track display mode configured there.",
@@ -5753,12 +6684,24 @@ impl MainAreaDna {
             });
             self.render_selection_formula_inline_controls(ui, 420.0);
             if let Some((start, end_exclusive)) = selection_roi {
-                ui.label(
+                let _selection_status = ui.label(
                     egui::RichText::new(format!(
                         "Selection ready for PCR: {start}..{end_exclusive}. Use `Set PCR ROI`, `Queue PCR selection`, or the `PCR ROI` menu."
                     ))
                     .weak()
                     .italics(),
+                );
+                #[cfg(feature = "gui-test-support")]
+                crate::gui_test_support::register_response_with_outcome(
+                    &_selection_status,
+                    crate::tutorial_gui_semantics::DNA_SELECTION_STATUS,
+                    crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
+                    Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                        self.seq_id.as_deref().unwrap_or("unnamed"),
+                    ])),
+                    crate::gui_test_support::GuiTestWidgetKind::Status,
+                    true,
+                    Some("ready"),
                 );
             } else if let Some((start, end_exclusive)) = self.pcr_paint_intervals.roi {
                 ui.label(
@@ -5801,30 +6744,32 @@ impl MainAreaDna {
                         output_id: None,
                     });
                 }
-                if ui
-                    .button(Self::tr("sequence.revcomp"))
-                    .on_hover_text("Create a reverse-complement branch sequence")
-                    .clicked()
+                let revcomp = ui.button(Self::tr("sequence.revcomp"))
+                    .on_hover_text("Create a reverse-complement branch sequence");
+                self.register_tutorial_control(&revcomp, crate::tutorial_gui_semantics::DNA_REVCOMP, crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER);
+                if revcomp.clicked()
                 {
                     self.apply_sequence_derivation(Operation::ReverseComplement {
                         input: self.seq_id.clone().unwrap_or_default(),
                         output_id: None,
                     });
+                    ui.ctx().request_repaint_of(egui::ViewportId::ROOT);
                 }
-                if ui
-                    .button(Self::tr("sequence.branch"))
-                    .on_hover_text("Create an unchanged branch copy for alternative workflows")
-                    .clicked()
+                let branch = ui.button(Self::tr("sequence.branch"))
+                    .on_hover_text("Create an unchanged branch copy for alternative workflows");
+                self.register_tutorial_control(&branch, crate::tutorial_gui_semantics::DNA_BRANCH, crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER);
+                if branch.clicked()
                 {
                     self.apply_sequence_derivation(Operation::Branch {
                         input: self.seq_id.clone().unwrap_or_default(),
                         output_id: None,
                     });
+                    ui.ctx().request_repaint_of(egui::ViewportId::ROOT);
                 }
             }
             if ui
                 .button(Self::tr("sequence.export_seq"))
-                .on_hover_text("Export active sequence as GenBank or FASTA via engine SaveFile")
+                .on_hover_text("Export active sequence as GenBank, EMBL or FASTA via engine SaveFile")
                 .clicked()
             {
                 self.export_active_sequence();
@@ -5841,7 +6786,7 @@ impl MainAreaDna {
                 .on_hover_text(ViewSvgExportProfile::Screen.hover_text())
                 .clicked()
             {
-                self.export_active_view_svg(ViewSvgExportProfile::Screen);
+                self.export_active_view_svg(ViewSvgExportProfile::Screen, ui.ctx());
             }
             ui.menu_button(Self::tr("sequence.view_svg"), |ui| {
                 if ui
@@ -5849,7 +6794,7 @@ impl MainAreaDna {
                     .on_hover_text(ViewSvgExportProfile::WideContext.hover_text())
                     .clicked()
                 {
-                    self.export_active_view_svg(ViewSvgExportProfile::WideContext);
+                    self.export_active_view_svg(ViewSvgExportProfile::WideContext, ui.ctx());
                     ui.close();
                 }
                 if ui
@@ -5857,16 +6802,13 @@ impl MainAreaDna {
                     .on_hover_text(ViewSvgExportProfile::PrintA3Landscape.hover_text())
                     .clicked()
                 {
-                    self.export_active_view_svg(ViewSvgExportProfile::PrintA3Landscape);
+                    self.export_active_view_svg(ViewSvgExportProfile::PrintA3Landscape, ui.ctx());
                     ui.close();
                 }
                 ui.separator();
                 ui.small(
                     "Wide/print exports use larger canvases and expanded bp context for reporting and printing.",
                 );
-                if cfg!(debug_assertions) {
-                    ui.small("Debug builds include routing-tier diagnostics in the SVG header block.");
-                }
             });
             if self.is_single_stranded_rna()
                 && ui
@@ -5896,24 +6838,34 @@ impl MainAreaDna {
             }
             if allow_engine_shell_panels {
                 ui.separator();
-                if ui
-                    .button("Engine Ops")
-                    .on_hover_text("Open strict engine operation controls")
-                    .clicked()
+                let tools = ui.button(Self::tr("sequence.tools.open"))
+                    .on_hover_text(Self::tr("sequence.tools.open_hover"));
+                self.register_tutorial_control(&tools, crate::tutorial_gui_semantics::DNA_OPEN_TOOLS, crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER);
+                if tools.clicked()
                 {
-                    self.show_engine_ops = !self.show_engine_ops;
+                    self.show_engine_ops = true;
                     self.save_engine_ops_state();
+                    ui.ctx().request_repaint_of(egui::ViewportId::ROOT);
                 }
                 if ui
-                    .button("Shell")
-                    .on_hover_text(
-                        "Open GENtle shell (shared command parser/executor with gentle_cli shell)",
-                    )
+                    .button(Self::tr("sequence.tools.shell_open"))
+                    .on_hover_text(Self::tr("sequence.tools.shell_open_hover"))
                     .clicked()
                 {
-                    self.show_shell = !self.show_shell;
+                    self.show_shell = true;
                     self.save_engine_ops_state();
                 }
+            }
+            let regions = ui
+                .button("Regions...")
+                .on_hover_text("Save, inspect, copy, and export assembly-bound genomic regions");
+            self.register_tutorial_control(
+                &regions,
+                crate::tutorial_gui_semantics::DNA_OPEN_REGIONS,
+                crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
+            );
+            if regions.clicked() {
+                self.open_genomic_region_manager(None);
             }
         });
 
@@ -5939,132 +6891,42 @@ impl MainAreaDna {
                 if let Some(summary) = anchor_summary.clone() {
                     let (label, badge_color, hover_text) = match summary.anchor_verified {
                         Some(true) => (
-                            "verified",
+                            Self::tr("sequence.anchor.verified"),
                             egui::Color32::from_rgb(24, 120, 52),
-                            "Anchor sequence was verified against the prepared reference genome.",
+                            Self::tr("sequence.anchor.verified_hover"),
                         ),
                         Some(false) => (
-                            "unverified",
+                            Self::tr("sequence.anchor.unverified"),
                             egui::Color32::from_rgb(176, 46, 42),
-                            "Anchor sequence does not match the prepared reference genome at recorded coordinates.",
+                            Self::tr("sequence.anchor.unverified_hover"),
                         ),
                         None => (
-                            "n/a",
+                            Self::tr("sequence.anchor.not_available"),
                             egui::Color32::from_rgb(96, 96, 96),
-                            "Anchor verification has not been recorded for this sequence yet.",
+                            Self::tr("sequence.anchor.not_available_hover"),
                         ),
                     };
                     ui.label(
-                        egui::RichText::new(format!("anchor check: {label}"))
+                        egui::RichText::new(format!(
+                            "{}: {label}",
+                            Self::tr("sequence.anchor.check")
+                        ))
                             .color(badge_color)
                             .monospace()
                             .strong(),
                     )
                     .on_hover_text(hover_text);
                 }
+                if is_anchored
+                    && ui
+                        .small_button(Self::tr("sequence.anchor.configure"))
+                        .on_hover_text(Self::tr("sequence.anchor.configure_hover"))
+                        .clicked()
+                {
+                    self.show_engine_ops = true;
+                    self.save_engine_ops_state();
+                }
             });
-            if is_anchored {
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("Extend anchored span by");
-                    let length_changed = ui
-                        .add(
-                            egui::TextEdit::singleline(&mut self.genome_anchor_extend_length_bp)
-                                .desired_width(70.0),
-                        )
-                        .on_hover_text(
-                            "Number of additional genomic bases to include on the selected anchor side.",
-                        )
-                        .changed();
-                    ui.label("bp");
-                    ui.label("output_id");
-                    let output_changed = ui
-                        .add(
-                            egui::TextEdit::singleline(&mut self.genome_anchor_extend_output_id)
-                                .desired_width(180.0),
-                        )
-                        .on_hover_text(
-                            "Optional explicit ID for the derived sequence (leave empty for auto-generated ID).",
-                        )
-                        .changed();
-                    if length_changed || output_changed {
-                        self.save_engine_ops_state();
-                    }
-                    if ui
-                        .small_button("Extend 5'")
-                        .on_hover_text(
-                            "Create a new sequence extended on the contextual 5' side of this anchored sequence.",
-                        )
-                        .clicked()
-                    {
-                        self.extend_active_genome_anchor(GenomeAnchorSide::FivePrime);
-                    }
-                    if ui
-                        .small_button("Extend 3'")
-                        .on_hover_text(
-                            "Create a new sequence extended on the contextual 3' side of this anchored sequence.",
-                        )
-                        .clicked()
-                    {
-                        self.extend_active_genome_anchor(GenomeAnchorSide::ThreePrime);
-                    }
-                    if ui
-                        .small_button("Re-verify anchor")
-                        .on_hover_text(
-                            "Re-check this sequence against the prepared genome and refresh anchor verification status.",
-                        )
-                        .clicked()
-                    {
-                        self.verify_active_genome_anchor();
-                    }
-                });
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("rmsk index");
-                    let index_changed = ui
-                        .add(
-                            egui::TextEdit::singleline(&mut self.rmsk_index_path)
-                                .desired_width(320.0),
-                        )
-                        .on_hover_text(
-                            "Prepared UCSC rmsk interval index JSON used to annotate this anchored sequence.",
-                        )
-                        .changed();
-                    ui.label("max");
-                    let max_changed = ui
-                        .add(
-                            egui::TextEdit::singleline(&mut self.rmsk_max_features)
-                                .desired_width(70.0),
-                        )
-                        .on_hover_text("Maximum repeat features to add; leave blank for no cap.")
-                        .changed();
-                    let append_changed = ui
-                        .checkbox(&mut self.rmsk_append_features, "Append")
-                        .on_hover_text(
-                            "Keep existing generated rmsk repeat features instead of replacing them.",
-                        )
-                        .changed();
-                    if index_changed || max_changed || append_changed {
-                        self.save_engine_ops_state();
-                    }
-                    let can_load_repeats = anchor_summary.is_some();
-                    let load_response =
-                        ui.add_enabled(can_load_repeats, egui::Button::new("Load Repeats"));
-                    let load_response = if can_load_repeats {
-                        load_response.on_hover_text(
-                            "Materialize overlapping UCSC rmsk repeats as repeat_region features.",
-                        )
-                    } else {
-                        load_response.on_disabled_hover_text(
-                            "Repeat loading requires a genome anchor on the active sequence.",
-                        )
-                    };
-                    if load_response.clicked() {
-                        self.materialize_active_repeat_features();
-                    }
-                });
-                ui.small(
-                    "5'/3' follows anchor strand orientation (for strand '-', 5' extends toward increasing genomic coordinates).",
-                );
-            }
         }
         if !self.op_status.is_empty() {
             ui.add(egui::Label::new(egui::RichText::new(&self.op_status).monospace()).wrap());
@@ -6087,51 +6949,76 @@ impl MainAreaDna {
         }
 
         if self.extended_top_panel_visible() {
-            ui.separator();
-            let total_height = ui.ctx().content_rect().height().max(240.0);
-            let sequence_panel_visible =
-                self.show_sequence && !self.should_auto_hide_sequence_panel();
-            let remaining_height = ui
-                .available_height()
-                .max(EXTENDED_TOP_PANEL_HANDLE_HEIGHT_PX + 1.0);
-            let extended_controls_height = Self::clamp_extended_top_panel_scroll_height(
-                remaining_height - EXTENDED_TOP_PANEL_HANDLE_HEIGHT_PX,
+            let mut open = true;
+            let sequence_id = self.seq_id.as_deref().unwrap_or("—");
+            let title = format!("{} — {sequence_id}", Self::tr("sequence.tools.title"));
+            let spec = crate::egui_compat::HostedWindowSpec::new(
+                title,
+                egui::Id::new(("sequence_tools_window", self.panel_scope_key())),
+                Vec2::new(1080.0, 720.0),
+                Vec2::new(720.0, 420.0),
             );
-            egui::ScrollArea::vertical()
+            crate::egui_compat::show_hosted_window(ui.ctx(), &spec, &mut open, |ui| {
+                egui::ScrollArea::both()
                 .id_salt(format!(
                     "engine_shell_panels_scroll_{}",
                     self.seq_id.as_deref().unwrap_or("_global")
                 ))
                 .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
                 .auto_shrink([false, false])
-                .max_height(extended_controls_height)
-                .min_scrolled_height(extended_controls_height)
                 .show(ui, |ui| {
                     scroll_input_policy::apply_scrollarea_keyboard_navigation(
                         ui,
                         scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                     );
+                    ui.set_min_width(980.0);
                     if self.show_engine_ops && self.dna_presentation_mode.allows_engine_shell_panels()
                     {
-                        egui::CollapsingHeader::new("Strict Engine Operations")
+                        self.render_sequence_context_tools(ui);
+                        if ui.button(Self::tr("tata.title")).clicked() { self.open_tata_boxes(); }
+                        ui.separator();
+                        egui::CollapsingHeader::new("Cryptic-splicing structural screen")
+                            .open(self.cryptic_splicing_focus_requested.then_some(true))
+                            .default_open(false)
+                            .show(ui, |ui| {
+                                self.render_cryptic_splicing_screen_ui(
+                                    ui,
+                                    None,
+                                    "sequence_tools",
+                                );
+                            });
+                        self.cryptic_splicing_focus_requested = false;
+                        ui.separator();
+                        egui::CollapsingHeader::new(Self::tr("sequence.tools.engine_operations"))
                             .default_open(true)
                             .show(ui, |ui| {
-                            ui.label("IDs are comma-separated sequence IDs.");
+                            ui.label(Self::tr("sequence.tools.ids_hint"));
                             let template_seq_id = self.seq_id.clone().unwrap_or_default();
-                            egui::CollapsingHeader::new("Core cloning operations")
+                            let cloning = egui::CollapsingHeader::new("Core cloning operations")
                                 .default_open(false)
                                 .show(ui, |ui| {
 
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label(format!("Digest template {}", template_seq_id));
                     ui.label("enzymes");
-                    ui.text_edit_singleline(&mut self.digest_enzymes_text);
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.digest_enzymes_text)
+                            .desired_width(180.0),
+                    );
                     ui.label("prefix");
-                    ui.text_edit_singleline(&mut self.digest_prefix_text);
-                    if ui
-                        .button("Digest")
-                        .on_hover_text("Digest active template with listed enzymes")
-                        .clicked()
+                    let prefix = ui.add(
+                        egui::TextEdit::singleline(&mut self.digest_prefix_text)
+                            .desired_width(160.0),
+                    );
+                    if prefix.changed() {
+                        self.save_engine_ops_state();
+                        ui.ctx().request_repaint_of(egui::ViewportId::ROOT);
+                    }
+                    self.register_tutorial_control(&prefix, crate::tutorial_gui_semantics::TOOLS_DIGEST_PREFIX, crate::tutorial_gui_semantics::WINDOW_SEQUENCE_TOOLS);
+                    let digest = ui.button("Digest")
+                        .on_hover_text("Digest active template with listed enzymes");
+                    self.register_tutorial_control(&digest, crate::tutorial_gui_semantics::TOOLS_DIGEST_RUN, crate::tutorial_gui_semantics::WINDOW_SEQUENCE_TOOLS);
+                    if digest.clicked()
                     {
                         let enzymes = self
                             .digest_enzymes_text
@@ -6150,9 +7037,10 @@ impl MainAreaDna {
                                 enzymes,
                                 output_prefix: Some(self.digest_prefix_text.clone()),
                             });
+                            ui.ctx().request_repaint_of(egui::ViewportId::ROOT);
                         }
                     }
-                });
+            });
                 ui.horizontal_wrapped(|ui| {
                     if ui
                         .small_button("Use MCS enzymes")
@@ -6470,6 +7358,7 @@ impl MainAreaDna {
                 });
                             });
 
+                self.register_tutorial_control(&cloning.header_response, crate::tutorial_gui_semantics::TOOLS_CLONING, crate::tutorial_gui_semantics::WINDOW_SEQUENCE_TOOLS);
                 egui::CollapsingHeader::new("Primer and qPCR design reports")
                     .default_open(true)
                     .show(ui, |ui| {
@@ -7304,6 +8193,7 @@ impl MainAreaDna {
                 );
                 if tfbs_hit_scan_settings_changed {
                     self.cached_tfbs_hit_scan = None;
+                    self.cached_genomic_motif_evidence = None;
                 }
                 if tfbs_score_track_settings_changed {
                     self.cached_tfbs_score_tracks = None;
@@ -7549,6 +8439,23 @@ impl MainAreaDna {
                             }
                         });
                         ui.horizontal_wrapped(|ui| {
+                            ui.label("catalog");
+                            if ui
+                                .text_edit_singleline(&mut self.cutrun_regulatory_catalog_path)
+                                .changed()
+                            {
+                                cutrun_settings_changed = true;
+                            }
+                            ui.label("cache dir");
+                            if ui
+                                .text_edit_singleline(&mut self.cutrun_regulatory_cache_dir)
+                                .changed()
+                            {
+                                cutrun_settings_changed = true;
+                            }
+                            ui.label("blank = default discovery");
+                        });
+                        ui.horizontal_wrapped(|ui| {
                             ui.label("promoter span 0-based");
                             if ui
                                 .text_edit_singleline(
@@ -7635,18 +8542,26 @@ impl MainAreaDna {
                         self.render_cutrun_regulatory_support_summary_panel(ui);
                     });
 
-                egui::CollapsingHeader::new("Clariom D / probe-region evidence")
+                let force_probe_region_open = self.probe_region_setup_requested;
+                let probe_region_header = egui::CollapsingHeader::new(Self::tr("sequence.clariom.title"))
                     .default_open(false)
+                    .open(force_probe_region_open.then_some(true))
                     .show(ui, |ui| {
                         self.render_probe_region_output_inspection_panel(ui);
                     });
+                if force_probe_region_open {
+                    probe_region_header
+                        .header_response
+                        .scroll_to_me(Some(egui::Align::TOP));
+                    self.probe_region_setup_requested = false;
+                }
 
                 egui::CollapsingHeader::new("Direct scan inspectors")
                     .default_open(false)
                     .show(ui, |ui| {
                         ui.small(
                             egui::RichText::new(
-                                "Toolbar actions `RE scan`, `TFBS scan`, and `TFBS score tracks` cache their shared engine reports here so you can inspect the same portable records before exporting them.",
+                                "Toolbar actions `RE scan`, `TFBS scan`, precomputed genomic motif evidence, and `TFBS score tracks` cache their shared engine reports here so you can inspect the same portable records before exporting them.",
                             )
                             .color(egui::Color32::from_rgb(100, 116, 139)),
                         );
@@ -7682,6 +8597,23 @@ impl MainAreaDna {
                         self.render_restriction_site_scan_summary_panel(ui);
                         ui.add_space(6.0);
                         self.render_tfbs_hit_scan_summary_panel(ui);
+                        ui.add_space(6.0);
+                        if let Some(task) = self.tfbs_task.as_ref().filter(|task| {
+                            matches!(
+                                task.task_kind,
+                                TfbsTaskKind::ActiveSequenceGenomicMotifEvidence { .. }
+                            )
+                        }) && Self::render_tfbs_task_progress_panel(
+                            ui,
+                            task,
+                            self.tfbs_progress.as_ref(),
+                            true,
+                        ) {
+                            task.cancel_requested.store(true, AtomicOrdering::Relaxed);
+                            self.op_status =
+                                format!("Cancel requested for {}", task.operation_label);
+                        }
+                        self.render_genomic_motif_evidence_summary_panel(ui);
                     });
 
                 egui::CollapsingHeader::new("Isoform architecture panels")
@@ -7891,61 +8823,114 @@ impl MainAreaDna {
                         self.render_shell_panel(ui);
                     }
                 });
-            let (split_rect, _) = ui.allocate_exact_size(
-                Vec2::new(ui.available_width(), EXTENDED_TOP_PANEL_HANDLE_HEIGHT_PX),
-                egui::Sense::hover(),
-            );
-            let split_response = ui.interact(
-                split_rect,
-                ui.make_persistent_id(format!(
-                    "extended_top_panel_split_{}",
-                    self.panel_scope_key()
-                )),
-                egui::Sense::click_and_drag(),
-            );
-            let split_color = if split_response.dragged() {
-                egui::Color32::from_rgb(40, 140, 210)
-            } else if split_response.hovered() {
-                egui::Color32::from_rgb(110, 110, 110)
-            } else {
-                egui::Color32::from_gray(90)
-            };
-            if split_response.hovered() || split_response.dragged() {
-                ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::ResizeVertical);
-            }
-            let split_y = split_rect.center().y;
-            ui.painter().line_segment(
-                [
-                    egui::pos2(split_rect.left(), split_y),
-                    egui::pos2(split_rect.right(), split_y),
-                ],
-                egui::Stroke::new(1.0_f32, split_color),
-            );
-            if split_response.double_clicked() {
-                self.extended_top_panel_height_px =
-                    Self::preferred_extended_top_panel_height(total_height, sequence_panel_visible);
-                self.save_engine_ops_state();
-            }
-            if split_response.dragged() {
-                let delta = ui.ctx().input(|i| i.pointer.delta().y);
-                if delta.abs() > f32::EPSILON {
-                    self.extended_top_panel_height_px = Self::clamp_extended_top_panel_height(
-                        self.extended_top_panel_height_px + delta,
-                        total_height,
-                        sequence_panel_visible,
-                    );
-                    ui.ctx().request_repaint();
-                }
-            }
-            if split_response.drag_stopped() {
-                self.extended_top_panel_height_px = Self::clamp_extended_top_panel_height(
-                    self.extended_top_panel_height_px,
-                    total_height,
-                    sequence_panel_visible,
-                );
+            });
+            if !open {
+                self.show_engine_ops = false;
+                self.show_shell = false;
                 self.save_engine_ops_state();
             }
         }
+    }
+
+    fn render_sequence_context_tools(&mut self, ui: &mut egui::Ui) {
+        let Some((_anchor_status, is_anchored)) = self.active_sequence_genome_anchor_status()
+        else {
+            return;
+        };
+        if !is_anchored {
+            return;
+        }
+        egui::CollapsingHeader::new(Self::tr("sequence.anchor.tools"))
+            .default_open(true)
+            .show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(Self::tr("sequence.anchor.extend_by"));
+                    let length_changed = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.genome_anchor_extend_length_bp)
+                                .desired_width(70.0),
+                        )
+                        .on_hover_text(Self::tr("sequence.anchor.extend_by_hover"))
+                        .changed();
+                    ui.label("bp");
+                    ui.label(Self::tr("sequence.anchor.output_id"));
+                    let output_changed = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.genome_anchor_extend_output_id)
+                                .desired_width(180.0),
+                        )
+                        .on_hover_text(Self::tr("sequence.anchor.output_id_hover"))
+                        .changed();
+                    if length_changed || output_changed {
+                        self.save_engine_ops_state();
+                    }
+                    if ui
+                        .small_button(Self::tr("sequence.anchor.extend_5"))
+                        .on_hover_text(Self::tr("sequence.anchor.extend_5_hover"))
+                        .clicked()
+                    {
+                        self.extend_active_genome_anchor(GenomeAnchorSide::FivePrime);
+                    }
+                    if ui
+                        .small_button(Self::tr("sequence.anchor.extend_3"))
+                        .on_hover_text(Self::tr("sequence.anchor.extend_3_hover"))
+                        .clicked()
+                    {
+                        self.extend_active_genome_anchor(GenomeAnchorSide::ThreePrime);
+                    }
+                    if ui
+                        .small_button(Self::tr("sequence.anchor.reverify"))
+                        .on_hover_text(Self::tr("sequence.anchor.reverify_hover"))
+                        .clicked()
+                    {
+                        self.verify_active_genome_anchor();
+                    }
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(Self::tr("sequence.anchor.rmsk_index"));
+                    let index_changed = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.rmsk_index_path)
+                                .desired_width(320.0),
+                        )
+                        .on_hover_text(Self::tr("sequence.anchor.rmsk_index_hover"))
+                        .changed();
+                    ui.label(Self::tr("sequence.anchor.max_features"));
+                    let max_changed = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.rmsk_max_features)
+                                .desired_width(70.0),
+                        )
+                        .on_hover_text(Self::tr("sequence.anchor.max_features_hover"))
+                        .changed();
+                    let append_changed = ui
+                        .checkbox(
+                            &mut self.rmsk_append_features,
+                            Self::tr("sequence.anchor.append"),
+                        )
+                        .on_hover_text(Self::tr("sequence.anchor.append_hover"))
+                        .changed();
+                    if index_changed || max_changed || append_changed {
+                        self.save_engine_ops_state();
+                    }
+                    let can_load_repeats = self.active_sequence_anchor_summary().is_some();
+                    let load_response = ui.add_enabled(
+                        can_load_repeats,
+                        egui::Button::new(Self::tr("sequence.anchor.load_repeats")),
+                    );
+                    let load_response = if can_load_repeats {
+                        load_response.on_hover_text(Self::tr("sequence.anchor.load_repeats_hover"))
+                    } else {
+                        load_response.on_disabled_hover_text(Self::tr(
+                            "sequence.anchor.load_repeats_disabled",
+                        ))
+                    };
+                    if load_response.clicked() {
+                        self.materialize_active_repeat_features();
+                    }
+                });
+                ui.small(Self::tr("sequence.anchor.orientation_hint"));
+            });
     }
 
     fn probe_region_optional_label(value: &Option<String>) -> &str {
@@ -8033,6 +9018,13 @@ impl MainAreaDna {
         } else {
             Some(trimmed.to_string())
         }
+    }
+
+    fn local_tp73_probe_region_preflight_command(output_dir: &str) -> String {
+        let output_dir = output_dir.trim().replace('\\', "\\\\").replace('"', "\\\"");
+        format!(
+            "arrays probe-regions --dataset E-MTAB-14704 --gene TP73 --platform Clariom_D_Human --normalization rma --output \"{output_dir}\" --dry-run"
+        )
     }
 
     fn import_apt_probe_region_output_for_current_paths(&mut self) {
@@ -8662,6 +9654,8 @@ impl MainAreaDna {
             ),
             level: Self::optional_probe_region_text(&self.probe_region_interpretation_level),
             min_abs_logfc,
+            threshold_source: None,
+            policy_sha256: None,
             path: output_path.clone(),
         };
         let outcome = {
@@ -8867,15 +9861,124 @@ impl MainAreaDna {
     }
 
     fn render_probe_region_output_inspection_panel(&mut self, ui: &mut egui::Ui) {
+        let local_resources =
+            crate::microarray_setup::MicroarraySetupDiscovery::discover_checkout();
         ui.small(
-            egui::RichText::new(
-                "Inspects completed Affymetrix probe-region helper output; it does not run R, APT, downloads, or external analysis.",
-            )
-            .color(egui::Color32::from_rgb(100, 116, 139)),
+            egui::RichText::new(Self::tr("sequence.clariom.description"))
+                .color(egui::Color32::from_rgb(100, 116, 139)),
         );
+        ui.horizontal_wrapped(|ui| {
+            ui.small(
+                egui::RichText::new(
+                    "Built-in profile: Clariom D Human | Clariom_D_Human | rma-sketch | hg38 / GRCh38",
+                )
+                .color(egui::Color32::from_rgb(45, 96, 72)),
+            );
+            if ui
+                .small_button("Restore profile defaults")
+                .on_hover_text(
+                    "Restore the built-in Clariom D Human platform, normalization, build, output directory, and current projection target",
+                )
+                .clicked()
+            {
+                self.restore_clariom_d_array_defaults();
+                self.save_engine_ops_state();
+            }
+        });
         ui.add_space(4.0);
 
-        ui.label(egui::RichText::new("Import APT summary").strong());
+        egui::Frame::group(ui.style()).show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.strong("Getting started");
+                if ui
+                    .small_button("Microarray setup and file help...")
+                    .on_hover_text(
+                        "Open Configuration directly on the Microarrays tab with file roles, sources, and checkout-local resource status",
+                    )
+                    .clicked()
+                {
+                    crate::app::request_open_microarray_settings_from_native_menu();
+                }
+            });
+            ui.small(
+                "Use one route: inspect prepared GENtle output; import completed summary plus coordinate annotation tables; or preflight raw CEL analysis. Projection and interpretation happen only after the corresponding files have been inspected.",
+            );
+            ui.horizontal_wrapped(|ui| {
+                let local_raw_data_ready = local_resources.publication_idf.exists
+                    && local_resources.publication_sdrf.exists
+                    && !local_resources.publication_cel_paths.is_empty();
+                if ui
+                    .add_enabled(
+                        local_raw_data_ready,
+                        egui::Button::new("Copy local TP73 preflight command"),
+                    )
+                    .on_hover_text(if local_raw_data_ready {
+                        "Copy a read-only arrays probe-regions plan command for the locally staged E-MTAB-14704 CEL files"
+                    } else {
+                        "The checkout does not currently contain E-MTAB-14704 metadata and CEL files"
+                    })
+                    .clicked()
+                {
+                    let command = Self::local_tp73_probe_region_preflight_command(
+                        &self.probe_region_output_dir,
+                    );
+                    ui.ctx().copy_text(command);
+                    self.op_status =
+                        "Copied the local E-MTAB-14704 TP73 read-only preflight command. Run it in GENtle Shell, review plan.json, then explicitly allow a backend if appropriate."
+                            .to_string();
+                }
+
+                let synthetic_ready = local_resources.has_synthetic_output();
+                if ui
+                    .add_enabled(
+                        synthetic_ready,
+                        egui::Button::new("Use synthetic TP73 demonstration output"),
+                    )
+                    .on_hover_text(if synthetic_ready {
+                        "Set output_dir to the committed deterministic TP73 fixture. This is a learning/test artifact, not biological evidence."
+                    } else {
+                        "The committed synthetic helper-output fixture is incomplete"
+                    })
+                    .clicked()
+                {
+                    self.probe_region_output_dir = local_resources
+                        .synthetic_output_dir
+                        .to_string_lossy()
+                        .into_owned();
+                    self.cached_probe_region_output_inspection = None;
+                    self.cached_probe_region_projection = None;
+                    self.cached_probe_region_interpretation = None;
+                    self.op_status =
+                        "Selected the synthetic TP73 demonstration output. Inspect it before projection; do not treat it as biological evidence."
+                            .to_string();
+                    self.save_engine_ops_state();
+                }
+            });
+            ui.small(format!(
+                "Detected locally: vendor annotation ZIPs {}/2 | E-MTAB-14704 CEL files {} (published example: 9) | analysis source tables {}/3 | synthetic output {}/{} required files",
+                local_resources.vendor_file_count(),
+                local_resources.publication_cel_paths.len(),
+                usize::from(local_resources.local_summary_tsv.exists)
+                    + usize::from(local_resources.local_annotation_tsv.exists)
+                    + usize::from(local_resources.local_metadata_tsv.exists),
+                local_resources.synthetic_output_files_present,
+                local_resources.synthetic_output_required_file_count(),
+            ));
+            ui.small(
+                egui::RichText::new(
+                    "GENtle only suggests detected files. It never downloads login-walled Thermo Fisher resources or silently replaces a path you entered.",
+                )
+                .color(egui::Color32::from_rgb(180, 83, 9)),
+            );
+            if local_resources.has_local_analysis_tables() {
+                ui.small(
+                    "The detected full-platform analyzed tables are listed in Configuration -> Microarrays but are not auto-filled here: their coordinate-less rows require selector-aware preflight rather than blind direct import.",
+                );
+            }
+        });
+        ui.add_space(6.0);
+
+        ui.label(egui::RichText::new(Self::tr("sequence.clariom.import_summary")).strong());
         let mut import_fields_changed = false;
         ui.horizontal_wrapped(|ui| {
             ui.label("summary_tsv");
@@ -9014,7 +10117,7 @@ impl MainAreaDna {
                     !self.probe_region_apt_summary_path.trim().is_empty()
                         && !self.probe_region_apt_annotation_path.trim().is_empty()
                         && !self.probe_region_output_dir.trim().is_empty(),
-                    egui::Button::new("Import APT output"),
+                    egui::Button::new(Self::tr("sequence.clariom.import_output")),
                 )
                 .on_hover_text(
                     "Convert explicit APT summary + annotation files into GENtle's inspectable probe-region output directory",
@@ -9048,7 +10151,7 @@ impl MainAreaDna {
 
         ui.add_space(4.0);
         ui.separator();
-        ui.label(egui::RichText::new("Run planned backend").strong());
+        ui.label(egui::RichText::new(Self::tr("sequence.clariom.run_backend")).strong());
         let mut backend_fields_changed = false;
         ui.horizontal_wrapped(|ui| {
             ui.label("plan_json");
@@ -9093,7 +10196,7 @@ impl MainAreaDna {
                 .add_enabled(
                     self.probe_region_backend_allow_external_execution
                         && !self.probe_region_backend_plan_path.trim().is_empty(),
-                    egui::Button::new("Run backend (external R/APT)"),
+                    egui::Button::new(Self::tr("sequence.clariom.run_backend_button")),
                 )
                 .on_hover_text(
                     "Run arrays run-probe-region-backend through the shared shell executor after explicit confirmation",
@@ -9113,7 +10216,7 @@ impl MainAreaDna {
 
         ui.add_space(4.0);
         ui.separator();
-        ui.label(egui::RichText::new("Inspect completed output").strong());
+        ui.label(egui::RichText::new(Self::tr("sequence.clariom.inspect_output")).strong());
         let mut output_dir_changed = false;
         ui.horizontal_wrapped(|ui| {
             ui.label("output_dir");
@@ -9129,7 +10232,7 @@ impl MainAreaDna {
             if ui
                 .add_enabled(
                     !self.probe_region_output_dir.trim().is_empty(),
-                    egui::Button::new("Inspect output"),
+                    egui::Button::new(Self::tr("sequence.clariom.inspect_output_button")),
                 )
                 .on_hover_text(
                     "Run arrays inspect-probe-region-output through the shared shell executor",
@@ -9178,7 +10281,7 @@ impl MainAreaDna {
 
         ui.add_space(4.0);
         ui.separator();
-        ui.label(egui::RichText::new("Project helper output").strong());
+        ui.label(egui::RichText::new(Self::tr("sequence.clariom.project_output")).strong());
         let mut projection_fields_changed = false;
         ui.horizontal_wrapped(|ui| {
             ui.label("target_seq_id");
@@ -9194,7 +10297,7 @@ impl MainAreaDna {
                 self.cached_probe_region_interpretation = None;
             }
             if ui
-                .button("Use current")
+                .button(Self::tr("sequence.clariom.use_current"))
                 .on_hover_text("Use the active sequence window as projection target")
                 .clicked()
             {
@@ -9330,7 +10433,7 @@ impl MainAreaDna {
             if ui
                 .add_enabled(
                     project_enabled,
-                    egui::Button::new("Project as array features"),
+                    egui::Button::new(Self::tr("sequence.clariom.project_button")),
                 )
                 .on_hover_text(
                     "Run arrays project-probe-region-output through the shared shell executor",
@@ -9367,7 +10470,7 @@ impl MainAreaDna {
 
         ui.add_space(4.0);
         ui.separator();
-        ui.label(egui::RichText::new("Interpret projected evidence").strong());
+        ui.label(egui::RichText::new(Self::tr("sequence.clariom.interpret_evidence")).strong());
         let mut interpretation_fields_changed = false;
         ui.horizontal_wrapped(|ui| {
             ui.label("gene");
@@ -9456,7 +10559,7 @@ impl MainAreaDna {
             if ui
                 .add_enabled(
                     interpretation_enabled,
-                    egui::Button::new("Interpret evidence"),
+                    egui::Button::new(Self::tr("sequence.clariom.interpret_button")),
                 )
                 .on_hover_text(
                     "Run arrays interpret-probe-region-evidence through the shared shell executor",
@@ -9512,14 +10615,14 @@ impl MainAreaDna {
         }
 
         let Some(report) = self.cached_probe_region_output_inspection.as_ref() else {
-            ui.small("No inspected output cached yet.");
+            ui.small(Self::tr("sequence.clariom.no_cached_output"));
             return;
         };
 
         ui.add_space(6.0);
         ui.group(|ui| {
             ui.horizontal_wrapped(|ui| {
-                ui.label(egui::RichText::new("Inspected output").strong());
+                ui.label(egui::RichText::new(Self::tr("sequence.clariom.inspected_output")).strong());
                 let status_text = if report.usable {
                     "usable"
                 } else {
@@ -9824,9 +10927,9 @@ impl MainAreaDna {
             if matches!(target, DisplayTarget::SequencePanel) {
                 let mut guard = engine.write().expect("Engine lock poisoned");
                 if self.is_circular() {
-                    guard.state_mut().display.show_sequence_panel = visible;
+                    guard.display_state_mut().show_sequence_panel = visible;
                 } else {
-                    guard.state_mut().display.show_linear_sequence_panel = visible;
+                    guard.display_state_mut().show_linear_sequence_panel = visible;
                 }
             } else {
                 let _ = engine
@@ -9842,7 +10945,7 @@ impl MainAreaDna {
             return;
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
-        let display = &mut guard.state_mut().display;
+        let display = guard.display_state_mut();
         display.tfbs_display_use_llr_bits = criteria.use_llr_bits;
         display.tfbs_display_min_llr_bits = criteria.min_llr_bits;
         display.tfbs_display_use_llr_quantile = criteria.use_llr_quantile;
@@ -9858,7 +10961,7 @@ impl MainAreaDna {
             return;
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
-        let display = &mut guard.state_mut().display;
+        let display = guard.display_state_mut();
         display.vcf_display_show_snp = criteria.show_snp;
         display.vcf_display_show_ins = criteria.show_ins;
         display.vcf_display_show_del = criteria.show_del;
@@ -9881,7 +10984,7 @@ impl MainAreaDna {
             return;
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
-        let display = &mut guard.state_mut().display;
+        let display = guard.display_state_mut();
         display.restriction_enzyme_display_mode = mode;
         display.preferred_restriction_enzymes = preferred_restriction_enzymes;
     }
@@ -9917,7 +11020,7 @@ impl MainAreaDna {
             return;
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
-        guard.state_mut().display.regulatory_tracks_near_baseline = near_baseline;
+        guard.display_state_mut().regulatory_tracks_near_baseline = near_baseline;
     }
 
     fn sync_feature_details_font_size_to_engine(&self, value: f32) {
@@ -9925,7 +11028,7 @@ impl MainAreaDna {
             return;
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
-        guard.state_mut().display.feature_details_font_size = value.clamp(8.0, 24.0);
+        guard.display_state_mut().feature_details_font_size = value.clamp(8.0, 24.0);
     }
 
     fn sync_linear_external_feature_label_font_size_to_engine(&self, value: f32) {
@@ -9934,8 +11037,7 @@ impl MainAreaDna {
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
         guard
-            .state_mut()
-            .display
+            .display_state_mut()
             .linear_external_feature_label_font_size = value.clamp(8.0, 24.0);
     }
 
@@ -9945,8 +11047,7 @@ impl MainAreaDna {
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
         guard
-            .state_mut()
-            .display
+            .display_state_mut()
             .linear_external_feature_label_background_opacity = value.clamp(0.0, 1.0);
     }
 
@@ -9955,7 +11056,7 @@ impl MainAreaDna {
             return;
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
-        guard.state_mut().display.gc_content_bin_size_bp = value.max(1);
+        guard.display_state_mut().gc_content_bin_size_bp = value.max(1);
     }
 
     fn sync_linear_double_strand_settings_to_engine(
@@ -9969,7 +11070,7 @@ impl MainAreaDna {
             return;
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
-        let display = &mut guard.state_mut().display;
+        let display = guard.display_state_mut();
         display.linear_show_double_strand_bases = show_double_strand;
         display.linear_helical_parallel_strands = helical_parallel_strands;
         display.reverse_strand_visual_opacity = reverse_strand_opacity.clamp(0.2, 1.0);
@@ -9986,10 +11087,18 @@ impl MainAreaDna {
             return;
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
-        let display = &mut guard.state_mut().display;
+        let display = guard.display_state_mut();
         display.linear_sequence_helical_letters_enabled = enabled;
         display.linear_sequence_letter_layout_mode = layout_mode;
         display.linear_sequence_helical_phase_offset_bp = phase_offset_bp % 10;
+    }
+
+    fn sync_linear_sequence_base_visibility_to_engine(&self, visible: bool) {
+        let Some(engine) = &self.engine else {
+            return;
+        };
+        let mut guard = engine.write().expect("Engine lock poisoned");
+        guard.display_state_mut().linear_show_sequence_bases = visible;
     }
 
     fn sync_linear_backbone_visibility_to_engine(&self, hide_when_bases_visible: bool) {
@@ -9998,8 +11107,7 @@ impl MainAreaDna {
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
         guard
-            .state_mut()
-            .display
+            .display_state_mut()
             .linear_hide_backbone_when_sequence_bases_visible = hide_when_bases_visible;
     }
 
@@ -10009,8 +11117,7 @@ impl MainAreaDna {
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
         guard
-            .state_mut()
-            .display
+            .display_state_mut()
             .auto_hide_sequence_panel_when_linear_bases_visible = value;
     }
 
@@ -10021,19 +11128,49 @@ impl MainAreaDna {
             .unwrap_or(9.0)
     }
 
+    fn invalidate_engine_display_sync(&mut self) {
+        self.engine_display_sync_key = None;
+    }
+
     fn sync_from_engine_display(&mut self) {
-        let Some(engine) = &self.engine else {
+        let Some(engine) = self.engine.clone() else {
             return;
         };
         let Ok(guard) = engine.try_read() else {
             return;
         };
+        let dna_handle = self.dna.clone();
+        let Ok(dna) = dna_handle.try_read() else {
+            return;
+        };
+        let key = EngineDisplaySyncKey {
+            engine_mutation_revision: guard.mutation_revision(),
+            engine_structural_revision: guard.structural_revision(),
+            feature_generation: dna.feature_generation(),
+            is_circular: dna.is_circular(),
+            dna_presentation_mode: self.dna_presentation_mode,
+            show_all_contextual_transcripts: self.show_all_contextual_transcripts,
+            compact_lane_layout: self.compact_lane_layout,
+        };
+        if self.engine_display_sync_key.as_ref() == Some(&key) {
+            drop(dna);
+            drop(guard);
+            self.engine_display_sync_cache_hits =
+                self.engine_display_sync_cache_hits.saturating_add(1);
+            return;
+        }
+
+        crate::gentle_gui_profile_scope!("MainAreaDna::sync_from_engine_display::cache_miss");
+        self.engine_display_sync_cache_misses =
+            self.engine_display_sync_cache_misses.saturating_add(1);
         let settings = guard.state().display.clone();
         let suppress_orf_for_anchor = self.active_sequence_is_genome_anchored(&guard);
-        let suppress_cds_for_gene_annotations = self.active_sequence_has_gene_annotations();
+        let suppress_cds_for_gene_annotations =
+            dna.features().iter().any(RenderDna::is_gene_feature);
+        drop(dna);
         drop(guard);
         self.show_sequence =
-            Self::sequence_panel_default_visible_for_topology(&settings, self.is_circular());
+            Self::sequence_panel_default_visible_for_topology(&settings, key.is_circular);
         self.show_map = settings.show_map_panel;
         if self.compact_lane_layout {
             self.apply_compact_lane_layout();
@@ -10088,6 +11225,7 @@ impl MainAreaDna {
         display.set_linear_sequence_base_text_max_view_span_bp(
             settings.linear_sequence_base_text_max_view_span_bp,
         );
+        display.set_linear_show_sequence_bases(settings.linear_show_sequence_bases);
         display.set_linear_sequence_helical_letters_enabled(
             settings.linear_sequence_helical_letters_enabled,
         );
@@ -10123,7 +11261,10 @@ impl MainAreaDna {
         );
         drop(display);
         self.sync_contextual_transcript_visibility_filter();
-        self.refresh_construct_reasoning_overlay_if_needed(false);
+        let overlay_sync_completed = self.refresh_construct_reasoning_overlay_if_needed(false);
+        self.engine_display_sync_key = overlay_sync_completed.then_some(key);
+        self.engine_display_sync_apply_count =
+            self.engine_display_sync_apply_count.saturating_add(1);
     }
 
     fn current_linear_viewport(&self) -> (usize, usize, usize) {
@@ -10157,23 +11298,24 @@ impl MainAreaDna {
 
     fn linear_base_routing_decision(&self) -> LinearBaseRoutingDecision {
         let (_, span, sequence_length) = self.current_linear_viewport();
-        let (compression_enabled, mode_setting) = self
+        let (sequence_bases_enabled, compression_enabled, mode_setting) = self
             .dna_display
             .read()
             .map(|display| {
                 (
+                    display.linear_show_sequence_bases(),
                     display.linear_sequence_helical_letters_enabled(),
                     display.linear_sequence_letter_layout_mode(),
                 )
             })
-            .unwrap_or((true, LinearSequenceLetterLayoutMode::AutoAdaptive));
+            .unwrap_or((true, true, LinearSequenceLetterLayoutMode::AutoAdaptive));
         let viewport_width_px =
             if self.last_linear_map_width_px.is_finite() && self.last_linear_map_width_px > 0.0 {
                 self.last_linear_map_width_px
             } else {
                 1200.0
             };
-        decide_linear_base_routing(LinearBaseRoutingInput {
+        let mut decision = decide_linear_base_routing(LinearBaseRoutingInput {
             span_bp: if sequence_length == 0 { 0 } else { span },
             viewport_width_px,
             compression_enabled,
@@ -10181,7 +11323,13 @@ impl MainAreaDna {
             font_scale: 0.85,
             min_font_size_px: 8.0,
             max_font_size_px: 14.0,
-        })
+        });
+        if !sequence_bases_enabled {
+            decision.active_mode = LinearBaseRenderMode::Off;
+            decision.decision_reason =
+                "inactive: DNA sequence letters disabled by display setting".to_string();
+        }
+        decision
     }
 
     fn linear_map_sequence_bases_visible(&self) -> bool {
@@ -10860,6 +12008,77 @@ impl MainAreaDna {
                 egui::TextStyle::Small.resolve(ui.style()),
                 role.color(),
             );
+        }
+    }
+
+    fn genomic_motif_overlay_color(motif_id: &str) -> egui::Color32 {
+        const COLORS: [egui::Color32; 6] = [
+            egui::Color32::from_rgb(14, 116, 144),
+            egui::Color32::from_rgb(190, 24, 93),
+            egui::Color32::from_rgb(22, 163, 74),
+            egui::Color32::from_rgb(202, 138, 4),
+            egui::Color32::from_rgb(124, 58, 237),
+            egui::Color32::from_rgb(220, 38, 38),
+        ];
+        let index = motif_id
+            .bytes()
+            .fold(0usize, |sum, byte| sum.wrapping_add(byte as usize))
+            % COLORS.len();
+        COLORS[index]
+    }
+
+    fn draw_genomic_motif_evidence_overlays(&self, ui: &mut egui::Ui, response: &egui::Response) {
+        if self.is_circular() {
+            return;
+        }
+        let Some(report) = self
+            .cached_genomic_motif_evidence
+            .as_ref()
+            .filter(|report| report.availability == GenomicMotifEvidenceAvailability::Available)
+        else {
+            return;
+        };
+        let Some(active_seq_id) = self.seq_id.as_deref() else {
+            return;
+        };
+        let (viewport_start, span_bp, sequence_length) = self.current_linear_viewport();
+        if span_bp == 0 || sequence_length == 0 {
+            return;
+        }
+        let viewport_end = viewport_start.saturating_add(span_bp).min(sequence_length);
+        let mut motif_lanes = BTreeMap::<&str, usize>::new();
+        for hit in &report.hits {
+            if hit.source_seq_id.as_deref() != Some(active_seq_id) {
+                continue;
+            }
+            let Some(start) = hit.source_start_0based else {
+                continue;
+            };
+            let Some(end) = hit.source_end_0based_exclusive else {
+                continue;
+            };
+            if end <= viewport_start || start >= viewport_end {
+                continue;
+            }
+            let next_lane = motif_lanes.len().min(3);
+            let lane = *motif_lanes
+                .entry(hit.motif_id.as_str())
+                .or_insert(next_lane);
+            let clip_start = start.max(viewport_start);
+            let clip_end = end.min(viewport_end);
+            let x0 = response.rect.left()
+                + response.rect.width()
+                    * ((clip_start - viewport_start) as f32 / span_bp as f32).clamp(0.0, 1.0);
+            let x1 = response.rect.left()
+                + response.rect.width()
+                    * ((clip_end - viewport_start) as f32 / span_bp as f32).clamp(0.0, 1.0);
+            let y0 = response.rect.top() + 14.0 + lane as f32 * 4.0;
+            let strip = egui::Rect::from_min_max(
+                egui::pos2(x0, y0),
+                egui::pos2(x1.max(x0 + 1.0), y0 + 3.0),
+            );
+            ui.painter()
+                .rect_filled(strip, 0.0, Self::genomic_motif_overlay_color(&hit.motif_id));
         }
     }
 
@@ -11627,6 +12846,77 @@ impl MainAreaDna {
         self.run_tfbs_hit_scan_for_active_sequence(None, "whole sequence");
     }
 
+    fn run_genomic_motif_evidence_for_active_sequence(
+        &mut self,
+        span: Option<(usize, usize)>,
+        source_label: &str,
+    ) {
+        let seq_id = self.seq_id.clone().unwrap_or_default();
+        if seq_id.trim().is_empty() {
+            self.op_status = "No active template sequence".to_string();
+            return;
+        }
+        let motif_ids = self.collect_tfbs_motifs();
+        if motif_ids.is_empty() {
+            self.op_status =
+                "Select at least one explicit JASPAR motif before querying genomic evidence"
+                    .to_string();
+            return;
+        }
+        if motif_ids.len() > MAX_GENOMIC_MOTIF_EVIDENCE_QUERY_MOTIFS {
+            self.op_status = format!(
+                "Precomputed genomic row queries accept at most {} explicit motifs; {} are selected",
+                MAX_GENOMIC_MOTIF_EVIDENCE_QUERY_MOTIFS,
+                motif_ids.len()
+            );
+            return;
+        }
+        self.cached_genomic_motif_evidence = None;
+        self.start_tfbs_operation(
+            Operation::QueryGenomicMotifEvidence {
+                request: GenomicMotifEvidenceRequest {
+                    target: GenomicMotifEvidenceTarget::AnchoredSequence {
+                        seq_id,
+                        span_start_0based: span.map(|(start, _)| start),
+                        span_end_0based_exclusive: span.map(|(_, end)| end),
+                    },
+                    motif_ids,
+                    max_rows: 2_000,
+                    max_payload_files: 256,
+                    timeout_seconds: 30,
+                    ..GenomicMotifEvidenceRequest::default()
+                },
+                path: None,
+            },
+            TfbsTaskKind::ActiveSequenceGenomicMotifEvidence {
+                source_label: source_label.to_string(),
+            },
+            "Precomputed genomic motif evidence",
+        );
+    }
+
+    fn query_selection_genomic_motif_evidence(&mut self) {
+        let Some(span) = self.current_selection_range_0based() else {
+            self.op_status =
+                "No non-empty linear selection available for genomic motif evidence".to_string();
+            return;
+        };
+        self.run_genomic_motif_evidence_for_active_sequence(Some(span), "current selection");
+    }
+
+    fn query_visible_span_genomic_motif_evidence(&mut self) {
+        let Some(span) = self.current_visible_linear_span_range_0based() else {
+            self.op_status =
+                "Visible linear span is unavailable for genomic motif evidence".to_string();
+            return;
+        };
+        self.run_genomic_motif_evidence_for_active_sequence(Some(span), "visible span");
+    }
+
+    fn query_whole_sequence_genomic_motif_evidence(&mut self) {
+        self.run_genomic_motif_evidence_for_active_sequence(None, "whole sequence");
+    }
+
     fn tfbs_score_track_value_kind_options() -> [TfbsScoreTrackValueKind; 8] {
         [
             TfbsScoreTrackValueKind::LlrBits,
@@ -11807,9 +13097,15 @@ impl MainAreaDna {
             .map(|track| {
                 let label =
                     Self::promoter_design_track_label(&track.tf_id, track.tf_name.as_deref());
+                if track.scored_window_count == 0 {
+                    return format!("{label} no_windows");
+                }
+                if track.evaluated_strand_windows() == 0 {
+                    return format!("{label} unavailable_or_unassessed");
+                }
                 match track.max_position_0based {
                     Some(position) => format!("{label}@{position} {:.2}", track.max_score),
-                    None => format!("{label} no_windows"),
+                    None => format!("{label} no_positive_peak"),
                 }
             })
             .collect::<Vec<_>>();
@@ -12305,6 +13601,232 @@ impl MainAreaDna {
         }
     }
 
+    fn render_genomic_motif_evidence_summary_panel(&mut self, ui: &mut egui::Ui) {
+        let navigate_to = {
+            let Some(report) = self.cached_genomic_motif_evidence.as_ref() else {
+                ui.small(
+                    egui::RichText::new(
+                        "No precomputed genomic motif evidence cached. Use `TFBS scan` in the toolbar with 1-64 explicit JASPAR motif IDs. This optional provider is not required for local TFBS scoring.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+                return;
+            };
+            let mut navigate_to: Option<(usize, usize, String)> = None;
+            ui.group(|ui| {
+                ui.label(egui::RichText::new("Precomputed genomic motif evidence").strong());
+                if let Some(subset) = &report.regulatory_subset {
+                    ui.label(egui::RichText::new(subset.summary()).strong());
+                    let row_label = |ui: &mut egui::Ui, text: String| {
+                        ui.add(egui::Label::new(egui::RichText::new(&text).small()).truncate())
+                            .on_hover_text(text);
+                    };
+                    ui.collapsing("Physical TSS windows", |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_salt("regulatory_tss_windows")
+                            .max_height(180.0)
+                            .show_rows(ui, 20.0, subset.tss_windows.len(), |ui, rows| {
+                                for i in rows {
+                                    let window = &subset.tss_windows[i];
+                                    row_label(ui, format!(
+                                        "{}: {}:{}..{} ({}) | TSS {}",
+                                        window.promoter_id, window.chromosome,
+                                        window.start_0based + 1, window.end_0based_exclusive,
+                                        window.strand, window.tss_0based + 1,
+                                    ));
+                                }
+                            });
+                    });
+                    ui.collapsing(format!("Transcript ownership ({})", subset.transcript_owners.len()), |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_salt("regulatory_tss_owners")
+                            .max_height(180.0)
+                            .show_rows(ui, 20.0, subset.transcript_owners.len(), |ui, rows| {
+                                for i in rows {
+                                    let owner = &subset.transcript_owners[i];
+                                    row_label(ui, format!(
+                                        "{} | {} | {} | {}", owner.tss_id,
+                                        owner.gene_name.as_deref().unwrap_or("unlabelled"),
+                                        owner.gene_id, owner.transcript_id,
+                                    ));
+                                }
+                            });
+                    });
+                    ui.collapsing(format!("Native regulatory gene links ({})", subset.regulatory_gene_links.len()), |ui| {
+                        ui.small("Separate from TSS ownership; no nearest-gene inference.");
+                        egui::ScrollArea::vertical()
+                            .id_salt("regulatory_gene_links")
+                            .max_height(180.0)
+                            .show_rows(ui, 20.0, subset.regulatory_gene_links.len(), |ui, rows| {
+                                for i in rows {
+                                    row_label(ui, subset.regulatory_gene_links[i].to_string());
+                                }
+                            });
+                    });
+                }
+                let availability_color = if report.availability
+                    == GenomicMotifEvidenceAvailability::Available
+                {
+                    egui::Color32::from_rgb(22, 101, 52)
+                } else {
+                    egui::Color32::from_rgb(180, 83, 9)
+                };
+                ui.small(
+                    egui::RichText::new(format!(
+                        "status {} | {} hit(s) returned | {} payload file(s) | {} motif(s)",
+                        report.availability.as_str(),
+                        report.returned_hit_count,
+                        report.selected_payload_file_count,
+                        report.request.motif_ids.len()
+                    ))
+                    .color(availability_color),
+                );
+                if let Some(provider) = report.provider.as_ref() {
+                    ui.small(
+                        egui::RichText::new(format!(
+                            "{} | genome {} | assembly {} | JASPAR {} | score {}",
+                            provider.run_id,
+                            provider.genome_id,
+                            provider.assembly_name.as_deref().unwrap_or("not recorded"),
+                            provider.jaspar_version.as_deref().unwrap_or("not recorded"),
+                            provider.score_mode
+                        ))
+                        .color(egui::Color32::from_rgb(71, 85, 105)),
+                    );
+                    ui.small(
+                        egui::RichText::new(format!(
+                            "manifest {} | {}",
+                            provider.manifest_sha256,
+                            provider.database_path
+                        ))
+                        .monospace()
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                }
+                for region in &report.regions {
+                    ui.small(
+                        egui::RichText::new(format!(
+                            "{}: {}:{}..{} | {}",
+                            region.interval_id,
+                            region
+                                .resolved_chromosome
+                                .as_deref()
+                                .unwrap_or(&region.requested_chromosome),
+                            region.start_0based,
+                            region.end_0based_exclusive,
+                            region.compatibility_status.as_str()
+                        ))
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                }
+                for coverage in report.motif_coverage.iter().take(8) {
+                    ui.small(
+                        egui::RichText::new(format!(
+                            "motif {} | {} | package floor {} | {} returned",
+                            coverage.motif_id,
+                            coverage.status.as_str(),
+                            coverage
+                                .source_minimum_score
+                                .map(|value| format!("{value:.3}"))
+                                .unwrap_or_else(|| "not recorded".to_string()),
+                            coverage.returned_hit_count
+                        ))
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                }
+                if report.motif_coverage.len() > 8 {
+                    ui.small(format!(
+                        "{} additional motif coverage row(s) are available in the shared report",
+                        report.motif_coverage.len() - 8
+                    ));
+                }
+                for warning in &report.warnings {
+                    ui.small(
+                        egui::RichText::new(warning)
+                            .color(egui::Color32::from_rgb(180, 83, 9)),
+                    );
+                }
+                if report.availability != GenomicMotifEvidenceAvailability::Available {
+                    ui.small(
+                        egui::RichText::new(
+                            "GENtle remains fully usable: configure the optional package later, or use the local TFBS hit and score-track routes now.",
+                        )
+                        .color(egui::Color32::from_rgb(71, 85, 105)),
+                    );
+                    return;
+                }
+                if report.hits.is_empty() {
+                    ui.small(
+                        egui::RichText::new(
+                            "No retained package hits overlap the requested interval. This is not a claim of biological absence.",
+                        )
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                    return;
+                }
+                ui.small(
+                    egui::RichText::new(
+                        "Click a locally projected row to select its span. Package and local GENtle scores are intentionally not mixed on one numerical scale.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+                let preview_rows = report.hits.iter().take(20).collect::<Vec<_>>();
+                egui::Grid::new(("genomic_motif_evidence_grid", report.report_id.as_str()))
+                    .num_columns(5)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.small(egui::RichText::new("motif").strong());
+                        ui.small(egui::RichText::new("genomic span").strong());
+                        ui.small(egui::RichText::new("strand").strong());
+                        ui.small(egui::RichText::new("score").strong());
+                        ui.small(egui::RichText::new("match").strong());
+                        ui.end_row();
+                        for hit in &preview_rows {
+                            let label = hit.motif_name.as_deref().unwrap_or(&hit.motif_id);
+                            let can_navigate = hit.source_seq_id.as_deref() == self.seq_id.as_deref()
+                                && hit.source_start_0based.is_some()
+                                && hit.source_end_0based_exclusive.is_some();
+                            let response = ui.add_enabled(can_navigate, egui::Link::new(label));
+                            if response.clicked()
+                                && let (Some(start), Some(end)) = (
+                                    hit.source_start_0based,
+                                    hit.source_end_0based_exclusive,
+                                )
+                            {
+                                navigate_to = Some((
+                                    start,
+                                    end,
+                                    format!("precomputed genomic motif hit {}", hit.motif_id),
+                                ));
+                            }
+                            ui.small(format!(
+                                "{}:{}..{}",
+                                hit.chromosome, hit.start_0based, hit.end_0based_exclusive
+                            ));
+                            ui.small(&hit.strand);
+                            ui.small(format!("{:.3}", hit.score));
+                            ui.small(hit.matched_sequence.as_deref().unwrap_or("-"));
+                            ui.end_row();
+                        }
+                    });
+                if report.hits.len() > preview_rows.len() {
+                    ui.small(
+                        egui::RichText::new(format!(
+                            "showing first {} of {} returned hits",
+                            preview_rows.len(),
+                            report.hits.len()
+                        ))
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                }
+            });
+            navigate_to
+        };
+        if let Some((start, end, label)) = navigate_to {
+            let _ = self.inspect_sequence_span_0based(start, end, &label);
+        }
+    }
+
     fn tfbs_track_similarity_remote_summary_label(
         summary: Option<&JasparCatalogRemoteSummary>,
     ) -> String {
@@ -12698,8 +14220,24 @@ impl MainAreaDna {
         } else {
             response.on_hover_text("Requires a non-empty current selection on the linear DNA map")
         };
+        #[cfg(feature = "gui-test-support")]
+        crate::gui_test_support::register_response(
+            &response,
+            crate::tutorial_gui_semantics::DNA_SELECTION_SIMPLE_PCR,
+            crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
+            Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                self.seq_id.as_deref().unwrap_or("unnamed"),
+            ])),
+            crate::gui_test_support::GuiTestWidgetKind::Button,
+            false,
+        );
         if response.clicked() {
             self.open_simple_pcr_designer_from_current_selection();
+            // The request originates in a detached DNA viewport while the
+            // PCR Designer is owned by the root app. Wake that exact viewport
+            // so it consumes the request even when no root-window input is
+            // otherwise pending.
+            ui.ctx().request_repaint_of(egui::ViewportId::ROOT);
             return true;
         }
         false
@@ -13042,6 +14580,8 @@ impl MainAreaDna {
         &mut self,
         action: &ConstructReasoningDotplotAction,
     ) -> Result<(), String> {
+        let (graph, snapshot_status) =
+            self.resolve_construct_reasoning_inspection_action_context(action)?;
         let seq_id = self.seq_id.clone().ok_or_else(|| {
             "No active sequence selected for reasoning-guided dotplot".to_string()
         })?;
@@ -13049,6 +14589,16 @@ impl MainAreaDna {
         let dotplot_request =
             construct_reasoning_action_dotplot_request(action, &seq_id, sequence_len)
                 .map_err(|err| err.message)?;
+        if matches!(
+            dotplot_request.mode,
+            DotplotMode::PairForward | DotplotMode::PairReverseComplement
+        ) {
+            return Err(format!(
+                "Inspection action '{}' requests pairwise dotplot mode '{}' but does not encode a reference sequence",
+                action.action_id,
+                dotplot_request.mode.as_str()
+            ));
+        }
         let viewport_start_0based = dotplot_request.span_start_0based;
         let viewport_end_0based_exclusive = dotplot_request.span_end_0based;
         let half_window_bp = viewport_end_0based_exclusive
@@ -13068,11 +14618,88 @@ impl MainAreaDna {
         self.dotplot_ui.reference_span_end_0based.clear();
         self.dotplot_ui.flex_track_id.clear();
         self.clear_dotplot_query_override();
-        self.dotplot_ui.dotplot_id = dotplot_request.store_as;
+        self.dotplot_ui.dotplot_id = dotplot_request.store_as.clone();
         self.primary_map_mode = PrimaryMapMode::Dotplot;
-        self.compute_primary_dotplot();
+        self.compute_primary_dotplot_with_inspection_context(Some(
+            ConstructReasoningDotplotProvenanceContext {
+                graph,
+                action: action.clone(),
+                snapshot_status,
+                resolved_request: dotplot_request,
+            },
+        ));
         self.open_dotplot_window();
         Ok(())
+    }
+
+    fn resolve_construct_reasoning_inspection_action_context(
+        &self,
+        action: &ConstructReasoningDotplotAction,
+    ) -> Result<
+        (
+            ConstructReasoningGraph,
+            ConstructReasoningGraphSnapshotStatus,
+        ),
+        String,
+    > {
+        let graph_id = self
+            .focused_construct_reasoning_graph_id
+            .as_deref()
+            .or_else(|| {
+                self.description_cache_construct_reasoning
+                    .as_ref()
+                    .map(|cache| cache.graph_id.as_str())
+            })
+            .filter(|graph_id| !graph_id.trim().is_empty());
+        let engine = self.engine.as_ref().ok_or_else(|| {
+            "Could not verify reasoning-guided dotplot provenance: no engine is attached"
+                .to_string()
+        })?;
+        let engine = engine
+            .read()
+            .map_err(|_| "Could not verify construct-reasoning graph freshness".to_string())?;
+        let graph = if let Some(graph_id) = graph_id {
+            engine
+                .construct_reasoning_graph(graph_id)
+                .map_err(|error| error.message)?
+        } else {
+            let active_seq_id = self.seq_id.as_deref().unwrap_or_default();
+            engine
+                .construct_reasoning_store()
+                .graphs
+                .into_values()
+                .filter(|graph| {
+                    graph.seq_id.eq_ignore_ascii_case(active_seq_id)
+                        && graph
+                            .inspection_actions
+                            .iter()
+                            .any(|row| row.action_id == action.action_id)
+                })
+                .max_by(|left, right| {
+                    left.generated_at_unix_ms
+                        .cmp(&right.generated_at_unix_ms)
+                        .then(left.graph_id.cmp(&right.graph_id))
+                })
+                .ok_or_else(|| {
+                    format!(
+                        "Could not find the construct-reasoning graph for inspection action '{}'",
+                        action.action_id
+                    )
+                })?
+        };
+        let status = engine.construct_reasoning_graph_snapshot_status(&graph);
+        if status.freshness != ConstructReasoningGraphFreshness::Stale {
+            return Ok((graph, status));
+        }
+        let reasons = if status.reasons.is_empty() {
+            "current sequence, objective, or reasoning rules changed".to_string()
+        } else {
+            status.reasons.join(" ")
+        };
+        Err(format!(
+            "Construct-reasoning graph '{}' is stale; refresh it before running this inspection action. {reasons}",
+            graph.graph_id
+        ))
     }
 
     fn extract_current_selection_as_sequence(&mut self) {
@@ -13150,7 +14777,7 @@ impl MainAreaDna {
             return;
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
-        let display = &mut guard.state_mut().display;
+        let display = guard.display_state_mut();
         display.linear_view_start_bp = start;
         display.linear_view_span_bp = span;
     }
@@ -13243,7 +14870,7 @@ impl MainAreaDna {
             return;
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
-        guard.state_mut().display.linear_view_vertical_offset_px = stored_offset;
+        guard.display_state_mut().linear_view_vertical_offset_px = stored_offset;
     }
 
     fn pan_linear_vertical_viewport(&self, delta_px: f32) {
@@ -13310,6 +14937,29 @@ impl MainAreaDna {
         );
         let delta = Self::clamp_linear_vertical_fit_delta(delta, area_top, area_bottom);
         self.pan_linear_vertical_viewport(delta);
+    }
+
+    fn fit_feature_vertically_in_linear_view(&self, feature_id: usize) -> bool {
+        if self.is_circular() {
+            return false;
+        }
+        let Some((area_top, area_bottom, content_top, content_bottom)) =
+            self.map_dna.linear_feature_vertical_bounds(feature_id)
+        else {
+            return false;
+        };
+        let delta = Self::linear_vertical_fit_delta(
+            area_top,
+            area_bottom,
+            content_top,
+            content_bottom,
+            24.0,
+        );
+        let delta = Self::clamp_linear_vertical_fit_delta(delta, area_top, area_bottom);
+        if delta.abs() > 0.5 {
+            self.pan_linear_vertical_viewport(delta);
+        }
+        true
     }
 
     fn zoom_linear_viewport_around(&self, center_bp: usize, zoom_in: bool) {
@@ -13385,6 +15035,7 @@ impl MainAreaDna {
         self.sync_linear_external_feature_labels();
         if next_focused.is_none() {
             self.pending_feature_tree_scroll_to = None;
+            self.pending_linear_vertical_fit_feature_id = None;
             self.dna_display
                 .write()
                 .expect("DNA display lock poisoned")
@@ -13432,6 +15083,7 @@ impl MainAreaDna {
         self.map_dna.select_feature(Some(feature_id));
         self.sync_linear_external_feature_labels();
         self.pending_feature_tree_scroll_to = Some(feature_id);
+        self.pending_linear_vertical_fit_feature_id = Some(feature_id);
         self.apply_feature_selection_range(feature_id, true);
     }
 
@@ -13449,6 +15101,7 @@ impl MainAreaDna {
             self.map_dna.select_feature(next_focused);
             if let Some(next_focused) = next_focused {
                 self.pending_feature_tree_scroll_to = Some(next_focused);
+                self.pending_linear_vertical_fit_feature_id = Some(next_focused);
                 self.apply_feature_selection_range(next_focused, false);
             }
             self.sync_linear_external_feature_labels();
@@ -13460,6 +15113,7 @@ impl MainAreaDna {
         self.map_dna.select_feature(Some(feature_id));
         self.sync_linear_external_feature_labels();
         self.pending_feature_tree_scroll_to = Some(feature_id);
+        self.pending_linear_vertical_fit_feature_id = Some(feature_id);
         self.apply_feature_selection_range(feature_id, false);
     }
 
@@ -13509,6 +15163,7 @@ impl MainAreaDna {
         self.map_dna.select_feature(Some(feature_id));
         self.sync_linear_external_feature_labels();
         self.pending_feature_tree_scroll_to = Some(feature_id);
+        self.pending_linear_vertical_fit_feature_id = Some(feature_id);
         self.apply_feature_selection_range(feature_id, true);
         self.op_status = format!(
             "Focused {} matching array feature(s) for '{}'",
@@ -13535,6 +15190,7 @@ impl MainAreaDna {
         self.map_dna.select_feature(Some(primary));
         self.sync_linear_external_feature_labels();
         self.pending_feature_tree_scroll_to = Some(primary);
+        self.pending_linear_vertical_fit_feature_id = Some(primary);
         self.apply_feature_selection_range(primary, false);
     }
 
@@ -13571,6 +15227,7 @@ impl MainAreaDna {
         self.map_dna.select_feature(None);
         self.sync_linear_external_feature_labels();
         self.pending_feature_tree_scroll_to = None;
+        self.pending_linear_vertical_fit_feature_id = None;
         self.dna_display
             .write()
             .expect("DNA display lock poisoned")
@@ -13582,6 +15239,7 @@ impl MainAreaDna {
         self.multi_selected_feature_ids.clear();
         self.sync_linear_external_feature_labels();
         self.pending_feature_tree_scroll_to = None;
+        self.pending_linear_vertical_fit_feature_id = None;
         self.dna_display
             .write()
             .expect("DNA display lock poisoned")
@@ -13810,18 +15468,27 @@ impl MainAreaDna {
         &mut self,
         ui: &mut egui::Ui,
         actions: &[ConstructReasoningDotplotAction],
+        actions_enabled: bool,
     ) {
         if actions.is_empty() {
             return;
         }
-        ui.horizontal_wrapped(|ui| {
-            for action in actions {
-                ui.push_id(
-                    ("construct_reasoning_dotplot_action", &action.action_id),
-                    |ui| {
+        for action in actions {
+            ui.push_id(
+                ("construct_reasoning_dotplot_action", &action.action_id),
+                |ui| {
+                    ui.horizontal_top(|ui| {
+                        let hover_text = if actions_enabled {
+                            action.hover_text.as_str()
+                        } else {
+                            "Refresh the stale construct-reasoning graph before running this inspection."
+                        };
                         if ui
-                            .button(action.button_label.as_str())
-                            .on_hover_text(action.hover_text.as_str())
+                            .add_enabled(
+                                actions_enabled,
+                                egui::Button::new(action.button_label.as_str()),
+                            )
+                            .on_hover_text(hover_text)
                             .clicked()
                         {
                             match self.open_construct_reasoning_dotplot_action(action) {
@@ -13829,10 +15496,18 @@ impl MainAreaDna {
                                 Err(err) => self.op_status = err,
                             }
                         }
-                    },
-                );
-            }
-        });
+                        egui::CollapsingHeader::new("Evidence")
+                            .id_salt("structured_evidence")
+                            .default_open(false)
+                            .show(ui, |ui| {
+                                Self::render_construct_reasoning_dotplot_action_evidence_pane(
+                                    ui, action,
+                                );
+                            });
+                    });
+                },
+            );
+        }
     }
 
     fn construct_reasoning_dotplot_mode_label(mode: DotplotMode) -> &'static str {
@@ -13841,6 +15516,133 @@ impl MainAreaDna {
             DotplotMode::SelfReverseComplement => "self_reverse_complement",
             DotplotMode::PairForward => "pair_forward",
             DotplotMode::PairReverseComplement => "pair_reverse_complement",
+        }
+    }
+
+    fn construct_reasoning_dotplot_mode_readable_label(mode: DotplotMode) -> String {
+        let orientation = match mode {
+            DotplotMode::SelfForward | DotplotMode::PairForward => "direct",
+            DotplotMode::SelfReverseComplement | DotplotMode::PairReverseComplement => {
+                "reverse-complement"
+            }
+        };
+        format!(
+            "{orientation} ({})",
+            Self::construct_reasoning_dotplot_mode_label(mode)
+        )
+    }
+
+    fn construct_reasoning_repeat_family_provenances(
+        action: &ConstructReasoningDotplotAction,
+    ) -> Vec<&crate::engine::ConstructReasoningRepeatFamilyProvenance> {
+        if action.repeat_family_provenances.is_empty() {
+            action.repeat_family_provenance.iter().collect()
+        } else {
+            action.repeat_family_provenances.iter().collect()
+        }
+    }
+
+    fn construct_reasoning_repeat_family_label(
+        provenance: &crate::engine::ConstructReasoningRepeatFamilyProvenance,
+    ) -> String {
+        let name = provenance
+            .family_name
+            .as_deref()
+            .or(provenance.repeat_family.as_deref())
+            .or(provenance.repeat_name.as_deref())
+            .unwrap_or("-")
+            .trim();
+        match provenance
+            .family_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            Some(id) if name != "-" && id != name => format!("{name} ({id})"),
+            Some(id) => id.to_string(),
+            None => name.to_string(),
+        }
+    }
+
+    fn render_construct_reasoning_dotplot_action_evidence_pane(
+        ui: &mut egui::Ui,
+        action: &ConstructReasoningDotplotAction,
+    ) {
+        let start_1based = action.focus_start_0based.saturating_add(1);
+        let end_1based = action.focus_end_0based_exclusive.max(start_1based);
+        let focus_len = action
+            .focus_end_0based_exclusive
+            .saturating_sub(action.focus_start_0based)
+            .max(1);
+        egui::Grid::new("action_geometry")
+            .num_columns(2)
+            .striped(true)
+            .show(ui, |ui| {
+                ui.small(egui::RichText::new("Focus").strong());
+                ui.small(format!("{start_1based}..{end_1based} ({focus_len} bp)"));
+                ui.end_row();
+                ui.small(egui::RichText::new("Dotplot mode").strong());
+                ui.small(Self::construct_reasoning_dotplot_mode_readable_label(
+                    action.mode,
+                ));
+                ui.end_row();
+            });
+        if !action.rationale.trim().is_empty() {
+            ui.add_space(3.0);
+            ui.small(egui::RichText::new("Rationale").strong());
+            ui.add(egui::Label::new(action.rationale.trim()).wrap());
+        }
+        if !action.driving_evidence_ids.is_empty() {
+            ui.add_space(3.0);
+            ui.small(egui::RichText::new("Driving evidence").strong());
+            for evidence_id in &action.driving_evidence_ids {
+                ui.monospace(evidence_id);
+            }
+        }
+        if !action.context_tags.is_empty() {
+            ui.add_space(3.0);
+            ui.small(egui::RichText::new("Context").strong());
+            for tag in &action.context_tags {
+                ui.small(tag);
+            }
+        }
+        let provenances = Self::construct_reasoning_repeat_family_provenances(action);
+        if !provenances.is_empty() {
+            ui.add_space(3.0);
+            ui.small(egui::RichText::new("Repeat-family provenance").strong());
+            egui::Grid::new("repeat_family_provenance")
+                .num_columns(5)
+                .striped(true)
+                .show(ui, |ui| {
+                    for heading in ["source", "family", "class", "agreement", "confidence"] {
+                        ui.small(egui::RichText::new(heading).strong());
+                    }
+                    ui.end_row();
+                    for provenance in provenances {
+                        ui.small(if provenance.source_kind.trim().is_empty() {
+                            "-"
+                        } else {
+                            provenance.source_kind.trim()
+                        });
+                        ui.small(Self::construct_reasoning_repeat_family_label(provenance));
+                        ui.small(
+                            provenance
+                                .repeat_class
+                                .as_deref()
+                                .map(str::trim)
+                                .filter(|value| !value.is_empty())
+                                .unwrap_or("-"),
+                        );
+                        ui.small(provenance.agreement.as_str());
+                        ui.small(
+                            provenance
+                                .confidence
+                                .map(|value| format!("{value:.2}"))
+                                .unwrap_or_else(|| "-".to_string()),
+                        );
+                        ui.end_row();
+                    }
+                });
         }
     }
 
@@ -13886,7 +15688,8 @@ impl MainAreaDna {
                     action.context_tags.join(", ")
                 ));
             }
-            if let Some(provenance) = &action.repeat_family_provenance {
+            let provenances = Self::construct_reasoning_repeat_family_provenances(action);
+            for provenance in provenances {
                 let mut bits = vec![];
                 if !provenance.source_kind.trim().is_empty() {
                     bits.push(provenance.source_kind.trim().to_string());
@@ -13900,6 +15703,20 @@ impl MainAreaDna {
                     && !id.trim().is_empty()
                 {
                     bits.push(format!("family_id={}", id.trim()));
+                }
+                if let Some(class) = provenance.repeat_class.as_deref()
+                    && !class.trim().is_empty()
+                {
+                    bits.push(format!("class={}", class.trim()));
+                }
+                if let Some(family) = provenance.repeat_family.as_deref()
+                    && !family.trim().is_empty()
+                {
+                    bits.push(format!("repeat_family={}", family.trim()));
+                }
+                bits.push(format!("agreement={}", provenance.agreement.as_str()));
+                if let Some(confidence) = provenance.confidence {
+                    bits.push(format!("confidence={confidence:.2}"));
                 }
                 if !bits.is_empty() {
                     lines.push(format!(
@@ -13917,31 +15734,132 @@ impl MainAreaDna {
             .iter()
             .map(|severity| {
                 let evidence_count = severity.supporting_evidence_ids.len();
-                let score = severity
+                let effective_score = severity
                     .score
-                    .map(|value| format!(" score={value:.2}"))
+                    .map(|value| format!(" effective_score={value:.2}"))
                     .unwrap_or_default();
+                let base_score = severity
+                    .base_score
+                    .map(|value| format!(" base_score={value:.2}"))
+                    .unwrap_or_default();
+                let adjustment = severity
+                    .objective_adjustment
+                    .map(|value| format!(" objective_adjustment={value:+.2}"))
+                    .unwrap_or_default();
+                let base_severity = severity
+                    .base_severity
+                    .map(|value| format!(" base_severity={}", value.as_str()))
+                    .unwrap_or_default();
+                let applicability = format!(
+                    " applicability={} applicability_basis={}",
+                    severity.applicability.as_str(),
+                    severity.applicability_basis.as_str()
+                );
                 let rationale = severity.rationale.trim();
                 if rationale.is_empty() {
                     format!(
-                        "task_severity: {}={}{} (evidence={})",
+                        "task_severity: {}={}{}{}{}{}{} (evidence={})",
                         severity.task.as_str(),
                         severity.severity.as_str(),
-                        score,
+                        effective_score,
+                        base_severity,
+                        base_score,
+                        adjustment,
+                        applicability,
                         evidence_count
                     )
                 } else {
                     format!(
-                        "task_severity: {}={}{} (evidence={}): {}",
+                        "task_severity: {}={}{}{}{}{}{} (evidence={}): {}",
                         severity.task.as_str(),
                         severity.severity.as_str(),
-                        score,
+                        effective_score,
+                        base_severity,
+                        base_score,
+                        adjustment,
+                        applicability,
                         evidence_count,
                         rationale
                     )
                 }
             })
             .collect()
+    }
+
+    fn construct_reasoning_task_severity_pane_fields(
+        severity: &ConstructReasoningTaskSeverity,
+    ) -> Vec<(&'static str, String)> {
+        let mut fields = vec![
+            ("Task", severity.task.as_str().to_string()),
+            ("Severity", severity.severity.as_str().to_string()),
+        ];
+        if let Some(score) = severity.score {
+            fields.push(("Effective score", format!("{score:.2}")));
+        }
+        if let Some(score) = severity.base_score {
+            fields.push(("Base score", format!("{score:.2}")));
+        }
+        if let Some(adjustment) = severity.objective_adjustment {
+            fields.push(("Objective adjustment", format!("{adjustment:+.2}")));
+        }
+        if let Some(base_severity) = severity.base_severity {
+            fields.push(("Base severity", base_severity.as_str().to_string()));
+        }
+        fields.extend([
+            ("Applicability", severity.applicability.as_str().to_string()),
+            (
+                "Applicability basis",
+                severity.applicability_basis.as_str().to_string(),
+            ),
+            (
+                "Evidence count",
+                severity.supporting_evidence_ids.len().to_string(),
+            ),
+        ]);
+        if !severity.rationale.trim().is_empty() {
+            fields.push(("Rationale", severity.rationale.trim().to_string()));
+        }
+        fields
+    }
+
+    fn render_construct_reasoning_task_severity_pane(
+        ui: &mut egui::Ui,
+        severities: &[ConstructReasoningTaskSeverity],
+    ) {
+        if severities.is_empty() {
+            return;
+        }
+        ui.small(egui::RichText::new("Task severity").strong());
+        for (index, severity) in severities.iter().enumerate() {
+            ui.push_id(
+                (
+                    "construct_reasoning_task_severity",
+                    index,
+                    severity.task.as_str(),
+                ),
+                |ui| {
+                    egui::Grid::new("fields")
+                        .num_columns(2)
+                        .striped(true)
+                        .show(ui, |ui| {
+                            for (label, value) in
+                                Self::construct_reasoning_task_severity_pane_fields(severity)
+                            {
+                                ui.small(egui::RichText::new(label).strong());
+                                ui.add(egui::Label::new(value).wrap());
+                                ui.end_row();
+                            }
+                        });
+                },
+            );
+            if index + 1 < severities.len() {
+                ui.add_space(3.0);
+            }
+        }
+    }
+
+    fn construct_reasoning_actions_enabled(freshness: ConstructReasoningGraphFreshness) -> bool {
+        freshness != ConstructReasoningGraphFreshness::Stale
     }
 
     fn construct_reasoning_decision_method_label(method: DecisionMethod) -> &'static str {
@@ -14685,6 +16603,7 @@ impl MainAreaDna {
             editable_status: None,
             source_kind: None,
             dotplot_actions,
+            task_severities: fact.task_severities.clone(),
         }
     }
 
@@ -14717,6 +16636,7 @@ impl MainAreaDna {
             editable_status: None,
             source_kind: None,
             dotplot_actions: vec![],
+            task_severities: vec![],
         }
     }
 
@@ -14796,6 +16716,7 @@ impl MainAreaDna {
             editable_status: None,
             source_kind: None,
             dotplot_actions,
+            task_severities: vec![],
         }
     }
 
@@ -14869,11 +16790,23 @@ impl MainAreaDna {
             editable_status: Some(candidate.editable_status),
             source_kind: Some(candidate.source_kind.clone()),
             dotplot_actions,
+            task_severities: vec![],
         }
     }
 
+    #[cfg(test)]
     fn build_construct_reasoning_inspector_cache(
         graph: &ConstructReasoningGraph,
+    ) -> ConstructReasoningInspectorCache {
+        Self::build_construct_reasoning_inspector_cache_with_snapshot_status(
+            graph,
+            ConstructReasoningGraphSnapshotStatus::default(),
+        )
+    }
+
+    fn build_construct_reasoning_inspector_cache_with_snapshot_status(
+        graph: &ConstructReasoningGraph,
+        snapshot_status: ConstructReasoningGraphSnapshotStatus,
     ) -> ConstructReasoningInspectorCache {
         let mut annotation_summary_entries = graph
             .annotation_candidate_summaries
@@ -14907,6 +16840,8 @@ impl MainAreaDna {
             graph_id: graph.graph_id.clone(),
             objective_title: graph.objective.title.clone(),
             objective_goal: graph.objective.goal.clone(),
+            snapshot_freshness: snapshot_status.freshness,
+            snapshot_status_lines: snapshot_status.reasons,
             annotation_summary_entries,
             annotation_entries,
             fact_entries,
@@ -16126,6 +18061,8 @@ impl MainAreaDna {
         let mapping_kind = mapping
             .map(|mapping| mapping.mapping_kind.clone())
             .unwrap_or_else(|| "unresolved".to_string());
+        let evidence_kind =
+            Self::array_probe_geometry_evidence_kind(&junction_labels, &exon_labels, &mapping_kind);
         let parent_feature_id = evidence
             .parent_feature_id
             .clone()
@@ -16148,6 +18085,8 @@ impl MainAreaDna {
                 .intensity_source
                 .clone()
                 .unwrap_or_else(|| "summary".to_string()),
+            evidence_kind,
+            logfc: evidence.logfc,
             coordinate_label,
             mapping_kind,
             mapping_status: evidence.mapping_status.clone(),
@@ -16159,6 +18098,38 @@ impl MainAreaDna {
             parent_mixes_transcript_features,
             tooltip,
         }
+    }
+
+    fn array_probe_geometry_evidence_kind(
+        junction_labels: &[String],
+        exon_labels: &[String],
+        mapping_kind: &str,
+    ) -> String {
+        if !junction_labels.is_empty() {
+            "junction-spanning probe".to_string()
+        } else if !exon_labels.is_empty() {
+            "exon-overlap probe".to_string()
+        } else if mapping_kind.contains("transcript_span") {
+            "transcript-span probe".to_string()
+        } else {
+            "unresolved probe".to_string()
+        }
+    }
+
+    fn array_probe_geometry_summary_text(rows: &[ArrayProbeGeometryUiRow]) -> String {
+        let junction_rows = rows
+            .iter()
+            .filter(|row| !row.junction_labels.is_empty())
+            .count();
+        let exon_or_other_rows = rows.len().saturating_sub(junction_rows);
+        let parent_count = rows
+            .iter()
+            .map(|row| row.parent_feature_id.as_str())
+            .collect::<BTreeSet<_>>()
+            .len();
+        format!(
+            "{junction_rows} junction-spanning row(s); {exon_or_other_rows} exon-overlap/other row(s); {parent_count} parent probeset(s)"
+        )
     }
 
     fn array_probe_geometry_exon_labels(
@@ -16236,6 +18207,17 @@ impl MainAreaDna {
         }
         for label in junction_labels {
             lines.push(format!("probe spans {label}"));
+        }
+        if !junction_labels.is_empty() {
+            lines.push(
+                "junction-spanning array probe: useful for design review, but still not direct splice-read support."
+                    .to_string(),
+            );
+        }
+        if let Some(logfc) = evidence.logfc
+            && logfc.is_finite()
+        {
+            lines.push(format!("logFC: {logfc:.3}"));
         }
         if parent_mixes_transcript_features {
             lines.push(
@@ -16536,8 +18518,9 @@ impl MainAreaDna {
         interactive: bool,
         id_namespace: &str,
     ) -> Option<usize> {
-        let transcript_count = view.transcripts.len();
-        let lane_count = transcript_count.max(1);
+        let presentation = self.splicing_expert_presentation_for_view(view);
+        let layout = &presentation.layout;
+        let canvas = layout.canvas(style.lane_height_for_layout(layout), 24.0);
         let transcript_total = view.transcript_count.max(1);
         let exon_support_by_range = view
             .unique_exons
@@ -16559,7 +18542,7 @@ impl MainAreaDna {
         let lanes_offset_from_axis = 30.0_f32;
         let plot_height = axis_top_padding
             + lanes_offset_from_axis
-            + lane_count as f32 * style.lane_height_px
+            + canvas.height.max(style.lane_height_px)
             + 36.0;
         let desired_width = ui.available_width().max(style.min_plot_width_px);
         let mut clicked_feature_id: Option<usize> = None;
@@ -16626,6 +18609,7 @@ impl MainAreaDna {
                     egui::Color32::from_gray(70),
                 );
 
+                let mut arc_labels = Vec::<egui::Rect>::new();
                 for junction in &view.junctions {
                     let x1 = to_x(junction.donor_1based);
                     let x2 = to_x(junction.acceptor_1based);
@@ -16651,9 +18635,14 @@ impl MainAreaDna {
                     ));
                     let show_support_label =
                         view.junctions.len() <= 48 || junction.support_transcript_count > 1;
-                    if show_support_label {
-                        let mid_x = (x1 + x2) * 0.5;
-                        let apex_y = axis_y - height;
+                    let mid_x = (x1 + x2) * 0.5;
+                    let apex_y = axis_y - height;
+                    let width = junction.support_transcript_count.to_string().len() as f32 * 4.8;
+                    let label_box = egui::Rect::from_min_max(
+                        egui::pos2(mid_x - width * 0.5, apex_y - 10.0),
+                        egui::pos2(mid_x + width * 0.5, apex_y - 2.0));
+                    if show_support_label && !arc_labels.iter().any(|rect| rect.expand(2.0).intersects(label_box)) {
+                        arc_labels.push(label_box);
                         painter.text(
                             egui::pos2(mid_x, apex_y - 2.0),
                             egui::Align2::CENTER_BOTTOM,
@@ -16676,8 +18665,7 @@ impl MainAreaDna {
                     let Some(idx) = lane_index.get(&marker.transcript_feature_id) else {
                         continue;
                     };
-                    let y =
-                        lanes_top + *idx as f32 * style.lane_height_px + style.lane_height_px * 0.5;
+                    let y = lanes_top + canvas.centre_for_lane(*idx).expect("display lane");
                     let x = to_x(marker.position_1based);
                     let dy = if marker.side.eq_ignore_ascii_case("donor") {
                         9.0
@@ -16690,28 +18678,27 @@ impl MainAreaDna {
                         egui::Stroke::new(1.3_f32, color),
                     );
                     painter.circle_filled(egui::pos2(x, y + dy), 2.2, color);
-                    if view.boundaries.len() <= 16
-                        || marker.motif_class.as_str() != "gt_ag_major_canonical"
-                    {
-                        painter.text(
-                            egui::pos2(x + 3.0, y + dy),
-                            if marker.side.eq_ignore_ascii_case("donor") {
-                                egui::Align2::LEFT_TOP
-                            } else {
-                                egui::Align2::LEFT_BOTTOM
-                            },
-                            marker.motif_2bp.as_str(),
-                            egui::FontId::monospace(7.0),
-                            color,
-                        );
+                    if gentle_protocol::splicing_presentation::boundary_is_exceptional(marker) {
+                        painter.circle_filled(egui::pos2(x, y + dy), 3.0, egui::Color32::from_rgb(190, 18, 60));
                     }
                 }
 
-                for (idx, transcript) in view.transcripts.iter().enumerate() {
-                    let y =
-                        lanes_top + idx as f32 * style.lane_height_px + style.lane_height_px * 0.5;
-                    painter.text(
-                        egui::pos2(label_x, y),
+                for row in &canvas.rows {
+                    if let Some(status) = row.group {
+                        painter.text(egui::pos2(label_x, lanes_top + row.top + 12.0),
+                            egui::Align2::LEFT_CENTER,
+                            gentle_protocol::splicing_presentation::group_heading(status),
+                            egui::FontId::monospace(10.0), egui::Color32::from_gray(60));
+                    }
+                }
+
+                let label_painter = painter.with_clip_rect(egui::Rect::from_min_max(
+                    egui::pos2(label_x, lanes_top), egui::pos2(plot_left - 8.0, rect.bottom())));
+                for display_lane in &layout.lanes {
+                    let transcript = &view.transcripts[display_lane.lane_index];
+                    let y = lanes_top + canvas.centre_for_lane(display_lane.lane_index).expect("display lane");
+                    label_painter.text(
+                        egui::pos2(label_x, y - 6.0),
                         egui::Align2::LEFT_CENTER,
                         format!(
                             "n-{} {}",
@@ -16720,6 +18707,11 @@ impl MainAreaDna {
                         egui::FontId::monospace(10.0),
                         egui::Color32::BLACK,
                     );
+
+                    if let Some(badge) = &display_lane.badge {
+                        label_painter.text(egui::pos2(label_x, y + 9.0), egui::Align2::LEFT_CENTER,
+                            badge, egui::FontId::monospace(8.0), egui::Color32::from_rgb(15, 118, 110));
+                    }
 
                     for intron in &transcript.introns {
                         let x1 = to_x(intron.start_1based);
@@ -16865,9 +18857,7 @@ impl MainAreaDna {
 
                 let intron_at_pos = |pointer_pos: egui::Pos2| {
                     for (lane_idx, transcript) in view.transcripts.iter().enumerate() {
-                        let y = lanes_top
-                            + lane_idx as f32 * style.lane_height_px
-                            + style.lane_height_px * 0.5;
+                        let y = lanes_top + canvas.centre_for_lane(lane_idx).expect("display lane");
                         for intron in &transcript.introns {
                             let x1 = to_x(intron.start_1based);
                             let x2 = to_x(intron.end_1based);
@@ -16906,9 +18896,7 @@ impl MainAreaDna {
                         let Some(idx) = lane_index.get(&marker.transcript_feature_id) else {
                             continue;
                         };
-                        let y = lanes_top
-                            + *idx as f32 * style.lane_height_px
-                            + style.lane_height_px * 0.5;
+                        let y = lanes_top + canvas.centre_for_lane(*idx).expect("display lane");
                         let dy = if marker.side.eq_ignore_ascii_case("donor") {
                             9.0
                         } else {
@@ -17017,9 +19005,7 @@ impl MainAreaDna {
                     if !has_boundary_hover {
                         let mut hovered_exon = None;
                         for (lane_idx, transcript) in view.transcripts.iter().enumerate() {
-                            let y = lanes_top
-                                + lane_idx as f32 * style.lane_height_px
-                                + style.lane_height_px * 0.5;
+                            let y = lanes_top + canvas.centre_for_lane(lane_idx).expect("display lane");
                             for (exon_idx, exon) in transcript.exons.iter().enumerate() {
                                 let x1 = to_x(exon.start_1based);
                                 let x2 = to_x(exon.end_1based);
@@ -17118,28 +19104,29 @@ impl MainAreaDna {
                     }
                 }
 
-                if interactive {
-                    if let Some(pointer_pos) = response.hover_pos() {
+                if let Some(pointer_pos) = response.hover_pos() {
                         if !has_boundary_hover && !has_exon_hover
-                            && let Some(lane_idx) = Self::splicing_lane_index_at_y(
-                                pointer_pos.y,
-                                lanes_top,
-                                style.lane_height_px,
-                                transcript_count,
-                            ) {
+                            && let Some(lane_idx) = canvas.lane_at_y(pointer_pos.y - lanes_top) {
                                 let transcript = &view.transcripts[lane_idx];
                                 response.clone().on_hover_ui_at_pointer(|ui| {
                                     ui.monospace(format!(
                                         "n-{} {}",
                                         transcript.transcript_feature_id, transcript.transcript_id
                                     ));
-                                    ui.label(
-                                    "Click to focus this transcript feature in the sequence view",
-                                );
+                                    let reference = layout.lanes.iter().find(|lane| lane.lane_index == lane_idx)
+                                        .and_then(|lane| lane.matrix_row_index).map(|index| &view.matrix_rows[index].uniprot_reference);
+                                    ui.label(reference.map(|reference| reference.summary_lines().join("\n"))
+                                        .unwrap_or_else(|| "UniProt status not evaluated: no unambiguous matrix join".to_string()));
+                                    if interactive {
+                                        ui.label("Click to focus this transcript feature in the sequence view");
+                                    }
                                 });
                             }
-                        ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
+                        if interactive && canvas.lane_at_y(pointer_pos.y - lanes_top).is_some() {
+                            ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
+                        }
                     }
+                if interactive {
                     if response.clicked()
                         && let Some(pointer_pos) = response.interact_pointer_pos() {
                             if let Some((key, _, _)) = intron_at_pos(pointer_pos) {
@@ -17156,18 +19143,17 @@ impl MainAreaDna {
                                     self.splicing_expert_selected_intron_keys.insert(key.clone());
                                 }
                                 self.splicing_expert_selected_intron_signal_key = Some(key);
-                            } else if let Some(lane_idx) = Self::splicing_lane_index_at_y(
-                                pointer_pos.y,
-                                lanes_top,
-                                style.lane_height_px,
-                                transcript_count,
-                            ) {
+                            } else if let Some(lane_idx) = canvas.lane_at_y(pointer_pos.y - lanes_top) {
                                 clicked_feature_id =
                                     Some(view.transcripts[lane_idx].transcript_feature_id);
                             }
                         }
-                    let context_intron = response.interact_pointer_pos().and_then(intron_at_pos);
-                    response.context_menu(|ui| {
+                    let menu = egui::Popup::context_menu(&response);
+                    // The response loses its click position on later menu frames.
+                    let context_intron = response.interact_pointer_pos()
+                        .or_else(|| menu.get_anchor_rect().map(|rect| rect.min))
+                        .and_then(intron_at_pos);
+                    menu.show(|ui| {
                         if let Some((key, transcript_id, length_bp)) = context_intron.clone() {
                             ui.monospace(format!(
                                 "n-{} {}",
@@ -17310,10 +19296,6 @@ impl MainAreaDna {
             .max(exon.start_1based)
             .saturating_sub(exon.end_1based.min(exon.start_1based))
             + 1
-    }
-
-    fn splicing_exon_length_mod3(exon: &SplicingExonSummary) -> usize {
-        Self::splicing_exon_length_bp(exon) % 3
     }
 
     fn splicing_exon_mod3_colors(mod3: usize) -> (egui::Color32, egui::Color32) {
@@ -17679,6 +19661,110 @@ impl MainAreaDna {
         id_namespace: &str,
         pending_initial_render: bool,
     ) {
+        #[cfg(feature = "gui-test-support")]
+        {
+            let subject_scope = crate::gui_test_support::pseudonymous_subject_scope(&[
+                &view.seq_id,
+                &view.target_feature_id.to_string(),
+            ]);
+            crate::gui_test_support::register_rect(
+                ui.ctx().clone(),
+                "window.splicing_expert",
+                "window.splicing_expert",
+                Some(&subject_scope),
+                crate::gui_test_support::GuiTestWidgetKind::Window,
+                ui.max_rect(),
+                true,
+                true,
+                true,
+                Some(if pending_initial_render {
+                    "loading"
+                } else {
+                    "ready"
+                }),
+            );
+        }
+        #[cfg(feature = "gui-test-support")]
+        if pending_initial_render {
+            crate::gui_test_support::mark_unsettled(ui.ctx());
+        }
+        crate::agent_help::render_agent_help_button(
+            ui,
+            Self::splicing_expert_window_title(view),
+            "window.splicing_expert",
+        );
+        ui.separator();
+        ui.horizontal(|ui| {
+            let _structure = ui.selectable_value(
+                &mut self.splicing_expert_tab,
+                SplicingExpertTab::Structure,
+                "Structure",
+            );
+            let _evidence = ui.selectable_value(
+                &mut self.splicing_expert_tab,
+                SplicingExpertTab::Evidence,
+                "Evidence",
+            );
+            let _locus = ui.selectable_value(
+                &mut self.splicing_expert_tab,
+                SplicingExpertTab::LocusFigure,
+                "Locus figure",
+            );
+            ui.selectable_value(
+                &mut self.splicing_expert_tab,
+                SplicingExpertTab::CrypticScreen,
+                "Cryptic screen",
+            );
+            #[cfg(feature = "gui-test-support")]
+            {
+                let subject_scope = crate::gui_test_support::pseudonymous_subject_scope(&[
+                    &view.seq_id,
+                    &view.target_feature_id.to_string(),
+                ]);
+                for (response, semantic_id, selected) in [
+                    (
+                        &_structure,
+                        "splicing.tab.structure",
+                        self.splicing_expert_tab == SplicingExpertTab::Structure,
+                    ),
+                    (
+                        &_evidence,
+                        "splicing.tab.evidence",
+                        self.splicing_expert_tab == SplicingExpertTab::Evidence,
+                    ),
+                    (
+                        &_locus,
+                        "splicing.tab.locus_figure",
+                        self.splicing_expert_tab == SplicingExpertTab::LocusFigure,
+                    ),
+                ] {
+                    crate::gui_test_support::register_response(
+                        response,
+                        semantic_id,
+                        "window.splicing_expert",
+                        Some(&subject_scope),
+                        crate::gui_test_support::GuiTestWidgetKind::Tab,
+                        selected,
+                    );
+                }
+            }
+        });
+        ui.separator();
+        if self.splicing_expert_tab == SplicingExpertTab::Evidence {
+            self.render_splicing_isoform_evidence_tab(ui, view);
+            return;
+        }
+        if self.splicing_expert_tab == SplicingExpertTab::LocusFigure {
+            self.render_splicing_locus_evidence_tab(ui, view);
+            return;
+        }
+        if self.splicing_expert_tab == SplicingExpertTab::CrypticScreen {
+            let suggested_span = (view.region_start_1based > 0
+                && view.region_end_1based >= view.region_start_1based)
+                .then_some((view.region_start_1based, view.region_end_1based));
+            self.render_cryptic_splicing_screen_ui(ui, suggested_span, "splicing_expert");
+            return;
+        }
         self.render_splicing_expert_transcript_quick_actions(ui, view);
         if pending_initial_render {
             self.log_splicing_expert_status(view, "first frame deferred", true);
@@ -17695,6 +19781,12 @@ impl MainAreaDna {
             self.log_splicing_expert_status(view, "first frame queued repaint", false);
             return;
         }
+        self.render_source_annotation_comparison(
+            ui,
+            "structure",
+            self.splicing_expert_selected_transcript_feature_id,
+        );
+        ui.strong("Loaded project transcripts (derivation and design targets)");
         self.log_splicing_expert_status(view, "rendering ATtRACT evidence", false);
         self.render_splicing_attract_evidence_section(ui, view);
         self.log_splicing_expert_status(view, "rendering RNA-read evidence", false);
@@ -17842,8 +19934,37 @@ impl MainAreaDna {
             {
                 self.op_status = err;
             }
+            let panel_action = ui
+                .button("Design all-transcript panel")
+                .on_hover_text(
+                    "Open PCR Designer with this complete splicing group as the source for endpoint, SYBR, or TaqMan transcript-panel design",
+                );
+            if panel_action.clicked() {
+                self.seed_transcript_assay_panel_from_splicing_view(view);
+            }
+            let study_action = ui.button("Gene assay study...").on_hover_text(
+                "Inspect a saved gene-study plan, review its evidence and continue primer-pair design in PCR Designer",
+            );
+            if study_action.clicked() {
+                self.seed_transcript_assay_panel_from_splicing_view(view);
+                self.pcr_designer_mode = PcrDesignerMode::GeneAssayStudy;
+            }
+            #[cfg(feature = "gui-test-support")]
+            for (response, id) in [
+                (&panel_action, "splicing.transcript_panel.open"),
+                (&study_action, "splicing.gene_assay_study.open"),
+            ] {
+                crate::gui_test_support::register_response(
+                    response, id, "window.splicing_expert",
+                    Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                        &view.seq_id,
+                        &view.target_feature_id.to_string(),
+                    ])),
+                    crate::gui_test_support::GuiTestWidgetKind::Button, false,
+                );
+            }
             ui.label(
-                egui::RichText::new("Quick actions: keep the generic ROI handoff, or open PCR Designer directly in shared-transcript / transcript-specific qPCR mode using the current splicing context.")
+                egui::RichText::new("Quick actions: send a genomic ROI, design one qPCR assay, or compare an assay panel across every mature-transcript class in this group.")
                     .size(9.0)
                     .color(egui::Color32::from_rgb(100, 116, 139)),
             );
@@ -19010,6 +21131,44 @@ impl MainAreaDna {
         });
     }
 
+    fn register_tutorial_control(
+        &self,
+        response: &egui::Response,
+        id: &'static str,
+        window: &'static str,
+    ) {
+        #[cfg(feature = "gui-test-support")]
+        {
+            let scope = crate::gui_test_support::pseudonymous_subject_scope(&[self
+                .seq_id
+                .as_deref()
+                .unwrap_or("unnamed")]);
+            let kind = if id == crate::tutorial_gui_semantics::TOOLS_DIGEST_PREFIX {
+                crate::gui_test_support::GuiTestWidgetKind::TextInput
+            } else {
+                crate::gui_test_support::GuiTestWidgetKind::Button
+            };
+            let outcome = (id == crate::tutorial_gui_semantics::TOOLS_DIGEST_PREFIX).then_some(
+                if self.digest_prefix_text.is_empty() {
+                    "empty"
+                } else {
+                    "populated"
+                },
+            );
+            crate::gui_test_support::register_response_with_outcome(
+                response,
+                id,
+                window,
+                Some(&scope),
+                kind,
+                false,
+                outcome,
+            );
+        }
+        #[cfg(not(feature = "gui-test-support"))]
+        let _ = (response, id, window);
+    }
+
     fn apply_sequence_derivation(&mut self, op: Operation) {
         let Some(engine) = self.engine.clone() else {
             return;
@@ -19252,7 +21411,7 @@ impl MainAreaDna {
             // Only auto-switch current view if exactly one sequence is produced.
             // Multi-product ops (digest/ligation/merge) can trigger heavy redraw paths;
             // keep the current view stable and let the user select products explicitly.
-            if result.created_seq_ids.len() == 1 {
+            if result.created_seq_ids.len() == 1 && result.tss_collection.is_none() {
                 if let Some(new_seq_id) = result.created_seq_ids.first() {
                     let new_dna = {
                         let guard = engine.read().expect("Engine lock poisoned");
@@ -19340,6 +21499,13 @@ impl MainAreaDna {
                 report_id,
                 ..
             } => (Some(template.clone()), report_id.clone()),
+            Operation::DesignTranscriptAssayPanel {
+                seq_id, report_id, ..
+            } => (Some(seq_id.clone()), report_id.clone()),
+            Operation::DesignTerminalExonRtPrimerPool { request } => (
+                request.targets.first().map(|target| target.seq_id.clone()),
+                request.report_id.clone(),
+            ),
             _ => (None, None),
         };
         let started = Instant::now();
@@ -19362,29 +21528,31 @@ impl MainAreaDna {
             batch_progress: None,
             receiver: Arc::new(Mutex::new(rx)),
         });
-        std::thread::spawn(move || {
-            let outcome = match engine.write() {
-                Ok(mut guard) => {
-                    let tx_progress = tx.clone();
-                    guard
-                        .apply_with_progress(op, move |progress| {
-                            if let OperationProgress::PrimerDesign(progress) = progress {
-                                let _ =
-                                    tx_progress.send(PrimerDesignTaskMessage::Progress(progress));
-                            }
-                            true
-                        })
-                        .map(PrimerDesignTaskCompletion::Single)
-                }
-                Err(_) => Err(EngineError {
-                    code: ErrorCode::Internal,
-                    message: "Engine lock poisoned while running primer design".to_string(),
-
-                    cause_chain: vec![],
-                }),
-            };
-            let _ = tx.send(PrimerDesignTaskMessage::Done(outcome));
-        });
+        let spawn_result = std::thread::Builder::new()
+            .name("gentle-primer-design".to_string())
+            .stack_size(16 * 1024 * 1024)
+            .spawn(move || {
+                let tx_progress = tx.clone();
+                let outcome = crate::background_engine::execute_on_engine_snapshot(
+                    &engine,
+                    move |snapshot| {
+                        snapshot
+                            .apply_with_progress(op, move |progress| {
+                                if let OperationProgress::PrimerDesign(progress) = progress {
+                                    let _ = tx_progress
+                                        .send(PrimerDesignTaskMessage::Progress(progress));
+                                }
+                                true
+                            })
+                            .map(PrimerDesignTaskCompletion::Single)
+                    },
+                );
+                let _ = tx.send(PrimerDesignTaskMessage::Done(outcome));
+            });
+        if let Err(error) = spawn_result {
+            self.primer_design_task = None;
+            self.op_status = format!("Could not start {operation_label}: {error}");
+        }
     }
 
     fn start_queued_primer_pair_design_batch(&mut self) {
@@ -19416,35 +21584,39 @@ impl MainAreaDna {
             batch_progress: None,
             receiver: Arc::new(Mutex::new(rx)),
         });
-        std::thread::spawn(move || {
-            let tx_progress = tx.clone();
-            let outcome = match engine.write() {
-                Ok(mut guard) => Ok(PrimerDesignTaskCompletion::Batch(
-                    Self::execute_primer_pair_design_batch(
-                        &mut guard,
-                        &prepared.queued_regions,
-                        &prepared.spec,
-                        &prepared.report_base,
-                        prepared.create_copies,
-                        move |progress| {
-                            let _ =
-                                tx_progress.send(PrimerDesignTaskMessage::BatchProgress(progress));
-                        },
-                    ),
-                )),
-                Err(_) => Err(EngineError {
-                    code: ErrorCode::Internal,
-                    message: "Engine lock poisoned while running queued PCR primer design"
-                        .to_string(),
-
-                    cause_chain: vec![],
-                }),
-            };
-            let _ = tx.send(PrimerDesignTaskMessage::Done(outcome));
-        });
+        let spawn_result = std::thread::Builder::new()
+            .name("gentle-primer-design-batch".to_string())
+            .stack_size(16 * 1024 * 1024)
+            .spawn(move || {
+                let tx_progress = tx.clone();
+                let outcome = crate::background_engine::execute_on_engine_snapshot(
+                    &engine,
+                    move |snapshot| {
+                        Ok(PrimerDesignTaskCompletion::Batch(
+                            Self::execute_primer_pair_design_batch(
+                                snapshot,
+                                &prepared.queued_regions,
+                                &prepared.spec,
+                                &prepared.report_base,
+                                prepared.create_copies,
+                                move |progress| {
+                                    let _ = tx_progress
+                                        .send(PrimerDesignTaskMessage::BatchProgress(progress));
+                                },
+                            ),
+                        ))
+                    },
+                );
+                let _ = tx.send(PrimerDesignTaskMessage::Done(outcome));
+            });
+        if let Err(error) = spawn_result {
+            self.primer_design_task = None;
+            self.op_status = format!("Could not start PCR primer batch: {error}");
+        }
     }
 
     fn poll_primer_design_task(&mut self, ctx: &egui::Context) {
+        self.poll_gene_assay_study_task(ctx);
         if self.primer_design_task.is_none() {
             return;
         }
@@ -19535,9 +21707,40 @@ impl MainAreaDna {
                 })
                 .unwrap_or_else(|| (Instant::now(), None, None));
             self.primer_design_task = None;
+            self.cached_primer_design_report = None;
+            self.cached_qpcr_design_report = None;
+            self.cached_terminal_exon_rt_primer_pool_report = None;
             match done {
                 Ok(PrimerDesignTaskCompletion::Single(result)) => {
+                    let terminal_exon_rt_pool =
+                        result.terminal_exon_rt_primer_pool.as_deref().cloned();
+                    let transcript_panel_report = result.transcript_assay_panel.as_deref().cloned();
+                    let experimental_handoff =
+                        result.experimental_assay_handoff.as_deref().cloned();
                     self.handle_operation_success(result, started);
+                    if let Some(report) = terminal_exon_rt_pool {
+                        self.primer_design_ui.terminal_exon_rt_pool.report_id =
+                            report.report_id.clone();
+                        self.cached_terminal_exon_rt_primer_pool_report = Some(Arc::new(report));
+                        self.pcr_designer_mode = PcrDesignerMode::TerminalExonRtPool;
+                        self.save_engine_ops_state();
+                        return;
+                    }
+                    if let Some(report) = experimental_handoff {
+                        self.cached_experimental_assay_handoff = Some(Arc::new(report));
+                        self.pcr_designer_mode = PcrDesignerMode::TranscriptPanels;
+                        self.save_engine_ops_state();
+                        return;
+                    }
+                    if let Some(report) = transcript_panel_report {
+                        self.transcript_assay_panel_ui.report_id = report.report_id.clone();
+                        self.transcript_assay_panel_ui.source_feature_id =
+                            report.source_feature_id.to_string();
+                        self.cached_transcript_assay_panel_report = Some(Arc::new(report));
+                        self.pcr_designer_mode = PcrDesignerMode::TranscriptPanels;
+                        self.save_engine_ops_state();
+                        return;
+                    }
                     let resolved_report_id = report_id_hint
                         .as_deref()
                         .map(str::trim)
@@ -19574,6 +21777,51 @@ impl MainAreaDna {
             format!("{backend} ")
         };
         match (progress.design_kind.as_str(), progress.stage.as_str()) {
+            (_, "primer3_search") => progress
+                .primer3_progress
+                .as_ref()
+                .map(|work| {
+                    let percent = work
+                        .fraction()
+                        .map(|fraction| format!(" ({:.1}%)", fraction * 100.0))
+                        .unwrap_or_default();
+                    let bounded_record =
+                        match (work.bounded_record_ordinal, work.bounded_record_count) {
+                            (Some(ordinal), Some(count)) => {
+                                format!(" bounded record {ordinal}/{count}")
+                            }
+                            _ => String::new(),
+                        };
+                    let projection = work
+                        .projected_total_ms
+                        .map(|millis| {
+                            format!(", uncertain projection {:.1} min", millis as f64 / 60_000.0)
+                        })
+                        .unwrap_or_default();
+                    let assessment = work
+                        .runtime_assessment
+                        .as_deref()
+                        .filter(|value| *value != "within_runtime_policy")
+                        .map(|value| format!(", {value}"))
+                        .unwrap_or_default();
+                    format!(
+                        "{}{}: Primer3 record {} bounded work {}/{}{}",
+                        backend_prefix,
+                        progress.design_kind.replace('_', "-"),
+                        work.record,
+                        work.completed,
+                        work.bound,
+                        format!("{percent}{bounded_record}{projection}{assessment}")
+                    )
+                })
+                .unwrap_or_else(|| {
+                    format!(
+                        "{}{}: {}",
+                        backend_prefix,
+                        progress.design_kind.replace('_', "-"),
+                        progress.detail
+                    )
+                }),
             ("primer_pairs", "forward_candidates") => format!(
                 "{}pair-PCR: enumerated {} forward primer candidates",
                 backend_prefix,
@@ -19667,6 +21915,9 @@ impl MainAreaDna {
             TfbsTaskKind::Annotation => "TFBS annotation",
             TfbsTaskKind::ActiveSequenceScoreTracks { .. } => "TFBS score tracks",
             TfbsTaskKind::ActiveSequenceTrackSimilarity { .. } => "TFBS similarity ranking",
+            TfbsTaskKind::ActiveSequenceGenomicMotifEvidence { .. } => {
+                "precomputed genomic motif evidence"
+            }
             TfbsTaskKind::VariantFollowupScoreTracks => "Promoter TF score tracks",
             TfbsTaskKind::VariantFollowupTrackSimilarity => "Promoter TFBS similarity ranking",
         }
@@ -19751,6 +22002,7 @@ impl MainAreaDna {
             Operation::SummarizeTfbsTrackSimilarity {
                 candidate_motifs, ..
             } => candidate_motifs.len().saturating_add(1).max(1),
+            Operation::QueryGenomicMotifEvidence { request, .. } => request.motif_ids.len(),
             _ => 0,
         };
         let (tx, rx) = mpsc::channel::<TfbsTaskMessage>();
@@ -19769,11 +22021,11 @@ impl MainAreaDna {
         std::thread::spawn(move || {
             let tx_progress = tx.clone();
             let cancel_for_worker = cancel_requested.clone();
-            let outcome = match engine.write() {
-                Ok(mut guard) => {
+            let outcome =
+                crate::background_engine::execute_on_engine_snapshot(&engine, move |snapshot| {
                     let mut last_motif_index: Option<usize> = None;
                     let mut last_total_tenths: Option<i64> = None;
-                    guard.apply_with_progress(op, move |progress| {
+                    snapshot.apply_with_progress(op, move |progress| {
                         if cancel_for_worker.load(AtomicOrdering::Relaxed) {
                             return false;
                         }
@@ -19793,14 +22045,7 @@ impl MainAreaDna {
                         }
                         !cancel_for_worker.load(AtomicOrdering::Relaxed)
                     })
-                }
-                Err(_) => Err(EngineError {
-                    code: ErrorCode::Internal,
-                    message: "Engine lock poisoned while running TFBS work".to_string(),
-
-                    cause_chain: vec![],
-                }),
-            };
+                });
             let _ = tx.send(TfbsTaskMessage::Done(outcome));
         });
     }
@@ -19815,6 +22060,32 @@ impl MainAreaDna {
         result: OpResult,
         started: Instant,
     ) {
+        if let Some(report) = result.genomic_motif_evidence.clone()
+            && let TfbsTaskKind::ActiveSequenceGenomicMotifEvidence { source_label } = task_kind
+        {
+            self.cached_genomic_motif_evidence = Some(report.clone());
+            let warning = report
+                .warnings
+                .first()
+                .map(|value| format!(" | {value}"))
+                .unwrap_or_default();
+            self.op_status = if report.availability == GenomicMotifEvidenceAvailability::Available {
+                format!(
+                    "Precomputed genomic motif evidence for {source_label}: {} returned hit(s) across {} region(s){}",
+                    report.returned_hit_count,
+                    report.regions.len(),
+                    if report.truncated { " (truncated)" } else { "" }
+                )
+            } else {
+                format!(
+                    "Precomputed genomic motif evidence is {} for {source_label}{}",
+                    report.availability.as_str(),
+                    warning
+                )
+            };
+            self.op_error_popup = None;
+            return;
+        }
         if let Some(report) = result.tfbs_track_similarity.clone()
             && let TfbsTaskKind::ActiveSequenceTrackSimilarity { source_label } = task_kind
         {
@@ -19848,6 +22119,7 @@ impl MainAreaDna {
                 }
                 TfbsTaskKind::VariantFollowupTrackSimilarity => {}
                 TfbsTaskKind::ActiveSequenceTrackSimilarity { .. } => {}
+                TfbsTaskKind::ActiveSequenceGenomicMotifEvidence { .. } => {}
             }
         }
         if let Some(report) = result.tfbs_track_similarity.clone()
@@ -19868,6 +22140,7 @@ impl MainAreaDna {
     }
 
     fn poll_tfbs_task(&mut self, ctx: &egui::Context) {
+        self.poll_tss_svg_export(ctx);
         if self.tfbs_task.is_none() {
             return;
         }
@@ -20111,6 +22384,8 @@ impl MainAreaDna {
         let lower = path.to_ascii_lowercase();
         if lower.ends_with(".fa") || lower.ends_with(".fasta") {
             ExportFormat::Fasta
+        } else if lower.ends_with(".embl") || lower.ends_with(".emb") {
+            ExportFormat::Embl
         } else {
             ExportFormat::GenBank
         }
@@ -20130,6 +22405,7 @@ impl MainAreaDna {
         let path = rfd::FileDialog::new()
             .set_file_name(&default_name)
             .add_filter("GenBank", &["gb", "gbk", "genbank"])
+            .add_filter("EMBL", &["embl", "emb"])
             .add_filter("FASTA", &["fa", "fasta"])
             .save_file();
         let Some(path) = path else {
@@ -20903,15 +23179,19 @@ impl MainAreaDna {
         (expanded_start, expanded_span)
     }
 
-    fn export_active_view_svg(&mut self, profile: ViewSvgExportProfile) {
+    fn export_active_view_svg(&mut self, profile: ViewSvgExportProfile, ctx: &egui::Context) {
+        if matches!(self.primary_map_mode, PrimaryMapMode::Tss) {
+            self.export_tss_view_svg(profile, ctx);
+            return;
+        }
         let Some(seq_id) = self.seq_id.clone() else {
             self.op_status = "No active sequence to export".to_string();
             return;
         };
-        let Some(engine) = self.engine.clone() else {
+        if self.engine.is_none() {
             self.op_status = "No engine attached".to_string();
             return;
-        };
+        }
         let default_name = format!("{seq_id}.{}.svg", profile.file_stem_suffix());
         let path = rfd::FileDialog::new()
             .set_file_name(&default_name)
@@ -20922,6 +23202,37 @@ impl MainAreaDna {
             return;
         };
 
+        let svg = match self.compose_active_view_svg(profile) {
+            Ok(svg) => svg,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let path_text = path.display().to_string();
+        match fs::write(&path, svg) {
+            Ok(()) => {
+                self.op_status = format!(
+                    "Exported sequence window view SVG ({}) to '{}'",
+                    profile.label(),
+                    path_text
+                );
+            }
+            Err(e) => {
+                self.op_status = format!("Could not write view SVG '{}': {e}", path_text);
+            }
+        }
+    }
+
+    fn compose_active_view_svg(&mut self, profile: ViewSvgExportProfile) -> Result<String, String> {
+        let seq_id = self
+            .seq_id
+            .clone()
+            .ok_or_else(|| "No active sequence to export".to_string())?;
+        let engine = self
+            .engine
+            .clone()
+            .ok_or_else(|| "No engine attached".to_string())?;
         let primary_splicing_map_export =
             !self.is_circular() && matches!(self.primary_map_mode, PrimaryMapMode::Splicing);
         let splicing_export_view = if primary_splicing_map_export {
@@ -20933,10 +23244,10 @@ impl MainAreaDna {
         let (map_svg, map_mode_label) = {
             let guard = engine.read().expect("Engine lock poisoned");
             let state = guard.state();
-            let Some(dna) = state.sequences.get(&seq_id) else {
-                self.op_status = format!("Active sequence '{seq_id}' not found in engine state");
-                return;
-            };
+            let dna = state
+                .sequences
+                .get(&seq_id)
+                .ok_or_else(|| format!("Active sequence '{seq_id}' not found in engine state"))?;
             if self.is_circular() {
                 (
                     export_circular_svg(dna, &state.display),
@@ -20955,20 +23266,14 @@ impl MainAreaDna {
             }
         };
 
-        let dna_guard = match self.dna.read() {
-            Ok(guard) => guard,
-            Err(_) => {
-                self.op_status = "Could not read active DNA sequence for export".to_string();
-                return;
-            }
-        };
-        let display_guard = match self.dna_display.read() {
-            Ok(guard) => guard,
-            Err(_) => {
-                self.op_status = "Could not read display settings for export".to_string();
-                return;
-            }
-        };
+        let dna_guard = self
+            .dna
+            .read()
+            .map_err(|_| "Could not read active DNA sequence for export".to_string())?;
+        let display_guard = self
+            .dna_display
+            .read()
+            .map_err(|_| "Could not read display settings for export".to_string())?;
 
         let layout = Self::view_svg_export_layout(
             profile,
@@ -21025,12 +23330,14 @@ impl MainAreaDna {
             y,
             Self::xml_escape(&header_left)
         ));
+        let sequence_letters_visible = display_guard.linear_show_sequence_bases();
         let status_right = format!(
-            "map={} | profile={} | show-map={} | show-sequence={}",
+            "map={} | profile={} | show-map={} | show-sequence={} | letters={}",
             map_mode_label,
             profile.label(),
             self.show_map,
-            self.show_sequence
+            self.show_sequence,
+            sequence_letters_visible
         );
         svg.push_str(&format!(
             "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"13\" fill=\"#444444\">{}</text>",
@@ -21086,21 +23393,6 @@ impl MainAreaDna {
             Self::xml_escape(&viewport_text)
         ));
         y += 18.0;
-        if cfg!(debug_assertions) && !self.is_circular() && !primary_splicing_map_export {
-            let threshold_text = format!(
-                "debug tiers: standard<= {:.2}, helical<= {:.2}, condensed<= {:.2}",
-                routing.tier_standard_max_density,
-                routing.tier_helical_max_density,
-                routing.tier_condensed_max_density
-            );
-            svg.push_str(&format!(
-                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"11\" fill=\"#666666\">{}</text>",
-                margin,
-                y,
-                Self::xml_escape(&threshold_text)
-            ));
-            y += 18.0;
-        }
 
         if self.show_map {
             let panel_w = width_px - 2.0 * margin;
@@ -21232,19 +23524,7 @@ impl MainAreaDna {
         ));
         svg.push_str("</svg>");
 
-        let path_text = path.display().to_string();
-        match fs::write(&path, svg) {
-            Ok(()) => {
-                self.op_status = format!(
-                    "Exported sequence window view SVG ({}) to '{}'",
-                    profile.label(),
-                    path_text
-                );
-            }
-            Err(e) => {
-                self.op_status = format!("Could not write view SVG '{}': {e}", path_text);
-            }
-        }
+        Ok(svg)
     }
 
     fn is_single_stranded_rna(&self) -> bool {
@@ -21483,6 +23763,7 @@ impl MainAreaDna {
             container_ids: None,
             arrangement_id: None,
             conditions: None,
+            render_options: None,
         });
     }
 
@@ -22656,24 +24937,21 @@ impl MainAreaDna {
         let mut enzyme_cut_counts: HashMap<String, usize> = HashMap::new();
         let mut enzyme_first_cut_0based: HashMap<String, usize> = HashMap::new();
         let mut enzyme_has_cds_cut: HashMap<String, bool> = HashMap::new();
-        for site in dna
-            .restriction_enzyme_sites()
-            .iter()
-            .filter(|site| site.forward_strand)
-        {
+        for site in dna.restriction_enzyme_sites() {
             let name = site.enzyme.name.clone();
             *enzyme_cut_counts.entry(name.clone()).or_insert(0) += 1;
 
+            let Some((raw_cut, _)) = site.strand_cut_positions_unwrapped() else {
+                continue;
+            };
             let cut_pos_0based = if dna.is_circular() {
                 let len = seq_len as isize;
-                let raw = site.offset.saturating_add(site.enzyme.cut);
-                raw.rem_euclid(len) as usize
+                raw_cut.rem_euclid(len) as usize
             } else {
-                let raw = site.offset.saturating_add(site.enzyme.cut);
-                if raw < 0 || raw >= seq_len as isize {
+                if raw_cut < 0 || raw_cut >= seq_len as isize {
                     continue;
                 }
-                raw as usize
+                raw_cut as usize
             };
             enzyme_first_cut_0based
                 .entry(name.clone())
@@ -22725,7 +25003,6 @@ impl MainAreaDna {
         let available_sites: HashSet<String> = dna
             .restriction_enzyme_sites()
             .iter()
-            .filter(|site| site.forward_strand)
             .map(|site| site.enzyme.name.clone())
             .collect();
         let mut selected = vec![];
@@ -23019,6 +25296,7 @@ impl MainAreaDna {
             pcr_paint_intervals: self.pcr_paint_intervals.clone(),
             selection_formula_text: self.selection_formula_text.clone(),
             qpcr_design_ui: self.qpcr_design_ui.clone(),
+            transcript_assay_panel_ui: self.transcript_assay_panel_ui.clone(),
             sequencing_confirmation_ui: self.sequencing_confirmation_ui.clone(),
             primer_backend: self.primer_backend,
             primer3_executable: self.primer3_executable.clone(),
@@ -23137,6 +25415,8 @@ impl MainAreaDna {
             tfbs_track_similarity_ranking_metric: self.tfbs_track_similarity_ranking_metric,
             cutrun_regulatory_dataset_ids: self.cutrun_regulatory_dataset_ids.clone(),
             cutrun_regulatory_read_report_ids: self.cutrun_regulatory_read_report_ids.clone(),
+            cutrun_regulatory_catalog_path: self.cutrun_regulatory_catalog_path.clone(),
+            cutrun_regulatory_cache_dir: self.cutrun_regulatory_cache_dir.clone(),
             cutrun_regulatory_promoter_start_0based: self
                 .cutrun_regulatory_promoter_start_0based
                 .clone(),
@@ -23314,6 +25594,12 @@ impl MainAreaDna {
         self.pcr_paint_last_drag_start_text.clear();
         self.pcr_paint_last_drag_end_text.clear();
         self.qpcr_design_ui = s.qpcr_design_ui;
+        self.cached_primer_design_report = None;
+        self.cached_qpcr_design_report = None;
+        self.cached_terminal_exon_rt_primer_pool_report = None;
+        self.transcript_assay_panel_ui = s.transcript_assay_panel_ui;
+        self.cached_transcript_assay_panel_report = None;
+        self.cached_experimental_assay_handoff = None;
         self.sequencing_confirmation_ui = s.sequencing_confirmation_ui;
         self.primer_backend = s.primer_backend;
         self.primer3_executable = if s.primer3_executable.trim().is_empty() {
@@ -23431,6 +25717,8 @@ impl MainAreaDna {
         self.tfbs_track_similarity_ranking_metric = s.tfbs_track_similarity_ranking_metric;
         self.cutrun_regulatory_dataset_ids = s.cutrun_regulatory_dataset_ids;
         self.cutrun_regulatory_read_report_ids = s.cutrun_regulatory_read_report_ids;
+        self.cutrun_regulatory_catalog_path = s.cutrun_regulatory_catalog_path;
+        self.cutrun_regulatory_cache_dir = s.cutrun_regulatory_cache_dir;
         self.cutrun_regulatory_promoter_start_0based = s.cutrun_regulatory_promoter_start_0based;
         self.cutrun_regulatory_promoter_end_0based_exclusive =
             s.cutrun_regulatory_promoter_end_0based_exclusive;
@@ -23547,6 +25835,7 @@ impl MainAreaDna {
             };
         self.cached_restriction_site_scan = None;
         self.cached_tfbs_hit_scan = None;
+        self.cached_genomic_motif_evidence = None;
         self.cached_tfbs_score_tracks = None;
         self.cached_tfbs_track_similarity = None;
         self.cached_cutrun_regulatory_support = None;
@@ -23644,7 +25933,7 @@ impl MainAreaDna {
         if guard.state().metadata.get(&key) == Some(&value) {
             return;
         }
-        guard.state_mut().metadata.insert(key, value);
+        guard.auxiliary_metadata_mut().insert(key, value);
     }
 
     fn load_engine_ops_state(&mut self) {
@@ -24036,42 +26325,137 @@ impl MainAreaDna {
         self.seq_id.as_deref()
     }
 
+    /// Allocation-free identity for titles represented in the app-wide window registry.
+    pub(crate) fn open_window_registry_signature(&self) -> Option<u64> {
+        let mut hasher = DefaultHasher::new();
+        self.seq_id.hash(&mut hasher);
+        let dna = self.dna.try_read().ok()?;
+        dna.name().hash(&mut hasher);
+        drop(dna);
+
+        self.show_dotplot_window.hash(&mut hasher);
+        if self.show_dotplot_window {
+            self.dotplot_query_override_seq_id.hash(&mut hasher);
+            self.dotplot_query_override_source_label.hash(&mut hasher);
+        }
+
+        self.show_splicing_expert_window.hash(&mut hasher);
+        if self.show_splicing_expert_window
+            && let Some(view) = self.splicing_expert_window_view.as_ref()
+        {
+            view.seq_id.hash(&mut hasher);
+            view.target_feature_id.hash(&mut hasher);
+            view.group_label.hash(&mut hasher);
+        }
+
+        self.show_rna_read_mapping_window.hash(&mut hasher);
+        if self.show_rna_read_mapping_window
+            && let Some(view) = self.rna_read_mapping_window_view.as_ref()
+        {
+            view.seq_id.hash(&mut hasher);
+            view.target_feature_id.hash(&mut hasher);
+            view.group_label.hash(&mut hasher);
+        }
+
+        self.show_variant_followup_window.hash(&mut hasher);
+        if self.show_variant_followup_window {
+            self.variant_followup_ui.source_seq_id.hash(&mut hasher);
+            self.variant_followup_ui.source_feature_id.hash(&mut hasher);
+            self.variant_followup_ui.gene_label.hash(&mut hasher);
+            self.variant_followup_ui
+                .variant_label_or_id
+                .hash(&mut hasher);
+        }
+
+        self.show_isoform_expert_window.hash(&mut hasher);
+        if self.show_isoform_expert_window
+            && let Some(view) = self.isoform_expert_window_view.as_ref()
+        {
+            self.isoform_expert_window_panel_id.hash(&mut hasher);
+            view.seq_id.hash(&mut hasher);
+            view.panel_id.hash(&mut hasher);
+            view.gene_symbol.hash(&mut hasher);
+            view.panel_source.hash(&mut hasher);
+        }
+        Some(hasher.finish())
+    }
+
     pub fn selection_range_0based(&self) -> Option<(usize, usize)> {
         self.current_selection_range_0based()
     }
 
-    fn lineage_node_id_for_seq_id(&self, seq_id: &str) -> Option<String> {
-        let engine = self.engine.as_ref()?;
-        let guard = engine.read().ok()?;
-        guard
-            .state()
-            .lineage
-            .nodes
-            .values()
-            .filter(|node| node.seq_id == seq_id)
-            .max_by_key(|node| node.created_at_unix_ms)
-            .map(|node| node.node_id.clone())
+    fn lineage_title_context(&self, seq_id: Option<&str>) -> Option<(u64, Option<String>)> {
+        let Some(engine) = self.engine.as_ref() else {
+            return Some((0, None));
+        };
+        let guard = engine.try_read().ok()?;
+        let node_id = seq_id.and_then(|seq_id| {
+            guard
+                .state()
+                .lineage
+                .nodes
+                .values()
+                .filter(|node| node.seq_id == seq_id)
+                .max_by_key(|node| node.created_at_unix_ms)
+                .map(|node| node.node_id.clone())
+        });
+        Some((guard.structural_revision(), node_id))
     }
 
     pub fn window_title(&self) -> String {
         let seq_id = self.sequence_id().map(|value| value.to_string());
         let display_name = self
-            .sequence_name()
+            .tss_display_title()
+            .map(str::to_owned)
+            .or_else(|| self.sequence_name())
             .filter(|name| !name.trim().is_empty())
             .or_else(|| seq_id.clone())
             .unwrap_or_else(|| "<Unnamed sequence>".to_string());
-        let Some(seq_id) = seq_id.as_deref() else {
-            return display_name;
+        let Some((engine_revision, lineage_node_id)) =
+            self.lineage_title_context(seq_id.as_deref())
+        else {
+            if let Ok(mut cache) = self.window_title_cache.lock()
+                && cache
+                    .key
+                    .as_ref()
+                    .is_some_and(|key| key.display_name == display_name && key.seq_id == seq_id)
+            {
+                cache.hits = cache.hits.saturating_add(1);
+                return cache.title.clone();
+            }
+            return seq_id
+                .map(|seq_id| format!("{display_name} ({seq_id})"))
+                .unwrap_or(display_name);
         };
-        if let Some(node_id) = self.lineage_node_id_for_seq_id(seq_id) {
-            format!("{display_name} [{node_id}] ({seq_id})")
-        } else {
-            format!("{display_name} ({seq_id})")
+        let key = WindowTitleCacheKey {
+            display_name: display_name.clone(),
+            seq_id: seq_id.clone(),
+            engine_revision,
+        };
+        if let Ok(mut cache) = self.window_title_cache.lock()
+            && cache.key.as_ref() == Some(&key)
+        {
+            cache.hits = cache.hits.saturating_add(1);
+            return cache.title.clone();
         }
+
+        let title = match seq_id.as_deref() {
+            None => display_name,
+            Some(seq_id) => match lineage_node_id {
+                Some(node_id) => format!("{display_name} [{node_id}] ({seq_id})"),
+                None => format!("{display_name} ({seq_id})"),
+            },
+        };
+        if let Ok(mut cache) = self.window_title_cache.lock() {
+            cache.key = Some(key);
+            cache.title = title.clone();
+            cache.misses = cache.misses.saturating_add(1);
+        }
+        title
     }
 
     fn splicing_expert_window_help_text() -> &'static str {
-        "This window explains one splicing group through five complementary views:\n- annotation-derived transcript and exon structure\n- splice-site donor/acceptor motif classes for the annotated introns\n- conservative acceptor-proximal intron heuristics (branchpoint-like adenines and polypyrimidine-rich tracts)\n- array probe geometry constraints from loaded probe-region reports\n- quick actions that derive transcript references or seed primer/qPCR ROI\n- RNA-read evidence panels driven by saved mapping reports for this locus\n\nUse the transcript selector for transcript-level actions. Array probe geometry is review-only design/alignment evidence; RNA-read runs and workflow controls live in the dedicated RNA-read Mapping workspace. The Splicing Expert stays annotation-first and report-viewer-first."
+        "This window explains one splicing group through complementary Structure and Evidence views:\n- annotation-derived transcript and exon structure\n- splice-site donor/acceptor motif classes for the annotated introns\n- conservative acceptor-proximal intron heuristics (branchpoint-like adenines and polypyrimidine-rich tracts)\n- array probe geometry constraints from loaded probe-region reports, including junction-spanning array probe rows when a report spans annotated exon-exon boundaries\n- quick actions that derive transcript references or seed primer/qPCR ROI\n- RNA-read evidence panels driven by saved mapping reports for this locus\n- a read-only isoform evidence ledger that composes curated families, RNA/cDNA support, expression, probe constraints, and existing qPCR candidates\n\nUse the transcript selector for transcript-level actions. Array probe geometry is review-only design/alignment evidence; RNA-read runs and workflow controls live in the dedicated RNA-read Mapping workspace. The Splicing Expert stays annotation-first and report-viewer-first."
     }
 
     fn rna_read_mapping_parameter_section_title() -> &'static str {
@@ -24168,6 +26552,7 @@ impl MainAreaDna {
                 return;
             }
 
+            self.cached_splicing_expert_presentations.clear();
             self.description_cache_initialized = true;
             self.description_cache_selected_id = selected_id;
             self.description_cache_selected_reasoning_evidence_id =
@@ -24285,7 +26670,8 @@ impl MainAreaDna {
             .and_then(|seq_id| {
                 self.engine.as_ref().and_then(|engine| {
                     engine.read().ok().and_then(|guard| {
-                        if let Some(graph_id) = self.focused_construct_reasoning_graph_id.as_deref()
+                        let graph = if let Some(graph_id) =
+                            self.focused_construct_reasoning_graph_id.as_deref()
                         {
                             guard
                                 .construct_reasoning_graph(graph_id)
@@ -24294,11 +26680,19 @@ impl MainAreaDna {
                                 .or_else(|| guard.construct_reasoning_graph_for_seq_id(seq_id).ok())
                         } else {
                             guard.construct_reasoning_graph_for_seq_id(seq_id).ok()
-                        }
+                        }?;
+                        let snapshot_status =
+                            guard.construct_reasoning_graph_snapshot_status(&graph);
+                        Some((graph, snapshot_status))
                     })
                 })
             })
-            .map(|graph| Self::build_construct_reasoning_inspector_cache(&graph));
+            .map(|(graph, snapshot_status)| {
+                Self::build_construct_reasoning_inspector_cache_with_snapshot_status(
+                    &graph,
+                    snapshot_status,
+                )
+            });
         if let Some(target) = expert_target {
             match self.inspect_feature_expert_target(&target) {
                 Ok(view) => {
@@ -24392,6 +26786,32 @@ impl MainAreaDna {
                             self.focus_dotplot_workspace_view(ui.ctx());
                             ui.close();
                         }
+                    }
+                });
+            }
+            if let Some(feature_id) = description_copy_feature_id {
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .small_button("Copy id")
+                        .on_hover_text(FeatureCopyPayloadKind::Identifier.hover_text())
+                        .clicked()
+                    {
+                        self.copy_feature_payload_to_clipboard(
+                            ui.ctx(),
+                            feature_id,
+                            FeatureCopyPayloadKind::Identifier,
+                        );
+                    }
+                    if ui
+                        .small_button("Copy details")
+                        .on_hover_text(FeatureCopyPayloadKind::PopupText.hover_text())
+                        .clicked()
+                    {
+                        self.copy_feature_payload_to_clipboard(
+                            ui.ctx(),
+                            feature_id,
+                            FeatureCopyPayloadKind::PopupText,
+                        );
                     }
                 });
             }
@@ -24501,13 +26921,23 @@ impl MainAreaDna {
                 } else {
                     "Open Promoter Design"
                 };
-                if ui
+                let promoter_open = ui
                     .button(button_label)
                     .on_hover_text(
                         "Open or focus the dedicated Promoter design window for this promoter-relevant feature",
-                    )
-                    .clicked()
-                {
+                    );
+                #[cfg(feature = "gui-test-support")]
+                crate::gui_test_support::register_response(
+                    &promoter_open,
+                    crate::tutorial_gui_semantics::DNA_PROMOTER_OPEN,
+                    crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
+                    Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                        self.seq_id.as_deref().unwrap_or("unnamed"),
+                    ])),
+                    crate::gui_test_support::GuiTestWidgetKind::Button,
+                    false,
+                );
+                if promoter_open.clicked() {
                     self.open_variant_followup_for_feature(feature_id, "description panel");
                 }
             } else if let Some(reasoning_evidence_id) = self
@@ -24578,23 +27008,30 @@ impl MainAreaDna {
                         span.supporting_fact_labels.join(", ")
                     ));
                 }
-                let selected_span_dotplot_actions = self
+                let (selected_span_dotplot_actions, selected_actions_enabled) = self
                     .description_cache_construct_reasoning
                     .as_ref()
                     .map(|reasoning| {
-                        reasoning
-                            .annotation_entries
-                            .iter()
-                            .filter(|entry| {
-                                entry.annotation_id.as_deref() == Some(span.annotation_id.as_str())
-                            })
-                            .flat_map(|entry| entry.dotplot_actions.iter().cloned())
-                            .collect::<Vec<_>>()
+                        (
+                            reasoning
+                                .annotation_entries
+                                .iter()
+                                .filter(|entry| {
+                                    entry.annotation_id.as_deref()
+                                        == Some(span.annotation_id.as_str())
+                                })
+                                .flat_map(|entry| entry.dotplot_actions.iter().cloned())
+                                .collect::<Vec<_>>(),
+                            Self::construct_reasoning_actions_enabled(
+                                reasoning.snapshot_freshness,
+                            ),
+                        )
                     })
-                    .unwrap_or_default();
+                    .unwrap_or_else(|| (vec![], true));
                 self.render_construct_reasoning_dotplot_actions(
                     ui,
                     &selected_span_dotplot_actions,
+                    selected_actions_enabled,
                 );
                 self.render_construct_reasoning_annotation_candidate_actions(
                     ui,
@@ -24631,6 +27068,33 @@ impl MainAreaDna {
                             .size(detail_font_size),
                     );
                 }
+                let reasoning_actions_enabled =
+                    Self::construct_reasoning_actions_enabled(reasoning.snapshot_freshness);
+                ui.label(
+                    egui::RichText::new(format!(
+                        "snapshot: {}",
+                        reasoning.snapshot_freshness.as_str()
+                    ))
+                    .monospace()
+                    .size(detail_font_size)
+                    .color(if reasoning_actions_enabled {
+                        egui::Color32::GRAY
+                    } else {
+                        egui::Color32::from_rgb(176, 80, 32)
+                    }),
+                );
+                for line in &reasoning.snapshot_status_lines {
+                    ui.label(
+                        egui::RichText::new(format!("snapshot_note: {}", line.trim()))
+                            .monospace()
+                            .size(detail_font_size)
+                            .color(if reasoning_actions_enabled {
+                                egui::Color32::GRAY
+                            } else {
+                                egui::Color32::from_rgb(176, 80, 32)
+                            }),
+                    );
+                }
                 let reasoning_graph_id = reasoning.graph_id.clone();
                 if reasoning.annotation_entries.is_empty()
                     && reasoning.annotation_summary_entries.is_empty()
@@ -24659,6 +27123,7 @@ impl MainAreaDna {
                                     self.render_construct_reasoning_dotplot_actions(
                                         ui,
                                         &entry.dotplot_actions,
+                                        reasoning_actions_enabled,
                                     );
                                     for line in &entry.detail_lines {
                                         ui.label(
@@ -24694,6 +27159,7 @@ impl MainAreaDna {
                                     self.render_construct_reasoning_dotplot_actions(
                                         ui,
                                         &entry.dotplot_actions,
+                                        reasoning_actions_enabled,
                                     );
                                     if let (Some(annotation_id), Some(editable_status)) = (
                                         entry.annotation_id.as_deref(),
@@ -24735,8 +27201,17 @@ impl MainAreaDna {
                                 self.render_construct_reasoning_dotplot_actions(
                                     ui,
                                     &entry.dotplot_actions,
+                                    reasoning_actions_enabled,
                                 );
-                                for line in &entry.detail_lines {
+                                Self::render_construct_reasoning_task_severity_pane(
+                                    ui,
+                                    &entry.task_severities,
+                                );
+                                for line in entry
+                                    .detail_lines
+                                    .iter()
+                                    .filter(|line| !line.starts_with("task_severity:"))
+                                {
                                     ui.label(
                                         egui::RichText::new(line)
                                             .monospace()
@@ -24796,6 +27271,7 @@ impl MainAreaDna {
     }
 
     pub fn update_dna_map(&mut self) {
+        crate::gentle_gui_profile_scope!("MainAreaDna::update_dna_map");
         let topology_changed = self.is_circular() != self.map_dna.is_circular();
         if topology_changed {
             self.map_dna = RenderDna::new(self.dna.clone(), self.dna_display.clone());
@@ -24835,7 +27311,7 @@ impl MainAreaDna {
 
             Frame::NONE.show(ui, |ui| {
                 ui.set_min_height(side_panel_height);
-                const FEATURE_PANE_SPLIT_HANDLE_WIDTH_PX: f32 = 8.0;
+                const FEATURE_PANE_SPLIT_HANDLE_WIDTH_PX: f32 = 12.0;
                 const MAP_MIN_WIDTH_PX: f32 = 220.0;
                 let total_available_width = ui.available_width().max(
                     FEATURE_TREE_MIN_WIDTH_PX + FEATURE_PANE_SPLIT_HANDLE_WIDTH_PX + MAP_MIN_WIDTH_PX,
@@ -24869,6 +27345,11 @@ impl MainAreaDna {
                                     .read()
                                     .map(|dna| dna.features().len())
                                     .unwrap_or(0);
+                                let requires_explicit_load =
+                                    Self::deferred_feature_tree_requires_explicit_load(
+                                        feature_count,
+                                    );
+                                let mut load_requested = false;
                                 ui.group(|ui| {
                                     ui.label(
                                         "Feature tree/details deferred to speed up initial window opening.",
@@ -24876,11 +27357,42 @@ impl MainAreaDna {
                                     ui.small(format!(
                                         "{feature_count} feature(s) available for this sequence."
                                     ));
-                                    ui.small(
-                                        "Auto-loading feature tree/details on the next frame.",
-                                    );
+                                    if requires_explicit_load {
+                                        ui.small(
+                                            "This annotation-rich document stays responsive until you load the feature browser.",
+                                        );
+                                        let load_response = ui
+                                            .button("Load feature tree/details")
+                                            .on_hover_text(
+                                                "Build the complete grouped feature browser for this sequence",
+                                            );
+                                        #[cfg(feature = "gui-test-support")]
+                                        {
+                                            let subject_scope =
+                                                crate::gui_test_support::pseudonymous_subject_scope(&[
+                                                self.seq_id.as_deref().unwrap_or("unnamed"),
+                                            ]);
+                                            crate::gui_test_support::register_response(
+                                                &load_response,
+                                                "dna.feature_tree.load",
+                                                "window.dna_viewer",
+                                                Some(&subject_scope),
+                                                crate::gui_test_support::GuiTestWidgetKind::Button,
+                                                false,
+                                            );
+                                        }
+                                        if load_response.clicked() {
+                                            load_requested = true;
+                                        }
+                                    } else {
+                                        ui.small(
+                                            "Auto-loading feature tree/details on the next frame.",
+                                        );
+                                    }
                                 });
-                                if self.maybe_auto_enable_deferred_feature_tree() {
+                                if (!requires_explicit_load || load_requested)
+                                    && self.maybe_auto_enable_deferred_feature_tree()
+                                {
                                     ui.ctx().request_repaint();
                                 }
                             } else {
@@ -24969,6 +27481,21 @@ impl MainAreaDna {
                                     )),
                                     egui::Sense::click_and_drag(),
                                 );
+                                #[cfg(feature = "gui-test-support")]
+                                {
+                                    let subject_scope =
+                                        crate::gui_test_support::pseudonymous_subject_scope(&[
+                                            self.seq_id.as_deref().unwrap_or("unnamed"),
+                                        ]);
+                                    crate::gui_test_support::register_response(
+                                        &split_response,
+                                        "dna.splitter.info_height",
+                                        "window.dna_viewer",
+                                        Some(&subject_scope),
+                                        crate::gui_test_support::GuiTestWidgetKind::Splitter,
+                                        false,
+                                    );
+                                }
                                 let split_color = if split_response.dragged() {
                                     egui::Color32::from_rgb(40, 140, 210)
                                 } else if split_response.hovered() {
@@ -25009,7 +27536,11 @@ impl MainAreaDna {
                                     Vec2::new(ui.available_width(), description_height),
                                     egui::Layout::top_down(egui::Align::Min),
                                     |ui| {
-                                        self.render_description(ui);
+                                        egui::Frame::NONE
+                                            .inner_margin(egui::Margin::symmetric(8, 4))
+                                            .show(ui, |ui| {
+                                                self.render_description(ui);
+                                            });
                                     },
                                 );
                             }
@@ -25027,6 +27558,20 @@ impl MainAreaDna {
                     )),
                     egui::Sense::click_and_drag(),
                 );
+                #[cfg(feature = "gui-test-support")]
+                {
+                    let subject_scope = crate::gui_test_support::pseudonymous_subject_scope(&[
+                        self.seq_id.as_deref().unwrap_or("unnamed"),
+                    ]);
+                    crate::gui_test_support::register_response(
+                        &split_response,
+                        "dna.splitter.info_width",
+                        "window.dna_viewer",
+                        Some(&subject_scope),
+                        crate::gui_test_support::GuiTestWidgetKind::Splitter,
+                        false,
+                    );
+                }
                 let split_color = if split_response.dragged() {
                     egui::Color32::from_rgb(40, 140, 210)
                 } else if split_response.hovered() {
@@ -25079,11 +27624,18 @@ impl MainAreaDna {
                 self.render_primary_splicing_map_ui(ui);
             } else if primary_dotplot_mode {
                 self.render_primary_dotplot_map_ui(ui);
+            } else if matches!(self.primary_map_mode, PrimaryMapMode::Tss) {
+                self.render_primary_tss_map_ui(ui);
             } else {
                 let dark_mode = ui.visuals().dark_mode;
                 let response = theme::canvas_frame(dark_mode)
                     .show(ui, |ui| {
                         crate::gentle_gui_profile_scope!("MainAreaDna::dna_map_canvas");
+                        ui.vertical(|ui| {
+                        if !self.is_circular() {
+                            self.render_source_annotation_comparison(ui, "dna_map", self.get_selected_feature_id());
+                        }
+                        ui.horizontal(|ui| {
                         if !self.is_circular() {
                             let slider_column_width =
                                 if ENABLE_LINEAR_VERTICAL_PAN { 30.0 } else { 0.0 };
@@ -25150,10 +27702,21 @@ impl MainAreaDna {
                         } else {
                             ui.add(self.map_dna.to_owned())
                         }
+                        }).inner
+                        }).inner
                     })
                     .inner;
                 if response.rect.width().is_finite() && response.rect.width() > 0.0 {
                     self.last_linear_map_width_px = response.rect.width();
+                }
+                #[cfg(feature = "benchmark-support")]
+                {
+                    self.benchmark_map_interact_rect = Some(response.interact_rect);
+                }
+                if let Some(feature_id) = self.pending_linear_vertical_fit_feature_id
+                    && self.fit_feature_vertically_in_linear_view(feature_id)
+                {
+                    self.pending_linear_vertical_fit_feature_id = None;
                 }
 
                 if response.hovered() {
@@ -25180,7 +27743,7 @@ impl MainAreaDna {
                                     text
                                 }
                             };
-                            let details = RenderDna::feature_detail_lines(feature);
+                            let details = RenderDna::feature_tooltip_detail_lines(feature);
                             Some((name, feature.kind.to_string(), range, details))
                         });
                         if let Some((name, kind, range, details)) = hover_text {
@@ -25214,7 +27777,7 @@ impl MainAreaDna {
                                         .size(detail_font_size),
                                     );
                                 }
-                                for line in details.iter().take(4) {
+                                for line in &details {
                                     ui.label(
                                         egui::RichText::new(line)
                                             .monospace()
@@ -25347,15 +27910,73 @@ impl MainAreaDna {
                         ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::ResizeHorizontal);
                     }
                 }
+                #[cfg(feature = "gui-test-support")]
+                crate::gui_test_support::register_response(
+                    &response,
+                    crate::tutorial_gui_semantics::DNA_MAP_CANVAS,
+                    crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
+                    Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                        self.seq_id.as_deref().unwrap_or("unnamed"),
+                    ])),
+                    crate::gui_test_support::GuiTestWidgetKind::Row,
+                    false,
+                );
+                #[cfg(feature = "gui-test-support")]
+                if !self.is_circular()
+                    && let Some((start, end_exclusive)) = self.current_selection_range_0based()
+                {
+                    let (viewport_start, span_bp, sequence_length) =
+                        self.current_linear_viewport();
+                    let viewport_end = viewport_start
+                        .saturating_add(span_bp)
+                        .min(sequence_length);
+                    let clip_start = start.max(viewport_start);
+                    let clip_end = end_exclusive.min(viewport_end);
+                    if span_bp > 0 && clip_end > clip_start {
+                        let x0 = response.rect.left()
+                            + response.rect.width()
+                                * ((clip_start - viewport_start) as f32 / span_bp as f32);
+                        let x1 = response.rect.left()
+                            + response.rect.width()
+                                * ((clip_end - viewport_start) as f32 / span_bp as f32);
+                        let selection_rect = egui::Rect::from_min_max(
+                            egui::pos2(x0, response.rect.top()),
+                            egui::pos2(x1.max(x0 + 6.0), response.rect.bottom()),
+                        );
+                        crate::gui_test_support::register_rect(
+                            response.ctx.clone(),
+                            crate::tutorial_gui_semantics::DNA_SELECTION_MAP_SPAN,
+                            crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
+                            Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                                self.seq_id.as_deref().unwrap_or("unnamed"),
+                            ])),
+                            crate::gui_test_support::GuiTestWidgetKind::Row,
+                            selection_rect,
+                            true,
+                            true,
+                            true,
+                            Some("ready"),
+                        );
+                    }
+                }
                 self.draw_pcr_paint_overlays(ui, &response);
+                self.draw_genomic_motif_evidence_overlays(ui, &response);
                 self.render_pcr_post_drag_actions(ui);
                 let mut map_open_variant_followup_feature: Option<usize> = None;
                 let mut map_open_variant_followup_reasoning_evidence: Option<String> = None;
                 let mut map_open_splicing_feature: Option<usize> = None;
                 let mut map_open_rna_read_mapping_feature: Option<usize> = None;
                 let mut map_open_dotplot_feature: Option<usize> = None;
+                let mut map_edit_feature_location: Option<usize> = None;
+                let mut map_create_feature_range: Option<(usize, usize)> = None;
+                let mut map_save_region_range: Option<(usize, usize)> = None;
+                let mut map_delete_feature: Option<usize> = None;
                 response.context_menu(|ui| {
                     let mut showed_any = false;
+                    if self.render_selection_navigation_controls(ui, false) {
+                        ui.close();
+                        return;
+                    }
                     if self.render_selection_simple_pcr_context_action(ui) {
                         ui.close();
                         return;
@@ -25398,6 +28019,44 @@ impl MainAreaDna {
                             return;
                         }
                     }
+                    if let Some(selected_range) = self.current_selection_range_0based() {
+                        if showed_any {
+                            ui.separator();
+                        }
+                        showed_any = true;
+                        let save_region_response = ui
+                            .button("Save/share selected genomic region...")
+                            .on_hover_text(
+                                "Open the region manager with this selection; the engine preserves assembly, coordinate convention, strand, and provenance",
+                            );
+                        #[cfg(feature = "gui-test-support")]
+                        crate::gui_test_support::register_response(
+                            &save_region_response,
+                            crate::tutorial_gui_semantics::DNA_SELECTION_SAVE_REGION,
+                            crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
+                            Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                                self.seq_id.as_deref().unwrap_or("unnamed"),
+                            ])),
+                            crate::gui_test_support::GuiTestWidgetKind::Button,
+                            false,
+                        );
+                        if save_region_response.clicked() {
+                            map_save_region_range = Some(selected_range);
+                            ui.close();
+                            return;
+                        }
+                        if ui
+                            .button("Create feature from selection...")
+                            .on_hover_text(
+                                "Open the shared Feature Editor with this selected range",
+                            )
+                            .clicked()
+                        {
+                            map_create_feature_range = Some(selected_range);
+                            ui.close();
+                            return;
+                        }
+                    }
                     let Some(feature_id) = candidate_feature_id else {
                         if let Some(evidence_id) = promoter_reasoning_evidence_id {
                             if showed_any {
@@ -25428,6 +28087,31 @@ impl MainAreaDna {
                         return;
                     }
                     ui.separator();
+                    let location_edit_unavailable_reason =
+                        self.feature_location_edit_unavailable_reason(feature_id);
+                    let edit_response = ui.add_enabled(
+                        location_edit_unavailable_reason.is_none(),
+                        egui::Button::new("Edit feature location..."),
+                    );
+                    let edit_response = edit_response.on_hover_text(
+                        location_edit_unavailable_reason.as_deref().unwrap_or(
+                            "Preview an exact simple or flat compound segment boundary edit before applying it",
+                        ),
+                    );
+                    if edit_response.clicked() {
+                        map_edit_feature_location = Some(feature_id);
+                        ui.close();
+                    }
+                    if ui
+                        .button("Delete feature...")
+                        .on_hover_text(
+                            "Preview the complete feature record and related annotations before deletion",
+                        )
+                        .clicked()
+                    {
+                        map_delete_feature = Some(feature_id);
+                        ui.close();
+                    }
                     let variant_response = ui.add_enabled(
                         promoter_feature_id.is_some() || promoter_reasoning_evidence_id.is_some(),
                         egui::Button::new("Open Promoter Design"),
@@ -25590,14 +28274,31 @@ impl MainAreaDna {
                 if let Some(feature_id) = map_open_dotplot_feature {
                     self.open_dotplot_for_feature(feature_id, "map context menu");
                 }
+                if let Some(feature_id) = map_edit_feature_location {
+                    self.focus_feature_location_editor(Some(feature_id));
+                }
+                if let Some(range) = map_create_feature_range {
+                    self.focus_feature_record_create_editor(Some(range));
+                }
+                if let Some(range) = map_save_region_range {
+                    self.open_genomic_region_manager(Some(range));
+                }
+                if let Some(feature_id) = map_delete_feature {
+                    self.focus_feature_record_delete_editor(Some(feature_id));
+                }
             }
         });
         if render_auxiliary_windows {
             self.render_dotplot_window(ctx);
             self.render_splicing_expert_window(ctx);
+            self.render_genomic_region_manager(ctx);
+            self.render_genomic_region_conservation_workspace(ctx);
+            self.render_tata_workspace(ctx);
+            self.render_tss_workspace(ctx);
             self.render_rna_read_mapping_window(ctx);
             self.render_variant_followup_window(ctx);
             self.render_isoform_expert_window(ctx);
+            self.render_feature_location_editor(ctx);
         }
     }
 }

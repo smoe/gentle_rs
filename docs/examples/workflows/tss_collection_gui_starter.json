@@ -1,0 +1,43 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "tss_collection_gui_starter",
+  "title": "Synthetic TSS collection starter",
+  "summary": "Loads a 2 kb artificial anchored locus and four transcript annotations, but derives no TSS windows.",
+  "test_mode": "always",
+  "required_files": [
+    "docs/examples/assets/tss_tutorial/genomes.json",
+    "docs/examples/assets/tss_tutorial/locus.fa",
+    "docs/examples/assets/tss_tutorial/locus.gtf"
+  ],
+  "tags": [
+    "offline",
+    "gui-acceptance",
+    "tss",
+    "synthetic",
+    "starter"
+  ],
+  "workflow": {
+    "run_id": "tss_collection_gui_starter",
+    "ops": [
+      {
+        "PrepareGenome": {
+          "genome_id": "TutorialTssToy",
+          "catalog_path": "docs/examples/assets/tss_tutorial/genomes.json",
+          "cache_dir": "artifacts/tss_cache"
+        }
+      },
+      {
+        "ExtractGenomeRegion": {
+          "genome_id": "TutorialTssToy",
+          "chromosome": "toy_chr",
+          "start_1based": 1,
+          "end_1based": 2000,
+          "output_id": "tss_locus",
+          "include_genomic_annotation": true,
+          "catalog_path": "docs/examples/assets/tss_tutorial/genomes.json",
+          "cache_dir": "artifacts/tss_cache"
+        }
+      }
+    ]
+  }
+}

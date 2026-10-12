@@ -4,4 +4,4 @@
 //! existing root-crate import path while the workspace split is still in
 //! progress.
 
-pub use gentle_render::render_feature_expert_svg;
+pub use gentle_render::{render_cryptic_splicing_screen, render_feature_expert_svg};

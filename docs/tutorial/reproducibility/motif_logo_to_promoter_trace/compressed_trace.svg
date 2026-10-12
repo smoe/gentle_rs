@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="320" viewBox="0 0 1120 320" role="img" aria-labelledby="title desc">
+  <title id="title">Compressed trace bucket keeps a sparse peak</title>
+  <desc id="desc">Four values zero zero zero five represented by a min-max whisker and mean mark, not a connected plateau.</desc>
+  <rect width="1120" height="320" fill="#fff"/>
+  <style>text{font-family:DejaVu Sans,Arial,sans-serif;fill:#202124}.h{font-size:24px;font-weight:700}.s{font-size:16px}.axis{stroke:#5f6368;stroke-width:2}.v{stroke:#0072b2;stroke-width:5}.mean{stroke:#d55e00;stroke-width:5}</style>
+  <text x="34" y="38" class="h">Compressed overview: one bucket containing [0, 0, 0, 5]</text>
+  <line x1="170" y1="250" x2="960" y2="250" class="axis"/><line x1="170" y1="80" x2="170" y2="250" class="axis"/>
+  <text x="130" y="255" class="s">0</text><text x="130" y="90" class="s">5</text>
+  <circle cx="330" cy="250" r="7" fill="#0072b2"/><circle cx="450" cy="250" r="7" fill="#0072b2"/><circle cx="570" cy="250" r="7" fill="#0072b2"/><circle cx="690" cy="80" r="7" fill="#0072b2"/>
+  <text x="284" y="285" class="s">four source windows</text>
+  <line x1="850" y1="80" x2="850" y2="250" class="v"/><line x1="830" y1="80" x2="870" y2="80" class="v"/><line x1="830" y1="250" x2="870" y2="250" class="v"/>
+  <line x1="825" y1="207.5" x2="875" y2="207.5" class="mean"/>
+  <text x="895" y="87" class="s">max 5</text><text x="895" y="214" class="s">mean 1.25</text><text x="895" y="275" class="s">min 0</text>
+  <text x="34" y="306" class="s">The unconnected whisker avoids inventing a continuous plateau. It is not a confidence interval or an exact subpixel site.</text>
+</svg>

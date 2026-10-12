@@ -4,74 +4,213 @@ on:
   push:
     tags:
       - 'v*'
+  release:
+    types:
+      - published
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version label (need not exist for build-only validation)'
+        required: true
+        type: string
+      candidate_sha:
+        description: 'Full 40-character candidate commit SHA; never a branch name'
+        required: true
+        type: string
+      publish:
+        description: 'Push headless GHCR image after owner approval; tag must match candidate_sha'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  candidate:
+    uses: ./.github/workflows/release-candidate.yml
+    with:
+      tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event_name == 'release' && github.event.release.tag_name || github.ref_name }}
+      candidate_sha: ${{ inputs.candidate_sha || '' }}
+      publish: ${{ inputs.publish || false }}
+
   container-build-check:
     name: Container Build Check
+    needs: candidate
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      RELEASE_TAG: ${{ needs.candidate.outputs.tag }}
+      EXPECTED_REVISION: ${{ needs.candidate.outputs.revision }}
+      EXPECTED_LOCK_SHA256: ${{ needs.candidate.outputs.cargo_lock_sha256 }}
+      WORKFLOW_REVISION: ${{ needs.candidate.outputs.workflow_revision }}
+      CANDIDATE_MODE: ${{ needs.candidate.outputs.mode }}
+      NATIVE_PROFILE: ${{ needs.candidate.outputs.native_profile }}
+      NATIVE_TARGET_SUBDIR: ${{ needs.candidate.outputs.native_target_subdir }}
     steps:
       - name: Check out the repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.candidate.outputs.revision }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Verify immutable candidate identity
+        run: |
+          python3 scripts/release_candidate.py verify
+          test "$NATIVE_PROFILE:$NATIVE_TARGET_SUBDIR" = "package-opt1:package-opt1"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build CLI container image (no push)
-        uses: docker/build-push-action@v6
+        id: check-cli
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
           build-args: |
             DEBIAN_SUITE=forky
+            GENTLE_GIT_COMMIT=${{ needs.candidate.outputs.revision }}
           target: runtime-cli
           platforms: linux/amd64
           push: false
+          load: true
           provenance: false
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:build-check-cli
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build GUI container image (no push)
-        uses: docker/build-push-action@v6
+      - name: Smoke headless container without network access
+        env:
+          CLI_IMAGE: ${{ steps.check-cli.outputs.imageid }}
+        run: |
+          set -euo pipefail
+          docker run --rm --network none "$CLI_IMAGE"
+          docker run --rm --network none "$CLI_IMAGE" cli --help
+          docker run --rm --network none "$CLI_IMAGE" mcp --help
+          docker run --rm --network none "$CLI_IMAGE" examples-docs --help
+          docker run --rm --network none --entrypoint /bin/sh "$CLI_IMAGE" -ec '
+            for bin in gentle_cli gentle_mcp gentle_examples_docs; do
+              deps=$(ldd "/opt/gentle/bin/$bin")
+              if printf "%s\n" "$deps" | grep -q "not found"; then
+                printf "%s\n" "$deps" >&2; exit 1
+              fi
+            done
+            for bin in gentle gentle_js gentle_lua; do
+              test ! -e "/opt/gentle/bin/$bin"
+            done
+            test -s /opt/gentle/assets/genomes.json
+            python3 -c "import gentle_py"
+            deps=$(ldd /usr/local/bin/rnapkin)
+            if printf "%s\n" "$deps" | grep -q "not found"; then
+              printf "%s\n" "$deps" >&2; exit 1
+            fi
+            rnapkin --version
+            cd "$(mktemp -d)"
+            # Hand-crafted nine-base hairpin; checks packaging, not RNA folding.
+            printf "%s\n" "GGGAAACCC" "(((...)))" > hairpin.dbn
+            timeout 30 rnapkin --height 128 -o hairpin.svg hairpin.dbn
+            timeout 30 rnapkin --height 128 -o hairpin.png hairpin.dbn
+            test -s hairpin.svg
+            grep -q "<svg" hairpin.svg
+            test -s hairpin.png
+          '
+
+      - name: Retain container build identity
+        env:
+          CLI_IMAGE: ${{ steps.check-cli.outputs.imageid }}
+          CLI_DIGEST: ${{ steps.check-cli.outputs.digest }}
+        run: |
+          python3 scripts/release_candidate.py verify
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, subprocess
+          from scripts.release_candidate import PACKAGE_PROFILE, container_binary_identities, package_build_recipe
+          rows = []
+          for flavor in ("cli",):
+              image_id = os.environ[f"{flavor.upper()}_IMAGE"]
+              identities = container_binary_identities(
+                  image_id, os.environ["EXPECTED_REVISION"], os.environ["RELEASE_TAG"])
+              rows.append({"target": f"runtime-{flavor}", "image_id": image_id,
+                           "digest": os.environ[f"{flavor.upper()}_DIGEST"],
+                           "entrypoint_smoke": "passed", "binary_identities": identities})
+          record = {
+              "schema": "gentle.container_build.v1", "tag": os.environ["RELEASE_TAG"],
+              "revision": os.environ["EXPECTED_REVISION"],
+              "cargo_lock_sha256": os.environ["EXPECTED_LOCK_SHA256"],
+              "workflow_revision": os.environ["WORKFLOW_REVISION"],
+              "mode": os.environ["CANDIDATE_MODE"], "pushed": False,
+              "profile": PACKAGE_PROFILE, **package_build_recipe(pathlib.Path(".")),
+              "default_features": False, "features": [],
+              "binaries": ["gentle_cli", "gentle_mcp", "gentle_examples_docs"],
+              "helpers": {
+                  "rnapkin": {
+                      "version": "0.3.9", "profile": "dev",
+                      "cargo_lock_path": "docker/rnapkin/Cargo.lock",
+                      "cargo_lock_sha256": hashlib.sha256(
+                          pathlib.Path("docker/rnapkin/Cargo.lock").read_bytes()).hexdigest(),
+                  },
+              },
+              "build_args": {"DEBIAN_SUITE": "forky",
+                             "GENTLE_GIT_COMMIT": os.environ["EXPECTED_REVISION"]},
+              "platform": "linux/amd64",
+              "buildx": subprocess.check_output(["docker", "buildx", "version"], text=True).strip(),
+              "images": rows,
+          }
+          pathlib.Path("container-build.json").write_text(json.dumps(record, indent=2) + "\n")
+          PY
+
+      - uses: actions/upload-artifact@v6
         with:
-          context: .
-          file: ./Dockerfile
-          build-args: |
-            DEBIAN_SUITE=forky
-          target: runtime-gui
-          platforms: linux/amd64
-          push: false
-          provenance: false
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:build-check-gui
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          name: container-evidence-${{ needs.candidate.outputs.revision }}
+          path: container-build.json
+          if-no-files-found: error
 
   container-publish:
     name: Publish GHCR Image
     runs-on: ubuntu-latest
-    needs: container-build-check
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [candidate, container-build-check]
+    if: >-
+      needs.candidate.outputs.publish == 'true' &&
+      ((github.event_name == 'workflow_dispatch' && inputs.publish == true) ||
+       (github.event_name == 'release' && github.event.action == 'published'))
     permissions:
       contents: read
       packages: write
       attestations: write
       id-token: write
+    env:
+      RELEASE_TAG: ${{ needs.candidate.outputs.tag }}
+      EXPECTED_REVISION: ${{ needs.candidate.outputs.revision }}
+      EXPECTED_LOCK_SHA256: ${{ needs.candidate.outputs.cargo_lock_sha256 }}
+      WORKFLOW_REVISION: ${{ needs.candidate.outputs.workflow_revision }}
+      CANDIDATE_MODE: publish
     steps:
       - name: Check out the repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.candidate.outputs.revision }}
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Recheck approved tag before GHCR publication
+        run: python3 scripts/release_candidate.py verify
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -79,40 +218,29 @@ jobs:
 
       - name: Extract metadata (tags, labels) for CLI image
         id: meta-cli
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=cli
-            type=raw,value=${{ github.ref_name }}-cli
+            type=raw,value=${{ needs.candidate.outputs.tag }}-cli
+            type=raw,value=${{ needs.candidate.outputs.tag }}
+            type=raw,value=latest
           labels: |
             org.opencontainers.image.title=GENtle
             org.opencontainers.image.description=GENtle Debian-first headless CLI/MCP container image
             org.opencontainers.image.vendor=GENtle project
-
-      - name: Extract metadata (tags, labels) for GUI image
-        id: meta-gui
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=gui
-            type=raw,value=${{ github.ref_name }}-gui
-            type=raw,value=${{ github.ref_name }}
-            type=raw,value=latest
-          labels: |
-            org.opencontainers.image.title=GENtle
-            org.opencontainers.image.description=GENtle Debian-first GUI/CLI/MCP container image
-            org.opencontainers.image.vendor=GENtle project
+            org.opencontainers.image.revision=${{ needs.candidate.outputs.revision }}
 
       - name: Build and push CLI Docker image
         id: push-cli
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
           build-args: |
             DEBIAN_SUITE=forky
+            GENTLE_GIT_COMMIT=${{ needs.candidate.outputs.revision }}
           target: runtime-cli
           platforms: linux/amd64
           push: true
@@ -122,33 +250,9 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build and push GUI Docker image
-        id: push-gui
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          build-args: |
-            DEBIAN_SUITE=forky
-          target: runtime-gui
-          platforms: linux/amd64
-          push: true
-          provenance: false
-          tags: ${{ steps.meta-gui.outputs.tags }}
-          labels: ${{ steps.meta-gui.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
       - name: Generate CLI artifact attestation
         uses: actions/attest-build-provenance@v3
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.push-cli.outputs.digest }}
-          push-to-registry: true
-
-      - name: Generate GUI artifact attestation
-        uses: actions/attest-build-provenance@v3
-        with:
-          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          subject-digest: ${{ steps.push-gui.outputs.digest }}
           push-to-registry: true

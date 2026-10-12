@@ -1,5 +1,10 @@
 # VKORC1 / rs9923231 promoter-reporter handoff
 
+**Status: historical WIP, not current-revision acceptance.** Glen's
+`40430f98` supplied the retained JSON and three SVGs. Full input-state,
+binary/lockfile and run receipts were not included; no fresh online or native
+GUI replay is claimed here. See [provenance and pending checks](README.md).
+
 ## Interpretation coming from ClawBio
 
 ClawBio interprets a pharmacogenomic alert around warfarin and `VKORC1
@@ -49,8 +54,9 @@ GENtle is responsible for:
 - construct previews:
   - `vkorc1_rs9923231_reporter_reference`
   - `vkorc1_rs9923231_reporter_alternate`
-  - SVG export targets are defined by the workflow, but a clean live replay is
-    still required before those SVGs can be committed into this bundle
+  - SVGs are retained from Glen's WIP, not a verified current replay
+  - genomic-forward reference `C`, selected alternate `T`; preserve both
+    insert boundaries and require verification against the fetched marker
 
 ## Why this backbone is appropriate for human-cell work
 
@@ -60,6 +66,9 @@ GENtle is responsible for:
 - it matches transient transfection planning in human cells
 - it gives the tutorial one pinned local backbone so the canonical handoff does
   not depend on live GenBank retrieval
+- its sequence and feature architecture are synthetic placeholders, not an
+  exact functional commercial plasmid; promoter orientation relative to luc2,
+  insertion-site geometry and circular topology require separate checks
 
 ## Important assumptions
 
@@ -73,23 +82,23 @@ GENtle is responsible for:
 ## Artifacts
 
 - tutorial:
-  [docs/tutorial/08-04_vkorc1_warfarin_promoter_luciferase_gui.md](/Users/u005069/.codex/worktrees/47dd/gentle_rs/docs/tutorial/08-04_vkorc1_warfarin_promoter_luciferase_gui.md)
+  [08.04: VKORC1 promoter reporter](../../08-04_vkorc1_warfarin_promoter_luciferase_gui.md)
 - workflow:
-  [docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json](/Users/u005069/.codex/worktrees/47dd/gentle_rs/docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json)
+  [VKORC1 assay-planning workflow](../../../examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json)
 - promoter-context JSON:
-  [variant_promoter_context.json](/Users/u005069/.codex/worktrees/47dd/gentle_rs/docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/variant_promoter_context.json)
+  [variant_promoter_context.json](variant_promoter_context.json)
 - promoter-candidate JSON:
-  [promoter_reporter_candidates.json](/Users/u005069/.codex/worktrees/47dd/gentle_rs/docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/promoter_reporter_candidates.json)
+  [promoter_reporter_candidates.json](promoter_reporter_candidates.json)
 - promoter-context SVG:
-  [vkorc1_rs9923231_promoter_context.svg](/Users/u005069/.codex/worktrees/47dd/gentle_rs/docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_promoter_context.svg)
-- expected reference construct SVG path after full replay:
-  `docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_reference.svg`
-- expected alternate construct SVG path after full replay:
-  `docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_alternate.svg`
+  [vkorc1_rs9923231_promoter_context.svg](vkorc1_rs9923231_promoter_context.svg)
+- historical reference construct SVG:
+  [vkorc1_rs9923231_reporter_reference.svg](vkorc1_rs9923231_reporter_reference.svg)
+- historical alternate construct SVG:
+  [vkorc1_rs9923231_reporter_alternate.svg](vkorc1_rs9923231_reporter_alternate.svg)
 - commands:
-  [commands.sh](/Users/u005069/.codex/worktrees/47dd/gentle_rs/docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/commands.sh)
+  [commands.sh](commands.sh)
 - structured summary:
-  [result.json](/Users/u005069/.codex/worktrees/47dd/gentle_rs/docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/result.json)
+  [result.json](result.json)
 
 ## Bench-facing next actions
 

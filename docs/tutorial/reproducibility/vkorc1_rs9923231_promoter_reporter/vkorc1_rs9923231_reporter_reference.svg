@@ -1,0 +1,251 @@
+<svg height="700" viewBox="0 0 1200 700" width="1200" xmlns="http://www.w3.org/2000/svg">
+<text fill="#111111" font-family="monospace" font-size="18" x="20" y="34">
+&lt;no name&gt;
+</text>
+<text fill="#444444" font-family="monospace" font-size="14" x="20" y="54">
+4390 bp
+</text>
+<circle cx="672" cy="364" fill="none" r="231.00002" stroke="#000000" stroke-width="2"/>
+<line stroke="#8a7500" stroke-width="6" x1="672" x2="695.7233" y1="197.67998" y2="199.38058"/>
+<line stroke="#827d00" stroke-width="6" x1="695.7233" x2="718.96155" y1="199.38058" y2="204.44762"/>
+<line stroke="#827d00" stroke-width="6" x1="718.96155" x2="741.23944" y1="204.44762" y2="212.77747"/>
+<line stroke="#708f00" stroke-width="6" x1="741.23944" x2="762.1014" y1="212.77747" y2="224.1998"/>
+<line stroke="#857a00" stroke-width="6" x1="762.1014" x2="781.1207" y1="224.1998" y2="238.48102"/>
+<line stroke="#708f00" stroke-width="6" x1="781.1207" x2="797.9086" y1="238.48102" y2="255.32907"/>
+<line stroke="#7f8000" stroke-width="6" x1="797.9086" x2="812.1217" y1="255.32907" y2="274.3994"/>
+<line stroke="#827d00" stroke-width="6" x1="812.1217" x2="823.4693" y1="274.3994" y2="295.3021"/>
+<line stroke="#a65900" stroke-width="6" x1="823.4693" x2="831.71936" y1="295.3021" y2="317.60962"/>
+<line stroke="#7d8200" stroke-width="6" x1="831.71936" x2="836.70325" y1="317.60962" y2="340.8658"/>
+<line stroke="#827d00" stroke-width="6" x1="836.70325" x2="838.319" y1="340.8658" y2="364.5951"/>
+<line stroke="#7d8200" stroke-width="6" x1="838.319" x2="836.53345" y1="364.5951" y2="388.31223"/>
+<line stroke="#7f8000" stroke-width="6" x1="836.53345" x2="831.3833" y1="388.31223" y2="411.53217"/>
+<line stroke="#7f8000" stroke-width="6" x1="831.3833" x2="822.9738" y1="411.53217" y2="433.7801"/>
+<line stroke="#827d00" stroke-width="6" x1="822.9738" x2="811.47687" y1="433.7801" y2="454.60104"/>
+<line stroke="#7d8200" stroke-width="6" x1="811.47687" x2="797.12775" y1="454.60104" y2="473.56915"/>
+<line stroke="#7f8000" stroke-width="6" x1="797.12775" x2="780.2197" y1="473.56915" y2="490.29666"/>
+<line stroke="#7f8000" stroke-width="6" x1="780.2197" x2="761.09863" y1="490.29666" y2="504.4414"/>
+<line stroke="#827d00" stroke-width="6" x1="761.09863" x2="740.15546" y1="504.4414" y2="515.7141"/>
+<line stroke="#7d8200" stroke-width="6" x1="740.15546" x2="717.8186" y1="515.7141" y2="523.88434"/>
+<line stroke="#7f8000" stroke-width="6" x1="717.8186" x2="694.5447" y1="523.88434" y2="528.785"/>
+<line stroke="#7f8000" stroke-width="6" x1="694.5447" x2="670.8098" y1="528.785" y2="530.3158"/>
+<line stroke="#827d00" stroke-width="6" x1="670.8098" x2="647.09924" y1="530.3158" y2="528.44543"/>
+<line stroke="#7d8200" stroke-width="6" x1="647.09924" x2="623.8978" y1="528.44543" y2="523.2122"/>
+<line stroke="#7f8000" stroke-width="6" x1="623.8978" x2="601.6801" y1="523.2122" y2="514.72314"/>
+<line stroke="#7f8000" stroke-width="6" x1="601.6801" x2="580.9005" y1="514.72314" y2="503.15186"/>
+<line stroke="#827d00" stroke-width="6" x1="580.9005" x2="561.9838" y1="503.15186" y2="488.7349"/>
+<line stroke="#7d8200" stroke-width="6" x1="561.9838" x2="545.31696" y1="488.7349" y2="471.76712"/>
+<line stroke="#7f8000" stroke-width="6" x1="545.31696" x2="531.2407" y1="471.76712" y2="452.59552"/>
+<line stroke="#7f8000" stroke-width="6" x1="531.2407" x2="520.04297" y1="452.59552" y2="431.61218"/>
+<line stroke="#827d00" stroke-width="6" x1="520.04297" x2="511.95273" y1="431.61218" y2="409.24625"/>
+<line stroke="#7d8200" stroke-width="6" x1="511.95273" x2="507.13544" y1="409.24625" y2="385.95496"/>
+<line stroke="#7f8000" stroke-width="6" x1="507.13544" x2="505.68958" y1="385.95496" y2="362.2147"/>
+<line stroke="#7f8000" stroke-width="6" x1="505.68958" x2="507.6447" y1="362.2147" y2="338.51093"/>
+<line stroke="#827d00" stroke-width="6" x1="507.6447" x2="512.96094" y1="338.51093" y2="315.32843"/>
+<line stroke="#7d8200" stroke-width="6" x1="512.96094" x2="521.5294" y1="315.32843" y2="293.14133"/>
+<line stroke="#7f8000" stroke-width="6" x1="521.5294" x2="533.17505" y1="293.14133" y2="272.4032"/>
+<line stroke="#7f8000" stroke-width="6" x1="533.17505" x2="547.6596" y1="272.4032" y2="253.5382"/>
+<line stroke="#827d00" stroke-width="6" x1="547.6596" x2="564.6868" y1="253.5382" y2="236.93217"/>
+<line stroke="#7d8200" stroke-width="6" x1="564.6868" x2="583.9086" y1="236.93217" y2="222.9246"/>
+<line stroke="#7f8000" stroke-width="6" x1="583.9086" x2="604.93195" y1="222.9246" y2="211.80202"/>
+<line stroke="#7f8000" stroke-width="6" x1="604.93195" x2="627.3268" y1="211.80202" y2="203.79185"/>
+<line stroke="#827d00" stroke-width="6" x1="627.3268" x2="650.63513" y1="203.79185" y2="199.05792"/>
+<line stroke="#7f8000" stroke-width="6" x1="650.63513" x2="672" y1="199.05792" y2="197.67998"/>
+<path d="M 702.425 622.047 A 259.835 259.835 0 0 1 451.113 500.832" data-gentle-feature-kind="cds" data-gentle-role="feature-block" fill="none" stroke="#1f4fcc" stroke-width="6"/>
+<path d="M702.4249,622.0475 L703.5959,631.9787 L697.04083,632.74774" data-gentle-feature-kind="cds" data-gentle-role="transcription-start-arrow-shaft" fill="none" stroke="#1f4fcc" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+<path d="M695.2531,632.95746 L702.87244,636.091 L701.93567,628.14606 z" data-gentle-feature-kind="cds" data-gentle-role="transcription-start-arrow" fill="#1f4fcc" stroke="none"/>
+<text data-gentle-feature-kind="cds" data-gentle-role="feature-label" fill="#111111" font-family="monospace" font-size="12" text-anchor="end" x="541.2985" y="614.2467">
+luc2
+</text>
+<path d="M 444.112 494.992 A 262.854 262.854 0 0 1 426.526 457.994" data-gentle-feature-kind="misc_feature" data-gentle-role="feature-block" fill="none" stroke="#6e6e6e" stroke-width="6"/>
+<text data-gentle-feature-kind="misc_feature" data-gentle-role="feature-label" fill="#111111" font-family="monospace" font-size="12" text-anchor="end" x="408.42627" y="484.74445">
+SV40 polyA
+</text>
+<path d="M 479.398 416.076 A 199.518 199.518 0 0 1 472.497 361.573" data-gentle-feature-kind="cds" data-gentle-role="feature-block" fill="none" stroke="#1f4fcc" stroke-width="6"/>
+<path d="M472.49725,361.57285 L462.498,361.4512 L462.42322,368.05078" data-gentle-feature-kind="cds" data-gentle-role="transcription-start-arrow-shaft" fill="none" stroke="#1f4fcc" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+<path d="M462.4028,369.85068 L458.48468,362.60245 L466.48407,362.6998 z" data-gentle-feature-kind="cds" data-gentle-role="transcription-start-arrow" fill="#1f4fcc" stroke="none"/>
+<text data-gentle-feature-kind="cds" data-gentle-role="feature-label" fill="#111111" font-family="monospace" font-size="12" text-anchor="end" x="481.9367" y="386.9306">
+bla
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="677.95044" x2="678.843" y1="133.07663" y2="98.43811"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="678.843" x2="679.43805" y1="98.43811" y2="98.43811"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="679.6166" y="98.43811">
+18 FokI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="702.3291" x2="706.8785" y1="134.99966" y2="100.6496"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="706.8785" x2="709.9114" y1="100.6496" y2="109.43811"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="710.8212" y="109.43811">
+92 EcoO109
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="702.6568" x2="707.2554" y1="135.0433" y2="100.6998"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="707.2554" x2="710.32104" y1="100.6998" y2="120.43811"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="711.2407" y="120.43811">
+93 AflI, AsuI, Bac36, BamNxI, Bme216I, BspBII, CauI, Cfr13, EagMI, Eco47, ErpI, FdiI, FspMSI, HgiBI, HgiCII, HgiEI, HgiHIII, HgiJI, NspIV, PspI, SinI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="702.6568" x2="707.2554" y1="135.0433" y2="100.6998"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="707.2554" x2="710.32104" y1="100.6998" y2="131.43811"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="711.2407" y="131.43811">
+93 DraII, PpuMI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="703.6396" x2="708.38556" y1="135.17705" y2="100.85361"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="708.38556" x2="711.5495" y1="100.85361" y2="142.43811"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="712.49866" y="142.43811">
+96 PssI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="702.9845" x2="707.63214" y1="135.08743" y2="100.75052"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="707.63214" x2="710.7306" y1="100.75052" y2="153.43811"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="711.66016" y="153.43811">
+94 AvaII, Sau96
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="752.28253" x2="764.3249" y1="147.39963" y2="114.90956"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="764.3249" x2="772.35315" y1="114.90956" y2="164.43811"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="774.7616" y="164.43811">
+248 DraIII
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="772.3548" x2="787.408" y1="155.93768" y2="124.72833"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="787.408" x2="797.4435" y1="124.72833" y2="175.43811"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="800.4541" y="175.43811">
+314 TthI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="773.5443" x2="788.77594" y1="156.51563" y2="125.39296"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="788.77594" x2="798.93036" y1="125.39296" y2="186.43811"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="801.9767" y="186.43811">
+318 PleI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="782.93726" x2="799.5779" y1="161.38231" y2="130.98964"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="799.5779" x2="810.6716" y1="130.98964" y2="197.43811"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="813.9997" y="197.43811">
+350 NspBII
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="785.24994" x2="802.2374" y1="162.6658" y2="132.46567"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="802.2374" x2="813.56244" y1="132.46567" y2="208.43811"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="816.9599" y="208.43811">
+358 BglI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="844.4753" x2="870.34656" y1="210.33382" y2="187.28389"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="870.34656" x2="887.5941" y1="187.28389" y2="219.43811"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="892.7683" y="219.43811">
+589 GdiII
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="847.94867" x2="874.341" y1="214.32346" y2="191.87198"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="874.341" x2="891.93585" y1="191.87198" y2="230.43811"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="897.21436" y="230.43811">
+605 BpiI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="849.0153" x2="875.5676" y1="215.58641" y2="193.32437"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="875.5676" x2="893.26917" y1="193.32437" y2="241.43811"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="898.5796" y="241.43811">
+610 BbvII
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="851.7459" x2="878.7078" y1="218.9055" y2="197.14133"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="878.7078" x2="896.6824" y1="197.14133" y2="252.43811"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="902.07477" y="252.43811">
+623 TthII
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="854.2113" x2="881.54297" y1="222.01389" y2="200.71596"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="881.54297" x2="899.7641" y1="200.71596" y2="263.4381"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="905.23047" y="263.4381">
+635 AccEBI, AliI, BstI, BstYI, MflI, NspSAIV
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="854.4143" x2="881.7765" y1="222.27483" y2="201.01605"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="881.7765" x2="900.0179" y1="201.01605" y2="274.4381"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="905.49036" y="274.4381">
+636 BamHI, XhoII
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="863.1578" x2="891.8314" y1="234.30917" y2="214.85555"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="891.8314" x2="910.94727" y1="214.85555" y2="285.4381"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="916.68195" y="285.4381">
+681 AcyI, AosII, AstWI, AsuIII, BbiII, HgiDI, HgiGI, HgiHII
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="863.3432" x2="892.0447" y1="234.58289" y2="215.1703"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="892.0447" x2="911.179" y1="215.1703" y2="296.4381"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="916.9193" y="296.4381">
+682 AhaII
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="871.276" x2="901.16736" y1="247.1664" y2="229.64136"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="901.16736" x2="921.095" y1="229.64136" y2="307.4381"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="927.07324" y="307.4381">
+727 AlwNI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="870.94073" x2="900.78186" y1="246.59647" y2="228.98593"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="900.78186" x2="920.6759" y1="228.98593" y2="318.4381"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="926.64417" y="318.4381">
+725 SfaNI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="875.328" x2="905.82715" y1="254.37" y2="237.9255"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="905.82715" x2="926.16" y1="237.9255" y2="329.4381"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="932.2598" y="329.4381">
+752 XbaI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="877.33246" x2="908.1323" y1="258.17194" y2="242.2977"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="908.1323" x2="928.6656" y1="242.2977" y2="340.4381"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="934.82556" y="340.4381">
+765 AccI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="879.26587" x2="910.3558" y1="262.0105" y2="246.71207"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="910.3558" x2="931.0824" y1="246.71207" y2="351.4381"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="937.30035" y="351.4381">
+778 AspAI, BstPI, EcaI, EcoO65I, KoxI, NspSAII
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="879.4116" x2="910.52344" y1="262.30725" y2="247.05333"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="910.52344" x2="931.2645" y1="247.05333" y2="362.4381"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="937.48694" y="362.4381">
+779 BstEII
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="900.3716" x2="934.6274" y1="329.25214" y2="324.03995"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="934.6274" x2="957.46454" y1="324.03995" y2="373.4381"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="964.3157" y="373.4381">
+992 TthHB
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="900.42114" x2="934.6843" y1="329.579" y2="324.41586"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="934.6843" x2="957.52637" y1="324.41586" y2="384.4381"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="964.379" y="384.4381">
+993 TaqI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="901.4685" x2="935.8888" y1="337.44406" y2="333.46066"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="935.8888" x2="958.83563" y1="333.46066" y2="395.4381"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="965.7197" y="395.4381">
+1017 AquI, BstSI, NspIII, NspSAI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="901.5063" x2="935.93225" y1="337.7725" y2="333.83838"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="935.93225" x2="958.8828" y1="333.83838" y2="406.4381"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="965.76807" y="406.4381">
+1018 AvaI
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="902.7941" x2="937.41327" y1="354.24966" y2="352.7871"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="937.41327" x2="960.4927" y1="352.7871" y2="417.4381"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="967.4165" y="417.4381">
+1068 AhaIII
+</text>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="902.7941" x2="937.41327" y1="354.24966" y2="352.7871"/>
+<line data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-site-leader" stroke="#808080" stroke-width="1" x1="937.41327" x2="960.4927" y1="352.7871" y2="428.4381"/>
+<text data-gentle-feature-kind="restriction_site" data-gentle-role="restriction-label" dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="967.4165" y="428.4381">
+1068 DraI
+</text>
+<text fill="#222222" font-family="monospace" font-size="13" x="20" y="92">
+Annotated parts
+</text>
+<rect fill="#1f4fcc" height="10" width="10" x="20" y="101"/>
+<text fill="#222222" font-family="monospace" font-size="11" x="38" y="110">
+luciferase 2 (luc2)
+</text>
+<rect fill="#6e6e6e" height="10" width="10" x="20" y="123"/>
+<text fill="#222222" font-family="monospace" font-size="11" x="38" y="132">
+SV40 polyA: Synthetic
+</text>
+<text fill="#222222" font-family="monospace" font-size="11" x="38" y="146">
+polyadenylation feature
+</text>
+<text fill="#222222" font-family="monospace" font-size="11" x="38" y="160">
+placeholder for mammalian reporter
+</text>
+<text fill="#222222" font-family="monospace" font-size="11" x="38" y="174">
+planning.
+</text>
+<rect fill="#1f4fcc" height="10" width="10" x="20" y="187"/>
+<text fill="#222222" font-family="monospace" font-size="11" x="38" y="196">
+Beta-lactamase (bla): ampicillin
+</text>
+<text fill="#222222" font-family="monospace" font-size="11" x="38" y="210">
+resistance cassette
+</text>
+</svg>

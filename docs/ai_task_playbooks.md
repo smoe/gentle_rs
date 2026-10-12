@@ -1,6 +1,6 @@
 # AI Task Playbooks for GENtle
 
-Last updated: 2026-06-21
+Last updated: 2026-09-18
 
 This document is a compact operating guide for AI assistants that suggest GENtle
 workflows. It is intentionally practical: the assistant should use these
@@ -128,13 +128,15 @@ Required input:
 Useful commands:
 
 ```text
-/fetch ensembl FUS --species homo_sapiens --id fus_live
+/fetch ensembl TP73 --species homo_sapiens --assembly GRCh38 --flank-bp 10000 --id tp73_grch38
 /fetch genbank ACCESSION --id record_id
 /fetch uniprot QUERY --id protein_id
 /fetch ensembl-region homo_sapiens CHR START END --id region_id
 ```
 
 For human genes, prefer `homo_sapiens` over informal labels such as `HUMAN`.
+Use this network route only when no compatible prepared reference is present;
+`--assembly` verifies the resolved build and the flanks follow gene orientation.
 
 Validation checks:
 
@@ -160,9 +162,15 @@ Command families:
 genomes status GENOME_ID --catalog PATH --cache-dir PATH
 genomes prepare GENOME_ID --catalog PATH --cache-dir PATH
 genomes genes GENOME_ID --filter "^FUS$" --limit 20 --catalog PATH --cache-dir PATH
-genomes extract-gene GENOME_ID FUS --occurrence 1 --output-id fus_grch38 --catalog PATH --cache-dir PATH
+genomes extract-gene "Human GRCh38 Ensembl 116" TP73 --occurrence 1 --output-id tp73_grch38
+genomes extend-anchor tp73_grch38 5p 10000 --output-id tp73_grch38_5p
+genomes extend-anchor tp73_grch38_5p 3p 10000 --output-id tp73_grch38_context
+ui open sequence-window tp73_grch38_context
 genomes extract-region GENOME_ID CHR START END --output-id region_id --catalog PATH --cache-dir PATH
 ```
+
+Quote catalog ids that contain spaces. Run the extraction, extension, and open
+rows separately so each output id exists before the next command consumes it.
 
 Stop and ask when:
 
@@ -286,6 +294,215 @@ Expected result:
 - optional questions,
 - reviewed `suggested_commands[]`,
 - deterministic execution through GENtle after user confirmation.
+
+## Playbook 11: Evidence-Guided Regulatory Reporter Study
+
+Use this when a perturbation or expression contrast identifies genes whose
+native regulatory regions should be tested in a reporter backbone. Luciferase,
+fluorescence, and other reporter modalities are vector choices, not different
+biological planning contracts.
+
+Required context:
+
+- perturbation factor, form or isoform, biological system, time point, and
+  contrast;
+- responsive genes and the exact response-evidence source;
+- species and genome assembly;
+- policy for retaining all transcript-derived TSS/promoter classes or selecting
+  among them;
+- local motif annotations and independent occupancy tracks, when available;
+- exact catalog-owned reporter-vector identity.
+
+Keep these evidence statements separate:
+
+- `response`: the gene changed under the stated perturbation;
+- `sequence_motif_annotation`: a sequence matches a motif model;
+- `occupancy`: an independently supplied assay supports physical binding;
+- `reporter_result`: a completed experiment measured regulatory activity.
+
+A motif match without occupancy evidence is a candidate binding site. It is not
+proof of binding, causality, a cofactor relationship, or reporter activity.
+
+For the ordinary multi-gene, TSS-anchored front half, prepare a
+`gentle.regulatory_reporter_study_request.v1` and let the shared composer resolve
+the genes, select or bind one transcript TSS per member, extract annotated
+promoter loci, generate one candidate-set artifact per gene, assemble the panel
+request, and run the existing context-bound readiness inspector:
+
+```text
+promoters compose-study @study_request.json --path study_report.json
+```
+
+Use `source` for a catalog group or explicit gene list. Use `resolution` instead
+when a prior gene-set producer, including `co-regulated`, already emitted a
+reviewable `gentle.gene_set_resolution.v1`. Supply exactly one. A co-regulated
+resolution contributes a distinct `perturbation_response` evidence row; it does
+not prove direct regulation. `evidence_policy.required_kinds_per_member` is an
+exact fail-closed gate, while `evidence_by_member` carries independent rows such
+as occupancy evidence. `tss_policy=explicit_per_member` requires one transcript
+id for every resolved gene; the default uses the prepared annotation's
+outermost 5' transcript.
+
+The composer stops before panel planning or materialization. Its embedded
+readiness report may be `blocked`; resolve those current vector, candidate, or
+evidence checks before running `panel-plan`. Readiness is recalculated from the
+emitted files and current project state, never persisted as an authorization
+Boolean.
+
+Use the lower-level route when a study needs a motif, explicit interval, or
+variant anchor, or when promoter alternatives need manual inspection. Inspect
+their evidence before fragment planning:
+
+```text
+features promoter-evidence-matrix SEQ_ID --gene-label GENE --promoter-upstream-bp 1000 --promoter-downstream-bp 200 --path GENE.promoter_evidence.json
+```
+
+Generate candidates with the shared `SuggestPromoterReporterFragments`
+operation. A motif hit, explicit interval, or variant may be the anchor. Keep
+all requested TSS classes visible and explain why each fragment boundary was
+chosen. For a native fragment that retains the complete annotated 5' UTR but
+must not include the source start codon, bind the selected transcript with:
+
+```text
+op '{"SuggestPromoterReporterFragments":{"input":"SEQ_ID","gene_label":"GENE","retain_downstream_from_tss_bp":200,"retain_upstream_beyond_variant_bp":500,"max_candidates":10,"fragment_policy":{"anchor":{"kind":"motif_hit","label_or_id":"FACTOR","occurrence":1},"collapse_mode":{"tss_cluster":{"tolerance_bp":50}},"promoter_upstream_baseline_bp":500,"anchor_flank_bp":150,"max_fragment_length_bp":5000},"path":"GENE.promoter_candidates.json"}}'
+```
+
+Then select the transcript-bound extended boundary in the panel request:
+
+```json
+{
+  "kind": "canonical_cds_start_exclusive",
+  "transcript_id": "EXACT_TRANSCRIPT_ID"
+}
+```
+
+Build the first panel with `mutation_policy: "native_only_v1"`. Bind the
+response dataset and any independent occupancy support as distinct member
+`evidence[]` rows; do not flatten them into the motif annotation. An individual
+member may override that policy with `p53_family_core_disruption_v1` only when
+an engineered p53-family motif control was explicitly requested and its anchor
+is a resolved motif hit. Native-only members may use non-motif anchors and do
+not acquire a synthetic mutant by default.
+
+```text
+promoters panel-readiness request @panel_request.json --path panel_readiness.json
+promoters panel-plan @panel_request.json --path panel_proposal.json
+```
+
+Proceed to `panel-plan` only when the context-bound readiness report says
+`ready_to_plan`. The inspector reruns exact-vector, candidate/TSS,
+evidence-coordinate, and detached-simulation checks; `not_supplied` evidence is
+not a mechanical failure and is not evidence of absent occupancy.
+
+Review before approval:
+
+- gene, TSS class, transcript IDs, strand, and fragment bounds;
+- anchor type, evidence kind, motif identifier when applicable, overlapping
+  evidence rows, scores, provenance, and interpretation tags;
+- exact vector identity and preservation of every catalog-required vector
+  annotation outside the replaced multiple-cloning region;
+- cloning strategy, primer sequences, circular product hashes, final
+  restriction scan, warnings, and non-claims;
+- one `native` product per native-only member, plus only those engineered
+  controls that were explicitly requested.
+
+Stop before materialization. After a human reviews the complete proposal,
+confirm that it remains current and then use its exact digest:
+
+```text
+promoters panel-readiness proposal @panel_proposal.json --approve DIGEST --path panel_approval_readiness.json
+promoters panel-materialize @panel_proposal.json --approve DIGEST
+```
+
+Materialize only when the second report says `ready_to_materialize`.
+`ready_for_approval` means that the proposal is current but no matching human
+approval digest was supplied.
+
+External retrieval, mutation design, and final materialization remain
+confirmation-gated. A proposal predicts constructs; it does not establish
+biological activity or execute a wet-lab experiment.
+
+## Playbook 12: Gene-Informed Primer Pairs And Isoform Discrimination
+
+First clarify the measurement: detect all intended transcripts, distinguish
+isoforms/classes, compare endpoint RT-PCR product sizes, or quantify by qPCR.
+Single-primer Nanopore capture is a different workflow, not a PCR pair. Bind
+species, assembly, annotation release and the intended/excluded transcripts;
+do not silently pick a canonical transcript or discard difficult isoforms.
+
+Use an existing annotated locus or the prepared-reference route in Playbook 5.
+An isolated cDNA cannot establish the gene's complete isoform universe. Discover
+the actual sequence and feature identifiers before using these templates:
+
+```text
+state-summary
+features query SEQ_ID --limit 20 --include-qualifiers
+inspect-feature-expert SEQ_ID splicing FEATURE_ID
+ui open splicing-expert SEQ_ID FEATURE_ID
+```
+
+`FEATURE_ID` is the returned zero-based feature index, not a transcript accession
+or exon number. Re-query after annotation edits/imports; these are not stable
+identifiers across changes. Page through feature-query results if necessary. In
+Agent Assistant, an execution receipt proves only that the query completed; use
+**Use reviewed result in next prompt** to disclose the bounded feature rows to
+the inner agent after checking them for sensitive project data. The handoff is
+data, not approval for the next command. The inspector
+returns structured data; only the `ui` command opens the Splicing Expert in a
+GUI host. `ui focus` with the same operands reuses the window; `ui close` closes
+only that feature's expert and retains sequences/reports. Headless CLI/MCP
+returns `applied=false`; it has not opened a window remotely.
+
+Review the transcript selector, exon/junction geometry and Evidence view. Keep
+annotated structure, expression/array support, RNA-read support and absent
+evidence separate. The expert can seed primer/qPCR requests; a seed is neither
+a designed pair nor specificity evidence. For one chosen transcript:
+
+```text
+primers seed-qpcr-from-splicing SEQ_ID FEATURE_ID --mode distinguish_transcript --transcript-id TRANSCRIPT_ID
+```
+
+Inspect the returned operation before proposing its execution. For a
+multi-transcript endpoint panel, an explicit starting template is:
+
+```text
+help primers design-transcript-assay-panel
+primers design-transcript-assay-panel SEQ_ID FEATURE_ID --assay-kind endpoint-rt-pcr --objective minimal-discrimination-panel --coverage-policy require-all
+```
+
+Confirm the objective, cDNA-synthesis method, product-length constraints and
+evidence requirements before design. Use `pan-transcript` instead when common
+detection is intended. Do not substitute a generic genomic ROI for an isoform
+distinction. Where an evidence-backed plan already supplies exact operation
+payloads, reuse them and their approval contracts rather than recreating them
+from prose. Read-only `primers inspect-transcript-assay-feasibility` accepts the
+same operation payload before the design is run.
+
+After design, review every pair against the intended transcript universe:
+predicted products, missed classes, non-target products, oligo-dT reach and
+coverage limitations. The same explicit reviewed-result handoff lets the inner
+agent inspect the actual panel instead of inventing details from an execution
+hash; oversized results must be narrowed with a read-only show/query command,
+never silently truncated. `require-all` failure is not permission to switch to
+`best-effort`; request approval for that tradeoff. Identical assayed sequence
+cannot establish which otherwise distinct isoform produced the signal.
+
+Use the saved panel's `primers transcript-assay-specificity-plan` and
+`primers transcript-assay-specificity-finalize` path for bound external checks.
+For RT-PCR/qPCR, transcriptome specificity and genomic carryover are separate
+gates. A short/top-hit BLAST list does not prove exhaustive specificity.
+Assess complete synthesized oligos, including any adapters/tails: hairpins,
+self-dimers and cross-dimers between oligos that will actually coexist. Use
+existing QA/handoff routes discovered through `help primers`, not invented
+thermodynamic scores. Retain conditions, backend and evidence provenance.
+
+Keep **candidate**, **assessed** and **order-ready under a named policy** distinct.
+Missing or stale evidence remains unknown. Assemble an order form only after
+review of the bound experimental handoff; never treat window opening, a design
+report or a vendor handoff packet as an experiment or an order submission.
+
+The bridge supplies a compact version of this guidance to inner models; this
+document remains the fuller reference, not an assumed filesystem attachment.
 
 ## Tiny Local-Model Primer
 

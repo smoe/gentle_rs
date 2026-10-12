@@ -5,12 +5,43 @@
 //! The first extracted slice is intentionally small: stable identifier aliases,
 //! shared analysis enums, and the portable engine error payload.
 
+pub mod biological_context;
+pub mod collection_subjects;
 pub mod construct_reasoning;
+pub mod cryptic_splicing;
 pub mod dna_ladder;
+pub mod encode_ccre;
+pub mod ensembl_regulation;
+pub mod feature_location_edit;
+pub mod feature_record_curation;
+/// Portable measured-gel images, manual calibration requests, and sizing reports.
+pub mod gel_image;
 pub mod gene_groups;
+pub mod gene_set_publication;
 pub mod gene_sets;
+pub mod genomic_motif_evidence;
+pub mod genomic_regions;
+pub mod isoform_evidence;
 pub mod orthologs;
+pub mod promoter_cofactors;
+pub mod region_homology;
+pub mod regulatory_partners;
 pub mod reporter;
+/// Synthetic CDS motif-removal previews and separately approved exact outputs.
+pub mod sequence_design;
+/// Display-only splicing groups and row geometry; never changes engine payload order.
+pub mod splicing_presentation;
+pub mod tata_boxes;
+/// Source-neutral exon/structure identities retaining independent annotation provenance.
+pub mod transcript_presentation;
+/// Validated coordinate projections of separately scored sparse motif evidence.
+pub mod tss_motif_evidence;
+/// Accession-pinned, transcript-oriented TSS TFBS profile documents.
+pub mod tss_profiles;
+/// Fixed TSS-window and regulatory-intersection requests, distinct from insert proposals.
+pub mod tss_window_geometry;
+/// Exact annotated TSS inventory and preview-bound project collection derivation.
+pub mod tss_workspace;
 
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Value, json};
@@ -21,26 +52,96 @@ use std::{
     sync::LazyLock,
 };
 
+pub use biological_context::{
+    BiologicalContext, BiologicalContextRegistry, BiologicalContextResolutionError,
+    DEFAULT_BIOLOGICAL_CONTEXT_ID, LEGACY_BIOLOGICAL_CONTEXT_ID,
+};
+pub use collection_subjects::{
+    COLLECTION_LIFT_POLICY_REGISTRY_SCHEMA, COLLECTION_MEMBERSHIP_FINGERPRINT_ALGORITHM,
+    COLLECTION_OPERATION_REPORT_SCHEMA, CollectionCapabilityLiftPolicy,
+    CollectionContextRequirement, CollectionContextValidationError, CollectionLiftPolicyRegistry,
+    CollectionLiftRejectionReason, CollectionLiftSupport, CollectionLiftingMode,
+    CollectionMemberOutcome, CollectionMemberRef, CollectionMemberStatusRow,
+    CollectionOperationReport, CollectionSubjectKind, CollectionSubjectLiftPolicy,
+    CollectionSubjectRef, canonical_collection_membership_json,
+    homogeneous_collection_biological_context, validate_collection_context_target_genome,
+};
 pub use construct_reasoning::{
     ANNOTATION_CANDIDATE_SCHEMA, ANNOTATION_CANDIDATE_SUMMARY_SCHEMA,
     ANNOTATION_CANDIDATE_WRITEBACK_SCHEMA, AdapterCaptureProtectionMode, AdapterCaptureStyle,
     AdapterRestrictionCapturePlan, AnnotationCandidate, AnnotationCandidateSummary,
     AnnotationCandidateWriteback, CONSTRUCT_CANDIDATE_SCHEMA, CONSTRUCT_OBJECTIVE_SCHEMA,
-    CONSTRUCT_REASONING_GRAPH_SCHEMA, CONSTRUCT_REASONING_INSPECTION_ACTION_SCHEMA,
-    CONSTRUCT_REASONING_STORE_SCHEMA, ConstructCandidate, ConstructObjective,
-    ConstructReasoningGraph, ConstructReasoningInspectionAction,
-    ConstructReasoningInspectionActionKind, ConstructReasoningRepeatFamilyProvenance,
+    CONSTRUCT_REASONING_GRAPH_SCHEMA, CONSTRUCT_REASONING_INPUT_FINGERPRINT_SCHEMA,
+    CONSTRUCT_REASONING_INSPECTION_ACTION_SCHEMA, CONSTRUCT_REASONING_STORE_SCHEMA,
+    ConstructCandidate, ConstructObjective, ConstructReasoningGraph,
+    ConstructReasoningGraphFreshness, ConstructReasoningGraphSnapshotStatus,
+    ConstructReasoningInputFingerprint, ConstructReasoningInspectionAction,
+    ConstructReasoningInspectionActionKind, ConstructReasoningRepeatAnnotation,
+    ConstructReasoningRepeatFamilyAgreement, ConstructReasoningRepeatFamilyProvenance,
     ConstructReasoningRiskTask, ConstructReasoningSeverity, ConstructReasoningStore,
+    ConstructReasoningTaskApplicability, ConstructReasoningTaskApplicabilityBasis,
     ConstructReasoningTaskSeverity, ConstructRole, DESIGN_DECISION_NODE_SCHEMA,
-    DESIGN_EVIDENCE_SCHEMA, DESIGN_FACT_SCHEMA, DecisionMethod, DesignDecisionNode, DesignEvidence,
-    DesignFact, EditableStatus, EvidenceClass, EvidenceScope, HOST_PROFILE_CATALOG_SCHEMA,
-    HelperConstructProfile, HostLifecycleRole, HostProfileCatalog, HostProfileRecord,
-    HostRouteStep, ProteinToDnaHandoffCandidate, ProteinToDnaHandoffCoverage,
+    DESIGN_EVIDENCE_SCHEMA, DESIGN_FACT_SCHEMA, DOTPLOT_INSPECTION_PROVENANCE_CITATION_SCHEMA,
+    DecisionMethod, DesignDecisionNode, DesignEvidence, DesignFact,
+    DotplotInspectionProvenanceCitation, DotplotInspectionProvenanceStatus,
+    DotplotInspectionRequestSnapshot, EditableStatus, EvidenceClass, EvidenceScope,
+    HOST_PROFILE_CATALOG_SCHEMA, HelperConstructProfile, HostLifecycleRole, HostProfileCatalog,
+    HostProfileRecord, HostRouteStep, ProteinToDnaHandoffCandidate, ProteinToDnaHandoffCoverage,
     ProteinToDnaHandoffRankingGoal, ProteinToDnaHandoffStrategy,
+};
+pub use cryptic_splicing::{
+    CRYPTIC_SPLICING_EVIDENCE_OVERLAY_SCHEMA, CRYPTIC_SPLICING_PROTEIN_PROJECTION_SCHEMA,
+    CRYPTIC_SPLICING_SCREEN_SCHEMA, CrypticSplicingBranchpointSignal, CrypticSplicingBudgetSummary,
+    CrypticSplicingCandidateEvidenceOverlayRow, CrypticSplicingCandidateProteinProjectionRow,
+    CrypticSplicingCandidateRow, CrypticSplicingCdsConsequence,
+    CrypticSplicingEvidenceBindingStatus, CrypticSplicingEvidenceClass,
+    CrypticSplicingEvidenceOverlayReport, CrypticSplicingEvidenceOverlayRequest,
+    CrypticSplicingGenomicProvenanceRow, CrypticSplicingModelPolicy,
+    CrypticSplicingModelProvenance, CrypticSplicingModelStatus, CrypticSplicingModelTableDigest,
+    CrypticSplicingPolypyrimidineSignal, CrypticSplicingProjectedProteinFeatureRow,
+    CrypticSplicingProteinProjectionReport, CrypticSplicingProteinProjectionRequest,
+    CrypticSplicingProteinProjectionStatus, CrypticSplicingRnaEvidenceStatus,
+    CrypticSplicingRnaJunctionMatch, CrypticSplicingRnaReportBinding, CrypticSplicingScreenRequest,
+    CrypticSplicingScreenView, CrypticSplicingSignalStatus, CrypticSplicingSiteKind,
+    CrypticSplicingSiteRow, CrypticSplicingSpan, CrypticSplicingStrand,
 };
 pub use dna_ladder::{
     DNALadder, DNALadderBand, DNALadders, Ladder, LadderBand, LadderCatalog, LadderMolecule,
     RNALadder, RNALadderBand, RNALadders, default_dna_ladders, default_rna_ladders,
+};
+pub use encode_ccre::{
+    ENCODE_CCRE_INSTALL_REPORT_SCHEMA, ENCODE_CCRE_INTERVAL_INDEX_SCHEMA,
+    ENCODE_CCRE_MATERIALIZATION_SCHEMA, ENCODE_CCRE_OVERLAP_SCHEMA,
+    ENCODE_CCRE_SOURCE_CATALOG_SCHEMA, EncodeCcreBinCheckpoint, EncodeCcreChromosomeIndex,
+    EncodeCcreClassSummary, EncodeCcreGenomeAnchor, EncodeCcreInstallReport, EncodeCcreInterval,
+    EncodeCcreIntervalIndex, EncodeCcreMaterializationReport, EncodeCcreOverlapReport,
+    EncodeCcreOverlapRow, EncodeCcreSourceCatalog, EncodeCcreSourceDescriptor,
+};
+pub use ensembl_regulation::{
+    ENSEMBL_REGULATION_INSTALL_REPORT_SCHEMA, ENSEMBL_REGULATION_INTERVAL_INDEX_SCHEMA,
+    ENSEMBL_REGULATION_MATERIALIZATION_SCHEMA, ENSEMBL_REGULATION_OVERLAP_SCHEMA,
+    ENSEMBL_REGULATION_SOURCE_CATALOG_SCHEMA, EnsemblRegulationBinCheckpoint,
+    EnsemblRegulationChromosomeIndex, EnsemblRegulationGenomeAnchor,
+    EnsemblRegulationInstallReport, EnsemblRegulationInterval, EnsemblRegulationIntervalIndex,
+    EnsemblRegulationMaterializationReport, EnsemblRegulationOverlapReport,
+    EnsemblRegulationOverlapRow, EnsemblRegulationSourceCatalog, EnsemblRegulationSourceDescriptor,
+    EnsemblRegulationTypeSummary,
+};
+pub use feature_location_edit::{
+    FEATURE_LOCATION_EDIT_SCHEMA, FEATURE_LOCATION_EDIT_SCHEMA_V2,
+    FEATURE_LOCATION_FINGERPRINT_ALGORITHM, FeatureLocationCompoundContext,
+    FeatureLocationCompoundKind, FeatureLocationCompoundWarning, FeatureLocationEditReport,
+    FeatureLocationEditRequest, FeatureLocationEditStrand, FeatureLocationEditTargetScope,
+    FeatureLocationIntervalBoundaryRole, FeatureLocationSnapshot, FeatureLocationStoredDirection,
+    RelatedFeatureBoundaryCandidate, RelatedFeatureBoundaryReason, RelatedSegmentBoundaryCandidate,
+};
+pub use feature_record_curation::{
+    FEATURE_ANNOTATION_STATE_FINGERPRINT_ALGORITHM, FEATURE_RECORD_CURATION_SCHEMA,
+    FEATURE_RECORD_CURATION_SCHEMA_V1, FeatureRecordCreateRequest, FeatureRecordCurationKind,
+    FeatureRecordCurationOutcome, FeatureRecordCurationReport, FeatureRecordCurationRequest,
+    FeatureRecordDeleteRequest, FeatureRecordMergeRequest, FeatureRecordQualifier,
+    FeatureRecordReviewCandidate, FeatureRecordReviewEvidence, FeatureRecordSnapshot,
+    FeatureRecordSplitRequest,
 };
 pub use gene_groups::{
     GENE_GROUP_CATALOG_SCHEMA, GENE_GROUP_DOCTOR_REPORT_SCHEMA, GENE_GROUP_DRAFT_REPORT_SCHEMA,
@@ -48,6 +149,26 @@ pub use gene_groups::{
     GeneGroupCatalog, GeneGroupCatalogSourceReport, GeneGroupDoctorReport, GeneGroupDraftReport,
     GeneGroupExternalMapping, GeneGroupExternalResource, GeneGroupListEntry, GeneGroupListReport,
     GeneGroupMember, GeneGroupRecord, GeneGroupResolveReport, GeneGroupShowReport,
+};
+pub use gene_set_publication::{
+    GENE_ISOFORM_ASSAY_PUBLICATION_PROJECTION_SCHEMA,
+    GENE_ISOFORM_ASSAY_PUBLICATION_REQUEST_SCHEMA, GENE_ISOFORM_ASSAY_PUBLICATION_SCHEMA,
+    GENE_SET_PUBLICATION_BUNDLE_MANIFEST_SCHEMA, GENE_SET_PUBLICATION_GENERATION_SCHEMA,
+    GENE_SET_PUBLICATION_REPORT_SCHEMA, GENE_SET_PUBLICATION_REQUEST_SCHEMA,
+    GeneIsoformAssayPublicationArtifact, GeneIsoformAssayPublicationBlock,
+    GeneIsoformAssayPublicationBoundReport, GeneIsoformAssayPublicationGene,
+    GeneIsoformAssayPublicationGeneRequest, GeneIsoformAssayPublicationGeneStatus,
+    GeneIsoformAssayPublicationParameter, GeneIsoformAssayPublicationParameterOverride,
+    GeneIsoformAssayPublicationProfile, GeneIsoformAssayPublicationProjectionReport,
+    GeneIsoformAssayPublicationReport, GeneIsoformAssayPublicationReportRef,
+    GeneIsoformAssayPublicationRequest, GeneSetPublicationBundleArtifact,
+    GeneSetPublicationBundleManifest, GeneSetPublicationDownload,
+    GeneSetPublicationDownloadRequest, GeneSetPublicationFigure, GeneSetPublicationFigureRequest,
+    GeneSetPublicationGene, GeneSetPublicationGeneRequest, GeneSetPublicationGenerationReport,
+    GeneSetPublicationMetric, GeneSetPublicationNarrativeSection,
+    GeneSetPublicationPrimerColumnMap, GeneSetPublicationPrimerRow,
+    GeneSetPublicationPrimerSelectionDecision, GeneSetPublicationPrimerTableSource,
+    GeneSetPublicationReport, GeneSetPublicationRequest,
 };
 pub use gene_sets::{
     GENE_SET_CO_REGULATED_CACHE_SCHEMA, GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA,
@@ -61,25 +182,124 @@ pub use gene_sets::{
     GeneSetResolutionReport, GeneSetResolutionReviewStatus, GeneSetResolvedMember,
     GeneSetUnresolvedMember,
 };
+pub use genomic_motif_evidence::{
+    DEFAULT_GENOMIC_MOTIF_EVIDENCE_MAX_PAYLOAD_FILES, DEFAULT_GENOMIC_MOTIF_EVIDENCE_MAX_ROWS,
+    DEFAULT_GENOMIC_MOTIF_EVIDENCE_TIMEOUT_SECONDS, GENOMIC_MOTIF_EVIDENCE_SCHEMA,
+    GenomicMotifEvidenceAvailability, GenomicMotifEvidenceCompatibilityStatus,
+    GenomicMotifEvidenceCoverageStatus, GenomicMotifEvidenceHit, GenomicMotifEvidenceInterval,
+    GenomicMotifEvidenceMotifCoverage, GenomicMotifEvidencePayloadProvenance,
+    GenomicMotifEvidenceProviderProvenance, GenomicMotifEvidenceReport,
+    GenomicMotifEvidenceRequest, GenomicMotifEvidenceResolvedRegion, GenomicMotifEvidenceTarget,
+    MAX_GENOMIC_MOTIF_EVIDENCE_QUERY_MOTIFS,
+};
+pub use genomic_regions::{
+    GENOMIC_REGION_BED_MANIFEST_SCHEMA, GENOMIC_REGION_OF_INTEREST_SCHEMA,
+    GENOMIC_REGION_OPERATION_REPORT_SCHEMA, GENOMIC_REGION_SET_SCHEMA, GENOMIC_REGION_STORE_SCHEMA,
+    GenomicRegionBedManifest, GenomicRegionCaptureRequest, GenomicRegionCaptureSource,
+    GenomicRegionCollisionPolicy, GenomicRegionCoordinateConvention, GenomicRegionCreateRequest,
+    GenomicRegionDerivation, GenomicRegionDerivationMethod, GenomicRegionDeriveRequest,
+    GenomicRegionEnsemblIntervalKind, GenomicRegionEvidenceAvailability,
+    GenomicRegionEvidenceReference, GenomicRegionExportRequest, GenomicRegionFeatureReport,
+    GenomicRegionFeatureRequest, GenomicRegionImportFormat, GenomicRegionImportRequest,
+    GenomicRegionInspectRequest, GenomicRegionInterval, GenomicRegionListRequest,
+    GenomicRegionLocalProjection, GenomicRegionLocalProjectionStatus, GenomicRegionOfInterest,
+    GenomicRegionOperationReport, GenomicRegionParentReference, GenomicRegionPurpose,
+    GenomicRegionReference, GenomicRegionSelectionMethod, GenomicRegionSet,
+    GenomicRegionSetSummary, GenomicRegionStore, GenomicRegionStrand, GenomicRegionUpdateRequest,
+    default_genomic_region_import_max_bytes, default_genomic_region_import_max_rows,
+};
+pub use isoform_evidence::{
+    CDNA_EST_EVIDENCE_RESOURCE_SCHEMA, CdnaEstEvidenceKind, CdnaEstEvidenceRecord,
+    CdnaEstEvidenceResource, GENE_ISOFORM_EVIDENCE_INSTRUCTION, GENE_ISOFORM_EVIDENCE_SCHEMA,
+    GENE_ISOFORM_EVIDENCE_SCHEMA_V1, GENE_LOCUS_ENSEMBL_REGULATION_EVIDENCE_SCHEMA,
+    GENE_LOCUS_EVIDENCE_DISPLAY_INSTRUCTION, GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA,
+    GENE_LOCUS_EXTERNAL_REGULATORY_SCORE_SCHEMA, GENE_LOCUS_OCCUPANCY_LAYOUT_SCHEMA,
+    GeneIsoformAssayCandidate, GeneIsoformEvidenceComponent, GeneIsoformEvidenceComponents,
+    GeneIsoformEvidenceItem, GeneIsoformEvidenceMeasurement, GeneIsoformEvidenceProvenanceSource,
+    GeneIsoformEvidenceReport, GeneIsoformEvidenceRequest, GeneIsoformExonFamilyRow,
+    GeneIsoformFamilyRow, GeneIsoformJunctionRow, GeneIsoformOccupancyInterval,
+    GeneIsoformOccupancyLane, GeneIsoformRecommendation, GeneIsoformRecommendationTier,
+    GeneIsoformTranscriptRow, GeneLocusAssayOverlay, GeneLocusCodonKind, GeneLocusCodonMarker,
+    GeneLocusConservationBlockOverlay, GeneLocusEnsemblRegulationAvailability,
+    GeneLocusEnsemblRegulationAvailabilityPolicy, GeneLocusEnsemblRegulationEvidence,
+    GeneLocusEnsemblRegulationFeatureRow, GeneLocusEnsemblRegulationRequest,
+    GeneLocusEnsemblRegulationSourceBinding, GeneLocusEvidenceDisplayReport,
+    GeneLocusEvidenceDisplayRequest, GeneLocusExternalRegulatoryScoreResource,
+    GeneLocusGenomeAnchorBinding, GeneLocusLocalAxisDirection, GeneLocusMotifHit,
+    GeneLocusMotifTrack, GeneLocusOccupancyGroup, GeneLocusOccupancyGroupRequest,
+    GeneLocusOccupancyLane, GeneLocusOccupancyLaneRequest, GeneLocusOccupancyLaneRole,
+    GeneLocusOccupancyLaneState, GeneLocusOccupancyLayout, GeneLocusOccupancyScaleMode,
+    GeneLocusProbeClass, GeneLocusProbeEffectContrast, GeneLocusProbeEffectOverlay,
+    GeneLocusProbeEffectValue, GeneLocusRegulatoryCalibrationState, GeneLocusRegulatoryFactor,
+    GeneLocusRegulatoryScoreProviderKind, GeneLocusRegulatoryScoreScaleMode,
+    GeneLocusRegulatoryScoreSite, GeneLocusRegulatoryScoreState,
+    GeneLocusRegulatoryScoreStrandPolicy, GeneLocusRegulatoryScoreTrack,
+    GeneLocusRegulatoryScoreTrackRequest, GeneLocusRegulatorySourceFactorBinding,
+    GeneLocusSavedRegionOverlayRow, GeneLocusScaleBar, GeneLocusScaleBarMode,
+    GeneLocusScaleBarPolicy, GeneLocusSequenceBinding, GeneLocusTranscriptMetrics,
+    IsoformEvidenceAssessmentStatus, IsoformEvidenceSourceKind,
+};
 pub use orthologs::{
-    ORTHOLOG_PROMOTER_COHORT_SCHEMA, ORTHOLOG_PROMOTER_COMPARISON_SCHEMA, ORTHOLOG_RESOURCE_SCHEMA,
-    OrthologAmbiguityPolicy, OrthologCutRunSupportRow, OrthologCutRunSupportStatus,
-    OrthologExpressionAssignment, OrthologMappingRow, OrthologPairwiseTfbsSimilarity,
-    OrthologPromoterCohortReport, OrthologPromoterCohortRequest, OrthologPromoterComparisonReport,
-    OrthologPromoterRole, OrthologPromoterRow, OrthologResource, OrthologSequenceSimilarityRow,
-    OrthologSpeciesAlias, OrthologTfbsPeakSummary, OrthologTfbsSummaryRow, OrthologUnresolvedRow,
+    ORTHOLOG_PROMOTER_COHORT_SCHEMA, ORTHOLOG_PROMOTER_COMPARISON_SCHEMA,
+    ORTHOLOG_PROMOTER_CONSERVATION_SCHEMA, ORTHOLOG_RESOURCE_SCHEMA, OrthologAmbiguityCandidate,
+    OrthologAmbiguityPolicy, OrthologConfidence, OrthologConfidenceLevel,
+    OrthologConservationPairwiseAlignment, OrthologConservedInterval,
+    OrthologCutRunNormalizationInput, OrthologCutRunNormalizedAssignment,
+    OrthologCutRunNormalizedValueInput, OrthologCutRunPairwiseQuantitativeComparison,
+    OrthologCutRunQuantitativeComparison, OrthologCutRunQuantitativeComparisonStatus,
+    OrthologCutRunSupportRow, OrthologCutRunSupportStatus, OrthologExpressionAssignment,
+    OrthologMappingRow, OrthologPairwiseTfbsSimilarity, OrthologPromoterCohortReport,
+    OrthologPromoterCohortRequest, OrthologPromoterComparisonReport,
+    OrthologPromoterConservationReport, OrthologPromoterRole, OrthologPromoterRow,
+    OrthologResource, OrthologSequenceSimilarityRow, OrthologSpeciesAlias, OrthologTfbsPeakSummary,
+    OrthologTfbsSummaryRow, OrthologUnresolvedRow, OrthologyCardinality, OrthologyType,
+};
+pub use region_homology::{
+    GENOMIC_REGION_HOMOLOGY_PROJECTION_VERSION, GENOMIC_REGION_HOMOLOGY_SCREEN_SCHEMA,
+    GenomicRegionHomologyAlignmentConflict, GenomicRegionHomologyAlignmentRow,
+    GenomicRegionHomologyConservedBlock, GenomicRegionHomologyDatabaseBinding,
+    GenomicRegionHomologyEffectiveRequest, GenomicRegionHomologyExpectedLocus,
+    GenomicRegionHomologyHsp, GenomicRegionHomologyLocus, GenomicRegionHomologyLocusClass,
+    GenomicRegionHomologyOmittedInsertion, GenomicRegionHomologyQueryBinding,
+    GenomicRegionHomologyScreenReport, GenomicRegionHomologyScreenRequest,
+    GenomicRegionHomologySearchPolicy, GenomicRegionHomologySupportClass,
+    GenomicRegionHomologyTargetRequest, GenomicRegionHomologyTargetResult,
+    GenomicRegionHomologyTargetRole, GenomicRegionHomologyTargetStatus,
+    PROMOTER_MODULE_ASSESSMENT_SCHEMA, PROMOTER_SIMILARITY_MATRIX_SCHEMA,
+    PromoterModuleAlternativeFragment, PromoterModuleAssessmentReport,
+    PromoterModuleAssessmentRequest, PromoterModuleDecisionRule, PromoterModuleEvidenceSpan,
+    PromoterModuleHypothesisKind, PromoterModulePartnerContext, PromoterModuleTargetBlock,
+    PromoterSimilarityBlock, PromoterSimilarityMatrix, PromoterSimilarityMatrixPolicy,
+    PromoterSimilarityMatrixRow, default_homology_max_chain_gap_bp, default_homology_max_evalue,
+    default_homology_max_hsps_per_target, default_homology_max_loci_per_target,
+    default_homology_min_alignment_length_bp, default_homology_min_conserved_block_bp,
+    default_homology_min_identity_percent, default_promoter_module_max_partner_gap_bp,
+    default_promoter_module_max_same_genome_coverage_percent,
+    default_promoter_similarity_downstream_bp, default_promoter_similarity_upstream_bp,
+};
+pub use regulatory_partners::{
+    REGULATORY_PARTNER_DECISION_TREE_SCHEMA, REGULATORY_PARTNER_SCREEN_SCHEMA,
+    REGULATORY_PARTNER_TUPLE_LEDGER_SCHEMA, RegulatoryPartnerAnchorMode,
+    RegulatoryPartnerDecisionEdge, RegulatoryPartnerDecisionNode, RegulatoryPartnerDecisionOutcome,
+    RegulatoryPartnerDecisionTraceStep, RegulatoryPartnerDecisionTree, RegulatoryPartnerGeneRow,
+    RegulatoryPartnerIntervalRelation, RegulatoryPartnerMotifHit, RegulatoryPartnerMotifRole,
+    RegulatoryPartnerMotifThreshold, RegulatoryPartnerOrientation, RegulatoryPartnerScreenReport,
+    RegulatoryPartnerScreenRequest, RegulatoryPartnerSourceReportRef, RegulatoryPartnerTupleLedger,
+    RegulatoryPartnerTupleRow,
 };
 pub use reporter::{
     PortBindingStatus, REPORTER_CATALOG_REPORT_SCHEMA, REPORTER_CATALOG_SCHEMA,
     REPORTER_CONSTRUCT_HANDOFF_SCHEMA, REPORTER_CORPUS_EXPORT_SCHEMA,
-    REPORTER_RECOMMENDATION_SCHEMA, ReporterAnnotatedRecord, ReporterBackboneResolution,
-    ReporterBackboneResolutionStatus, ReporterCatalog, ReporterCatalogReport,
-    ReporterComputedAnnotation, ReporterConstraints, ReporterConstructHandoffCommand,
-    ReporterConstructHandoffPlan, ReporterConstructHandoffProvenance, ReporterConstructPortBinding,
+    REPORTER_RECOMMENDATION_SCHEMA, REPORTER_VECTOR_VALIDATION_SCHEMA, ReporterAnnotatedRecord,
+    ReporterBackboneResolution, ReporterBackboneResolutionStatus, ReporterCatalog,
+    ReporterCatalogReport, ReporterComputedAnnotation, ReporterConstraints,
+    ReporterConstructHandoffCommand, ReporterConstructHandoffPlan,
+    ReporterConstructHandoffProvenance, ReporterConstructPortBinding,
     ReporterConstructSelectedFragment, ReporterConstructSelectedReporter, ReporterCorpusExport,
     ReporterCorpusExportFormat, ReporterPreferenceWeights, ReporterQuarantinedRecord,
     ReporterRecommendation, ReporterRecommendationResult, ReporterRecord,
     ReporterRejectedCandidate, ReporterSourceRef, ReporterSpectralProfile,
+    ReporterVectorValidationCheck, ReporterVectorValidationReport, ReporterVectorValidationStatus,
 };
 
 /// Stable identifier for one sequence entry stored in project state.
@@ -452,6 +672,8 @@ pub struct ExternalServiceInlinePayload {
 pub type NodeId = String;
 /// Stable identifier for one wet-lab-style container record.
 pub type ContainerId = String;
+/// Stable identifier for one ordered arrangement record.
+pub type ArrangementId = String;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Sequence SVG render layout requested by shell/CLI/export adapters.
@@ -727,6 +949,99 @@ impl PrimerSpecificityCheckMode {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Provenance of the amplicon ceiling used for the ordinary specificity gate.
+pub enum PrimerSpecificityAmpliconCeilingSource {
+    /// The readiness ceiling falls back to the legacy exploratory policy cap.
+    #[default]
+    LegacyPolicyMax,
+    /// A user or adapter explicitly supplied the readiness ceiling.
+    ExplicitOverride,
+    /// A transcript-assay panel supplied its declared allowed product range.
+    TranscriptAssayPanelAllowedRange,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Amount of hit/product detail retained in the routine report.
+pub enum PrimerSpecificityReportDetailMode {
+    /// Retain accepted primer sites and biologically relevant products.
+    #[default]
+    Compact,
+    /// Retain every normalized HSP and candidate product inline.
+    Full,
+}
+
+fn primer_specificity_legacy_full_detail_mode() -> PrimerSpecificityReportDetailMode {
+    PrimerSpecificityReportDetailMode::Full
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Whether BLAST-seeded hits receive an end-to-end primer realignment.
+pub enum PrimerSpecificityFullAlignmentMode {
+    Disabled,
+    #[default]
+    BestEffort,
+    Required,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Scoring and completeness policy for full-primer realignment after BLAST.
+pub struct PrimerSpecificityFullAlignmentPolicy {
+    pub mode: PrimerSpecificityFullAlignmentMode,
+    pub match_score: i32,
+    pub mismatch_score: i32,
+    pub gap_open_score: i32,
+    pub gap_extend_score: i32,
+    /// Additional subject-window flank. Zero means one complete primer length.
+    pub subject_flank_bp: usize,
+}
+
+impl Default for PrimerSpecificityFullAlignmentPolicy {
+    fn default() -> Self {
+        Self {
+            mode: PrimerSpecificityFullAlignmentMode::BestEffort,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open_score: -5,
+            gap_extend_score: -2,
+            subject_flank_bp: 0,
+        }
+    }
+}
+
+impl PrimerSpecificityFullAlignmentPolicy {
+    pub fn is_default(&self) -> bool {
+        self == &Self::default()
+    }
+}
+
+fn primer_specificity_legacy_full_alignment_policy() -> PrimerSpecificityFullAlignmentPolicy {
+    PrimerSpecificityFullAlignmentPolicy {
+        mode: PrimerSpecificityFullAlignmentMode::Disabled,
+        ..PrimerSpecificityFullAlignmentPolicy::default()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Human-reviewed acceptable product retained separately from intended targets.
+pub struct PrimerSpecificityReviewedOffTargetAllowance {
+    pub allowance_id: String,
+    pub target_space: String,
+    pub subject_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_1based: Option<usize>,
+    pub reviewer: String,
+    pub reason: String,
+    pub evidence_sha256: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 /// Local BLAST specificity policy shared by standalone confirmation and future
@@ -735,11 +1050,30 @@ pub struct PrimerSpecificityPolicy {
     pub specificity_check: PrimerSpecificityCheckMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub specificity_target_genome_id: Option<String>,
+    /// Broad product window inspected for review/debug evidence.
     pub max_target_amplicon_bp: usize,
+    /// Ordinary assay/readiness ceiling. Products above this value but within
+    /// `max_target_amplicon_bp` remain visible as long-product warnings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readiness_max_target_amplicon_bp: Option<usize>,
+    #[serde(default)]
+    pub readiness_max_target_amplicon_bp_source: PrimerSpecificityAmpliconCeilingSource,
+    /// Human-readable derivation of the ordinary assay/readiness ceiling.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readiness_max_target_amplicon_bp_reason: Option<String>,
+    #[serde(default = "primer_specificity_legacy_full_detail_mode")]
+    pub report_detail_mode: PrimerSpecificityReportDetailMode,
     pub min_primer_coverage_fraction: f64,
     pub max_3prime_mismatches: usize,
     pub three_prime_window_bp: usize,
     pub min_total_mismatches_to_unintended_target: usize,
+    /// Missing on pre-extension payloads, which retain the historical
+    /// HSP-only interpretation. Newly constructed policies use `best_effort`
+    /// and serialize this field explicitly.
+    #[serde(default = "primer_specificity_legacy_full_alignment_policy")]
+    pub full_alignment: PrimerSpecificityFullAlignmentPolicy,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reviewed_off_target_allowlist: Vec<PrimerSpecificityReviewedOffTargetAllowance>,
     pub allow_same_gene_splice_variants: bool,
     pub max_hits_per_primer: usize,
     pub avoid_known_variants: bool,
@@ -753,10 +1087,17 @@ impl Default for PrimerSpecificityPolicy {
             specificity_check: PrimerSpecificityCheckMode::ReportOnly,
             specificity_target_genome_id: None,
             max_target_amplicon_bp: 4_000,
+            readiness_max_target_amplicon_bp: None,
+            readiness_max_target_amplicon_bp_source:
+                PrimerSpecificityAmpliconCeilingSource::LegacyPolicyMax,
+            readiness_max_target_amplicon_bp_reason: None,
+            report_detail_mode: PrimerSpecificityReportDetailMode::Compact,
             min_primer_coverage_fraction: 0.80,
             max_3prime_mismatches: 0,
             three_prime_window_bp: 5,
             min_total_mismatches_to_unintended_target: 2,
+            full_alignment: PrimerSpecificityFullAlignmentPolicy::default(),
+            reviewed_off_target_allowlist: vec![],
             allow_same_gene_splice_variants: false,
             max_hits_per_primer: 500,
             avoid_known_variants: false,
@@ -764,6 +1105,23 @@ impl Default for PrimerSpecificityPolicy {
             avoid_low_complexity: false,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+/// Optional local-BLAST confirmation requested as part of transcript assay
+/// panel design.
+///
+/// Omitting this record preserves the offline design-only path. When present,
+/// the target genome must name a prepared reference unless the check mode is
+/// `none`.
+pub struct TranscriptAssaySpecificityRequest {
+    #[serde(default)]
+    pub policy: PrimerSpecificityPolicy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1969,6 +2327,118 @@ impl GelRunConditions {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// Placement strategy for lane names below a virtual gel.
+pub enum GelLaneLabelLayout {
+    /// Choose horizontal, wrapped, or angled placement from the lane spacing
+    /// and label lengths.
+    #[default]
+    Auto,
+    /// Keep every lane name on one horizontal baseline.
+    Horizontal,
+    /// Wrap each lane name onto as many centered lines as needed.
+    Wrapped,
+    /// Alternate lane names between two horizontal baselines.
+    Staggered,
+    /// Rotate every lane name clockwise below its lane.
+    Angled,
+}
+
+impl GelLaneLabelLayout {
+    pub fn from_hint(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "auto" => Some(Self::Auto),
+            "horizontal" | "single_row" | "single-row" => Some(Self::Horizontal),
+            "wrapped" | "wrap" | "multi_row" | "multi-row" => Some(Self::Wrapped),
+            "staggered" | "stagger" | "two_row" | "two-row" => Some(Self::Staggered),
+            "angled" | "angle" | "rotated" | "rotate" => Some(Self::Angled),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Horizontal => "horizontal",
+            Self::Wrapped => "wrapped",
+            Self::Staggered => "staggered",
+            Self::Angled => "angled",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Placement strategy for textual band annotations inside a virtual gel.
+pub enum GelBandLabelLayout {
+    /// Draw an in-gel annotation only when it fits before the next lane or the
+    /// gel edge; the fragment table always remains available.
+    #[default]
+    Auto,
+    /// Always draw the legacy in-gel annotations, even on dense gels.
+    Inline,
+    /// Keep detailed band text in the fragment table only.
+    Panel,
+}
+
+impl GelBandLabelLayout {
+    pub fn from_hint(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "auto" => Some(Self::Auto),
+            "inline" | "in_gel" | "in-gel" => Some(Self::Inline),
+            "panel" | "table" | "detail_panel" | "detail-panel" => Some(Self::Panel),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Inline => "inline",
+            Self::Panel => "panel",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Whether virtual gels identify repeated transcript isoforms redundantly.
+pub enum GelIsoformMarkerMode {
+    /// Detect transcript accessions in product identifiers and encode each
+    /// isoform by color, marker position, and a legend-backed binary code.
+    #[default]
+    Auto,
+    /// Suppress isoform identity markers and their legend.
+    Off,
+}
+
+impl GelIsoformMarkerMode {
+    pub fn from_hint(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "auto" | "on" | "true" => Some(Self::Auto),
+            "off" | "none" | "false" => Some(Self::Off),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Off => "off",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(default)]
+/// Presentation-only options for serial/pool gel SVG rendering.
+pub struct PoolGelRenderOptions {
+    pub lane_label_layout: GelLaneLabelLayout,
+    pub band_label_layout: GelBandLabelLayout,
+    pub isoform_marker_mode: GelIsoformMarkerMode,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
 /// Shared scope preset for splicing/exon-context views and RNA-read mapping.
 pub enum SplicingScopePreset {
     #[default]
@@ -2011,7 +2481,7 @@ pub struct ProteinFeatureFilter {
     pub exclude_feature_keys: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum FeatureExpertTarget {
     #[serde(alias = "TfbsFeature")]
@@ -2034,6 +2504,12 @@ pub enum FeatureExpertTarget {
     },
     #[serde(alias = "IsoformArchitecture")]
     IsoformArchitecture { panel_id: String },
+    #[serde(alias = "IsoformEvidence")]
+    IsoformEvidence { request: GeneIsoformEvidenceRequest },
+    #[serde(alias = "GeneLocusEvidence")]
+    GeneLocusEvidence {
+        request: GeneLocusEvidenceDisplayRequest,
+    },
     #[serde(alias = "ProteinComparison")]
     ProteinComparison {
         #[serde(default)]
@@ -2088,6 +2564,22 @@ impl FeatureExpertTarget {
             Self::IsoformArchitecture { panel_id } => {
                 format!("isoform architecture panel '{panel_id}'")
             }
+            Self::IsoformEvidence { request } => format!(
+                "isoform evidence panel '{}' (RNA reports={}, qPCR reports={}, probe resources={}, cDNA/EST resources={})",
+                request.panel_id,
+                request.rna_read_report_ids.len(),
+                request.qpcr_report_ids.len(),
+                request.probe_evidence_paths.len(),
+                request.cdna_est_resource_paths.len()
+            ),
+            Self::GeneLocusEvidence { request } => format!(
+                "gene locus evidence panel '{}' (upstream={}, downstream={}, occupancy groups={}, motifs={})",
+                request.isoform_evidence.panel_id,
+                request.upstream_bp,
+                request.downstream_bp,
+                request.occupancy_layout.groups.len(),
+                request.motifs.len()
+            ),
             Self::ProteinComparison {
                 transcript_id_filter,
                 protein_feature_filter,
@@ -2595,12 +3087,112 @@ pub struct SplicingTranscriptLane {
     pub has_target_feature: bool,
 }
 
+/// Exact UniProt Ensembl cross-reference, preserving each identifier tuple.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct UniprotEnsemblLinkedXref {
+    pub transcript_id: Option<String>,
+    pub protein_id: Option<String>,
+    pub gene_id: Option<String>,
+    pub isoform_id: Option<String>,
+}
+
+/// Classification against relevant loaded evidence, never all of UniProt.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SplicingUniprotReferenceStatus {
+    Referenced,
+    NotReferenced,
+    #[default]
+    NotEvaluated,
+}
+
+impl SplicingUniprotReferenceStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Referenced => "referenced",
+            Self::NotReferenced => "not_referenced",
+            Self::NotEvaluated => "not_evaluated",
+        }
+    }
+}
+
+/// Loaded entry and the exact relations that make it relevant to this locus.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct SplicingUniprotReferenceSource {
+    pub entry_id: String,
+    pub accession: String,
+    pub reviewed: Option<bool>,
+    pub entry_sha256: String,
+    /// Normalized explicit locus transcript IDs matched by this entry's xrefs.
+    pub matched_locus_transcript_ids: Vec<String>,
+    /// Exact stable Ensembl gene-ID relation, independent of transcript matching.
+    pub matched_locus_gene_id: Option<String>,
+    /// Exact transcript xrefs for this row; a gene-only relation leaves this empty.
+    pub matched_transcript_xrefs: Vec<UniprotEnsemblLinkedXref>,
+}
+
+/// Transcript evidence shared by lane, matrix, GUI and export consumers.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct SplicingUniprotReferenceEvidence {
+    pub status: SplicingUniprotReferenceStatus,
+    pub sources: Vec<SplicingUniprotReferenceSource>,
+    pub diagnostics: Vec<String>,
+}
+
+impl SplicingUniprotReferenceEvidence {
+    /// Human-readable projection of the typed evidence, without new inference.
+    pub fn summary_lines(&self) -> Vec<String> {
+        let mut lines = vec![match self.status {
+            SplicingUniprotReferenceStatus::Referenced =>
+                "UniProt: exact transcript xref in relevant loaded evidence.".to_string(),
+            SplicingUniprotReferenceStatus::NotReferenced =>
+                "UniProt: no exact transcript xref in relevant loaded evidence; not a global absence claim.".to_string(),
+            SplicingUniprotReferenceStatus::NotEvaluated if self.sources.is_empty() =>
+                "UniProt: not evaluated; no exact transcript or stable Ensembl gene-ID relation establishes relevant loaded evidence.".to_string(),
+            SplicingUniprotReferenceStatus::NotEvaluated =>
+                "UniProt: not evaluated; this row has no explicit transcript identity for xref assessment.".to_string(),
+        }];
+        for source in &self.sources {
+            let review = match source.reviewed {
+                Some(true) => "reviewed",
+                Some(false) => "unreviewed",
+                None => "review status unknown",
+            };
+            lines.push(format!(
+                "{} (local entry {}, {}, {}); locus transcript xrefs: {}; locus gene xref: {}",
+                source.accession,
+                source.entry_id,
+                review,
+                source.entry_sha256,
+                source.matched_locus_transcript_ids.join(", "),
+                source.matched_locus_gene_id.as_deref().unwrap_or("none"),
+            ));
+            for xref in &source.matched_transcript_xrefs {
+                lines.push(format!(
+                    "Transcript {}; protein {}; gene {}; isoform {}",
+                    xref.transcript_id.as_deref().unwrap_or("unknown"),
+                    xref.protein_id.as_deref().unwrap_or("unknown"),
+                    xref.gene_id.as_deref().unwrap_or("unknown"),
+                    xref.isoform_id.as_deref().unwrap_or("unknown"),
+                ));
+            }
+        }
+        lines.extend(self.diagnostics.iter().cloned());
+        lines
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SplicingMatrixRow {
     pub transcript_feature_id: usize,
     pub transcript_id: String,
     pub label: String,
     pub exon_presence: Vec<bool>,
+    #[serde(default)]
+    pub uniprot_reference: SplicingUniprotReferenceEvidence,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2623,6 +3215,9 @@ pub struct SplicingExpertView {
     pub transcript_count: usize,
     pub unique_exon_count: usize,
     pub instruction: String,
+    /// Stable digest of the serialized view with this field omitted.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub presentation_fingerprint_sha256: String,
     pub transcripts: Vec<SplicingTranscriptLane>,
     pub unique_exons: Vec<SplicingExonSummary>,
     pub matrix_rows: Vec<SplicingMatrixRow>,
@@ -2631,6 +3226,105 @@ pub struct SplicingExpertView {
     pub intron_signals: Vec<SplicingIntronSignal>,
     pub junctions: Vec<SplicingJunctionArc>,
     pub events: Vec<SplicingEventSummary>,
+}
+
+impl SplicingExpertView {
+    /// Pure display projection; serialized rows, derivations and fingerprints stay unchanged.
+    pub fn uniprot_presentation_layout(&self) -> splicing_presentation::SplicingPresentationLayout {
+        splicing_presentation::SplicingPresentationLayout::new(self)
+    }
+
+    /// A missing legacy row/evidence never establishes evaluated absence.
+    pub fn uniprot_reference_for_transcript(
+        &self,
+        transcript_feature_id: usize,
+    ) -> Option<&SplicingUniprotReferenceEvidence> {
+        self.matrix_rows
+            .iter()
+            .find(|row| row.transcript_feature_id == transcript_feature_id)
+            .map(|row| &row.uniprot_reference)
+    }
+}
+
+#[cfg(test)]
+mod splicing_uniprot_reference_tests {
+    use super::*;
+
+    #[test]
+    fn legacy_splicing_uniprot_reference_is_not_evaluated() {
+        // Hand-crafted synthetic legacy payload, not a biological gene record.
+        let json = serde_json::json!({
+            "seq_id": "synthetic", "target_feature_id": 4, "group_label": "SYNTHETIC",
+            "strand": "+", "region_start_1based": 1, "region_end_1based": 12,
+            "transcript_count": 1, "unique_exon_count": 0, "instruction": "synthetic",
+            "transcripts": [{ "transcript_feature_id": 4, "transcript_id": "TX_SYNTHETIC",
+                "label": "synthetic", "strand": "+", "exons": [], "introns": [],
+                "has_target_feature": true }],
+            "matrix_rows": [{ "transcript_feature_id": 4, "transcript_id": "TX_SYNTHETIC",
+                "label": "synthetic", "exon_presence": [] }],
+            "unique_exons": [], "boundaries": [], "junctions": [], "events": []
+        });
+        let view: SplicingExpertView = serde_json::from_value(json).expect("legacy view");
+        let evidence = view
+            .uniprot_reference_for_transcript(4)
+            .expect("linked matrix row");
+        assert_eq!(
+            evidence.status,
+            SplicingUniprotReferenceStatus::NotEvaluated
+        );
+        assert!(evidence.sources.is_empty());
+        assert!(evidence.summary_lines()[0].contains("not evaluated"));
+        assert!(view.uniprot_reference_for_transcript(8).is_none());
+    }
+
+    #[test]
+    fn splicing_uniprot_reference_round_trips_exact_relations() {
+        // Synthetic identifiers and hash only; no live UniProt data.
+        let evidence = SplicingUniprotReferenceEvidence {
+            status: SplicingUniprotReferenceStatus::Referenced,
+            sources: vec![SplicingUniprotReferenceSource {
+                entry_id: "synthetic_entry".to_string(),
+                accession: "SYNTHETIC_ACCESSION".to_string(),
+                reviewed: None,
+                entry_sha256: format!("sha256:{}", "ab".repeat(32)),
+                matched_locus_transcript_ids: vec!["ENST00000900001".to_string()],
+                matched_locus_gene_id: Some("ENSG00000900001".to_string()),
+                matched_transcript_xrefs: vec![UniprotEnsemblLinkedXref {
+                    transcript_id: Some("ENST00000900001.7".to_string()),
+                    protein_id: Some("ENSP00000900001.2".to_string()),
+                    gene_id: Some("ENSG00000900001".to_string()),
+                    isoform_id: Some("SYNTHETIC_ACCESSION-2".to_string()),
+                }],
+            }],
+            diagnostics: vec!["Synthetic ambiguity diagnostic".to_string()],
+        };
+        let json = serde_json::to_value(&evidence).expect("serialize reference");
+        assert_eq!(json["status"], "referenced");
+        let decoded: SplicingUniprotReferenceEvidence =
+            serde_json::from_value(json).expect("reference");
+        assert_eq!(decoded, evidence);
+        let summary = decoded.summary_lines().join("\n");
+        assert!(summary.contains("review status unknown"));
+        assert!(summary.contains("SYNTHETIC_ACCESSION-2"));
+        assert!(summary.contains("ENST00000900001.7"));
+    }
+
+    #[test]
+    fn splicing_uniprot_reference_nonmatch_is_scoped_to_loaded_evidence() {
+        let evidence = SplicingUniprotReferenceEvidence {
+            status: SplicingUniprotReferenceStatus::NotReferenced,
+            ..Default::default()
+        };
+        assert!(evidence.summary_lines()[0].contains("not a global absence claim"));
+        assert_eq!(
+            serde_json::to_value(evidence).unwrap()["status"],
+            "not_referenced"
+        );
+        assert_eq!(
+            SplicingUniprotReferenceStatus::default().as_str(),
+            "not_evaluated"
+        );
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -3133,6 +3827,8 @@ pub enum FeatureExpertView {
     RestrictionSite(RestrictionSiteExpertView),
     Splicing(SplicingExpertView),
     IsoformArchitecture(IsoformArchitectureExpertView),
+    IsoformEvidence(GeneIsoformEvidenceReport),
+    GeneLocusEvidence(GeneLocusEvidenceDisplayReport),
 }
 
 impl FeatureExpertView {
@@ -3142,6 +3838,8 @@ impl FeatureExpertView {
             Self::RestrictionSite(_) => RESTRICTION_EXPERT_INSTRUCTION,
             Self::Splicing(_) => SPLICING_EXPERT_INSTRUCTION,
             Self::IsoformArchitecture(_) => ISOFORM_ARCHITECTURE_EXPERT_INSTRUCTION,
+            Self::IsoformEvidence(_) => GENE_ISOFORM_EVIDENCE_INSTRUCTION,
+            Self::GeneLocusEvidence(_) => GENE_LOCUS_EVIDENCE_DISPLAY_INSTRUCTION,
         }
     }
 }
@@ -3736,13 +4434,17 @@ impl RnaReadAlignmentInspectionSortKey {
 /// Stable high-level error class for engine operation failures.
 pub enum ErrorCode {
     InvalidInput,
+    /// A valid, bounded transcript-panel search completed but strict target
+    /// coverage could not be satisfied. This is the only error class eligible
+    /// for a pre-approved informative-partial retry.
+    TranscriptAssayCoverageInfeasible,
     NotFound,
     Unsupported,
     Io,
     Internal,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 /// Shared structured error payload returned by engine operations/adapters.
 pub struct EngineError {
     pub code: ErrorCode,
@@ -3959,6 +4661,12 @@ pub struct DotplotView {
     pub seq_id: String,
     pub reference_seq_id: Option<String>,
     pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inspection_provenance: Option<DotplotInspectionProvenanceCitation>,
     pub span_start_0based: usize,
     pub span_end_0based: usize,
     pub reference_span_start_0based: usize,
@@ -3987,6 +4695,12 @@ pub struct DotplotViewSummary {
     pub seq_id: String,
     pub reference_seq_id: Option<String>,
     pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inspection_provenance: Option<DotplotInspectionProvenanceCitation>,
     pub span_start_0based: usize,
     pub span_end_0based: usize,
     pub reference_span_start_0based: usize,
@@ -4558,6 +5272,8 @@ pub struct SequenceFeatureQuery {
     pub qualifier_filters: Vec<SequenceFeatureQualifierFilter>,
     pub min_len_bp: Option<usize>,
     pub max_len_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nearest_to_0based: Option<usize>,
     pub limit: Option<usize>,
     pub offset: usize,
     pub sort_by: SequenceFeatureSortBy,
@@ -4572,6 +5288,8 @@ pub struct SequenceFeatureQueryRow {
     pub start_0based: usize,
     pub end_0based_exclusive: usize,
     pub length_bp: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub distance_to_query_bp: Option<usize>,
     pub strand: String,
     pub label: String,
     pub labels: Vec<String>,
@@ -4592,6 +5310,8 @@ pub struct SequenceFeatureQueryResult {
     pub range_relation: String,
     pub strand_filter: String,
     pub sort_by: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nearest_to_0based: Option<usize>,
     pub descending: bool,
     pub query: SequenceFeatureQuery,
     pub rows: Vec<SequenceFeatureQueryRow>,
@@ -4812,6 +5532,9 @@ pub struct CapabilityDescriptor {
     pub inline_operand_ok: Option<bool>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub engine_operations: Vec<String>,
+    /// Curated, subject-specific collection lifting behavior.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub collection_lift_policies: Vec<CollectionSubjectLiftPolicy>,
     pub source: CapabilitySource,
 }
 
@@ -4916,10 +5639,24 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "RenderTfbsScoreTracksSvg",
     "RenderTfbsScoreTrackCorrelationSvg",
     "RenderFeatureExpertSvg",
+    "PrepareGeneLocusEvidence",
+    "InspectCrypticSplicingScreen",
+    "ScreenTataBoxes",
+    "MaterializeTataBoxFeatures",
+    "RenderCrypticSplicingScreenSvg",
+    "InspectCrypticSplicingEvidenceOverlay",
+    "InspectCrypticSplicingProteinProjection",
     "RenderIsoformArchitectureSvg",
     "RenderRnaStructureSvg",
     "RenderLineageSvg",
     "RenderPoolGelSvg",
+    "ImportGelImage",
+    "AnalyzeGelImage",
+    "SaveGelImageDraft",
+    "ComputeTssTfbsProfiles",
+    "ExportTssTfbsProfiles",
+    "InspectGelImageAnalysis",
+    "ExportGelImageAnalysis",
     "RenderProteinGelSvg",
     "RenderProteinGelReportsSvg",
     "RenderProteaseDigestGelSvg",
@@ -4953,6 +5690,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "ExportDnaLadders",
     "ExportRnaLadders",
     "ExportPool",
+    "ExportPoolCollection",
     "ExportProcessRunBundle",
     "ExportLabAssistantInstructions",
     "PrepareGenome",
@@ -4974,6 +5712,9 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "ShowCutRunReadReport",
     "ExportCutRunReadCoverage",
     "InspectCutRunRegulatorySupport",
+    "BuildGeneSetPromoterCohort",
+    "InspectRegulatoryPartnerScreen",
+    "CreateGeneSetPool",
     "ImportIsoformPanel",
     "ImportUniprotSwissProt",
     "FetchUniprotSwissProt",
@@ -4988,6 +5729,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "ImportEnsemblProteinSequence",
     "ProjectUniprotToGenome",
     "QueryProteinResidueGenomicCoordinates",
+    "BuildUniprotLinkedTranscriptInventory",
     "AuditUniprotProjectionConsistency",
     "AuditUniprotProjectionParity",
     "ImportBlastHitsTrack",
@@ -4996,10 +5738,35 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "LigationContainer",
     "FilterContainerByMolecularWeight",
     "Digest",
+    "DigestCollection",
     "FindRestrictionSites",
+    "FindRestrictionSitesCollection",
+    "InspectConstructReasoningCollection",
+    "ScanTfbsHitsCollection",
     "QueryRepeatAnnotations",
     "QueryRepeatOverlaps",
     "MaterializeRepeatFeatures",
+    "QueryEncodeCcreOverlaps",
+    "MaterializeEncodeCcreFeatures",
+    "QueryEnsemblRegulationOverlaps",
+    "MaterializeEnsemblRegulationFeatures",
+    "CreateGenomicRegion",
+    "CaptureGenomicRegion",
+    "PreviewGenomicRegionFeature",
+    "MaterializeGenomicRegionFeature",
+    "ListGenomicRegions",
+    "InspectGenomicRegion",
+    "UpdateGenomicRegionPresentation",
+    "DeriveGenomicRegion",
+    "ImportGenomicRegionSet",
+    "ExportGenomicRegionSet",
+    "ScreenGenomicRegionHomology",
+    "RenderGenomicRegionHomologySvg",
+    "AssessPromoterConservedModules",
+    "PreviewFeatureLocationEdit",
+    "EditFeatureLocation",
+    "PreviewFeatureRecordCuration",
+    "ApplyFeatureRecordCuration",
     "BuildRepeatEnvironmentCohort",
     "MergeContainers",
     "Ligation",
@@ -5007,12 +5774,34 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "PcrAdvanced",
     "PcrMutagenesis",
     "DesignPrimerPairs",
+    "DesignTerminalExonRtPrimerPool",
+    "DesignTranscriptCapturePool",
+    "ExportTerminalExonRtPrimerPoolReport",
+    "DesignPrimerGroupTarget",
+    "ExportPrimerSpecificityAlignmentHtml",
     "DesignInsertionPrimerPairs",
     "ExportPrimerDesignReport",
     "AssessPrimerPairSpecificity",
+    "AssessPrimerPairSpecificityCollection",
+    "PreparePrimerPairSpecificityHandoff",
+    "ImportPrimerPairSpecificityHandoff",
+    "PreparePrimerPairMultiReferenceSpecificityHandoff",
+    "ImportPrimerPairMultiReferenceSpecificity",
+    "GetPrimerPairMultiReferenceSpecificitySummary",
+    "ListPrimerPairMultiReferenceSpecificitySummaries",
     "PrepareRestrictionCloningPcrHandoff",
     "PcrOverlapExtensionMutagenesis",
     "DesignQpcrAssays",
+    "BuildTranscriptAssayCdnaSimilarityMap",
+    "RedesignTranscriptAssaySpecificityFailures",
+    "DesignTranscriptAssayPanel",
+    "DesignTranscriptAssayPanelWithFallback",
+    "PlanGeneIsoformAssayStudy",
+    "ComposeGeneTranscriptAssayRoutine",
+    "BuildExperimentalAssayHandoff",
+    "SearchPrimerBank",
+    "ImportExternalPrimerPairs",
+    "ScreenPrimerVariants",
     "TestCdnaPcr",
     "TestCdnaQpcr",
     "TestCdnaQpcrFasta",
@@ -5051,6 +5840,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "SummarizeTfbsScoreTracks",
     "SummarizeTfbsTrackSimilarity",
     "SummarizeAlternativePromoterComparison",
+    "ComparePromoterReporterArchitectures",
     "SummarizePromoterEvidenceMatrix",
     "SummarizeIsoformPromoterComparison",
     "SummarizePromoterExpressionEvidence",
@@ -5061,7 +5851,25 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "RecommendReporters",
     "ExportReporterCorpus",
     "PlanReporterConstructHandoff",
+    "PlanPromoterReporterPanel",
+    "PlanEvidenceGuidedFragmentCandidates",
+    "ComputeTssWindowGeometry",
+    "InspectTssInventory",
+    "MaterializeTssWindows",
+    "GetTssCollection",
+    "ListTssCollections",
+    "ForgetTssCollection",
+    "ExportTssViewSvg",
+    "ComposeRegulatoryReporterStudy",
+    "PlanRegulatoryFragmentPanel",
+    "PlanRegulatoryFragmentMaterialization",
+    "MaterializeRegulatoryFragmentPanel",
+    "RenderRegulatoryFragmentPanelSvg",
+    "InspectPromoterReporterPanelReadiness",
+    "MaterializePromoterReporterPanel",
     "ScanTfbsHits",
+    "QueryGenomicMotifEvidence",
+    "QueryPromoterCofactors",
     "InspectJasparEntry",
     "SummarizeJasparEntries",
     "ResolveTfQueries",
@@ -5078,6 +5886,9 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "ExportRnaReadTargetQuality",
     "ExportRnaReadExonPathsTsv",
     "ExportRnaReadExonAbundanceTsv",
+    "ExportRnaReadDexseqAnnotationGff",
+    "ExportRnaReadDexseqCountsTsv",
+    "VerifyRnaReadDexseqExports",
     "ExportRnaReadScoreDensitySvg",
     "ExportRnaReadAlignmentsTsv",
     "ExportRnaReadAlignmentDotplotSvg",
@@ -5136,6 +5947,12 @@ const MCP_TOOL_NAMES: &[(&str, &str, &str, CapabilityMutation)] = &[
         CapabilityMutation::ReadOnly,
     ),
     (
+        "runtime_status",
+        "Runtime Status",
+        "Return process-local live frames plus observed persisted/project activity records for this GENtle process.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
         "exon_skip_plan",
         "Exon Skip Plan",
         "Build and persist an inspectable exon-skip selection plan through the shared `transcripts exon-skip-plan` shell contract.",
@@ -5152,6 +5969,72 @@ const MCP_TOOL_NAMES: &[(&str, &str, &str, CapabilityMutation)] = &[
         "Restriction Site Detail",
         "Return one restriction-site expert record through the shared `inspect-feature-expert ... restriction` shell contract.",
         CapabilityMutation::ReadOnly,
+    ),
+    (
+        "transcript_assay_feasibility",
+        "Transcript Assay Feasibility",
+        "Inspect deterministic endpoint isoform-matrix geometry for an exact DesignTranscriptAssayPanel operation without running Primer3.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "primer_reports",
+        "Primer Reports",
+        "List, inspect, or explicitly export stored primer, qPCR, transcript-assay panel, and fallback reports through shared shell routes.",
+        CapabilityMutation::External,
+    ),
+    (
+        "primer_specificity_multi_handoff",
+        "Primer Specificity Multi Handoff",
+        "Prepare confirmed external searches for one pair against explicit prepared references; do not run BLAST or attach readiness evidence.",
+        CapabilityMutation::External,
+    ),
+    (
+        "primer_specificity_multi_import",
+        "Primer Specificity Multi Import",
+        "Validate reference-bound external execution and persist an immutable standalone specificity summary after confirmation.",
+        CapabilityMutation::Mutating,
+    ),
+    (
+        "primer_specificity_multi_show",
+        "Primer Specificity Multi Show",
+        "Inspect a historical multi-reference summary without probing databases or asserting current applicability.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "primer_specificity_multi_list",
+        "Primer Specificity Multi List",
+        "List stored standalone multi-reference specificity summaries without resource probes.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "transcript_assay_specificity_plan",
+        "Transcript Assay Specificity Plan",
+        "Prepare a confirmed whole-panel local BLAST handoff without executing BLAST through the shared shell route.",
+        CapabilityMutation::External,
+    ),
+    (
+        "transcript_assay_specificity_finalize",
+        "Transcript Assay Specificity Finalize",
+        "Validate external process evidence and persist complete whole-panel specificity assessments through the shared shell route after explicit confirmation.",
+        CapabilityMutation::Mutating,
+    ),
+    (
+        "promoter_reporter_panel_plan",
+        "Promoter Reporter Panel Plan",
+        "Build a read-only, content-addressed promoter-reporter panel proposal through the shared `promoters panel-plan` shell contract.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "promoter_reporter_panel_readiness",
+        "Promoter Reporter Panel Readiness",
+        "Recompute context-bound promoter-reporter planning, proposal-currency, and exact-approval readiness through the shared `promoters panel-readiness` shell contract.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "promoter_reporter_panel_materialize",
+        "Promoter Reporter Panel Materialize",
+        "Materialize an unchanged promoter-reporter panel proposal through the shared `promoters panel-materialize` shell contract after exact digest approval.",
+        CapabilityMutation::Mutating,
     ),
     (
         "agent_systems",
@@ -5194,6 +6077,12 @@ const MCP_TOOL_NAMES: &[(&str, &str, &str, CapabilityMutation)] = &[
         "Apply Workflow",
         "Apply a workflow via shared engine contract and persist state (requires confirm=true).",
         CapabilityMutation::Mutating,
+    ),
+    (
+        "gene_isoform_assay_publication",
+        "Gene Isoform Assay Publication",
+        "Project immutable, content-addressed assay reports into GENtle-declared HTML, print/PDF, and order-sheet artifacts.",
+        CapabilityMutation::External,
     ),
     (
         "help",
@@ -5324,6 +6213,20 @@ const MCP_TOOL_NAMES: &[(&str, &str, &str, CapabilityMutation)] = &[
 ];
 
 const MCP_PROMINENT_GLOSSARY_COMMAND_PATHS: &[&str] = &[
+    "primers list-reports",
+    "primers show-report",
+    "primers export-report",
+    "primers list-qpcr-reports",
+    "primers show-qpcr-report",
+    "primers export-qpcr-report",
+    "primers list-transcript-assay-panels",
+    "primers show-transcript-assay-panel",
+    "primers export-transcript-assay-panel",
+    "primers list-transcript-assay-fallbacks",
+    "primers show-transcript-assay-fallback",
+    "primers export-transcript-assay-fallback",
+    "primers transcript-assay-specificity-plan",
+    "primers transcript-assay-specificity-finalize",
     "capabilities",
     "state-summary",
     "agents list",
@@ -5332,6 +6235,34 @@ const MCP_PROMINENT_GLOSSARY_COMMAND_PATHS: &[&str] = &[
     "agents plan",
     "agents execute-plan",
     "op",
+    "gene-locus prepare",
+    "features edit-location",
+    "features create",
+    "features delete",
+    "features split",
+    "features merge",
+    "primers specificity",
+    "collections run primer-specificity",
+    "collections run restriction-scan",
+    "collections run construct-reasoning-inspection",
+    "collections run tfbs-scan",
+    "features encode-ccre-overlaps",
+    "features materialize-encode-ccres",
+    "features ensembl-regulation-overlaps",
+    "features materialize-ensembl-regulation",
+    "collections run digest",
+    "primers specificity-plan",
+    "primers specificity-import",
+    "primers specificity-alignment-html",
+    "primers build-transcript-assay-cdna-similarity-map",
+    "primers design-group-target",
+    "primers transcript-assay-specificity-redesign",
+    "splicing cryptic-screen",
+    "splicing cryptic-render",
+    "splicing cryptic-export",
+    "splicing cryptic-overlay",
+    "splicing cryptic-protein",
+    "uniprot build-linked-transcript-inventory",
     "workflow",
     "help",
     "genomes list",
@@ -5343,6 +6274,7 @@ const MCP_PROMINENT_GLOSSARY_COMMAND_PATHS: &[&str] = &[
     "construct-reasoning show-graph",
     "construct-reasoning set-annotation-status",
     "construct-reasoning write-annotation",
+    "introspect runtime",
     "ui intents",
     "ui open",
     "ui focus",
@@ -5371,6 +6303,8 @@ static SHELL_ALIAS_REGISTRY: LazyLock<Vec<ShellAliasDescriptor>> =
     LazyLock::new(build_shell_alias_registry);
 static PARITY_MATRIX_OVERRIDES: LazyLock<Vec<ParityMatrixOverride>> =
     LazyLock::new(load_parity_matrix_overrides);
+static COLLECTION_LIFT_POLICY_REGISTRY: LazyLock<CollectionLiftPolicyRegistry> =
+    LazyLock::new(load_collection_lift_policy_registry);
 
 const CAPABILITY_PARITY_ADAPTERS: [CapabilityAdapter; 6] = [
     CapabilityAdapter::Gui,
@@ -5394,6 +6328,28 @@ pub fn capability_registry() -> &'static [CapabilityDescriptor] {
 /// GENtle-local slash aliases accepted by the shared shell parser.
 pub fn shell_alias_registry() -> &'static [ShellAliasDescriptor] {
     &SHELL_ALIAS_REGISTRY
+}
+
+/// Curated operation-lifting declarations for collection-visible capabilities.
+pub fn collection_lift_policy_registry() -> &'static [CollectionCapabilityLiftPolicy] {
+    &COLLECTION_LIFT_POLICY_REGISTRY.policies
+}
+
+/// Return the policy for one capability and collection subject kind.
+pub fn collection_lift_policy(
+    source: CapabilitySource,
+    name: &str,
+    subject_kind: CollectionSubjectKind,
+) -> Option<&'static CollectionSubjectLiftPolicy> {
+    collection_lift_policy_registry()
+        .iter()
+        .find(|entry| entry.source == source && entry.name == name)
+        .and_then(|entry| {
+            entry
+                .subjects
+                .iter()
+                .find(|policy| policy.subject_kind == subject_kind)
+        })
 }
 
 /// Return one GENtle-local slash alias descriptor by stable alias key.
@@ -5457,6 +6413,51 @@ fn load_parity_matrix_overrides() -> Vec<ParityMatrixOverride> {
         );
     }
     overrides.overrides
+}
+
+fn load_collection_lift_policy_registry() -> CollectionLiftPolicyRegistry {
+    let registry: CollectionLiftPolicyRegistry =
+        serde_json::from_str(include_str!("../../../docs/collection_lift_policies.json"))
+            .expect("docs/collection_lift_policies.json must parse");
+    assert_eq!(
+        registry.schema, COLLECTION_LIFT_POLICY_REGISTRY_SCHEMA,
+        "collection lift policy registry schema"
+    );
+    let mut capability_keys = BTreeSet::new();
+    for entry in &registry.policies {
+        assert!(
+            !entry.name.trim().is_empty(),
+            "collection lift policy capability name must not be empty"
+        );
+        assert!(
+            capability_keys.insert((entry.source, entry.name.clone())),
+            "duplicate collection lift capability policy for {:?} `{}`",
+            entry.source,
+            entry.name
+        );
+        let mut subject_kinds = BTreeSet::new();
+        for policy in &entry.subjects {
+            assert!(
+                subject_kinds.insert(policy.subject_kind),
+                "duplicate collection subject policy for {:?} `{}` and {:?}",
+                entry.source,
+                entry.name,
+                policy.subject_kind
+            );
+        }
+    }
+    registry
+}
+
+fn collection_lift_policies_for(
+    source: CapabilitySource,
+    name: &str,
+) -> Vec<CollectionSubjectLiftPolicy> {
+    collection_lift_policy_registry()
+        .iter()
+        .find(|entry| entry.source == source && entry.name == name)
+        .map(|entry| entry.subjects.clone())
+        .unwrap_or_default()
 }
 
 fn not_applicable_override_reason(
@@ -5678,10 +6679,13 @@ fn build_shell_alias_registry() -> Vec<ShellAliasDescriptor> {
     let prominent = AdapterSurfacing::Prominent;
     let shell = AdapterSurfacing::ShellPassthrough;
     let na = AdapterSurfacing::NotApplicable;
-    let read_only_alternatives = &["/help", "/list"];
+    let read_only_alternatives = &["/help", "/list", "/history"];
     let local_alternatives = &[
         "/help",
         "/list",
+        "/history",
+        "/undo",
+        "/redo",
         "/open",
         "/import",
         "/open sequence-window SEQ_ID",
@@ -5691,7 +6695,7 @@ fn build_shell_alias_registry() -> Vec<ShellAliasDescriptor> {
         "/paste sequence --sequence-text DNA [--id ID]",
         "/features restriction-scan SEQ_ID [--enzyme NAME]",
         "/fetch genbank ACCESSION [--id ID]",
-        "/fetch ensembl QUERY [--species NAME] [--id ID]",
+        "/fetch ensembl QUERY [--species NAME] [--assembly NAME] [--flank-bp N] [--id ID]",
         "/fetch uniprot QUERY [--id ID]",
     ];
     vec![
@@ -5720,6 +6724,54 @@ fn build_shell_alias_registry() -> Vec<ShellAliasDescriptor> {
             &[],
             &["state-summary"],
             read_only_alternatives,
+            prominent,
+            shell,
+            shell,
+            na,
+            na,
+            na,
+        ),
+        shell_alias_descriptor_row(
+            "/history",
+            "/history",
+            "history status",
+            "Show session-local undo/redo availability.",
+            CapabilityMutation::ReadOnly,
+            &[],
+            &["history status"],
+            read_only_alternatives,
+            prominent,
+            shell,
+            shell,
+            na,
+            na,
+            na,
+        ),
+        shell_alias_descriptor_row(
+            "/undo",
+            "/undo",
+            "history undo",
+            "Undo the most recent session-local operation-level state transition.",
+            CapabilityMutation::Mutating,
+            &[],
+            &["history undo"],
+            local_alternatives,
+            prominent,
+            shell,
+            shell,
+            na,
+            na,
+            na,
+        ),
+        shell_alias_descriptor_row(
+            "/redo",
+            "/redo",
+            "history redo",
+            "Reapply the most recently undone session-local operation-level state transition.",
+            CapabilityMutation::Mutating,
+            &[],
+            &["history redo"],
+            local_alternatives,
             prominent,
             shell,
             shell,
@@ -5905,9 +6957,9 @@ fn build_shell_alias_registry() -> Vec<ShellAliasDescriptor> {
         ),
         shell_alias_descriptor_row(
             "/fetch ensembl",
-            "/fetch ensembl QUERY [--species NAME] [--id ID]",
-            "ensembl-gene fetch QUERY [--species NAME] [--entry-id ID]",
-            "Fetch an Ensembl gene lookup record by HGNC-approved symbol or stable Ensembl gene id; --species uses names such as homo_sapiens and --id names the local GENtle metadata entry.",
+            "/fetch ensembl QUERY [--species NAME] [--assembly NAME] [--flank-bp N] [--id ID]",
+            "ensembl-gene fetch QUERY [--species NAME] [--assembly NAME] [--flank-bp N] [--entry-id ID]",
+            "Fetch an Ensembl gene lookup record and genomic sequence by HGNC-approved symbol or stable Ensembl gene id; --assembly verifies the resolved assembly, --flank-bp requests symmetric gene-oriented context, and --id names the local GENtle metadata entry.",
             CapabilityMutation::External,
             &["FetchEnsemblGene"],
             &["ensembl-gene fetch"],
@@ -5921,9 +6973,9 @@ fn build_shell_alias_registry() -> Vec<ShellAliasDescriptor> {
         ),
         shell_alias_descriptor_row(
             "/fetch ensembl-gene",
-            "/fetch ensembl-gene QUERY [--species NAME] [--id ID]",
-            "ensembl-gene fetch QUERY [--species NAME] [--entry-id ID]",
-            "Fetch an Ensembl gene lookup record by HGNC-approved symbol or stable Ensembl gene id; --species uses names such as homo_sapiens and --id names the local GENtle metadata entry.",
+            "/fetch ensembl-gene QUERY [--species NAME] [--assembly NAME] [--flank-bp N] [--id ID]",
+            "ensembl-gene fetch QUERY [--species NAME] [--assembly NAME] [--flank-bp N] [--entry-id ID]",
+            "Fetch an Ensembl gene lookup record and genomic sequence by HGNC-approved symbol or stable Ensembl gene id; --assembly verifies the resolved assembly, --flank-bp requests symmetric gene-oriented context, and --id names the local GENtle metadata entry.",
             CapabilityMutation::External,
             &["FetchEnsemblGene"],
             &["ensembl-gene fetch"],
@@ -6076,6 +7128,10 @@ fn glossary_command_descriptor(
         ),
         inline_operand_ok: inline_operand_ok_for_operations(&command.engine_operations),
         engine_operations: command.engine_operations.clone(),
+        collection_lift_policies: collection_lift_policies_for(
+            CapabilitySource::GlossaryCommand,
+            &command.path,
+        ),
         source: CapabilitySource::GlossaryCommand,
     }
 }
@@ -6122,6 +7178,10 @@ fn engine_operation_descriptor(
         ),
         inline_operand_ok: inline_operand_ok_for_operation(op_name),
         engine_operations: vec![op_name.to_string()],
+        collection_lift_policies: collection_lift_policies_for(
+            CapabilitySource::EngineOperation,
+            op_name,
+        ),
         source: CapabilitySource::EngineOperation,
     }
 }
@@ -6155,6 +7215,7 @@ fn mcp_tool_descriptor(
         surfacing_justifications: surfacing_justifications_for_mcp_tool(&surfacing, name),
         inline_operand_ok: None,
         engine_operations: vec![],
+        collection_lift_policies: collection_lift_policies_for(CapabilitySource::McpTool, name),
         source: CapabilitySource::McpTool,
     }
 }
@@ -6217,7 +7278,10 @@ fn glossary_command_surfacing(
         } else {
             AdapterSurfacing::Gap
         },
-        mcp: if interfaces.contains("mcp") || is_mcp_prominent_glossary_command(&command.path) {
+        mcp: if interfaces.contains("mcp")
+            || interfaces.contains("mcp-op")
+            || is_mcp_prominent_glossary_command(&command.path)
+        {
             AdapterSurfacing::Prominent
         } else if command_is_reachable_via_generic_operation_route(command, CapabilityAdapter::Mcp)
         {
@@ -6435,7 +7499,10 @@ fn infer_command_mutation(path: &str, operations: &[String]) -> CapabilityMutati
 }
 
 fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
-    if operation.starts_with("Fetch")
+    if matches!(
+        operation,
+        "ComputeTssTfbsProfiles" | "ExportTssTfbsProfiles"
+    ) || operation.starts_with("Fetch")
         || operation.starts_with("PrepareGenome")
         || operation.starts_with("PrepareCutRun")
         || operation.starts_with("ReadAcquire")
@@ -6462,14 +7529,25 @@ fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
         || operation == "SaveFile"
         || operation == "FindRestrictionSites"
         || operation == "AlignSequences"
-        || operation == "AssessPrimerPairSpecificity"
+        || operation == "PreparePrimerPairSpecificityHandoff"
+        || operation == "PreparePrimerPairMultiReferenceSpecificityHandoff"
+        || operation == "GetPrimerPairMultiReferenceSpecificitySummary"
+        || operation == "SearchPrimerBank"
+        || operation == "ScreenPrimerVariants"
         || operation == "TestCdnaPcr"
         || operation == "TestCdnaQpcr"
         || operation == "TestCdnaQpcrFasta"
         || operation == "SuggestSequencingPrimers"
         || operation == "SuggestPromoterReporterFragments"
+        || operation == "ComparePromoterReporterArchitectures"
+        || operation == "PlanPromoterReporterPanel"
+        || operation == "PlanEvidenceGuidedFragmentCandidates"
+        || operation == "PlanRegulatoryFragmentPanel"
+        || operation == "PlanRegulatoryFragmentMaterialization"
+        || operation == "InspectPromoterReporterPanelReadiness"
         || operation == "BuildRepeatEnvironmentCohort"
         || operation == "BuildProteinToDnaHandoffReasoning"
+        || operation == "DesignPrimerGroupTarget"
     {
         CapabilityMutation::ReadOnly
     } else {
@@ -6498,6 +7576,8 @@ fn inline_operand_ok_for_operation(operation: &str) -> Option<bool> {
         | "SummarizeTfbsTrackSimilarity"
         | "ScanTfbsHits"
         | "AlignSequences" => Some(true),
+        "QueryGenomicMotifEvidence" => Some(false),
+        "QueryPromoterCofactors" => Some(false),
         "RenderSequenceSvg"
         | "RenderRnaStructureSvg"
         | "RenderTfbsScoreTrackCorrelationSvg"
@@ -6803,6 +7883,8 @@ pub struct RnaReadInterpretationHit {
     pub seed_transcript_gap_count: usize,
     #[serde(default)]
     pub exon_path_transcript_id: String,
+    #[serde(default)]
+    pub transcript_exon_path: String,
     #[serde(default)]
     pub exon_path: String,
     #[serde(default)]
@@ -7233,6 +8315,61 @@ pub struct RnaReadExonAbundanceExport {
     pub selected_read_count: usize,
     pub exon_row_count: usize,
     pub transition_row_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One persisted DEXSeq-style disjoint exonic-part bin.
+///
+/// `global_ordinal` is the stable join key used by `RnaReadInterpretationHit::exon_path`.
+/// `exonic_part_number` is numbered independently within `gene_id` in ascending
+/// genomic-coordinate order and is used by DEXSeq-facing GFF/count exports.
+pub struct RnaReadExonicPartBin {
+    pub global_ordinal: usize,
+    pub gene_id: String,
+    pub exonic_part_number: usize,
+    pub start_1based: usize,
+    pub end_1based: usize,
+    pub strand: String,
+    #[serde(default)]
+    pub transcripts: Vec<String>,
+    pub constitutive: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Summary returned after writing a DEXSeq flattened-annotation GFF.
+pub struct RnaReadDexseqAnnotationGffExport {
+    pub schema: String,
+    pub path: String,
+    pub report_id: String,
+    pub seq_id: String,
+    pub row_count: usize,
+    pub aggregate_gene_count: usize,
+    pub exonic_part_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Summary returned after writing a two-column DEXSeq/HTSeq count table.
+pub struct RnaReadDexseqCountsTsvExport {
+    pub schema: String,
+    pub path: String,
+    pub report_id: String,
+    pub selection: RnaReadHitSelection,
+    #[serde(default)]
+    pub selected_record_indices: Vec<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subset_spec: Option<String>,
+    pub selected_read_count: usize,
+    pub row_count: usize,
+    pub aggregate_gene_count: usize,
+    pub exonic_part_count: usize,
+    pub ambiguous_count: usize,
+    pub empty_count: usize,
+    pub ambiguous_readpair_count: usize,
+    pub lowaqual_count: usize,
+    pub notaligned_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -7972,6 +9109,10 @@ pub struct CutRunRegulatorySupportReport {
     pub op_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<String>,
     #[serde(default)]
     pub evidence_sources: Vec<CutRunRegulatoryEvidenceSourceRef>,
     pub promoter_search_start_0based: usize,
@@ -8117,6 +9258,8 @@ pub struct RnaReadAlignmentInspectionRow {
     pub seed_chain_transcript_id: String,
     #[serde(default)]
     pub exon_path_transcript_id: String,
+    #[serde(default)]
+    pub transcript_exon_path: String,
     #[serde(default)]
     pub exon_path: String,
     #[serde(default)]
@@ -9226,6 +10369,9 @@ pub struct RnaReadInterpretProgress {
 
 /// Persisted RNA-read interpretation report shared across GUI, CLI, and shell
 /// inspection/export flows.
+pub const RNA_READ_LOADED_SEQUENCE_COORDINATE_SPACE: &str = "loaded_sequence_local";
+pub const RNA_READ_LOADED_SEQUENCE_COORDINATE_CONVENTION: &str = "one_based_inclusive; junction boundaries are normalized to ascending loaded-sequence coordinates";
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct RnaReadInterpretationReport {
@@ -9234,6 +10380,17 @@ pub struct RnaReadInterpretationReport {
     #[serde(default)]
     pub report_mode: RnaReadReportMode,
     pub seq_id: String,
+    /// SHA-256 of the exact loaded sequence whose local coordinates are used
+    /// by this report. Legacy reports leave this absent and are not suitable
+    /// for coordinate-bound evidence joins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_sequence_sha256: Option<String>,
+    /// Coordinate space used by exon and junction positions.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub coordinate_space: String,
+    /// Human- and machine-readable convention for positions in this report.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub coordinate_convention: String,
     pub seed_feature_id: usize,
     pub generated_at_unix_ms: u128,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -9248,6 +10405,12 @@ pub struct RnaReadInterpretationReport {
     pub origin_mode: RnaReadOriginMode,
     #[serde(default)]
     pub target_gene_ids: Vec<String>,
+    /// DEXSeq-style disjoint exonic-part partition used by `exon_path`.
+    ///
+    /// Reports written before this field was introduced deserialize with an
+    /// empty table and must be re-run before DEXSeq artifacts can be exported.
+    #[serde(default)]
+    pub exonic_part_bins: Vec<RnaReadExonicPartBin>,
     #[serde(default)]
     pub roi_seed_capture_enabled: bool,
     #[serde(default)]
@@ -9335,11 +10498,38 @@ pub struct RnaReadInterpretationReportSummary {
 #[cfg(test)]
 mod dotplot_and_concatemer_setting_tests {
     use super::{
-        CutRunRegulatoryTfbsConfirmationStatus, CutRunRegulatoryTfbsRow, DotplotMode,
+        CapabilitySource, CollectionContextRequirement, CollectionLiftSupport,
+        CollectionLiftingMode, CollectionSubjectKind, CutRunRegulatoryTfbsConfirmationStatus,
+        CutRunRegulatoryTfbsRow, DotplotInspectionProvenanceCitation, DotplotMode,
         DotplotOverlayAnchorExonRef, DotplotOverlayResolvedAnchorSeries, DotplotOverlayXAxisMode,
         DotplotQuerySeries, DotplotView, RestrictionSiteExpertView,
         RnaReadConcatemerInspectionSettings, RnaReadMappedIsoformSupportRow,
+        collection_lift_policy,
     };
+
+    #[test]
+    fn legacy_dotplot_view_defaults_payload_provenance_to_absent() {
+        let view: DotplotView = serde_json::from_value(serde_json::json!({
+            "schema": "gentle.dotplot_view.v3",
+            "dotplot_id": "legacy_dotplot",
+            "owner_seq_id": "seq1",
+            "seq_id": "seq1",
+            "mode": "self_forward"
+        }))
+        .expect("deserialize legacy dotplot");
+        assert!(view.op_id.is_none());
+        assert!(view.run_id.is_none());
+        assert!(view.inspection_provenance.is_none());
+
+        let serialized = serde_json::to_value(view).expect("serialize legacy dotplot");
+        assert!(serialized.get("op_id").is_none());
+        assert!(serialized.get("run_id").is_none());
+        assert!(serialized.get("inspection_provenance").is_none());
+        assert_eq!(
+            DotplotInspectionProvenanceCitation::default().schema,
+            "gentle.dotplot_inspection_provenance_citation.v1"
+        );
+    }
 
     #[test]
     fn dotplot_overlay_x_axis_bp_alignment_projects_left_and_right_variants() {
@@ -9522,6 +10712,56 @@ mod dotplot_and_concatemer_setting_tests {
         assert_eq!(row.aligned_read_count, 3);
         assert!(row.dominant_triage_bin.is_none());
         assert!(row.triage_bin_counts.is_empty());
+    }
+
+    #[test]
+    fn construct_reasoning_collection_lift_policies_are_curated_for_every_subject() {
+        for (source, name) in [
+            (
+                CapabilitySource::EngineOperation,
+                "InspectConstructReasoningCollection",
+            ),
+            (
+                CapabilitySource::GlossaryCommand,
+                "construct-reasoning list-inspection-actions",
+            ),
+            (
+                CapabilitySource::GlossaryCommand,
+                "collections run construct-reasoning-inspection",
+            ),
+        ] {
+            for subject_kind in [
+                CollectionSubjectKind::ProjectSequences,
+                CollectionSubjectKind::GeneSetResolution,
+                CollectionSubjectKind::Container,
+                CollectionSubjectKind::Arrangement,
+            ] {
+                let policy = collection_lift_policy(source, name, subject_kind)
+                    .expect("construct-reasoning collection policy");
+                match subject_kind {
+                    CollectionSubjectKind::ProjectSequences
+                    | CollectionSubjectKind::GeneSetResolution => {
+                        assert_ne!(
+                            policy.context_requirement,
+                            CollectionContextRequirement::NotReviewed
+                        );
+                        assert!(matches!(
+                            policy.support,
+                            CollectionLiftSupport::Supported {
+                                mode: CollectionLiftingMode::Map,
+                                ..
+                            }
+                        ));
+                    }
+                    CollectionSubjectKind::Container | CollectionSubjectKind::Arrangement => {
+                        assert!(matches!(
+                            policy.support,
+                            CollectionLiftSupport::Rejected { .. }
+                        ));
+                    }
+                }
+            }
+        }
     }
 
     #[test]

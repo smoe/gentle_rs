@@ -315,6 +315,34 @@ impl GENtleApp {
         Ok((inspections, errors))
     }
 
+    fn prepared_genome_inspection_cache_key(&self, scope: GenomeDialogScope) -> String {
+        format!(
+            "{}\n{}\n{}",
+            scope.description(),
+            self.genome_catalog_path_resolved(),
+            self.genome_cache_dir_opt().as_deref().unwrap_or("")
+        )
+    }
+
+    pub(super) fn cached_prepared_genome_inspections(
+        &mut self,
+        scope: GenomeDialogScope,
+        force_refresh: bool,
+    ) -> Result<(Vec<PreparedGenomeInspection>, Vec<String>), String> {
+        let key = self.prepared_genome_inspection_cache_key(scope);
+        if force_refresh
+            || self.prepared_genome_inspection_cache_key.as_deref() != Some(key.as_str())
+            || self.prepared_genome_inspection_cache.is_none()
+        {
+            self.prepared_genome_inspection_cache =
+                Some(self.collect_prepared_genome_inspections());
+            self.prepared_genome_inspection_cache_key = Some(key);
+        }
+        self.prepared_genome_inspection_cache
+            .clone()
+            .unwrap_or_else(|| Ok((vec![], vec![])))
+    }
+
     pub(super) fn prepared_genome_chromosome_records(
         &self,
         genome_id: &str,
@@ -470,6 +498,73 @@ impl GENtleApp {
             longest,
             Self::format_bp_compact(longest_bp),
             preview
+        )
+    }
+
+    pub(super) fn format_prepared_blast_summary(inspection: &PreparedGenomeInspection) -> String {
+        let Some(database) = &inspection.blast_database else {
+            return if inspection.blast_index_ready {
+                "index present; not validated".to_string()
+            } else {
+                "missing".to_string()
+            };
+        };
+        let sequence_count = database
+            .sequence_count
+            .map(|count| count.to_string())
+            .unwrap_or_else(|| "?".to_string());
+        format!("{} | {} seqs", database.validation_status, sequence_count)
+    }
+
+    pub(super) fn format_prepared_blast_hover_text(
+        inspection: &PreparedGenomeInspection,
+    ) -> String {
+        let Some(database) = &inspection.blast_database else {
+            return if inspection.blast_index_ready {
+                "BLAST index files are present, but blastdbcmd validation is unavailable."
+                    .to_string()
+            } else {
+                "No BLAST database is present for this prepared resource.".to_string()
+            };
+        };
+        let fingerprint = database
+            .content_fingerprint
+            .as_deref()
+            .map(|value| value.get(..16).unwrap_or(value))
+            .unwrap_or("-");
+        let compatible = if database.compatible_operations.is_empty() {
+            "-".to_string()
+        } else {
+            database.compatible_operations.join(", ")
+        };
+        let warnings = if database.warnings.is_empty() {
+            "-".to_string()
+        } else {
+            database.warnings.join("\n")
+        };
+        format!(
+            "validation: {}\nkind: {}\nassembly/release: {}/{}\nmasking: {}\nprefix: {}\nBLAST DB version: {}\nsequences: {}\ntotal bases: {}\ntool: {} ({})\ncontent fingerprint: {} ({})\ncompatible operations: {}\nwarnings: {}",
+            database.validation_status,
+            database.index_kind.as_str(),
+            database.source_assembly.as_deref().unwrap_or("-"),
+            database.source_release.as_deref().unwrap_or("-"),
+            database.masking,
+            database.prefix,
+            database.blast_database_version.as_deref().unwrap_or("-"),
+            database
+                .sequence_count
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            database
+                .total_bases
+                .map(Self::format_bp_compact)
+                .unwrap_or_else(|| "-".to_string()),
+            database.tool_executable,
+            database.tool_version.as_deref().unwrap_or("-"),
+            fingerprint,
+            database.fingerprint_algorithm,
+            compatible,
+            warnings
         )
     }
 
@@ -801,8 +896,9 @@ impl GENtleApp {
             ui.horizontal(|ui| {
                 ui.add(egui::Spinner::new());
                 let mut status = format!(
-                    "{} task running ({:.1}s)",
+                    "{} task for '{}' running ({:.1}s)",
                     task.mode.progress_label(),
+                    task.genome_id,
                     task.started.elapsed().as_secs_f32()
                 );
                 if let Some(timeout) = task.timeout_seconds {
@@ -856,6 +952,7 @@ impl GENtleApp {
                 }
             }
             if self.genome_prepare_task.is_some()
+                && self.prepare_dialog_progress_matches_selection()
                 && ui
                     .button("Cancel Prepare")
                     .on_hover_text("Request cancellation of the running prepare task.")
@@ -891,6 +988,60 @@ impl GENtleApp {
                 self.queue_ensembl_installable_genome_discovery(Some("all"), None);
             }
         });
+        self.render_prepare_dialog_progress(ui);
+        close_requested
+    }
+
+    pub(super) fn prepare_dialog_progress_matches_selection(&self) -> bool {
+        let matches = |genome_id: &str, scope, catalog_path: &str, cache_dir: &str| {
+            genome_id.trim() == self.genome_id.trim()
+                && scope == self.genome_dialog_scope
+                && catalog_path.trim() == self.genome_catalog_path.trim()
+                && cache_dir.trim() == self.genome_cache_dir.trim()
+        };
+        if let Some(task) = &self.genome_prepare_task {
+            matches(
+                &task.genome_id,
+                task.scope,
+                &task.catalog_path,
+                &task.cache_dir,
+            )
+        } else if let Some(context) = &self.genome_prepare_context {
+            matches(
+                &context.genome_id,
+                context.scope,
+                &context.catalog_path,
+                &context.cache_dir,
+            )
+        } else {
+            true
+        }
+    }
+
+    pub(super) fn render_prepare_dialog_progress(&mut self, ui: &mut Ui) {
+        if !self.prepare_dialog_progress_matches_selection() {
+            let genome_id = self
+                .genome_prepare_task
+                .as_ref()
+                .map(|task| task.genome_id.as_str())
+                .or_else(|| {
+                    self.genome_prepare_context
+                        .as_ref()
+                        .map(|context| context.genome_id.as_str())
+                })
+                .unwrap_or_default();
+            ui.separator();
+            ui.label(format!(
+                "Preparation for '{genome_id}' belongs to a different genome, catalog, cache or reference/helper selection."
+            ));
+            if ui.button("Show Background Jobs").clicked() {
+                self.show_jobs_panel = true;
+            }
+            return;
+        }
+        if let Some(context) = &self.genome_prepare_context {
+            ui.small(format!("Preparation for '{}'", context.genome_id));
+        }
         if !self.genome_prepare_steps.is_empty() {
             self.render_prepare_step_checklist(ui);
         } else if let Some(progress) = &self.genome_prepare_progress {
@@ -931,7 +1082,6 @@ impl GENtleApp {
             ui.separator();
             ui.monospace(&self.genome_prepare_status);
         }
-        close_requested
     }
 
     pub(super) fn render_reference_genome_prepare_scroll_area(
@@ -1655,6 +1805,63 @@ impl GENtleApp {
         }
     }
 
+    fn render_genome_gene_extraction_options(&mut self, ui: &mut Ui) {
+        let gene_label = self.tr("genome.extract.gene");
+        let coding_label = self.tr("genome.extract.coding");
+        let flank_hint = self.tr("genome.extract.flank_hint");
+        ui.horizontal_wrapped(|ui| {
+            ui.label(self.tr("genome.extract.mode"));
+            let previous_mode = self.genome_gene_extract_mode;
+            egui::ComboBox::from_id_salt("retrieve_genome_gene_extract_mode")
+                .selected_text(match self.genome_gene_extract_mode {
+                    GenomeGeneExtractMode::Gene => &gene_label,
+                    GenomeGeneExtractMode::CodingWithPromoter => &coding_label,
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut self.genome_gene_extract_mode,
+                        GenomeGeneExtractMode::Gene,
+                        &gene_label,
+                    );
+                    ui.selectable_value(
+                        &mut self.genome_gene_extract_mode,
+                        GenomeGeneExtractMode::CodingWithPromoter,
+                        &coding_label,
+                    );
+                });
+            ui.label(self.tr("genome.extract.flank"));
+            let promoter_changed = ui
+                .add_enabled(
+                    matches!(
+                        self.genome_gene_extract_mode,
+                        GenomeGeneExtractMode::CodingWithPromoter
+                    ),
+                    egui::TextEdit::singleline(&mut self.genome_gene_promoter_upstream_bp)
+                        .desired_width(120.0)
+                        .hint_text(flank_hint),
+                )
+                .changed();
+            if promoter_changed {
+                self.genome_gene_promoter_upstream_bp
+                    .retain(|ch| ch.is_ascii_digit());
+            }
+            if self.genome_gene_extract_mode != previous_mode || promoter_changed {
+                self.refresh_selected_gene_output_id_if_autofilled();
+            }
+        });
+        let note_key = match self.genome_gene_extract_mode {
+            GenomeGeneExtractMode::Gene => "genome.extract.gene_note",
+            GenomeGeneExtractMode::CodingWithPromoter => "genome.extract.coding_note",
+        };
+        ui.add(egui::Label::new(self.tr(note_key)).wrap());
+        for key in [
+            "genome.extract.region_note",
+            "genome.extract.coordinates_note",
+        ] {
+            ui.add(egui::Label::new(egui::RichText::new(self.tr(key)).small()).wrap());
+        }
+    }
+
     pub(super) fn render_reference_genome_retrieve_contents(&mut self, ui: &mut Ui) -> bool {
         let mut close_requested = false;
         ui.push_id("retrieve_genome_dialog_contents", |ui| {
@@ -1938,59 +2145,15 @@ impl GENtleApp {
                         Self::normalize_coordinate_field(&mut self.genome_end_1based);
                     }
                 });
-                ui.horizontal(|ui| {
-                    ui.label("selected gene extract");
-                    let previous_mode = self.genome_gene_extract_mode;
-                    egui::ComboBox::from_id_salt("retrieve_genome_gene_extract_mode")
-                        .selected_text(match self.genome_gene_extract_mode {
-                            GenomeGeneExtractMode::Gene => "gene span",
-                            GenomeGeneExtractMode::CodingWithPromoter => "CDS + promoter",
-                        })
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(
-                                &mut self.genome_gene_extract_mode,
-                                GenomeGeneExtractMode::Gene,
-                                "gene span",
-                            );
-                            ui.selectable_value(
-                                &mut self.genome_gene_extract_mode,
-                                GenomeGeneExtractMode::CodingWithPromoter,
-                                "CDS + promoter",
-                            );
-                        })
-                        .response
-                        .on_hover_text(
-                            "Choose whether Extract Selected Gene uses the full gene span or the CDS span plus an additional 5' promoter flank",
-                        );
-                    ui.label("promoter bp before CDS");
-                    let promoter_changed = ui
-                        .add_enabled(
-                            matches!(
-                                self.genome_gene_extract_mode,
-                                GenomeGeneExtractMode::CodingWithPromoter
-                            ),
-                            egui::TextEdit::singleline(
-                                &mut self.genome_gene_promoter_upstream_bp,
-                            )
-                            .desired_width(120.0)
-                            .hint_text("0 = CDS only"),
-                        )
-                        .on_hover_text(
-                            "Additional bases to include on the gene's 5' side before the first coding base (strand-aware)",
-                        )
-                        .changed();
-                    if promoter_changed {
-                        self.genome_gene_promoter_upstream_bp
-                            .retain(|ch| ch.is_ascii_digit());
-                    }
-                    if self.genome_gene_extract_mode != previous_mode || promoter_changed {
-                        self.refresh_selected_gene_output_id_if_autofilled();
-                    }
+                self.render_genome_gene_extraction_options(ui);
+                let extract_gene_label = self.tr("genome.extract.selected_gene");
+                let extract_region_label = self.tr("genome.extract.region");
+                let extract_gene_hover = self.tr(match self.genome_gene_extract_mode {
+                    GenomeGeneExtractMode::Gene => "genome.extract.gene_note",
+                    GenomeGeneExtractMode::CodingWithPromoter => "genome.extract.coding_note",
                 });
-                ui.small(
-                    "Extract Selected Gene uses the mode above. Extract Region always uses the explicit chr/start/end interval.",
-                );
-                ui.horizontal(|ui| {
+                let extract_region_hover = self.tr("genome.extract.region_note");
+                ui.horizontal_wrapped(|ui| {
                     ui.label("output_id");
                     if ui.text_edit_singleline(&mut self.genome_output_id).changed() {
                         self.genome_output_id_autofilled = false;
@@ -2010,18 +2173,16 @@ impl GENtleApp {
                     if ui
                         .add_enabled(
                             self.genome_selected_gene.is_some(),
-                            egui::Button::new("Extract Selected Gene"),
+                            egui::Button::new(extract_gene_label),
                         )
-                        .on_hover_text(
-                            "Extract the currently selected gene from the prepared reference",
-                        )
+                        .on_hover_text(extract_gene_hover)
                         .clicked()
                     {
                         self.extract_reference_genome_gene();
                     }
                     if ui
-                        .button("Extract Region")
-                        .on_hover_text("Extract the explicit chromosome start/end interval")
+                        .button(extract_region_label)
+                        .on_hover_text(extract_region_hover)
                         .clicked()
                     {
                         self.extract_reference_genome_region();
@@ -2928,7 +3089,13 @@ impl GENtleApp {
                     format!("Catalog error: {}", self.genome_catalog_error),
                 );
             }
-            match self.collect_prepared_genome_inspections() {
+            let refresh_inspection = ui
+                .small_button("Refresh component validation")
+                .on_hover_text(
+                    "Re-read prepared manifests and run blastdbcmd validation once; results are cached between GUI frames",
+                )
+                .clicked();
+            match self.cached_prepared_genome_inspections(scope, refresh_inspection) {
                 Ok((inspections, errors)) => {
                     let total_size: u64 = inspections.iter().map(|r| r.total_size_bytes).sum();
                     let catalog_writable = self.selected_genome_catalog_is_writable();
@@ -2962,12 +3129,13 @@ impl GENtleApp {
                                     );
                                     egui::Grid::new("prepared_genome_inspector_grid")
                                         .striped(true)
-                                        .num_columns(9)
+                                        .num_columns(10)
                                         .show(ui, |ui| {
                                             ui.strong("Genome");
                                             ui.strong("Size");
                                             ui.strong("Ready");
                                             ui.strong("Cache");
+                                            ui.strong("BLAST component");
                                             ui.strong("Sources");
                                             ui.strong("SHA1 seq/ann");
                                             ui.strong("Installed");
@@ -3012,6 +3180,19 @@ impl GENtleApp {
                                                 )
                                                 .on_hover_text(
                                                     Self::format_prepared_cache_hover_text(
+                                                        inspection,
+                                                    ),
+                                                );
+                                                ui.label(
+                                                    egui::RichText::new(
+                                                        Self::format_prepared_blast_summary(
+                                                            inspection,
+                                                        ),
+                                                    )
+                                                    .small(),
+                                                )
+                                                .on_hover_text(
+                                                    Self::format_prepared_blast_hover_text(
                                                         inspection,
                                                     ),
                                                 );
@@ -3425,11 +3606,17 @@ impl GENtleApp {
             });
         }
         if self.genome_track_import_task.is_some() {
-            let elapsed_secs = self
+            let (elapsed_secs, cooperative_cancel, task_label) = self
                 .genome_track_import_task
                 .as_ref()
-                .map(|task| task.started.elapsed().as_secs_f32())
-                .unwrap_or(0.0);
+                .map(|task| {
+                    (
+                        task.started.elapsed().as_secs_f32(),
+                        task.kind.supports_cooperative_cancel(),
+                        task.kind.label(),
+                    )
+                })
+                .unwrap_or((0.0, false, "track task"));
             let progress_snapshot = self.genome_track_import_progress.clone();
             ui.horizontal(|ui| {
                 ui.add(egui::Spinner::new());
@@ -3444,12 +3631,19 @@ impl GENtleApp {
                         elapsed_secs
                     ));
                 } else {
-                    ui.label(format!("Running import task... ({:.1}s)", elapsed_secs));
+                    ui.label(format!("Running {task_label}... ({:.1}s)", elapsed_secs));
                 }
                 let cancel_import_resp = self.track_hover_status(
-                    ui.button("Cancel Import").on_hover_text(
-                        "Request cancellation. Imported features up to the cancellation point are kept.",
-                    ),
+                    ui.button(if cooperative_cancel {
+                        "Cancel Import"
+                    } else {
+                        "Stop waiting"
+                    })
+                    .on_hover_text(if cooperative_cancel {
+                        "Request cooperative cancellation. Imported features up to the cancellation point are kept."
+                    } else {
+                        "Stop waiting and ignore the late result; this operation does not expose cooperative cancellation."
+                    }),
                     "Genome Tracks > Cancel Import",
                 );
                 if cancel_import_resp.clicked() {
@@ -4012,5 +4206,96 @@ impl GENtleApp {
             }
         });
         self.show_cache_cleanup_dialog = open && !close_requested;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn collect_text(shape: &egui::epaint::Shape, texts: &mut Vec<(String, egui::Rect)>) {
+        match shape {
+            egui::epaint::Shape::Text(text) => {
+                texts.push((text.galley.job.text.clone(), text.visual_bounding_rect()));
+            }
+            egui::epaint::Shape::Vec(shapes) => {
+                for shape in shapes {
+                    collect_text(shape, texts);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn genome_extraction_notes_are_visible_for_both_modes_and_wrap() {
+        let mut app = GENtleApp::default();
+        app.genome_gene_promoter_upstream_bp = "1500".into();
+        app.genome_output_id = "example_coding_promoter_1500bp".into();
+        app.genome_start_1based = "10000".into();
+        app.genome_end_1based = "20000".into();
+        app.mark_clean_snapshot();
+        for language in [UiLanguage::EnGb, UiLanguage::DeDe] {
+            app.i18n.set_language(language);
+            for (mode, label_key, note_key) in [
+                (
+                    GenomeGeneExtractMode::Gene,
+                    "genome.extract.gene",
+                    "genome.extract.gene_note",
+                ),
+                (
+                    GenomeGeneExtractMode::CodingWithPromoter,
+                    "genome.extract.coding",
+                    "genome.extract.coding_note",
+                ),
+            ] {
+                app.genome_gene_extract_mode = mode;
+                for width in [480.0, 860.0] {
+                    let ctx = egui::Context::default();
+                    for _ in 0..2 {
+                        let mut out = ctx.run_ui(
+                            egui::RawInput {
+                                screen_rect: Some(egui::Rect::from_min_size(
+                                    egui::Pos2::ZERO,
+                                    egui::vec2(width, 700.0),
+                                )),
+                                ..Default::default()
+                            },
+                            |ui| app.render_genome_gene_extraction_options(ui),
+                        );
+                        let mut texts = Vec::new();
+                        for shape in &out.shapes {
+                            collect_text(&shape.shape, &mut texts);
+                        }
+                        out.textures_delta.clear();
+                        for key in [
+                            label_key,
+                            note_key,
+                            "genome.extract.region_note",
+                            "genome.extract.coordinates_note",
+                        ] {
+                            let expected = app.tr(key);
+                            assert_ne!(expected, key, "missing translation");
+                            assert!(
+                                texts.iter().any(|(text, _)| text == &expected),
+                                "{key} must be visible without hovering in {mode:?}"
+                            );
+                        }
+                        for (text, rect) in texts {
+                            assert!(
+                                rect.right() <= width + 1.0,
+                                "clipped {text:?} at {rect:?} for width {width}"
+                            );
+                        }
+                        assert_eq!(app.genome_gene_extract_mode, mode);
+                    }
+                }
+            }
+        }
+        assert_eq!(app.genome_gene_promoter_upstream_bp, "1500");
+        assert_eq!(app.genome_start_1based, "10000");
+        assert_eq!(app.genome_end_1based, "20000");
+        assert_eq!(app.genome_output_id, "example_coding_promoter_1500bp");
+        assert!(!app.is_project_dirty());
     }
 }

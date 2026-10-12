@@ -6,3 +6,113 @@ docs/tutorial/generated/** export-ignore
 # PDFs are generated/binary figure artifacts; do not run text whitespace checks
 # against their xref tables.
 *.pdf binary
+
+# Cross-platform candidate receipts bind the lockfile's exact bytes.
+Cargo.lock text eol=lf
+
+# Preserve the owner-supplied audit report's exact SHA-256 on every checkout.
+docs/glen_tutorial_parity_gui_audit_20261008.md text eol=lf
+docs/audits/glen_followups_20261008/scroll_cpu_smoke_d1bf3fd3.json text eol=lf
+docs/audits/glen_followups_20261008/original_archive_30f23aa4/verification.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_6d8b4db7/native_gui.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_6d8b4db7/scroll_cpu_smoke.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_6d8b4db7/agent_cli_build.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_6d8b4db7/public.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_6d8b4db7/base_comparison.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_6d8b4db7/base_comparison.svg text eol=lf
+docs/audits/glen_followups_20261008/candidate_6d8b4db7/live_agent.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_3ac4a02d/scroll_cpu_smoke.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_3ac4a02d/scroll_verification.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_3ac4a02d/agent_cli_build.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_3ac4a02d/native_gui.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_3ac4a02d/native_verification.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_3ac4a02d/public.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_3ac4a02d/base_comparison.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_3ac4a02d/base_comparison.svg text eol=lf
+docs/audits/glen_followups_20261008/candidate_3ac4a02d/live_agent.json text eol=lf
+
+# The generated capability matrix is compared byte-for-byte with LF output.
+docs/gui_cli_mcp_parity.md text eol=lf
+
+# Generated tutorial indexes are checked byte-for-byte against LF serialization.
+docs/tutorial/catalog.json text eol=lf
+docs/tutorial/manifest.json text eol=lf
+
+# The offline 08.04 guard and its generated chapter are byte-bound acceptance inputs.
+docs/examples/assets/allele_pair_guard/multiallelic.gb text eol=lf
+docs/tutorial/generated/chapters/08-04_vkorc1_warfarin_promoter_luciferase_gui.md text eol=lf
+# Current public-audit inputs are hashed as raw bytes, not normalized JSON.
+docs/tutorial/sources/08-04_vkorc1_warfarin_promoter_luciferase_gui.json text eol=lf
+docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json text eol=lf
+docs/tutorial/generated/README.md text eol=lf
+
+# Historical panel baselines keep their original generator identity and raw hashes.
+docs/tutorial/generated/artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_endpoint_end_matrix.report.json text eol=lf
+docs/tutorial/generated/artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_routine_common_region_screen.report.json text eol=lf
+docs/tutorial/generated/artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json text eol=lf
+
+# Public GUI evidence records exact hashes for these LF-authored text artifacts.
+docs/screenshots/tutorial_gui_acceptance/**/*.svg text eol=lf
+docs/screenshots/tutorial_gui_acceptance/**/*.snapshot.json text eol=lf
+docs/screenshots/promoter_similarity_gui/**/*.svg text eol=lf
+docs/screenshots/promoter_similarity_gui/**/*.snapshot.json text eol=lf
+docs/screenshots/gene_assay_study_gui/*.snapshot.json text eol=lf
+docs/screenshots/gene_assay_study_gui/*.context.svg text eol=lf
+docs/screenshots/tss_regulatory_view_gui/*.snapshot.json text eol=lf
+docs/screenshots/tp73_dnp73_factor_curves/*.snapshot.json text eol=lf
+docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/inspect_primer_report.snapshot.json text eol=lf
+docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/inspect_primer_report.context.svg text eol=lf
+docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/inspect_primer_report.orientation.svg text eol=lf
+docs/screenshots/tss_collection_gui/*.json text eol=lf
+
+# The native TP73 TSS evidence manifest binds the retained NCBI input bytes.
+test_files/tp73.ncbi.gb text eol=lf
+
+test_files/fixtures/transcript_assay_panel/patz1_reference/* text eol=lf
+# Preserve the exact hash-bound NCBI response, including its final blank line.
+test_files/fixtures/transcript_assay_panel/patz1_reference/refseq_genome.fasta whitespace=-blank-at-eof
+
+# Keep the hashed TP73 BLAST fixture byte-identical on Windows checkouts.
+test_files/fixtures/blast_tp73_isoforms/*.fasta text eol=lf
+
+# PATZ1 tutorial reports bind these exact input bytes, including line endings.
+test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json text eol=lf
+test_files/fixtures/transcript_assay_panel/patz1/patz1_assay_isoform_evidence.json text eol=lf
+
+# BED sidecar manifests bind the retained exports byte-for-byte.
+docs/tutorial/generated/**/*.bed text eol=lf
+
+# The retained SERPINE1 figure binds the occupancy source's exact bytes.
+test_files/fixtures/genomic_regions/serpine1_offline/synthetic_serpine1_cutrun.bed text eol=lf
+
+# TSS manifests and context receipts bind these exact fixture bytes.
+test_files/fixtures/tss_profiles/** text eol=lf
+
+# The repeat lesson's raw teaching rows are hash-checked in checkout tests.
+test_files/fixtures/repeat_cohort/*.txt text eol=lf
+
+# The native TSS-view tutorial retains hash-bound JSON and annotated GenBank inputs.
+docs/tutorial/reproducibility/tss_regulatory_view_gui/** text eol=lf
+# Keep the hash-bound export's padded GenBank ORIGIN line byte-identical.
+docs/tutorial/reproducibility/tss_regulatory_view_gui/synthetic-minus.annotated-tss.gb whitespace=-blank-at-eol
+
+# The tutorial-review provenance READMEs bind these exact input/output bytes.
+docs/tutorial/reproducibility/tp53_uniprot_projection_online/tp53_grch38_ensembl116.gb text eol=lf
+docs/tutorial/reproducibility/tp53_uniprot_projection_online/map-result.json text eol=lf
+docs/tutorial/reproducibility/tp53_uniprot_projection_online/feature-coding-dna.json text eol=lf
+docs/tutorial/reproducibility/tp73_uniprot_projection_audit_online/tp73_uniprot_projection.svg text eol=lf
+
+# Retained VKORC1 WIP previews are checksum-bound in their provenance README.
+docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/*.json text eol=lf
+docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/*.svg text eol=lf
+
+# This retained adapter output is compared byte-for-byte with LF serialization.
+test_files/fixtures/probe_region_outputs/clariom_e_mtab_14704_tp73_validation/* text eol=lf
+
+# Its provenance binds the adapter input's exact bytes on every platform.
+test_files/fixtures/probe_region_adapter_inputs/clariom_e_mtab_14704_tp73_glen_style.csv text eol=lf
+
+# The measured-gel lesson binds original image and analysis-request bytes.
+docs/tutorial/inputs/gel_sizing/*.png binary
+docs/tutorial/inputs/gel_sizing/*.json text eol=lf
+docs/tutorial/inputs/gel_sizing/SHA256SUMS text eol=lf

@@ -1,0 +1,95 @@
+{
+  "image_id": "gel_teaching",
+  "image_sha256": "d06f8ef08e2bf82f521bfb61e512d282d65ce65ffaf894ae9f2b51b790918a9a",
+  "ladder": {
+    "bands": [
+      {
+        "center": {
+          "x": 20,
+          "y": 20
+        },
+        "id": "r1",
+        "size": 2000
+      },
+      {
+        "center": {
+          "x": 20,
+          "y": 80
+        },
+        "id": "r2",
+        "size": 1000
+      },
+      {
+        "center": {
+          "x": 20,
+          "y": 140
+        },
+        "id": "r3",
+        "size": 500
+      },
+      {
+        "center": {
+          "x": 20,
+          "y": 200
+        },
+        "id": "r4",
+        "size": 250
+      }
+    ],
+    "gel_system": null,
+    "label": "Invented calibration, not a vendor ladder",
+    "lane_id": "marker",
+    "prestained": false,
+    "source": "synthetic: explicit sizes halve every 60 pixels"
+  },
+  "lanes": [
+    {
+      "id": "marker",
+      "label": "Synthetic ladder",
+      "max": {
+        "x": 40,
+        "y": 219
+      },
+      "min": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "sample",
+      "label": "Synthetic sample",
+      "max": {
+        "x": 130,
+        "y": 219
+      },
+      "min": {
+        "x": 60,
+        "y": 0
+      }
+    }
+  ],
+  "migration": "down",
+  "report_id": "synthetic_dna_1",
+  "sample_bands": [
+    {
+      "center": {
+        "x": 90,
+        "y": 110
+      },
+      "id": "inside",
+      "label": "Bracketed band",
+      "lane_id": "sample",
+      "position_half_width_px": 2
+    },
+    {
+      "center": {
+        "x": 90,
+        "y": 210
+      },
+      "id": "outside",
+      "label": "Outside calibration",
+      "lane_id": "sample"
+    }
+  ],
+  "size_kind": "linear_dna_bp"
+}

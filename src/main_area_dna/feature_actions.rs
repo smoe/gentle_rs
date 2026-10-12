@@ -8,7 +8,7 @@
 use super::*;
 
 impl MainAreaDna {
-    pub(super) fn feature_kind_supports_splicing_expert(kind_upper: &str) -> bool {
+    pub(crate) fn feature_kind_supports_splicing_expert(kind_upper: &str) -> bool {
         matches!(
             kind_upper,
             "MRNA" | "TRANSCRIPT" | "NCRNA" | "MISC_RNA" | "EXON" | "GENE" | "CDS"
@@ -51,8 +51,14 @@ impl MainAreaDna {
             "open requested",
             self.splicing_expert_window_pending_initial_render,
         );
+        self.invalidate_splicing_expert_presentation_cache();
         self.splicing_expert_window_feature_id = Some(view.target_feature_id);
-        self.splicing_expert_window_view = Some(Arc::new(view.clone()));
+        self.splicing_expert_window_view = Some(Self::cache_ready_splicing_expert_view(view));
+        self.splicing_isoform_evidence_report = None;
+        self.splicing_isoform_evidence_status.clear();
+        self.splicing_locus_report = None;
+        self.splicing_locus_preview_png = None;
+        self.splicing_locus_status.clear();
         self.splicing_exon_skip_selected_candidate_ids.clear();
         self.splicing_exon_skip_plan = None;
         self.splicing_expert_window_pending_initial_render = true;
@@ -87,7 +93,7 @@ impl MainAreaDna {
         ctx.request_repaint();
     }
 
-    pub(super) fn open_splicing_expert_for_feature(
+    pub(crate) fn open_splicing_expert_for_feature(
         &mut self,
         feature_id: usize,
         source: &str,
@@ -95,6 +101,7 @@ impl MainAreaDna {
         match self.splicing_expert_view_for_feature(feature_id) {
             Ok(view) => {
                 self.open_splicing_expert_window_for_view(&view);
+                self.invalidate_splicing_expert_presentation_cache();
                 self.description_cache_expert_view = Some(FeatureExpertView::Splicing(view));
                 self.description_cache_expert_error = None;
                 self.op_status = format!("Opened Splicing Expert from {source}");
@@ -108,6 +115,38 @@ impl MainAreaDna {
         }
     }
 
+    /// Apply a subject-bound window action without changing sequences or reports.
+    pub(crate) fn apply_splicing_expert_intent(
+        &mut self,
+        action: crate::engine_shell::UiIntentAction,
+        feature_id: usize,
+    ) -> Result<String, String> {
+        use crate::engine_shell::UiIntentAction;
+        let matching_window = self.show_splicing_expert_window
+            && self.splicing_expert_window_feature_id == Some(feature_id);
+        if action == UiIntentAction::Close {
+            if matching_window {
+                self.show_splicing_expert_window = false;
+                self.splicing_expert_window_focus_requested = false;
+                self.splicing_expert_window_pending_initial_render = false;
+            }
+            return Ok(if matching_window {
+                "Closed Splicing Expert; sequence, features and reports retained".into()
+            } else {
+                "Requested Splicing Expert is already closed; other feature windows unchanged"
+                    .into()
+            });
+        }
+        if matching_window {
+            // Repeated open/focus must not clear the user's evidence or selection.
+            self.splicing_expert_window_focus_requested = true;
+            return Ok("Focused existing Splicing Expert".into());
+        }
+        let view = self.splicing_expert_view_for_feature(feature_id)?;
+        self.open_splicing_expert_window_for_view(&view);
+        Ok("Opened Splicing Expert".into())
+    }
+
     pub(super) fn open_rna_read_mapping_for_feature(
         &mut self,
         feature_id: usize,
@@ -116,6 +155,7 @@ impl MainAreaDna {
         match self.splicing_expert_view_for_feature(feature_id) {
             Ok(view) => {
                 self.open_rna_read_mapping_workspace_for_view(&view);
+                self.invalidate_splicing_expert_presentation_cache();
                 self.description_cache_expert_view =
                     Some(FeatureExpertView::Splicing(view.clone()));
                 self.description_cache_expert_error = None;
@@ -133,6 +173,7 @@ impl MainAreaDna {
     pub(super) fn open_dotplot_for_feature(&mut self, feature_id: usize, source: &str) -> bool {
         match self.splicing_expert_view_for_feature(feature_id) {
             Ok(view) => {
+                self.invalidate_splicing_expert_presentation_cache();
                 self.description_cache_expert_view =
                     Some(FeatureExpertView::Splicing(view.clone()));
                 self.description_cache_expert_error = None;

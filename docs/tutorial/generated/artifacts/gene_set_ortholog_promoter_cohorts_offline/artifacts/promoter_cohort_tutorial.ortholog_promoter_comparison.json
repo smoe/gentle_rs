@@ -29,12 +29,25 @@
       "relationship": "co_regulated"
     },
     "ortholog_resource_label": "Tutorial TP73 orthologs",
+    "contexts": [
+      {
+        "context_id": "ortholog_homosapiens_tutorialhumanpromotertoy",
+        "organism": "Homo sapiens",
+        "genome_id": "TutorialHumanPromoterToy"
+      },
+      {
+        "context_id": "ortholog_musmusculus_tutorialmousepromotertoy",
+        "organism": "Mus musculus",
+        "genome_id": "TutorialMousePromoterToy"
+      }
+    ],
     "resolved_promoter_count": 2,
     "unresolved_count": 0,
     "rows": [
       {
         "species": "Homo sapiens",
         "genome_id": "TutorialHumanPromoterToy",
+        "context_id": "ortholog_homosapiens_tutorialhumanpromotertoy",
         "role": "anchor",
         "gene_query": "TP73",
         "gene_symbol": "TP73",
@@ -57,6 +70,7 @@
       {
         "species": "Mus musculus",
         "genome_id": "TutorialMousePromoterToy",
+        "context_id": "ortholog_musmusculus_tutorialmousepromotertoy",
         "role": "target",
         "gene_query": "ENSMUSG_TUTORIAL_TRP73",
         "gene_symbol": "Trp73",
@@ -75,6 +89,8 @@
         "promoter_sequence": "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
         "orthology_type": "one_to_one",
         "confidence": "synthetic_high",
+        "orthology_source_context_id": "ortholog_homosapiens_tutorialhumanpromotertoy",
+        "orthology_target_context_id": "ortholog_musmusculus_tutorialmousepromotertoy",
         "orthology_source": "hand-crafted offline tutorial fixture",
         "orthology_evidence": [
           "synthetic_one_to_one_mapping"
@@ -113,7 +129,7 @@
       "transcript_id": "TX_HUMAN_TP73",
       "tf_id": "MA0079.5",
       "tf_name": "SP1",
-      "max_score": 5.418539921951662,
+      "max_score": 5.418539921951661,
       "peak_position_0based": 11,
       "peak_position_promoter_relative_bp": -29,
       "peak_genomic_position_1based": 122,
@@ -155,7 +171,7 @@
       "gene_labels": [
         "TP73"
       ],
-      "max_score": 5.418539921951662,
+      "max_score": 5.418539921951661,
       "peak_positions_promoter_relative_bp": [
         -29
       ]
@@ -167,8 +183,8 @@
       "right_species": "Mus musculus",
       "left_gene_label": "TP73",
       "right_gene_label": "Trp73",
-      "alignment_mode": "direct_promoter_aligned_prefix",
-      "compared_length_bp": 51,
+      "alignment_mode": "global_pairwise",
+      "compared_length_bp": 102,
       "identical_bp": 0,
       "identity_fraction": 0.0
     }

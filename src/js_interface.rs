@@ -375,6 +375,7 @@ fn ask_agent_system_impl(
         max_response_bytes: None,
         include_state_summary,
         allow_auto_exec,
+        allow_web_research: false,
         execute_all,
         execute_indices: execute_indices.iter().map(|idx| *idx as usize).collect(),
     };
@@ -900,6 +901,7 @@ fn inspect_feature_expert(
 
 pub struct JavaScriptInterface {
     runtime: JsRuntime,
+    _tokio_runtime: tokio::runtime::Runtime,
 }
 
 impl JavaScriptInterface {
@@ -988,11 +990,21 @@ impl JavaScriptInterface {
             ..Default::default()
         };
 
-        let mut ret = Self {
-            runtime: JsRuntime::new(RuntimeOptions {
+        let tokio_runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_time()
+            .build()
+            .expect("build JavaScript runtime executor");
+        let runtime = {
+            let _guard = tokio_runtime.enter();
+            JsRuntime::new(RuntimeOptions {
                 extensions: vec![ext],
                 ..Default::default()
-            }),
+            })
+        };
+        let mut ret = Self {
+            runtime,
+            _tokio_runtime: tokio_runtime,
         };
         let init_code = r#"
         	function load_dna(path) {return Deno.core.ops.load_dna(path)}
@@ -1402,7 +1414,8 @@ mod tests {
     };
     use crate::engine_shell::execute_shell_command;
     use crate::test_support::{
-        decision_trace_fixture_state, write_demo_jaspar_pfm, write_demo_pool_json,
+        decision_trace_fixture_state, primer_specificity_import_adapter_fixture,
+        transcript_assay_panel_adapter_fixture, write_demo_jaspar_pfm, write_demo_pool_json,
         write_demo_rebase_withrefm,
     };
     use std::fs;
@@ -1432,6 +1445,59 @@ mod tests {
         crate::tf_motifs::test_registry_lock()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    #[test]
+    fn js_runtime_initializes_and_executes_registered_operation() {
+        let mut js = JavaScriptInterface::new();
+        js.run_checked(
+            "const result = capabilities(); if (result == null) throw new Error('missing capabilities');"
+                .to_string(),
+        )
+        .expect("initialize V8 and execute registered GENtle operation");
+    }
+
+    #[test]
+    fn js_apply_operation_runs_full_transcript_assay_panel_contract() {
+        let (state, operation) = transcript_assay_panel_adapter_fixture();
+        let response = apply_operation_impl(
+            state,
+            &serde_json::to_string(&operation).expect("serialize transcript assay operation"),
+        )
+        .expect("JS apply_operation transcript assay panel");
+        let report = response
+            .result
+            .transcript_assay_panel
+            .as_deref()
+            .expect("transcript assay report");
+        assert_eq!(report.schema, "gentle.transcript_assay_panel.v2");
+        assert_eq!(report.assay_kind.as_str(), "endpoint_rt_pcr");
+        assert_eq!(report.objective.as_str(), "isoform_end_matrix");
+        assert!(
+            response
+                .state
+                .metadata
+                .contains_key("primer_design_reports")
+        );
+    }
+
+    #[test]
+    fn js_apply_operation_imports_primer_specificity_handoff() {
+        let temp = tempdir().expect("tempdir");
+        let operation = primer_specificity_import_adapter_fixture(temp.path());
+        let response = apply_operation_impl(
+            ProjectState::default(),
+            &serde_json::to_string(&operation).expect("serialize specificity import operation"),
+        )
+        .expect("JS apply_operation specificity import");
+        let report = response
+            .result
+            .primer_specificity_report
+            .as_deref()
+            .expect("specificity import report");
+        assert_eq!(report.schema, "gentle.primer_specificity_report.v4");
+        assert_eq!(report.forward_hits.len(), 0);
+        assert_eq!(report.reverse_hits.len(), 0);
     }
 
     #[test]

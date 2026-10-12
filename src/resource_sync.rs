@@ -1,17 +1,32 @@
-//! Resource synchronization (REBASE/JASPAR/ATtRACT/UCSC rmsk) parsing and
-//! snapshot writing.
+//! Resource synchronization for REBASE, JASPAR, ATtRACT, UCSC rmsk, ENCODE
+//! SCREEN cCRE, and related local snapshots/indexes.
 
 use crate::attract_motifs::{
     ATTRACT_MOTIF_SNAPSHOT_SCHEMA, AttractMotifRecord, AttractMotifSnapshot, AttractPfmRows,
     DEFAULT_ATTRACT_RESOURCE_PATH,
 };
+use crate::{
+    digest_utils::sha256_prefixed_bytes,
+    maxent_splicing::{
+        DEFAULT_MAXENT_SPLICE_MODEL_PATH, MAXENT_SPLICE_MODEL_SCHEMA, MaxEntSpliceModelSnapshot,
+    },
+};
+use gentle_protocol::CrypticSplicingModelTableDigest;
+use gentle_protocol::{
+    ENCODE_CCRE_INSTALL_REPORT_SCHEMA, EncodeCcreInstallReport, EncodeCcreIntervalIndex,
+};
+use gentle_protocol::{
+    ENSEMBL_REGULATION_INSTALL_REPORT_SCHEMA, EnsemblRegulationInstallReport,
+    EnsemblRegulationIntervalIndex,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeSet, HashMap},
     fs,
-    io::{BufRead, BufReader},
+    io::{BufRead, BufReader, Write},
     path::Path,
     process::Command,
+    time::Duration,
 };
 use tempfile::NamedTempFile;
 
@@ -112,6 +127,333 @@ pub struct UcscRmskInstallReport {
     pub resource_report: SyncReport,
     pub index_report: SyncReport,
     pub warnings: Vec<String>,
+}
+
+fn copy_local_or_remote_file(input: &str, output: &str) -> Result<(), String> {
+    let output_path = Path::new(output);
+    ensure_parent_dir(output)?;
+    if !input.starts_with("http://")
+        && !input.starts_with("https://")
+        && Path::new(input) == output_path
+    {
+        return Ok(());
+    }
+    let parent = output_path
+        .parent()
+        .filter(|value| !value.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let mut temporary = NamedTempFile::new_in(parent).map_err(|error| {
+        format!(
+            "Could not create temporary resource beside '{}': {error}",
+            output_path.display()
+        )
+    })?;
+    if input.starts_with("http://") || input.starts_with("https://") {
+        let mut response = std::panic::catch_unwind(|| reqwest::blocking::get(input))
+            .map_err(|_| format!("Could not fetch URL '{input}': networking backend panicked"))?
+            .map_err(|error| format!("Could not fetch URL '{input}': {error}"))?;
+        if !response.status().is_success() {
+            return Err(format!(
+                "Could not fetch URL '{input}': HTTP {}",
+                response.status()
+            ));
+        }
+        std::io::copy(&mut response, &mut temporary)
+            .map_err(|error| format!("Could not stream URL '{input}': {error}"))?;
+    } else {
+        let mut source = fs::File::open(input)
+            .map_err(|error| format!("Could not read file '{input}': {error}"))?;
+        std::io::copy(&mut source, &mut temporary)
+            .map_err(|error| format!("Could not copy resource '{input}' to '{output}': {error}"))?;
+    }
+    temporary
+        .flush()
+        .map_err(|error| format!("Could not flush resource output '{output}': {error}"))?;
+    temporary.persist(output_path).map_err(|error| {
+        format!(
+            "Could not publish resource output '{}': {}",
+            output_path.display(),
+            error.error
+        )
+    })?;
+    Ok(())
+}
+
+pub fn prepare_encode_ccre_index(
+    source_id: &str,
+    bed_path: &str,
+    index_output: Option<&str>,
+) -> Result<EncodeCcreIntervalIndex, String> {
+    let source = crate::encode_ccre::source_descriptor(source_id)?;
+    let output = index_output
+        .map(str::to_string)
+        .unwrap_or_else(|| crate::encode_ccre::default_index_path(&source));
+    crate::encode_ccre::prepare_interval_index(bed_path, &output, source)
+}
+
+pub fn install_encode_ccres(
+    source_id: &str,
+    input_override: Option<&str>,
+    bed_output: Option<&str>,
+    index_output: Option<&str>,
+) -> Result<EncodeCcreInstallReport, String> {
+    let source = crate::encode_ccre::source_descriptor(source_id)?;
+    let input = input_override
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(&source.source_url)
+        .to_string();
+    let bed_output = bed_output
+        .map(str::to_string)
+        .unwrap_or_else(|| crate::encode_ccre::default_bed_path(&source));
+    let index_output = index_output
+        .map(str::to_string)
+        .unwrap_or_else(|| crate::encode_ccre::default_index_path(&source));
+    copy_local_or_remote_file(&input, &bed_output)?;
+    let index =
+        crate::encode_ccre::prepare_interval_index(&bed_output, &index_output, source.clone())?;
+    let report_id = crate::digest_utils::short_sha256_id(
+        "encode_ccre_install",
+        &format!(
+            "{}\n{}\n{}\n{}",
+            source.source_id, index.bed_sha256, index.row_count, index_output
+        ),
+    );
+    Ok(EncodeCcreInstallReport {
+        schema: ENCODE_CCRE_INSTALL_REPORT_SCHEMA.to_string(),
+        report_id,
+        source,
+        input,
+        bed_output,
+        index_output,
+        bed_sha256: index.bed_sha256,
+        row_count: index.row_count,
+        class_counts: index.class_counts,
+        warnings: index.warnings,
+    })
+}
+
+pub fn prepare_ensembl_regulation_index(
+    source_id: &str,
+    intervals_path: &str,
+    index_output: Option<&str>,
+) -> Result<EnsemblRegulationIntervalIndex, String> {
+    let source = crate::ensembl_regulation::source_descriptor(source_id)?;
+    let output = index_output
+        .map(str::to_string)
+        .unwrap_or_else(|| crate::ensembl_regulation::default_index_path(&source));
+    crate::ensembl_regulation::prepare_interval_index(intervals_path, &output, source)
+}
+
+const ENSEMBL_REGULATION_API_PAGE_SIZE: usize = 20_000;
+
+fn ensembl_regulation_http_client() -> Result<reqwest::blocking::Client, String> {
+    reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(20))
+        .timeout(Duration::from_secs(180))
+        .user_agent(concat!("GENtle/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|error| format!("Could not initialize Ensembl Regulation HTTP client: {error}"))
+}
+
+fn fetch_ensembl_regulation_page(
+    client: &reqwest::blocking::Client,
+    source: &gentle_protocol::EnsemblRegulationSourceDescriptor,
+    offset: usize,
+) -> Result<crate::ensembl_regulation::ApiResponse, String> {
+    let page_url = format!(
+        "{}?limit={}&offset={}",
+        source.annotation_api_url, ENSEMBL_REGULATION_API_PAGE_SIZE, offset
+    );
+    let response = client.get(page_url).send().map_err(|error| {
+        format!(
+            "Could not fetch Ensembl Regulation source '{}' page at offset {}: {error}",
+            source.source_id, offset
+        )
+    })?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Could not fetch Ensembl Regulation source '{}' page at offset {}: HTTP {}",
+            source.source_id,
+            offset,
+            response.status()
+        ));
+    }
+    response.json().map_err(|error| {
+        format!(
+            "Could not parse Ensembl Regulation source '{}' page at offset {}: {error}",
+            source.source_id, offset
+        )
+    })
+}
+
+fn write_ensembl_regulation_api_snapshot(
+    source: &gentle_protocol::EnsemblRegulationSourceDescriptor,
+    input_override: Option<&str>,
+    output: &str,
+) -> Result<(usize, usize, String), String> {
+    ensure_parent_dir(output)?;
+    let output_path = Path::new(output);
+    let parent = output_path
+        .parent()
+        .filter(|value| !value.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let mut temporary = NamedTempFile::new_in(parent).map_err(|error| {
+        format!(
+            "Could not create temporary Ensembl Regulation snapshot beside '{}': {error}",
+            output_path.display()
+        )
+    })?;
+    crate::ensembl_regulation::write_intervals_header(&mut temporary, source)?;
+
+    let mut row_count = 0usize;
+    let mut page_count = 0usize;
+    let fetched_release;
+    if let Some(input) = input_override
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let text = read_text_input(input)?;
+        let response = serde_json::from_str::<crate::ensembl_regulation::ApiResponse>(&text)
+            .map_err(|error| {
+                format!(
+                    "Ensembl Regulation --input must be a complete annotation API JSON response: {error}"
+                )
+            })?;
+        let rows = crate::ensembl_regulation::intervals_from_api_response(&response, source)?;
+        if rows.len() != response.total_count {
+            return Err(format!(
+                "Ensembl Regulation --input contains {} feature row(s) but declares total_count={}; provide a complete response, not one API page",
+                rows.len(),
+                response.total_count
+            ));
+        }
+        fetched_release = response.release;
+        for row in &rows {
+            crate::ensembl_regulation::write_interval(&mut temporary, row)?;
+        }
+        row_count = rows.len();
+        page_count = usize::from(!rows.is_empty());
+    } else {
+        let client = ensembl_regulation_http_client()?;
+        let mut offset = 0usize;
+        let mut expected_total = None;
+        loop {
+            let response = fetch_ensembl_regulation_page(&client, source, offset)?;
+            if response.release != source.annotation_release {
+                return Err(format!(
+                    "Ensembl Regulation API returned release '{}' for pinned source '{}' release '{}'; refusing a stale or redirected snapshot",
+                    response.release, source.source_id, source.annotation_release
+                ));
+            }
+            if response.offset.unwrap_or(offset) != offset {
+                return Err(format!(
+                    "Ensembl Regulation API returned offset {:?} while {} was requested",
+                    response.offset, offset
+                ));
+            }
+            if let Some(expected) = expected_total {
+                if response.total_count != expected {
+                    return Err(format!(
+                        "Ensembl Regulation API total_count changed from {} to {} during download",
+                        expected, response.total_count
+                    ));
+                }
+            } else {
+                expected_total = Some(response.total_count);
+            }
+            let rows = crate::ensembl_regulation::intervals_from_api_response(&response, source)?;
+            if rows.is_empty() && offset < response.total_count {
+                return Err(format!(
+                    "Ensembl Regulation API returned an empty page at offset {} before total_count {} was reached",
+                    offset, response.total_count
+                ));
+            }
+            for row in &rows {
+                crate::ensembl_regulation::write_interval(&mut temporary, row)?;
+            }
+            row_count = row_count.saturating_add(rows.len());
+            page_count = page_count.saturating_add(1);
+            offset = offset.saturating_add(rows.len());
+            if offset >= response.total_count {
+                break;
+            }
+        }
+        if row_count != expected_total.unwrap_or_default() {
+            return Err(format!(
+                "Ensembl Regulation snapshot wrote {} row(s), expected {}",
+                row_count,
+                expected_total.unwrap_or_default()
+            ));
+        }
+        fetched_release = source.annotation_release.clone();
+    }
+    temporary
+        .flush()
+        .map_err(|error| format!("Could not flush Ensembl Regulation snapshot: {error}"))?;
+    temporary.persist(output_path).map_err(|error| {
+        format!(
+            "Could not publish Ensembl Regulation snapshot '{}': {}",
+            output_path.display(),
+            error.error
+        )
+    })?;
+    Ok((row_count, page_count, fetched_release))
+}
+
+pub fn install_ensembl_regulatory_features(
+    source_id: &str,
+    input_override: Option<&str>,
+    intervals_output: Option<&str>,
+    index_output: Option<&str>,
+) -> Result<EnsemblRegulationInstallReport, String> {
+    let source = crate::ensembl_regulation::source_descriptor(source_id)?;
+    let input = input_override
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(&source.annotation_api_url)
+        .to_string();
+    let intervals_output = intervals_output
+        .map(str::to_string)
+        .unwrap_or_else(|| crate::ensembl_regulation::default_intervals_path(&source));
+    let index_output = index_output
+        .map(str::to_string)
+        .unwrap_or_else(|| crate::ensembl_regulation::default_index_path(&source));
+    let (_, page_count, fetched_release) =
+        write_ensembl_regulation_api_snapshot(&source, input_override, &intervals_output)?;
+    let index = crate::ensembl_regulation::prepare_interval_index(
+        &intervals_output,
+        &index_output,
+        source.clone(),
+    )?;
+    let report_id = crate::digest_utils::short_sha256_id(
+        "ensembl_regulation_install",
+        &format!(
+            "{}\n{}\n{}\n{}\n{}",
+            source.source_id,
+            index.intervals_sha256,
+            index.row_count,
+            index_output,
+            fetched_release
+        ),
+    );
+    Ok(EnsemblRegulationInstallReport {
+        schema: ENSEMBL_REGULATION_INSTALL_REPORT_SCHEMA.to_string(),
+        report_id,
+        source,
+        input,
+        intervals_output,
+        index_output,
+        intervals_sha256: index.intervals_sha256,
+        row_count: index.row_count,
+        feature_type_counts: index.feature_type_counts,
+        page_count,
+        fetched_release,
+        warnings: vec![
+            "This installation contains Ensembl regulatory annotation only; regulatory activity and epigenome-specific primary signals remain separate optional resources."
+                .to_string(),
+        ],
+    })
 }
 
 fn now_unix_ms() -> u128 {
@@ -1137,6 +1479,188 @@ pub fn sync_attract(input: &str, output: Option<&str>) -> Result<SyncReport, Str
     })
 }
 
+fn parse_maxent_value_table(name: &str, text: &str) -> Result<Vec<f64>, String> {
+    text.lines()
+        .enumerate()
+        .filter_map(|(index, raw)| {
+            let value = raw.trim();
+            (!value.is_empty()).then_some((index, value))
+        })
+        .map(|(index, value)| {
+            value.parse::<f64>().map_err(|error| {
+                format!(
+                    "Could not parse MaxEnt table '{name}' row {} value '{value}': {error}",
+                    index + 1
+                )
+            })
+        })
+        .collect()
+}
+
+fn maxent_directory_table_text(directory: &Path, name: &str) -> Result<String, String> {
+    for candidate in [
+        directory.join("splicemodels").join(name),
+        directory.join(name),
+    ] {
+        if candidate.is_file() {
+            return fs::read_to_string(&candidate).map_err(|error| {
+                format!(
+                    "Could not read MaxEnt table '{}': {error}",
+                    candidate.display()
+                )
+            });
+        }
+    }
+    Err(format!(
+        "MaxEnt input directory '{}' does not contain splicemodels/{name} or {name}",
+        directory.display()
+    ))
+}
+
+fn maxent_archive_table_text(
+    archive_path: &Path,
+    members: &[String],
+    name: &str,
+) -> Result<String, String> {
+    let member = members
+        .iter()
+        .find(|member| {
+            Path::new(member.as_str())
+                .file_name()
+                .and_then(|value| value.to_str())
+                .is_some_and(|value| value == name)
+        })
+        .ok_or_else(|| {
+            format!(
+                "MaxEnt archive '{}' does not contain required table '{name}'",
+                archive_path.display()
+            )
+        })?;
+    read_zip_member_text(archive_path, member)
+}
+
+fn build_maxent_snapshot(
+    input: &str,
+    source_url: Option<&str>,
+    retrieved_on: Option<&str>,
+    redistribution_status: Option<&str>,
+    mut read_table: impl FnMut(&str) -> Result<String, String>,
+) -> Result<MaxEntSpliceModelSnapshot, String> {
+    let mut table_sha256 = Vec::new();
+    let mut read_bound = |name: &str| -> Result<String, String> {
+        let text = read_table(name)?;
+        let row_count = text.lines().filter(|line| !line.trim().is_empty()).count();
+        table_sha256.push(CrypticSplicingModelTableDigest {
+            table_name: name.to_string(),
+            sha256: sha256_prefixed_bytes(text.as_bytes()),
+            row_count,
+        });
+        Ok(text)
+    };
+
+    let donor_sequence_text = read_bound("splice5sequences")?;
+    let donor_score_text = read_bound("me2x5")?;
+    let donor_sequences = donor_sequence_text
+        .lines()
+        .filter_map(|line| {
+            let normalized = line
+                .split_whitespace()
+                .collect::<String>()
+                .to_ascii_uppercase();
+            (!normalized.is_empty()).then_some(normalized)
+        })
+        .collect::<Vec<_>>();
+    let donor_scores = parse_maxent_value_table("me2x5", &donor_score_text)?;
+    let mut acceptor_tables = Vec::with_capacity(9);
+    for ordinal in 1..=9 {
+        let name = format!("me2x3acc{ordinal}");
+        let text = read_bound(&name)?;
+        acceptor_tables.push(parse_maxent_value_table(&name, &text)?);
+    }
+    let mut snapshot = MaxEntSpliceModelSnapshot {
+        schema: MAXENT_SPLICE_MODEL_SCHEMA.to_string(),
+        source: input.to_string(),
+        source_url: source_url
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
+        retrieved_on: retrieved_on
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
+        redistribution_status: redistribution_status
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("not_recorded")
+            .to_string(),
+        model_fingerprint_sha256: String::new(),
+        table_sha256,
+        donor_sequences,
+        donor_scores,
+        acceptor_tables,
+    };
+    snapshot.finalize_fingerprint()?;
+    snapshot.validate()?;
+    Ok(snapshot)
+}
+
+/// Normalize a user-supplied MaxEntScan directory or ZIP archive.
+///
+/// GENtle deliberately does not download or redistribute these tables.
+pub fn sync_maxent_splice_model(
+    input: &str,
+    output: Option<&str>,
+    source_url: Option<&str>,
+    retrieved_on: Option<&str>,
+    redistribution_status: Option<&str>,
+) -> Result<SyncReport, String> {
+    if input.starts_with("http://") || input.starts_with("https://") {
+        return Err(
+            "MaxEnt synchronization accepts only a user-supplied local directory or ZIP archive; download and review the upstream resource separately, then pass its local path."
+                .to_string(),
+        );
+    }
+    let input_path = Path::new(input);
+    let snapshot = if input_path.is_dir() {
+        build_maxent_snapshot(
+            input,
+            source_url,
+            retrieved_on,
+            redistribution_status,
+            |name| maxent_directory_table_text(input_path, name),
+        )?
+    } else {
+        with_local_binary_input_path(input, |archive_path| {
+            let members = list_zip_members(archive_path)?;
+            build_maxent_snapshot(
+                input,
+                source_url,
+                retrieved_on,
+                redistribution_status,
+                |name| maxent_archive_table_text(archive_path, &members, name),
+            )
+        })?
+    };
+    let output = output
+        .unwrap_or(DEFAULT_MAXENT_SPLICE_MODEL_PATH)
+        .to_string();
+    ensure_parent_dir(&output)?;
+    let bytes = serde_json::to_vec_pretty(&snapshot)
+        .map_err(|error| format!("Could not serialize MaxEnt snapshot: {error}"))?;
+    fs::write(&output, bytes)
+        .map_err(|error| format!("Could not write MaxEnt output '{output}': {error}"))?;
+    Ok(SyncReport {
+        source: input.to_string(),
+        output,
+        item_count: snapshot
+            .table_sha256
+            .iter()
+            .map(|table| table.row_count)
+            .sum(),
+        resource: "maxent-splice-model".to_string(),
+    })
+}
+
 pub fn sync_ucsc_rmsk(
     input: &str,
     output: Option<&str>,
@@ -1265,6 +1789,45 @@ mod tests {
             ],
         );
         archive_path
+    }
+
+    fn base4_sequence(mut index: usize, len: usize) -> String {
+        let mut bases = vec![b'A'; len];
+        for position in (0..len).rev() {
+            bases[position] = match index % 4 {
+                0 => b'A',
+                1 => b'C',
+                2 => b'G',
+                _ => b'T',
+            };
+            index /= 4;
+        }
+        String::from_utf8(bases).expect("base4 DNA")
+    }
+
+    fn write_synthetic_maxent_directory(root: &Path) {
+        let models = root.join("splicemodels");
+        fs::create_dir_all(&models).expect("model directory");
+        let donor_sequences = (0..16_384)
+            .map(|index| base4_sequence(index, 7))
+            .collect::<Vec<_>>()
+            .join("\n");
+        fs::write(
+            models.join("splice5sequences"),
+            format!("{donor_sequences}\n"),
+        )
+        .expect("donor sequences");
+        fs::write(models.join("me2x5"), "1\n".repeat(16_384)).expect("donor scores");
+        for (ordinal, row_count) in [16_384, 16_384, 16_384, 16_384, 16_384, 64, 256, 64, 256]
+            .into_iter()
+            .enumerate()
+        {
+            fs::write(
+                models.join(format!("me2x3acc{}", ordinal + 1)),
+                "1\n".repeat(row_count),
+            )
+            .expect("acceptor table");
+        }
     }
 
     #[test]
@@ -1468,5 +2031,38 @@ T [0 0 0]
         assert_eq!(pfm.c, vec![0.01, 0.97, 0.01]);
         assert_eq!(pfm.g, vec![0.01, 0.01, 0.97]);
         assert_eq!(pfm.t, vec![0.01, 0.01, 0.01]);
+    }
+
+    #[test]
+    fn syncs_local_user_supplied_maxent_tables_with_provenance() {
+        let temp = tempdir().expect("tempdir");
+        let input = temp.path().join("maxent");
+        let output = temp.path().join("maxent.json");
+        write_synthetic_maxent_directory(&input);
+
+        let report = sync_maxent_splice_model(
+            input.to_string_lossy().as_ref(),
+            Some(output.to_string_lossy().as_ref()),
+            Some("https://example.invalid/maxent-source"),
+            Some("2026-08-27"),
+            Some("synthetic_test_tables"),
+        )
+        .expect("sync MaxEnt tables");
+        assert_eq!(report.resource, "maxent-splice-model");
+        let snapshot: MaxEntSpliceModelSnapshot =
+            serde_json::from_str(&fs::read_to_string(output).expect("read normalized model"))
+                .expect("parse normalized model");
+        snapshot.validate().expect("valid model");
+        assert_eq!(snapshot.table_sha256.len(), 11);
+        assert_eq!(snapshot.retrieved_on.as_deref(), Some("2026-08-27"));
+        assert_eq!(snapshot.redistribution_status, "synthetic_test_tables");
+    }
+
+    #[test]
+    fn maxent_sync_refuses_network_input() {
+        let error =
+            sync_maxent_splice_model("https://example.invalid/maxent.zip", None, None, None, None)
+                .expect_err("network input must be refused");
+        assert!(error.contains("user-supplied local"), "{error}");
     }
 }

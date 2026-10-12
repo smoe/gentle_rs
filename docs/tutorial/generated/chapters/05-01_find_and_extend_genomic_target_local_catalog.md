@@ -7,14 +7,14 @@ source_example: "docs/examples/workflows/prepare_extract_extend_localproject_gen
 example_test_mode: "always"
 executed_during_generation: true
 automated_status: "passing"
-review_status: "unreviewed"
+review_status: "codex_reviewed"
 review_stale: false
-codex_reviewed_at: null
+codex_reviewed_at: "2026-10-01"
 human_reviewed_at: null
 human_reviewer: null
 review_stale_reason: null
-review_issue_template: "Tutorial confusion"
-review_issue_template_path: ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+review_issue_template: null
+review_issue_template_path: null
 generated_artifact_dir: "docs/tutorial/generated/artifacts/find_and_extend_genomic_target_local_catalog"
 ---
 
@@ -24,7 +24,111 @@ Use assets/genomes.json + annotation-driven gene targeting, then extend the anch
 
 Many investigations start with "which exact genomic interval should I look at" rather than "which cloning operation should I run". This chapter introduces the practical sequence-selection loop: choose a prepared genome from `assets/genomes.json`, narrow candidates with annotation-backed gene filtering, extract the target interval, and then widen context with 5'/3' anchor extension as needed for promoter/splice/regulatory interpretation. The same workflow also clarifies where GenBank/EMBL imports fit: exported GenBank/EMBL records are loadable directly, and GenBank entries carrying NCBI `ACCESSION ... REGION:` metadata can be mapped to genome coordinates and extended by the same anchor controls.
 
+## What You Will Accomplish
+
+- Understand that `assets/genomes.json` defines selectable genome sources for preparation/retrieval.
+- Use annotation-backed gene filtering to find target regions reproducibly.
+- Extend anchored sequences in GUI/CLI without losing provenance or sequence lineage.
+
+## Before You Start
+
 **Prerequisites:** Read [Chapter 1: Load FASTA, branch, and reverse-complement](./02-01_load_branch_reverse_complement_pgex_fasta.md) first.
+
+**Useful when:**
+
+- You need to start from a biologically relevant gene locus instead of an arbitrary coordinate slice.
+- You imported a GenBank/EMBL record and want to recover surrounding genomic context around that entry.
+- You need to add upstream/downstream bases iteratively while preserving deterministic provenance.
+
+## Walkthrough: GUI, CLI and Inner Agent
+
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
+
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Open File -> Prepare Reference Genome..., set catalog to assets/genomes.json, choose LocalProject, and prepare it
+
+**GUI**
+
+Open `File -> Prepare Reference Genome...`, set catalog to `assets/genomes.json`, choose `LocalProject`, and prepare it.
+
+**CLI (terminal)**
+
+```bash
+gentle_cli genomes prepare LocalProject --catalog assets/genomes.json --cache-dir cache/localproject
+```
+
+**Ask the inner agent**
+
+> Inspect `assets/genomes.json` and propose `PrepareGenome` for exactly `LocalProject` with cache `cache/localproject`. State that this is the committed offline fixture and expose the cache/index writes; do not prepare or change a different catalog/cache until I approve.
+
+**Expected**
+
+> The offline `LocalProject` reference is prepared into `cache/localproject` without network access.
+
+### Step 2: Open File -> Retrieve Genome Sequence..., use Gene filter (regex) to narrow annotation hits, pick one gene match, and extract it
+
+**GUI**
+
+Open `File -> Retrieve Genome Sequence...`, use `Gene filter` (regex) to narrow annotation hits, pick one gene match, and extract it.
+
+**CLI (terminal)**
+
+```bash
+gentle_cli genomes genes LocalProject --catalog assets/genomes.json --cache-dir cache/localproject --filter '^etp' --limit 20
+gentle_cli genomes extract-gene LocalProject etpC --occurrence 1 --output-id local_etpc --catalog assets/genomes.json --cache-dir cache/localproject
+```
+
+**Ask the inner agent**
+
+> Using the same prepared cache, list `^etp` candidates and distinguish the duplicate gene/CDS rows. Select the gene-biotype `etpC` occurrence 1 on `AB011549.2`, plus strand, 2589..3465 (1-based), then propose `ExtractGenomeGene` as `local_etpc`. Show genome, occurrence, coordinates and output id before mutation; do not substitute the CDS row or a prefix match.
+
+**Expected**
+
+> The gene listing exposes separate gene/CDS rows; extraction binds gene-biotype `etpC` occurrence 1 on plus-strand `AB011549.2:2589..3465` to the 877 bp sequence `local_etpc`.
+
+### Step 3: In the resulting DNA window, use the Extend 5' / Extend 3' anchor controls (next to Genome anchor) to add flanking context
+
+**GUI**
+
+In the resulting DNA window, use the `Extend 5'` / `Extend 3'` anchor controls (next to `Genome anchor`) to add flanking context.
+
+**CLI (terminal)**
+
+```bash
+gentle_cli genomes extend-anchor local_etpc 5p 250 --output-id local_etpc_ext5 --catalog assets/genomes.json --cache-dir cache/localproject
+```
+
+**Ask the inner agent**
+
+> Inspect the verified anchor on `local_etpc`, then propose `ExtendGenomeAnchor` on biological `five_prime` by 250 bp as `local_etpc_ext5`. Explain that plus-strand 5-prime extension changes 2589..3465 to 2339..3465, predicts length 1127 bp, and must create a lineage edge from the 877 bp parent; wait for approval before creating it.
+
+**Expected**
+
+> Anchor extension creates 1127 bp `local_etpc_ext5` at `AB011549.2:2339..3465` with a lineage edge from `local_etpc`, rather than a disconnected sequence copy.
+
+
+## Ask an Outer Agent (MCP or ClawBio/OpenClaw)
+
+An outer agent does not inherit the unsaved GUI project. Give it this chapter's canonical workflow and an explicit disposable state path; ask it to retain the structured result, artifacts and reproducibility receipt instead of replacing them with prose.
+
+> Use GENtle's `gentle-cloning` skill to replay `docs/examples/workflows/prepare_extract_extend_localproject_gene.json` against a new disposable state. First report the exact workflow, inputs, state path, outputs and whether the selected route needs confirmation. Do not infer state from an open GUI. Return the structured result, produced artifacts and reproducibility receipt, and state any unmet prerequisite.
+
+Equivalent direct structured request for the generic wrapper:
+
+```json
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "state_path": "/tmp/gentle-find-and-extend-genomic-target-local-catalog.state.json",
+  "workflow_path": "docs/examples/workflows/prepare_extract_extend_localproject_gene.json",
+  "timeout_secs": 300
+}
+```
+
+Submitting a direct structured request is an explicit wrapper invocation. If natural language selects a narrower delegated skill and that route mutates state, selects biological material or writes artifacts, the caller must preserve that skill's proposal/approval boundary and approve only the exact bound digest. This tutorial generation step does not invoke an agent or grant approval.
+
+## Interpretation and Reference
 
 ## Parameters That Matter
 
@@ -39,18 +143,6 @@ Many investigations start with "which exact genomic interval should I look at" r
   - Why it matters: Defines which biological flank is added and by how much; output IDs keep downstream comparisons clear.
   - How to derive it: Choose `5p` for upstream-context questions and `3p` for downstream-context questions; start with 200-2000 bp and iterate.
 
-## When This Routine Is Useful
-
-- You need to start from a biologically relevant gene locus instead of an arbitrary coordinate slice.
-- You imported a GenBank/EMBL record and want to recover surrounding genomic context around that entry.
-- You need to add upstream/downstream bases iteratively while preserving deterministic provenance.
-
-## What You Learn
-
-- Understand that `assets/genomes.json` defines selectable genome sources for preparation/retrieval.
-- Use annotation-backed gene filtering to find target regions reproducibly.
-- Extend anchored sequences in GUI/CLI without losing provenance or sequence lineage.
-
 ## Applied Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
@@ -58,61 +150,19 @@ Many investigations start with "which exact genomic interval should I look at" r
 - **Sequence Lineage** (`sequence_lineage`): Derived sequences are explicit products linked to upstream inputs and operations.
 - **Genome Catalog Targeting** (`genome_catalog_targeting`): Prepared genome catalogs, annotation-based gene filters, and anchor extension connect imported entries to genomic context.
 
-## GUI First
-
-CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
-
-### Step 1: Open File -> Prepare Reference Genome..., set catalog to assets/genomes.json,...
-
-GUI: Open `File -> Prepare Reference Genome...`, set catalog to `assets/genomes.json`, choose `LocalProject`, and prepare it.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- genomes prepare LocalProject --catalog assets/genomes.json --cache-dir cache/localproject
-```
-
-> Expected: The offline `LocalProject` reference is prepared into `cache/localproject` without network access.
-
-### Step 2: Open File -> Retrieve Genome Sequence..., use Gene filter (regex) to narrow a...
-
-GUI: Open `File -> Retrieve Genome Sequence...`, use `Gene filter` (regex) to narrow annotation hits, pick one gene match, and extract it.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- genomes genes LocalProject --catalog assets/genomes.json --cache-dir cache/localproject --filter '^etp' --limit 20
-cargo run --bin gentle_cli -- genomes extract-gene LocalProject etpC --occurrence 1 --output-id local_etpc --catalog assets/genomes.json --cache-dir cache/localproject
-```
-
-> Expected: The gene listing narrows annotation candidates, and extraction creates the anchored sequence id `local_etpc`.
-
-### Step 3: In the resulting DNA window, use the Extend 5' / Extend 3' anchor controls (n...
-
-GUI: In the resulting DNA window, use the `Extend 5'` / `Extend 3'` anchor controls (next to `Genome anchor`) to add flanking context.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- genomes extend-anchor local_etpc 5p 250 --output-id local_etpc_ext5 --catalog assets/genomes.json --cache-dir cache/localproject
-```
-
-> Expected: Anchor extension creates `local_etpc_ext5` with widened interval provenance rather than a disconnected sequence copy.
-
-
 ## Follow-up Commands
 
 ```bash
-cargo run --bin gentle_cli -- genomes list --catalog assets/genomes.json
-cargo run --bin gentle_cli -- genomes genes LocalProject --catalog assets/genomes.json --cache-dir data/genomes --filter '^etp' --limit 20
-cargo run --bin gentle_cli -- genomes extend-anchor local_etpc 5p 500 --output-id local_etpc_ext5_more --catalog assets/genomes.json --cache-dir data/genomes
+gentle_cli genomes list --catalog assets/genomes.json
+gentle_cli genomes genes LocalProject --catalog assets/genomes.json --cache-dir data/genomes --filter '^etp' --limit 20
+gentle_cli genomes extend-anchor local_etpc 5p 500 --output-id local_etpc_ext5_more --catalog assets/genomes.json --cache-dir data/genomes
 ```
 
 ## Checkpoints
 
 - PrepareGenome succeeds for `LocalProject` without network access.
-- ExtractGenomeGene produces `local_etpc` from annotation-backed lookup.
-- ExtendGenomeAnchor produces `local_etpc_ext5` with widened genomic interval provenance.
+- ExtractGenomeGene produces 877 bp `local_etpc` from the gene-biotype `etpC` occurrence at `AB011549.2:2589..3465` on the plus strand.
+- ExtendGenomeAnchor produces 1127 bp `local_etpc_ext5` at `AB011549.2:2339..3465` with widened genomic interval provenance and a parent-child lineage edge.
 
 ## Tutorial Provenance
 
@@ -125,8 +175,8 @@ cargo run --bin gentle_cli -- genomes extend-anchor local_etpc 5p 500 --output-i
 - Example test_mode: `always`
 - Executed during generation: `yes`
 - Automated status: `passing`
-- Review status: `unreviewed`
-- Codex reviewed at: `not recorded`
+- Review status: `codex_reviewed`
+- Codex reviewed at: `2026-10-01`
 - Human reviewed at: `not recorded`
 - Inspect the source JSON when you need full option-level detail.
 

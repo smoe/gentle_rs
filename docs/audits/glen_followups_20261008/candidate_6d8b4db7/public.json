@@ -1,0 +1,276 @@
+{
+  "schema": "gentle.public_vkorc1_audit.v1",
+  "source_revision": "6d8b4db772a5ed08f5fd7926ec4f1635a14a236a",
+  "profile": "dev",
+  "binary_sha256": "6d5ed52d34c17df9ba7a1c348a2f5c0183d971ed563c6fa39032e480eba91070",
+  "binary_version": "GENtle 0.1.0-internal.12\nBuild 1791487308785\nSource revision 0.1.0-internal.12+git.6d8b4db772a5ed08f5fd7926ec4f1635a14a236a\nCross-platform DNA cloning workbench\n",
+  "cargo_lock_sha256": "3dfe44c7a08bf779e32289cf1312103ea1fb5883e44bba5f6e1912ce3ed77745",
+  "workflow_sha256": "74e0dc632bb945dae0f8aedbd2861b7efcf01c30a2fd3e0fabc31d3b7461800c",
+  "catalog_sha256": "89203d5ceb573b4448beeb64d17a43c80d7e365065789a31d7b7c66684c22b97",
+  "commands": [
+    {
+      "label": "prepare-complete-reference",
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "--state",
+        "/home/runner/work/_temp/vkorc1-public-audit/source.project.gentle.json",
+        "op",
+        "{\"PrepareGenome\": {\"genome_id\": \"Human GRCh38 Ensembl 116\", \"catalog_path\": \"/home/runner/work/gentle_rs/gentle_rs/assets/genomes.json\", \"cache_dir\": \"/home/runner/work/_temp/vkorc1-public-reference\"}}"
+      ],
+      "exit_code": 0
+    },
+    {
+      "label": "fetch-retained-public-slice",
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "--state",
+        "/home/runner/work/_temp/vkorc1-public-audit/source.project.gentle.json",
+        "op",
+        "{\"FetchDbSnpRegion\": {\"rs_id\": \"rs9923231\", \"genome_id\": \"Human GRCh38 Ensembl 116\", \"flank_bp\": 3000, \"output_id\": \"vkorc1_rs9923231_context\", \"annotation_scope\": \"full\", \"catalog_path\": \"/home/runner/work/gentle_rs/gentle_rs/assets/genomes.json\", \"cache_dir\": \"/home/runner/work/_temp/vkorc1-public-reference\"}}"
+      ],
+      "exit_code": 0
+    },
+    {
+      "label": "direct-annotate_promoters",
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "--state",
+        "/home/runner/work/_temp/vkorc1-public-audit/direct.project.gentle.json",
+        "op",
+        "{\"AnnotatePromoterWindows\": {\"input\": \"vkorc1_rs9923231_context\", \"gene_label\": \"VKORC1\", \"upstream_bp\": 1000, \"downstream_bp\": 200, \"collapse_mode\": \"transcript\"}}"
+      ],
+      "exit_code": 0
+    },
+    {
+      "label": "shared-annotate_promoters",
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "--state",
+        "/home/runner/work/_temp/vkorc1-public-audit/shared.project.gentle.json",
+        "shell",
+        "variant annotate-promoters vkorc1_rs9923231_context --gene-label VKORC1 --upstream-bp 1000 --downstream-bp 200"
+      ],
+      "exit_code": 0
+    },
+    {
+      "label": "direct-inspect_context",
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "--state",
+        "/home/runner/work/_temp/vkorc1-public-audit/direct.project.gentle.json",
+        "op",
+        "{\"SummarizeVariantPromoterContext\": {\"input\": \"vkorc1_rs9923231_context\", \"variant_label_or_id\": \"rs9923231\", \"gene_label\": \"VKORC1\", \"promoter_upstream_bp\": 1000, \"promoter_downstream_bp\": 200, \"tfbs_focus_half_window_bp\": 100, \"path\": \"/home/runner/work/_temp/vkorc1-public-audit/direct-context.json\"}}"
+      ],
+      "exit_code": 0
+    },
+    {
+      "label": "shared-inspect_context",
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "--state",
+        "/home/runner/work/_temp/vkorc1-public-audit/shared.project.gentle.json",
+        "shell",
+        "variant promoter-context vkorc1_rs9923231_context --variant rs9923231 --gene-label VKORC1 --path /home/runner/work/_temp/vkorc1-public-audit/shared-context.json"
+      ],
+      "exit_code": 0
+    },
+    {
+      "label": "direct-inspect_fragments",
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "--state",
+        "/home/runner/work/_temp/vkorc1-public-audit/direct.project.gentle.json",
+        "op",
+        "{\"SuggestPromoterReporterFragments\": {\"input\": \"vkorc1_rs9923231_context\", \"variant_label_or_id\": \"rs9923231\", \"gene_label\": \"VKORC1\", \"retain_downstream_from_tss_bp\": 200, \"retain_upstream_beyond_variant_bp\": 500, \"max_candidates\": 5, \"path\": \"/home/runner/work/_temp/vkorc1-public-audit/direct-fragments.json\"}}"
+      ],
+      "exit_code": 0
+    },
+    {
+      "label": "shared-inspect_fragments",
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "--state",
+        "/home/runner/work/_temp/vkorc1-public-audit/shared.project.gentle.json",
+        "shell",
+        "variant reporter-fragments vkorc1_rs9923231_context --variant rs9923231 --gene-label VKORC1 --retain-downstream-from-tss-bp 200 --retain-upstream-beyond-variant-bp 500 --path /home/runner/work/_temp/vkorc1-public-audit/shared-fragments.json"
+      ],
+      "exit_code": 0
+    },
+    {
+      "label": "direct-extract-reviewed-fragment",
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "--state",
+        "/home/runner/work/_temp/vkorc1-public-audit/direct.project.gentle.json",
+        "op",
+        "{\"ExtractRegion\": {\"input\": \"vkorc1_rs9923231_context\", \"from\": 2412, \"to\": 3501, \"output_id\": \"vkorc1_rs9923231_promoter_fragment\"}}"
+      ],
+      "exit_code": 0
+    },
+    {
+      "label": "direct-ambiguous-refusal",
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "--state",
+        "/home/runner/work/_temp/vkorc1-public-audit/direct.project.gentle.json",
+        "op",
+        "{\"MaterializeVariantAllele\": {\"input\": \"vkorc1_rs9923231_promoter_fragment\", \"variant_label_or_id\": \"rs9923231\", \"allele\": \"alternate\", \"output_id\": \"ambiguous_alternate\"}}"
+      ],
+      "exit_code": 1
+    },
+    {
+      "label": "direct-reference",
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "--state",
+        "/home/runner/work/_temp/vkorc1-public-audit/direct.project.gentle.json",
+        "op",
+        "{\"MaterializeVariantAllele\": {\"input\": \"vkorc1_rs9923231_promoter_fragment\", \"variant_label_or_id\": \"rs9923231\", \"allele\": \"reference\", \"output_id\": \"vkorc1_rs9923231_promoter_reference\"}}"
+      ],
+      "exit_code": 0
+    },
+    {
+      "label": "direct-reviewed-t",
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "--state",
+        "/home/runner/work/_temp/vkorc1-public-audit/direct.project.gentle.json",
+        "op",
+        "{\"MaterializeVariantAllele\": {\"input\": \"vkorc1_rs9923231_promoter_fragment\", \"variant_label_or_id\": \"rs9923231\", \"allele\": \"alternate\", \"alternate_allele\": \"T\", \"output_id\": \"vkorc1_rs9923231_promoter_alternate\"}}"
+      ],
+      "exit_code": 0
+    },
+    {
+      "label": "shared-extract-reviewed-fragment",
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "--state",
+        "/home/runner/work/_temp/vkorc1-public-audit/shared.project.gentle.json",
+        "op",
+        "{\"ExtractRegion\": {\"input\": \"vkorc1_rs9923231_context\", \"from\": 2412, \"to\": 3501, \"output_id\": \"vkorc1_rs9923231_promoter_fragment\"}}"
+      ],
+      "exit_code": 0
+    },
+    {
+      "label": "shared-ambiguous-refusal",
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "--state",
+        "/home/runner/work/_temp/vkorc1-public-audit/shared.project.gentle.json",
+        "shell",
+        "variant materialize-allele vkorc1_rs9923231_promoter_fragment --variant rs9923231 --allele alternate --output-id ambiguous_alternate"
+      ],
+      "exit_code": 1
+    },
+    {
+      "label": "shared-reference",
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "--state",
+        "/home/runner/work/_temp/vkorc1-public-audit/shared.project.gentle.json",
+        "shell",
+        "variant materialize-allele vkorc1_rs9923231_promoter_fragment --variant rs9923231 --allele reference --output-id vkorc1_rs9923231_promoter_reference"
+      ],
+      "exit_code": 0
+    },
+    {
+      "label": "shared-reviewed-t",
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "--state",
+        "/home/runner/work/_temp/vkorc1-public-audit/shared.project.gentle.json",
+        "shell",
+        "variant materialize-allele vkorc1_rs9923231_promoter_fragment --variant rs9923231 --allele alternate --alternate-base T --output-id vkorc1_rs9923231_promoter_alternate"
+      ],
+      "exit_code": 0
+    }
+  ],
+  "status": "pass",
+  "live_agent_accepted": false,
+  "native_gui_accepted": false,
+  "package_accepted": false,
+  "human_scientific_approval": false,
+  "run_url": "https://github.com/smoe/gentle_rs/actions/runs/37830325283",
+  "refsnp_source": {
+    "url": "https://api.ncbi.nlm.nih.gov/variation/v0/refsnp/9923231",
+    "final_url": "https://api.ncbi.nlm.nih.gov/variation/v0/refsnp/9923231",
+    "http_status": 200,
+    "date": "Thu, 08 Oct 2026 19:36:32 GMT",
+    "sha256": "080131663dad501faf0101fc1fd50b842b64d000d17c17a4222c654f4c16052a",
+    "execution_source": "retained file URL replay"
+  },
+  "reference_inputs": [
+    {
+      "manifest": "reference-manifests/human_grch38_ensembl_116/manifest.json",
+      "inputs": {
+        "sequence_path": {
+          "sha256": "746dc3b40529bcd09886287ec50b2b9c2f63fc794a14205a94bfd5b12335d845",
+          "bytes": 3346497923
+        },
+        "annotation_path": {
+          "sha256": "474626b424caf2f2f512c0038d70d985832198551f6f2818b9528db9d1f4d9e7",
+          "bytes": 4659761880
+        },
+        "fasta_index_path": {
+          "sha256": "c02d8541b668bdb90344d71cb6b8a9ea034d2a7a8b188393bc795711806b5035",
+          "bytes": 26844
+        },
+        "gene_index_path": {
+          "sha256": "f9e89275e647477e3bb8cf227b1f3a91e278f8d1aeec1aa62b045d1ce14c5966",
+          "bytes": 11895734
+        },
+        "transcript_index_path": {
+          "sha256": "84c877ee8097758c8efa4a39f195fa884762c5ab1d5e46cd7b4010e14a802845",
+          "bytes": 308411210
+        }
+      }
+    }
+  ],
+  "claim": "public source-bound CLI/shared-shell promoter and explicit C/T insert parity only",
+  "artifacts": {
+    "base-comparison.json": "679e52fd00d98552c28d3dd3413c6b38e0f0fa0e93302d7fe1be754a425f434d",
+    "base-comparison.svg": "1eee85466468d971cf88d0aad2b29841819e613755f60a81509cde42455b7bc6",
+    "direct-ambiguous-refusal.stderr.txt": "c750661f817ad89dab7498ae3181aa91904b04db019e2a2c98e917ec563f6bb3",
+    "direct-ambiguous-refusal.stdout.json": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "direct-annotate_promoters.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "direct-annotate_promoters.stdout.json": "2f4e5571f9d76500021ee976ed6dc1b69f9303aac26e6c836c575f2f048cf100",
+    "direct-context.json": "93adef2f99b9b10f941bb8997b292a66ce3744536a0e29ae78129452ac7feba7",
+    "direct-extract-reviewed-fragment.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "direct-extract-reviewed-fragment.stdout.json": "bb7911b075eaceec1ca3a040b20b490b5dd2478a29ecb5d1d194e5a425e0d7b0",
+    "direct-fragments.json": "d43d3235af1816b6b1b825945ae547e26129d3ef73cfa12b0bdeb8dcf5b0827f",
+    "direct-inspect_context.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "direct-inspect_context.stdout.json": "1e832011324ef382b37cbc304d3911c29dd2e5105c8f651c87e78a5815678b5c",
+    "direct-inspect_fragments.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "direct-inspect_fragments.stdout.json": "4a6d024c403bac018abe3a0e19048a4b856572f94c8b269f160bfab169cf7929",
+    "direct-reference.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "direct-reference.stdout.json": "391437818069f16a9306e9ae24e5d8cbed058d46e4e9cc706f7d971e4b052782",
+    "direct-reviewed-t.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "direct-reviewed-t.stdout.json": "8556f17bc59fdda0efb79df82d2d9283131ce58c341fd6e5d1657559e35aa53a",
+    "direct.project.gentle.json": "9331b56cb1acd23fbd81ad716516d1c5e1698fd3ed48228a982bd61336364049",
+    "fetch-retained-public-slice.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "fetch-retained-public-slice.stdout.json": "04436bb780cfa2ce61b829dcdf6797dcc569381c8f304755a35673e76af5dbcd",
+    "prepare-complete-reference.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prepare-complete-reference.stdout.json": "5d9d9a3866b9f12eb51b09e74965f2bb755ceef2eba77eae45d8ea483d3c59bd",
+    "public-starter.project.gentle.json": "7eade3a615382b061496a5173ac00ea47d772e128715f9f7c4d1253e2f7b0936",
+    "reference-manifests/human_grch38_ensembl_116/manifest.json": "51cc4c17771f71676cd14a0a8a9e2f450593295b86b3dbae0a36efab2bd45408",
+    "retained public response/refsnp-9923231.json": "080131663dad501faf0101fc1fd50b842b64d000d17c17a4222c654f4c16052a",
+    "shared-ambiguous-refusal.stderr.txt": "c750661f817ad89dab7498ae3181aa91904b04db019e2a2c98e917ec563f6bb3",
+    "shared-ambiguous-refusal.stdout.json": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "shared-annotate_promoters.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "shared-annotate_promoters.stdout.json": "c7517d83bac96c53b9a833efaacac8889f86f7f4a95250acbd287360a8e5bf90",
+    "shared-context.json": "032924b7fbe904d0b1ca7cb00fbe976d2e8f6d391c94850e491aeb2ff5723904",
+    "shared-extract-reviewed-fragment.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "shared-extract-reviewed-fragment.stdout.json": "bb7911b075eaceec1ca3a040b20b490b5dd2478a29ecb5d1d194e5a425e0d7b0",
+    "shared-fragments.json": "d615c5bfd058196ed387e2ba8cf0e72a2182ff7277fd318d6d6ea620bcff6c4a",
+    "shared-inspect_context.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "shared-inspect_context.stdout.json": "258e50013d3bc39595d44e8a2d98575f2d39e964f72f3f0050b660a0efc3e882",
+    "shared-inspect_fragments.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "shared-inspect_fragments.stdout.json": "7c468d44af82bf80f4e8d1a766f829638c50f713be33527b58440975449080cf",
+    "shared-reference.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "shared-reference.stdout.json": "cc690c9a05bdba6b79885c0b2c616bbcff6c09846c0f514fd84d4a4a88b4f88f",
+    "shared-reviewed-t.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "shared-reviewed-t.stdout.json": "04b87a43fd65684422eee8595b12f0ff1998b3794346fb37aae9d25615a2ff83",
+    "shared.project.gentle.json": "74b7c73880e98954d253570b1deb47b21623c07e8581df0dfe36b3629589512f",
+    "source.project.gentle.json": "e0b17701cfb1c1b8b2e90f072ec95dd2f2817b3fff88446353cd7390ea026356"
+  }
+}

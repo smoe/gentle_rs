@@ -1,0 +1,120 @@
+{
+  "acceptance_contract_sha256": "657f72dcf61ad93bad255658e691f413eb3abb5ca2b74d7151381af36f0b5b3b",
+  "capture": {
+    "backend": "scrot",
+    "backend_version": {
+      "argv": [
+        "/home/clawbio/.local/opt/gentle-xvfb-tools-a38ae2e3/root/usr/bin/scrot",
+        "--version"
+      ],
+      "available": true,
+      "exit_code": 0,
+      "output": "scrot version 2.0.0"
+    },
+    "captured_at_unix_ms": 1788889337378,
+    "display": ":104",
+    "gui_process_pid": 3871569,
+    "raw": {
+      "height_px": 1000,
+      "path": "/home/clawbio/GENtle-private/tutorial-gui-three-profile-3de4803a/load_and_digest_pgex/checkpoints/digest.raw.png",
+      "sha256": "f2e2c7f40f180e3ccbf6c250b96e832b057ba5d2d0a5fa24aecc32dc885a263c",
+      "width_px": 1600
+    },
+    "scope": "x11_root"
+  },
+  "chapter_id": "load_and_digest_pgex",
+  "derived_views": [
+    {
+      "annotation": "Numbered outline derived from the semantic focus rectangle",
+      "crop_physical_pixels": {
+        "max_x": 1600,
+        "max_y": 1000,
+        "min_x": 0,
+        "min_y": 0
+      },
+      "path": "/home/clawbio/GENtle-private/tutorial-gui-three-profile-3de4803a/load_and_digest_pgex/checkpoints/digest.orientation.svg",
+      "role": "orientation",
+      "sha256": "7bd1a9fad629c0030be1584bfa05d52219a424ca56587be6448db74f86cb908c"
+    },
+    {
+      "annotation": "Padded crop around the same semantic focus rectangle",
+      "crop_physical_pixels": {
+        "max_x": 887,
+        "max_y": 356,
+        "min_x": 481,
+        "min_y": 98
+      },
+      "path": "/home/clawbio/GENtle-private/tutorial-gui-three-profile-3de4803a/load_and_digest_pgex/checkpoints/digest.context.svg",
+      "role": "interaction_context",
+      "sha256": "81f54220e9f8c1cda914f1617793d70ed9d6eff3fa06348975b9c759298bb68e"
+    }
+  ],
+  "gentle_binary_sha256": "9550cdfa298903ea674974fa64e6119ee71fa1ac0b3668d01847933c0d38d37d",
+  "project_state": {
+    "path": "/home/clawbio/GENtle-private/tutorial-gui-three-profile-3de4803a/load_and_digest_pgex/starter.project.gentle.json",
+    "sha256": "55a2e42608fa795067c0fe1a577634f92901ab8d5e66a561172cfa566defb3f8"
+  },
+  "prose_step": 3,
+  "requested_target": {
+    "semantic_id": "sequence_tools.digest.run",
+    "subject_scope": null,
+    "window_id": "window.sequence_tools"
+  },
+  "requirement": "required",
+  "schema": "gentle.tutorial_gui_screenshot_evidence.v1",
+  "semantic_snapshot": {
+    "canonical_sha256": "04b00518bc519825ebf5968e717cf357fb976daa7cf410a10663481cd0fd6d4f",
+    "generation": 161,
+    "retained_file_sha256": "ccdeac95edd2a491920d723133e9f9d84bf6294458e458f7b72b255372718bb0",
+    "retained_path": "/home/clawbio/GENtle-private/tutorial-gui-three-profile-3de4803a/load_and_digest_pgex/checkpoints/digest.snapshot.json",
+    "schema": "gentle.gui_semantic_snapshot.v2",
+    "settled": true
+  },
+  "source_revision": "3de4803aa7cd4f960b01f71af8a7b4b272b7d576",
+  "step_id": "digest",
+  "step_sha256": "c4666626f307f40c40c7db4e69ccb019f622198b79b6d6b2c9b8528ab392741a",
+  "tutorial_manifest_sha256": "140684f592c7f7fff9d6e0c50b49e9d75984ccfc1d19c680f59e8aa7fc00a3a2",
+  "visual_focus": {
+    "native_window_binding": {
+      "coordinate_transform": "root_screen_px = native_client_origin_px + (target_logical - semantic_window_logical_origin) * pixels_per_point",
+      "egui_viewport_id": "\"0122\"",
+      "native_client_geometry": {
+        "height": 600,
+        "root_x": 1,
+        "root_y": 20,
+        "width": 800
+      },
+      "native_owner_semantic_window_id": "window.dna_viewer",
+      "screen_rect_physical_pixels": {
+        "max_x": 707,
+        "max_y": 236,
+        "min_x": 661,
+        "min_y": 218
+      },
+      "semantic_window_id": "window.sequence_tools",
+      "semantic_window_rect_logical_points": {
+        "max_x": 800.0,
+        "max_y": 600.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "x11_client_window_id": 4194365
+    },
+    "pixels_per_point": 1.0,
+    "rect_logical_points": {
+      "max_x": 705.875,
+      "max_y": 215.5,
+      "min_x": 660.5,
+      "min_y": 197.5
+    },
+    "rect_physical_pixels": {
+      "max_x": 707,
+      "max_y": 236,
+      "min_x": 661,
+      "min_y": 218
+    },
+    "semantic_id": "sequence_tools.digest.run",
+    "subject_scope": "subject-3d53516ef6da64de3b9d868d0ee7c0a6",
+    "window_id": "window.sequence_tools"
+  }
+}

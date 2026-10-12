@@ -1,0 +1,1285 @@
+"""Synthetic temporary Git fixtures for the cross-host tutorial checkout gate.
+
+Fixtures are created below from literal bytes, committed only inside temporary
+repositories, and consumed by the checkout/replay tests. The byte-preservation
+regressions also copy the generated capability matrix and existing
+provenance-documented TSS and probe fixtures.
+No network, build, real checkout changes, or platform-specific tools are used.
+"""
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+from unittest.mock import patch
+import xml.etree.ElementTree as ET
+import zlib
+
+from scripts import check_tutorial_checkouts as checker
+
+
+class TutorialCheckoutTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="gentle-checkout-test-")
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "source"
+        self.root.mkdir()
+        checker.git(self.root, "init", "--quiet")
+        checker.git(self.root, "config", "core.autocrlf", "false")
+        checker.git(self.root, "config", "user.name", "Synthetic test")
+        checker.git(self.root, "config", "user.email", "fixture@example.invalid")
+        self.payload = b'{\n  "schema": "synthetic.fixture.v1"\n}\n'
+        (self.root / "evidence.json").write_bytes(self.payload)
+        (self.root / "unbound.txt").write_bytes(b"first\nsecond\n")
+        (self.root / "binary.bin").write_bytes(b"\x00\xff\n\r\n")
+        (self.root / ".gitattributes").write_bytes(b"evidence.json text eol=lf\n")
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "fixture")
+
+    def test_both_modes_preserve_bound_bytes_binary_and_history(self):
+        revision = checker.git(self.root, "rev-parse", "HEAD").decode().strip()
+        (self.root / "untracked-private.txt").write_text("must not be copied")
+        before = checker.git(self.root, "status", "--porcelain")
+        for mode in checker.MODES:
+            with self.subTest(mode=mode[0]):
+                target = Path(self.tmp.name) / mode[0]
+                self.assertEqual(checker.prepare_checkout(self.root, target, mode), revision)
+                self.assertEqual((target / "evidence.json").read_bytes(), self.payload)
+                self.assertEqual((target / "binary.bin").read_bytes(), b"\x00\xff\n\r\n")
+                separator = b"\r\n" if mode[0] == "crlf" else b"\n"
+                self.assertEqual((target / "unbound.txt").read_bytes(),
+                                 separator.join((b"first", b"second", b"")))
+                self.assertFalse((target / "untracked-private.txt").exists())
+                self.assertEqual(checker.git(target, "log", "-1", "--format=%H", "--", "evidence.json")
+                                 .decode().strip(), revision)
+        self.assertEqual(checker.git(self.root, "status", "--porcelain"), before)
+
+    def test_missing_lf_rule_changes_digest_and_explicit_overlay_restores_it(self):
+        (self.root / ".gitattributes").write_bytes(b"# No protection\n")
+        checker.git(self.root, "add", "--", ".gitattributes")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "regression")
+        broken = Path(self.tmp.name) / "broken"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1])
+        self.assertNotEqual(hashlib.sha256((broken / "evidence.json").read_bytes()).digest(),
+                            hashlib.sha256(self.payload).digest())
+        fixed = Path(self.tmp.name) / "fixed"
+        checker.prepare_checkout(self.root, fixed, checker.MODES[1],
+                                 b"evidence.json text eol=lf\n")
+        self.assertEqual((fixed / "evidence.json").read_bytes(), self.payload)
+        self.assertEqual((self.root / ".gitattributes").read_bytes(), b"# No protection\n")
+
+    def test_rnapkin_lock_receipt_bytes_survive_both_checkout_modes(self):
+        relative = Path("docker/rnapkin/Cargo.lock")
+        payload = (checker.ROOT / relative).read_bytes()
+        digest = hashlib.sha256(payload).hexdigest()
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        destination = self.root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "retained RNAPKIN helper lock")
+        unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                   if not line.startswith(b"Cargo.lock "))
+        broken = Path(self.tmp.name) / "rnapkin-lock-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        self.assertEqual((broken / relative).read_bytes(), payload.replace(b"\n", b"\r\n"))
+        self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(), digest)
+        for mode in checker.MODES:
+            with self.subTest(mode=mode[0]):
+                target = Path(self.tmp.name) / f"rnapkin-lock-{mode[0]}"
+                checker.prepare_checkout(self.root, target, mode)
+                self.assertEqual((target / relative).read_bytes(), payload,
+                                 "Cargo.lock text eol=lf must also protect the helper lock")
+                self.assertEqual(hashlib.sha256((target / relative).read_bytes()).hexdigest(), digest)
+
+    def test_generated_tutorial_json_stays_byte_exact_in_both_checkout_modes(self):
+        # Use the real checkout policy with synthetic generated JSON, so removing
+        # a targeted LF rule reproduces Windows' strict drift-check failure.
+        (self.root / ".gitattributes").write_bytes(
+            (checker.ROOT / ".gitattributes").read_bytes())
+        paths = ("docs/tutorial/catalog.json", "docs/tutorial/manifest.json")
+        for relative in paths:
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(self.payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "generated JSON")
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"generated-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative in paths:
+                with self.subTest(mode=mode[0], path=relative):
+                    self.assertEqual((target / relative).read_bytes(), self.payload)
+
+    def test_manual_tutorial_review_identity_survives_lf_and_crlf_checkouts(self):
+        sources = ("07-04_microarray_evidence_gui_cli.json",
+                   "10-03_measured_gel_sizing_gui_cli.json",
+                   "08-18_repeat_environment_cohorts.json")
+        paths = [Path("docs/tutorial/review_manifest.json"), Path("docs/tutorial/catalog.json")]
+        paths.extend(Path("docs/tutorial/sources") / name for name in sources)
+        payloads = {path: (checker.ROOT / path).read_bytes() for path in paths}
+        (self.root / ".gitattributes").write_bytes((checker.ROOT / ".gitattributes").read_bytes())
+        for path, payload in payloads.items():
+            target = self.root / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "manual tutorial review identity")
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"manual-review-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            reviews = {entry["tutorial_id"]: entry for entry in
+                       json.loads((target / paths[0]).read_bytes())["entries"]}
+            catalog = {entry["id"]: entry for entry in
+                       json.loads((target / paths[1]).read_bytes())["entries"]}
+            known = {json.loads((target / path).read_bytes())["id"] for path in paths[2:]}
+            self.assertEqual(known - set(reviews), set(), "missing entries add report warnings")
+            self.assertEqual((target / paths[1]).read_bytes(), payloads[paths[1]])
+            for identifier in known:
+                with self.subTest(mode=mode[0], tutorial=identifier):
+                    self.assertEqual(reviews[identifier]["tutorial_kind"], "guided_walkthrough")
+                    self.assertEqual(reviews[identifier]["tutorial_status"], "active")
+                    self.assertNotEqual(catalog[identifier]["review_status"], "missing_review_manifest_entry")
+            missing = dict(reviews)
+            del missing["microarray_evidence_gui_cli"]
+            self.assertEqual(known - set(missing), {"microarray_evidence_gui_cli"},
+                             "the original missing-entry boundary is detectable in either checkout")
+
+    def test_measured_gel_image_requests_and_checksums_survive_lf_crlf_checkouts(self):
+        relative = Path("docs/tutorial/inputs/gel_sizing")
+        names = ["gel_sizing_synthetic.png", "dna-analysis.json", "protein-analysis.json", "SHA256SUMS"]
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        payloads = {}
+        for name in names:
+            path = relative / name
+            payloads[path] = (checker.ROOT / path).read_bytes()
+            destination = self.root / path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payloads[path])
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "drawn gel fixture")
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"gel-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for path, payload in payloads.items():
+                self.assertEqual((target / path).read_bytes(), payload)
+            for line in (target / relative / "SHA256SUMS").read_text().splitlines():
+                digest, name = line.split("  ", 1)
+                self.assertEqual(hashlib.sha256((target / relative / name).read_bytes()).hexdigest(), digest)
+            request = json.loads((target / relative / "dna-analysis.json").read_bytes())
+            self.assertEqual(request["image_sha256"], hashlib.sha256((target / relative / names[0]).read_bytes()).hexdigest())
+        unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                 if not line.startswith(b"docs/tutorial/inputs/gel_sizing/*.json "))
+        broken = Path(self.tmp.name) / "gel-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        self.assertNotEqual((broken / relative / "dna-analysis.json").read_bytes(), payloads[relative / "dna-analysis.json"])
+
+    def test_repeat_lesson_raw_rmsk_hash_survives_both_checkout_modes(self):
+        relative = Path("test_files/fixtures/repeat_cohort/local_project.rmsk.txt")
+        payload = (checker.ROOT / relative).read_bytes()
+        digest = "2fe38f29ab6ebdfb20e1ef3a0f5c28f4e01fffed5dfba32d0503c40af4722063"
+        self.assertEqual(hashlib.sha256(payload).hexdigest(), digest)
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        destination = self.root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "synthetic repeat rows")
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"repeat-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            self.assertEqual((target / relative).read_bytes(), payload)
+            self.assertEqual(hashlib.sha256((target / relative).read_bytes()).hexdigest(), digest)
+        unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                 if not line.startswith(b"test_files/fixtures/repeat_cohort/*.txt "))
+        broken = Path(self.tmp.name) / "repeat-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(), digest)
+
+    def test_retained_vkorc1_wip_bytes_and_hashes_survive_both_checkout_modes(self):
+        relative = Path("docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter")
+        files = ["variant_promoter_context.json", "promoter_reporter_candidates.json",
+                 "vkorc1_rs9923231_promoter_context.svg",
+                 "vkorc1_rs9923231_reporter_reference.svg",
+                 "vkorc1_rs9923231_reporter_alternate.svg"]
+        provenance = (checker.ROOT / relative / "README.md").read_text(encoding="utf-8")
+        self.assertIn("historical, unverified WIP", provenance)
+        (self.root / ".gitattributes").write_bytes((checker.ROOT / ".gitattributes").read_bytes())
+        for name in files:
+            destination = self.root / relative / name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            payload = (checker.ROOT / relative / name).read_bytes()
+            self.assertIn(hashlib.sha256(payload).hexdigest(), provenance)
+            destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "retained historical VKORC1 previews")
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"vkorc1-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for name in files:
+                with self.subTest(mode=mode[0], file=name):
+                    self.assertEqual((target / relative / name).read_bytes(),
+                                     (checker.ROOT / relative / name).read_bytes())
+
+    def test_vkorc1_guard_and_generated_chapter_survive_both_checkout_modes(self):
+        fixture = Path("docs/examples/assets/allele_pair_guard/multiallelic.gb")
+        chapter = Path("docs/tutorial/generated/chapters/08-04_vkorc1_warfarin_promoter_luciferase_gui.md")
+        hub = Path("docs/tutorial/generated/README.md")
+        payloads = {
+            fixture: (checker.ROOT / fixture).read_bytes(),
+            chapter: (checker.ROOT / chapter).read_bytes(),
+            hub: (checker.ROOT / hub).read_bytes(),
+        }
+        ledger = json.loads((checker.ROOT / "docs/tutorial/generated/report.json").read_bytes())
+        for path in (chapter, hub):
+            name = str(path.relative_to("docs/tutorial/generated"))
+            self.assertEqual(hashlib.sha256(payloads[path]).hexdigest(), ledger["file_checksums"][name])
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        for relative, payload in payloads.items():
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "synthetic 08.04 acceptance byte boundaries")
+        unprotected = b"\n".join(
+            line for line in attributes.split(b"\n")
+            if not any(line.startswith(str(path).encode() + b" ") for path in payloads)
+        )
+        broken = Path(self.tmp.name) / "vkorc1-guard-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        for relative, payload in payloads.items():
+            self.assertNotEqual((broken / relative).read_bytes(), payload)
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"vkorc1-guard-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, payload in payloads.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    self.assertEqual((target / relative).read_bytes(), payload)
+
+    def test_glen_20261008_audit_report_bytes_survive_both_checkout_modes(self):
+        relative = Path("docs/glen_tutorial_parity_gui_audit_20261008.md")
+        expected = "186e75a987fb50cb50ed883fa2b6fa5434718fcb553ceec7aad90a8af7c1cfce"
+        payload = (checker.ROOT / relative).read_bytes()
+        self.assertEqual(hashlib.sha256(payload).hexdigest(), expected)
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        destination = self.root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "owner-supplied exact-candidate audit report")
+        unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                  if not line.startswith(str(relative).encode() + b" "))
+        broken = Path(self.tmp.name) / "glen-audit-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(), expected)
+        for mode in checker.MODES:
+            with self.subTest(mode=mode[0]):
+                target = Path(self.tmp.name) / f"glen-audit-{mode[0]}"
+                checker.prepare_checkout(self.root, target, mode)
+                self.assertEqual((target / relative).read_bytes(), payload)
+                self.assertEqual(hashlib.sha256((target / relative).read_bytes()).hexdigest(), expected)
+
+    def test_original_audit_verification_receipt_survives_both_checkout_modes(self):
+        relative = Path("docs/audits/glen_followups_20261008/original_archive_30f23aa4/verification.json")
+        expected = "1a41c227b6e91587e6d310114d6672d875008f51170bf75428da303b3b50dbb5"
+        payload = (checker.ROOT / relative).read_bytes()
+        self.assertEqual(hashlib.sha256(payload).hexdigest(), expected)
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        destination = self.root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "original audit archive verification receipt")
+        unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                  if not line.startswith(str(relative).encode() + b" "))
+        broken = Path(self.tmp.name) / "original-audit-receipt-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(), expected)
+        for mode in checker.MODES:
+            with self.subTest(mode=mode[0]):
+                target = Path(self.tmp.name) / f"original-audit-receipt-{mode[0]}"
+                checker.prepare_checkout(self.root, target, mode)
+                self.assertEqual((target / relative).read_bytes(), payload)
+
+    def test_frozen_6d8b4db7_audit_receipts_survive_both_checkout_modes(self):
+        base = Path("docs/audits/glen_followups_20261008/candidate_6d8b4db7")
+        expected = {
+            base / "native_gui.json": "c0b0c89aaa8a2989e0c2d86de9f8327fe5e9190a4ce6634cb7866d91460efc2e",
+            base / "scroll_cpu_smoke.json": "420e2c280ccb8294ecab5046672c85ffe6461104275f050fc43fdf65acaf6bc6",
+            base / "agent_cli_build.json": "ff026cb592f64f8a81a472e144ad5bdd539bc09b2c0f905058fe0489a661acd1",
+            base / "public.json": "d65c02e64fb429ea41662a9d5dd5336a994304780a27a0390645ec2eecedb30d",
+            base / "base_comparison.json": "679e52fd00d98552c28d3dd3413c6b38e0f0fa0e93302d7fe1be754a425f434d",
+            base / "base_comparison.svg": "1eee85466468d971cf88d0aad2b29841819e613755f60a81509cde42455b7bc6",
+            base / "live_agent.json": "aa5a3d8e68a349c55f5764152d5e0613150c0f1a63d05ae11ca15d22d9a1ed25",
+        }
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        payloads = {path: (checker.ROOT / path).read_bytes() for path in expected}
+        for relative, payload in payloads.items():
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), expected[relative])
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "exact-candidate native, scroll, public and live evidence")
+        for relative in payloads:
+            unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                      if not line.startswith(str(relative).encode() + b" "))
+            broken = Path(self.tmp.name) / f"candidate-receipt-{relative.name}-unprotected"
+            checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+            self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(),
+                                expected[relative])
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"candidate-receipts-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, payload in payloads.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    self.assertEqual((target / relative).read_bytes(), payload)
+
+    def test_sequence_design_tutorial_semantics_survive_both_checkout_modes(self):
+        from scripts.test_sequence_design_tutorial import fenced_request
+
+        request_path = Path("docs/tutorial/inputs/synthetic_sequence_design.json")
+        guide_path = Path("docs/tutorial/06-07_synthetic_sequence_design.md")
+        source_path = Path("docs/tutorial/sources/06-07_synthetic_sequence_design.json")
+        (self.root / ".gitattributes").write_bytes((checker.ROOT / ".gitattributes").read_bytes())
+        for relative in (request_path, guide_path, source_path):
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes((checker.ROOT / relative).read_bytes())
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "synthetic sequence-design teaching request")
+        request = json.loads((checker.ROOT / request_path).read_bytes())
+        source = json.loads((checker.ROOT / source_path).read_bytes())
+        for mode in checker.MODES:
+            with self.subTest(mode=mode[0]):
+                target = Path(self.tmp.name) / f"sequence-design-{mode[0]}"
+                checker.prepare_checkout(self.root, target, mode)
+                guide_bytes = (target / guide_path).read_bytes()
+                if mode[0] == "crlf":
+                    self.assertIn(b"\r\n", guide_bytes, "Exercise the real CRLF boundary")
+                self.assertEqual(fenced_request(guide_bytes.decode("utf-8")), request)
+                self.assertEqual(json.loads((target / request_path).read_bytes()), request)
+                self.assertEqual(json.loads((target / source_path).read_bytes()), source)
+
+    def test_frozen_3ac4a02d_audit_receipts_survive_both_checkout_modes(self):
+        base = Path("docs/audits/glen_followups_20261008/candidate_3ac4a02d")
+        expected = {
+            base / "scroll_cpu_smoke.json": "87a274adaf3c8046f4458b8d0374757ea7db3cc63fab2a5eed7e9dbc5094c00d",
+            base / "scroll_verification.json": "58a16df1a020904e7b7e7ea4573e1eb314f9aec48c253094cd6bf70281fbb3ab",
+            base / "agent_cli_build.json": "8f28d2f10887acd283234d40a5440a27d55fb17e88d174bd57c3b3e39986c341",
+            base / "native_gui.json": "bef0707566d9f68f19f51d57cf760d47c8fbef30818b2f05dcc22bf4c75a121d",
+            base / "native_verification.json": "cf6b2500740d97071f7e010f53b3fdf97d6de68f1880d9dc3b1e0b4559c4e6f0",
+            base / "public.json": "4ae522db4eac214ba7877c775eb1698750424f6932c4710dbb351c5eaf9bb9b9",
+            base / "base_comparison.json": "5ced393927f191ccd78bb3f81a26597688a1286eaaefb2b5ee7ce30d92dc4313",
+            base / "base_comparison.svg": "9aee9045ce6e107fd43c0c3f68946907f4e8ac7aaed275367507ca2b528b2c9d",
+            base / "live_agent.json": "89f4fdba74d027d813fd5daecb9a15527cb6b9a9d3fb04b23110567c441c79d7",
+        }
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        payloads = {path: (checker.ROOT / path).read_bytes() for path in expected}
+        for relative, payload in payloads.items():
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), expected[relative])
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "repaired-candidate audit evidence")
+        for relative in payloads:
+            unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                      if not line.startswith(str(relative).encode() + b" "))
+            broken = Path(self.tmp.name) / f"repaired-receipt-{relative.name}-unprotected"
+            checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+            self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(),
+                                expected[relative])
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"repaired-receipts-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, payload in payloads.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    self.assertEqual((target / relative).read_bytes(), payload)
+
+    def test_public_vkorc1_audit_input_hashes_survive_both_checkout_modes(self):
+        paths = (
+            Path("docs/tutorial/sources/08-04_vkorc1_warfarin_promoter_luciferase_gui.json"),
+            Path("docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json"),
+        )
+        payloads = {path: (checker.ROOT / path).read_bytes() for path in paths}
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        for relative, payload in payloads.items():
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "public audit input byte contracts")
+        for index, relative in enumerate(paths):
+            unprotected = b"\n".join(
+                line for line in attributes.split(b"\n")
+                if not line.startswith(relative.as_posix().encode() + b" ")
+            )
+            broken = Path(self.tmp.name) / f"public-audit-unprotected-{index}"
+            checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+            self.assertEqual((broken / relative).read_bytes(), payloads[relative].replace(b"\n", b"\r\n"))
+            self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).digest(),
+                                hashlib.sha256(payloads[relative]).digest())
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"public-audit-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, payload in payloads.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    self.assertEqual((target / relative).read_bytes(), payload)
+                    self.assertEqual(hashlib.sha256((target / relative).read_bytes()).digest(),
+                                     hashlib.sha256(payload).digest())
+
+    def test_scroll_followup_receipt_hash_survives_both_checkout_modes(self):
+        relative = Path("docs/audits/glen_followups_20261008/scroll_cpu_smoke_d1bf3fd3.json")
+        payload = (checker.ROOT / relative).read_bytes()
+        expected = "60add8b059510d660c36a25c1b7115138b3fbc8693dcecf2b42fd2316ddceab5"
+        self.assertEqual(hashlib.sha256(payload).hexdigest(), expected)
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        destination = self.root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "scroll smoke receipt")
+        unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                  if not line.startswith(str(relative).encode() + b" "))
+        broken = Path(self.tmp.name) / "scroll-receipt-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(), expected)
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"scroll-receipt-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            self.assertEqual((target / relative).read_bytes(), payload)
+
+    def test_review_dependencies_keep_commit_dates_despite_newer_graphic_mtime(self):
+        source = Path("docs/tutorial/sources/synthetic.json")
+        graphic = Path("docs/screenshots/synthetic.png")
+        for relative, payload in ((source, b"{}\n"), (graphic, b"synthetic image")):
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        env = dict(os.environ, GIT_AUTHOR_DATE="2024-01-02T00:00:00Z",
+                   GIT_COMMITTER_DATE="2024-01-02T00:00:00Z")
+        subprocess.run(["git", "-C", str(self.root), "-c", "commit.gpgsign=false",
+                        "-c", "core.hooksPath=.disabled-hooks", "commit", "--quiet",
+                        "-m", "Synthetic review date tie"], env=env, check=True)
+        expected = checker.git(self.root, "log", "-1", "--format=%ct", "--", str(source))
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"review-dates-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            os.utime(target / graphic, (4102444800, 4102444800))
+            for relative in (source, graphic):
+                with self.subTest(mode=mode[0], path=relative):
+                    self.assertEqual(checker.git(target, "log", "-1", "--format=%ct",
+                                                 "--", str(relative)), expected)
+            self.assertNotEqual((target / graphic).stat().st_mtime,
+                                (target / source).stat().st_mtime)
+
+    def test_uniprot_review_evidence_hashes_survive_both_checkout_modes(self):
+        evidence_root = Path("docs/tutorial/reproducibility")
+        records = {
+            "tp53_uniprot_projection_online/tp53_grch38_ensembl116.gb":
+                "a6694752cd58bd16e6e5565725cc6d2fa3b127606f8ce3c6ee7890e327fecec3",
+            "tp53_uniprot_projection_online/map-result.json":
+                "bbdb7dad51f305061d24770f9e5bc5554ef34a1e330b8ee9556d7086a6028be5",
+            "tp53_uniprot_projection_online/feature-coding-dna.json":
+                "d12fa76661ec541f77fc4c3bfda15078edbc159a39d6d278e756ad67adc45f24",
+            "tp73_uniprot_projection_audit_online/tp73_uniprot_projection.svg":
+                "7cb5c32e7e0c9f605e55fca781cc3cce14028bbc0fd75ba19240ef53a95d8267",
+        }
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        expected = {}
+        for name, digest in records.items():
+            relative = evidence_root / name
+            payload = (checker.ROOT / relative).read_bytes()
+            provenance = (checker.ROOT / relative.parent / "README.md").read_text(
+                encoding="utf-8")
+            self.assertIn(digest, provenance)
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), digest,
+                             f"Restore exact reviewed bytes / LF policy for {relative}")
+            expected[relative] = (payload, digest)
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "retained UniProt review evidence")
+
+        protected_paths = {path.as_posix().encode() for path in expected}
+        unprotected = b"\n".join(
+            line for line in attributes.split(b"\n")
+            if not any(line.startswith(path + b" ") for path in protected_paths)
+        )
+        broken = Path(self.tmp.name) / "uniprot-review-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        for relative, (payload, digest) in expected.items():
+            with self.subTest(mode="unprotected-crlf", path=relative):
+                converted = (broken / relative).read_bytes()
+                self.assertEqual(converted, payload.replace(b"\n", b"\r\n"))
+                self.assertNotEqual(hashlib.sha256(converted).hexdigest(), digest)
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"uniprot-review-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, (payload, digest) in expected.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    retained = (target / relative).read_bytes()
+                    self.assertEqual(retained, payload,
+                                     f"{relative.as_posix()} text eol=lf is required")
+                    self.assertEqual(hashlib.sha256(retained).hexdigest(), digest)
+
+    def test_historical_panel_baselines_keep_raw_hashes_in_both_checkout_modes(self):
+        generated = Path("docs/tutorial/generated")
+        ledger = json.loads((checker.ROOT / generated / "report.json").read_bytes())
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        expected = {}
+        for name in ("patz1_endpoint_end_matrix", "patz1_routine_common_region_screen", "patz1_sybr_juc_panel"):
+            artifact = f"artifacts/patz1_transcript_assay_panels_cli/artifacts/{name}.report.json"
+            relative = generated / artifact
+            payload = (checker.ROOT / relative).read_bytes()
+            digest = ledger["file_checksums"][artifact]
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), digest)
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+            expected[relative] = (payload, digest)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "historical synthetic panel baselines")
+        unprotected = b"\n".join(
+            line for line in attributes.split(b"\n")
+            if not line.startswith(b"docs/tutorial/generated/artifacts/patz1_transcript_assay_panels_cli/artifacts/")
+        )
+        broken = Path(self.tmp.name) / "panel-baselines-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        for relative, (payload, digest) in expected.items():
+            with self.subTest(mode="unprotected-crlf", path=relative):
+                converted = (broken / relative).read_bytes()
+                self.assertEqual(converted, payload.replace(b"\n", b"\r\n"))
+                self.assertNotEqual(hashlib.sha256(converted).hexdigest(), digest)
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"panel-baselines-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, (payload, digest) in expected.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    retained = (target / relative).read_bytes()
+                    self.assertEqual(retained, payload,
+                                     f"Restore {relative.as_posix()} text eol=lf")
+                    self.assertEqual(hashlib.sha256(retained).hexdigest(), digest)
+
+    def test_gene_assay_gui_evidence_hashes_survive_both_checkout_modes(self):
+        (self.root / ".gitattributes").write_bytes(
+            (checker.ROOT / ".gitattributes").read_bytes())
+        evidence_dir = Path("docs/screenshots/gene_assay_study_gui")
+        source_dir = checker.ROOT / evidence_dir
+        evidence = json.loads((source_dir / "evidence.json").read_bytes())
+        expected = {}
+        for row in evidence["captures"]:
+            for field in ("raw_png", "semantic_snapshot", "context_svg"):
+                relative = evidence_dir / row[field]
+                payload = (checker.ROOT / relative).read_bytes()
+                self.assertEqual(hashlib.sha256(payload).hexdigest(), row[f"{field}_sha256"])
+                expected[relative] = (payload, row[f"{field}_sha256"])
+                destination = self.root / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(payload)
+        self.assertEqual(len(expected), 18)
+        checker.git(self.root, "add", "--all")
+        checker.git(
+            self.root,
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "--quiet",
+            "-m",
+            "public GUI evidence",
+        )
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        unprotected = b"\n".join(
+            line for line in attributes.split(b"\n")
+            if b"docs/screenshots/gene_assay_study_gui/" not in line
+        )
+        broken = Path(self.tmp.name) / "gene-assay-evidence-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        changed = [
+            relative
+            for relative, (payload, _digest) in expected.items()
+            if (broken / relative).read_bytes() != payload
+        ]
+        self.assertEqual(
+            sorted(changed),
+            sorted(relative for relative in expected if relative.suffix in (".json", ".svg")),
+        )
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"gene-assay-evidence-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, (payload, digest) in expected.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    checked_out = (target / relative).read_bytes()
+                    self.assertEqual(checked_out, payload)
+                    self.assertEqual(hashlib.sha256(checked_out).hexdigest(), digest)
+
+    def test_tss_regulatory_gui_evidence_hashes_survive_both_checkout_modes(self):
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        evidence = json.loads((checker.ROOT /
+            "docs/screenshots/tss_regulatory_view_gui/evidence.json").read_bytes())
+        records = list(evidence["inputs"].values())
+        records.append(evidence["agent_assistant"]["checkpoint"])
+        for capture in evidence["captures"]:
+            records.extend(capture[field] for field in ("raw_png", "semantic_snapshot"))
+        expected = {}
+        for record in records:
+            relative = Path(record["path"])
+            payload = (checker.ROOT / relative).read_bytes()
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), record["sha256"])
+            expected[relative] = (payload, record["sha256"])
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+        self.assertEqual(len(expected), 8)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "retained synthetic TSS GUI evidence")
+
+        unprotected = b"\n".join(
+            line for line in attributes.split(b"\n")
+            if b"docs/screenshots/tss_regulatory_view_gui/" not in line
+        )
+        broken = Path(self.tmp.name) / "tss-evidence-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        self.assertEqual(
+            sorted(relative for relative, (payload, _) in expected.items()
+                   if (broken / relative).read_bytes() != payload),
+            sorted(Path(capture["semantic_snapshot"]["path"])
+                   for capture in evidence["captures"]),
+        )
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"tss-evidence-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, (payload, digest) in expected.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    checked_out = (target / relative).read_bytes()
+                    self.assertEqual(checked_out, payload,
+                                     f"{relative} needs a scoped .gitattributes LF rule")
+                    self.assertEqual(hashlib.sha256(checked_out).hexdigest(), digest)
+
+    def test_tss_collection_gui_evidence_hashes_survive_both_checkout_modes(self):
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        evidence = json.loads((checker.ROOT /
+            "docs/screenshots/tss_collection_gui/evidence.json").read_bytes())
+        records = []
+        for capture in evidence["captures"]:
+            records.extend(capture[field] for field in
+                           ("raw_png", "semantic_snapshot", "screenshot_receipt"))
+
+        expected = {}
+        for record in records:
+            relative = Path(record["path"])
+            payload = (checker.ROOT / relative).read_bytes()
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), record["sha256"])
+            expected[relative] = (payload, record["sha256"])
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+        self.assertEqual(len(expected), 6)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "retained TSS collection GUI evidence")
+
+        unprotected = b"\n".join(
+            line for line in attributes.split(b"\n")
+            if b"docs/screenshots/tss_collection_gui/" not in line
+        )
+        broken = Path(self.tmp.name) / "tss-collection-evidence-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        text_paths = sorted(relative for relative in expected
+                            if relative.suffix == ".json")
+        self.assertEqual(len(text_paths), 4)
+        self.assertEqual(
+            sorted(relative for relative, (payload, _) in expected.items()
+                   if (broken / relative).read_bytes() != payload),
+            text_paths,
+        )
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"tss-collection-evidence-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, (payload, digest) in expected.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    checked_out = (target / relative).read_bytes()
+                    self.assertEqual(checked_out, payload,
+                                     f"{relative} needs a scoped .gitattributes LF rule")
+                    self.assertEqual(hashlib.sha256(checked_out).hexdigest(), digest)
+
+    def test_tp73_tss_and_pcr_evidence_hashes_survive_both_checkout_modes(self):
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        evidence = json.loads((checker.ROOT /
+            "docs/screenshots/tp73_dnp73_factor_curves/evidence.json").read_bytes())
+        records = [evidence["input"]]
+        for capture in evidence["captures"]:
+            records.extend(capture[field] for field in ("raw_png", "semantic_snapshot"))
+
+        pcr_dir = Path("docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui")
+        pcr = json.loads((checker.ROOT / pcr_dir /
+            "inspect_primer_report.screenshot.json").read_bytes())
+        # The capture receipt records archived Linux paths; the retained files
+        # are siblings of that receipt, with the same basenames and byte hashes.
+        for record in [pcr["capture"]["raw"], *pcr["derived_views"]]:
+            records.append({"path": pcr_dir / Path(record["path"]).name,
+                            "sha256": record["sha256"]})
+        snapshot = pcr["semantic_snapshot"]
+        records.append({"path": pcr_dir / Path(snapshot["retained_path"]).name,
+                        "sha256": snapshot["retained_file_sha256"]})
+
+        expected = {}
+        for record in records:
+            relative = Path(record["path"])
+            payload = (checker.ROOT / relative).read_bytes()
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), record["sha256"])
+            expected[relative] = (payload, record["sha256"])
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+        self.assertEqual(len(expected), 11)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "retained TP73 TSS and Simple PCR evidence")
+
+        scopes = (b"docs/screenshots/tp73_dnp73_factor_curves/",
+                  b"docs/screenshots/tutorial_gui_acceptance/",
+                  b"test_files/tp73.ncbi.gb")
+        unprotected = b"\n".join(
+            line for line in attributes.split(b"\n")
+            if not any(scope in line for scope in scopes)
+        )
+        broken = Path(self.tmp.name) / "tp73-tss-pcr-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        text_paths = sorted(relative for relative in expected
+                            if relative.suffix in (".json", ".svg", ".gb"))
+        self.assertEqual(len(text_paths), 7)
+        self.assertEqual(
+            sorted(relative for relative, (payload, _) in expected.items()
+                   if (broken / relative).read_bytes() != payload),
+            text_paths,
+        )
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"tp73-tss-pcr-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, (payload, digest) in expected.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    checked_out = (target / relative).read_bytes()
+                    self.assertEqual(checked_out, payload,
+                                     f"{relative} needs a scoped .gitattributes LF rule")
+                    self.assertEqual(hashlib.sha256(checked_out).hexdigest(), digest)
+
+    def test_generated_parity_matrix_stays_byte_exact_in_both_checkout_modes(self):
+        relative = "docs/gui_cli_mcp_parity.md"
+        payload = (checker.ROOT / relative).read_bytes()
+        self.assertIn(b"\n", payload)
+        self.assertFalse(b"\r" in payload,
+                         f"{relative} requires a scoped .gitattributes text eol=lf rule")
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        destination = self.root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "generated capability matrix")
+
+        # Negative control: the missing rule must reproduce CRLF checkout drift.
+        unprotected = b"\n".join(
+            line for line in attributes.split(b"\n")
+            if relative.encode() not in line
+        )
+        broken = Path(self.tmp.name) / "parity-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        self.assertTrue(
+            (broken / relative).read_bytes() == payload.replace(b"\n", b"\r\n"),
+            "The missing-rule control must reproduce CRLF conversion of the parity matrix",
+        )
+        for mode in checker.MODES:
+            with self.subTest(mode=mode[0]):
+                target = Path(self.tmp.name) / f"parity-{mode[0]}"
+                checker.prepare_checkout(self.root, target, mode)
+                self.assertTrue(
+                    (target / relative).read_bytes() == payload,
+                    f"{relative} changed during {mode[0]} checkout; preserve the "
+                    "generator's exact bytes with .gitattributes text eol=lf",
+                )
+
+    def test_replay_uses_existing_binary_and_forces_offline(self):
+        with patch.dict(os.environ, {"GENTLE_TEST_ONLINE": "1"}), \
+                patch.object(checker, "check_tutorial_visuals") as visuals, \
+                patch.object(checker.subprocess, "run") as run:
+            checker.check_checkout(Path("existing-binary"), self.root, "crlf", 12)
+        visuals.assert_called_once_with(self.root)
+        self.assertEqual([call.args[0] for call in run.call_args_list],
+                         [["existing-binary", "parity-matrix-check"],
+                          ["existing-binary", "tutorial-catalog-check"],
+                          ["existing-binary", "--check"], ["existing-binary", "tutorial-check"]])
+        for call in run.call_args_list:
+            self.assertNotIn("GENTLE_TEST_ONLINE", call.kwargs["env"])
+            self.assertEqual(call.kwargs["cwd"], self.root)
+            self.assertTrue(call.kwargs["check"])
+            self.assertEqual(call.kwargs["timeout"], 12)
+
+    def test_bound_tss_and_probe_fixtures_survive_crlf_checkout(self):
+        (self.root / ".gitattributes").write_bytes(
+            (checker.ROOT / ".gitattributes").read_bytes())
+        fixture_dirs = (
+            "test_files/fixtures/tss_profiles",
+            "test_files/fixtures/probe_region_outputs/clariom_e_mtab_14704_tp73_validation",
+        )
+        expected = {}
+        for directory in fixture_dirs:
+            for source in (checker.ROOT / directory).rglob("*"):
+                if not source.is_file():
+                    continue
+                relative = source.relative_to(checker.ROOT)
+                expected[relative] = source.read_bytes()
+                destination = self.root / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(expected[relative])
+        provenance_path = Path(fixture_dirs[1]) / "provenance.json"
+        provenance = json.loads(expected[provenance_path])
+        inputs = provenance["input_fingerprints"]
+        self.assertTrue(inputs, "expected retained adapter input provenance")
+        for binding in inputs:
+            relative = Path(binding["path"])
+            self.assertFalse(relative.is_absolute())
+            self.assertNotIn("..", relative.parts)
+            expected[relative] = (checker.ROOT / relative).read_bytes()
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(expected[relative])
+        self.assertTrue(expected)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "bound fixtures")
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"bound-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, payload in expected.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    self.assertEqual((target / relative).read_bytes(), payload)
+            for binding in inputs:
+                with self.subTest(mode=mode[0], bound_input=binding["path"]):
+                    self.assertEqual(
+                        "sha256:" + hashlib.sha256(
+                            (target / binding["path"]).read_bytes()).hexdigest(),
+                        binding["sha256"],
+                        "Preserve the exact input bytes with a scoped .gitattributes LF rule; "
+                        "do not change provenance hashes or normalize input bytes")
+            bundle = target / fixture_dirs[0]
+            for line in (bundle / "SHA256SUMS").read_text().splitlines():
+                digest, relative = line.split(maxsplit=1)
+                self.assertEqual(hashlib.sha256((bundle / relative).read_bytes()).hexdigest(), digest)
+
+    def test_failed_check_or_timeout_cannot_be_reported_as_success(self):
+        for error in (subprocess.CalledProcessError(1, "validator"),
+                      subprocess.TimeoutExpired("validator", 12)):
+            for failed_call in (0, 1, 2, 3):
+                with self.subTest(error=type(error).__name__, failed_call=failed_call), \
+                        patch.object(checker, "check_tutorial_visuals"), \
+                        patch.object(checker.subprocess, "run",
+                                     side_effect=[None] * failed_call + [error]) as run:
+                    with self.assertRaisesRegex(RuntimeError, "crlf checkout failed"):
+                        checker.check_checkout(Path("existing-binary"), self.root, "crlf", 12)
+                    self.assertEqual(run.call_count, failed_call + 1)
+
+    def test_main_checks_both_modes_at_one_revision_without_building(self):
+        binary = Path(self.tmp.name) / "existing-binary"
+        binary.touch()
+        arguments = ["--repo-root", str(self.root), "--binary", str(binary)]
+        with patch.object(checker, "prepare_checkout") as prepare, \
+                patch.object(checker, "check_checkout") as check:
+            self.assertEqual(checker.main(arguments), 0)
+        self.assertEqual([call.args[2][0] for call in prepare.call_args_list], ["lf", "crlf"])
+        self.assertEqual(prepare.call_args_list[0].args[4], prepare.call_args_list[1].args[4])
+        self.assertEqual([call.args[2] for call in check.call_args_list], ["lf", "crlf"])
+        with patch.object(checker, "prepare_checkout"), \
+                patch.object(checker, "check_checkout", side_effect=[None, RuntimeError("crlf failed")]):
+            with self.assertRaisesRegex(RuntimeError, "crlf failed"):
+                checker.main(arguments)
+
+
+class TutorialVisualContractTests(unittest.TestCase):
+    """Literal synthetic docs/images, created only in temporary directories.
+
+    Recreation is the setup below: two unrelated generated chapters, one manual
+    page and an image-free reference. No biological identifiers or GUI captures.
+    Real repository assets are used only by the named archive/checkout checks.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="gentle-visual-test-")
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "source"
+        self.root.mkdir()
+        self.svg = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 10"><text x="1" y="5">Synthetic</text></svg>\n'
+        self.write("docs/figures/synthetic.svg", self.svg)
+        self.write("docs/screenshots/legacy.png", self.png())
+        self.sources = []
+        for identifier in ("unrelated_alpha", "unrelated_beta"):
+            self.sources.append({"schema": "gentle.tutorial_source.v4", "id": identifier,
+                                 "graphics": [{"kind": "generated", "path": "docs/figures/synthetic.svg",
+                                               "caption": "Synthetic figure", "illustrates_step": 2}],
+                                 "catalog": {"path": f"docs/tutorial/generated/chapters/{identifier}.md",
+                                             "type": "executable_chapter"},
+                                 "generated_chapter": {"gui_steps": ["First", "Second"]}})
+            self.generated_page(identifier)
+        self.sources.append({"schema": "gentle.tutorial_source.v4", "id": "manual",
+                             "catalog": {"path": "docs/tutorial/manual.md", "type": "gui_walkthrough"},
+                             "graphics": [{"kind": "screenshot", "path": "docs/screenshots/legacy.png",
+                                           "caption": "Historical capture, not current acceptance",
+                                           "illustrates_step": 1, "capture_date": "2026-01-02"}]})
+        self.write("docs/tutorial/manual.md", b'# Manual\n\n![Historical capture](../screenshots/legacy.png)\n')
+        self.sources.append({"schema": "gentle.tutorial_source.v4", "id": "reference",
+                             "catalog": {"path": "docs/tutorial/reference.md", "type": "operational_reference"}})
+        self.write("docs/tutorial/reference.md", b'# Reference\nNo decorative images needed.\n')
+        self.sync()
+
+    @staticmethod
+    def png(width=1, height=1):
+        def chunk(kind, data):
+            return len(data).to_bytes(4, "big") + kind + data + zlib.crc32(kind + data).to_bytes(4, "big")
+        header = width.to_bytes(4, "big") + height.to_bytes(4, "big") + bytes([8, 6, 0, 0, 0])
+        return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header)
+                + chunk(b"IDAT", zlib.compress(b"\x00\xff\x00\x00\xff")) + chunk(b"IEND", b""))
+
+    def write(self, relative, payload):
+        path = self.root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+        return path
+
+    def sync(self):
+        entries, chapters = [], []
+        for source in self.sources:
+            self.write(f"docs/tutorial/sources/{source['id']}.json", json.dumps(source).encode() + b"\n")
+            entries.append({"id": source["id"], **source["catalog"], "graphics": source.get("graphics", [])})
+            if "generated_chapter" in source:
+                chapters.append({"id": source["id"], **source["generated_chapter"], "graphics": source.get("graphics", [])})
+        self.write("docs/tutorial/catalog.json", json.dumps({"schema": "gentle.tutorial_catalog.v2", "entries": entries}).encode() + b"\n")
+        self.write("docs/tutorial/manifest.json", json.dumps({"schema": "gentle.tutorial_manifest.v2", "chapters": chapters}).encode() + b"\n")
+
+    def generated_page(self, identifier, image_step=2, duplicate=False):
+        image = '![Synthetic figure](../../../figures/synthetic.svg)\n'
+        text = (f'---\nchapter_id: "{identifier}"\n---\n\n## Walkthrough: GUI, CLI and Inner Agent\n'
+                + '### Step 1: First\n' + (image if image_step == 1 else '')
+                + '### Step 2: Second\n' + (image if image_step == 2 or duplicate else '')
+                + '## Appendix\n')
+        self.write(f"docs/tutorial/generated/chapters/{identifier}.md", text.encode())
+
+    def screenshot(self):
+        raw = self.write("docs/screenshots/synthetic/capture.raw.png", self.png())
+        snapshot = self.write("docs/screenshots/synthetic/capture.snapshot.json", b'{"synthetic": true}\n')
+        record = {"schema": "gentle.tutorial_gui_screenshot_evidence.v1", "source_revision": "12" * 20,
+                  "gentle_binary_sha256": "ab" * 32, "tutorial_manifest_sha256": "cd" * 32,
+                  "acceptance_contract_sha256": "ef" * 32, "step_sha256": "34" * 32,
+                  "chapter_id": "manual", "step_id": "capture", "prose_step": 1,
+                  "capture": {"captured_at_unix_ms": 1767312000000,
+                              "raw": {"path": "/original-private-run/capture.raw.png",
+                                      "sha256": hashlib.sha256(raw.read_bytes()).hexdigest()}},
+                  "derived_views": [],
+                  "semantic_snapshot": {"retained_path": "/original-private-run/capture.snapshot.json",
+                                        "retained_file_sha256": hashlib.sha256(snapshot.read_bytes()).hexdigest()}}
+        self.write("docs/screenshots/synthetic/capture.screenshot.json", json.dumps(record).encode() + b"\n")
+        self.sources[2]["graphics"][0]["path"] = "docs/screenshots/synthetic/capture.raw.png"
+        self.write("docs/tutorial/manual.md", b'![Historical capture](../screenshots/synthetic/capture.raw.png)\n')
+        self.sync()
+        return record
+
+    def test_synthetic_coverage_is_generic_and_reference_needs_no_image(self):
+        report = checker.check_tutorial_visuals(self.root)
+        self.assertEqual(report["declared_visual_count"], 3)
+        rows = {row["id"]: row for row in report["tutorials"]}
+        for identifier in ("unrelated_alpha", "unrelated_beta"):
+            self.assertEqual(rows[identifier]["visuals"][0]["step"], 2)
+        self.assertEqual(rows["reference"]["visuals"], [])
+        self.assertEqual(rows["manual"]["visuals"][0]["status"], "legacy_date_only_not_acceptance")
+
+    def test_real_catalog_and_nondefault_generated_chapters_are_checked(self):
+        report = checker.check_tutorial_visuals(checker.ROOT)
+        rows = {row["id"]: row for row in report["tutorials"]}
+        self.assertTrue(rows["tp53_isoform_architecture_online"]["visuals"])
+        self.assertTrue(rows["patz1_gene_locus_evidence_offline"]["visuals"])
+        self.assertEqual(rows["measured_gel_sizing_gui_cli"]["visuals"][0]["status"],
+                         "deterministic_figure_not_capture")
+        self.assertIn("not current-candidate", report["non_claim"])
+
+    def test_missing_asset_and_unsafe_paths_fail(self):
+        for target in ("docs/figures/missing.svg", "../outside.svg", "/tmp/outside.svg",
+                       "C:\\outside.png", "docs/figures/../../outside.svg", "test_files/image.png",
+                       "docs/tutorial/inputs/unapproved/image.png"):
+            with self.subTest(target=target), self.assertRaisesRegex(RuntimeError, "tutorial visual"):
+                checker.visual_path(self.root, target)
+
+    def test_symlink_asset_escape_is_refused(self):
+        outside = Path(self.tmp.name) / "outside.svg"
+        outside.write_bytes(self.svg)
+        link = self.root / "docs/figures/linked.svg"
+        try:
+            link.symlink_to(outside)
+        except OSError:
+            self.skipTest("Host cannot create a symlink")
+        with self.assertRaisesRegex(RuntimeError, "unsafe_path"):
+            checker.visual_path(self.root, "docs/figures/linked.svg")
+
+    def test_png_signature_dimensions_and_header_integrity(self):
+        for payload in (b"not a PNG", self.png()[:24], self.png(width=0),
+                        self.png()[:20] + b"\0\0\0\2" + self.png()[24:]):
+            path = self.write("docs/screenshots/broken.png", payload)
+            with self.subTest(payload=payload[:24]), self.assertRaisesRegex(RuntimeError, "invalid_png"):
+                checker.inspect_visual_asset(self.root, path)
+
+    def test_svg_structure_dimensions_entities_and_budget(self):
+        invalid = (b"<svg>", b'<svg xmlns="http://www.w3.org/2000/svg"/>',
+                   b'<svg viewBox="0 0 NaN 10"/>', b'<svg viewBox="0 0 -1 10"/>',
+                   b'<svg width="100%" height="100%"/>', b'<other viewBox="0 0 20 10"/>',
+                   b'<!DOCTYPE svg [<!ENTITY x "test">]><svg viewBox="0 0 20 10"/>')
+        for payload in invalid:
+            path = self.write("docs/figures/broken.svg", payload)
+            with self.subTest(payload=payload), self.assertRaisesRegex(RuntimeError, "tutorial visual"):
+                checker.inspect_visual_asset(self.root, path)
+        path = self.write("docs/figures/explicit.svg", b'<svg width="20px" height="10pt"/>')
+        self.assertEqual(checker.inspect_visual_asset(self.root, path)["format"], "svg")
+        with patch.object(checker, "MAX_SVG_BYTES", 1), self.assertRaisesRegex(RuntimeError, "svg_size_budget"):
+            checker.inspect_visual_asset(self.root, path)
+
+    def test_remote_svg_image_is_refused_without_network(self):
+        path = self.write("docs/figures/remote.svg", b'<svg viewBox="0 0 20 10"><image href="https://example.invalid/a.png"/></svg>')
+        with self.assertRaisesRegex(RuntimeError, "unsafe_path"):
+            checker.inspect_visual_asset(self.root, path)
+
+    def test_missing_and_malformed_metadata_has_specific_errors(self):
+        original = dict(self.sources[0]["graphics"][0])
+        for field, value, code in (("caption", "", "missing_caption"), ("path", None, "unsafe_path"),
+                                   ("illustrates_step", 0, "invalid_step"), ("illustrates_step", True, "invalid_step"),
+                                   ("kind", "unknown", "invalid_kind")):
+            self.sources[0]["graphics"][0] = {**original, field: value}
+            self.sync()
+            with self.subTest(field=field, value=value), self.assertRaisesRegex(RuntimeError, code):
+                checker.check_tutorial_visuals(self.root)
+
+    def test_generated_placement_is_step_bound_and_unique(self):
+        self.generated_page("unrelated_beta", image_step=1)
+        with self.assertRaisesRegex(RuntimeError, "wrong_step_placement"):
+            checker.check_tutorial_visuals(self.root)
+        self.generated_page("unrelated_beta", image_step=1, duplicate=True)
+        with self.assertRaisesRegex(RuntimeError, "duplicate_step_placement"):
+            checker.check_tutorial_visuals(self.root)
+
+    def test_wrong_metadata_container_type_is_actionable(self):
+        self.sources[0]["graphics"] = None
+        self.sync()
+        with self.assertRaisesRegex(RuntimeError, "invalid_metadata"):
+            checker.check_tutorial_visuals(self.root)
+
+    def test_manifest_cannot_drop_graphics_metadata(self):
+        path = self.root / "docs/tutorial/manifest.json"
+        manifest = json.loads(path.read_bytes())
+        manifest["chapters"][1]["graphics"] = []
+        path.write_bytes(json.dumps(manifest).encode())
+        with self.assertRaisesRegex(RuntimeError, "metadata_projection_mismatch"):
+            checker.check_tutorial_visuals(self.root)
+
+    def test_figure_cannot_be_called_a_gui_screenshot(self):
+        self.sources[0]["graphics"][0].update(kind="screenshot", capture_date="2026-01-02")
+        self.sync()
+        with self.assertRaisesRegex(RuntimeError, "figure_as_screenshot"):
+            checker.check_tutorial_visuals(self.root)
+
+    def test_generated_figure_cannot_borrow_capture_metadata(self):
+        self.sources[0]["graphics"][0]["capture_date"] = "2026-01-02"
+        self.sync()
+        with self.assertRaisesRegex(RuntimeError, "screenshot_as_figure"):
+            checker.check_tutorial_visuals(self.root)
+
+    def test_capture_date_is_required_and_valid(self):
+        for date in (None, "", "2026-02-30"):
+            self.sources[2]["graphics"][0]["capture_date"] = date
+            self.sync()
+            with self.subTest(date=date), self.assertRaisesRegex(RuntimeError, "missing_capture_date"):
+                checker.check_tutorial_visuals(self.root)
+
+    def test_retained_capture_identity_and_hashes_are_not_current_acceptance(self):
+        record = self.screenshot()
+        report = checker.check_tutorial_visuals(self.root)
+        visual = next(row for row in report["tutorials"] if row["id"] == "manual")["visuals"][0]
+        self.assertEqual(visual["status"], "historical_provenance_bound")
+        self.assertEqual(visual["revision"], record["source_revision"])
+        self.write("docs/screenshots/synthetic/capture.raw.png", self.png(height=2))
+        with self.assertRaisesRegex(RuntimeError, "capture_hash_mismatch"):
+            checker.check_tutorial_visuals(self.root)
+
+    def test_required_capture_provenance_and_snapshot_cannot_disappear(self):
+        record = self.screenshot()
+        sidecar = "docs/screenshots/synthetic/capture.screenshot.json"
+        for field in ("source_revision", "gentle_binary_sha256", "step_sha256", "prose_step"):
+            changed = dict(record)
+            changed.pop(field)
+            self.write(sidecar, json.dumps(changed).encode())
+            with self.subTest(field=field), self.assertRaisesRegex(RuntimeError, "missing_capture"):
+                checker.check_tutorial_visuals(self.root)
+        self.write(sidecar, json.dumps(record).encode())
+        (self.root / "docs/screenshots/synthetic/capture.snapshot.json").unlink()
+        with self.assertRaisesRegex(RuntimeError, "missing_capture_snapshot"):
+            checker.check_tutorial_visuals(self.root)
+        (self.root / sidecar).unlink()
+        with self.assertRaisesRegex(RuntimeError, "missing_capture_provenance"):
+            checker.check_tutorial_visuals(self.root)
+
+    def test_malformed_capture_field_types_are_actionable(self):
+        record = self.screenshot()
+        sidecar = "docs/screenshots/synthetic/capture.screenshot.json"
+        for field, value in (("source_revision", None), ("chapter_id", 1), ("capture", None),
+                             ("derived_views", None), ("derived_views", [None]),
+                             ("semantic_snapshot", None)):
+            self.write(sidecar, json.dumps({**record, field: value}).encode())
+            with self.subTest(field=field), self.assertRaisesRegex(RuntimeError, "missing_capture"):
+                checker.check_tutorial_visuals(self.root)
+        capture = {**record["capture"], "captured_at_unix_ms": 10 ** 100}
+        self.write(sidecar, json.dumps({**record, "capture": capture}).encode())
+        with self.assertRaisesRegex(RuntimeError, "missing_capture_date"):
+            checker.check_tutorial_visuals(self.root)
+
+    def test_manual_archive_cannot_bind_an_unrelated_same_named_asset(self):
+        path = self.root / "docs/screenshots/legacy.png"
+        record = {"schema": "synthetic.manual_archive.v1",
+                  "producer": {"revision": "12" * 20, "gentle_gui_sha256": "ab" * 32},
+                  "raw_png": "docs/screenshots/unrelated/legacy.png",
+                  "raw_png_sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+        self.write("docs/screenshots/evidence.json", json.dumps(record).encode())
+        with self.assertRaisesRegex(RuntimeError, "capture_hash_mismatch"):
+            checker.check_tutorial_visuals(self.root)
+        record["raw_png"] = "legacy.png"
+        self.write("docs/screenshots/evidence.json", json.dumps(record).encode())
+        report = checker.check_tutorial_visuals(self.root)
+        visual = next(row for row in report["tutorials"] if row["id"] == "manual")["visuals"][0]
+        self.assertEqual(visual["status"], "historical_manual_bound")
+
+    def test_capture_snapshot_symlink_cannot_escape_asset_roots(self):
+        self.screenshot()
+        snapshot = self.root / "docs/screenshots/synthetic/capture.snapshot.json"
+        outside = Path(self.tmp.name) / "outside.snapshot.json"
+        outside.write_bytes(snapshot.read_bytes())
+        snapshot.unlink()
+        try:
+            snapshot.symlink_to(outside)
+        except OSError:
+            self.skipTest("Host cannot create a symlink")
+        with self.assertRaisesRegex(RuntimeError, "unsafe_path"):
+            checker.check_tutorial_visuals(self.root)
+
+    def test_manual_markdown_links_and_hash_bound_crops_survive_both_checkouts(self):
+        # Real current assets, source declarations and captions supplement the
+        # unrelated synthetic families; no screenshot is manufactured here.
+        for identifier, source_name in (("gibson_arrangements_gui", "03-07_gibson_arrangements_gui"),
+                                        ("load_and_digest_pgex", "03-01_load_and_digest_pgex")):
+            source = json.loads((checker.ROOT / f"docs/tutorial/sources/{source_name}.json").read_bytes())
+            self.sources.append(source)
+            guide = source["catalog"]["path"]
+            self.write(guide, (checker.ROOT / guide).read_bytes())
+            for graphic in source["graphics"]:
+                relative = Path(graphic["path"])
+                self.write(relative, (checker.ROOT / relative).read_bytes())
+                if relative.parent.as_posix().startswith("docs/screenshots/"):
+                    for asset in (checker.ROOT / relative.parent).glob("*"):
+                        if asset.is_file():
+                            self.write(relative.parent / asset.name, asset.read_bytes())
+        self.sync()
+        self.write(".gitattributes", (checker.ROOT / ".gitattributes").read_bytes())
+        checker.git(self.root, "init", "--quiet")
+        checker.git(self.root, "config", "core.autocrlf", "false")
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "user.name=Synthetic test", "-c", "user.email=fixture@example.invalid",
+                    "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "Synthetic visual checkout plus retained assets")
+        expected = checker.check_tutorial_visuals(self.root)
+        for mode in checker.MODES:
+            with self.subTest(mode=mode[0]):
+                target = Path(self.tmp.name) / mode[0]
+                checker.prepare_checkout(self.root, target, mode)
+                self.assertEqual(checker.check_tutorial_visuals(target), expected)
+                if mode[0] == "crlf":
+                    self.assertIn(b"\r\n", (target / "docs/tutorial/manual.md").read_bytes())
+        attributes = (self.root / ".gitattributes").read_bytes()
+        broken_policy = b"\n".join(line for line in attributes.split(b"\n")
+                                    if not line.startswith(b"docs/screenshots/tutorial_gui_acceptance/"))
+        broken = Path(self.tmp.name) / "missing-hash-policy"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], broken_policy)
+        with self.assertRaisesRegex(RuntimeError, "capture_hash_mismatch"):
+            checker.check_tutorial_visuals(broken)
+
+    def test_fenced_visual_examples_are_not_resolved_as_assets(self):
+        self.write("docs/tutorial/reference.md", b'# Reference\n```markdown\n![Example](../not-a-real-asset.png)\n```\n')
+        checker.check_tutorial_visuals(self.root)
+
+    def test_invalid_source_json_is_actionable(self):
+        path = self.write("docs/tutorial/sources/manual.json", b"{")
+        with self.assertRaisesRegex(RuntimeError, "invalid_json.*manual.json"):
+            checker.check_tutorial_visuals(self.root)
+
+    def test_visual_failure_precedes_binary_invocation(self):
+        with patch.object(checker, "check_tutorial_visuals", side_effect=RuntimeError("visual refused")), \
+                patch.object(checker.subprocess, "run") as run:
+            with self.assertRaisesRegex(RuntimeError, "visual refused"):
+                checker.check_checkout(Path("unused"), self.root, "lf", 10)
+            run.assert_not_called()
+
+
+class RetainedTutorialReceiptTests(unittest.TestCase):
+    def test_serpine1_occupancy_fixture_matches_retained_figure_provenance(self):
+        root = checker.ROOT
+        fixture = root / "test_files/fixtures/genomic_regions/serpine1_offline/synthetic_serpine1_cutrun.bed"
+        figure = root / "docs/tutorial/generated/artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.locus.svg"
+        sources = [element for element in ET.parse(figure).iter()
+                   if element.get("data-gentle-occupancy-source") == "synthetic_serpine1_cutrun_v1"]
+        self.assertEqual(len(sources), 1, "expected retained synthetic occupancy lane")
+        self.assertEqual("sha256:" + hashlib.sha256(fixture.read_bytes()).hexdigest(),
+                         sources[0].get("data-gentle-occupancy-source-sha256"),
+                         "Preserve the synthetic BED input's LF checkout rule")
+
+    def test_retained_bed_bytes_match_manifest_digests(self):
+        root = checker.ROOT / "docs/tutorial/generated"
+        manifests = sorted(root.rglob("*.bed.manifest.json"))
+        self.assertTrue(manifests, "expected retained BED receipt coverage")
+        for path in manifests:
+            with self.subTest(manifest=path.relative_to(root)):
+                manifest = json.loads(path.read_bytes())
+                self.assertEqual(manifest["schema"], "gentle.genomic_region_bed_manifest.v1")
+                name = manifest["bed_file_name"]
+                self.assertEqual(Path(name).name, name)
+                digest = "sha256:" + hashlib.sha256((path.parent / name).read_bytes()).hexdigest()
+                self.assertEqual(digest, manifest["bed_sha256"],
+                                 "Preserve the retained BED export's LF checkout rule")
+
+
+if __name__ == "__main__":
+    unittest.main()

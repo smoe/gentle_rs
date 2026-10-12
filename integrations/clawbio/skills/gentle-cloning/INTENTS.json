@@ -707,13 +707,13 @@
       "intent_id": "simple_pcr_primer_design",
       "description": "Run the canonical offline simple PCR primer-design workflow with explicit core ROI, flank windows, amplicon limits, a PCR explanation SVG, and exported primer report.",
       "trigger_terms": [
-        "simple pcr",
-        "simplest pcr",
-        "continue pcr",
-        "pcr primer design",
-        "design pcr primers",
-        "pcr constraints",
-        "selected region pcr"
+        "gentle-cloning simple pcr",
+        "gentle-cloning simplest pcr",
+        "gentle-cloning continue pcr",
+        "gentle-cloning pcr primer design",
+        "gentle-cloning design pcr primers",
+        "gentle-cloning pcr constraints",
+        "gentle-cloning selected region pcr"
       ],
       "demo_policy": "never_unless_explicit",
       "plan": [
@@ -728,12 +728,12 @@
       "intent_id": "primer_preflight",
       "description": "Check GENtle primer-design backend readiness, including the internal engine and optional Primer3/TaqMan-compatible design backend availability.",
       "trigger_terms": [
-        "primer preflight",
-        "primer3 preflight",
-        "pcr backend status",
-        "qpcr backend status",
-        "taqman backend status",
-        "can gentle design primers"
+        "gentle-cloning primer preflight",
+        "gentle-cloning primer3 preflight",
+        "gentle-cloning pcr backend status",
+        "gentle-cloning qpcr backend status",
+        "gentle-cloning taqman backend status",
+        "gentle-cloning can gentle design primers"
       ],
       "demo_policy": "never_unless_explicit",
       "plan": [
@@ -904,11 +904,11 @@
       "intent_id": "pcr_primer_design_operation",
       "description": "Run a supplied DesignPrimerPairs operation payload through GENtle's shared PCR primer-design command, optionally using Primer3.",
       "trigger_terms": [
-        "run pcr primer design payload",
-        "design primers from json",
-        "design pcr primers from payload",
-        "execute designprimerpairs",
-        "primer design operation"
+        "gentle-cloning run pcr primer design payload",
+        "gentle-cloning design primers from json",
+        "gentle-cloning design pcr primers from payload",
+        "gentle-cloning execute designprimerpairs",
+        "gentle-cloning primer design operation"
       ],
       "demo_policy": "never_unless_explicit",
       "plan": [
@@ -923,12 +923,12 @@
       "intent_id": "qpcr_taqman_design_operation",
       "description": "Run a supplied DesignQpcrAssays or qPCR seed payload through GENtle's shared probe-based qPCR/TaqMan design command.",
       "trigger_terms": [
-        "run qpcr design payload",
-        "run taqman design payload",
-        "design qpcr from json",
-        "design taqman assay",
-        "execute designqpcrassays",
-        "probe based qpcr design"
+        "gentle-cloning run qpcr design payload",
+        "gentle-cloning run taqman design payload",
+        "gentle-cloning design qpcr from json",
+        "gentle-cloning design taqman assay",
+        "gentle-cloning execute designqpcrassays",
+        "gentle-cloning probe based qpcr design"
       ],
       "demo_policy": "never_unless_explicit",
       "plan": [
@@ -943,13 +943,13 @@
       "intent_id": "transcript_qpcr_panel",
       "description": "Build a transcript qPCR panel table from a stored shared-gene qPCR report, reusing the shared reverse primer/probe and proposing per-transcript characteristic forward primers when possible.",
       "trigger_terms": [
-        "transcript qpcr panel",
-        "isoform qpcr panel",
-        "characteristic qpcr primers",
-        "transcript-specific qpcr primers",
-        "shared reverse probe qpcr",
-        "qpcr primer table",
-        "forward primers per transcript"
+        "gentle-cloning transcript qpcr panel",
+        "gentle-cloning isoform qpcr panel",
+        "gentle-cloning characteristic qpcr primers",
+        "gentle-cloning transcript-specific qpcr primers",
+        "gentle-cloning shared reverse probe qpcr",
+        "gentle-cloning qpcr primer table",
+        "gentle-cloning forward primers per transcript"
       ],
       "demo_policy": "never_unless_explicit",
       "plan": [
@@ -989,14 +989,14 @@
       "intent_id": "cdna_pcr_qpcr_assay_test",
       "description": "Run the canonical offline cDNA PCR/qPCR assay-test workflow that checks supplied primers and a probe against transcript-derived cDNA templates.",
       "trigger_terms": [
-        "test cdna pcr",
-        "test cdna qpcr",
-        "cdna pcr test",
-        "cdna qpcr test",
-        "test qpcr assay",
-        "qpcr assay test",
-        "cDNA PCR qPCR",
-        "transcript cdna assay"
+        "gentle-cloning test cdna pcr",
+        "gentle-cloning test cdna qpcr",
+        "gentle-cloning cdna pcr test",
+        "gentle-cloning cdna qpcr test",
+        "gentle-cloning test qpcr assay",
+        "gentle-cloning qpcr assay test",
+        "gentle-cloning cDNA PCR qPCR",
+        "gentle-cloning transcript cdna assay"
       ],
       "demo_policy": "never_unless_explicit",
       "plan": [
@@ -1011,16 +1011,16 @@
       "intent_id": "cdna_pcr_qpcr_product_gel_nonspecific",
       "description": "Run the offline cDNA PCR/qPCR assay-test workflow that materializes detected transcript-derived products into one vial/container and renders product-gel SVGs so non-specific products are visible as multiple bands.",
       "trigger_terms": [
-        "show non-specific pcr products on a gel",
-        "show nonspecific pcr products on a gel",
-        "visualize non-specific pcr products",
-        "visualize nonspecific pcr products",
-        "pcr products gel",
-        "qpcr products gel",
-        "cdna product gel",
-        "show cdna pcr products on gel",
-        "show cdna qpcr products on gel",
-        "multiple pcr products gel"
+        "gentle-cloning show non-specific pcr products on a gel",
+        "gentle-cloning show nonspecific pcr products on a gel",
+        "gentle-cloning visualize non-specific pcr products",
+        "gentle-cloning visualize nonspecific pcr products",
+        "gentle-cloning pcr products gel",
+        "gentle-cloning qpcr products gel",
+        "gentle-cloning cdna product gel",
+        "gentle-cloning show cdna pcr products on gel",
+        "gentle-cloning show cdna qpcr products on gel",
+        "gentle-cloning multiple pcr products gel"
       ],
       "demo_policy": "never_unless_explicit",
       "plan": [
@@ -1035,11 +1035,11 @@
       "intent_id": "cdna_pcr_direct_test",
       "description": "Test a supplied forward/reverse PCR primer pair directly against transcript-derived cDNA templates from one splicing group and return a transcript-map graphic, optionally on a genomic-aligned axis; product materialization/product-gel output is available when requested.",
       "trigger_terms": [
-        "direct cdna pcr test",
-        "test these cdna pcr primers",
-        "check cdna pcr primers",
-        "validate rt-pcr primers",
-        "rt pcr primer test"
+        "gentle-cloning direct cdna pcr test",
+        "gentle-cloning test these cdna pcr primers",
+        "gentle-cloning check cdna pcr primers",
+        "gentle-cloning validate rt-pcr primers",
+        "gentle-cloning rt pcr primer test"
       ],
       "demo_policy": "never_unless_explicit",
       "plan": [
@@ -1054,12 +1054,12 @@
       "intent_id": "cdna_qpcr_taqman_direct_test",
       "description": "Test supplied qPCR/TaqMan forward, reverse, and probe oligos directly against transcript-derived cDNA templates from one splicing group and return a transcript-map graphic, optionally on a genomic-aligned axis; product materialization/product-gel output is available when requested.",
       "trigger_terms": [
-        "direct cdna qpcr test",
-        "direct taqman test",
-        "test these taqman primers",
-        "test these qpcr primers and probe",
-        "validate cdna taqman assay",
-        "check taqman probe"
+        "gentle-cloning direct cdna qpcr test",
+        "gentle-cloning direct taqman test",
+        "gentle-cloning test these taqman primers",
+        "gentle-cloning test these qpcr primers and probe",
+        "gentle-cloning validate cdna taqman assay",
+        "gentle-cloning check taqman probe"
       ],
       "demo_policy": "never_unless_explicit",
       "plan": [
@@ -1074,10 +1074,10 @@
       "intent_id": "primer_report_list",
       "description": "List stored PCR primer-design reports from the active GENtle state.",
       "trigger_terms": [
-        "list primer reports",
-        "list pcr primer reports",
-        "show available primer reports",
-        "primer reports"
+        "gentle-cloning list primer reports",
+        "gentle-cloning list pcr primer reports",
+        "gentle-cloning show available primer reports",
+        "gentle-cloning primer reports"
       ],
       "demo_policy": "never_unless_explicit",
       "plan": [
@@ -1092,10 +1092,10 @@
       "intent_id": "primer_report_show",
       "description": "Show one stored PCR primer-design report from the active GENtle state.",
       "trigger_terms": [
-        "show primer report",
-        "show pcr primer report",
-        "inspect primer report",
-        "primer report details"
+        "gentle-cloning show primer report",
+        "gentle-cloning show pcr primer report",
+        "gentle-cloning inspect primer report",
+        "gentle-cloning primer report details"
       ],
       "demo_policy": "never_unless_explicit",
       "plan": [
@@ -1110,10 +1110,10 @@
       "intent_id": "primer_report_export",
       "description": "Export one stored PCR primer-design report to a bundle artifact.",
       "trigger_terms": [
-        "export primer report",
-        "export pcr primer report",
-        "save primer report",
-        "primer report json"
+        "gentle-cloning export primer report",
+        "gentle-cloning export pcr primer report",
+        "gentle-cloning save primer report",
+        "gentle-cloning primer report json"
       ],
       "demo_policy": "never_unless_explicit",
       "plan": [
@@ -1128,11 +1128,11 @@
       "intent_id": "qpcr_report_list",
       "description": "List stored qPCR/TaqMan design reports from the active GENtle state.",
       "trigger_terms": [
-        "list qpcr reports",
-        "list taqman reports",
-        "show available qpcr reports",
-        "qpcr reports",
-        "taqman reports"
+        "gentle-cloning list qpcr reports",
+        "gentle-cloning list taqman reports",
+        "gentle-cloning show available qpcr reports",
+        "gentle-cloning qpcr reports",
+        "gentle-cloning taqman reports"
       ],
       "demo_policy": "never_unless_explicit",
       "plan": [
@@ -1147,10 +1147,10 @@
       "intent_id": "qpcr_report_show",
       "description": "Show one stored qPCR/TaqMan design report from the active GENtle state.",
       "trigger_terms": [
-        "show qpcr report",
-        "show taqman report",
-        "inspect qpcr report",
-        "taqman report details"
+        "gentle-cloning show qpcr report",
+        "gentle-cloning show taqman report",
+        "gentle-cloning inspect qpcr report",
+        "gentle-cloning taqman report details"
       ],
       "demo_policy": "never_unless_explicit",
       "plan": [
@@ -1165,10 +1165,10 @@
       "intent_id": "qpcr_report_export",
       "description": "Export one stored qPCR/TaqMan design report to a bundle artifact.",
       "trigger_terms": [
-        "export qpcr report",
-        "export taqman report",
-        "save qpcr report",
-        "taqman report json"
+        "gentle-cloning export qpcr report",
+        "gentle-cloning export taqman report",
+        "gentle-cloning save qpcr report",
+        "gentle-cloning taqman report json"
       ],
       "demo_policy": "never_unless_explicit",
       "plan": [
@@ -1183,12 +1183,12 @@
       "intent_id": "pcr_protocol_cartoon",
       "description": "Render one PCR-family protocol cartoon, including pair-PCR, tailed PCR, overlap-extension PCR, or probe-based qPCR/TaqMan strips.",
       "trigger_terms": [
-        "pcr protocol cartoon",
-        "render pcr cartoon",
-        "qpcr protocol cartoon",
-        "taqman protocol cartoon",
-        "show taqman graphic",
-        "probe qpcr graphic"
+        "gentle-cloning pcr protocol cartoon",
+        "gentle-cloning render pcr cartoon",
+        "gentle-cloning qpcr protocol cartoon",
+        "gentle-cloning taqman protocol cartoon",
+        "gentle-cloning show taqman graphic",
+        "gentle-cloning probe qpcr graphic"
       ],
       "demo_policy": "never_unless_explicit",
       "plan": [

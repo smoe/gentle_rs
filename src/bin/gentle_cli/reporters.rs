@@ -207,6 +207,8 @@ fn handle_reporters_plan_handoff(args: &[String], mut idx: usize) -> Result<(), 
     let mut catalog_path: Option<String> = None;
     let mut reporter_backbone_seq_id: Option<String> = None;
     let mut reporter_backbone_load_path: Option<String> = None;
+    let mut reporter_backbone_catalog_id: Option<String> = None;
+    let mut helper_catalog_path: Option<String> = None;
     let mut reference_fragment_seq_id: Option<String> = None;
     let mut alternate_fragment_seq_id: Option<String> = None;
     let mut output_prefix: Option<String> = None;
@@ -227,6 +229,15 @@ fn handle_reporters_plan_handoff(args: &[String], mut idx: usize) -> Result<(), 
             }
             "--backbone-path" => {
                 reporter_backbone_load_path = Some(required_value(args, idx, "--backbone-path")?);
+                idx += 2;
+            }
+            "--backbone-catalog-id" => {
+                reporter_backbone_catalog_id =
+                    Some(required_value(args, idx, "--backbone-catalog-id")?);
+                idx += 2;
+            }
+            "--helper-catalog" => {
+                helper_catalog_path = Some(required_value(args, idx, "--helper-catalog")?);
                 idx += 2;
             }
             "--reference-fragment-seq-id" => {
@@ -259,6 +270,8 @@ fn handle_reporters_plan_handoff(args: &[String], mut idx: usize) -> Result<(), 
             reporter_constraints: None,
             reporter_backbone_seq_id,
             reporter_backbone_load_path,
+            reporter_backbone_catalog_id,
+            helper_catalog_path,
             reference_fragment_seq_id,
             alternate_fragment_seq_id,
             output_prefix,

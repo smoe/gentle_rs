@@ -1,0 +1,49 @@
+{
+  "candidate_source_revision": "ff44ebdec0ff46e3ea485cd3a36ef3d4c403b6f9",
+  "counting_policy_id": "exclude_overlapping_or_shared_gene_windows.v1",
+  "gene": "CD44",
+  "inputs": {
+    "base_svg": "sha256:8215f222546fd599b7512459c340dd0167ab31810bef3b869e75ef1300bbdcdc",
+    "candidates": "sha256:dd467f4d33d463b11e95f697b69361169a74e14cfce6cb2db1b06deee7ff129a",
+    "comparison": "sha256:fc536f4fa009eaf9408683bb7ace9d9eafc631d8f4d0feac5238702c4b54bdf8",
+    "hits": "sha256:82893309f45ac78b14c209f432a2f75eb8ccc0edd445d88698f4ce3e2e16fa81",
+    "locus_report": "sha256:abe3ec89167b2b76cdd427f7d6aa3119f9d6a21aaf2dbf0fe3dfd5bb19a0f8f9",
+    "matches": "sha256:96e4d4dd71624acf1878100d684a1f1988fe337812b920342d53505bd6c56536"
+  },
+  "outputs": {
+    "CD44_luciferase_planning_EnsemblReg_15TF_with_TSS_similarity.pdf": "sha256:e6f7d9ccec6ad0b126a4f925883dca94531b5ba773eaf69ee503d849bbab56aa",
+    "CD44_luciferase_planning_EnsemblReg_15TF_with_TSS_similarity.png": "sha256:b05bc4c4bf297104a5de9cce38d9250c784ecf9d9356593b399818aa3520b539",
+    "CD44_luciferase_planning_EnsemblReg_15TF_with_TSS_similarity.svg": "sha256:2d740b4db440febccc1c343a884065169f040cdc00adace3e80275e6c7cacadd"
+  },
+  "producer_sha256": "sha256:e0c62c6762a6463568a1282b034cdad8a30a28f89c66cc779c4b544106fe31f6",
+  "renderer": {
+    "commands": [
+      {
+        "command": [
+          "/home/clawbio/GENtle-private/tss-regulatory-integrated-02ee80e9-corrected/render-tools/root/usr/bin/rsvg-convert",
+          "--format=pdf",
+          "--output=/home/clawbio/GENtle-private/tss-regulatory-integrated-ff44ebde-replacement/reports/CD44_luciferase_planning_EnsemblReg_15TF_with_TSS_similarity.pdf",
+          "/home/clawbio/GENtle-private/tss-regulatory-integrated-ff44ebde-replacement/reports/CD44_luciferase_planning_EnsemblReg_15TF_with_TSS_similarity.svg"
+        ],
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": [
+          "/home/clawbio/GENtle-private/tss-regulatory-integrated-02ee80e9-corrected/render-tools/root/usr/bin/rsvg-convert",
+          "--format=png",
+          "--output=/home/clawbio/GENtle-private/tss-regulatory-integrated-ff44ebde-replacement/reports/CD44_luciferase_planning_EnsemblReg_15TF_with_TSS_similarity.png",
+          "/home/clawbio/GENtle-private/tss-regulatory-integrated-ff44ebde-replacement/reports/CD44_luciferase_planning_EnsemblReg_15TF_with_TSS_similarity.svg"
+        ],
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ],
+    "executable": "/home/clawbio/GENtle-private/tss-regulatory-integrated-02ee80e9-corrected/render-tools/root/usr/bin/rsvg-convert",
+    "executable_sha256": "sha256:0d7d65e6298d318d3dc4f8cf50684c79ac907303544406d2db18c08ac9fb4bae",
+    "version": "rsvg-convert version 2.62.1\n\nlibraries used:\n  cairo 1.18.4\n  pango 1.58.0\n  harfbuzz 12.3.2\n  fontconfig 2.17.1"
+  },
+  "renderer_revision": "ff44ebdec0ff46e3ea485cd3a36ef3d4c403b6f9",
+  "schema": "gentle.tss_local_similarity_locus_report_receipt.v1",
+  "source_revision": "ff44ebdec0ff46e3ea485cd3a36ef3d4c403b6f9"
+}

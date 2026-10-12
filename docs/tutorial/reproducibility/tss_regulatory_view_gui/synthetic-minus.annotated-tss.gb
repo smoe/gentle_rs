@@ -1,0 +1,135 @@
+LOCUS       TSS_0bd2c3e3de0f          11 bp    DNA     linear   UNK 01-JAN-1970
+DEFINITION  SYNMINUS annotated TSS window synthetic-minus; transcript-oriented
+            genomic DNA (not a spliced transcript or reporter construct)
+COMMENT     The LOCUS date 01-JAN-1970 is the writer's deterministic
+            missing-date placeholder, not an annotation, experiment or sample
+            date.
+COMMENT     GENtle promoter_id=synthetic-minus; selected=true;
+            gene_id=synthetic-gene-minus;
+            sequence_sha256=a5493db4212f6af549230331edcc33edeb562ef2fb954f09f3e
+            0f63f28c8ff67
+COMMENT     Reference=synthetic-genome-v1; assembly=synthetic-assembly-v1;
+            annotation_release=synthetic-annotation-v1;
+            chromosome=synthetic_chr; genomic=293..303; genomic_strand=-;
+            local_axis=transcript_5prime_to_3prime; TSS_local_1based=4
+COMMENT     locus_report_sha256=bcfac1e94205be15fa9a3365271a8707ba9e9c9394219bc
+            5a2cda1485aa645c5;
+            locus_sequence_sha256=212ee15547dc9e525280f0b9c9c6f0fe42d4d6980b605
+            8bd187762205c1e3bcf
+COMMENT     Locations are local 1-based inclusive; < and > mark clipping.
+            Original genomic spans remain in notes. CDS fragments are
+            misc_features because this context does not bind coding phase.
+            Signal intervals are not individual reads. Stored motif peaks are
+            predictions, not all possible sites or measured binding.
+COMMENT     JASPAR tracks are sequence-model predictions, not measured binding,
+            affinity, occupancy, cofactor interaction, promoter activity or
+            functional regulation. Cross-matrix magnitudes are not comparable
+            without a documented calibration. Annotated transcript starts are
+            TSS candidates, not experimentally established initiation sites.
+            Correlation compares model outputs, not biological correctness or
+            co-regulation. A factor also appearing as a target gene does not
+            establish autoregulation.
+COMMENT     Entirely synthetic context: illustrates clipping, missing evidence
+            and annotation markers; no biological claims.
+COMMENT     Signal lane synthetic-cutrun/treatment: Treatment; state=available;
+            2 intervals in this window; source_id=synthetic-target-signal;
+            source_sha256=not supplied; assay=CUT&RUN; factor=synthetic factor;
+            mark=not supplied; inherited_abs_max=10
+COMMENT     Signal lane synthetic-cutrun/control: Control (not supplied);
+            state=not_prepared; 0 intervals in this window;
+            source_id=synthetic-control; source_sha256=not supplied; assay=not
+            supplied; factor=not supplied; mark=not supplied;
+            inherited_abs_max=10
+FEATURES             Location/Qualifiers
+     source          1..11
+                     /label="SYNMINUS"
+                     /note="Gene synthetic-gene-minus; chromosome
+                     synthetic_chr; genomic 293..303; genomic strand -;
+                     transcripts=synthetic.minus.tx1"
+     misc_feature    4
+                     /label="Annotated TSS candidate"
+                     /note="Genomic 300; annotation-derived, not experimentally
+                     established initiation"
+     exon            4..6
+                     /label="synthetic.minus.tx1 E1"
+                     /note="Source genomic interval 298..300 (1-based
+                     inclusive); cropped_to_window=false"
+                     /number=1
+                     /transcript_id="synthetic.minus.tx1"
+     exon            9..11
+                     /label="synthetic.minus.tx1 E2"
+                     /note="Source genomic interval 293..295 (1-based
+                     inclusive); cropped_to_window=false"
+                     /number=2
+                     /transcript_id="synthetic.minus.tx1"
+     misc_feature    9..10
+                     /label="synthetic.minus.tx1 CDS segment"
+                     /note="Source genomic interval 294..295 (1-based
+                     inclusive); cropped_to_window=false; annotated coding
+                     segment; phase not supplied, no translation inferred"
+     misc_feature    5..6
+                     /label="synthetic.minus.tx1 CDS segment"
+                     /note="Source genomic interval 298..299 (1-based
+                     inclusive); cropped_to_window=false; annotated coding
+                     segment; phase not supplied, no translation inferred"
+     misc_feature    5
+                     /label="synthetic.minus.tx1 translation Start"
+                     /note="Genomic 299; synthetic annotation marker, not a
+                     translated ORF"
+     misc_feature    10
+                     /label="synthetic.minus.tx1 translation Stop"
+                     /note="Genomic 294; synthetic annotation marker, not a
+                     translated ORF"
+     misc_feature    4..5
+                     /label="Treatment: signal-right"
+                     /note="Source genomic interval 299..300 (1-based
+                     inclusive); cropped_to_window=false; signal interval, not
+                     an individual read; group=synthetic-cutrun;
+                     lane=treatment; source_id=synthetic-target-signal;
+                     raw_score=3; "
+     misc_feature    10..>11
+                     /label="Treatment: signal-left"
+                     /note="Source genomic interval 291..294 (1-based
+                     inclusive); cropped_to_window=true; signal interval, not
+                     an individual read; group=synthetic-cutrun;
+                     lane=treatment; source_id=synthetic-target-signal;
+                     raw_score=8; "
+     misc_feature    <1..3
+                     /label="Synthetic annotated box"
+                     /note="Source genomic interval 301..305 (1-based
+                     inclusive); cropped_to_window=true;
+                     evidence_kind=SourceAnnotation; genomic_strand=-; TATA
+                     report=synthetic-tata;
+                     report_sha256=36b57fe393190616128b6473973cda08f6d6e011d891
+                     653523ceda2d53bacef7"
+     misc_feature    <1..2
+                     /label="Synthetic predicted box"
+                     /note="Source genomic interval 302..304 (1-based
+                     inclusive); cropped_to_window=true;
+                     evidence_kind=MotifPrediction; genomic_strand=-; TATA
+                     report=synthetic-tata;
+                     report_sha256=36b57fe393190616128b6473973cda08f6d6e011d891
+                     653523ceda2d53bacef7"
+     misc_feature    4
+                     /label="Synthetic TSS classification"
+                     /note="Source genomic interval 300..300 (1-based
+                     inclusive); cropped_to_window=false;
+                     evidence_kind=EpdClassification; genomic_strand=-; TATA
+                     report=synthetic-tata;
+                     report_sha256=36b57fe393190616128b6473973cda08f6d6e011d891
+                     653523ceda2d53bacef7"
+     misc_feature    5..10
+                     /label="MA0004.1 stored score peak"
+                     /note="Predicted motif; accession=MA0004.1;
+                     raw_score=-47.86870631819427; score_kind=llr_bits;
+                     motif_local_strand=+; genomic_strand=-;
+                     genomic_window_start=299; no new peak calling"
+     misc_feature    complement(5..10)
+                     /label="MA0004.1 stored score peak"
+                     /note="Predicted motif; accession=MA0004.1;
+                     raw_score=-47.86870631819427; score_kind=llr_bits;
+                     motif_local_strand=-; genomic_strand=+;
+                     genomic_window_start=299; no new peak calling"
+ORIGIN      
+        1 TTACGACGTA A
+//

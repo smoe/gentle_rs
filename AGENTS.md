@@ -18,13 +18,18 @@ Before non-trivial edits, read:
    - GUI: [`docs/gui.md`](docs/gui.md)
    - CLI: [`docs/cli.md`](docs/cli.md)
    - Protocol: [`docs/protocol.md`](docs/protocol.md)
-5. [`docs/CHANGELOG.md`](docs/CHANGELOG.md) when investigating completed
+5. [`docs/biological_extension_guide.md`](docs/biological_extension_guide.md)
+   when adding or adapting biological behavior.
+6. [`docs/CHANGELOG.md`](docs/CHANGELOG.md) when investigating completed
    work, regressions, or historical status.
-6. [`docs/maintenance_chore_plan.md`](docs/maintenance_chore_plan.md) when
+7. [`docs/maintenance_chore_plan.md`](docs/maintenance_chore_plan.md) when
    running recurring hygiene, drift, parity, release-readiness, provenance, or
    decision-expiry chores.
-7. [`docs/quickstart_claude.md`](docs/quickstart_claude.md) when setting up or
+8. [`docs/quickstart_claude.md`](docs/quickstart_claude.md) when setting up or
    explaining Claude-driven internal Agent Assistant or external checkout loops.
+9. [Cross-platform regression rules in `docs/testing.md`](docs/testing.md#cross-platform-regression-rules)
+   before changing filesystem I/O, shell commands, byte-bound fixtures,
+   provenance validation, or tests for those paths.
 
 ## Core Principles
 
@@ -50,6 +55,14 @@ Reference: [`docs/architecture.md`](docs/architecture.md)
   - one-line parking-lot ideas.
 - If you materially change project status or close/open a gap, update
   `docs/roadmap.md` in the same change.
+- Immediately after an owner-confirmed release, advance `main` to the next
+  internal development version as the first follow-up task, without waiting
+  for another reminder. Follow the [post-release checklist](docs/release.md#post-release-development-version):
+  synchronize `Cargo.toml`, workspace entries in `Cargo.lock`, README, roadmap,
+  changelog and the next release-note draft/index, then run the version guard.
+  Do not advance an active candidate before the release is confirmed, move
+  tags, publish, or reinterpret pending acceptance as passed. If offline, do
+  this on the first resumed development session; this is not a background job.
 - Do not add a `Done` entry to `docs/roadmap.md`. Move completed work directly
   to [`docs/CHANGELOG.md`](docs/CHANGELOG.md) in the same session.
 - Put durable architecture constraints/invariants in
@@ -76,6 +89,19 @@ Reference: [`docs/architecture.md`](docs/architecture.md)
   `docs/roadmap.md`.
 - Do not claim behavior is complete without at least one deterministic test path
   (unit or integration) that exercises it.
+- For portability repairs, reproduce the failed boundary, not only a helper:
+  include hash-bound inputs in LF/CRLF checkout tests, quote paths through the
+  shared shell helper, and validate raw paths before normalization. Do not
+  weaken hashes, change shell grammar, or homogenize fixture identifiers merely
+  to make a failing test pass.
+- Every new byte-exact generated-file freshness check must include a scoped
+  checkout policy and LF/CRLF coverage in the fast `scripts.test_tutorial_checkouts`
+  CI gate. This includes Markdown projections, not just hashed fixtures or JSON;
+  do not defer newline coverage to the full Rust suite.
+- Separate primary failures from cascades (for example, mutex poisoning after
+  an export panic). Record the tested SHA/platform and explicitly identify
+  unrun native-Windows checks; a sampled CI pass or macOS run is not proof of
+  Windows file-handle, path, or packaging behavior.
 
 ## Test Data Provenance (Mandatory)
 

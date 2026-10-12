@@ -5,3 +5,8 @@
 # Contributors can still override with CARGO_TARGET_DIR if they need a custom
 # location for one-off runs.
 target-dir = "target"
+
+[env]
+# GENtle's broad engine and GUI test surfaces exceed Rust's default spawned-
+# thread stack on some otherwise supported toolchains and platforms.
+RUST_MIN_STACK = "16777216"

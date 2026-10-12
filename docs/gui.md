@@ -2,6 +2,101 @@
 
 This page documents the current graphical interface of GENtle.
 
+Experimental synthetic sequence redesign is available through the existing
+GUI Shell / Agent Assistant, not a new editor: `sequence-design plan @request.json`
+previews synonymous motif removal, and `sequence-design apply @preview.json
+--approve DIGEST` requires explicit approval of exact feasible output. The source
+DNA is unchanged; the derived sequence is undoable and can be opened through
+`ui open sequence-window OUTPUT_ID`. No input, CDS, protein, protection or digest
+may be inferred from a gene label. This is not full DNA Chisel or a `.12` gate.
+See [the exact request and non-claims](cli.md#synthetic-sequence-design) and
+[tutorial 06.07](tutorial/06-07_synthetic_sequence_design.md) for the offline
+joint motif/GC preview, separately approved apply and same-session undo/redo.
+The same request optionally selects `search_strategy=conflict_directed`; omission
+retains enumeration. GUI Shell and Agent Assistant share the engine policy and
+need a freshly reviewed approval after a strategy change. This adds no separate
+GUI solver, automatic recoding or experimentally validated design claim.
+Optional `gc_content={min_basis_points,max_basis_points}` constrains the complete
+declared CDS, including frozen start/stop, using inclusive integer GC counts.
+Bounds are explicit, not organism presets; flanks are excluded. Empty motifs are
+allowed only with explicit GC bounds. GUI Shell/Agent Assistant use the same
+preview, integer facts and renewed approval as CLI/MCP; no standalone GC editor.
+See the [synthetic GC walkthrough](cli.md#cds-wide-gc-walkthrough).
+Optional `gc_window={window_bp,min_basis_points,max_basis_points}` checks every
+complete overlapping CDS window at a fixed one-base step. Flanks/partial edge
+windows are excluded; length and bounds must be explicit. The same shared
+preview shows every interval/count and apply validates them afresh. See the
+[windowed synthetic example](cli.md#sliding-window-gc-walkthrough); this remains
+GUI Shell/Agent Assistant integration, not a new optimization editor.
+
+Source-enriched locus SVGs and detailed TSS figures can show shared physical
+exons/CDS, separate structure-reference rows and colour-labelled Ensembl/RefSeq
+annotated starts. Hover retains all source identifiers without crowding print.
+`=` is exact coordinate agreement, not biological preference. Source inputs are
+configured through existing JSON requests, not a new GUI import wizard; the
+native annotated-flat-file viewer is unchanged. See
+[source-coherent presentation and interactive page export](transcript_source_presentation.md).
+
+### Promoter Cofactors
+
+**File > Promoter Cofactors...** and the matching command-palette entry open a
+background-loaded collaborator-package browser, independent of loaded genomes.
+It compares TA/DN cohort statistics and inspects strongest-per-band motif hits,
+sample support/depth and promoter/gene ownership. See the
+[wet-lab walkthrough and limits](promoter_cofactor_browser.md).
+Selected anchors, retained motif hits and promoters can explicitly **Save evidence
+region** through the existing region ledger, or **Copy region request**. Edited
+controls flag stale results; copy/save remains bound to the displayed report.
+The [registered synthetic tutorial](tutorial/08-14_promoter_cofactor_browser.md)
+explains reference-free inspection and exact-reference feature attachment.
+After saving a retained hit, open **Saved motif: DNA annotation**, select loaded
+DNA and **Preview DNA annotation**. Review the local interval/strand and approve
+before **Attach DNA annotation**. The shared engine verifies the exact prepared
+reference. **Reload saved motifs** restores saved choices after reopening a
+project or editing the region elsewhere, and clears any previous approval.
+Stale previews are rejected; annotation is undoable. Unstranded hits,
+anchors and promoters remain saved regions, not misleading directional features.
+Live desktop and scientific acceptance remain separate from synthetic tests.
+
+### Accession-Pinned TSS Profiles
+
+The existing Shell accepts `features tss-tfbs-profiles` and
+`features tss-tfbs-profiles-export`, using the shared engine and exporting
+readable SVG/PNG/PDF documents. See the [offline example](tss_tfbs_profiles.md).
+This first development slice has no dedicated native setup wizard. It does
+not replace the existing locus-evidence viewer or change its historical figures.
+The same Shell commands accept `--context-manifest FILE` to align CUT&RUN,
+exon/CDS structure, annotated translation boundaries and TATA evidence above the
+detail-page scores. No new wizard is required; see the
+[offline context example](tss_tfbs_profiles.md#cutrun-gene-structure-and-tata-context).
+SVG hover details remain available alongside printable coordinate summaries.
+The same Shell routes accept repeated `--genomic-motif-evidence FILE` for
+[imported-hit triangles](tss_tfbs_profiles.md#imported-duckdb-motif-hits) in
+detailed exported plots. This does not replace the native viewer's strip overlay.
+`--formats svg,genbank,embl` also exports [annotated TSS windows](tss_tfbs_profiles.md#annotated-tss-sequences)
+for the normal sequence-file importer; this does not claim a new native TSS viewer.
+Use `--scale-mode shared_across_tss` for the same accession's common Y range
+across all supplied TSSs and both strands. Each page states its scale policy;
+independent scaling remains the default. Older background-tail score reports
+need [rescoring, not just re-export](tss_tfbs_profiles.md#rescoring-existing-reports).
+
+### Measured Gel Images (`.11` Development)
+
+Open **Patterns -> Gel Image Analysis...**, the command palette, or
+`ui open gel-image-editor`. Import a PNG/JPEG or explicitly selected TIFF page 0,
+draw lane rectangles, enter known ladder sizes and click band centers. Select/move
+marks or correct their coordinates in the assignment editor. Zoom and scroll
+only change the view. Drafts are undoable project data and survive Save Project.
+**Analyze and save report** validates the assignments through the same engine as
+the CLI; changed assignments mark the old result as outdated and disable export
+until reanalysis. Results include a calibration plot and JSON/TSV/SVG exports.
+See [the walkthrough and limitations](gel_image_analysis.md#graphical-walkthrough).
+Image loading and analysis run in background workers; canceled or stale mutation
+results do not commit. Existing virtual gel previews remain simulations.
+Automatic detection, native responsiveness and real-gel acceptance remain pending;
+this development is not a `.10` release requirement.
+
+
 ## What To Trust Today
 
 If you are opening GENtle as a biologist rather than as a contributor, use
@@ -41,23 +136,93 @@ this as a confidence map for the current GUI surface.
   still not a full chromatogram editor.
 - Primer3-backed workflows are available, but the internal backend is still
   the more predictable default while parity hardening continues.
+- PrimerBank records are reachable from the GUI Shell through
+  `primers primerbank search|show|test-cdna`. The same shared route can parse a
+  saved PrimerBank result, export `gentle.primerbank_search.v1`, and test one
+  selected pair against project transcript models. A dedicated catalog browser
+  is not required for parity; GENtle does not mirror the external database or
+  turn catalog presence into a validation claim. Search results expose the
+  requested/observed species cross-check, and cDNA testing requires a confirmed
+  human or mouse PrimerBank match. The same report separately checks any
+  `organism` annotation on the selected project sequence and refuses a known
+  mismatch; missing target-species metadata stays visibly unresolved.
 - Manual GUI walkthroughs in Help/Tutorial are useful for orientation, but the
   generated executable tutorials remain the stronger reproducibility baseline.
+- The command palette and feature/map context menus open **Feature Editor**.
+  Its Location tab edits exact simple annotations and exact segments in flat
+  `Join`/`Order` compounds. Its Create tab appends one exact forward/reverse
+  feature with ordered, duplicate-capable, optionally valueless qualifiers;
+  its Delete tab previews and removes a complete feature of any existing
+  location shape. Its Split tab divides an exact simple feature at an internal
+  base boundary while preserving its record fields on both explicit outputs;
+  its Merge tab combines only exactly touching simple records whose kind,
+  strand, and ordered qualifiers already match. Every mode requires Preview
+  before Apply, refuses stale previews, and uses shared engine operations.
+  Curation previews list overlap and recognized shared identifiers as review
+  evidence without changing related annotations. Split/Merge reject
+  nested/fuzzy locations, gaps, overlaps, and metadata conflicts rather than
+  guessing a biological repair.
+  The [offline Feature Editor tutorial](tutorial/02-05_feature_editor_gui_cli.md)
+  walks through every tab on a 120 bp synthetic starter, including preview
+  invalidation, unchanged DNA and save/reopen checks.
 
 ### Exploratory / not yet first choice
 
 - Broader routine-family coverage outside the strongest current Gibson and
   restriction-centered paths.
-- Direct GUI feature editing / transcript-boundary curation workflows.
+- Propagated transcript-boundary curation, topology-changing compound edits,
+  and nested/fuzzy feature-location editing.
 - guideRNA workflows, deeper assay families, and richer virtual-PCR /
   off-target analysis paths.
 
 ## Start the GUI
 
+### TATA-Box Evidence In The DNA Viewer
+
+Open **TFBS scan > TATA-box evidence**, or the matching button in
+**Sequence Tools**. This separate, resizable workspace leaves the DNA map
+available. Use the whole sequence or the current selection, inspect, then click
+a result's coordinates to locate it on the map. The table is virtualized and
+scrollable. **Add selected to DNA map** is a separate, undoable mutation; a
+changed sequence, annotation, matrix, or EPD file requires a fresh inspection.
+
+Source annotations, EPD promoter classifications and TBP model predictions have
+separate labels. EPD markers locate the TSS, not an invented exact TATA site.
+Source feature qualifiers and TSS associations are available in row hover
+details and the copied JSON. EPD source configuration is optional; a human
+GRCh38 template is provided but is never used automatically for mouse data.
+The default model is the exact JASPAR TBP `MA0108.3` PFM. By default only
+transcript-oriented motif starts at -40..-15 bp from known TSS candidates are
+scanned. **Scan without TSS restriction** explicitly scans both strands.
+Transcript 5-prime annotation boundaries are candidate TSSs, not experimental
+proof of initiation. See [the worked guide](tata_box_evidence.md) for EPD setup,
+threshold interpretation and reproducible shared commands.
+
 ```bash
 cargo run --bin gentle
 cargo run --bin gentle -- path/to/project.gentle.json
 ```
+
+Runtime status diagnostics:
+
+- On Unix, a running `gentle` process listens for SIGUSR1 and prints the
+  process-local live activity stack to STDERR. Launch from a terminal if you
+  want to see this diagnostic dump.
+- The same in-memory snapshot is available through shared shell
+  `introspect runtime`. It reports active scoped frames such as the current
+  shell command, genome-preparation phase/progress, and GUI background jobs
+  that are visible in the Background Jobs panel. The structured response also
+  includes observed activity records from existing ledgers such as genome
+  prepare markers, CUT&RUN shared-asset markers, and BLAST async jobs when
+  those ledgers are discoverable. GENtle does not write a separate
+  runtime-status file, and this is not a historical job log.
+- When live runtime frames exist in the GUI process, the bottom status bar
+  shows a compact `Runtime: N active` indicator with a hover summary.
+- Opening a DNA sequence viewer contributes a `gui_action` frame while its
+  viewport is queued, sequence payload is loading, and real content awaits its
+  first paint. The frame is phase-only rather than displaying an invented
+  percentage or ETA, and is removed when the content is ready, loading fails,
+  or the window is closed.
 
 The GUI opens an empty project unless a project path is passed on startup.
 
@@ -68,9 +233,22 @@ Example startup window:
 
 Screenshot capture policy:
 
-- Screenshot capture is currently disabled by security policy.
-- `--allow-screenshots` is rejected at startup and `screenshot-window` is
-  disabled in shared shell command execution.
+- `Agent help` is an explicit, window-bound diagnostic action. A normal click
+  captures only the GENtle viewport containing that button, then opens Agent
+  Assistant with a local preview and a prompt for the user's problem report.
+- An image-capable inner agent may instead return one typed screenshot request
+  with a reason. GENtle captures nothing until the user selects an open,
+  registered GENtle content window and clicks `Allow one screenshot`. The
+  resulting image is still previewed before the separate `Ask Agent` action.
+- Right-clicking `Agent help` on macOS 14 or newer offers an optional complete-
+  window capture through ScreenCaptureKit. This requires Screen Recording
+  permission; declining it simply leaves that optional feature unavailable.
+- No screenshot is sent until the user clicks `Ask Agent`. Auto-run cannot
+  approve a screenshot; desktop capture and capture of non-GENtle windows are
+  prohibited.
+- The headless `--allow-screenshots` option and `screenshot-window` shared-shell
+  command remain disabled; this narrow GUI help flow does not enable general
+  screenshot automation.
 
 macOS auxiliary-window stability note:
 
@@ -119,6 +297,15 @@ macOS auxiliary-window stability note:
 - Hosted sequence windows reserve explicit drag room inside the root workspace
   and reset stale over-wide shell state on redraw, so older or over-expanded
   DNA viewers should not become almost immovable after a title-bar drag.
+- Native sequence windows start at the same `1200 x 860` working size as hosted
+  sequence windows, with an `820 x 520` minimum. This keeps wrapped toolbar
+  rows, including `TFBS scan`, reachable on first open instead of clipping them
+  behind the sequence client area. Window managers may still clamp the initial
+  size to the available monitor.
+- The DNA toolbar panel opens at 30% of the available window height (bounded to
+  `180..420` px where space permits), may be resized down to 100 px, and keeps
+  its own vertical scroll. This gives ordinary first-open access to action rows
+  while preserving user control over map space.
 - The hosted Configuration window now uses the same safe-area clamping, and
   its Graphics-tab control rows wrap/bound their width instead of expanding
   horizontally without limit.
@@ -163,6 +350,9 @@ macOS auxiliary-window stability note:
 - Newly opened sequence windows are queued for foreground focus after their
   viewport is registered, so opening a sequence from a project/lineage view
   should raise that DNA viewer instead of leaving it behind older windows.
+- Opening a saved sequence does not recompute or persist derived restriction
+  caches in shared project state. Restriction scans remain explicit shared
+  operations, so merely viewing a sequence does not mark its project modified.
 - Hosted auxiliary workspaces opened from a sequence window, including
   Splicing Expert, RNA-read Mapping, Dotplot, Promoter design, and Isoform /
   Protein Expert, render in a root-level hosted pass after the owning sequence
@@ -273,6 +463,26 @@ Tabs:
   - Validate executable availability/version from within the UI.
   - `RNAfold` is resolved by the shared RNA-structure engine path through
     `GENTLE_RNAFOLD_BIN` or `PATH`.
+  - Legacy SHA-1 download verification is resolved by the shared resource
+    status path through `GENTLE_SHA1_TOOL` or `PATH`; set
+    `GENTLE_DISABLE_LEGACY_SHA1=1` to skip it intentionally. GENtle reports
+    availability in `resources status` and in relevant prepare warnings rather
+    than showing a startup warning.
+- `Microarrays`
+  - Explains the three supported starting points without conflating them:
+    prepared GENtle helper output, completed APT/R summary plus coordinate
+    annotation tables, or raw CEL analysis through an explicit preflight.
+  - Shows bounded, read-only status for the checkout-local Clariom D Human
+    NetAffx staging directory, E-MTAB-14704 IDF/SDRF/CEL inputs, existing
+    analyzed TP73 tables, and the committed synthetic TP73 demonstration
+    output. GENtle compares only the build checkout and current working
+    checkout, then uses whichever contains more of these documented resources.
+  - Links to the public EMBL-EBI E-MTAB-14704 study and to the two documented
+    Thermo Fisher support archives. The latter remain login-walled manual
+    downloads; GENtle never downloads them silently.
+  - This tab owns reusable resource guidance only. Import, output inspection,
+    projection, and interpretation remain explicit actions for an active DNA
+    sequence in `Array setup...`.
 - `Graphics`
   - Configure project-level display visibility defaults (panels, feature layers, overlays).
   - Configure sequence text-panel max length (`Sequence panel max text length`, default `200000 bp`, `0=unlimited`).
@@ -301,8 +511,8 @@ Tabs:
   - The bottom `Cancel` and `Apply` actions are kept in a persistent footer and remain visible while scrolling.
 - `Language`
   - Configure the runtime GUI interface language for visible window chrome,
-    top-level menus, first translated configuration controls, and the main
-    Agent Assistant setup/action surface.
+    top-level menus, first translated configuration controls, and the
+    Agent Assistant conversation and Agent Systems configuration surfaces.
   - The default is `System default (English)`, currently resolved to British
     English (`en-GB`) until platform locale detection is wired.
   - Available catalogs are British English (`en-GB`), US English (`en-US`),
@@ -315,6 +525,12 @@ Tabs:
   - Shared shell commands, saved project data, protocol fields, agent payloads,
     and scientific identifiers stay in deterministic English regardless of the
     GUI language.
+  - Agent controls include tooltips, prompt-template names, bundled provider
+    labels/descriptions, model discovery and setup guidance, screenshot review,
+    response details, command results, and execution-state labels. Custom
+    provider catalog prose, editable prompt/template bodies, provider replies,
+    raw diagnostic records, and copied commands/JSON are not translated.
+    Setup rows wrap to accommodate longer translated labels.
 
 Persistence:
 
@@ -369,11 +585,16 @@ The project main window (lineage page) supports two views:
 - SVG export operations (sequence, dotplot, feature-expert/splicing, gel) are
   also materialized as lineage analysis nodes, linked by operation edges for
   provenance/script parity
-- `Containers`: container list with kind/member-count, contents mode, open actions, and per-container gel export
+- `Containers`: container list with kind/member-count, contents mode, open
+  actions, per-container gel export, and pool-artifact export for declared
+  exhaustive containers
 - container contents mode is editable directly from the lineage `Containers` panel:
   - `Declared only`: the listed members are intended to be the full known contents of a clean vial/tube
   - `Known subset`: the listed members are known/measured constituents of a more complex sample that may also contain unlisted material
-- `Arrangements`: serial lane setups across containers, with arrangement-level gel export and linked physical rack drafts
+- `Arrangements`: ordered layouts across containers, with arrangement-level
+  gel preview/export for `Serial` layouts and linked physical rack drafts for
+  serial or plate layouts. `Plate` rows keep gel actions disabled with the
+  shared engine explanation that only serial arrangements can render gels.
 - Rack placement is a linked physical layer on top of arrangements, not a replacement for them:
   - arrangements keep the semantic sample order
   - racks/plates keep the physical A1-slot placement
@@ -394,6 +615,98 @@ The project main window (lineage page) supports two views:
   the GUI should collect the collection operand, show per-member and aggregate
   readiness/errors/results, and call the same named operation or shell route
   that CLI/MCP/agent surfaces can invoke.
+- `Genome > Gene Set Inspector...` has three shared-engine modes:
+  - `Resolve new set` authors catalog-group, explicit-member, local external
+    mapping, genomic-neighbor, or deterministic-random sources
+  - source-specific validation and shared genome/catalog/cache gates construct
+    the same `ResolveGeneSet` payload as `gene-sets resolve`
+  - resolution runs in a detached engine snapshot, persists through the normal
+    engine operation, and auto-selects the exact new report when its commit is
+    current; stale results do not change project state
+  - `Inspect & run` shows report-level review state, resolved and unresolved
+    members, member-owned status/confidence metadata, warnings, provenance, and
+    portable JSON copy/export
+  - `Regulatory partners` accepts anchor and partner motif queries, absolute
+    thresholds, promoter geometry, a distance rule, and an optional persisted
+    gene-set CUT&RUN support report. It dispatches the shared
+    `gene-sets regulatory-partner-screen` command on a detached engine snapshot
+    and caches the portable result in the inspector
+  - results open with a **Candidate list**: gene, predicted anchor and partner
+    matrix IDs/sites, signed motif-centre distance, both LLR scores, proximity
+    outcome, promoter-level CUT&RUN support, and expression (`Not evaluated`).
+    Nearby pairs are shown first; a checkbox includes distant pairs without
+    changing the report. Counts are motif pairs/member rows, not independent
+    peaks or enrichment. Genes without displayed pairs remain inspectable.
+  - `Use 150 bp` explicitly changes the form's proximity parameter; it does not
+    change the existing shared default or select a 500 bp neighbourhood.
+    The current scan window remains **TSS-centred**, not CUT&RUN-peak-centred.
+    ENCODE/Ensembl regulatory annotation and promoter similarity are not gates.
+  - `Copy candidate table (TSV)` copies the displayed rows with tuple/member,
+    transcript, genome, operation/run identifiers and input-report digests.
+    Keep `Copy report JSON` for the complete evidence and threshold policy.
+  - selecting a candidate's gene opens its promoter sequence detail. The
+    **Advanced evidence: decision tree and all genes** section retains the
+    branching tree derived from the engine report.
+    Hovering a node highlights every gene whose recorded trace traverses that
+    node; selecting a gene displays its strand-aware promoter DNA with the
+    exact anchor, partner, overlapping-role, and TSS bases highlighted
+  - the tree and sequence renderer do not rescan DNA or derive GUI-local
+    biology. Exact motif intervals, tuples, occupancy state, and node membership
+    all come from `gentle.regulatory_partner_screen.v1`
+  - wording remains evidence-focused: motif-family matches and promoter-level
+    occupancy are cross-gene association evidence, not proof of a unique bound
+    protein or causal co-regulation
+  - the next peak-centred/expression-aware slice is specified separately in
+    [`cofactor_candidate_interface_plan.md`](cofactor_candidate_interface_plan.md);
+    the current view does not substitute predicted motifs for measured summits
+  - external mappings are resolved from configured local catalogs; opening the
+    form does not perform a live ontology lookup
+  - the collection-operation catalog is projected from canonical
+    engine-operation lifting policies rather than maintained as a GUI-only list
+  - typed adapters cover promoter-cohort derivation (`derive`),
+    primer-specificity assessment (`map`), restriction-site scanning (`map`),
+    non-mutating TFBS hit scanning (`map`), restriction digestion (`map`), and
+    explicit physical gene-set pooling (`combine`), each with independent form
+    state and operation-specific results
+  - pool export, pooled-gel rendering, and serial arrangement remain visible but
+    disabled with their typed physical-pool or materialization requirements
+  - primer specificity binds every logical member to one exact persisted
+    primer-design report, then chooses a one-based pair rank and prepared local
+    BLAST target
+  - restriction scanning binds every logical member to one loaded DNA
+    sequence, accepts optional enzyme names/site caps/cut geometry, and shows
+    aggregate site counts without guessing sequence identity from gene labels
+  - TFBS hit scanning binds the same explicit sequences, requires one or more
+    motif queries, and exposes shared default/per-TF likelihood thresholds.
+    Its computation is unlimited by default; result rows show retained hit
+    counts and whether caps, failures, or unscanned effective motifs made the
+    aggregate incomplete
+  - restriction digestion binds every logical member to one loaded DNA
+    sequence and requires explicit known enzyme names. The first run previews
+    deterministic fragment ids without changing the project; apply is enabled
+    only for that exact fingerprint-locked plan. Applied fragments retain
+    per-source lineage and can be opened directly from the result table. The
+    operation does not create a pooled container
+  - physical pool creation requires a complete resolution and binds every
+    member to one distinct exclusive singleton source container. Preview locks
+    the exact source snapshots, output aliquot ids, and reserved pool id;
+    apply creates lineage-linked derived aliquots in one exclusive physical
+    pool while retaining all source containers
+  - promoter derivation chooses one prepared genome, strand-aware window sizes,
+    and an optional relationship expectation
+  - all adapters execute one shared shell command against one complete
+    collection membership in a detached engine snapshot; `Discard result`
+    always suppresses display and cooperatively prevents commit when the worker
+    observes the request before detached commit, but does not remove an output
+    file the shared command already wrote
+  - result views keep per-member execution outcomes separate from biological
+    verdicts and verify that the returned collection subject is still the one
+    displayed by the inspector
+- The inspector never infers an assay from a gene symbol. Missing bindings,
+  unavailable pair ranks, mixed or mismatched biological context, stale
+  detached results, and member-level execution failures remain explicit. The
+  portable collection report can be copied as JSON, and persisted child reports
+  can be opened in PCR Designer.
 - Detailed implementation plan:
   [`gui_gene_set_collection_operations_plan.md`](gui_gene_set_collection_operations_plan.md).
 - Operations offered for a collection should expose the engine-declared lifting
@@ -430,8 +743,11 @@ window inside the neutral root workspace.*
 
 Sequence window screenshot:
 
-![GENtle sequence window](screenshots/screenshot_GUI_sequence.png)<br>
-*Figure: Sequence window with map and sequence panels.*
+![Current GENtle sequence window showing the genome-anchored TP73 evidence-viewer project](screenshots/tp73_inner_agent_evidence_viewer.png)<br>
+*Figure: Current sequence window over local TP73 bases `1..1200`, with the
+GRCh38.p14 anchor, evidence groups, controls, and map canvas. Transcript paths
+continue to the viewport edge when their connected exon lies outside the
+visible interval.*
 
 Linear sequence-view strand placement:
 
@@ -613,8 +929,9 @@ Linear map zoom detail:
   visible, the backbone line and bp tick marks are both suppressed.
 - `Reverse-strand letter opacity` controls reverse-strand emphasis in both the
   linear map and the sequence-panel reverse-complement row.
-- In debug builds, the top-right DNA diagnostics additionally show the active
-  tier thresholds (`standard/helical/condensed`) used by adaptive routing.
+- Normal DNA-map labels are independent of the Cargo build profile. Internal
+  `dev` packages do not add routing-tier debug text to the map or SVG exports;
+  explicit tracing/profiling remains opt-in.
 
 Feature tree grouping:
 
@@ -639,7 +956,8 @@ Feature tree grouping:
 - `gene` entries remain ungrouped (flat rows), even in grouped modes, because
   identifiers are expected to be unique.
 - `mRNA` rows are grouped by their associated gene (when gene qualifiers are
-  available), while transcript identifiers are shown on individual mRNA entries.
+  available), while transcript identifiers, spliced nucleotide lengths, and the
+  best available transcript/isoform names are shown on individual mRNA entries.
 - Regulatory entries (`enhancer`/`silencer`) are grouped in nested branches:
   - primary branch: regulatory class buckets (`enhancer`, `silencer`, `other`)
   - secondary branch:
@@ -659,13 +977,17 @@ Feature tree grouping:
 - In hosted windows, the feature tree and its split/scroll widgets use
   per-window ids so temporary relayouts such as toggling the sequence text
   panel do not collide with another hosted view of the same sequence.
-- For large/feature-dense sequences, initial feature-tree/detail rendering can
-  be deferred to improve window-open responsiveness and is then auto-loaded on
-  the next frame (no manual button click required).
+- Lazy-opened sequence windows defer initial feature-tree/detail rendering to
+  improve window-open responsiveness. Documents with at most 300 features load
+  that browser automatically on the next frame; annotation-rich documents stay
+  on the lightweight placeholder until `Load feature tree/details` is clicked,
+  while the DNA map remains usable.
 - Once the feature tree is visible, its derived grouping/filter/visibility
-  model is cached across frames and only rebuilt when the sequence, feature
-  visibility settings, viewport span, or filter/grouping inputs change,
-  reducing idle CPU load for feature-dense windows.
+  model is cached across frames. Pan/zoom updates only exon-aware visibility
+  and group counts, retaining labels and group membership. Sequence/annotation,
+  topology, feature visibility settings or filter/grouping changes still rebuild
+  the model. An intron-only viewport does not make a transcript visible merely
+  because it overlaps that transcript's bounding span.
 - Feature detail text remains below the feature tree in the left pane and uses
   the configurable feature-detail font size.
 - The feature tree/details pane is top-aligned with the map and stretched to
@@ -678,6 +1000,10 @@ Feature tree grouping:
   - `Focus feature (current zoom)`
   - `Fit feature in view` (linear map mode)
   - `Copy identifier`, `Copy description`, and `Copy tooltip text`
+  - `Copy spliced mRNA sequence`, `Copy spliced mRNA as FASTA`, and
+    `Export spliced mRNA FASTA...` for `mRNA`/`transcript` rows; these use the
+    same strand-aware exon assembly as the shared transcript derivation engine
+    without adding a derived sequence to the project
   - `Use as promoter anchor (Engine Ops)` for `mRNA`/`transcript` rows
     (seeds anchored extraction defaults with strand-aware boundary/direction)
   - `Open Splicing Window`, `Open RNA-read Mapping`, and `Derive + Dotplot`
@@ -686,6 +1012,12 @@ Feature tree grouping:
 - Single-click on feature rows or feature glyphs now selects/focuses only; it
   no longer auto-opens the Splicing Expert window.
 - Open splicing-linked expert windows deliberately via:
+  - Agent Assistant or GUI Shell: `ui open splicing-expert SEQ_ID FEATURE_ID`,
+    using a loaded sequence and a zero-based ID from `features query`.
+    `ui focus` reuses that inspection without clearing evidence; `ui close`
+    with the same operands closes only that expert, retaining project data.
+    Opening waits for a lazy DNA viewer to finish loading. No active-window
+    or canonical-transcript guess is made.
   - double-click a feature row
   - double-click a feature glyph on the DNA map
   - right-click context menu from feature tree or map
@@ -747,6 +1079,38 @@ Feature tree grouping:
 - Very large `Transcript x exon` or `Exon -> exon` matrices may open collapsed
   by default to reduce idle CPU usage; expand the section header to render the
   full table.
+- Hover a transcript label in `Transcript x exon` to inspect its UniProt
+  reference status and source xrefs. Evidence comes from entries already loaded
+  into this project (`uniprot import-swissprot` or explicit `uniprot fetch` in
+  the shared shell); refresh/reopen the expert view after loading evidence.
+  An entry is relevant only through an exact normalized transcript xref or an
+  exact stable Ensembl gene-ID xref. Names, labels, protein lengths and unrelated
+  projections do not count. With no exact relation, status is `not_evaluated`.
+  Gene-only relevance does not make a transcript `referenced`; `not_referenced`
+  is scoped to the relevant loaded entries, not a global absence claim. The
+  shared JSON and exported SVG hover titles retain the same source hashes and
+  identifiers. Biological geometry and engine payload order are unchanged.
+  The canvas and transcript/exon matrix share a display-only grouping: exact
+  UniProt-referenced isoforms, other evaluated transcripts, then not evaluated.
+  Target first within each group, then normalized transcript ID and feature ID.
+  Headers are omitted when all lanes are unevaluated. One compact accession/
+  review-status badge per matched lane carries `+N` for further entries and `?`
+  for a loaded-evidence diagnostic, which can concern gene-level relevance
+  rather than transcript ambiguity; the shared legend explains both symbols.
+  Full evidence remains in hovers. Header clicks select nothing.
+  Missing/duplicate lane-to-matrix joins are explicitly unevaluated; orphan
+  matrix records remain listed, and missing exon cells show `n/a`, not absence.
+  Every boundary tick remains visible, with rose exceptional markers. Full
+  motif words appear once per oriented boundary/pair in the shared summary;
+  expand **Per-transcript boundary details** for all original annotations.
+  Summary labels, readable source-note hovers, per-transcript motif rows and
+  class counts reuse the content-keyed presentation cache. SVG uses the same
+  summary wording, not internal Rust debug fields. Non-canonical pairs retain
+  exceptional ticks/dots even when their own dinucleotide is canonical.
+  Unevaluated legacy views keep their 26/28-px lane spacing; evaluated groups
+  reserve 36 px for headings/badges. Dense SVG matrices retain all cells within
+  the canvas with nonoverlapping positive widths; a legend diagnostic discloses
+  sub-2-pixel compression rather than implying missing exons or transitions.
 - For debugging Splicing Expert launch stalls, launching GENtle with
   `GENTLE_TRACE_SPLICING_EXPERT=1` emits coarse open/render stage tracing to
   the terminal and mirrors it into the sequence-window status line.
@@ -762,7 +1126,41 @@ Feature tree grouping:
   default; override it with `GENTLE_GUI_PROFILE_ADDR=127.0.0.1:PORT` and inspect
   the frame spans with `puffin_viewer`. The profiling spans are coarse by
   design and focus on app-frame, DNA-window shell, DNA-map, sequence-text, and
-  feature-tree costs.
+  feature-tree costs. Gene-locus investigations additionally expose separate
+  scopes for GUI composition/preview rendering and the engine's occupancy,
+  motif, probe-effect, and complete report-building phases.
+- DNA latency scopes additionally separate feature drawing/indexing, deferred
+  record lock/clone, viewport reconciliation, map/overlay refresh, and the
+  restriction, ORF, methylation and GC constructor computations. Launch with
+  `GENTLE_DNA_CACHE_DIAGNOSTICS=1` to expose an optional **DNA cache diagnostics**
+  pane without a profiler build. Its cumulative counters show tree/layer model
+  builds, feature visits, GC bases traversed, layout/index builds, and existing
+  restriction/overlay/GC/display-sync cache activity. A busy or circular renderer
+  reports no linear counters, not zero work. Reading counters does not wait on
+  the renderer, rebuild caches or alter project state; counters contain no
+  sequence or feature names. They count work, not milliseconds. See the
+  [latency plan](dna_feature_rendering_latency_plan.md) and
+  [prebuilt audit runbook](../benches/README.md#dna-feature-density-latency).
+  `tree_viewport_updates` counts in-place visibility recounts separately from
+  `tree_builds`; these reuse hits are also included in `tree_hits`. Older logs
+  without this counter do not establish a zero recount cost.
+  GC layer counts use bin geometry without rescanning sequence bases on pan;
+  `layer_gc_bases` therefore stays zero on that path. This does not suppress
+  the separate GC-value computation needed for the actual GC track.
+  For startup attribution, set `GENTLE_GUI_STARTUP_TRACE` to a new JSON output
+  path before launching the desktop binary. The bounded, name-free CPU trace is
+  written only on exit, not on the paint path; no screenshots, database queries
+  or project writes are introduced. Failed loads and loading placeholders do
+  not become content checkpoints. See the [startup runbook](../benches/README.md#startup-phase-checkpoints)
+  for missing-event handling and the distinction from native presentation and
+  performance acceptance. The offline `scripts/gui_startup_summary.py` reader
+  produces per-subject CPU tables and retains the exact trace without relaunching
+  GENtle; missing durations stay unavailable, not zero. Help preparation has
+  separate manual, shell-reference, tutorial-discovery and selected-load spans,
+  plus first-use help/tutorial/menu-discovery spans and path-free, session-wide
+  SVG/cache/rasterization totals. These are attribution only: they do not change
+  help loading or prove that rasterization causes the observed startup delay.
+  This diagnostic is off by default.
 - The splicing expert window uses its own window-styling slot (`splicing`) so
   tint/image backdrop can be configured separately from DNA and pool windows.
 - The Agent Assistant window uses its own window-styling slot (`agent assistant`)
@@ -894,8 +1292,260 @@ Feature tree grouping:
     splicing locus
   - lists exon-overlap PM probes, exon-exon junction-spanning probes, parent
     probeset grouping, and ambiguity/unresolved mapping tags
+  - promotes junction-spanning probe rows into a compact
+    `Junction-targeting array probes` preview before the full geometry table
   - this is a review-only array design/alignment constraint layer, separate
     from RNA-read evidence; it does not infer isoform support by itself
+- The Splicing Expert has `Structure`, `Evidence`, `Locus figure`, and
+  `Cryptic screen` tabs.
+  `Evidence` is a thin GUI over `FeatureExpertTarget::IsoformEvidence`:
+  - isoform-panel choices come from panels imported for the active sequence.
+    One compatible panel is seeded directly; several panels require an
+    explicit choice; no compatible panel leaves composition blocked with an
+    import hint. An explicit choice is stored with the project per sequence and
+    restored after reopening it. `Use panel editor ID` remains a visibly
+    separate advanced action and does not make an incompatible global editor
+    default valid for the current locus
+  - choose an imported isoform panel and optionally supply annotation-release
+    text, persisted RNA-read/qPCR report ids, probe-evidence JSON, cDNA/EST
+    resource JSON, an expression TSV, and projected occupancy track names
+  - `Inspect evidence` caches the shared `gentle.gene_isoform_evidence.v2`
+    report for the current splice group; opening a different group clears that
+    cached result
+  - transcript rows show biological 5'->3' exon order beside genomic-ascending
+    order, while junction rows show stable assembly-local ids and
+    transcript-oriented donor/acceptor coordinates
+  - specificity, abundance, responsiveness, and assayability remain separate;
+    the evidence ledger and provenance can be expanded for audit. Repeated
+    contrast/source measurements remain individually inspectable; incompatible
+    units are not collapsed. Recommendation tiers are rule-based guidance, not
+    weighted evidence scores
+  - selected BED/BigWig occupancy tracks are summarized as source-specific
+    lanes and rendered beneath transcript models in the shared SVG with one
+    common score scale; `*` selects every projected track in the gene span.
+    Occupancy remains locus-level evidence and is not assigned to an isoform
+  - `Copy report JSON` copies the machine-readable report and `Render SVG`
+    delegates to the shared `RenderFeatureExpertSvg` operation
+  - existing qPCR rows are candidates only. New assay design remains an
+    explicit action in the Structure tab, and the GUI does not promote array
+    overlap or missing evidence into biological validation
+  - evidence status labels use one shared vocabulary: `observed evidence`,
+    `candidate association`, `design constraint`, `not evaluated`, and
+    `unresolved evidence`. These labels interpret the existing stable wire
+    values; they do not promote candidates or overlaps into validation
+- The standard linear DNA map and `Structure` tab also offer `Source annotation
+  comparison (read-only)`. Load an enriched locus JSON there or reuse the report
+  from `Locus figure`. These bounded, scrollable lanes use one engine projection,
+  the same source filter, and the DNA-map viewport. Click highlights a comparison
+  row; double-click fits its span without assigning PCR selection. Selecting a
+  loaded transcript highlights full-chain/strand matches, not merely shared
+  exons or matching labels. Thin/thick boxes show exon/CDS geometry; ticks show
+  annotated starts. Hover exposes exact source provenance. Stale bindings and
+  circular sequences do not receive live overlays. Comparison records never
+  enter the actionable project transcript list or change primer-design scope.
+- `Locus figure` is the graphical composition surface for the same shared
+  `FeatureExpertTarget::GeneLocusEvidence` operation:
+  - reuses the panel, expression, RNA/cDNA, probe, occupancy, and qPCR inputs
+    entered under `Evidence`, then adds strand-aware flanks, probe-effect
+    tables/contrasts, an explicit coordinate system, an occupancy-layout JSON,
+    legacy motif-score settings or a provider-neutral regulatory-score-track
+    JSON, a hidden/automatic/fixed genomic scale bar, and an output path
+  - a readiness table distinguishes genome anchors, local files, imported
+    panels, and projected occupancy-track names. Missing file-backed resources
+    can be browsed to their relocated copy; the engine still performs schema,
+    coordinate, and provenance validation during composition
+  - `Compose / refresh` calls the shared pure-read feature-expert operation and
+    renders its SVG through the shared renderer into the live GUI preview;
+    transcript metrics, PSR/JUC effects, occupancy/motif summaries, warnings,
+    and provenance remain inspectable beside the figure
+  - the interactive inspector below the publication preview keeps separate
+    transcript exon/CDS models, translation boundaries, occupancy/chromatin
+    lanes (including unavailable states), retained motif/site calls, Ensembl
+    Regulation, predicted TF-score, saved-region, and nucleotide geometry on
+    one local axis. Hover a lane for its full label, source, units, and state.
+    It supports fit/zoom, per-lane visibility, nucleotide letters when the
+    current viewport gives each base enough horizontal space, and opening the same span in the full DNA
+    map. Visibility changes affect inspection only; changing scientific inputs
+    still requires explicit recomposition
+  - dragging across the inspector stages an exact local interval as a
+    `reporter_candidate` genomic ROI. Saving it uses the existing
+    assembly-bound region manager, where its colour is persistent and remains
+    presentation metadata rather than biological evidence. A portable locus
+    report JSON can be loaded to inspect the exact evidence behind an existing
+    document. Newly composed reports bind the exact DNA digest, length, and
+    genome anchor; a mismatch is rejected even if the sequence id matches.
+    Legacy reports without this binding remain historical evidence: live DNA
+    letters, selection, staging, and DNA-map navigation are disabled until
+    recomposition. Staged reporter intervals are checked again when saved
+  - importing a reporter-architecture comparison retains its complete envelope,
+    proposed architecture rows and material legend. JSON/copy, SVG, preview,
+    and PDF preserve that imported comparison, rather than silently exporting
+    only its nested locus report. The interactive rows reuse the canonical
+    reporter geometry; LUC attachment markers are schematic, not genomic DNA
+  - regulatory-score JSON may define several JASPAR matrices/TFs and offline
+    external-model outputs with independent score semantics and scales. The GUI
+    does not numerically compare unlike providers and never labels an
+    uncalibrated prediction as affinity. Matrix/model-specific factor bindings
+    remain distinct, and only an exact typed cross-source calibration id/digest
+    can authorize a shared scale; descriptive prose cannot
+  - every regulatory-score lane has a visible Y axis beginning at `0`, with
+    midpoint and maximum ticks plus a score-family label. In particular,
+    `llr_background_tail_log10` is labeled `-log10 Ptail`: it is a modeled
+    background-tail probability derived from an LLR, not the raw log-odds
+    score. Negative source samples remain auditable in report JSON but are
+    floored at zero in the figure, and negative site/threshold labels are not
+    drawn. Compressed SVG/PNG/PDF overview traces use unconnected pixel-bucket
+    min/max whiskers and mean marks, separately for each strand, rather than
+    joining maxima into a misleading plateau; the aggregation is labelled
+    The interactive inspector uses the same bounds and score-family labels;
+    negative and missing samples interrupt traces rather than connecting
+    across unevaluated positions. It does not change stored scores or thresholds
+  - H3K4me3 and related marks use the explicit `chromatin_context` lane role,
+    visually separate from TF occupancy. Cell line, condition, batch, and
+    scaling remain caller-declared rather than inferred from filenames
+  - every explicitly requested occupancy/chromatin lane remains visible even
+    when no interval can be drawn. Dashed rows report `not prepared`, `no
+    compatible interval`, or `assembly mismatch` and retain stable source,
+    assay, mark, and factor metadata, so unavailable evidence is not mistaken
+    for an observed zero signal
+  - report JSON, SVG, and PDF exports reuse shared operation/render paths. The
+    GUI does not implement a second locus-composition algorithm
+  - when the shared report carries source-bound Ensembl Regulation evidence,
+    the preview adds a distinct Ensembl-annotated regulatory-regions section.
+    Feature IDs and the provider label are live links in SVG; exported PDFs
+    carry corresponding PDF URI annotations. The rows are annotation evidence,
+    remain separate from occupancy/chromatin/score tracks, and do not enumerate
+    SCREEN-derived project features
+  - existing qPCR candidates can open their persisted report or create a
+    deterministic reviewed oligo-order form. Junction evidence can seed the
+    existing transcript-aware qPCR designer; this is assay planning, not a
+    claim that the candidate validates the displayed relationship
+  - the offline PATZ1 example is generated from
+    `docs/examples/workflows/patz1_gene_locus_evidence_offline.json`; its tiny
+    committed tracks are synthetic and are not experimental PATZ1 evidence
+- `Saved genomic regions` keeps reusable interval configuration out of the DNA
+  map itself while remaining one click away from it:
+  - open it with `Regions...` in the DNA toolbar, `Genome > Saved Genomic
+    Regions...`, the command palette entry of the same name, or by selecting
+    bases and choosing `Save/share selected genomic region...` from the map
+    context menu
+  - the same destination is reachable headlessly as the shared UI intent
+    `ui open saved-genomic-regions` (aliases `genomic-regions`, `regions`),
+    with `ui close saved-genomic-regions` reporting whether a manager was
+    actually open. While a sequence is still loading the focus is queued and
+    applies once the load completes
+  - the resizable manager lists set, label, explicit assembly, 1-based
+    inclusive coordinates, strand, selection method, and evidence availability.
+    Its copy actions provide human coordinates, BED6 (0-based half-open), or
+    the complete canonical ROI JSON
+  - JSON is the lossless interchange. `BED + manifest...` writes BED6 plus a
+    content-bound sidecar; importing bare BED requires an explicit reference in
+    the shared request path rather than guessing from a chromosome label
+  - CUT&RUN support-window and source-bound Ensembl Regulation tables expose
+    capture actions that call the same `CaptureGenomicRegion` operation as the
+    manager. Their evidence and conservative non-claims remain source-specific
+  - `Locus figure` accepts saved region-set IDs and draws their current local
+    projections on the shared coordinate axis. Stale projections remain typed
+    in the report and are not silently treated as absent evidence. Selected,
+    evidence-available occupancy regions additionally receive very thin
+    vertical boundary guides across every coordinate-bearing track, so a saved
+    dominant CUT&RUN support window remains visible beside transcripts,
+    regulatory annotations, occupancy lanes, and motif scores. GENtle does not
+    infer which window is dominant; save the reviewed support window and add
+    its set to the composition
+  - stable tutorial semantic IDs cover manager open/save/copy/import/export and
+    CUT&RUN/Ensembl capture controls for Linux acceptance automation
+- `Conservation...` on a saved region opens a separate, resizable workspace:
+  - the `Genomic Region Conservation` command-palette entry opens the saved-region
+    manager for the active or first project sequence, where you choose the region
+    and select `Conservation...`. It shares the Saved Genomic Regions opener:
+    existing viewers are focused and pending viewers retain the manager request.
+    An empty project opens sequence retrieval first
+  - `Search request` edits the shared request: query resource, catalog/cache,
+    explicit target genome IDs, required/optional status, expected ortholog
+    loci and evidence sources, and every search-policy threshold. Empty targets
+    still mean all validated local indexes. No species or orthology is guessed
+  - `Import request...` and `Export request...` exchange the same JSON used by
+    CLI/workflows. Imports must refer to the selected saved region; stale digest
+    bindings are rejected and omitted bindings are pinned to its current digest.
+    Editing/importing does not run BLAST or change an existing report. Request
+    controls are disabled during a run; the worker uses the exact submitted copy
+  - `Run local screen` snapshots the engine and performs preflight, local BLAST,
+    projection, exact-support block calling, and composition away from the UI
+    thread. The status line reports phase, target ordinal, elapsed time, and a
+    final target/locus/block count
+  - `Cancel` cooperatively stops the active BLAST child via the shared process
+    supervisor. Closing the workspace or switching to another region also
+    requests cancellation; cancelled or mismatched late results cannot replace
+    the displayed report. Elapsed time continues updating during BLAST, which
+    reports a heartbeat rather than inventing an intra-target percentage/ETA
+  - `Open report...` validates and displays an existing content-bound homology
+    report only when it still matches the exact saved query region. This allows
+    a CLI/workflow result with explicit orthology declarations to be inspected
+    without rerunning BLAST
+  - no genome is downloaded or indexed from this window. Missing optional
+    indexes are shown as unavailable and unrelated DNA-viewer work remains
+    available
+  - target readiness, conserved blocks, same-genome alternatives, and the
+    query-referenced alignment are inspectable together. Target insertion bases
+    stay in exported JSON and never create extra alignment columns
+  - `Promoter similarity...` is a focused entry point into the same workspace.
+    It requires the saved region's prepared-genome identity, selects that genome
+    as the same-genome target, enables transcript-promoter annotation, and starts
+    with 40 bp / 80% identity and a -2,000/+200 bp transcript window. Review or
+    edit these declared parameters before `Run local screen`
+  - the promoter recurrence matrix uses one row per distinct strand-aware
+    genomic promoter window and retains every gene/transcript mapping for shared
+    TSSs. Horizontal position is the selected query region, blue intensity is
+    nucleotide identity, and the number inside each block is its 5'-to-3' order
+    in the target promoter. A red outline begins a new structural segment when
+    query order or alignment orientation changes; GENtle never joins across it
+  - window, gene, and transcript frequencies are displayed separately. If the
+    BLAST HSP or retained-locus budget is reached, the matrix labels frequencies
+    as lower bounds. Similarity, rarity, and rearrangement remain reporter-design
+    evidence, not promoter-activity or fragment-sufficiency claims
+  - conserved-block and alignment lists instantiate only visible rows. The
+    alignment has no former 50-locus display cap; selecting a block scrolls to
+    its query tile without laying out the complete sequence on every repaint
+  - other saved evidence regions fully contained in the query can be selected
+    for the shared promoter-module assessment. Each PASS/NO rule is displayed;
+    the result remains a reporter-design hypothesis rather than a functional
+    conclusion
+  - JSON and SVG export consume the shared report. Saving a selected block as a
+    portable region is a separate explicit project mutation that retains the
+    homology report digest and non-claims
+  - semantic IDs cover the window, run/open/status, JSON/SVG export, module
+    assessment, and block-save controls for Linux/Xvfb acceptance testing
+- `Cryptic screen` is a thin background adapter over
+  `gentle.cryptic_splicing_screen.v1`:
+  - choose a 1-based inclusive source span and orientation, or copy the current
+    splicing-group span; optional insert boundaries classify vector/insert
+    context and an optional CDS feature id enables coding-consequence projection
+  - the scan runs on an immutable engine snapshot, so the DNA viewer remains
+    responsive and project state is not mutated
+  - candidate rows distinguish structural GT-AG configuration,
+    branchpoint/polypyrimidine heuristics, optional MaxEnt donor/acceptor scores,
+    RNA-evidence status, projected-protein-feature status, and optional CDS
+    consequences. `model absent` is displayed explicitly and candidates are
+    never labelled as observed junctions merely because a motif/model score
+    exists
+  - `use active MaxEnt snapshot` is opt-in. The panel shows the active model
+    fingerprint and accepts an optional expected-fingerprint lock. If the model
+    is replaced after a run, the cached report remains copyable as the exact old
+    JSON, but recomputing exports/evidence joins is disabled until the screen is
+    rerun
+  - the collapsed evidence section accepts saved RNA-read report ids and one
+    saved UniProt projection id. Both joins run as portable read-only operations;
+    legacy or digest/coordinate-mismatched evidence is shown as
+    `not assessable`, not silently joined
+  - pair accounting shows admissible, evaluated, reported, and ranking-complete
+    state. Structural caps retain a positional prefix; scored caps retain the
+    globally ranked top set
+  - the same compact controls are available under Sequence Tools; both surfaces
+    share one result cache keyed by the effective request, source, and optional
+    model content identity
+  - JSON copy/save and SVG rendering use the shared portable operations and
+    preserve operation/run ids in the typed report
 - The Splicing Expert now also includes an `ATtRACT / RBP evidence` section:
   - engine-owned, splice-aware motif interpretation over the selected splicing
     group; the GUI is only a viewer/filter for the shared payload
@@ -1030,10 +1680,9 @@ Feature tree grouping:
     (`.fa/.fasta`, optional gzip `.fa.gz/.fasta.gz`)
   - gzip FASTA input also accepts concatenated gzip members
   - progress updates are throttled to reduce UI overhead:
-    - debug builds: read-count updates approximately every `1000` reads
-    - release builds: read-count updates approximately every `10000` reads
-    - both build types additionally emit time-based updates approximately every
-      `2s` while processing continues
+    - all build profiles: read-count updates every `10000` reads, plus the
+      first three reads and the final result
+    - time-based updates approximately every `2s` while processing continues
     - phase-2 retained-read alignment now reports progress every selected
       retained row (`update stride: 1`) so long alignment passes visibly move
   - live RNA-read progress stays in the dedicated `RNA-read Mapping` workspace;
@@ -1230,8 +1879,9 @@ Feature tree grouping:
   - streaming progress includes `ETA:` (uppercase) estimate derived from
     compressed/plain input bytes consumed vs elapsed runtime; ETA refresh is
     synchronized with read-count progress updates
-  - running seed-confirmation histogram is updated every 1000 reads and shown as
-    genomic-position bars (`+` strand upward, `-` strand downward)
+  - running seed-confirmation histogram follows the shared read-count/time-based
+    progress policy and is shown as genomic-position bars (`+` strand upward,
+    `-` strand downward)
   - bar heights use a square-root scale so low-frequency bins remain visible
     while high-frequency bins are still comparable
   - red seed-anchor dots are overlaid on the histogram baseline (`+` above,
@@ -1592,6 +2242,15 @@ Global productivity controls:
     imports or analyses cannot race against state restoration.
 - `Window -> Show Background Jobs` opens a centralized progress panel for
   long-running tasks (prepare/import/BLAST).
+  - Engine-backed dbSNP fetch, track import, primer design, TFBS, and RNA-read
+    workers run against detached snapshots, so the sequence windows remain
+    inspectable while computation or network work is active.
+  - If the project changes before a mutating worker finishes, GENtle reports
+    the result as stale and asks for a rerun instead of overwriting the newer
+    project state.
+- Sequence layer badges, custom-bin GC tracks, lineage graph projection/layout,
+  JASPAR filtering, and sequence-window titles are cached by their relevant
+  revisions. Large JASPAR and feature-tree lists render only visible rows.
 - `Cmd/Ctrl+K` opens the Command Palette.
 
 Patterns menu:
@@ -1607,6 +2266,41 @@ Patterns menu:
     `assets/cloning_patterns_catalog`.
 - `Patterns` submenu hierarchy mirrors the directory hierarchy under
   `assets/cloning_patterns_catalog` (one JSON template file per leaf entry).
+  Leaves say **Import ... template**, not run/design; they remain usable in an
+  empty project. Canonical routine titles preserve names such as **gRNA**;
+  directory labels use **CRISPR**, **PCR**, **DNA**, **RNA**, and **TFBS**.
+  The hierarchy and routine-import browser share a background-loaded snapshot.
+  **Refresh template catalog** explicitly reloads it after files change; loading
+  and errors remain visible without rereading directories or evaluating project
+  planning on each menu frame. Shipped catalogs resolve from the checkout or
+  packaged application; user-selected import paths remain explicit.
+- `Patterns -> Use gRNA routines` opens **setup**, separately from template import.
+  Candidate scans require explicitly selected DNA (project graph or focused
+  viewer). Anchor scan setup asks for two zero-based sequence boundaries;
+  `0` and sequence length are valid endpoints, the right boundary is excluded,
+  and the span must fit the candidate length (20 bp by default). Reversed
+  boundary order is accepted. Run Preflight remains disabled until valid.
+  These are generic candidate preselection scans, not PAM-aware guide design
+  or off-target confirmation. Practical Filter and Oligos requires a stored
+  guide set, selected explicitly in the form; DNA or a candidate set is not a
+  substitute. No guide set is silently selected by alphabetical order.
+  Existing macro preflight and transactional execution remain authoritative.
+- Pilot availability is shared between egui menus and Command Palette rows:
+  Undo/Redo, PCR Design, Sequencing Confirmation, Saved Genomic Regions, the
+  three gRNA setup actions, and palette-only TATA, transcript-start/TSS,
+  cryptic-splicing, conservation, and feature-location actions. Already-open
+  PCR/confirmation windows can still be focused; empty-project conservation
+  setup still offers reference retrieval. Undo/Redo explain empty session history
+  or the existing background-job restriction; a busy project reports Checking
+  without waiting for its lock. Disabled rows retain their reason on hover and
+  in the selected-action detail area. Enter and click cannot invoke them, and
+  dispatch rechecks state. The gRNA submenu is
+  available when any of its children is available; imports, help and configuration
+  remain reachable. This is not application-wide or native-macOS-menu coverage.
+- gRNA preflight is bound to its project revision, template and bindings.
+  Editing bindings, switching/replacing a project, or changing project state
+  requires another preflight before Run. Catalog checks run outside menu paint
+  and refresh explicitly; availability does not grant execution permission.
 - `Patterns -> Routine Assistant...`
   - opens a dedicated staged workflow window for routine application:
     1. goal + candidate search
@@ -1921,8 +2615,12 @@ Patterns menu:
     explicit follow-up questions instead of hidden heuristics.
   - high-yield protein-expression requests can use the separate read-only
     shell route (`planning protein-expression-handoff`) to surface product
-    context, chassis/route candidates, missing yield/folding/chassis questions,
-    and a GeneArt preflight scaffold without creating or ordering constructs.
+    context, optional reviewed `gentle.protein_expression_requirements.v1`,
+    chassis/route candidates, missing yield/folding/chassis questions,
+    and a readiness-gated GeneArt preflight scaffold without creating or
+    ordering constructs; provider-ready products use a project-bound draft,
+    while undefined products and explicitly in-house-only requirements expose
+    no provider action.
   - supports registering pending planning sync suggestions (`pull`/`push`) from
     JSON payload and explicit `Accept`/`Reject` resolution in-window.
   - exposes sync status (`pending count`, latest pull/push timestamps, last
@@ -1968,6 +2666,19 @@ Node click behavior in lineage `Graph` view:
   same `PCR Designer` on the originating template and restores the saved
   cloning-handoff selection (vector, enzymes, leaders, and saved handoff id).
 - Right-click context menu (graph and table node-id cells):
+  - starts with the clicked item's display label, kind and primary ID; keeps that
+    subject while the pointer moves into the popup, without retargeting to another
+    hovered/selected item. If the project or row disappears, reopen the menu
+  - `Inspect node details`: selects that item to show its existing details and
+    provenance in the project view
+  - `Open sequence` / `Open pool`: opens the clicked item in its existing viewer,
+    without combining molecules or running analysis
+  - `Open saved analysis`: opens supported saved reports in their specialist
+    viewer without rerunning them; other node types retain detail inspection
+  - `PCR Designer...`: opens primer-pair setup for the clicked single DNA
+    sequence, even if another sequence or PCR workspace was previously selected.
+    RNA/protein and missing DNA remain disabled with an explanation. A pool is
+    not silently reduced to one template. Running design remains a separate action
   - `Copy node ID`: copies the stable lineage node identifier.
   - `Copy sequence/report ID`: copies the primary row identifier, such as a
     sequence ID, qPCR/primer report ID, macro instance ID, or arrangement ID.
@@ -1979,6 +2690,8 @@ Node click behavior in lineage `Graph` view:
   - `Remove (leaf only)`: opens a confirmation dialog, then removes that
     sequence/node from project state on confirm.
   - both are disabled for non-leaf nodes in this first pass.
+- Graph blank space explains how to inspect a node or add data via
+  `File > Open sequence`.
 - Right-click context menu on the lineage graph canvas also includes
   `Save Graph as SVG...`.
   - the exported SVG follows the same visible grouped/hub-projected graph model
@@ -2012,6 +2725,12 @@ Node click behavior in lineage `Graph` view:
     - mode/model/backend depending on artifact family
     - point/bin count for dotplot/flexibility artifacts
     - pair/assay count for persisted primer/qPCR reports
+  - reasoning-guided dotplots are linked from the construct-reasoning graph
+    that recommended them; citation-free dotplots are labelled as manual/no
+    reasoning citation rather than failed
+  - selected dotplot details show the citation as visually distinct `PASS`,
+    `FAIL`, or `UNKNOWN`, plus rationale, action id, driving evidence ids,
+    verification reasons, and a shortcut back to the recommending graph
 
 Node groups in lineage view:
 
@@ -2065,6 +2784,9 @@ Toolbar layout:
 - The `Selection formula` / `Apply Sel` controls now stay left-aligned on
   their own row instead of floating into the preceding button row when the
   window becomes narrower.
+- Each toolbar row wraps to the available window width, including the `Go`
+  coordinate fields and formula controls. The toolbar scrolls vertically when
+  it reaches its height limit, leaving space for the sequence map.
 - High-frequency map/display controls use existing icon assets where the
   meaning is clear, while every icon keeps the same hover/status description
   used for support and debugging. Text labels remain for controls without a
@@ -2149,10 +2871,12 @@ Controls:
          - `Nanopore/direct-sequencing review suggested`
          - `Repeat-driven mapping review suggested`
          - `Cloning stability review suggested`
-       - task-aware repeat/similarity severity is shown as compact
-         `task_severity: ...` detail lines with the rule-derived score under
-         the same fact rows, backed by protocol `task_severities[]`, and does
-         not create extra map overlays
+       - task-aware repeat/similarity severity is shown as a compact structured
+         grid under the same fact rows. Optional intrinsic evidence
+         (`base_severity`/`base_score`) and objective-adjusted effective
+         priority appear only when present; task applicability and its
+         explicit/legacy/unspecified basis remain separate. This does not
+         create extra map overlays
      - repeat/similarity summaries, candidates, and repeat-driven fact rows
        can now open the shared dotplot workspace directly:
        - `Dotplot` opens a self-forward dotplot centered on the implicated
@@ -2165,9 +2889,18 @@ Controls:
          `inspection_actions[]` with deterministic action ids and
          `rationale`, `driving_evidence_ids[]`, mode, context tags, and focus
          ranges, not by GUI-local label matching
-       - the existing inspector rows surface the same action details before
-         any richer action-specific evidence pane is added, so the button and
-         explanation stay tied to the protocol record
+       - a collapsed `Evidence` pane beside each button presents the action's
+         1-based focus range and length, readable dotplot mode, wrapped
+         rationale, discrete evidence ids and context tags, and typed
+         repeat-family provenance; the button and explanation therefore stay
+         tied to the same protocol record
+       - repeat-family rows enumerate every typed overlapping family with
+         source, class/family agreement, and confidence; the plural provenance
+         field is preferred while older singular provenance remains readable
+       - the inspector reports graph snapshot freshness. Dotplot buttons are
+         disabled, and the execution path independently rejects the action,
+         when sequence/features, objective intent, or reasoning rules changed
+         after graph generation; refresh is required before inspection
        - CLI/agent layers can list and run the same action objects with
          `construct-reasoning list-inspection-actions` and
          `construct-reasoning run-inspection-action`, so the GUI does not own a
@@ -2230,6 +2963,13 @@ Controls:
    - Aggregation uses the configurable GC bin size (default `100 bp`).
 14. Show/Hide ORFs
    - Toggles open reading frame overlays.
+   - Predictions use ATG and the first in-frame TAA/TAG/TGA, on both strands.
+     The existing display threshold is 100 codons including the stop (at least
+     99 translated residues). These overlays are not annotation-backed CDSs.
+   - Circular predictions may cross the origin, including a start or stop
+     codon split by that origin, but never traverse more than one molecule
+     length. Switching to the linear map splits such an overlay at the origin
+     rather than displaying the complementary interval. SVG uses the same spans.
 15. Show/Hide methylation sites
    - Toggles methylation-site markers.
 16. Extract Sel
@@ -2280,6 +3020,30 @@ Controls:
    - The same window now also caches the shared hit report in `Direct scan
      inspectors`, where you can inspect the portable hit table and export it
      again as JSON.
+   - The same menu offers an optional `Precomputed hits` section for 1-64
+     explicit JASPAR matrix IDs. It queries a configured finalized
+     `jaspar-mapping` sparse package for the current selection, visible span,
+     or whole anchored sequence through the shared
+     `QueryGenomicMotifEvidence` operation.
+   - This query runs in the existing background TFBS worker from an immutable
+     engine snapshot. Its report and map strips are transient display state;
+     they do not add features or dirty the project.
+   - Package discovery is lazy. When
+     `GENTLE_JASPAR_GENOME_SCAN_PACKAGE` or DuckDB is absent, the inspector
+     reports that optional provider as unavailable while ordinary local TFBS
+     hits, score tracks, and the rest of GENtle continue unchanged.
+   - Package-native scores and local scores remain separate. The inspector
+     shows per-motif retention-floor completeness and warns that a sparse
+     package miss is not biological absence.
+   - The configured package can also be the distinct **regulatory/TSS subset**.
+     The inspector names that scope and exposes virtualized physical-TSS,
+     transcript-owner and native regulatory-gene-link details. Empty subset
+     coverage does not assert genome-wide motif absence. Use the shared Shell's
+     `--inspect`, `--gene` or `--tss-id` options for package discovery/queries
+     without loaded DNA; see the [offline walkthrough](regulatory_motif_subset.md).
+     Matching saved queries can be attached to TSS reports and then displayed
+     through `Attach the quantitative report`, with a persistent subset label.
+     No automatic annotation, rescoring or dedicated package wizard is added.
 21. TFBS score tracks
    - Toolbar menu for direct non-mutating continuous TFBS/JASPAR score
      inspection on the current active DNA window.
@@ -2338,6 +3102,12 @@ Controls:
    - `Apply Sel` resolves the formula and sets the active map/text selection,
      which can then be used directly by `Extract Sel`, `Queue PCR selection`,
      or `PCR ROI` actions.
+   - To inspect that selection, use `Zoom to selection` in the navigation row
+     or the map context menu. It fits the entire selected interval, even if it
+     was off-screen. `Go to selection` centres the same interval without
+     changing the zoom level. Neither action reapplies an edited formula:
+     press `Apply Sel` first. Invalid formulas leave the previous selection
+     unchanged and do not move the view.
    - The same `Selection formula` + `Apply Sel` control is also shown in the
      dedicated `PCR Designer` specialist window so pair-PCR setup can stay
      selection-first without switching back to the sequence toolbar.
@@ -2365,15 +3135,19 @@ Controls:
 - direct ROI seeding now opens or focuses the dedicated `PCR Designer`
   specialist so pair-PCR and qPCR setup can stay out of the crowded lower
   `Engine Ops` pane.
-- the dedicated `PCR Designer` now has an explicit `Pair PCR | qPCR` mode
-  switch; ROI seeding is shared, while the queued batch-region helpers still
-  remain pair-PCR-focused in this first pass.
+- the dedicated `PCR Designer` now has an explicit
+  `Pair PCR | qPCR | Transcript panels | RT primer pool | Gene assay study` mode switch; ROI
+  seeding is shared for the first two modes, transcript panels use a complete
+  annotated Splicing Expert group, and RT-primer pools use explicitly ordered
+  transcript targets.
    - after paint-dragging on the linear map, the post-drag chip now includes
      direct coordinate editing (`start..end`) for the painted interval, with
      explicit apply action (0-based, end-exclusive).
 21. Export Seq
    - Exports the active sequence via engine `SaveFile`.
-   - Output format is inferred from filename extension (`.gb/.gbk` => GenBank, `.fa/.fasta` => FASTA).
+   - Output format is inferred from filename extension (`.gb/.gbk` => GenBank, `.embl/.emb` => EMBL, `.fa/.fasta` => FASTA).
+   - GenBank and EMBL preserve the same annotated nucleotide record; FASTA is
+     sequence-only. See [format parity and limits](sequence_format_parity.md).
 22. Export SVG
    - Exports the active sequence map via engine `RenderSequenceSvg`.
    - In linear mode, the SVG now honors the active bp viewport/crop instead of
@@ -2442,7 +3216,8 @@ Controls:
        current linear viewport.
      - `print-a3`: print-oriented A3 landscape SVG with expanded context and
        physical-size metadata (`420mm x 297mm`) for direct print workflows.
-   - Debug builds include adaptive routing-tier diagnostics in the SVG header.
+   - SVG content and header layout do not depend on the Cargo build profile;
+     internal `dev` packages do not insert debugging text or an extra header row.
 22. Export RNA SVG (ssRNA only)
    - Exports RNA secondary-structure SVG via shared engine operation `RenderRnaStructureSvg`.
    - Shown only when active sequence is single-stranded RNA (`molecule_type` `RNA`/`ssRNA`).
@@ -2554,8 +3329,15 @@ Status output note:
   helpers with structured semantics, so GUI/ClawBio/planner flows can share
   one normalized helper-meaning layer.
 - The same status payload now also includes `effective_cache_dir`,
-  compatibility hints, and a ready-to-run `prepare_command` when the selected
-  genome is not prepared yet.
+  compatibility hints, component-level readiness, and a ready-to-run
+  `prepare_command` only when the selected genome's required components are not
+  valid. A stale whole-prepare activity does not override a valid BLAST
+  component.
+- Prepared reference/helper inspectors show a compact BLAST-component status;
+  hover detail includes genomic-DNA versus transcriptome/cDNA kind,
+  assembly/release, masking, prefix, BLAST database/tool versions,
+  sequence/base counts, content fingerprint, validation warnings, and
+  compatible operations.
 - Reference/helper genome dialogs respect optional process-level shared cache
   overrides:
   - `GENTLE_REFERENCE_CACHE_DIR`
@@ -2568,12 +3350,54 @@ Status output note:
 Screenshot command status:
 
 - `screenshot-window OUTPUT.png` is currently disabled by security policy.
-- Manual documentation updates remain the active path for image artifacts.
+- This reserved artifact-export command is distinct from the explicit,
+  preview-before-send `Agent help` attachment flow described below.
+- Deterministic SVG exports and manual documentation updates remain the active
+  path for reproducible image artifacts.
 
 ## Agent Assistant
 
 GENtle provides a standalone `Agent Assistant` window for structured support from
 configured external/internal agent systems.
+
+### Background Commands
+
+Prepared Run buttons and typed commands use the same execution policy. Genome
+preparation, `op`, `workflow`, workflow/candidate macros and template runs, and a
+verified single gene-study workflow run on an engine snapshot in the background.
+Run does not replace your draft or ask the model to reinterpret the command.
+You can type canonical commands such as `genomes prepare ID` or `workflow @file`
+directly into the prompt for these routes; no invented slash alias is needed.
+You can navigate, inspect the live project, or send a new model request while
+these commands run. Direct commands remain available during a model request.
+
+For work lasting more than 200 ms, the assistant shows a command preview, phase,
+available completed-step count and Cancel. Counts are not a time estimate.
+The local execution log retains the exact command; the running row limits its
+preview so an inline JSON workflow cannot consume the whole window.
+Cancel requests cooperative termination; it does not claim the worker has
+already stopped. The terminal receipt distinguishes computed operations from
+committed operations. Failure/cancellation discards unpublished engine changes,
+but downloaded resources and exported files can remain. Concurrent structural
+edits or project replacement reject stale results; viewport-only edits are kept.
+
+The host accepts at most four active commands and retains 32 results/receipts.
+If the project lock or capacity is unavailable, submission reports that it was
+not admitted, rather than waiting. Results above 16 MiB require a file-export
+workflow. These are initial audited routes, not a claim that every shell command
+is nonblocking. Broader command/adapter migration remains
+in the [responsive-command plan](asynchronous_command_execution_plan.md).
+
+Agent Assistant additionally submits `genomes blast` / `helpers blast` through
+the shared BLAST job scheduler, for both Run buttons and typed commands. The
+query/options are unchanged; the response is an admitted job, not a completed
+search. Explicit `blast-start`, `blast-status`, `blast-list` and `blast-cancel`
+commands use the same lifecycle and remain available during a model request.
+Tool preflight happens on the worker, with diagnostics exposed by status.
+The BLAST FIFO allows 64 waiting jobs beyond the configured running slots;
+the general four-worker command service above still has no waiting queue.
+Use `blast-status JOB_ID --with-report` for the final result. Compact project
+receipts do not retain that full report, so export it before closing the host.
 
 Conceptual/tutorial companion:
 
@@ -2587,11 +3411,61 @@ Access:
 - main menu: `File -> Agent Assistant...`
 - command palette action: `Agent Assistant`
 - shortcut: `Cmd+Shift+A`
+- `Agent help` in every GENtle-owned window, including the main project and
+  sequence windows, specialist-window navigation, Help/History/Jobs/JASPAR
+  diagnostics, and sequence-owned Dotplot, Splicing Expert, RNA-read Mapping,
+  Isoform Expert, and Promoter design workspaces
+
+Window screenshot help:
+
+- Click `Agent help` in the window where the problem is visible. The capture
+  request is bound to that viewport before Agent Assistant is opened, so the
+  assistant window cannot accidentally replace the intended target.
+- GENtle shows the captured image, source-window title, dimensions, size, and
+  capture backend in Agent Assistant. The user can remove it or add explanatory
+  text before sending.
+- Only catalog systems declaring image-attachment support can receive the
+  screenshot. GENtle disables submission for other systems rather than silently
+  dropping the image.
+- A successful conversation turn retains image digest, dimensions, source
+  window, and backend but omits the temporary local file path and image bytes.
+- The normal viewport capture does not require macOS Screen Recording access.
+  The optional right-click `Capture complete macOS window` path includes native
+  window chrome, is restricted to the current GENtle process, and opens a clear
+  permission/settings recovery path when macOS blocks it.
+- An agent can ask for visual context by returning one validated request id and
+  reason, but it cannot name a path, window id, coordinate, or capture command.
+  The consent card lists only GENtle's current open-window registry and excludes
+  Agent Assistant itself. Approval expires when the response/provider/project
+  changes, the selected window closes, another agent request starts, or the
+  conversation is cleared; replay and double-click do not capture twice.
+- Project-state context and screenshots are separate provider disclosures, not
+  a privacy ranking. The state summary may contain richer scientific content;
+  the screenshot contributes visible layout, colour, direction, and control
+  state. Review the provider and both controls according to the project.
 
 Behavior:
 
+- Prompt template `Evidence-guided regulatory reporter study` helps the agent
+  collect perturbation context, responsive genes, assembly, TSS policy,
+  evidence sources, and exact vector identity before suggesting commands. It
+  keeps response, motif, occupancy, and reporter-result evidence separate and
+  stops before mutation or materialization.
+- before the first conversation, a small `Start here` card offers two direct
+  GUI actions: open one or more existing sequence documents, or open GENtle's
+  general Configuration window; neither action is sent to an agent
+- provider setup is separated from conversation:
+  - `Configuration -> Agent Systems` contains catalog, provider, key, endpoint,
+    model, timeout/retry, model-discovery, and `Test Setup` controls
+  - `File -> Agent Assistant...` contains the project conversation, prompt,
+    response details, and reviewed command execution
 - loads systems from catalog JSON (default `assets/agent_systems.json`)
-- system selection is a dropdown from catalog entries
+- `Agent Systems` is the first heading in its Configuration tab; system
+  selection is the primary dropdown, while the optional `Quick start` shortcuts
+  are collapsed below it
+- the selected system id is persisted in `~/.gentle_gui_settings.json` and
+  restored on the next launch; API keys and other session overrides are not
+  persisted
 - unavailable systems remain selectable and show the reason
 - `Quick start` buttons expose common first-run routes:
   - `Use OpenAI API`
@@ -2609,6 +3483,24 @@ Behavior:
 - the `Codex Local (uses Codex CLI login)` catalog entry is different: it calls
   the local Codex CLI through `scripts/codex-agent-bridge`, reusing the user's
   existing Codex CLI/App login instead of `OPENAI_API_KEY`
+- the `Pi Local (uses Pi provider login)` entry calls
+  `scripts/pi-agent-bridge`; it uses provider authentication configured by Pi,
+  not the API-key field in GENtle, and runs Pi without built-in tools or direct
+  project-file access. The Agent Assistant offers a session-only `Allow public
+  internet research` checkbox for this capable system. When checked, only
+  GENtle's co-shipped public search/page tools are enabled for that request
+- `Attach text document...` beside the prompt inserts an exact absolute path
+  and shows every detected document path before submission. A supported text
+  path written directly in the prompt is detected in the same way.
+  - GENtle copies bounded UTF-8 content into the request; it does not grant the
+    provider a filesystem tool
+  - the warning above the prompt is intentional: copied document content is
+    sent to the currently selected provider, including cloud providers
+  - limits are four documents, 128 KiB each, and 256 KiB total; one level of
+    prioritized local Markdown guide/runbook links can be included under the
+    selected document's directory tree
+  - sequence files remain project inputs and should be opened/imported, not
+    attached as prose context
 - the Claude quick-start path uses `ANTHROPIC_API_KEY` and talks to the
   Anthropic API directly
 - the Mistral quick-start path uses `MISTRAL_API_KEY` and talks to the Mistral
@@ -2616,14 +3508,23 @@ Behavior:
 - this window is intentionally the local chat-oriented assistant surface; the
   typed prose compiler/executor (`agents plan` / `agents execute-plan`) is the
   headless CLI/MCP/ClawBio route for machine-facing compile/execute loops
-- `OpenAI API key` / `Anthropic API key` / `Mistral API key` field in this window is a
-  session-only override for the selected native provider
+- `OpenAI API key` / `Anthropic API key` / `Mistral API key` in
+  `Configuration -> Agent Systems` is a session-only override for the selected
+  native provider
   - OpenAI keys usually begin with `sk-...`; Anthropic keys usually begin with
     `sk-ant-...`; Mistral keys should be generated in La Plateforme
   - click `Clear Key` to remove it from current session
   - the key is not persisted to disk by GENtle settings
-- if set, GUI key overrides `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or
-  `MISTRAL_API_KEY` for requests started from this window
+- native-provider credential precedence is: session key field, provider
+  environment variable, then the provider's conventional token file
+  (`~/.codex_token`, `~/.claude_token`, or `~/.mistral_token`)
+  - GENtle reads token files into memory for the current process only and never
+    copies their contents into project or GUI settings
+  - the Configuration tab reports the active source, a missing/invalid token
+    file, and token files readable beyond their owner; `Reload credentials`
+    refreshes the file snapshot
+  - Codex Local is intentionally excluded from this fallback: it uses the
+    installed Codex CLI/App login rather than an OpenAI API token
 - `Base URL override` field is a session-only endpoint override for
   `native_openai`, `native_anthropic`, `native_mistral`, and
   `native_openai_compat`
@@ -2658,9 +3559,13 @@ Behavior:
     `native_openai_compat`, it also runs a live non-generating model-list probe
     (`GET /models`, with `/v1/models` fallback for OpenAI-compatible or root
     provider URLs)
-  - the live probe reports `status_class`, attempted/selected endpoints,
-    reachability, authentication, model-list parsing, and whether the selected
-    model was present
+  - for `Pi Local`, it runs a non-generating command-shape probe that asks Pi
+    for local help after the baseline ephemeral no-tools/no-session flags;
+    this catches unsupported Pi CLI flags before an assistant prompt is sent
+  - the live probe reports `status_class`, attempted/selected endpoints or
+    local command shape, reachability, authentication, model-list parsing, and
+    whether the selected model was present when the transport exposes that
+    information
   - common next actions are shown for missing key, authentication failure,
     endpoint unreachable, unspecified model, and selected model not found
 - `Discover Models` queries the current endpoint and populates a model dropdown
@@ -2670,14 +3575,148 @@ Behavior:
 - the `Compact intro (no state)` prompt template is meant for live demos and
   quick "what can you do?" questions; inserting or appending it disables
   project-state summary injection for that draft request
-- optional `Include state summary` injects current project summary context
+- optional `Include state summary` injects current project summary context and
+  a bounded `x_introspection` fact projection from the same engine snapshot
+  - at most 128 concrete facts are included, together with complete fact-type
+    counts and explicit truncation metadata
+  - the agent receives read-only routes for `introspect facts`, `facts graph`,
+    `facts eval`, `introspect readiness`, and `introspect verify-effects` when
+    it needs information beyond the bounded projection
+  - missing open-world facts are unknown rather than false; this context does
+    not bypass shared parser/engine validation or confirmation requirements
+- every request includes a bounded `x_local_references` inventory of prepared,
+  manifest-backed reference genomes even when `Include state summary` is off
+  - only catalog identity and component readiness are exposed; local paths are
+    omitted and inventory construction performs no downloads
+  - the agent is instructed to prefer a compatible local gene extraction plus
+    strand-aware anchor-extension chain over external retrieval
+  - catalog-only rows are not presented as installed references
+- every request includes a prompt-matched view of GENtle's helper/vector
+  catalog. This lets the assistant recognize existing records such as Promega
+  pGL4.10[luc2] (E6651, GenBank AY738222.1) before guessing or searching the
+  web; a catalog record is not presented as a loaded project sequence
+- successful public-web research appears under a collapsible source section
+  with the actual searches and pages recorded by the Pi bridge
+- public-web research is off by default because prompt-derived search terms may
+  leave the machine; keep it off for sensitive projects, and do not ask the
+  agent to transmit sequences, local paths, credentials, personal data, or
+  confidential project details
+- GUI requests also include `gentle.agent_gui_context.v1`, independently of
+  `Include state summary`
+  - `recent_projects[]` mirrors the current `File -> Open Recent Project...`
+    list with an opaque item id, path-free filename/parent label, existence,
+    size, modification time, current-project flag, and exact `open_command`
+  - `tutorial_projects[]` comes from the same generated tutorial manifest used
+    by `File -> Open Tutorial Project...`, including chapter/example identity,
+    title/summary, group/tier, use cases, learning objectives, concepts,
+    prerequisites, expected outcomes, GUI-acceptance profile, online status,
+    review status, and explicit truncation counts
+  - `tutorial_guides[]` contains the remaining catalogued walkthroughs and
+    references with exact `ui open tutorial-guide TUTORIAL_ID` commands; these
+    open teaching text in Help rather than constructing a worked project
+  - `tutorial_recommendations[]` is a deterministic shortlist of at most five
+    rows matched against the current request, with recent user intent used for
+    context-light follow-ups; every row reports its retrieval score, matched
+    terms/fields, prerequisites, and exact command. The score is not biological
+    confidence
+  - `configuration_sections[]` covers External Applications, Agent Systems,
+    Microarrays, Graphics, and Language with exact `ui open configuration
+    SECTION` commands
+  - `ui open recent-project ITEM_ID` resolves only against the live host list;
+    missing files and stale ids fail closed, and no absolute saved-project path
+    is sent to the provider
+  - opening a Configuration section is navigation, not a silent settings
+    mutation; existing Apply/Cancel and credential handling remain in force
 - optional `Allow auto execute` only applies to suggestions marked with `auto`
+  that the shared parser classifies as non-mutating; mutating suggestions stay
+  visible and require the user to click `Run`
+- suggestion cards with `precondition_expr` are evaluated against the live
+  project fact graph plus the current GUI-host availability on every frame; an
+  unmet or unknown precondition dims the complete card and disables `Run`
+  until it becomes satisfied
+  - `ui.host_available` is therefore true in the live Agent Assistant window,
+    so exact tutorial/configuration commands from `x_gui_context` remain
+    runnable after confirmation even when the current project is empty
+  - the same fact gate is checked again immediately before manual or automatic
+    execution, so stale UI state and `execution=auto` cannot bypass it
+  - a downstream card can therefore remain visible while an earlier command
+    creates its required sequence/report, then become runnable without asking
+    the agent for a replacement response
+- after the user states an interest, GENtle ranks the tutorial catalog before
+  contacting the model; the agent should offer only one to three rows from
+  that shortlist with short reasons and ask one focused question when no row
+  matches. Reviewed, non-stale, offline material is preferred when relevance
+  is comparable
+- introductory replies describe Agent Assistant as a goal-directed workflow
+  guide before listing commands: it knows the documented GUI controls and can
+  invoke their underlying functionality through shared parity interfaces,
+  bind tutorials to user data and lab constraints, and compose a new
+  reviewable path when no established workflow fits
+  - parity concerns the underlying action, not literal mouse-click emulation;
+    missing GUI/CLI/script/agent projections are parity gaps to report and fix
+  - confirmations and other safety boundaries continue to require the user
+  - biological knowledge supplied by the selected model remains advisory and
+    distinct from GENtle results, supplied evidence, and confirmed constraints
+- successful conversation turns are shown in chronological order and stored as
+  `gentle.agent_conversation.v1` metadata with the current project
+  - the next request receives the 12 most recent turns, so ephemeral transports
+    such as Codex Local remember explicit follow-up answers such as species
+  - up to 50 successful turns are retained; oldest turns are discarded first
+  - API keys, endpoint overrides, and other provider configuration are never
+    stored in the conversation record; prompt text is stored verbatim, so do
+    not paste secrets into the prompt
+  - a conversation-only unsaved project counts as user content, so GENtle asks
+    before closing it without saving
+  - `Clear Conversation` removes the stored turns and latest response
 - `Ask Agent` runs in background and reports status in `Background Jobs`
+- The bounded fact context prioritizes subjects named in the current prompt
+  and, when known, the active DNA window's sequence. It preserves a fair share
+  of every available fact type; included rows carry deterministic selection
+  explanations. A named subject outranks the active view. No sequence is
+  guessed when the active window is not a DNA viewer, and selection priority
+  is not evidence of biological importance or readiness.
+- Helper/vector suggestions prioritize the current question, then the most
+  recent user message, then its assistant reply. Older topics do not influence
+  catalog matching; brief follow-up questions can still refer to the last reply.
+- The next project-context request includes bounded, session-only execution
+  receipts. Blocked, failed, partially successful, dispatched, running and
+  completed actions remain distinct. Ensembl metadata retrieval followed by a
+  failed sequence import is `partial`; starting a BLAST job is not completion.
+  Deferred UI actions remain `dispatched` until separately inspected. Feedback
+  does not yet poll all GUI/background activities automatically.
+  - Receipts send hashes and typed outcomes, not raw command outputs or errors.
+    Inspect current results with GENtle's read-only commands.
+  - At most 100 receipts are retained, including rejections; suggestions are
+    correlated with the latest 12 turns. Project switches and Clear Conversation
+    discard them. Saving a project does not persist them.
+  - Manually typed commands still populate the result panel and local execution
+    log. Their receipts have no suggestion binding, so they are not sent to
+    the model as anonymous completions; missing feedback is not proof of failure.
+  - Recording a receipt cannot mark a project dirty or clear redo. Later edits
+    can require rechecking a result without erasing its historical completion.
+- when an accepted UI intent is opening a DNA Sequence Viewer, Agent Assistant
+  shows that opening state until deferred sequence loading and the first
+  content paint complete; the sequence loading placeholder polls at a bounded
+  rate instead of forcing an unbounded repaint loop
 - `Ctrl+Return` while the prompt editor is focused is equivalent to clicking
   `Ask Agent`; plain `Return` still inserts a new line
 - GENtle-local slash aliases are deliberately small and parser-validated:
-  - `/help` shows shared-shell help
-  - `/list` shows the current project state summary
+  - `/help [TOPIC]` opens the built-in Help window at `Shell Commands`; an
+    optional topic is placed in the Help search field
+  - `/list` shows a readable `Command result` panel with current sequences,
+    lengths/topology, containers, and arrangements; right-clicking a sequence or
+    container shows parser-validated commands for that object, and `Show complete
+    project overview` focuses the main table/graph with its broader object context
+    menus
+  - successful local read-only commands retain their latest structured output
+    in that panel and offer `Copy JSON`; they no longer disappear behind the
+    generic execution-log status
+  - `/history` shows session-local undo/redo availability
+  - `/undo` and `/redo` use the same guarded transitions as `Edit -> Undo` and
+    `Edit -> Redo`; they are disabled while background jobs are active and
+    refresh open sequence windows after a successful transition
+  - agent-suggested `/undo` or `/redo` commands always require the user to
+    click `Run`; the automatic-suggestion option cannot execute them
   - `/open` and `/import` open the same sequence-file picker as
     `File -> Open Sequence...`
   - `/open file PATH [--id ID]` and `/import file PATH [--id ID]` import an
@@ -2702,31 +3741,40 @@ Behavior:
   - `/fetch genbank`, `/fetch ncbi`, `/fetch uniprot`, `/fetch ensembl*`, and
     `/fetch dbsnp` normalize to existing external fetch routes and should be
     confirmation-gated
-  - `/fetch ensembl ... --no-open` imports the fetched Ensembl gene record
-    without automatically opening a DNA sequence viewer
+  - `/fetch ensembl ... --assembly NAME --flank-bp N` verifies the resolved
+    assembly and requests strand-aware genomic context around the gene;
+    `--no-open` imports the record without automatically opening a DNA sequence
+    viewer
   - `/grep`, `/find`, `/ls`, `/new`, `/example`, and vague file-discovery
     requests are rejected rather than treated as ClawBio/OpenClaw commands
 - response panel can include:
   - assistant message text
   - follow-up questions
-  - suggested shared-shell commands with per-row `Run` action
+  - width-bounded suggestion cards whose message, command, preconditions,
+    expected outcomes, and rationale wrap instead of requiring horizontal
+    scrolling
+  - a `Run` action at the start of every suggestion card; explanatory
+    (`execution=chat`), empty, or invalid commands show a disabled action and
+    the reason directly in the card
   - invalid or invented suggestions are shown as `Invalid GENtle command` and
-    cannot be run from the row button
+    cannot be run
   - `Copy Response JSON` for copying the latest strict agent-response JSON
     payload to the clipboard
-- execution is always per suggestion (row-run, explicit all, or explicit auto);
-  there is no global always-execute mode
+- execution is always per suggestion (row-run, explicit all, or guarded
+  non-mutating auto); there is no global always-execute mode
 - each executed suggestion is logged with status/output in the same window
 
 OpenAI setup (explicit):
 
-1. Open `File -> Agent Assistant...`.
+1. Open `Configuration -> Agent Systems`.
 2. Choose system `OpenAI GPT-5 (native HTTP)` from the dropdown.
-3. Paste your API key into `OpenAI API key` (format `sk-...`).
+3. Paste your API key into `OpenAI API key` (format `sk-...`), export
+   `OPENAI_API_KEY`, or place the token in `~/.codex_token`. The Configuration
+   tab shows which source is active.
 4. Click `Test Setup` to confirm the key/base URL/model resolve correctly.
    This checks model discovery only; it does not intentionally send a
    token-generating request.
-5. Enter prompt text and click `Ask Agent`.
+5. Open `File -> Agent Assistant...`, enter prompt text, and click `Ask Agent`.
 6. If you prefer environment setup instead of GUI key field, launch GENtle with:
 
 ```bash
@@ -2746,40 +3794,105 @@ Codex Local setup (uses Codex CLI login, no API key):
    `codex-agent-bridge`, or use an overlay catalog with the absolute bridge
    path.
 3. If the Codex CLI itself is not on the GUI process `PATH`, set `CODEX_BIN` to
-   the executable path. Common macOS app installs expose
+   the executable path. Current macOS ChatGPT app installs normally expose the
+   bundled CLI at `/Applications/ChatGPT.app/Contents/Resources/codex`; GENtle
+   also checks `/Applications/ChatGPT.app/Contents/MacOS/ChatGPT`. Older
+   standalone Codex app installs may expose
    `/Applications/Codex.app/Contents/Resources/codex`.
-4. Choose `Codex Local (uses Codex CLI login)` from the Agent Assistant system
-   dropdown.
-5. Click `Test Setup`, then send a small prompt. `Test Setup` confirms the
-   bridge executable/runtime settings; because this is an external stdio
-   transport, Codex login/quota is confirmed by the first actual `Ask Agent`
-   request rather than a non-generating model-list probe.
+4. Open `Configuration -> Agent Systems` and choose
+   `Codex Local (uses Codex CLI login)` from the system dropdown.
+5. The model selector appears immediately with `Codex default`. GENtle then
+   reads the visible model ids from the logged-in Codex CLI's local
+   `models_cache.json`; choose one of those ids, keep `Codex default`, or enter
+   an explicit custom model override. `Discover Models` repeats the local-cache
+   read without sending a prompt.
+6. Click `Test Setup`, then open `File -> Agent Assistant...` and send a small
+   prompt. `Test Setup` confirms the
+   bridge executable/runtime/model settings. Reading the local model metadata
+   does not contact the provider, so Codex login/quota is confirmed by the first
+   actual `Ask Agent` request.
 
 Notes:
 
 - Codex Local uses the user's Codex/ChatGPT plan limits, not OpenAI API billing.
 - The bridge runs Codex in an empty temporary directory by default so project
   files are not implicitly sent as working-tree context; GENtle passes only the
-  explicit Agent Assistant prompt and state summary.
+  explicit Agent Assistant prompt, optional state summary, and bounded stored
+  conversation.
 - The bridge asks Codex for strict `gentle.agent_response.v1` JSON and then
   validates it before GENtle sees the response.
+- A selected Codex model is passed to the CLI as `codex --model MODEL`.
+  `Codex default` omits that flag and lets the installed CLI choose its
+  configured default.
 - If a Finder/Spotlight-launched macOS app cannot find Codex or cannot access
   the same login/keychain context, launch GENtle from a terminal as a
   workaround or set explicit `CODEX_BIN`/catalog paths.
 
+Pi Local setup (multiple providers, no GENtle-managed API key):
+
+1. Install Pi and run it once outside GENtle. In Pi, use `/login` to configure
+   the provider you want. GENtle does not inspect `~/.pi/agent/auth.json`.
+2. Confirm `pi --list-models` shows at least one provider/model row. If Pi is
+   not on the GUI process `PATH`, set `PI_BIN` to its executable path; a common
+   Apple Silicon Homebrew path is `/opt/homebrew/bin/pi`.
+3. Open `Configuration -> Agent Systems` and choose
+   `Pi Local (uses Pi provider login)`.
+4. Click `Discover Models` and choose a provider-qualified id such as
+   `mistral/codestral-latest`, or leave `Pi default` selected to use Pi's
+   configured default.
+5. Click `Test Setup`, then open `File -> Agent Assistant...` and ask a small
+   orientation question.
+6. For documentation-guided help, click `Attach text document...` or name the
+   exact absolute text-document path in the prompt. For example, ask Pi to guide
+   the manual GUI smoke described by `docs/roadmap.md`; GENtle supplies the
+   bounded roadmap/runbook text while Pi remains unable to browse other files.
+7. When current external information is needed, enable `Allow public internet
+   research` before sending that prompt. Leave it off for turns that need only
+   GENtle and project context.
+
+The Pi bridge uses `--no-session` because GENtle stores the project conversation
+and sends its bounded recent turns with each request. It also disables built-in
+tools, context files, extension discovery, skills, and prompt templates; the
+Agent Assistant can therefore suggest validated GENtle commands but cannot edit
+files or run operating-system commands through Pi. Public-web opt-in explicitly
+loads only `gentle_web_search` and `gentle_web_fetch`; those tools reject local
+and private networks and do not expose files, credentials, or shell execution.
+GENtle supplies Pi with the same shared command contract used by native
+providers, including exact local genome-extraction/anchor-extension and Ensembl
+assembly/flank syntax, so Pi does not need to guess parser routes. It can return
+reviewable `ui ...` or `display ...` suggestions for exposed
+GUI intents. Where no intent exists, it must describe one manual step and ask
+what the user sees rather than claiming to have clicked or observed it.
+Execution receipts intentionally contain status and hashes, not scientific
+result rows. Each local structured command result therefore offers **Use
+reviewed result in next prompt**: after checking the JSON for sequences, local
+paths or other sensitive data, the user can add the complete bounded result to
+the retained draft. The pretty-printed JSON is limited to 128 KiB, and the entire
+resulting draft to 192 KiB of UTF-8, including the existing draft, command and
+all framing text. Rejection leaves the draft unchanged. Nothing is sent until
+**Ask Agent** is clicked, oversized results are rejected rather than truncated,
+and the handoff grants no approval for a subsequent command. This supports
+iterative feature discovery,
+transcript-panel feasibility/design and result review without letting the model
+infer identifiers or coverage from receipt hashes. TSS previews retain their
+narrower typed handoff. A source-editing inner coding agent would be a separate
+future mode with a different approval boundary.
+
 Claude setup (explicit):
 
-1. Open `File -> Agent Assistant...`.
+1. Open `Configuration -> Agent Systems`.
 2. Click `Use Claude API` or choose `Claude Sonnet (native Anthropic HTTP)`.
 3. Paste your Anthropic Console API key into `Anthropic API key` (format
-   `sk-ant-...`). Claude Code or Claude.ai subscription/login tokens are not
-   Anthropic API keys.
+   `sk-ant-...`), export `ANTHROPIC_API_KEY`, or place that API key in
+   `~/.claude_token`. Claude Code or Claude.ai subscription/login tokens are
+   not Anthropic API keys; GENtle warns when a file has the shape of such a
+   login token.
 4. Click `Test Setup` to confirm the key/base URL/model resolve correctly.
    This checks model discovery only; it does not intentionally send a
    token-generating request.
    - GENtle flags obvious Claude Code/Claude.ai OAuth tokens before contacting
      Anthropic; final validation still comes from the live model-list probe.
-5. Enter prompt text and click `Ask Agent`.
+5. Open `File -> Agent Assistant...`, enter prompt text, and click `Ask Agent`.
 6. If you prefer environment setup instead of GUI key field, launch GENtle with:
 
 ```bash
@@ -2789,14 +3902,15 @@ cargo run --bin gentle
 
 Mistral setup (explicit):
 
-1. Open `File -> Agent Assistant...`.
+1. Open `Configuration -> Agent Systems`.
 2. Click `Use Mistral API` or choose `Mistral Large (native Mistral HTTP)`.
-3. Paste your Mistral La Plateforme API key into `Mistral API key`. Le Chat or
+3. Paste your Mistral La Plateforme API key into `Mistral API key`, export
+   `MISTRAL_API_KEY`, or place that API key in `~/.mistral_token`. Le Chat or
    Mistral account login tokens are not Mistral API keys.
 4. Click `Test Setup` to confirm the key/base URL/model resolve correctly.
    This checks model discovery only; it does not intentionally send a
    token-generating request.
-5. Enter prompt text and click `Ask Agent`.
+5. Open `File -> Agent Assistant...`, enter prompt text, and click `Ask Agent`.
 6. If you prefer environment setup instead of GUI key field, launch GENtle with:
 
 ```bash
@@ -2809,7 +3923,8 @@ External MCP handoff:
 1. Use this path when your outside assistant already supports MCP.
 2. Save the current GENtle project if the external assistant should inspect the
    same state.
-3. Copy the `External Agent / MCP` command from Agent Assistant, for example:
+3. Copy the `External Agent / MCP` command from
+   `Configuration -> Agent Systems`, for example:
 
 ```bash
 gentle_mcp --state .gentle_state.json
@@ -2825,7 +3940,7 @@ Notes:
 
 Local LLM setup (Jan/Msty/OpenAI-compatible endpoint):
 
-1. Open `File -> Agent Assistant...`.
+1. Open `Configuration -> Agent Systems`.
 2. Select one of:
    - `Local Llama (OpenAI-compatible)`
    - `Jan Local (template)`
@@ -2840,7 +3955,7 @@ Local LLM setup (Jan/Msty/OpenAI-compatible endpoint):
 6. Click `Test Setup` to confirm the endpoint/model resolve correctly.
 7. Optionally set persistent defaults in `assets/agent_systems.json`.
 8. If your local service expects no key, keep `OpenAI API key` empty.
-9. Ask agent as usual.
+9. Open `File -> Agent Assistant...` and ask the agent as usual.
 10. For local root URLs (such as `http://localhost:11964`), GENtle will try both:
    - `/chat/completions`
    - `/v1/chat/completions`
@@ -2872,6 +3987,13 @@ What to send the agent (recommended):
   - `docs/examples/ai_cloning_examples.md`
 - Optional compact glossary extension:
   - `docs/ai_glossary_extensions.json`
+- For a related biological workflow that may not yet be a command:
+  - choose prompt template `Adapt a biological workflow`
+  - the assistant first classifies the request as an existing parameter,
+    composition of existing capabilities, or missing engine primitive
+  - unsupported requests produce an implementation brief, not a fabricated
+    command; coding agents can continue with
+    `docs/biological_extension_guide.md`
 
 Copy/paste prompt template for users:
 
@@ -2981,15 +4103,24 @@ Persistence:
 
 ## About GENtle
 
-Two About entries exist on macOS:
+The in-app `Help -> About GENtle` entry and the native macOS application-menu
+entry open the same GENtle-owned About experience. The native label follows the
+selected presentation language, including `GENtle -> Über GENtle` in German;
+it no longer opens AppKit's sparse standard metadata panel.
 
-- `Help -> About GENtle`: custom GENtle About window (icon + version/build text)
-- app menu `GENtle -> About GENtle`: standard macOS About panel
+The compact, Finder-inspired About card shows the application icon, purpose,
+internal-preview status, semantic package version, build stamp, authorship, and
+licence. `More Info …` / `Weitere Infos …` opens a larger mascot view with:
 
-The custom window and CLI `--version` share the same text payload.
-- On Windows/Linux, the custom About window shows:
-  - semantic package version from `Cargo.toml` (for example `0.1.0-internal.2`)
-  - build stamp on the next line (`Build <epoch-ms>`)
+- the shared-engine and provenance model
+- the internal-preview bench-use caution
+- package version, build identity, and licence
+- direct links to the GitHub project, documentation, and credits
+- a copy action for reproducible build information
+
+The copied payload and CLI `--version` draw from the same compile-time About
+metadata. Windows and Linux use the same custom GUI panels; only the native
+application-menu bridge is macOS-specific.
 
 ## Open windows and focus
 
@@ -3037,8 +4168,26 @@ The `Help` menu now includes:
 - `Tutorials`: opens tutorial markdown docs in the same help window
   (`Topic` selector starts the second help-header row, ahead of search)
   - curated order now comes from `docs/tutorial/catalog.json` when available
+  - choose a topic group first, then its tutorial; catalog numbering and order
+    are preserved, including entries discovered without catalog metadata
+  - menus fit within the current window, with wrapped titles and scrollbars
+    for long lists. Scroll with the wheel/trackpad, drag the scrollbar, or hold
+    the pointer near the top/bottom of a list to scroll toward that end
   - falls back to recursive markdown discovery under `docs/tutorial/**` if the
     catalog is unavailable
+  - discovery reads titles without preparing other tutorials' images. The
+    document heading still takes precedence over the catalog title, with the
+    same catalog/filename fallbacks. Only the selected tutorial prepares its
+    images; the initial selected page remains preloaded with the manuals.
+    Opening Help or the tutorial-project menu does not render the whole catalog.
+    Images use the existing shared SVG font configuration and PNG cache, with
+    the same original-image fallback if conversion fails; no network is needed.
+  - when the selected catalog entry declares tutorial relationships, a compact
+    row below the topic selector shows **Prerequisite** and **Continue with**
+    buttons. Labels use the stable decimal tutorial id, hover text shows the
+    full title and summary, and selecting a pointer reuses the same Help window.
+    Each direction is limited to three explicit catalog ids; absent or fallback
+    catalog metadata produces no guessed navigation.
 - on macOS, app menu `GENtle -> GENtle Help...` opens the same help window
 - help now opens in its own native window (separate viewport), not as an overlay in the project window
 - re-selecting an already open help page, including via `GENtle -> GENtle Windows`, reuses the existing help viewport instead of reloading the manuals from disk
@@ -3079,10 +4228,22 @@ The `Help` menu now includes:
   `gentle_track_source=Array` plus dataset, platform, contrast, `logFC`,
   `adj_P_Val`, probeset, transcript-cluster, exon, and optional junction
   qualifiers.
+- Live feature-tree array groups include the `gentle_array_dataset` identity,
+  so freshly generated `probe_region_output` evidence remains visibly distinct
+  from prepared publication datasets even when platform and contrast match.
 - The linear DNA viewer has an `Array` layer toggle. Array intervals draw as
-  contrast heat lanes near regulatory tracks: red for positive `logFC`, blue
-  for negative `logFC`, grey near zero, and confidence styling from
-  `adj.P.Val`.
+  contrast heat lanes in the coordinate-aligned feature stack rather than in
+  the detached regulatory band at the top of the canvas: red for positive
+  `logFC`, blue for negative `logFC`, and grey near zero. Stronger colour means
+  larger absolute `logFC`; in the live GUI, the outline/darkness also indicates
+  `adj.P.Val <= 0.05`. The linear-map legend and SVG export legend repeat this
+  rule so screenshots and exported figures remain interpretable outside GENtle.
+- Junction array probes draw as two separated probe arms connected by a
+  purple bridge over the skipped interval. When `junction_start_edge` and
+  `junction_stop_edge` are available, the bridge is anchored to those
+  exon-boundary coordinates; otherwise a junction-typed array row falls back to
+  an equal split of its projected interval so it is still visually distinct
+  from an ordinary exon-overlap probe.
 - Selected-feature details and copied tooltip text include all projected values
   stored for a probeset via `gentle_array_value_summary`. The feature tree
   accepts scoped filters such as `source:array`, `track:Clariom`,
@@ -3096,14 +4257,23 @@ The `Help` menu now includes:
   `arrays probe-regions` as a read-only preflight for arbitrary CEL files or
   publication-resource datasets. The JSON plan reports CEL, metadata,
   condition-contrast, annotation/library, platform, backend-candidate, local
-  dependency, output, and cache-readiness checks. The `r_oligo` candidate
+  dependency, output, and cache-readiness checks. Users can add repeatable
+  `--r-library-path PATH` flags in that shared command surface when packages
+  live in an agent sandbox, user library, or system-specific tree. The plan
+  reports both the requested roots and R's effective library paths; dependency
+  errors repeat those paths and ask the user to verify the flag when GENtle's
+  result differs from an interactive R session. The `r_oligo` candidate
   advertises the generic `scripts/probe_regions_oligo.R` helper and includes
   an advisory command for explicit RMA/CEL requests; the panel can run that
   selected backend only through the shared
   `arrays run-probe-region-backend PLAN.json --allow-external-execution`
   capability after the user enables the external R/APT confirmation checkbox.
   Missing preflight dependencies stop before R/APT is launched, and GENtle
-  still does not download or install packages.
+  still does not download or install packages. For `r_oligo`, the externally
+  installed platform package normally bundles its own SQLite annotation
+  database. A probeset run stops rather than emitting coordinate-empty output
+  if that package-local database cannot be resolved unambiguously;
+  transcript-cluster-only output instead continues with a visible warning.
 - For `Clariom_D_Human`, the same preflight lists the local Thermo Fisher
   na36 hg38 support ZIP paths under
   `annotation_source.vendor_support_files[]`; these login-walled files are
@@ -3112,7 +4282,7 @@ The `Help` menu now includes:
   auto-downloaded by GENtle. Both concise canonical ZIP names and
   browser-preserved `TFS-Assets_LSG_Support-Files_...` download names are
   accepted.
-- The sequence-window extended panel includes a native
+- The separate sequence-tools window includes a native
   `Clariom D / probe-region evidence` inspector for completed
   `probe_regions_oligo.R` output directories and explicit APT summary +
   annotation table imports, with optional sample metadata columns to derive
@@ -3141,6 +4311,31 @@ The `Help` menu now includes:
   ordinals, ranges, junction spans, overlap base counts, geometry scores, and
   score-basis guardrails. Transcript rows show review-only labels for unique,
   shared, constraining, or absent geometry; these labels are not isoform calls.
+- The inspector starts with contextual file-role help and uses the same bounded
+  checkout discovery as `Configuration -> Microarrays`. When available it
+  offers an explicit TP73 `arrays probe-regions` preflight command for locally
+  staged E-MTAB-14704 CEL files, or direct selection of the committed synthetic
+  TP73 helper output. Full-platform analyzed tables are shown with their exact
+  paths but are not blindly filled into the direct-import form because they
+  contain coordinate-less platform rows that require selector-aware preflight.
+  Suggestions never overwrite a path without a click, and the synthetic output
+  is marked as learning/test data rather than biological evidence.
+- The DNA-viewer layer control distinguishes configuration from visibility.
+  When no projected microarray feature exists on the active sequence it reads
+  `Array setup...` and opens the separate Sequence tools window scrolled
+  directly to `Clariom D / probe-region evidence` rather than toggling an empty
+  layer or leaving the user at the top of a long workspace. The panel visibly offers
+  the built-in `Clariom_D_Human` / `rma-sketch` / `hg38` (`GRCh38`) profile and
+  a restore-defaults action plus a direct link to the general Microarrays
+  configuration/help tab. Once data is projected, the control reports both
+  visible and full-sequence counts when they differ, for example `Array
+  (0/14)` after panning away from all array intervals.
+- Right-click the Array control and choose `Focus nearest array feature` to
+  navigate from the current selection midpoint, otherwise the visible-span
+  midpoint, to the nearest projected array interval. This uses the shared
+  engine feature query rather than a GUI-only lookup. `Open Clariom D / array
+  setup` remains available from the same context menu even when array data is
+  already present.
 
 ## microRNA Target Scan
 
@@ -3241,9 +4436,23 @@ Toolbar alternatives (linear mode):
 - `+`: zoom in
 - `Fit Seq`: reset to full sequence span and recenter vertically
 - `Fit Features`: keep the current subsequence span and recenter the feature lanes vertically
+- `Zoom to selection`: fit the complete current selection, including one entered
+  by formula outside the visible range
+- `Go to selection`: centre the selection at the current zoom level; if the
+  selection is wider than the view, use `Zoom to selection` to see all of it
 - `Pan` slider: move the current viewport left/right
 - Right-side vertical slider (`V pan`) in the map panel: move feature lanes up/down
   directly; `0` applies vertical feature fit for the current subsequence
+
+For a promoter and nearby first-exon region, select the intended coordinates
+with `Selection formula`, press `Apply Sel`, then `Zoom to selection`. Numeric
+selection formulas use 0-based, end-exclusive boundaries, whereas the `Go`
+viewport fields use 1-based inclusive coordinates. For feature-relative
+selection, use the intended annotated transcript/TSS rather than treating
+`CDS.start` as a transcription start. A negative resolved coordinate means the
+requested interval extends outside the loaded sequence: retrieve/extend the
+sequence or explicitly choose a smaller interval. GENtle does not silently
+truncate that biological request.
 
 ### Lineage graph: zoom and pan (mouse/touchpad)
 
@@ -3292,6 +4501,21 @@ In `Main window -> Graph` view:
 
 ## Command Palette and History/Jobs Panels
 
+Subject-bound DNA tools use the focused sequence viewer or an explicitly
+selected sequence node in the main project graph, never the first sequence by
+name. PCR Designer, Sequencing Confirmation, TATA evidence, cryptic-splicing and
+saved-region/conservation launches reject protein/RNA targets and explain how to
+select DNA. Feature Location Editor requires an explicit sequence but is not
+restricted to DNA. Gibson keeps its input choosers: the selected DNA may prefill
+the destination, but an insert is never picked automatically.
+
+The palette captures its initiating subject before taking focus. Closing that
+viewer, changing the project or removing the sequence invalidates the subject
+rather than choosing another one. Migrated actions are dimmed when unavailable
+and explain their prerequisites; broader action coverage and native macOS menu
+presentation remain separate follow-ups. Availability means the advertised
+launcher can be used, not that its analysis passed scientific validation.
+
 - Command Palette:
   - open via `Cmd/Ctrl+K` or `Edit -> Command Palette...`
   - searchable action list for project, genome, planning, help, and window actions
@@ -3299,7 +4523,19 @@ In `Main window -> Graph` view:
     and agent assistant are generated from the shared `UiIntentTarget`
     metadata used by shell/agent capability discovery
   - includes `Planning` action (`Patterns -> Planning...` equivalent)
-  - supports keyboard navigation (`Up`/`Down`, `Enter`, `Esc`)
+  - compact result rows show action names; a separate detail area explains the
+    selected action's purpose and any unavailable reason/recovery guidance
+  - hovering a disabled row or selecting it with `Up`/`Down` shows its explanation
+    without enabling it; a stationary pointer does not override keyboard selection
+  - details remain outside the result-list scroll, with their own scroll for long
+    guidance in small windows; search still matches descriptions and keywords
+  - supports keyboard navigation (`Up`/`Down`, `Enter`, `Esc`), with the selected
+    result brought into view on arrow navigation
+  - Undo/Redo use the same current session-history and background-job checks as
+    the egui Edit menu, including a fresh check when invoked
+  - Edit-menu checkpoint counts use the same nonblocking live snapshot as its
+    buttons, not the status-bar cache. A busy project reports unavailable
+    history instead of stale counts; the history limit remains in Operation History
 - Operation History panel:
   - open via `Edit -> Operation History...` or `Window -> Show Operation History`
   - includes undo/redo buttons, available counts, history limit, next transition
@@ -3358,6 +4594,9 @@ Current linear map conventions are:
 - Restriction enzyme labels are lane-packed to reduce overlap
 - Adaptive DNA-letter mode routing (linear map):
   - default mode is `Auto adaptive`
+  - `Show DNA letters on linear map` is the master visibility switch for the
+    base-letter layer; disabling it hides DNA letters regardless of the adaptive
+    or forced routing mode while keeping feature tracks and the backbone visible
   - explicit override modes are available:
     - `Force standard`
     - `Force helical`
@@ -3396,6 +4635,11 @@ Current circular map conventions include:
 - Features arranged around the circular backbone
 - Restriction enzyme labels around the perimeter
 - Optional overlays for GC content, ORFs, and methylation sites
+- Feature geometry is internally 0-based and end-exclusive. The last base is
+  retained when a feature ends at the sequence boundary; hover coordinates
+  are shown as 1-based inclusive positions (`1-1 bp` denotes the first base).
+- An origin-crossing ORF is drawn across the origin on either strand, not
+  around the opposite arc. This is an ORF prediction, not evidence of expression.
 
 ## Pool Distribution (Engine Ops)
 
@@ -3433,10 +4677,23 @@ Serial gel export is available in two places:
   - `Arrangements` table: `Preview Gel` opens an in-app serial-gel preview with
     live left/right ladder selectors, a rendered gel image, `Save to
     Arrangement`, and `Export SVG...`.
-  - `Containers` table: `Gel SVG` exports one lane for that container.
+    Preview and gel-export controls are enabled only for `Serial`
+    arrangements; `Plate` arrangements remain available for rack/plate work
+    and show the engine-owned serial-only readiness explanation on the disabled
+    gel controls.
+  - `Containers` table: `Gel SVG` exports one lane for that container;
+    `Export Pool` calls `collections run export-pool` and writes one
+    `gentle.pool.v1` artifact. The action is disabled for empty or
+    non-exclusive containers and for in-silico `Selection` containers, matching
+    the shared engine preflight. After the native save dialog closes,
+    validation, serialization, and writing run in a
+    detached engine snapshot; the GUI reports success only after decoding and
+    validating the typed export report against the requested container and
+    destination path.
   - `Arrangements` table: `Export Gel` exports all lanes defined in that
     arrangement, using the arrangement's saved ladder pair when present or auto
-    ladder selection otherwise.
+    ladder selection otherwise. The canonical collection policy classifies
+    this as context-agnostic `arrange`, preserving the declared lane order.
   - `Arrangements` table: `Open Lanes` lets you open one chosen lane or all lanes as compact DNA windows instead of always opening every lane at once.
   - `Arrangements` table: `Open Rack` opens the linked physical rack draft for
     that arrangement, creating the default rack on demand for older/legacy
@@ -3531,6 +4788,11 @@ Rack view is the first physical-placement layer on top of arrangements.
     project reopens with the same rack-help visibility you last used
   - when the strip is not pinned open, GENtle auto-minimizes it after a few
     successful rack moves; `Pin open` keeps it visible
+- At compact window sizes, rack/profile/template controls wrap instead of
+  disappearing beyond the right edge. The four help cards become one concise
+  interaction summary, and the rack grid receives its own bounded scroll
+  viewport so the label and physical-carrier export controls remain visible
+  below it; scrolling a large plate no longer hides the export block.
 - Built-in profiles:
   - `Small tube rack (4 x 6)`
   - `Plate 96`
@@ -3592,6 +4854,9 @@ Interaction model:
 
 Exports:
 
+- The compact footer separates label preview from physical-carrier export
+  settings and keeps both groups visible at the documented minimum Rack-window
+  size.
 - `Preview Labels...` in the rack window opens one in-app preview of the
   deterministic rack label sheet using the selected label-sheet preset.
   - `Export SVG...` from that preview writes the exact same label sheet once
@@ -3664,21 +4929,28 @@ Defaults in the GUI form:
 Execution calls engine operation `FilterByDesignConstraints` and creates filtered
 in-silico selection outputs.
 
-## Primer and qPCR Design (Engine Ops)
+## Primer, qPCR, and Sequence-Specific RT Design
 
 The Engine Ops panel includes `Primer and qPCR design reports` for explicit
 `DesignPrimerPairs` and `DesignQpcrAssays` execution on the active sequence.
+The dedicated PCR Designer additionally exposes transcript-panel and
+terminal-exon RT-primer-pool modes without moving their biology into the GUI.
 
 Layout:
 
-- when `Engine Ops` or `Shell` is open, the lower border of the top control area
-  acts as a draggable vertical divider
-- dragging that divider changes how much height is reserved for Engine Ops/Shell
-  versus the feature/map area below
-- the expanded controls area remains scrollable and the chosen height is
-  persisted per sequence window state
+- `Sequence tools…` opens sequence-specific configuration and Engine Ops in a
+  separate resizable window instead of expanding the DNA-view toolbar
+- `Shell…` opens the shared shell in that same tools window; horizontal and
+  vertical scrollbars keep wide operation forms usable without shrinking the
+  DNA map
+- genome-anchor extension and repeat-index inputs also live in Sequence tools;
+  the DNA view retains only compact anchor status and a `Configure…` launcher
 - `Primer and qPCR design reports` is opened by default so the primer/qPCR forms
-  get the first share of that expanded space
+  appear first in the tools workspace
+- opening a lineage sequence node reports `Opening DNA Sequence Viewer…` in the
+  status bar until the queued viewer completes its first render
+- first-frame fitting of lineage panels to the current window is read-only and
+  does not mark a freshly opened project as modified
 
 Primer backend/preflight controls:
 
@@ -3696,7 +4968,8 @@ Primer backend/preflight controls:
   - `Probe Primer3` (runs availability/version probe and reports status)
   - `Reload from Engine` (refreshes controls from current engine parameters)
 - preflight status line reports configured/effective executable,
-  resolved path, working directory, backend, reachability, and probe timing.
+  resolved path, working directory, backend, reachability, bounded-progress
+  support (`supported`, `legacy/no`, or `unknown`), and probe timing.
 
 Primer pairs form:
 
@@ -3714,6 +4987,13 @@ Primer pairs form:
     - left/right distance from the core ROI
     - whether the pair cleanly flanks the core
     - Tm delta and rank score
+    - the selected pair's score model/direction and compact additive
+      contribution table
+    - bounded rejected near misses with retained/eligible/omitted capture
+      counts and completeness reason
+    - the report-owned excluded-region analysis status/reason, including an
+      explicit `not_run` when no region-level evidence source was consulted
+    - an action that focuses the report-linked construct-reasoning overlay
 - ROI and amplicon controls:
   - `ROI start`, `ROI end`
     - both accept numeric coordinates and `=` formulas
@@ -3765,11 +5045,22 @@ Primer pairs form:
   - accepts a prepared reference genome id, max product length, and max BLAST
     hits per primer
   - `Confirm specificity` calls the shared
-    `AssessPrimerPairSpecificity` engine operation and reports pass/fail,
-    intended/unintended product counts, primer-hit counts, and warning count in
-    the status line
+    `AssessPrimerPairSpecificity` engine operation, persists its report, and
+    reports the stable report id, pass/fail state, intended/unintended product
+    counts, primer-hit counts, and warning count in the status line
+  - the confirmation block retains the latest persisted specificity-report id
+    and shows a compact target/status/product/design-provenance summary
   - only annealing segments are BLASTed; saved 5' tails remain provenance in
     the shared report contract
+  - the search does not use BLAST `-max_target_seqs`; the configured maximum
+    hit count is a post-search review threshold, so auxiliary contigs remain in
+    scope
+  - intended genomic products use explicit genomic target geometry rather than
+    cDNA amplicon length, and junction-spanning assays may validly report no
+    contiguous intended genomic product
+  - report JSON keeps genomic carryover/off-target assessment separate from
+    transcriptome/cDNA cross-amplification assessment and records the validated
+    database content identity
 
 qPCR form:
 
@@ -3813,8 +5104,8 @@ qPCR form:
   coordinate fields so large genomic positions remain easy to enter
 - in the dedicated `PCR Designer`, qPCR is now a first-class mode rather than
   an Engine-Ops-only appendix:
-  - `Pair PCR | qPCR` selector switches the right-hand constraints/run panel
-    between the two workflows
+  - `Pair PCR | qPCR | Transcript panels | RT primer pool | Gene assay study` selector switches the right-hand
+    constraints/run panel between the three workflows
   - the left-hand paint/selection workflow stays shared so the same painted or
     formula-defined ROI can feed either pair-PCR or qPCR without switching
     windows
@@ -3834,6 +5125,10 @@ qPCR form:
   - qPCR mode now also shows:
     - a selectable saved-report assay preview with forward / reverse / probe
       geometry for the top ranked assays
+    - the selected assay's `gentle_qpcr_assay_rank_v1` contribution table,
+      capture completeness, and bounded rejected assay near misses
+    - the report-owned excluded-region analysis status/reason
+    - an action that focuses the report-linked qPCR selection-reasoning graph
     - the currently selected saved assay now drives the live qPCR
       cartoon-geometry summary instead of always using assay rank `#1`
     - when a matching splicing expert view is active on the same template, the
@@ -3847,6 +5142,113 @@ qPCR form:
     - the live qPCR cartoon-geometry summary is still derived from the selected
       saved report when available, or from the current ROI + constraint
       defaults otherwise
+  - primer and qPCR report previews cache the current report revision and
+    invalidate that cache when a design completes, window state is restored,
+    or a report is explicitly reopened.
+- `RT primer pool` is a thin GUI over the shared
+  `DesignTerminalExonRtPrimerPool` operation:
+  - enter the fixed 5-prime adapter, exact sequence-specific segment length,
+    terminal-exon search window, retained-candidate limit, and report id
+  - open a Splicing Expert group and use `Add current transcript` to append its
+    selected transcript as the next priority, or enter rows manually as
+    `SEQ_ID<TAB>FEATURE_ID<TAB>TRANSCRIPT_ID<TAB>LABEL`
+  - `n-N` accepts the 1-based feature label shown by the GUI; a bare feature id
+    is the engine's 0-based id. Row order is the explicit pool priority
+  - `Design RT primer pool` runs in the existing detached background-operation
+    path. The GUI does not infer terminal exons or calculate oligo sequences
+  - the report view shows the selected 22-mer (or requested exact length), the
+    complete adapter-bearing oligo, strand-aware terminal-exon/source geometry,
+    descriptive GC/Tm, retained alternatives, and selected-pool pairwise
+    complementarity
+  - `Copy selected oligos TSV` copies the selected sequence text plus target,
+    transcript, and source-coordinate context;
+    `Open saved report` and `Export report JSON...` use the engine-owned report
+    store and export path
+  - Tm is visible but deliberately excluded from this workflow's ranking.
+    Whole-transcriptome/genome specificity is also not implied by this report
+- `Gene assay study` is a session-scoped mode in the same PCR Designer, also
+  opened by Splicing Expert's `Gene assay study...` action:
+  - inspect a typed saved `gentle.gene_isoform_assay_study_plan.v1` for the
+    current source sequence, its declared evidence/missing assessments,
+    transcript scope, recommendation/override and exact operation digests
+  - inspect persisted panels on that sequence, explicitly distinguishing
+    comparison panels from plan-bound results; selected-pair views show both
+    primer footprints on mature cDNA and each transcript's stored products.
+    The interval table retains explicitly labelled 0-based half-open bounds;
+    the plots use explicitly labelled 1-based inclusive positions.
+    The selected-pair axis marks the exact 1-based displayed start/end of the
+    predicted amplicon with a filled green product span, while blue/orange
+    arrows retain forward/reverse orientation. Primer arrows may use a minimum
+    on-screen width for legibility, but the green product boundaries remain
+    exact. A second, explicitly labelled expanded detail maps the primers
+    within those same exact amplicon boundaries, without pretending to share
+    the full-transcript scale. Both views are mature-cDNA projections, not an
+    inferred genomic overlay
+  - the coverage-scope box uses the experimental handoff's engine-owned
+    accounting: annotated records, distinct mature cDNAs, uncovered records
+    and records outside the assessed universe remain separate. Identical
+    mature cDNAs cannot be distinguished by sequence-based primers; a completed
+    design objective is not a specificity pass
+  - selected-pair outcomes, the transcript-by-assay matrix and endpoint band
+    table have independent page controls. All stored rows/assays are accessible,
+    rather than truncating at 40 transcripts, 24 assays or 80 band rows. Paging
+    does not change coverage, selections or exports; missing matrix cells say
+    `Not assessed`, not no product
+  - load a planning request, edit its short-product hard ceiling or full JSON,
+    normalize through the engine, review it before planning, then separately
+    review the exact workflow before execution; edits/project changes invalidate
+    review, and imported plans do not inherit execution authority
+  - managed background tasks expose progress and cancellation; stale results
+    cannot replace project state. New output directories and panel identities
+    preserve prior results; external file effects are not rolled back
+  - canonical dossier export takes the same explicit hash-bound publication
+    request as CLI/OpenClaw. Missing handoffs stay pending; no automatic order
+    submission or alternate GUI scientific narrative is introduced
+  - walkthrough: [04.08](tutorial/04-08_gene_assay_study_gui.md). Live GUI and
+    real-data acceptance are pending; the synthetic fixture is not a human assay
+- `Transcript panels` is a thin GUI over the shared
+  `DesignTranscriptAssayPanel` operation:
+  - Splicing Expert's `Design all-transcript panel` action supplies the source
+    feature/group and opens the PCR Designer in the new mode
+  - endpoint RT-PCR, primer-only SYBR qPCR, and TaqMan qPCR are selectable
+    without changing the engine defaults used by older callers
+  - strict `Require all` coverage is the GUI default; `Best effort` remains an
+    explicit choice that preserves uncovered cDNA classes in the report
+  - a default-off `Pre-approve informative partial fallback` block wraps the
+    exact strict one-per-class/minimal-discrimination operation in the shared
+    engine contract. The user approves a whole-panel assay budget, minimum
+    resolvable band-size difference, nonzero-increment rule, optional long-
+    range permission, and distinct fallback report id before starting the
+    strict run. Only typed coverage infeasibility can activate it; other errors
+    remain fail-closed. Saved fallback panels are visibly partial and show the
+    parent failure/policy identities, objective totals, uncovered classes, and
+    combined-gel disposition
+  - an independent experimental-tier control distinguishes routine common-
+    region screening, isoform discrimination, and long-range structural
+    discovery; optional preferred product limits sit inside the existing hard
+    allowed range
+  - Clariom JUC/probe-evidence reports can be supplied as junction-target paths,
+    with required/preferred priority and Primer3 overlap controls
+  - the saved-report view shows the transcript-by-assay product matrix,
+    endpoint band sizes, junction evaluations, short SYBR junction assays,
+    candidate primer sequences (not order approval), and the per-cell oligo-dT
+    5-prime reach status
+  - an empty oligo-dT threshold reports annotation-derived distances without
+    making a categorical risk call; a user-supplied threshold enables the
+    corresponding within/elevated matrix labels
+  - the saved-report rationale shows annotation-confirmed common-region status,
+    separate PSR/JUC support, routine-versus-fallback classification, the
+    concise selection explanation, and bounded rejected alternatives
+  - `Build experimental handoff` runs the shared
+    `BuildExperimentalAssayHandoff` operation with the documented default
+    readiness policy and displays one collapsible card per selected pair,
+    including oligos, gate outcomes, blockers, and predicted cDNA products.
+    Missing specificity remains a visible default blocker, while absent variant
+    evidence is shown without being silently treated as a pass
+  - `Copy advanced command` provides the equivalent
+    `primers experimental-handoff PANEL_REPORT_ID ...` shell route for custom
+    policy, variant evidence, order-form linkage, and JSON/TSV export; that same
+    operation remains available to CLI/MCP/JavaScript/Lua
 
 Buttons:
 
@@ -3860,6 +5262,14 @@ Buttons:
   - pair-combination evaluation
   - qPCR probe-placement screening
   - completion counts
+- while a progress-capable Primer3 backend is running, the same area shows the
+  current input-record number and bounded candidate work as
+  `completed/bound` plus a percentage. This percentage reflects instrumented
+  search work, not elapsed time or an ETA.
+- GENtle detects `--progress` through Primer3's help output and can request a
+  refreshed status after a confirmed progress stream becomes quiet. Older
+  Primer3 installations run directly in legacy mode, but they cannot provide
+  the bounded-work display.
 
 Beginner tutorial:
 
@@ -3874,9 +5284,13 @@ Beginner tutorial:
   - `List qPCR Reports`
   - `Show report_id`
   - `Export report_id...`
+- transcript-panel report helpers (uses current transcript-panel `report_id`):
+  - `List reports`
+  - `Show report_id`
+  - `Export report_id...`
 
-Both operations persist reports into project metadata (same report store used by
-CLI/shared-shell `primers ...` commands).
+All design modes persist reports into project metadata through the same stores
+used by CLI/shared-shell `primers ...` commands.
 
 Restriction-site cloning handoff:
 
@@ -3924,14 +5338,19 @@ Restriction-site cloning handoff:
   and fall back to unique cutters by cut position when no explicit MCS order is
   available
 
-Persisted primer/qPCR reports now also appear in the project lineage graph/table
-as analysis artifacts linked from the template sequence.
+Persisted primer/qPCR design reports and primer-specificity reports now also
+appear in the project lineage graph/table as analysis artifacts linked from the
+template sequence.
 
 - lineage actions reopen the PCR Designer on the selected report instead of
   only opening the source sequence
 - clicking the underlying PCR-related operation glyph or `Op` cell reopens the
   same PCR Designer on the originating template sequence
 - lineage details expose the stored backend plus pair/assay counts
+- primer-specificity lineage details expose target database kind, result
+  status, candidate-product count, and failing off-target count; reopening
+  restores its compact evidence summary and cited primer-design report when
+  available
 - restriction-cloning handoffs also appear as lineage analysis artifacts linked
   from the template sequence and reopen the same PCR Designer with the saved
   handoff highlighted
@@ -4161,14 +5580,16 @@ Safety behavior:
 
 The DNA-window Engine Ops panel also includes a `CUT&RUN regulatory support`
 inspector for release smoke/proof runs. It is deliberately thin GUI plumbing:
-dataset ids, saved ROI read-report ids, an optional promoter span, neighbor
-window, and species filters are sent through the shared
-`InspectCutRunRegulatorySupport` engine operation. The panel displays the
-returned `gentle.cutrun_regulatory_support.v1` record: evidence sources,
+dataset ids, saved ROI read-report ids, optional catalog/cache paths, an
+optional promoter span, neighbor window, and species filters are sent through
+the shared `InspectCutRunRegulatorySupport` engine operation. The panel
+displays the returned `gentle.cutrun_regulatory_support.v1` record: evidence sources,
 support windows, the `TFBS + occupancy support` table with additive
 `support_status` and distance fields, motif-absent supported windows,
 recurring motif context, warnings, and JSON export. It does not add GUI-only
-CUT&RUN scoring or motif interpretation logic.
+CUT&RUN scoring or motif interpretation logic. Blank catalog/cache fields use
+normal discovery; explicit values let the GUI reopen reports backed by a
+project-specific prepared cache.
 
 While TFBS annotation is running, GUI shows live progress indicators and keeps
 repainting until completion:
@@ -4294,6 +5715,9 @@ Recommended flow:
      - inspects current Ensembl/Ensembl Metazoa FASTA + GTF species-directory listings
      - reports candidates where both listing types are present
      - shows collection, species directory, and the current listing URLs
+     - vertebrate discovery uses Ensembl's `pub/current/fasta/` and
+       `pub/current/gtf/` directories; installed URLs are pinned to the selected
+       release's `fasta/` and `gtf/` directories, not a `vertebrates/` subdirectory
      - each candidate now offers `Quick Install...`, which opens a confirmation dialog showing the resolved release, file stem, concrete FASTA/GTF URLs, the target catalog write mode, and the chosen output catalog path before the normal prepare workflow starts
      - discovery itself still does not edit the catalog until `Install + Prepare` is confirmed
    - helper-scope dialogs (`Prepare Helper Genome...`, `Retrieve Helper Sequence...`,
@@ -4307,10 +5731,21 @@ Recommended flow:
    - the confirmation dialog for prepared genomes offers two explicit actions:
      - `Reindex Using Cached Files`
      - `Remove Cached Files + Re-download`
+   - after updating GENtle for NCBI GFF3 transcript-identity/parent-join fixes,
+     use `Reindex Using Cached Files` for affected prepared references. An
+     ordinary prepare can reuse the old transcript index; the application
+     update does not silently rebuild it or rewrite retained scientific reports
    - when `Reindex Selected...` is launched from the floating prepare window,
      that confirmation prompt stays in the same window stack instead of opening
      behind the specialist window
    - this runs in background and now shows the full ordered prepare plan up front
+   - changing the selected genome, catalog, cache or Reference/Helper scope does
+     not retarget or cancel a running job. Detailed progress stays attached to
+     the original job settings, including its completion or failure; a different
+     selection shows the job's genome name and a `Show Background Jobs` button
+     instead of displaying that job's checklist as if it belonged to the new
+     selection. Follow or cancel the original job in `Background Jobs`, or select
+     its settings again to see its progress here
    - the checklist now uses a single overall progress bar; the individual rows
      stay as status/check rows for sequence, annotation, FASTA index, gene
      index, and BLAST index
@@ -4319,6 +5754,10 @@ Recommended flow:
      launch reindex/refresh
    - byte-based active steps now show `bytes: X / Y • ETA ...` once enough
      progress has been observed to make a stable estimate
+   - FASTA and tabular gene/transcript indexing report progress and check
+     cancellation at start, completion, and line boundaries after at least
+     another 8 MiB of input. This avoids a progress update for every short line;
+     it is a byte-based checkpoint, not a wall-clock cancellation guarantee
    - completed rows stay checked until you close the prepare window or start a
      new prepare/reindex/refresh run
    - after a successful prepare/reindex/refresh, the full checklist remains
@@ -4373,17 +5812,30 @@ Recommended flow:
      - default (`annotation scope=core`) attaches gene + transcript context
      - `annotation scope=full` additionally attaches exon + CDS subfeatures
      - `annotation scope=none` (or unchecked include flag) disables transfer
-     - `selected gene extract` adds a second interval mode:
-       `CDS + promoter`
-     - `promoter bp before CDS` adds an explicit 5' flank before the first
-       coding base in a strand-aware way (`0 = CDS only`)
-     - `gene span` remains the default mode for backward-compatible full-gene
-       extraction
+   - `Selected-gene interval` distinguishes two genomic extraction modes:
+     - `Whole gene (no added flank)` is the default: the complete annotated
+       gene span, including UTRs and introns, with no extra upstream DNA.
+     - `CDS span + upstream flank` spans the first to last coding base across
+       the gene's transcripts, retaining introns. `Upstream of CDS (bp)` adds
+       a strand-aware 5' flank before the first coding base, **not before the
+       transcription start site (TSS)**. `0` means the CDS span only. This is
+       not whole-gene-plus-promoter extraction and may omit UTR sequence.
+   - `Extract Region` ignores the selected-gene mode and flank value: it uses
+     only `chr/start_1based/end_1based`. The shared output name may still contain
+     `promoter`; that name is not proof of included upstream sequence. For a
+     whole gene plus upstream DNA, select the gene, then decrease the explicit
+     start on the plus strand or increase the end on the minus strand before
+     using `Extract Region` (within the prepared chromosome bounds).
+   - These distinctions are visible in the window, with wrapped explanations
+     and translations in all eight catalogs. Extraction behavior and CLI/API
+     options (`coding_with_promoter`, `promoter_upstream_bp`) are unchanged.
    - when transcript exon annotation is available, extraction also auto-creates
      an exon-concatenated synthetic companion sequence (`<seq_id>__exons`) with
      deterministic `N` spacers between merged exon blocks; this is useful as a
      lower-noise reference for cDNA dotplot workflows
-   - coordinates are 1-based and inclusive
+   - chromosome coordinates here are 1-based and inclusive. The DNA viewer
+     uses positions within the imported sequence; negative viewer positions
+     cannot retrieve missing upstream DNA. Import that DNA first.
 3. Run BLAST searches against prepared references:
    - open `BLAST Genome Sequence...`
    - dialog layout is organized into sections:
@@ -4562,6 +6014,9 @@ How to enlarge the genomic span after extraction:
   - a new derived sequence is created and opened
   - lineage/provenance records include the extended genomic interval
   - 5'/3' direction is contextual to anchor strand (`strand -` flips physical genomic direction)
+  - core gene/transcript annotation is projected again from the prepared
+    reference; parent-specific tracks/analyses are not copied. Keep annotation
+    warnings and preview a fresh TSS inventory before approving new windows.
 
 Equivalent workflow JSON (still supported via workflow runner):
 
@@ -4619,7 +6074,11 @@ Notes:
   while valid gene records continue to be indexed.
 - Genome track import accepts BED (`.bed` / `.bed.gz`) and BigWig (`.bw` / `.bigWig`) inputs.
 - Genome track import also accepts VCF (`.vcf` / `.vcf.gz`) inputs.
-- BigWig import uses `bigWigToBedGraph` and can be overridden via `GENTLE_BIGWIG_TO_BEDGRAPH_BIN`.
+- BigWig import uses `bigWigToBedGraph` and can be overridden via
+  `GENTLE_BIGWIG_TO_BEDGRAPH_BIN`. GENtle checks the executable inside the
+  background import job, so a slow or unavailable converter cannot block the
+  GUI; an unavailable executable is reported as `BigWig import preflight
+  failed` in the task status.
 - VCF score filtering uses VCF `QUAL` for `min_score` / `max_score`.
 - Genome track import requires a genome-anchored sequence (`ExtractGenomeRegion` or
   `ExtractGenomeGene`) to map genomic coordinates into local sequence coordinates.
@@ -4657,8 +6116,9 @@ Notes:
   `Configuration -> External Applications`.
 - HTTP downloads support resume/retry behavior and continue from partial files
   when possible.
-- Manifest integrity fields (`sequence_sha1`, `annotation_sha1`) are captured
-  after successful preparation and shown in `Prepared References...`.
+- Manifest legacy integrity fields (`sequence_sha1`, `annotation_sha1`) are
+  captured after successful preparation and shown in `Prepared References...`
+  only when a platform checksum tool is available.
 - `start_1based` and `end_1based` fields are constrained to numeric input and
   up to 10 digits.
 - Extracted regions are added to project state and opened in sequence windows.
@@ -4725,11 +6185,11 @@ Use the top application menu:
 - `File -> Open Project...`
 - `File -> Open Recent Project...`
 - `File -> Open Tutorial Project...`
+- `File -> Save Project...`
 - `File -> Close Project`
 - `File -> Import REBASE Data...`
 - `File -> Import JASPAR Data...`
 - `File -> JASPAR Expert...`
-- `File -> Save Project...`
 - `File -> Export DALG SVG...`
 - `File -> Quit`
 
@@ -4782,9 +6242,14 @@ Tutorial projects:
 - Chapters are grouped by tutorial content area using the derived decimal ids
   from `docs/tutorial/catalog.json` / `docs/tutorial/manifest.json`; tier and
   online status remain visible in hover text and labels.
-- Generated tutorial project files are written under the system temp directory
-  (`.../gentle_tutorial_projects`) and opened without adding those temp files
-  to the `Open Recent Project...` list.
+- Tutorial project and guided-walkthrough menus use the same window-bounded
+  scrolling as `Help -> Tutorials`, so later entries remain reachable in a
+  small window.
+- Generated tutorial project files are written under a process- and
+  invocation-specific directory below the system temp directory
+  (`.../gentle_tutorial_projects/process-PID-invocation-N`) and opened without
+  adding those temp files to the `Open Recent Project...` list. Separate builds
+  therefore never delete or overwrite one another's workspace.
 - While a tutorial project is being built, GENtle keeps the GUI responsive and
   shows live status in the `Background Jobs` panel.
 - Online tutorials can therefore be cancelled explicitly:
@@ -4809,6 +6274,16 @@ Tutorial projects:
     `SuggestPromoterReporterFragments`, `SummarizeTfbsScoreTracks`,
     `ExtractRegion`, `MaterializeVariantAllele`, `LoadFile`, `Ligation`, and
     `Branch` operations without dropping into generic `Engine Ops`.
+  - `Make reference/alternate inserts` validates both choices before creating
+    either sequence. An empty multiallelic choice or invalid alternate leaves
+    project sequences and output-name fields unchanged, allowing a corrected
+    retry without orphan reference copies. After preflight, both shared
+    operations run under one engine write lock and the existing rollback
+    transaction. A later execution refusal restores the prior project,
+    journal and undo/redo history before any success-driven view change;
+    output names update only after both inserts succeed. Successful creation
+    retains two ordinary undo entries. This is GUI composition of existing
+    operations, not a new biological operation or a wet-lab validation claim.
   - the same window now also exposes positive-only TF score tracks across the
     chosen promoter span, with TERT-friendly `SP1`, Yamanaka-plus-`NANOG`, and
     `TP73/SP1/BACH2/PATZ1` presets meant for promoter interpretation before
@@ -4918,9 +6393,20 @@ Tutorial projects:
   - the same window now also exposes local ortholog promoter cohorts through
     the shared `ResolveOrthologPromoterCohort` and
     `SummarizeOrthologPromoterComparison` operations:
+    - the ambiguity selector exposes `reject`, deterministic warning-bearing
+      `first`, and `preserve`; preserved mappings remain unresolved and are
+      displayed as reviewable candidate rows with identity, relationship,
+      confidence, source, evidence, genome, and context
     - rows show per-species promoter windows, strand/TSS placement, pairwise
       TFBS similarity, relationship expectation flags, and CUT&RUN support
       states
+    - optional normalized CUT&RUN JSON names the method, unit, shared
+      comparison reference, provenance, and one source-bound value per
+      resolved promoter; incomplete records remain `not_comparable` and do
+      not cause raw cross-species intensity comparison
+    - `Export ortholog cohort JSON...` and `Export ortholog comparison
+      JSON...` rerun the same shared operations with an output path instead of
+      serializing GUI-only state
     - wording frames the result as cross-species association evidence, not
       proof of conserved regulation
   - the same window now also exposes `Inspect TFBS occupancy support`, which
@@ -4933,6 +6419,107 @@ Tutorial projects:
     - the engine report still preserves the legacy confirmed/unconfirmed row
       vectors while displaying additive four-state `support_status`
       (`confirmed`, `nearby`, `absent`, `motif-poor`)
+  - the same window now also exposes `Reporter architecture comparison
+    (read-only)` as a thin client of
+    `ComparePromoterReporterArchitectures`:
+    - `Prepare from current locus` seeds one editable portable request from the
+      selected sequence, gene/transcript context, promoter extents, and current
+      motif list; when Splicing Expert > Locus figure has a configured isoform
+      panel, it also attaches that shared locus-evidence request. The status
+      explains the missing configuration when only the legacy comparison can
+      be prepared; invalid existing Locus figure paths/settings fail visibly
+      instead of silently dropping the evidence. `Compare / refresh` runs the
+      shared engine operation
+    - summary, TSS classes, staged panel, warnings, non-claims, CUT&RUN
+      readiness, and the integrated occupancy/score/scale summary come directly
+      from the cached report
+    - the collapsed `Architecture models` list exposes stable architecture id,
+      transcript, modeled insert length, spliced-UTR and intron burden, explicit
+      ATG policy, and a `Use transcript` navigation action without recalculating
+      biology in the GUI
+    - JSON and SVG paths invoke the shared exporter/renderer; leaving either
+      path empty keeps that artifact in memory
+    - every reporter SVG uses visible material swatches for genomic source,
+      spliced exon/cDNA, and schematic `LUC` sequence; combined locus figures
+      retain the same keys, and their PNG/PDF exports derive from that SVG
+    - an existing laboratory construct remains unverified until exact insert,
+      vector, and boundary evidence is supplied, while CUT&RUN overlap remains
+      occupancy support rather than evidence of TSS use or reporter output
+  - the same window now also exposes `Promoter-reporter panel` as a thin client
+    of the shared `PlanPromoterReporterPanel` and
+    `MaterializePromoterReporterPanel` operations:
+    - request JSON selects already-reviewed promoter candidates and one loaded,
+      exactly catalog-validated vector; the GUI does not resolve or rerank them
+    - request JSON must name an effective mutation policy:
+      `native_only_v1` creates one unchanged regulatory construct, while
+      `p53_family_core_disruption_v1` creates the established
+      wild-type/mutant pair and requires a motif-hit anchor; members can
+      override the request default, and `unspecified` remains invalid
+    - member `evidence[]` rows bind independent response or occupancy sources;
+      the panel summarizes their count and the proposal JSON retains their full
+      provenance without merging them semantically with motif annotations
+    - study-specific interpretation limits belong in request-bound
+      `scientific_caveats`; GENtle preserves them in the proposal instead of
+      injecting gene names or study claims from the generic operation
+    - `Plan panel` is read-only and displays member boundaries/roles, effective
+      policy, anchor/evidence provenance, optional stated-rule mutation audit,
+      shared restriction or Gibson strategy, primer readiness, predicted
+      circular products, preserved catalog-required vector annotations, exact
+      artifact paths, warnings, and biological non-claims
+    - planning clears any previous approval text, and materialization remains
+      disabled until the user types the complete displayed proposal digest
+    - approved materialization still recomputes the proposal through the engine
+      and displays the resulting sequence IDs, artifact paths, and manifest;
+      drift or an existing output path is reported rather than bypassed
+  - `Regulatory-fragment panel` in the same window is a thin client
+    of `PlanRegulatoryFragmentPanel` and
+    `RenderRegulatoryFragmentPanelSvg`:
+    - selectors bind candidate A, optional partner B, required minimal promoter,
+      and optional reference control from the persisted genomic-region store;
+      the GUI carries each exact region-set content digest into the request
+    - reference release, loaded vector/catalog identity, helper catalog, member
+      and insert-length bounds remain explicit inputs
+    - partner, order, orientation, and spacing comparisons are opt-in; spacing
+      carries exact spacer DNA and no geometry is inferred by the GUI
+    - the cached report shows ordered source instances, genomic intervals,
+      pairwise contrasts, inclusion and omission reasons, and every evidence
+      lane with its independent state, observations, warnings, and blockers
+    - JSON export reruns the same read-only planning operation; SVG export sends
+      the unchanged cached plan through the shared digest-validating renderer
+    - typing the exact panel digest records review locally but does not authorize
+      product creation. In `Exact design products`, enter an explicit output-ID
+      prefix and choose `Prepare exact products`; this read-only action uses
+      `PlanRegulatoryFragmentMaterialization`, also reachable through
+      `promoters regulatory-products-plan`
+    - each proposed product exposes its full DNA, topology, sequence hash,
+      annotations, source instances, and omitted vector-annotation indices;
+      `Copy product proposal JSON` copies the unchanged portable proposal
+    - `Create approved design products` requires the separate, complete product
+      digest. The shared `MaterializeRegulatoryFragmentPanel` operation rechecks
+      sources and collisions and creates all products atomically, with one undo.
+      The receipt lists output IDs and keeps final-product audit `not_evaluated`:
+      these are designed sequences, not verified cloning reactions
+    - input edits, replanning (including JSON re-export), and failed preparation
+      clear product review. A creation attempt consumes GUI approval; engine
+      rejection clears the stale proposal rather than silently rebuilding it
+    - source-bound external locus observations retain their original typed
+      payload in JSON and independent availability in the view
+    - labels remain hypotheses or unresolved comparisons; the panel does not
+      claim sufficiency, enhancer/silencer activity, partner dependence, or
+      causal regulation
+    - before fixing the ROI, GUI Shell also accepts `promoters fragment-candidates`
+      for [evidence-guided boundaries](reporter_fragment_selection.md), including
+      explained extension/shortening, provenance-bound called-peak BED sources
+      and optional exact-vector MCS checks. Generic coverage is not a peak seed.
+      This is a read-only proposal, not a new graphical drag editor; saving a
+      proposed region and approving its construct remain separate actions.
+      For fixed similarity windows, GUI Shell `op @geometry_op.json` uses the
+      same stateless `ComputeTssWindowGeometry` as CLI/MCP, rather than selecting
+      adaptive inserts. Neither route requires or introduces a new GUI editor.
+    - the executable offline tutorial
+      `08-11_regulatory_fragment_panel_planning_offline` walks through the
+      region selectors, exact A/B geometry, independent evidence states, and
+      digest-valid JSON/SVG review without materialization
   - the same window now also exposes `Export TF score tracks SVG...`, which
     goes through the shared `RenderTfbsScoreTracksSvg` engine route instead of a
     GUI-only painter and can therefore reproduce the same stacked figure style
@@ -4967,13 +6554,21 @@ Tutorial projects:
     - `commands.sh`
   - the tutorial uses a TSS-centered reverse-strand `VKORC1` fragment that
     keeps `rs9923231` inside the cloned insert instead of on its edge.
+  - `Genomic alleles` exposes the marker's supplied ref/alt qualifiers.
+    `Alternate base` is prefilled only for a single alternative; multiallelic
+    markers require an explicit reviewed A/C/G/T choice. The field is passed
+    unchanged to the shared engine; the UI never chooses an allele by gene
+    strand or a pharmacogenomic label. The materialized base is retained in
+    the output feature and handoff; generated Bash arguments are quoted.
   - the preferred community-facing opener for that story is the
     `VKORC1/rs9923231` hero figure in
     `docs/figures/vkorc1_rs9923231_luciferase_hero.svg`.
   - canonical workflow skeleton:
     `docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json`
-    (`test_mode: skip`, offline local backbone import plus shared promoter
-    reasoning ops).
+    (`test_mode: online`, online dbSNP lookup/reference preparation, followed
+    by local backbone import and shared promoter reasoning ops). Retained
+    reporter SVGs are historical WIP previews, not current-candidate or
+    experimentally validated constructs; see their reproducibility README.
   - `docs/tutorial/03-05_gibson_specialist_testing_gui.md`
     - focused end-to-end test script for `Patterns -> Gibson...`
     - uses local committed inputs plus `gibson preview` parity checking
@@ -5246,8 +6841,15 @@ NCBI retrieval behavior:
   waiting for the response, parsing the returned JSON, resolving the assembly
   placement, and extracting the annotated slice from the prepared genome.
 - Extracted dbSNP regions now also include a one-base `variation` feature
-  labeled with the rsID at the resolved SNP position so the focal variant stays
-  visible in the sequence view, including overview-scale linear maps.
+  labeled with the rsID at the resolved position so the focal variant stays
+  visible in the sequence view, including overview-scale linear maps. This
+  remains a focal anchor for non-SNVs, whose full alleles/coordinates are retained
+  in `dbsnp_spdi` rather than misleading single-base VCF qualifiers.
+- Marker details distinguish reference match/mismatch/unavailable from
+  assembly-family compatibility. Fallback or unbound assembly and missing or
+  mismatching reference evidence are warned and block allele materialization;
+  a matching base alone does not permit transferring coordinates between
+  assemblies. Only clean A/C/G/T SNVs receive `vcf_ref`/`vcf_alt`.
 - RefSeq-style dbSNP chromosome accessions such as `NC_000016.10` are matched
   against prepared contig aliases during extraction and annotation transfer, so
   human `chr16`/`16` installs still attach the expected local feature context.
@@ -5269,9 +6871,15 @@ Resource import behavior:
 - `JASPAR Expert...`
   - Opens an app-level motif expert for the active local JASPAR registry.
   - The left side now shows a catalog table with motif ID, optional TF name,
-    motif length, consensus IUPAC sequence, and cached species-count /
-    collection summaries when remote metadata has already been fetched for that
-    row.
+    motif length, consensus IUPAC sequence, species names, and collection
+    summaries. Every column heading is sortable; selecting the active heading
+    again reverses its order.
+  - Species metadata already present in the persistent JASPAR snapshot appears
+    immediately. Missing metadata for the catalog rows currently rendered on
+    screen is fetched automatically through the existing background operation,
+    keeping the expert responsive and avoiding an all-registry request.
+  - The complete expert surface has always-visible horizontal and vertical
+    scroll bars, while the large catalog remains independently virtualized.
   - `Reload catalog` refreshes the local registry table from the shared engine
     while reusing any persisted JASPAR remote-metadata snapshot rows already
     available locally.
@@ -5326,3 +6934,261 @@ Example FASTA headers:
   polished report, Lineage, Dotplot, and agentic workflow viewing. It should
   consume the same engine-owned JSON/SVG artifacts rather than replacing the
   egui desktop workbench in this GUI polish pass.
+# TSS / Regulatory DNA Display
+
+Open a GENtle **annotated TSS EMBL or GenBank** sequence in the DNA viewer,
+then choose **TSS / Regulatory** beside Standard map. The same sequence stays
+loaded; switching display does not extract a new molecule or change its bases.
+The title becomes gene, chromosome and genomic TSS position after validation.
+The file's original name and provenance remain unchanged.
+
+The native display separates transcript exon/coding context, each supplied
+CUT&RUN/chromatin source, retained motif peaks per matrix and score kind, and
+other annotations. Category checkboxes and a lane-name/source-ID filter limit
+clutter. The ordinary zoom/pan controls apply to its shared local axis. Rulers
+show local bases, genomic bases and signed TSS-relative offsets; a negative
+genomic strand decreases genomic coordinates without reversing the local DNA.
+Side summaries show interval counts and displayed coordinate envelopes (not
+continuous coverage). Hover retains original feature/source notes. Click a
+feature to select its exact local DNA span, then **Inspect in standard DNA map**
+to see that annotation and sequence. For report-only hits or curve footprints,
+**Show DNA span in standard map** selects the bases and clears any previous
+annotation highlight; it does not create an annotation. Wrapped/clipped original spans remain in
+details; unsupported compound locations are explicitly reported, not flattened.
+
+Signal intervals preserve gaps and supplied source scale; no-interval and
+not-prepared sources are not measured zeros. Motif triangles above/below the
+baseline distinguish local plus/minus strands, not positive/negative values.
+Their height uses the original score kind, never relabels tail probabilities
+as LLR bits, and hides values below zero without deleting data. These annotation lanes are stored
+peaks, **not full continuous score traces or experimentally measured binding**.
+Display clipping, filtering and selection never rescore motifs.
+
+Recognition is cached; hash/geometry validation and grouping run off the paint
+path. Only visible rows are painted, with an explicit 10,000-feature drawing
+limit per lane/viewport; zoom in if that limit is reached. The source data are
+not truncated. Editing/replacing the sequence invalidates the presentation.
+Mismatched bases, TSS markers, or motif-strand metadata fail closed. Sequence
+hash validation is not external reference authentication or a receipt audit.
+
+### Attach the Quantitative Report
+
+Choose **Load TSS profile report...** and select `report.json` from the TSS
+SVG/PDF export bundle belonging to this window. Loading and validation run in
+the background, independently of the TFBS panel and its caches. No database
+query or scoring is performed. The file is bounded to 256 MiB and passes the
+same report validation as export (including matrix and imported-report hashes,
+array geometry and the ten-million-score-cell limit). Genome ID, assembly,
+annotation release, promoter ID, exact window/TSS geometry and sequence digest
+must match. Equal bases at another locus are not sufficient. Failed attachment
+leaves the previous view intact; replacing/editing the sequence discards the
+attachment. **Detach report** removes report-only lanes, retaining annotations
+and any independently computed local curves.
+
+- **Report TFBS curves** shows complete stored forward/reverse arrays at motif
+  window starts. Local `+` is solid blue; local `-` is dashed rose. Both use the
+  same increasing local axis, also on negative genomic strands. Hover reports
+  raw scores and both coordinate/strand conventions. Clicking an evaluable
+  start selects its full motif footprint without creating a DNA annotation.
+- Each curve has numeric Y ticks and its own explicit score kind. Scaling and
+  negative-score clipping follow the saved panel policy, not current TFBS-panel
+  settings or an export-only scale override. A background-tail score is not
+  relabelled LLR bits. Amber areas and line gaps mean unavailable windows:
+  the upper half represents local `+`, the lower half local `-`, relative to
+  the displayed DNA, including on negative genomic strands. The
+  grey terminal areas cannot hold a full motif window. A genuine zero remains
+  an evaluable value. An empty/all-zero range uses a labelled display fallback.
+- **DuckDB peaks** shows the report's attached sparse-query results, not a live
+  query. Amber triangles encode footprint and local strand; height uses the
+  original source/report/matrix score range, including signed raw values, never
+  the local-curve scale. Side summaries retain coverage and truncation states;
+  hover includes original genomic spans, retention/density policy and hashes.
+  A valid empty subset with no declared score mode says **score units unavailable**,
+  rather than inventing units or displaying an empty label.
+  Missing or partially queried evidence does not establish absence of binding.
+
+The original annotated structure, CUT&RUN/chromatin and stored-peak lanes stay
+separate. Report annotations are not silently substituted for edited flat-file
+features. Attachment is session-local and not a receipt audit or independent
+reference authentication. Display preparation is cached; visible curve drawing
+is limited to 10,000 window starts per row. Above that budget the view asks for
+zooming rather than silently downsampling away narrow peaks or gaps.
+
+### Compute Local TSS Scores
+
+Open **Local scoring**, enter exact matrix accessions (comma/space-separated),
+choose `score_kind` and clipping, then **Compute local scores**. These settings,
+worker, cancellation and cached result belong to this TSS view, not the separate
+TFBS panel. Scoring uses the shared engine's linear `InlineSequence` target,
+bound to the displayed, transcript-oriented DNA. It never fetches sequence,
+queries DuckDB, reconstructs an old report, or modifies sequence annotations.
+
+**Locally computed curves** is a separate lane class and visibility toggle.
+Local `+` curves are solid violet, distinct from blue report curves and green
+stored peaks; local `-` curves remain dashed rose. The native view and its SVG
+export share the colour and local-strand legend, including unavailable halves.
+Each lane shows its actual score kind, exact matrix hash and evaluability count;
+its own range does not normalize imported/report scores. Zero is a scored
+value, while ambiguous/unscorable windows remain gaps via the engine validity
+masks. These are model predictions, not experimental binding or a prediction
+that a mutation will reduce luciferase activity. Stored report curves retain
+their original settings even when the local settings change.
+
+Admission requires 1..32 unique full-PFM IDs, at most 64 columns per matrix,
+50,000 window bases and 1,000,000 matrix/base combinations. Aliases, `ALL` and
+consensus fallback are refused here; existing headless routes remain available.
+Resolution/calibration/scoring run on a background worker with stage/matrix
+progress, not an ETA. **Cancel scoring** keeps the last complete result.
+Replaced documents or changed requests cannot accept late results. Panning
+does not recompute; changing settings leaves previous curves explicitly labelled
+until an explicit new run. Clearing local scores preserves attached reports,
+and detaching reports preserves local scores. Jobs never share a result cache.
+The cache receipt binds reference/geometry/sequence, effective local request,
+actual matrix hashes, background policy and scorer; a fresh run always resolves
+the current registry anew. A matrix mismatch between admission and scoring
+rejects the result.
+
+### Agent and Headless Routes
+
+Every step of the native view is reachable without the mouse. `ui open|focus
+tss-view --report REPORT_JSON` attaches a report, and `ui open|focus tss-view
+--local-score ACCESSION[,ACCESSION...] [--score-kind KIND] [--keep-negative]`
+computes local curves; the viewer adopts those settings into its own controls so
+the displayed panel always describes the curves that were actually computed.
+Both need a GUI host, and headless shells record `applied=false`.
+
+`promoters tss-view-svg SEQ_ID OUTPUT.svg` needs no GUI host at all: it decodes
+the annotated window, optionally attaches a report with `--report`, optionally
+computes local curves with `--motif`, and uses the native view's renderer for
+those attachments. It reports the lane count, exported local span and SVG SHA-256, and
+refuses a sequence without GENtle annotated-TSS metadata. `--score-kind` is not
+inherited from the viewer; repeat it per export.
+
+With `--motif --span START..END`, the headless operation scores only complete
+motif footprints inside that local, 1-based inclusive span, on both strands.
+It excludes footprints crossing either edge. Counts, local axis ranges and
+empirical quantiles describe the scanned span, whose exact coordinates and
+sequence hash are retained alongside the full annotated-window binding.
+The denominator is `2 * max(0, span_length - motif_length + 1)`; ambiguous
+windows are unavailable, not zero, and the trailing grey band means no complete
+footprint **inside the scored span**. Admission still applies to the full
+annotated window, even if the requested span is small.
+
+This differs from panning and **Export View SVG**, which do not rescore and
+keep the existing full-window count, calibration and scale. Attached `--report`
+curves likewise remain untouched. A cropped existing plot and a newly scored
+subspan therefore need not have the same edge coverage, scale or empirical
+quantiles. Same-window, same-scoring-scope GUI/headless parity remains required.
+
+Each full-curve lane's side summary lists up to three highest raw-score window
+starts in the displayed span, with signed TSS offsets and local strands. Ranking
+is strictly within that matrix lane, using raw scores even when negative values
+are clipped for drawing. Unavailable starts are excluded and valid zero is not.
+Ties use start coordinate, then local `+` before `-`; these positions are not a
+binding-likelihood ranking and do not rank one factor against another.
+
+For all validated collection members, the headless/agent route is
+`promoters tss-view-svg --collection COLLECTION_ID OUTPUT_DIR` with the same
+attachment/scoring/span flags. At most 32 members and 32 MiB per complete bundle
+are allowed; every member is checked before scoring. Ordered SVG pages,
+`index.html` links and a typed `receipt.json` are staged before publishing to a
+new directory. Per-window/per-lane scale policy preserves supplied report
+scaling, with no new cross-window calibration. This command does not change
+approvals, select more starts or open a GUI. The single-window route also returns
+the typed `tss_view_svg_export` artifact receipt.
+
+See the [TP73 ΔNp73 factor-curve walkthrough](tutorial/08-17_tp73_dnp73_factor_curves.md)
+for all three routes on a real locus.
+
+### Export the Native TSS View
+
+**Export View SVG** exports the current horizontal span and enabled/filter-matched
+TSS lanes, including lanes vertically scrolled out of sight. It exports the
+TSS evidence plot, not a pixel screenshot or the separate sequence-text panel.
+Wide-context and A3 variants use the existing expanded-span/print profiles.
+Rendering and atomic file publication run in a separate worker on the selected
+immutable presentation; later navigation does not alter that export.
+
+The headless renderer preserves local/genomic/TSS coordinates on both strands,
+separate source scales, stored peak footprints, missing-window gaps, terminal
+unavailable regions, hover provenance and coverage/truncation warnings. SVG
+metadata binds the presentation digest, sequence, reference, attached report
+file hash, local-scoring provenance/report hash and exact span/lane options.
+This is not a fresh scientific analysis or a full receipt audit. It never
+substitutes the standard map. A loading or
+stale presentation cannot be exported; excessive work is refused (10,000 items
+per lane, 100,000 overall, 128 lanes and 32 MiB), with a request to narrow the
+span or lane selection, rather than silently dropping evidence.
+
+SVG score-window hover annotations are capped at 128 per lane and local strand,
+retaining strongest and evenly sampled valid starts. Each lane discloses
+emitted/total and omitted-title counts. Unsampled starts lose their own
+coordinate/raw-score/footprint tooltip; every curve point and validity band
+remains. Native GUI hovering is not capped. The same top-three within-lane
+raw-score summary appears in the exported SVG, outside its clipped plot area.
+
+GENtle's annotated TSS export grammar is still required, including existing
+hashed record names. FASTA alone, arbitrary locus features and generic prose
+labels cannot establish its TSS geometry. New DuckDB
+queries from imported windows and reporter rows remain
+follow-ups. Existing receipt-bound TSS report exports remain the quantitative
+publication path; a native-view SVG records the selected presentation instead.
+The existing single-sequence file loader selects the last EMBL/GenBank record;
+multi-record import/selection is a separate follow-up, not provided by this view.
+
+Shared GUI/agent navigation: focus the intended DNA window, then use
+`ui open tss-view` or `ui focus tss-view`; `ui close tss-view` restores Standard
+map. No arbitrary project sequence is selected when the active DNA context is
+missing. Headless execution records the intent with `applied=false`.
+To attach the same report as the native file-picker path, use
+`ui open tss-view --report REPORT_JSON` (or `ui focus ...`). The active annotated
+TSS viewer performs the normal binding validation asynchronously; the intent
+does not select a sequence implicitly, rescore motifs or query DuckDB. Tutorial
+[08.16](tutorial/08-16_tss_regulatory_view_gui.md) demonstrates GUI, Agent Assistant
+and inner-agent wording side by side. Agent Assistant preserves the explicitly
+focused DNA viewer as its launch subject while it has focus; stale or closed
+subjects are rejected rather than replaced from project inventory.
+
+For an annotated anchored locus, **TFBS scan > Transcript starts / TSS windows...**
+now provides a background inventory, explicit row selection and approval, then
+collection-targeted opening. Truncated or uncertain 5-prime starts and unlinked
+transcripts appear as nonselectable diagnostic rows, not candidate TSSs; unlinked
+records are labelled locus-level unassigned rather than exclusions from the gene.
+**Inspect stored collection** validates the entered collection ID in the
+background and shows a concise **Validated collection** summary. Expand
+**Technical details** for the member table, full fingerprint on hover and
+copyable JSON. Stale or
+legacy metadata produces the shared engine diagnostic. **Forget registry
+entry...** requires a second, ID-bound confirmation and retains all sequences,
+windows and lineage; use a new ID for re-derivation rather than overwriting them.
+Feature
+cache refresh does not mark an intact collection edited; changed bases,
+annotations or genomic anchors still prevent reuse. `ui open|focus|close tss-view --collection ID`
+targets that persisted collection independently of the active viewer. See the
+[TSS workspace walkthrough and limitations](tss_workspace.md).
+
+Collection-window requests originating in a child DNA viewer wake the root
+application poller before validation and window creation continue. This keeps
+the asynchronous request bounded while ensuring an otherwise idle root does
+not leave it queued indefinitely.
+New sequence windows use a bounded 48-point cascade (six positions); existing
+windows retain their positions. Collection opening reuses pending/open members
+and requests focus for the first member after new windows are registered.
+Use the native **Window** menu to raise another named member. Native focus
+remains subject to the window manager; a queued request is not proof of focus.
+
+**Refresh collections** lists stored collection IDs, gene queries, source loci
+and window counts. Select a row, then explicitly **Inspect stored collection**;
+the browser's **not checked** label is never a validity claim. Invalid/legacy
+records remain visible. Selecting another ID clears old validation and pending
+forget confirmation; project edits invalidate the displayed validation. The
+workspace scrolls on smaller screens. The [synthetic TSS tutorial](tutorial/08-15_tss_collection_gui.md)
+has ten learner steps from preview through explicit approval, validation and
+opening members. Repeated opening has focused application regressions;
+Forget/Undo, save/restart and stale-member editing remain separate contributor
+checks. Its retained Linux/X11 evidence names the exact source revision and
+does not establish merged-candidate, Windows/macOS or live TP73 acceptance.
+Prepared GenBank/XML references do not supply a tabular transcript index:
+extraction reports unavailable transcript enrichment, not zero transcripts.
+The workspace can still use transcript features already imported into the
+loaded locus; see the walkthrough's annotation-source distinction.

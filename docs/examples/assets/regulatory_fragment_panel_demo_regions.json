@@ -1,0 +1,137 @@
+{
+  "schema": "gentle.genomic_region_set.v1",
+  "set_id": "regulatory_panel_regions",
+  "label": "SERPINE1 regulatory panel tutorial regions",
+  "regions": [
+    {
+      "schema": "gentle.genomic_region_of_interest.v1",
+      "region_id": "candidate_a_roi",
+      "label": "Candidate A tutorial span",
+      "description": "Caller-selected span for deterministic panel-planning instruction; no regulatory activity is implied.",
+      "interval": {
+        "reference": {
+          "species_scientific_name": "Homo sapiens",
+          "taxon_id": 9606,
+          "assembly_name": "GRCh38",
+          "assembly_accession": "GCA_000001405.15",
+          "contig_name": "7",
+          "contig_accession": "NC_000007.14",
+          "contig_aliases": [
+            "chr7"
+          ]
+        },
+        "start_0based": 101121657,
+        "end_0based_exclusive": 101121807,
+        "strand": "plus",
+        "coordinate_convention": "zero_based_half_open"
+      },
+      "local_projection": {
+        "seq_id": "regulatory_panel_locus",
+        "sequence_sha256": "sha256:440d6b10a5affeda66358d2d4c102ebc0b0a8a68a79eedfcb94748a02b6297e0",
+        "source_genome_id": "GRCh38",
+        "anchor_start_1based": 101121158,
+        "anchor_end_1based": 101139263,
+        "anchor_strand": "plus",
+        "local_start_0based": 500,
+        "local_end_0based_exclusive": 650,
+        "local_strand": "plus",
+        "status": "current"
+      },
+      "purpose": "reporter_candidate",
+      "selection_method": "manual_span",
+      "created_at_unix_ms": 1706000000000,
+      "notes": [
+        "Tutorial selection only; this span is not classified as an enhancer or silencer."
+      ],
+      "identity_sha256": "sha256:d15ea6945985aaf1726a37f596c4c69ac80dcd3e0413eae61873ed94efe67a65",
+      "content_sha256": "sha256:aef5422887eaaf71a6167b0424f7c7f2f698eacbfa3fb937097e79f325ee1622"
+    },
+    {
+      "schema": "gentle.genomic_region_of_interest.v1",
+      "region_id": "minimal_promoter_roi",
+      "label": "Minimal promoter-context tutorial span",
+      "description": "Explicit promoter-context control used only to make the planned comparisons interpretable.",
+      "interval": {
+        "reference": {
+          "species_scientific_name": "Homo sapiens",
+          "taxon_id": 9606,
+          "assembly_name": "GRCh38",
+          "assembly_accession": "GCA_000001405.15",
+          "contig_name": "7",
+          "contig_accession": "NC_000007.14",
+          "contig_aliases": [
+            "chr7"
+          ]
+        },
+        "start_0based": 101124080,
+        "end_0based_exclusive": 101124200,
+        "strand": "plus",
+        "coordinate_convention": "zero_based_half_open"
+      },
+      "local_projection": {
+        "seq_id": "regulatory_panel_locus",
+        "sequence_sha256": "sha256:440d6b10a5affeda66358d2d4c102ebc0b0a8a68a79eedfcb94748a02b6297e0",
+        "source_genome_id": "GRCh38",
+        "anchor_start_1based": 101121158,
+        "anchor_end_1based": 101139263,
+        "anchor_strand": "plus",
+        "local_start_0based": 2923,
+        "local_end_0based_exclusive": 3043,
+        "local_strand": "plus",
+        "status": "current"
+      },
+      "purpose": "promoter_region",
+      "selection_method": "manual_span",
+      "created_at_unix_ms": 1706000000000,
+      "notes": [
+        "Tutorial control span; its presence does not establish endogenous promoter function."
+      ],
+      "identity_sha256": "sha256:4d218302cf70592ca2f1d1e15ced3760adb08876561fd46cce2a06e32bf03767",
+      "content_sha256": "sha256:9fd4b66c608c58cb427684dd8d03a7beacc15b7ae5b2808744554a95f53b712a"
+    },
+    {
+      "schema": "gentle.genomic_region_of_interest.v1",
+      "region_id": "partner_b_roi",
+      "label": "Partner B tutorial span",
+      "description": "Second caller-declared span used to make a partner-dependence comparison identifiable; no partnership is inferred.",
+      "interval": {
+        "reference": {
+          "species_scientific_name": "Homo sapiens",
+          "taxon_id": 9606,
+          "assembly_name": "GRCh38",
+          "assembly_accession": "GCA_000001405.15",
+          "contig_name": "7",
+          "contig_accession": "NC_000007.14",
+          "contig_aliases": [
+            "chr7"
+          ]
+        },
+        "start_0based": 101123899,
+        "end_0based_exclusive": 101124080,
+        "strand": "plus",
+        "coordinate_convention": "zero_based_half_open"
+      },
+      "local_projection": {
+        "seq_id": "regulatory_panel_locus",
+        "sequence_sha256": "sha256:440d6b10a5affeda66358d2d4c102ebc0b0a8a68a79eedfcb94748a02b6297e0",
+        "source_genome_id": "GRCh38",
+        "anchor_start_1based": 101121158,
+        "anchor_end_1based": 101139263,
+        "anchor_strand": "plus",
+        "local_start_0based": 2742,
+        "local_end_0based_exclusive": 2923,
+        "local_strand": "plus",
+        "status": "current"
+      },
+      "purpose": "candidate_cis_regulatory_region",
+      "selection_method": "manual_span",
+      "created_at_unix_ms": 1706000000000,
+      "notes": [
+        "Tutorial declaration only; GENtle does not infer this partner from sequence or annotation."
+      ],
+      "identity_sha256": "sha256:fe6e70a297c38d1e7bd9378b53857c36ff3a7a6c1b359a15aeb28e98f07c4821",
+      "content_sha256": "sha256:5f9e87a4d51ed75a828816cc08a195409581ddbbdb91e69bf8b86960dd87a3f5"
+    }
+  ],
+  "content_sha256": "sha256:855b8b5afb460b2f85774dbd4cbb426e34a9125c9b61aefaba4cdefd7e843220"
+}

@@ -1,7 +1,6 @@
 //! Reporter catalog validation, recommendation, and corpus export operations.
 
 use super::*;
-use sha1::{Digest, Sha1};
 
 const DEFAULT_REPORTER_CATALOG_PATH: &str = "assets/reporter_catalog.json";
 const DEFAULT_REPORTER_RECOMMENDATION_LIMIT: usize = 5;
@@ -144,6 +143,8 @@ impl GentleEngine {
         reporter_constraints: Option<ReporterConstraints>,
         reporter_backbone_seq_id: Option<&str>,
         reporter_backbone_load_path: Option<&str>,
+        reporter_backbone_catalog_id: Option<&str>,
+        helper_catalog_path: Option<&str>,
         reference_fragment_seq_id: Option<&str>,
         alternate_fragment_seq_id: Option<&str>,
         output_prefix: Option<&str>,
@@ -276,7 +277,9 @@ impl GentleEngine {
             &backbone_seq_id,
             backbone_load_path.as_deref(),
             reporter_backbone_seq_id.is_some(),
-        );
+            reporter_backbone_catalog_id,
+            helper_catalog_path,
+        )?;
         let mut port_bindings = vec![
             self.reporter_sequence_port_binding(
                 "reference_fragment_seq_id",
@@ -318,23 +321,48 @@ impl GentleEngine {
             );
         }
 
-        let commands = if luciferase_route_requested && selected_reporter.is_some() {
-            Self::reporter_construct_handoff_commands(
-                &candidate_set,
-                &candidate,
-                &extract_fragment_seq_id,
-                &reference_seq_id,
-                &alternate_seq_id,
-                &backbone,
-                &output_prefix,
-            )
-        } else {
-            vec![]
-        };
+        let exact_vector_verified = backbone
+            .validation
+            .as_ref()
+            .map(|report| report.status == ReporterVectorValidationStatus::Verified)
+            .unwrap_or(true);
+        if let Some(validation) = backbone.validation.as_ref() {
+            warnings.extend(validation.warnings.iter().cloned());
+            if validation.status != ReporterVectorValidationStatus::Verified {
+                warnings.push(format!(
+                    "Exact reporter vector '{}' is {}; construct commands remain disabled until the catalog identity is verified",
+                    validation.helper_catalog_id,
+                    match validation.status {
+                        ReporterVectorValidationStatus::Verified => "verified",
+                        ReporterVectorValidationStatus::Rejected => "rejected",
+                        ReporterVectorValidationStatus::Unavailable => "unavailable",
+                    }
+                ));
+            }
+        }
+
+        let commands =
+            if luciferase_route_requested && selected_reporter.is_some() && exact_vector_verified {
+                self.reporter_construct_handoff_commands(
+                    &candidate_set,
+                    &candidate,
+                    &extract_fragment_seq_id,
+                    &reference_seq_id,
+                    &alternate_seq_id,
+                    &backbone,
+                    &output_prefix,
+                )
+            } else {
+                vec![]
+            };
         let status = if !luciferase_route_requested {
             "no_compatible_macro_route"
         } else if selected_reporter.is_none() {
             "no_compatible_reporter"
+        } else if backbone.status == ReporterBackboneResolutionStatus::ExactIdentityRejected {
+            "backbone_validation_rejected"
+        } else if backbone.status == ReporterBackboneResolutionStatus::ExactIdentityUnavailable {
+            "backbone_validation_unavailable"
         } else if port_bindings
             .iter()
             .filter(|binding| binding.required)
@@ -486,8 +514,15 @@ impl GentleEngine {
         } else if !Self::is_valid_reporter_sequence(&record.sequence) {
             reasons.push("invalid_sequence_characters".to_string());
         }
-        if record.sequence_sha1.trim().is_empty() {
-            reasons.push("missing_sequence_sha1".to_string());
+        if record.sequence_sha1.trim().is_empty()
+            && record
+                .sequence_sha256
+                .as_deref()
+                .unwrap_or_default()
+                .trim()
+                .is_empty()
+        {
+            reasons.push("missing_sequence_checksum".to_string());
         }
         if !record.license_status.starts_with("open") {
             reasons.push("unclear_or_unaccepted_license_status".to_string());
@@ -532,7 +567,16 @@ impl GentleEngine {
             .map(|stop| matches!(stop, b"TAA" | b"TAG" | b"TGA"))
             .unwrap_or(false);
         let multiple_of_three = sequence.len().is_multiple_of(3);
-        let checksum = format!("{:x}", Sha1::digest(record.sequence.as_bytes()));
+        let checksum_sha256 = crate::digest_utils::sha256_hex_str(&record.sequence);
+        let checksum_ok = if let Some(expected) = record
+            .sequence_sha256
+            .as_deref()
+            .and_then(Self::normalize_reporter_sha256_checksum)
+        {
+            expected == checksum_sha256
+        } else {
+            Self::looks_like_legacy_sha1_checksum(&record.sequence_sha1)
+        };
         let mut forbidden_motif_hits = Vec::new();
         for motif in forbidden_motifs {
             if Self::contains_motif_any_strand(sequence, motif)? {
@@ -546,9 +590,24 @@ impl GentleEngine {
             ends_with_stop,
             multiple_of_three,
             likely_complete_cds: starts_with_atg && multiple_of_three && ends_with_stop,
-            checksum_ok: checksum == record.sequence_sha1.to_ascii_lowercase(),
+            checksum_ok,
             forbidden_motif_hits,
         })
+    }
+
+    fn normalize_reporter_sha256_checksum(raw: &str) -> Option<String> {
+        let trimmed = raw.trim();
+        let value = trimmed.strip_prefix("sha256:").unwrap_or(trimmed);
+        if value.len() == 64 && value.as_bytes().iter().all(u8::is_ascii_hexdigit) {
+            Some(value.to_ascii_lowercase())
+        } else {
+            None
+        }
+    }
+
+    fn looks_like_legacy_sha1_checksum(raw: &str) -> bool {
+        let trimmed = raw.trim();
+        trimmed.len() == 40 && trimmed.as_bytes().iter().all(u8::is_ascii_hexdigit)
     }
 
     fn normalize_reporter_sequence(sequence: &str) -> String {
@@ -879,7 +938,7 @@ impl GentleEngine {
             .join("_")
     }
 
-    fn read_promoter_reporter_candidate_set(
+    pub(crate) fn read_promoter_reporter_candidate_set(
         path: &str,
     ) -> Result<PromoterReporterCandidateSet, EngineError> {
         let text = std::fs::read_to_string(path).map_err(|e| EngineError {
@@ -894,30 +953,148 @@ impl GentleEngine {
         })
     }
 
-    fn resolve_reporter_backbone(
+    pub(crate) fn resolve_reporter_backbone(
         &self,
         seq_id: &str,
         load_path: Option<&str>,
         explicit_seq_id: bool,
-    ) -> ReporterBackboneResolution {
+        helper_catalog_id: Option<&str>,
+        helper_catalog_path: Option<&str>,
+    ) -> Result<ReporterBackboneResolution, EngineError> {
+        let exact_catalog_id = helper_catalog_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        if let Some(helper_catalog_id) = exact_catalog_id {
+            let (catalog, catalog_origin) = Self::open_helper_genome_catalog(helper_catalog_path)?;
+            let expectation = catalog
+                .helper_vector_sequence_expectation(helper_catalog_id)
+                .map_err(|message| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Could not resolve exact reporter vector '{}' from helper catalog '{}': {}",
+                        helper_catalog_id, catalog_origin, message
+                    ),
+                    cause_chain: vec![],
+                })?
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Helper catalog entry '{}' has no sequence_expectation and cannot gate exact reporter-vector identity",
+                        helper_catalog_id
+                    ),
+                    cause_chain: vec![],
+                })?;
+
+            let loaded_from_path = if self.state.sequences.contains_key(seq_id) {
+                None
+            } else if let Some(path) = load_path {
+                match crate::dna_sequence::load_from_file(path) {
+                    Ok(mut dna) => {
+                        Self::prepare_sequence(&mut dna);
+                        Some(Ok(dna))
+                    }
+                    Err(error) => Some(Err(format!(
+                        "Could not load reporter backbone path '{}' for exact validation: {}",
+                        path, error
+                    ))),
+                }
+            } else {
+                None
+            };
+            let validation = if let Some(dna) = self.state.sequences.get(seq_id) {
+                Self::validate_reporter_vector_sequence(
+                    seq_id,
+                    helper_catalog_id,
+                    &catalog_origin,
+                    &expectation,
+                    dna,
+                )
+            } else if let Some(Ok(dna)) = loaded_from_path.as_ref() {
+                Self::validate_reporter_vector_sequence(
+                    seq_id,
+                    helper_catalog_id,
+                    &catalog_origin,
+                    &expectation,
+                    dna,
+                )
+            } else {
+                let warning = loaded_from_path.and_then(Result::err).unwrap_or_else(|| {
+                    format!(
+                        "No loaded sequence or readable backbone path was available for '{}'",
+                        seq_id
+                    )
+                });
+                Self::unavailable_reporter_vector_validation(
+                    seq_id,
+                    helper_catalog_id,
+                    &catalog_origin,
+                    &expectation,
+                    warning,
+                )
+            };
+            let status = match validation.status {
+                ReporterVectorValidationStatus::Verified
+                    if self.state.sequences.contains_key(seq_id) =>
+                {
+                    ReporterBackboneResolutionStatus::ResolvedInState
+                }
+                ReporterVectorValidationStatus::Verified => {
+                    ReporterBackboneResolutionStatus::RequiresManualLoad
+                }
+                ReporterVectorValidationStatus::Rejected => {
+                    ReporterBackboneResolutionStatus::ExactIdentityRejected
+                }
+                ReporterVectorValidationStatus::Unavailable => {
+                    ReporterBackboneResolutionStatus::ExactIdentityUnavailable
+                }
+            };
+            let note = match status {
+                ReporterBackboneResolutionStatus::ResolvedInState => {
+                    "Exact reporter-vector identity is verified for the sequence in project state."
+                }
+                ReporterBackboneResolutionStatus::RequiresManualLoad => {
+                    "Exact reporter-vector identity is verified at the supplied path; load it before materialization."
+                }
+                ReporterBackboneResolutionStatus::ExactIdentityRejected => {
+                    "The supplied sequence failed exact reporter-vector identity validation; construct commands are disabled."
+                }
+                ReporterBackboneResolutionStatus::ExactIdentityUnavailable => {
+                    "Exact reporter-vector identity could not be evaluated; construct commands are disabled."
+                }
+                ReporterBackboneResolutionStatus::UnresolvedSeqIdProvided => unreachable!(),
+            };
+            return Ok(ReporterBackboneResolution {
+                seq_id: seq_id.to_string(),
+                load_path: load_path.map(ToOwned::to_owned),
+                status,
+                note: note.to_string(),
+                helper_catalog_id: Some(helper_catalog_id.to_string()),
+                validation: Some(validation),
+            });
+        }
+
         if self.state.sequences.contains_key(seq_id) {
-            return ReporterBackboneResolution {
+            return Ok(ReporterBackboneResolution {
                 seq_id: seq_id.to_string(),
                 load_path: load_path.map(ToOwned::to_owned),
                 status: ReporterBackboneResolutionStatus::ResolvedInState,
                 note: "Reporter backbone sequence is already loaded in project state.".to_string(),
-            };
+                helper_catalog_id: None,
+                validation: None,
+            });
         }
         if load_path.is_some() {
-            return ReporterBackboneResolution {
+            return Ok(ReporterBackboneResolution {
                 seq_id: seq_id.to_string(),
                 load_path: load_path.map(ToOwned::to_owned),
                 status: ReporterBackboneResolutionStatus::RequiresManualLoad,
                 note: "Reporter backbone must be loaded before running the macro template."
                     .to_string(),
-            };
+                helper_catalog_id: None,
+                validation: None,
+            });
         }
-        ReporterBackboneResolution {
+        Ok(ReporterBackboneResolution {
             seq_id: seq_id.to_string(),
             load_path: None,
             status: ReporterBackboneResolutionStatus::UnresolvedSeqIdProvided,
@@ -927,7 +1104,346 @@ impl GentleEngine {
             } else {
                 "Reporter backbone seq_id is not present and no load path was provided.".to_string()
             },
+            helper_catalog_id: None,
+            validation: None,
+        })
+    }
+
+    pub(crate) fn validate_reporter_vector_sequence(
+        seq_id: &str,
+        helper_catalog_id: &str,
+        helper_catalog_path: &str,
+        expectation: &HelperVectorSequenceExpectation,
+        dna: &DNAsequence,
+    ) -> ReporterVectorValidationReport {
+        let observed_accession = dna.accession().map(str::to_string);
+        let observed_version = dna.version().map(str::to_string);
+        let observed_identity = observed_version
+            .as_deref()
+            .or(observed_accession.as_deref())
+            .unwrap_or("missing");
+        let observed_topology = if dna.is_circular() {
+            "circular"
+        } else {
+            "linear"
+        };
+        let mut checks = vec![
+            ReporterVectorValidationCheck {
+                check_id: "accession_version".to_string(),
+                required: true,
+                passed: observed_identity.eq_ignore_ascii_case(&expectation.accession_version),
+                expected: expectation.accession_version.clone(),
+                observed: observed_identity.to_string(),
+                detail: "The versioned GenBank identity must match exactly.".to_string(),
+            },
+            ReporterVectorValidationCheck {
+                check_id: "length_bp".to_string(),
+                required: true,
+                passed: dna.len() == expectation.expected_length_bp,
+                expected: expectation.expected_length_bp.to_string(),
+                observed: dna.len().to_string(),
+                detail: "Sequence length is catalog-owned exact identity evidence.".to_string(),
+            },
+            ReporterVectorValidationCheck {
+                check_id: "topology".to_string(),
+                required: true,
+                passed: observed_topology.eq_ignore_ascii_case(&expectation.expected_topology),
+                expected: expectation.expected_topology.clone(),
+                observed: observed_topology.to_string(),
+                detail: "Reporter-vector topology must match the catalog expectation.".to_string(),
+            },
+        ];
+
+        let mut observed_luc2_start_1based = None;
+        let mut observed_multiple_cloning_region = None;
+        for required_feature in &expectation.required_features {
+            let matched = Self::find_reporter_vector_feature(dna, required_feature);
+            let expected_interval = Self::format_expected_feature_interval(required_feature);
+            let (passed, observed, detail) = if let Some((start_1based, end_1based, feature_text)) =
+                matched
+            {
+                let coordinates_match = required_feature
+                    .expected_start_1based
+                    .is_none_or(|expected| expected == start_1based)
+                    && required_feature
+                        .expected_end_1based
+                        .is_none_or(|expected| expected == end_1based);
+                if required_feature.id.eq_ignore_ascii_case("luc2") {
+                    observed_luc2_start_1based = Some(start_1based);
+                }
+                if required_feature
+                    .id
+                    .eq_ignore_ascii_case("multiple_cloning_region")
+                {
+                    observed_multiple_cloning_region =
+                        Some(format!("{}..{}", start_1based, end_1based));
+                }
+                (
+                    coordinates_match,
+                    format!("{}..{} ({})", start_1based, end_1based, feature_text),
+                    if coordinates_match {
+                        "Required annotation and boundary matched.".to_string()
+                    } else {
+                        "Required annotation matched, but its boundary differs.".to_string()
+                    },
+                )
+            } else {
+                (
+                    false,
+                    "missing".to_string(),
+                    "No annotated feature matched the required kind/qualifier terms.".to_string(),
+                )
+            };
+            checks.push(ReporterVectorValidationCheck {
+                check_id: format!("feature:{}", required_feature.id),
+                required: true,
+                passed,
+                expected: expected_interval,
+                observed,
+                detail,
+            });
         }
+
+        let mut site_counts: BTreeMap<String, usize> = BTreeMap::new();
+        for site in dna.restriction_enzyme_sites() {
+            *site_counts.entry(site.enzyme.name.clone()).or_default() += 1;
+        }
+        let unique_restriction_sites = site_counts
+            .into_iter()
+            .filter_map(|(name, count)| (count == 1).then_some(name))
+            .collect::<Vec<_>>();
+        checks.push(ReporterVectorValidationCheck {
+            check_id: "derived_unique_restriction_sites".to_string(),
+            required: false,
+            passed: true,
+            expected: "derived from the imported sequence and active enzyme catalog".to_string(),
+            observed: unique_restriction_sites.join(","),
+            detail:
+                "This inventory is reported for cloning review and is not an identity assertion."
+                    .to_string(),
+        });
+
+        let status = if checks
+            .iter()
+            .filter(|check| check.required)
+            .all(|check| check.passed)
+        {
+            ReporterVectorValidationStatus::Verified
+        } else {
+            ReporterVectorValidationStatus::Rejected
+        };
+        let expected_luc2_start_1based = expectation
+            .required_features
+            .iter()
+            .find(|feature| feature.id.eq_ignore_ascii_case("luc2"))
+            .and_then(|feature| feature.expected_start_1based);
+        let expected_multiple_cloning_region = expectation
+            .required_features
+            .iter()
+            .find(|feature| feature.id.eq_ignore_ascii_case("multiple_cloning_region"))
+            .map(Self::format_expected_feature_interval);
+        ReporterVectorValidationReport {
+            schema: REPORTER_VECTOR_VALIDATION_SCHEMA.to_string(),
+            helper_catalog_id: helper_catalog_id.to_string(),
+            helper_catalog_path: helper_catalog_path.to_string(),
+            seq_id: seq_id.to_string(),
+            status,
+            expected_accession_version: expectation.accession_version.clone(),
+            observed_accession,
+            observed_version,
+            expected_length_bp: expectation.expected_length_bp,
+            observed_length_bp: Some(dna.len()),
+            expected_topology: expectation.expected_topology.clone(),
+            observed_topology: Some(observed_topology.to_string()),
+            expected_luc2_start_1based,
+            observed_luc2_start_1based,
+            expected_multiple_cloning_region,
+            observed_multiple_cloning_region,
+            unique_restriction_sites,
+            restriction_site_equivalence_notes: expectation
+                .restriction_site_equivalences
+                .iter()
+                .map(|row| {
+                    format!(
+                        "{} / {}: {}",
+                        row.detected_enzyme, row.equivalent_enzyme, row.note
+                    )
+                })
+                .collect(),
+            checks,
+            warnings: vec![
+                "Exact sequence identity validation supports construct planning; it does not verify physical stock identity."
+                    .to_string(),
+            ],
+        }
+    }
+
+    pub(crate) fn validate_known_helper_vector_accession(
+        &self,
+        seq_id: &str,
+        accession: &str,
+    ) -> Result<Option<ReporterVectorValidationReport>, EngineError> {
+        let (catalog, catalog_origin) = Self::open_helper_genome_catalog(None)?;
+        let Some((helper_catalog_id, expectation)) =
+            catalog.helper_vector_sequence_expectation_for_accession(accession)
+        else {
+            return Ok(None);
+        };
+        let dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Fetched helper-vector sequence '{}' disappeared before validation",
+                    seq_id
+                ),
+                cause_chain: vec![],
+            })?;
+        Ok(Some(Self::validate_reporter_vector_sequence(
+            seq_id,
+            &helper_catalog_id,
+            &catalog_origin,
+            &expectation,
+            dna,
+        )))
+    }
+
+    fn unavailable_reporter_vector_validation(
+        seq_id: &str,
+        helper_catalog_id: &str,
+        helper_catalog_path: &str,
+        expectation: &HelperVectorSequenceExpectation,
+        warning: String,
+    ) -> ReporterVectorValidationReport {
+        let mut checks = vec![
+            ("accession_version", expectation.accession_version.clone()),
+            ("length_bp", expectation.expected_length_bp.to_string()),
+            ("topology", expectation.expected_topology.clone()),
+        ]
+        .into_iter()
+        .map(|(check_id, expected)| ReporterVectorValidationCheck {
+            check_id: check_id.to_string(),
+            required: true,
+            passed: false,
+            expected,
+            observed: "unavailable".to_string(),
+            detail: "No sequence was available for this required check.".to_string(),
+        })
+        .collect::<Vec<_>>();
+        checks.extend(expectation.required_features.iter().map(|feature| {
+            ReporterVectorValidationCheck {
+                check_id: format!("feature:{}", feature.id),
+                required: true,
+                passed: false,
+                expected: Self::format_expected_feature_interval(feature),
+                observed: "unavailable".to_string(),
+                detail: "No sequence annotation was available for this required check.".to_string(),
+            }
+        }));
+        ReporterVectorValidationReport {
+            schema: REPORTER_VECTOR_VALIDATION_SCHEMA.to_string(),
+            helper_catalog_id: helper_catalog_id.to_string(),
+            helper_catalog_path: helper_catalog_path.to_string(),
+            seq_id: seq_id.to_string(),
+            status: ReporterVectorValidationStatus::Unavailable,
+            expected_accession_version: expectation.accession_version.clone(),
+            expected_length_bp: expectation.expected_length_bp,
+            expected_topology: expectation.expected_topology.clone(),
+            expected_luc2_start_1based: expectation
+                .required_features
+                .iter()
+                .find(|feature| feature.id.eq_ignore_ascii_case("luc2"))
+                .and_then(|feature| feature.expected_start_1based),
+            expected_multiple_cloning_region: expectation
+                .required_features
+                .iter()
+                .find(|feature| feature.id.eq_ignore_ascii_case("multiple_cloning_region"))
+                .map(Self::format_expected_feature_interval),
+            restriction_site_equivalence_notes: expectation
+                .restriction_site_equivalences
+                .iter()
+                .map(|row| {
+                    format!(
+                        "{} / {}: {}",
+                        row.detected_enzyme, row.equivalent_enzyme, row.note
+                    )
+                })
+                .collect(),
+            checks,
+            warnings: vec![warning],
+            ..ReporterVectorValidationReport::default()
+        }
+    }
+
+    pub(crate) fn find_reporter_vector_feature(
+        dna: &DNAsequence,
+        expectation: &HelperVectorRequiredFeatureExpectation,
+    ) -> Option<(usize, usize, String)> {
+        let mut matches = dna
+            .features()
+            .iter()
+            .filter_map(|feature| {
+                let kind = feature.kind.to_string();
+                let kind_matches = expectation.feature_kinds.is_empty()
+                    || expectation
+                        .feature_kinds
+                        .iter()
+                        .any(|expected| kind.eq_ignore_ascii_case(expected));
+                if !kind_matches {
+                    return None;
+                }
+                let mut text_parts = vec![kind.clone()];
+                for (key, value) in &feature.qualifiers {
+                    let key = key.to_string();
+                    if matches!(key.as_str(), "label" | "gene" | "product" | "note") {
+                        text_parts.push(match value.as_deref() {
+                            Some(value) => format!("{key}={value}"),
+                            None => key,
+                        });
+                    }
+                }
+                let text = text_parts.join(" ");
+                let lower = text.to_ascii_lowercase();
+                let terms_match = expectation.qualifier_terms.is_empty()
+                    || expectation
+                        .qualifier_terms
+                        .iter()
+                        .any(|term| lower.contains(&term.trim().to_ascii_lowercase()));
+                if !terms_match {
+                    return None;
+                }
+                let (start, end) = feature.location.find_bounds().ok()?;
+                let start = usize::try_from(start).ok()?.saturating_add(1);
+                let end = usize::try_from(end).ok()?;
+                Some((start, end, text))
+            })
+            .collect::<Vec<_>>();
+        matches.sort_by(|left, right| {
+            (left.0, left.1, left.2.as_str()).cmp(&(right.0, right.1, right.2.as_str()))
+        });
+        matches.into_iter().next()
+    }
+
+    fn format_expected_feature_interval(
+        expectation: &HelperVectorRequiredFeatureExpectation,
+    ) -> String {
+        let interval = match (
+            expectation.expected_start_1based,
+            expectation.expected_end_1based,
+        ) {
+            (Some(start), Some(end)) => format!("{}..{}", start, end),
+            (Some(start), None) => format!("start={}", start),
+            (None, Some(end)) => format!("end={}", end),
+            (None, None) => "annotated feature".to_string(),
+        };
+        format!(
+            "{} [{}; terms={}]",
+            interval,
+            expectation.feature_kinds.join("|"),
+            expectation.qualifier_terms.join("|")
+        )
     }
 
     fn reporter_sequence_port_binding(
@@ -977,6 +1493,8 @@ impl GentleEngine {
                     PortBindingStatus::Missing
                 }
             }
+            ReporterBackboneResolutionStatus::ExactIdentityUnavailable
+            | ReporterBackboneResolutionStatus::ExactIdentityRejected => PortBindingStatus::Missing,
         };
         ReporterConstructPortBinding {
             port_id: "reporter_backbone_seq_id".to_string(),
@@ -988,6 +1506,7 @@ impl GentleEngine {
     }
 
     fn reporter_construct_handoff_commands(
+        &self,
         candidate_set: &PromoterReporterCandidateSet,
         candidate: &PromoterReporterFragmentCandidate,
         extract_fragment_seq_id: &str,
@@ -1001,14 +1520,17 @@ impl GentleEngine {
             command_kind: "op".to_string(),
             command: format!(
                 "op {}",
-                serde_json::json!({
-                    "ExtractRegion": {
-                        "input": candidate_set.seq_id,
-                        "from": candidate.start_0based,
-                        "to": candidate.end_0based_exclusive,
-                        "output_id": extract_fragment_seq_id,
-                    }
-                })
+                crate::engine_shell::quote_shell_arg(
+                    &serde_json::json!({
+                        "ExtractRegion": {
+                            "input": candidate_set.seq_id,
+                            "from": candidate.start_0based,
+                            "to": candidate.end_0based_exclusive,
+                            "output_id": extract_fragment_seq_id,
+                        }
+                    })
+                    .to_string()
+                )
             ),
             mutating: true,
             note: "Creates the selected promoter fragment sequence before allele materialization."
@@ -1019,36 +1541,61 @@ impl GentleEngine {
             command_kind: "op".to_string(),
             command: format!(
                 "op {}",
-                serde_json::json!({
-                    "MaterializeVariantAllele": {
-                        "input": extract_fragment_seq_id,
-                        "variant_label_or_id": candidate_set.variant_label,
-                        "allele": "reference",
-                        "output_id": reference_seq_id,
-                    }
-                })
+                crate::engine_shell::quote_shell_arg(
+                    &serde_json::json!({
+                        "MaterializeVariantAllele": {
+                            "input": extract_fragment_seq_id,
+                            "variant_label_or_id": candidate_set.variant_label,
+                            "allele": "reference",
+                            "output_id": reference_seq_id,
+                        }
+                    })
+                    .to_string()
+                )
             ),
             mutating: true,
             note: "Creates the reference-allele promoter insert for the macro template."
                 .to_string(),
         });
+        let alternate_allele = self
+            .materialize_variant_allele_sequence(
+                &candidate_set.seq_id,
+                Some(&candidate_set.variant_label),
+                VariantAlleleChoice::Alternate,
+                None,
+                None,
+            )
+            .ok()
+            .and_then(|(_, dna)| {
+                let (_, feature) =
+                    Self::select_variant_feature(&dna, Some(&candidate_set.variant_label)).ok()?;
+                Self::feature_qualifier_text(feature, "materialized_base")
+            });
+        let mut alternate_command = serde_json::json!({
+            "MaterializeVariantAllele": {
+                "input": extract_fragment_seq_id,
+                "variant_label_or_id": candidate_set.variant_label,
+                "allele": "alternate",
+                "output_id": alternate_seq_id,
+            }
+        });
+        if let Some(alternate) = &alternate_allele {
+            alternate_command["MaterializeVariantAllele"]["alternate_allele"] =
+                serde_json::json!(alternate);
+        }
         commands.push(ReporterConstructHandoffCommand {
             label: "Materialize alternate allele fragment".to_string(),
             command_kind: "op".to_string(),
             command: format!(
                 "op {}",
-                serde_json::json!({
-                    "MaterializeVariantAllele": {
-                        "input": extract_fragment_seq_id,
-                        "variant_label_or_id": candidate_set.variant_label,
-                        "allele": "alternate",
-                        "output_id": alternate_seq_id,
-                    }
-                })
+                crate::engine_shell::quote_shell_arg(&alternate_command.to_string())
             ),
             mutating: true,
-            note: "Creates the alternate-allele promoter insert for the macro template."
-                .to_string(),
+            note: if let Some(alternate) = alternate_allele {
+                format!("Creates the alternate-allele promoter insert with the single genomic-forward base '{alternate}' validated against the loaded source marker; the engine revalidates it at execution.")
+            } else {
+                "Review required: load and verify the source variant, choose one reported A/C/G/T alternate distinct from the reference, and add alternate_allele before execution. No alternate has been selected by this handoff.".to_string()
+            },
         });
         if backbone.status == ReporterBackboneResolutionStatus::RequiresManualLoad
             && let Some(load_path) = backbone.load_path.as_deref()
@@ -1058,12 +1605,15 @@ impl GentleEngine {
                 command_kind: "op".to_string(),
                 command: format!(
                     "op {}",
-                    serde_json::json!({
-                        "LoadFile": {
-                            "path": load_path,
-                            "as_id": backbone.seq_id,
-                        }
-                    })
+                    crate::engine_shell::quote_shell_arg(
+                        &serde_json::json!({
+                            "LoadFile": {
+                                "path": load_path,
+                                "as_id": backbone.seq_id,
+                            }
+                        })
+                        .to_string()
+                    )
                 ),
                 mutating: true,
                 note: "Loads the promoterless luciferase reporter backbone into project state."
@@ -1129,7 +1679,8 @@ mod tests {
             id: id.to_string(),
             name: id.to_string(),
             reporter_class: "fluorescent_protein".to_string(),
-            sequence_sha1: format!("{:x}", Sha1::digest(sequence.as_bytes())),
+            sequence_sha1: String::new(),
+            sequence_sha256: Some(crate::digest_utils::sha256_hex_str(&sequence)),
             sequence,
             source_refs: vec![ReporterSourceRef {
                 source_id: "test".to_string(),
@@ -1175,6 +1726,217 @@ mod tests {
         "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/promoter_reporter_candidates.json"
     }
 
+    fn synthetic_mcs_expectation() -> HelperVectorSequenceExpectation {
+        HelperVectorSequenceExpectation {
+            schema: crate::genomes::HELPER_VECTOR_SEQUENCE_EXPECTATION_SCHEMA.to_string(),
+            provider: "GENtle tests".to_string(),
+            product_name: "synthetic MCS backbone".to_string(),
+            catalog_number: "SYNTH-MCS-1".to_string(),
+            accession_version: "GENTLE_SYNTHETIC_MCS.1".to_string(),
+            expected_length_bp: 240,
+            expected_topology: "circular".to_string(),
+            required_features: vec![
+                HelperVectorRequiredFeatureExpectation {
+                    id: "multiple_cloning_region".to_string(),
+                    feature_kinds: vec!["misc_feature".to_string()],
+                    qualifier_terms: vec!["multiple cloning site region".to_string()],
+                    expected_start_1based: Some(1),
+                    expected_end_1based: Some(70),
+                },
+                HelperVectorRequiredFeatureExpectation {
+                    id: "luc2".to_string(),
+                    feature_kinds: vec!["CDS".to_string()],
+                    qualifier_terms: vec!["luciferase luc2 marker".to_string()],
+                    expected_start_1based: Some(100),
+                    expected_end_1based: Some(180),
+                },
+            ],
+            restriction_site_equivalences: vec![
+                crate::genomes::HelperVectorRestrictionSiteEquivalence {
+                    detected_enzyme: "KpnI".to_string(),
+                    equivalent_enzyme: "Acc65I".to_string(),
+                    note: "Synthetic fixture uses the shared recognition site.".to_string(),
+                },
+                crate::genomes::HelperVectorRestrictionSiteEquivalence {
+                    detected_enzyme: "SacI".to_string(),
+                    equivalent_enzyme: "EcoICRI".to_string(),
+                    note: "Synthetic fixture uses the shared recognition site.".to_string(),
+                },
+            ],
+            provenance: vec![crate::genomes::HelperVectorSequenceExpectationProvenance {
+                source_id: "synthetic-test-fixture".to_string(),
+                source_url: "test_files/fixtures/reporter_vectors/synthetic_mcs_backbone.gb"
+                    .to_string(),
+                asserted_on: "2026-08-27".to_string(),
+                note: "Repository-owned deterministic fixture.".to_string(),
+            }],
+            ..HelperVectorSequenceExpectation::default()
+        }
+    }
+
+    #[test]
+    fn pgl4_catalog_entry_carries_exact_versioned_identity() {
+        let catalog = GenomeCatalog::from_json_file("assets/helper_genomes.json")
+            .expect("load helper catalog");
+        let expectation = catalog
+            .helper_vector_sequence_expectation("Reporter Promega Luciferase AY738222 (online)")
+            .expect("resolve pGL4 helper")
+            .expect("pGL4 exact expectation");
+
+        assert_eq!(expectation.provider, "Promega");
+        assert_eq!(expectation.product_name, "pGL4.10[luc2]");
+        assert_eq!(expectation.catalog_number, "E6651");
+        assert_eq!(expectation.accession_version, "AY738222.1");
+        assert_eq!(expectation.expected_length_bp, 4242);
+        assert_eq!(expectation.expected_topology, "circular");
+        assert!(
+            expectation
+                .required_features
+                .iter()
+                .any(|feature| feature.id == "luc2" && feature.expected_start_1based == Some(100))
+        );
+    }
+
+    #[test]
+    fn synthetic_mcs_fixture_validates_against_its_own_identity() {
+        let mut dna = crate::dna_sequence::load_from_file(
+            "test_files/fixtures/reporter_vectors/synthetic_mcs_backbone.gb",
+        )
+        .expect("load synthetic MCS fixture");
+        GentleEngine::prepare_sequence(&mut dna);
+        let report = GentleEngine::validate_reporter_vector_sequence(
+            "synthetic_mcs",
+            "Synthetic MCS fixture",
+            "inline-test-expectation",
+            &synthetic_mcs_expectation(),
+            &dna,
+        );
+
+        assert_eq!(report.status, ReporterVectorValidationStatus::Verified);
+        assert_eq!(report.observed_luc2_start_1based, Some(100));
+        assert_eq!(
+            report.observed_multiple_cloning_region.as_deref(),
+            Some("1..70")
+        );
+        assert!(
+            report
+                .unique_restriction_sites
+                .contains(&"KpnI".to_string())
+        );
+        assert!(
+            report
+                .unique_restriction_sites
+                .contains(&"SacI".to_string())
+        );
+        assert!(
+            !report
+                .unique_restriction_sites
+                .contains(&"Acc65I".to_string())
+        );
+        assert!(
+            !report
+                .unique_restriction_sites
+                .contains(&"EcoICRI".to_string())
+        );
+        assert!(
+            report
+                .restriction_site_equivalence_notes
+                .iter()
+                .any(|note| note.contains("KpnI / Acc65I"))
+        );
+        assert!(
+            report
+                .restriction_site_equivalence_notes
+                .iter()
+                .any(|note| note.contains("SacI / EcoICRI"))
+        );
+    }
+
+    #[test]
+    fn synthetic_tutorial_backbone_is_rejected_as_exact_pgl4() {
+        let engine = GentleEngine::new();
+        let plan = engine
+            .plan_reporter_construct_handoff(
+                vkorc1_candidate_set_path(),
+                None,
+                None,
+                None,
+                Some("claimed_pgl4"),
+                Some(DEFAULT_REPORTER_BACKBONE_LOAD_PATH),
+                Some("Reporter Promega Luciferase AY738222 (online)"),
+                Some("assets/helper_genomes.json"),
+                None,
+                None,
+                None,
+            )
+            .expect("return a fail-closed handoff report");
+
+        assert_eq!(plan.status, "backbone_validation_rejected");
+        assert_eq!(
+            plan.backbone.status,
+            ReporterBackboneResolutionStatus::ExactIdentityRejected
+        );
+        let validation = plan.backbone.validation.expect("validation report");
+        assert_eq!(validation.status, ReporterVectorValidationStatus::Rejected);
+        assert_eq!(validation.expected_length_bp, 4242);
+        assert_eq!(validation.observed_length_bp, Some(3301));
+        assert!(plan.commands.is_empty());
+    }
+
+    #[test]
+    fn exact_pgl4_request_without_sequence_is_unavailable_and_emits_no_commands() {
+        let td = tempdir().expect("tempdir");
+        let missing = td.path().join("not-downloaded.gb");
+        let engine = GentleEngine::new();
+        let plan = engine
+            .plan_reporter_construct_handoff(
+                vkorc1_candidate_set_path(),
+                None,
+                None,
+                None,
+                Some("pgl4_exact"),
+                Some(&missing.to_string_lossy()),
+                Some("Reporter Promega Luciferase AY738222 (online)"),
+                Some("assets/helper_genomes.json"),
+                None,
+                None,
+                None,
+            )
+            .expect("return unavailable exact-vector report");
+
+        assert_eq!(plan.status, "backbone_validation_unavailable");
+        assert_eq!(
+            plan.backbone.status,
+            ReporterBackboneResolutionStatus::ExactIdentityUnavailable
+        );
+        assert!(plan.commands.is_empty());
+    }
+
+    #[test]
+    fn real_pgl4_genbank_validation_is_online_opt_in() {
+        if std::env::var_os("GENTLE_TEST_ONLINE").is_none() {
+            return;
+        }
+        let mut engine = GentleEngine::new();
+        let result = engine
+            .apply(Operation::FetchGenBankAccession {
+                accession: "AY738222.1".to_string(),
+                as_id: Some("pgl4_10_luc2".to_string()),
+            })
+            .expect("fetch and validate pGL4.10");
+        let report = result
+            .reporter_vector_validation
+            .expect("fetch-time exact-vector validation");
+
+        assert_eq!(report.status, ReporterVectorValidationStatus::Verified);
+        assert_eq!(report.observed_length_bp, Some(4242));
+        assert_eq!(report.observed_luc2_start_1based, Some(100));
+        assert_eq!(
+            report.observed_multiple_cloning_region.as_deref(),
+            Some("1..70")
+        );
+    }
+
     #[test]
     fn reporter_catalog_quarantines_unclear_license_and_duplicates() {
         let first = test_record("r1", "ATGAAATAA");
@@ -1199,7 +1961,7 @@ mod tests {
     #[test]
     fn reporter_annotation_reports_checksum_and_orf_sanity() {
         let mut record = test_record("r1", "ATGAAATAA");
-        record.sequence_sha1 = "bad".to_string();
+        record.sequence_sha256 = Some("bad".to_string());
         let annotation =
             GentleEngine::annotate_reporter_record(&record, &[]).expect("annotate reporter");
         assert_eq!(annotation.length_bp, 9);
@@ -1295,6 +2057,8 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
+                None,
             )
             .expect("plan reporter construct handoff");
         assert_eq!(plan.schema, REPORTER_CONSTRUCT_HANDOFF_SCHEMA);
@@ -1329,12 +2093,202 @@ mod tests {
     }
 
     #[test]
+    fn reporter_construct_handoff_binds_unique_loaded_alternates_or_requires_review() {
+        // Hand-crafted candidate/variant/backbone identities, not a real reporter study.
+        let candidate_set = PromoterReporterCandidateSet {
+            seq_id: "synthetic_source".to_string(),
+            variant_label: "rsSynthetic".to_string(),
+            ..PromoterReporterCandidateSet::default()
+        };
+        let candidate = PromoterReporterFragmentCandidate {
+            start_0based: 0,
+            end_0based_exclusive: 5,
+            length_bp: 5,
+            ..PromoterReporterFragmentCandidate::default()
+        };
+        let backbone = ReporterBackboneResolution::default();
+        for (raw_alternate, reference_check, assembly_check, loaded, expected) in [
+            ("T", "match", "match", true, Some("T")),
+            ("t", "match", "match", true, Some("T")),
+            ("A,G,T", "match", "match", true, None),
+            ("", "match", "match", true, None),
+            ("N", "match", "match", true, None),
+            ("TT", "match", "match", true, None),
+            ("C", "match", "match", true, None),
+            ("T", "mismatch", "match", true, None),
+            ("T", "match", "unavailable", true, None),
+            ("T", "match", "match", false, None),
+        ] {
+            let mut dna = DNAsequence::from_sequence("ACCGT").expect("synthetic DNA");
+            dna.features_mut().push(gb_io::seq::Feature {
+                kind: "variation".into(),
+                location: gb_io::seq::Location::simple_range(2, 3),
+                qualifiers: vec![
+                    ("label".into(), Some("rsSynthetic".to_string())),
+                    ("vcf_ref".into(), Some("C".to_string())),
+                    ("vcf_alt".into(), Some(raw_alternate.to_string())),
+                    (
+                        "dbsnp_reference_check".into(),
+                        Some(reference_check.to_string()),
+                    ),
+                    (
+                        "dbsnp_assembly_check".into(),
+                        Some(assembly_check.to_string()),
+                    ),
+                ],
+            });
+            let mut state = ProjectState::default();
+            if loaded {
+                state.sequences.insert(candidate_set.seq_id.clone(), dna);
+            }
+            let engine = GentleEngine::from_state(state);
+            let before = serde_json::to_value(engine.state()).unwrap();
+            let commands = engine.reporter_construct_handoff_commands(
+                &candidate_set,
+                &candidate,
+                "extracted",
+                "reference",
+                "alternate",
+                &backbone,
+                "synthetic_pair",
+            );
+            let command = commands
+                .iter()
+                .find(|command| command.label == "Materialize alternate allele fragment")
+                .expect("alternate handoff");
+            let crate::engine_shell::ShellCommand::Op { payload } =
+                crate::engine_shell::parse_shell_line(&command.command).expect("shared parser")
+            else {
+                panic!("handoff must use the shared operation route");
+            };
+            let Operation::MaterializeVariantAllele {
+                allele,
+                alternate_allele,
+                ..
+            } = serde_json::from_str::<Operation>(&payload).expect("typed operation")
+            else {
+                panic!("expected allele materialization");
+            };
+            assert!(matches!(allele, VariantAlleleChoice::Alternate));
+            assert_eq!(
+                alternate_allele.as_deref(),
+                expected,
+                "{raw_alternate}/{reference_check}/{loaded}"
+            );
+            assert_eq!(
+                command.note.starts_with("Review required:"),
+                expected.is_none()
+            );
+            assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+            assert_eq!(engine.journal_len(), 0);
+        }
+    }
+
+    #[test]
+    fn reporter_construct_handoff_operation_commands_round_trip_and_execute() {
+        // Hand-crafted DNA/variant and temporary FASTA; not a real reporter study.
+        let temp = tempdir().expect("temporary synthetic input directory");
+        let load_path = temp.path().join("backbone's insert.fa");
+        std::fs::write(&load_path, b">synthetic_backbone\nATGAAATAA\n")
+            .expect("write synthetic FASTA");
+        let load_path = load_path
+            .to_str()
+            .expect("UTF-8 temporary path")
+            .to_string();
+        let candidate_set = PromoterReporterCandidateSet {
+            seq_id: "synthetic source's DNA".to_string(),
+            variant_label: "rsSynthetic's".to_string(),
+            ..PromoterReporterCandidateSet::default()
+        };
+        let candidate = PromoterReporterFragmentCandidate {
+            start_0based: 0,
+            end_0based_exclusive: 5,
+            length_bp: 5,
+            ..PromoterReporterFragmentCandidate::default()
+        };
+        let backbone = ReporterBackboneResolution {
+            seq_id: "synthetic backbone's DNA".to_string(),
+            load_path: Some(load_path.clone()),
+            status: ReporterBackboneResolutionStatus::RequiresManualLoad,
+            ..ReporterBackboneResolution::default()
+        };
+        let mut dna = DNAsequence::from_sequence("ACCGT").expect("synthetic DNA");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "variation".into(),
+            location: gb_io::seq::Location::simple_range(2, 3),
+            qualifiers: vec![
+                ("label".into(), Some(candidate_set.variant_label.clone())),
+                ("vcf_ref".into(), Some("C".to_string())),
+                ("vcf_alt".into(), Some("T".to_string())),
+            ],
+        });
+        let mut state = ProjectState::default();
+        state.sequences.insert(candidate_set.seq_id.clone(), dna);
+        let mut engine = GentleEngine::from_state(state);
+        let before = serde_json::to_value(engine.state()).unwrap();
+        let extract_id = "fragment's insert";
+        let reference_id = "reference \"C\"";
+        let alternate_id = r"alternate \ T";
+        let commands = engine.reporter_construct_handoff_commands(
+            &candidate_set,
+            &candidate,
+            extract_id,
+            reference_id,
+            alternate_id,
+            &backbone,
+            "synthetic pair",
+        );
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+        let operations: Vec<_> = commands
+            .iter()
+            .filter(|command| command.command_kind == "op")
+            .map(|command| {
+                let parsed = crate::engine_shell::parse_shell_line(&command.command)
+                    .expect("parse generated operation command");
+                let crate::engine_shell::ShellCommand::Op { payload } = &parsed else {
+                    panic!("expected shared operation route");
+                };
+                let typed = serde_json::from_str::<Operation>(payload)
+                    .expect("quoted JSON survives the shared tokenizer");
+                (parsed, typed)
+            })
+            .collect();
+        assert_eq!(operations.len(), 4);
+        let Operation::LoadFile { path, as_id } = &operations[3].1 else {
+            panic!("expected backbone load");
+        };
+        assert_eq!(path, &load_path);
+        assert_eq!(as_id.as_deref(), Some(backbone.seq_id.as_str()));
+        for (command, _) in operations {
+            let result = crate::engine_shell::execute_shell_command(&mut engine, &command)
+                .expect("execute generated handoff operation");
+            assert!(result.state_changed);
+        }
+        assert_eq!(engine.journal_len(), 4);
+        assert_eq!(engine.state().sequences.len(), 5);
+        assert_eq!(
+            serde_json::to_value(&engine.state().sequences[&candidate_set.seq_id]).unwrap(),
+            before["sequences"][&candidate_set.seq_id]
+        );
+        for (id, sequence) in [
+            (extract_id, "ACCGT"),
+            (reference_id, "ACCGT"),
+            (alternate_id, "ACTGT"),
+            (backbone.seq_id.as_str(), "ATGAAATAA"),
+        ] {
+            assert_eq!(engine.state().sequences[id].get_forward_string(), sequence);
+        }
+    }
+
+    #[test]
     fn reporter_construct_handoff_rejects_unknown_candidate_id() {
         let engine = GentleEngine::new();
         let err = engine
             .plan_reporter_construct_handoff(
                 vkorc1_candidate_set_path(),
                 Some("missing_candidate"),
+                None,
+                None,
                 None,
                 None,
                 None,
@@ -1356,6 +2310,8 @@ mod tests {
         let err = engine
             .plan_reporter_construct_handoff(
                 &path.to_string_lossy(),
+                None,
+                None,
                 None,
                 None,
                 None,
@@ -1387,6 +2343,8 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
+                None,
             )
             .expect("plan no compatible macro route");
         assert_eq!(plan.status, "no_compatible_macro_route");
@@ -1407,6 +2365,8 @@ mod tests {
         let plan = engine
             .plan_reporter_construct_handoff(
                 vkorc1_candidate_set_path(),
+                None,
+                None,
                 None,
                 None,
                 None,

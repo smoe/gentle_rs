@@ -3,19 +3,28 @@
 //! This module exposes the machine-facing transport metadata needed by both the
 //! local assistant UX and external orchestrators. It intentionally keeps the
 //! public surface read-only and deterministic: catalog loading, availability,
-//! preflight summaries, and native HTTP model discovery.
+//! preflight summaries, native HTTP model discovery, local CLI command-shape
+//! probes, and local Codex model metadata discovery.
 
 use crate::agent_bridge::{
     AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
     AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV,
     ANTHROPIC_API_KEY_AUTH_HINT, ANTHROPIC_API_KEY_ENV, MISTRAL_API_KEY_AUTH_HINT,
-    MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV, OPENAI_BILLING_URL, OPENAI_USAGE_URL,
+    MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV, OPENAI_BILLING_URL, OPENAI_USAGE_URL, PI_BIN_ENV,
     anthropic_api_key_is_known_non_api_token, anthropic_api_key_kind_warning,
     discover_mistral_models, extract_anthropic_error_code, extract_mistral_error_code,
-    extract_models_from_openai_models_payload, extract_openai_error_code, redact_sensitive_text,
+    extract_models_from_openai_models_payload, extract_openai_error_code, is_pi_local_agent_system,
+    redact_sensitive_text, resolve_pi_executable_path,
 };
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use std::{
+    collections::HashSet,
+    fs,
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+    thread,
+    time::{Duration, Instant},
+};
 
 pub use crate::agent_bridge::{
     AgentInvocationRuntime, AgentSystemAvailability, AgentSystemCatalog, AgentSystemSpec,
@@ -36,6 +45,183 @@ const MISTRAL_DEFAULT_MODEL: &str = "mistral-large-latest";
 const MISTRAL_DEFAULT_BASE_URL: &str = "https://api.mistral.ai/v1";
 const OPENAI_COMPAT_DEFAULT_MODEL: &str = "unspecified";
 const OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
+const CODEX_LOCAL_SYSTEM_ID: &str = "codex_local_stdio";
+
+/// Whether an agent system can accept an explicit model choice through the
+/// shared model override.
+pub fn agent_system_supports_model_selection(system: &AgentSystemSpec) -> bool {
+    matches!(
+        system.transport,
+        AgentSystemTransport::NativeOpenai
+            | AgentSystemTransport::NativeAnthropic
+            | AgentSystemTransport::NativeMistral
+            | AgentSystemTransport::NativeOpenaiCompat
+    ) || is_codex_local_agent_system(system)
+        || is_pi_local_agent_system(system)
+}
+
+/// Whether GENtle can enumerate model identifiers for an agent system.
+pub fn agent_system_supports_model_discovery(system: &AgentSystemSpec) -> bool {
+    agent_system_supports_model_selection(system)
+}
+
+pub fn is_codex_local_agent_system(system: &AgentSystemSpec) -> bool {
+    system.id == CODEX_LOCAL_SYSTEM_ID
+        || system.command.iter().any(|part| {
+            Path::new(part)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name == "codex-agent-bridge")
+        })
+}
+
+fn parse_pi_model_list(stdout: &str) -> Vec<String> {
+    let mut header_seen = false;
+    let mut seen = HashSet::new();
+    let mut models = Vec::new();
+    for line in stdout.lines() {
+        let columns = line.split_whitespace().collect::<Vec<_>>();
+        if !header_seen {
+            header_seen = columns.len() >= 2
+                && columns[0].eq_ignore_ascii_case("provider")
+                && columns[1].eq_ignore_ascii_case("model");
+            continue;
+        }
+        if columns.len() < 2 {
+            continue;
+        }
+        let model = format!("{}/{}", columns[0], columns[1]);
+        if seen.insert(model.clone()) {
+            models.push(model);
+        }
+    }
+    models
+}
+
+fn discover_pi_models(system: &AgentSystemSpec) -> Result<Vec<String>, String> {
+    let pi_path = resolve_pi_executable_path(system).ok_or_else(|| {
+        "Pi model discovery could not find Pi; install Pi, add it to PATH, or set PI_BIN"
+            .to_string()
+    })?;
+    let output = Command::new(&pi_path)
+        .arg("--list-models")
+        .envs(&system.env)
+        .output()
+        .map_err(|error| {
+            format!(
+                "could not run Pi model discovery at '{}': {error}",
+                pi_path.display()
+            )
+        })?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !output.status.success() {
+        let detail = if stderr.trim().is_empty() {
+            stdout.trim()
+        } else {
+            stderr.trim()
+        };
+        return Err(format!(
+            "Pi model discovery failed{}",
+            if detail.is_empty() {
+                String::new()
+            } else {
+                format!(": {detail}")
+            }
+        ));
+    }
+    let models = parse_pi_model_list(&stdout);
+    if models.is_empty() {
+        let detail = stdout.trim();
+        return Err(
+            if detail.to_ascii_lowercase().contains("no models available") {
+                "Pi is installed but has no available models; run Pi interactively and use /login, then retry model discovery".to_string()
+            } else {
+                "Pi model discovery returned no parseable provider/model rows".to_string()
+            },
+        );
+    }
+    Ok(models)
+}
+
+fn codex_models_cache_path(system: &AgentSystemSpec) -> Result<PathBuf, String> {
+    let codex_home = system
+        .env
+        .get("CODEX_HOME")
+        .cloned()
+        .or_else(|| std::env::var("CODEX_HOME").ok())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+    if let Some(codex_home) = codex_home {
+        return Ok(codex_home.join("models_cache.json"));
+    }
+    let home = system
+        .env
+        .get("HOME")
+        .cloned()
+        .or_else(|| system.env.get("USERPROFILE").cloned())
+        .or_else(|| std::env::var("HOME").ok())
+        .or_else(|| std::env::var("USERPROFILE").ok())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "Codex model discovery could not resolve HOME or CODEX_HOME".to_string())?;
+    Ok(PathBuf::from(home).join(".codex/models_cache.json"))
+}
+
+fn discover_codex_models_from_cache(system: &AgentSystemSpec) -> Result<Vec<String>, String> {
+    let cache_path = codex_models_cache_path(system)?;
+    let text = fs::read_to_string(&cache_path).map_err(|error| {
+        format!(
+            "could not read Codex model metadata cache '{}': {error}; run/sign in to Codex once, then retry model discovery",
+            cache_path.display()
+        )
+    })?;
+    let value = serde_json::from_str::<serde_json::Value>(&text).map_err(|error| {
+        format!(
+            "Codex model metadata cache '{}' is invalid JSON: {error}",
+            cache_path.display()
+        )
+    })?;
+    let models = value
+        .get("models")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| {
+            format!(
+                "Codex model metadata cache '{}' has no models array",
+                cache_path.display()
+            )
+        })?;
+    let mut seen = HashSet::new();
+    let mut discovered = Vec::new();
+    for model in models {
+        if model
+            .get("visibility")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|visibility| visibility.eq_ignore_ascii_case("hide"))
+        {
+            continue;
+        }
+        let Some(slug) = model
+            .get("slug")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        if seen.insert(slug.to_string()) {
+            discovered.push(slug.to_string());
+        }
+    }
+    if discovered.is_empty() {
+        return Err(format!(
+            "Codex model metadata cache '{}' contains no selectable model ids",
+            cache_path.display()
+        ));
+    }
+    Ok(discovered)
+}
 
 /// Stable read-only preflight result for one configured agent system.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -62,10 +248,16 @@ pub struct AgentSystemPreflight {
     pub live_probe: Option<AgentSystemLiveProbe>,
 }
 
-/// Live, non-generating model-discovery probe for one configured agent system.
+/// Live, non-generating setup probe for one configured agent system.
+///
+/// Native HTTP transports populate the model-list fields from provider model
+/// discovery. Local CLI transports may instead use the same envelope to report
+/// whether their intended no-tools invocation shape is accepted by the local
+/// executable without contacting a model.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct AgentSystemLiveProbe {
+    pub probe_kind: AgentLiveProbeKind,
     pub enabled: bool,
     pub attempted_endpoints: Vec<String>,
     pub selected_endpoint: Option<String>,
@@ -76,6 +268,15 @@ pub struct AgentSystemLiveProbe {
     pub status_class: AgentLiveProbeStatusClass,
     pub message: String,
     pub provider_error_code: Option<String>,
+}
+
+/// What a live preflight actually checked.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentLiveProbeKind {
+    #[default]
+    ModelDiscovery,
+    CommandShape,
 }
 
 /// Coarse, user-facing live-probe classification.
@@ -557,20 +758,216 @@ fn build_model_list_live_probe(
     probe
 }
 
+fn display_command(parts: &[String]) -> String {
+    parts
+        .iter()
+        .map(|part| {
+            if part
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '/' | '.' | '_' | '-'))
+            {
+                part.clone()
+            } else {
+                format!("'{}'", part.replace('\'', "'\\''"))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn pi_command_shape_probe_command(pi_path: &Path, selected_model: Option<&str>) -> Vec<String> {
+    let mut command = vec![
+        pi_path.display().to_string(),
+        "--print".to_string(),
+        "--no-session".to_string(),
+        "--no-tools".to_string(),
+        "--no-extensions".to_string(),
+        "--no-skills".to_string(),
+        "--no-prompt-templates".to_string(),
+        "--no-context-files".to_string(),
+        "--no-approve".to_string(),
+        "--system-prompt".to_string(),
+        "GENtle Pi compatibility probe: validate flags only; do not generate.".to_string(),
+    ];
+    if let Some(model) = selected_model
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+    {
+        command.extend(["--model".to_string(), model.to_string()]);
+    }
+    // Placing --help after the intended invocation flags makes Pi parse those
+    // flags but print local help and exit instead of contacting a provider.
+    command.push("--help".to_string());
+    command
+}
+
+fn command_output_excerpt(stdout: &[u8], stderr: &[u8]) -> String {
+    let combined = if stderr.is_empty() {
+        String::from_utf8_lossy(stdout).to_string()
+    } else if stdout.is_empty() {
+        String::from_utf8_lossy(stderr).to_string()
+    } else {
+        format!(
+            "{} | stdout: {}",
+            String::from_utf8_lossy(stderr),
+            String::from_utf8_lossy(stdout)
+        )
+    };
+    clipped_message(&combined)
+}
+
+fn build_pi_command_shape_live_probe(system: &AgentSystemSpec) -> AgentSystemLiveProbe {
+    let Some(pi_path) = resolve_pi_executable_path(system) else {
+        let mut probe = live_probe_with_status(
+            AgentLiveProbeStatusClass::EndpointUnreachable,
+            format!("Pi executable was not found; install Pi, add it to PATH, or set {PI_BIN_ENV}"),
+        );
+        probe.probe_kind = AgentLiveProbeKind::CommandShape;
+        return probe;
+    };
+    let selected_model = system
+        .env
+        .get(AGENT_MODEL_ENV)
+        .map(String::as_str)
+        .or(system.model.as_deref())
+        .map(str::trim)
+        .filter(|model| !model.is_empty());
+    let command_parts = pi_command_shape_probe_command(&pi_path, selected_model);
+    let command_label = display_command(&command_parts);
+    let timeout_secs = agent_runtime(system)
+        .read_timeout_secs
+        .unwrap_or(10)
+        .min(10)
+        .max(1);
+
+    let mut command = Command::new(&command_parts[0]);
+    command
+        .args(&command_parts[1..])
+        .envs(&system.env)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            return AgentSystemLiveProbe {
+                probe_kind: AgentLiveProbeKind::CommandShape,
+                enabled: true,
+                attempted_endpoints: vec![command_label],
+                status_class: AgentLiveProbeStatusClass::EndpointUnreachable,
+                message: redact_sensitive_text(&format!(
+                    "Pi command-shape probe could not start '{}': {error}",
+                    pi_path.display()
+                )),
+                ..Default::default()
+            };
+        }
+    };
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                if started.elapsed() >= Duration::from_secs(timeout_secs) {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return AgentSystemLiveProbe {
+                        probe_kind: AgentLiveProbeKind::CommandShape,
+                        enabled: true,
+                        attempted_endpoints: vec![command_label],
+                        selected_endpoint: Some("pi command-shape help probe".to_string()),
+                        reachable: true,
+                        status_class: AgentLiveProbeStatusClass::EndpointUnreachable,
+                        message: format!(
+                            "Pi command-shape probe timed out after {timeout_secs}s before generation; check the Pi executable or set {PI_BIN_ENV}"
+                        ),
+                        ..Default::default()
+                    };
+                }
+                thread::sleep(Duration::from_millis(25));
+            }
+            Err(error) => {
+                return AgentSystemLiveProbe {
+                    probe_kind: AgentLiveProbeKind::CommandShape,
+                    enabled: true,
+                    attempted_endpoints: vec![command_label],
+                    reachable: true,
+                    status_class: AgentLiveProbeStatusClass::ProviderError,
+                    message: redact_sensitive_text(&format!(
+                        "Pi command-shape probe could not wait for process: {error}"
+                    )),
+                    ..Default::default()
+                };
+            }
+        }
+    }
+    let output = match child.wait_with_output() {
+        Ok(output) => output,
+        Err(error) => {
+            return AgentSystemLiveProbe {
+                probe_kind: AgentLiveProbeKind::CommandShape,
+                enabled: true,
+                attempted_endpoints: vec![command_label],
+                reachable: true,
+                status_class: AgentLiveProbeStatusClass::ProviderError,
+                message: redact_sensitive_text(&format!(
+                    "Pi command-shape probe could not collect process output: {error}"
+                )),
+                ..Default::default()
+            };
+        }
+    };
+    if output.status.success() {
+        AgentSystemLiveProbe {
+            probe_kind: AgentLiveProbeKind::CommandShape,
+            enabled: true,
+            attempted_endpoints: vec![command_label],
+            selected_endpoint: Some("pi command-shape help probe".to_string()),
+            reachable: true,
+            status_class: AgentLiveProbeStatusClass::Ok,
+            message: "Pi accepted GENtle's ephemeral no-tools command shape; no model generation was requested".to_string(),
+            ..Default::default()
+        }
+    } else {
+        AgentSystemLiveProbe {
+            probe_kind: AgentLiveProbeKind::CommandShape,
+            enabled: true,
+            attempted_endpoints: vec![command_label],
+            selected_endpoint: Some("pi command-shape help probe".to_string()),
+            reachable: true,
+            status_class: AgentLiveProbeStatusClass::ProviderError,
+            message: redact_sensitive_text(&format!(
+                "Pi rejected GENtle's ephemeral no-tools command shape (exit={:?}): {}",
+                output.status.code(),
+                command_output_excerpt(&output.stdout, &output.stderr)
+            )),
+            ..Default::default()
+        }
+    }
+}
+
 fn build_agent_live_probe(
     system: &AgentSystemSpec,
     availability: &AgentSystemAvailability,
     preflight: &AgentSystemPreflight,
 ) -> AgentSystemLiveProbe {
     match system.transport {
-        AgentSystemTransport::BuiltinEcho | AgentSystemTransport::ExternalJsonStdio => {
-            live_probe_with_status(
-                AgentLiveProbeStatusClass::UnsupportedTransport,
-                format!(
-                    "Live endpoint probing is only supported for native_openai, native_anthropic, native_mistral, and native_openai_compat transports, not '{}'",
-                    system.transport.as_str()
-                ),
-            )
+        AgentSystemTransport::BuiltinEcho => live_probe_with_status(
+            AgentLiveProbeStatusClass::UnsupportedTransport,
+            "Live setup probing is not needed for the built-in echo transport",
+        ),
+        AgentSystemTransport::ExternalJsonStdio => {
+            if is_pi_local_agent_system(system) {
+                build_pi_command_shape_live_probe(system)
+            } else {
+                live_probe_with_status(
+                    AgentLiveProbeStatusClass::UnsupportedTransport,
+                    format!(
+                        "Live endpoint probing is only supported for native OpenAI-compatible transports and the co-shipped Pi Local adapter, not '{}'",
+                        system.transport.as_str()
+                    ),
+                )
+            }
         }
         AgentSystemTransport::NativeOpenai => {
             let Some(api_key) = resolve_openai_api_key(system) else {
@@ -691,7 +1088,7 @@ pub fn build_agent_system_preflight(
 }
 
 /// Build a deterministic preflight summary and optionally add a live,
-/// non-generating model-discovery probe for native HTTP transports.
+/// non-generating setup probe for transports that support one.
 pub fn build_agent_system_preflight_with_live(
     catalog_path: Option<&str>,
     system_id: &str,
@@ -719,7 +1116,42 @@ pub fn build_agent_system_preflight_with_live(
     let mut discovery_endpoint_candidates = vec![];
 
     match system.transport {
-        AgentSystemTransport::BuiltinEcho | AgentSystemTransport::ExternalJsonStdio => {}
+        AgentSystemTransport::BuiltinEcho => {}
+        AgentSystemTransport::ExternalJsonStdio => {
+            if is_codex_local_agent_system(&system) {
+                model = system
+                    .env
+                    .get(AGENT_MODEL_ENV)
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
+                    .or_else(|| {
+                        system
+                            .model
+                            .as_deref()
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                            .map(str::to_string)
+                    });
+                if let Ok(cache_path) = codex_models_cache_path(&system) {
+                    discovery_endpoint_candidates.push(cache_path.display().to_string());
+                }
+            } else if is_pi_local_agent_system(&system) {
+                model = system
+                    .env
+                    .get(AGENT_MODEL_ENV)
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
+                    .or_else(|| {
+                        system
+                            .model
+                            .as_deref()
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                            .map(str::to_string)
+                    });
+                discovery_endpoint_candidates.push("pi --list-models".to_string());
+            }
+        }
         AgentSystemTransport::NativeOpenai => {
             let resolved = resolve_base_url(&system, OPENAI_DEFAULT_BASE_URL);
             base_url = Some(resolved.clone());
@@ -802,8 +1234,8 @@ pub fn build_agent_system_preflight_with_live(
     Ok(preflight)
 }
 
-/// Discover model ids for a configured agent system that uses a native HTTP
-/// transport with model-list support.
+/// Discover model ids for a configured agent system using either native HTTP
+/// model-list support or the local Codex CLI model metadata cache.
 pub fn discover_models_for_agent_system(
     catalog_path: Option<&str>,
     system_id: &str,
@@ -819,6 +1251,16 @@ pub fn discover_models_for_agent_system(
             }
             system.env.insert(key.to_string(), value.to_string());
         }
+    }
+    if matches!(system.transport, AgentSystemTransport::ExternalJsonStdio)
+        && is_codex_local_agent_system(&system)
+    {
+        return discover_codex_models_from_cache(&system);
+    }
+    if matches!(system.transport, AgentSystemTransport::ExternalJsonStdio)
+        && is_pi_local_agent_system(&system)
+    {
+        return discover_pi_models(&system);
     }
     let base_url = match system.transport {
         AgentSystemTransport::NativeOpenai => resolve_base_url(&system, OPENAI_DEFAULT_BASE_URL),
@@ -873,6 +1315,220 @@ mod tests {
             attempted_endpoints: vec![],
             selected_endpoint: None,
         }
+    }
+
+    #[test]
+    fn codex_local_model_discovery_reads_visible_models_from_local_cache() {
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let codex_home = temp.path().join(".codex");
+        fs::create_dir_all(&codex_home).expect("create Codex home");
+        fs::write(
+            codex_home.join("models_cache.json"),
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "models": [
+                    {"slug": "gpt-5.6-sol", "visibility": "list"},
+                    {"slug": "gpt-5.4", "visibility": "list"},
+                    {"slug": "codex-auto-review", "visibility": "hide"},
+                    {"slug": "gpt-5.4", "visibility": "list"}
+                ]
+            }))
+            .expect("serialize model cache"),
+        )
+        .expect("write model cache");
+        let catalog_path = temp.path().join("agent_systems.json");
+        fs::write(
+            &catalog_path,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "schema": "gentle.agent_systems.v1",
+                "systems": [{
+                    "id": "codex_local_stdio",
+                    "label": "Codex Local",
+                    "transport": "external_json_stdio",
+                    "command": ["scripts/codex-agent-bridge"],
+                    "env": {"CODEX_HOME": codex_home}
+                }]
+            }))
+            .expect("serialize catalog"),
+        )
+        .expect("write catalog");
+
+        let models = discover_models_for_agent_system(
+            Some(catalog_path.to_string_lossy().as_ref()),
+            "codex_local_stdio",
+            None,
+        )
+        .expect("discover Codex models");
+
+        assert_eq!(models, vec!["gpt-5.6-sol", "gpt-5.4"]);
+    }
+
+    #[test]
+    fn pi_model_list_parser_returns_provider_qualified_ids() {
+        let models = parse_pi_model_list(
+            "provider      model              context  max-out  thinking  images\n\
+             anthropic     claude-sonnet-4-6  200K     64K      yes       yes\n\
+             openai-codex  gpt-5.4            272K     128K     yes       yes\n",
+        );
+
+        assert_eq!(
+            models,
+            vec!["anthropic/claude-sonnet-4-6", "openai-codex/gpt-5.4"]
+        );
+    }
+
+    #[test]
+    fn pi_local_supports_model_selection_and_discovery() {
+        let system = AgentSystemSpec {
+            id: "pi_local_stdio".to_string(),
+            label: "Pi Local".to_string(),
+            transport: AgentSystemTransport::ExternalJsonStdio,
+            command: vec!["scripts/pi-agent-bridge".to_string()],
+            ..Default::default()
+        };
+
+        assert!(agent_system_supports_model_selection(&system));
+        assert!(agent_system_supports_model_discovery(&system));
+    }
+
+    #[cfg(unix)]
+    fn make_executable(path: &Path, text: &str) {
+        use std::os::unix::fs::PermissionsExt;
+
+        fs::write(path, text).expect("write executable fixture");
+        let mut permissions = fs::metadata(path)
+            .expect("executable fixture metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(path, permissions).expect("make fixture executable");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pi_model_discovery_runs_configured_pi_binary() {
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let pi_path = temp.path().join("pi");
+        make_executable(
+            &pi_path,
+            "#!/bin/sh\nprintf '%s\\n' 'provider  model  context  max-out  thinking  images' 'mistral  codestral-latest  256K  32K  yes  no'\n",
+        );
+        let system = AgentSystemSpec {
+            id: "pi_local_stdio".to_string(),
+            label: "Pi Local".to_string(),
+            transport: AgentSystemTransport::ExternalJsonStdio,
+            command: vec!["scripts/pi-agent-bridge".to_string()],
+            env: std::collections::HashMap::from([(
+                "PI_BIN".to_string(),
+                pi_path.to_string_lossy().to_string(),
+            )]),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            discover_pi_models(&system).expect("discover fake Pi models"),
+            vec!["mistral/codestral-latest"]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pi_live_probe_checks_no_generation_command_shape() {
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let pi_path = temp.path().join("pi");
+        let bridge_path = temp.path().join("pi-agent-bridge");
+        let args_path = temp.path().join("pi_args.txt");
+        make_executable(&bridge_path, "#!/bin/sh\nexit 0\n");
+        make_executable(
+            &pi_path,
+            &format!(
+                "#!/bin/sh\nprintf '%s\\n' \"$@\" > {}\ncase \" $* \" in *' --help '*) exit 0;; *) echo generated >&2; exit 64;; esac\n",
+                args_path.display()
+            ),
+        );
+        let catalog_path = temp.path().join("agent_systems.json");
+        fs::write(
+            &catalog_path,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "schema": "gentle.agent_systems.v1",
+                "systems": [{
+                    "id": "pi_local_stdio",
+                    "label": "Pi Local",
+                    "transport": "external_json_stdio",
+                    "command": [bridge_path],
+                    "env": {
+                        "PI_BIN": pi_path,
+                        "GENTLE_AGENT_MODEL": "mistral/codestral-latest"
+                    }
+                }]
+            }))
+            .expect("serialize catalog"),
+        )
+        .expect("write catalog");
+
+        let preflight = build_agent_system_preflight_with_live(
+            Some(catalog_path.to_string_lossy().as_ref()),
+            "pi_local_stdio",
+            None,
+            true,
+        )
+        .expect("Pi preflight");
+        let live = preflight.live_probe.expect("Pi live probe");
+
+        assert_eq!(live.status_class, AgentLiveProbeStatusClass::Ok);
+        assert!(live.reachable);
+        assert_eq!(live.probe_kind, AgentLiveProbeKind::CommandShape);
+        assert!(!live.auth_ok, "the help probe does not test authentication");
+        assert!(
+            !live.model_list_ok,
+            "the help probe does not perform model discovery"
+        );
+        let args = fs::read_to_string(args_path).expect("captured Pi args");
+        for expected in [
+            "--print",
+            "--no-session",
+            "--no-tools",
+            "--no-extensions",
+            "--no-skills",
+            "--no-prompt-templates",
+            "--no-context-files",
+            "--no-approve",
+            "--system-prompt",
+            "--model",
+            "mistral/codestral-latest",
+            "--help",
+        ] {
+            assert!(
+                args.lines().any(|line| line == expected),
+                "missing {expected} in {args}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pi_live_probe_reports_rejected_command_shape() {
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let pi_path = temp.path().join("pi");
+        make_executable(
+            &pi_path,
+            "#!/bin/sh\necho 'unknown option --no-context-files' >&2\nexit 2\n",
+        );
+        let system = AgentSystemSpec {
+            id: "pi_local_stdio".to_string(),
+            label: "Pi Local".to_string(),
+            transport: AgentSystemTransport::ExternalJsonStdio,
+            command: vec!["scripts/pi-agent-bridge".to_string()],
+            env: std::collections::HashMap::from([(
+                "PI_BIN".to_string(),
+                pi_path.to_string_lossy().to_string(),
+            )]),
+            ..Default::default()
+        };
+
+        let live = build_pi_command_shape_live_probe(&system);
+
+        assert_eq!(live.status_class, AgentLiveProbeStatusClass::ProviderError);
+        assert!(live.message.contains("rejected"));
+        assert!(live.message.contains("unknown option"));
     }
 
     fn spawn_model_list_server(routes: Vec<(&str, u16, &str)>) -> Option<String> {

@@ -9,9 +9,14 @@
 //! - bug-regression coverage that spans multiple extracted engine submodules
 
 use super::*;
+use crate::allele_hash_screen::{
+    AlleleHashScreenRequest, AlleleReadClassification, AlleleReadSourceOrigin,
+    AllelicExpressionSupportScope, AllelicExpressionWeightBasis, AllelicRepresentationCaveat,
+};
 use crate::attract_motifs::{
     ATTRACT_MOTIF_SNAPSHOT_SCHEMA, AttractMotifRecord, AttractMotifSnapshot, AttractPfmRows,
 };
+use crate::engine::sequence_ops::Primer3PairDesignOptions;
 use crate::engine_shell::{ShellCommand, execute_shell_command};
 use crate::ensembl_gene::{
     EnsemblGeneEntry, EnsemblGeneExonSummary, EnsemblGeneTranscriptSummary,
@@ -20,11 +25,14 @@ use crate::ensembl_gene::{
 use crate::ensembl_protein::{
     EnsemblProteinEntry, EnsemblProteinFeature, EnsemblTranscriptExon, EnsemblTranscriptTranslation,
 };
-use crate::genomes::BlastHit;
+use crate::genomes::{BlastHit, BlastSubjectAnnotation, BlastSubjectAnnotationSource};
 use crate::lineage_export::{LineageSvgNodeKind, build_lineage_svg_graph, export_lineage_svg};
+use crate::uniprot::UniprotEnsemblXref;
 use bio::io::fasta;
 use flate2::{Compression, write::GzEncoder};
-use std::collections::{BTreeMap, HashMap};
+use gentle_protocol::GeneLocusRegulatorySourceFactorBinding;
+use std::cmp::Ordering;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::env;
 use std::fs;
 use std::io::Write;
@@ -94,6 +102,22 @@ fn internet_access_available() -> bool {
             .map(|response| response.status().is_success())
             .unwrap_or(false)
     })
+}
+
+fn transient_live_service_error(err: &EngineError) -> bool {
+    if err.code == ErrorCode::Io {
+        return true;
+    }
+    err.code == ErrorCode::NotFound
+        && [
+            "HTTP status 429",
+            "HTTP status 500",
+            "HTTP status 502",
+            "HTTP status 503",
+            "HTTP status 504",
+        ]
+        .iter()
+        .any(|needle| err.message.contains(needle))
 }
 
 fn seq(s: &str) -> DNAsequence {
@@ -242,6 +266,10 @@ fn tp73_validation_pm_probe_evidence_report() -> ProbeRegionEvidenceInterpretati
             gene_label: Some("TP73".to_string()),
             level: Some("pm_probe".to_string()),
             min_abs_logfc: Some(0.5),
+            threshold_source: Some(
+                "gene_isoform_assay_study_policy.min_abs_regional_effect".to_string(),
+            ),
+            policy_sha256: Some("sha256:policy-0.5".to_string()),
             path: None,
         })
         .expect("interpret committed PM probe validation fixture")
@@ -532,6 +560,14 @@ fn project_microarray_track_forward_anchor_materializes_array_features() {
         Some("coordinate_system_matches_anchor")
     );
     assert_eq!(
+        first_qualifier(feature, "gentle_array_projection_method").as_deref(),
+        Some("direct_anchor_overlap")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_projection_status").as_deref(),
+        Some("mapped_same_coordinate_system")
+    );
+    assert_eq!(
         first_qualifier(feature, "transcript_cluster_id").as_deref(),
         Some("TC0001")
     );
@@ -618,6 +654,99 @@ fn project_probe_region_output_direct_anchor_materializes_array_features() {
             .contains("TAp73-AdGFP logFC=1.100")
     );
     assert_eq!(feature.location.find_bounds().unwrap(), (9, 30));
+}
+
+#[test]
+fn probe_region_output_without_coordinate_metadata_is_inspectable_but_not_projectable() {
+    let temp = tempdir().expect("tempdir");
+    let output_dir = temp.path().join("legacy_probe_regions");
+    write_probe_region_projection_fixture(&output_dir);
+    fs::write(
+        output_dir.join("normalized_feature_matrix_manifest.json"),
+        r#"{
+  "schema": "gentle.probe_region_normalized_matrix_manifest.v1",
+  "platform": "Clariom_D_Human",
+  "normalization": "rma",
+  "targets": ["probeset"],
+  "artifacts": []
+}"#,
+    )
+    .expect("legacy manifest without coordinate metadata");
+    fs::write(
+        output_dir.join("provenance.json"),
+        r#"{
+  "schema": "gentle.probe_region_backend_provenance.v1",
+  "backend": "r_oligo",
+  "normalization": "rma",
+  "artifacts": []
+}"#,
+    )
+    .expect("legacy provenance without coordinate metadata");
+
+    let mut engine = microarray_anchored_engine("hg38", "+");
+    let inspection = engine
+        .inspect_probe_region_output(&output_dir.to_string_lossy())
+        .expect("legacy helper output remains inspectable");
+    assert!(inspection.usable);
+    assert_eq!(inspection.coordinate_system, None);
+    assert_eq!(inspection.genome_build, None);
+    assert!(!inspection.projection_ready);
+    assert!(
+        inspection
+            .projection_blockers
+            .iter()
+            .any(|blocker| blocker.contains("Missing coordinate_system"))
+    );
+    assert!(
+        inspection
+            .projection_blockers
+            .iter()
+            .any(|blocker| blocker.contains("Missing genome_build"))
+    );
+
+    let error = engine
+        .apply(Operation::ProjectProbeRegionOutput {
+            seq_id: "array_slice".to_string(),
+            output_dir: output_dir.to_string_lossy().to_string(),
+            contrasts: vec![],
+            level: None,
+            min_abs_logfc: None,
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect_err("coordinate-less helper output must not be projected");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("does not declare coordinate_system"));
+    assert!(
+        engine
+            .state()
+            .sequences
+            .get("array_slice")
+            .expect("anchored sequence")
+            .features()
+            .is_empty()
+    );
+}
+
+#[test]
+fn probe_region_output_inspection_v1_deserializes_without_additive_coordinate_fields() {
+    let legacy = serde_json::json!({
+        "schema": "gentle.probe_region_output_inspection.v1",
+        "output_dir": "analysis/probe_regions/legacy",
+        "usable": true
+    });
+    let inspection: ProbeRegionOutputInspection =
+        serde_json::from_value(legacy).expect("legacy v1 inspection payload");
+
+    assert!(inspection.usable);
+    assert_eq!(inspection.coordinate_system, None);
+    assert_eq!(inspection.genome_build, None);
+    assert!(inspection.coordinate_projections.is_empty());
+    assert_eq!(inspection.r_version, None);
+    assert!(inspection.package_versions.is_empty());
+    assert_eq!(inspection.analysis_method_version, None);
+    assert!(inspection.input_fingerprints.is_empty());
+    assert!(!inspection.projection_ready);
 }
 
 #[test]
@@ -738,6 +867,10 @@ fn interpret_probe_region_evidence_preserves_shared_transcript_ambiguity() {
             gene_label: Some("PATZ1".to_string()),
             level: Some("pm_probe".to_string()),
             min_abs_logfc: Some(0.5),
+            threshold_source: Some(
+                "gene_isoform_assay_study_policy.min_abs_regional_effect".to_string(),
+            ),
+            policy_sha256: Some("sha256:policy-0.5".to_string()),
             path: Some(report_path.to_string_lossy().to_string()),
         })
         .expect("interpret projected probe-region evidence");
@@ -746,6 +879,12 @@ fn interpret_probe_region_evidence_preserves_shared_transcript_ambiguity() {
         .probe_region_evidence_interpretation
         .expect("interpretation report");
     assert_eq!(report.schema, PROBE_REGION_EVIDENCE_INTERPRETATION_SCHEMA);
+    assert_eq!(
+        report.threshold_source.as_deref(),
+        Some("gene_isoform_assay_study_policy.min_abs_regional_effect")
+    );
+    assert_eq!(report.policy_sha256.as_deref(), Some("sha256:policy-0.5"));
+    assert!(report.interpretation_request_sha256.starts_with("sha256:"));
     assert_eq!(report.level, "pm_probe");
     assert_eq!(report.coordinate_frame, "genomic_1based");
     assert_eq!(report.coordinate_system.as_deref(), Some("hg38"));
@@ -803,6 +942,23 @@ fn interpret_probe_region_evidence_preserves_shared_transcript_ambiguity() {
             && tx.review_status == "shared_geometry_for_review"
             && tx.relationship_summary == "only_shared_compatible_evidence"
     }));
+    let first_request_sha256 = report.interpretation_request_sha256.clone();
+    let changed = engine
+        .apply(Operation::InterpretProbeRegionEvidence {
+            seq_id: "array_slice".to_string(),
+            gene_label: Some("PATZ1".to_string()),
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.6),
+            threshold_source: Some(
+                "gene_isoform_assay_study_policy.min_abs_regional_effect".to_string(),
+            ),
+            policy_sha256: Some("sha256:policy-0.6".to_string()),
+            path: None,
+        })
+        .expect("reinterpret with changed bound policy threshold")
+        .probe_region_evidence_interpretation
+        .expect("changed interpretation report");
+    assert_ne!(changed.interpretation_request_sha256, first_request_sha256);
 }
 
 #[test]
@@ -863,6 +1019,8 @@ fn interpret_probe_region_evidence_reports_junction_spanning_geometry() {
             gene_label: Some("PATZ1".to_string()),
             level: Some("pm_probe".to_string()),
             min_abs_logfc: Some(0.5),
+            threshold_source: None,
+            policy_sha256: None,
             path: None,
         })
         .expect("interpret projected junction-spanning evidence");
@@ -873,6 +1031,7 @@ fn interpret_probe_region_evidence_reports_junction_spanning_geometry() {
     assert_eq!(report.transcript_count, 1);
     let row = &report.evidence_rows[0];
     assert_eq!(row.feature_id, "probe_junction");
+    assert_eq!(row.contrast.as_deref(), Some("TAp73-AdGFP"));
     assert_eq!(row.mapping_status, "unique_multi_exon_overlap");
     assert_eq!(row.transcript_mappings.len(), 1);
     let mapping = &row.transcript_mappings[0];
@@ -1666,6 +1825,8 @@ fn import_project_interpret_pm_probe_region_output_end_to_end() {
             gene_label: Some("PATZ1".to_string()),
             level: Some("pm_probe".to_string()),
             min_abs_logfc: Some(0.5),
+            threshold_source: None,
+            policy_sha256: None,
             path: Some(report_path.to_string_lossy().to_string()),
         })
         .expect("interpret imported and projected PM probe evidence");
@@ -1784,6 +1945,8 @@ fn e_mtab_14704_tp73_validation_fixture_projects_and_interprets_pm_probe_evidenc
             gene_label: Some("TP73".to_string()),
             level: Some("pm_probe".to_string()),
             min_abs_logfc: Some(0.5),
+            threshold_source: None,
+            policy_sha256: None,
             path: Some(report_path.to_string_lossy().to_string()),
         })
         .expect("interpret committed PM probe validation fixture");
@@ -1876,6 +2039,8 @@ fn e_mtab_14704_tp73_validation_report_is_probe_location_figure_ready() {
             gene_label: Some("TP73".to_string()),
             level: Some("pm_probe".to_string()),
             min_abs_logfc: Some(0.5),
+            threshold_source: None,
+            policy_sha256: None,
             path: None,
         })
         .expect("interpret committed PM probe validation fixture")
@@ -1891,6 +2056,7 @@ fn e_mtab_14704_tp73_validation_report_is_probe_location_figure_ready() {
 
     for row in &report.evidence_rows {
         assert_eq!(row.level, "pm_probe");
+        assert_eq!(row.platform.as_deref(), Some("Clariom_D_Human"));
         assert!(
             row.start_1based.is_some(),
             "missing start for {}",
@@ -2104,6 +2270,8 @@ fn render_probe_region_evidence_svg_is_stable_for_degenerate_single_coordinate_r
             evidence_id: "probe_42:contrast".to_string(),
             level: "pm_probe".to_string(),
             feature_id: "probe_42".to_string(),
+            platform: None,
+            contrast: Some("contrast".to_string()),
             parent_feature_id: Some("PSR42".to_string()),
             intensity_source: Some("probe_level_input".to_string()),
             chromosome: Some("chr1".to_string()),
@@ -2182,6 +2350,8 @@ fn render_probe_region_evidence_svg_uses_report_frame_without_local_alignment_wa
             evidence_id: "probe_719406:contrast".to_string(),
             level: "pm_probe".to_string(),
             feature_id: "719406".to_string(),
+            platform: None,
+            contrast: Some("contrast".to_string()),
             parent_feature_id: Some("PSR0100145779.hg.1".to_string()),
             intensity_source: Some("probe_level_input".to_string()),
             chromosome: Some("chr1".to_string()),
@@ -2336,6 +2506,14 @@ fn project_microarray_track_uses_vendor_subset_on_tp73_genbank_anchor() {
     assert_eq!(
         first_qualifier(first, "gentle_array_assembly_check").as_deref(),
         Some("supported_genome_id_alias_matches_anchor")
+    );
+    assert_eq!(
+        first_qualifier(first, "gentle_array_projection_method").as_deref(),
+        Some("direct_anchor_overlap")
+    );
+    assert_eq!(
+        first_qualifier(first, "gentle_array_projection_status").as_deref(),
+        Some("mapped_supported_genome_alias")
     );
     assert!(
         first_qualifier(first, "gentle_array_value_summary")
@@ -2576,6 +2754,10 @@ fn synthetic_ensembl_gene_entry(
         seq_region_name: Some("17".to_string()),
         genomic_start_1based: Some(7668402),
         genomic_end_1based: Some(7668513),
+        sequence_genomic_start_1based: Some(7668402),
+        sequence_genomic_end_1based: Some(7668513),
+        flank_5prime_bp: 0,
+        flank_3prime_bp: 0,
         sequence: "ACGT".repeat(28),
         sequence_length: 112,
         transcripts: vec![EnsemblGeneTranscriptSummary {
@@ -2680,7 +2862,10 @@ fn uniprot_projection_test_sequence() -> DNAsequence {
     let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(300)).expect("valid dna");
     dna.features_mut().push(gb_io::seq::Feature {
         kind: "mRNA".into(),
-        location: gb_io::seq::Location::simple_range(99, 360),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(99, 180),
+            gb_io::seq::Location::simple_range(299, 360),
+        ]),
         qualifiers: vec![
             ("gene".into(), Some("TOY1".to_string())),
             ("transcript_id".into(), Some("TX1".to_string())),
@@ -2776,6 +2961,9 @@ fn demo_blast_report() -> GenomeBlastReport {
                 evalue: 1e-9,
                 bit_score: 42.0,
                 query_coverage_percent: Some(100.0),
+                query_length: None,
+                aligned_query: None,
+                aligned_subject: None,
             },
             BlastHit {
                 subject_id: "chr2".to_string(),
@@ -2790,6 +2978,9 @@ fn demo_blast_report() -> GenomeBlastReport {
                 evalue: 1e-4,
                 bit_score: 27.0,
                 query_coverage_percent: Some(83.3),
+                query_length: None,
+                aligned_query: None,
+                aligned_subject: None,
             },
         ],
         warnings: vec![],
@@ -3616,6 +3807,10 @@ fn install_fake_bigwig_to_bedgraph(path: &Path, bedgraph_source: &Path) -> Strin
 fn install_fake_primer3(path: &Path) -> String {
     let script_path = path.join("fake_primer3.sh");
     let script = r#"#!/bin/sh
+if [ "$1" = "--help" ]; then
+  echo "USAGE: primer3_core [--progress] [input_file]"
+  exit 0
+fi
 if [ "$1" = "--version" ]; then
   echo "primer3_core synthetic-fixture 2.6.1"
   exit 0
@@ -3633,21 +3828,88 @@ exit 2
 }
 
 #[cfg(unix)]
+fn install_fake_native_primer3_about(path: &Path) -> String {
+    let script_path = path.join("fake_native_primer3.sh");
+    let script = r#"#!/bin/sh
+if [ "$1" = "--about" ]; then
+  echo "libprimer3 release 2.6.1"
+  exit 0
+fi
+if [ "$1" = "--version" ]; then
+  echo "Copyright (c) 1996-2022"
+  exit 255
+fi
+echo "unexpected args: $@" >&2
+exit 2
+"#;
+    std::fs::write(&script_path, script).expect("write native-like fake primer3");
+    let mut perms = std::fs::metadata(&script_path)
+        .expect("metadata native-like fake primer3")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script_path, perms).expect("chmod native-like fake primer3");
+    script_path.display().to_string()
+}
+
+#[cfg(unix)]
+fn install_fake_primer3_failed_version_probes(path: &Path) -> String {
+    let script_path = path.join("fake_failed_primer3.sh");
+    let script = r#"#!/bin/sh
+if [ "$1" = "--about" ]; then
+  echo "unknown option: --about" >&2
+  exit 2
+fi
+if [ "$1" = "--version" ]; then
+  echo "Copyright (c) 1996-2022"
+  exit 255
+fi
+echo "unexpected args: $@" >&2
+exit 2
+"#;
+    std::fs::write(&script_path, script).expect("write failed fake primer3");
+    let mut perms = std::fs::metadata(&script_path)
+        .expect("metadata failed fake primer3")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script_path, perms).expect("chmod failed fake primer3");
+    script_path.display().to_string()
+}
+
+#[cfg(unix)]
 fn install_fake_primer3_zero_pairs(path: &Path) -> (String, String) {
     let script_path = path.join("fake_primer3_zero_pairs.sh");
     let request_capture_path = path.join("fake_primer3_request_capture.txt");
     let script = format!(
         r#"#!/bin/sh
+progress=0
+if [ "$1" = "--help" ]; then
+  echo "USAGE: primer3_core [--progress] [input_file]"
+  exit 0
+fi
+if [ "$1" = "--progress" ]; then
+  progress=1
+  shift
+fi
+if [ "$progress" -eq 1 ]; then
+  trap 'echo "PRIMER3_PROGRESS=record=1 8<16" >&2' USR1
+fi
+if [ "$1" = "--about" ]; then
+  echo "unknown option: --about" >&2
+  exit 2
+fi
 if [ "$1" = "--version" ]; then
   echo "primer3_core synthetic-fixture 2.6.1"
   exit 0
 fi
+[ "$progress" -eq 1 ] && echo "PRIMER3_PROGRESS=record=1 4<16" >&2
+[ "$progress" -eq 1 ] && echo "PRIMER3_PROGRESS=record=1 phase=future-format" >&2
 cat > "{}"
 echo "PRIMER_PAIR_NUM_RETURNED=0"
 echo "PRIMER_LEFT_NUM_RETURNED=0"
 echo "PRIMER_RIGHT_NUM_RETURNED=0"
 echo "PRIMER_PAIR_EXPLAIN=considered 16, no acceptable primer pairs"
 echo "="
+[ "$progress" -eq 1 ] && echo "PRIMER3_PROGRESS=record=1 16<16" >&2
 "#,
         request_capture_path.display()
     );
@@ -3661,6 +3923,187 @@ echo "="
         script_path.display().to_string(),
         request_capture_path.display().to_string(),
     )
+}
+
+#[cfg(unix)]
+fn install_fake_legacy_primer3_zero_pairs(path: &Path) -> (String, String, String) {
+    let script_path = path.join("fake_legacy_primer3_zero_pairs.sh");
+    let request_capture_path = path.join("fake_legacy_primer3_request_capture.txt");
+    let invocation_capture_path = path.join("fake_legacy_primer3_invocations.txt");
+    let script = format!(
+        r#"#!/bin/sh
+echo "$@" >> "{}"
+if [ "$1" = "--help" ]; then
+  echo "USAGE: primer3_core [--format_output] [input_file]"
+  exit 0
+fi
+if [ "$1" = "--progress" ]; then
+  echo "USAGE: primer3_core [--format_output] [input_file]" >&2
+  exit 255
+fi
+if [ "$1" = "--about" ]; then
+  echo "unknown option: --about" >&2
+  exit 2
+fi
+if [ "$1" = "--version" ]; then
+  echo "primer3_core synthetic-legacy-fixture 2.6.1"
+  exit 0
+fi
+cat > "{}"
+echo "PRIMER_PAIR_NUM_RETURNED=0"
+echo "PRIMER_LEFT_NUM_RETURNED=0"
+echo "PRIMER_RIGHT_NUM_RETURNED=0"
+echo "PRIMER_PAIR_EXPLAIN=considered 16, no acceptable primer pairs"
+echo "="
+"#,
+        invocation_capture_path.display(),
+        request_capture_path.display()
+    );
+    std::fs::write(&script_path, script).expect("write legacy fake primer3");
+    let mut perms = std::fs::metadata(&script_path)
+        .expect("metadata legacy fake primer3")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script_path, perms).expect("chmod legacy fake primer3");
+    (
+        script_path.display().to_string(),
+        request_capture_path.display().to_string(),
+        invocation_capture_path.display().to_string(),
+    )
+}
+
+#[cfg(unix)]
+fn install_fake_inconsistent_primer3_zero_pairs(path: &Path) -> (String, String) {
+    let script_path = path.join("fake_inconsistent_primer3_zero_pairs.sh");
+    let request_capture_path = path.join("fake_inconsistent_primer3_request_capture.txt");
+    let script = format!(
+        r#"#!/bin/sh
+if [ "$1" = "--help" ]; then
+  echo "USAGE: primer3_core [--progress] [input_file]"
+  exit 0
+fi
+if [ "$1" = "--progress" ]; then
+  echo "unknown option: --progress" >&2
+  exit 255
+fi
+if [ "$1" = "--about" ]; then
+  echo "unknown option: --about" >&2
+  exit 2
+fi
+if [ "$1" = "--version" ]; then
+  echo "primer3_core synthetic-inconsistent-fixture 2.6.1"
+  exit 0
+fi
+cat > "{}"
+echo "PRIMER_PAIR_NUM_RETURNED=0"
+echo "PRIMER_LEFT_NUM_RETURNED=0"
+echo "PRIMER_RIGHT_NUM_RETURNED=0"
+echo "PRIMER_PAIR_EXPLAIN=considered 16, no acceptable primer pairs"
+echo "="
+"#,
+        request_capture_path.display()
+    );
+    std::fs::write(&script_path, script).expect("write inconsistent fake primer3");
+    let mut perms = std::fs::metadata(&script_path)
+        .expect("metadata inconsistent fake primer3")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script_path, perms).expect("chmod inconsistent fake primer3");
+    (
+        script_path.display().to_string(),
+        request_capture_path.display().to_string(),
+    )
+}
+
+#[cfg(unix)]
+fn install_fake_signal_driven_primer3(path: &Path) -> String {
+    let script_path = path.join("fake_signal_driven_primer3.sh");
+    let script = r#"#!/bin/sh
+if [ "$1" = "--help" ]; then
+  echo "USAGE: primer3_core [--progress] [input_file]"
+  exit 0
+fi
+if [ "$1" != "--progress" ]; then
+  exit 2
+fi
+cat >/dev/null
+trap '
+  echo "PRIMER3_PROGRESS=record=1 10<10" >&2
+  echo "PRIMER_PAIR_NUM_RETURNED=0"
+  echo "PRIMER_LEFT_NUM_RETURNED=0"
+  echo "PRIMER_RIGHT_NUM_RETURNED=0"
+  echo "="
+  exit 0
+' USR1
+echo "PRIMER3_PROGRESS=record=1 1<10" >&2
+i=0
+while [ "$i" -lt 100 ]; do
+  sleep 0.02
+  i=$((i + 1))
+done
+exit 9
+"#;
+    std::fs::write(&script_path, script).expect("write signal-driven fake primer3");
+    let mut perms = std::fs::metadata(&script_path)
+        .expect("metadata signal-driven fake primer3")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script_path, perms).expect("chmod signal-driven fake primer3");
+    script_path.display().to_string()
+}
+
+#[cfg(unix)]
+fn install_fake_delayed_progress_primer3(path: &Path) -> String {
+    let script_path = path.join("fake_delayed_progress_primer3.sh");
+    let script = r#"#!/bin/sh
+if [ "$1" = "--help" ]; then
+  echo "USAGE: primer3_core [--progress] [input_file]"
+  exit 0
+fi
+if [ "$1" != "--progress" ]; then
+  exit 2
+fi
+cat >/dev/null
+# Deliberately install no USR1 handler and emit no progress row. A supervisor
+# must not infer runtime signal readiness from help text alone.
+sleep 1
+echo "PRIMER_PAIR_NUM_RETURNED=0"
+echo "PRIMER_LEFT_NUM_RETURNED=0"
+echo "PRIMER_RIGHT_NUM_RETURNED=0"
+echo "PRIMER_PAIR_EXPLAIN=considered 0, no acceptable primer pairs"
+echo "="
+"#;
+    std::fs::write(&script_path, script).expect("write delayed-progress fake primer3");
+    let mut perms = std::fs::metadata(&script_path)
+        .expect("metadata delayed-progress fake primer3")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script_path, perms).expect("chmod delayed-progress fake primer3");
+    script_path.display().to_string()
+}
+
+#[cfg(unix)]
+fn install_fake_long_running_progress_primer3(path: &Path) -> String {
+    let script_path = path.join("fake_long_running_progress_primer3.sh");
+    let script = r#"#!/bin/sh
+if [ "$1" = "--help" ]; then
+  echo "USAGE: primer3_core [--progress] [input_file]"
+  exit 0
+fi
+if [ "$1" = "--progress" ]; then
+  shift
+fi
+cat >/dev/null
+echo "PRIMER3_PROGRESS=record=1 1<100" >&2
+exec sleep 60
+"#;
+    std::fs::write(&script_path, script).expect("write long-running fake primer3");
+    let mut perms = std::fs::metadata(&script_path)
+        .expect("metadata long-running fake primer3")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script_path, perms).expect("chmod long-running fake primer3");
+    script_path.display().to_string()
 }
 
 fn file_url(path: &Path) -> String {
@@ -3698,14 +4141,14 @@ fn write_cutrun_test_reference_catalog_with_sequence(
         r#"{{
   "{genome_id}": {{
     "description": "toy genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }}
 }}"#,
-        file_url(&fasta_gz),
-        file_url(&ann_gz),
-        cache_dir.display()
+        serde_json::json!(file_url(&fasta_gz)),
+        serde_json::json!(file_url(&ann_gz)),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).expect("write CUT&RUN reference catalog");
     catalog_path.to_string_lossy().to_string()
@@ -3789,14 +4232,14 @@ fn write_gene_set_test_reference_catalog(root: &Path, genome_id: &str) -> String
         r#"{{
   "{genome_id}": {{
     "description": "gene-set toy genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }}
 }}"#,
-        file_url(&fasta_gz),
-        file_url(&ann_gz),
-        cache_dir.display()
+        serde_json::json!(file_url(&fasta_gz)),
+        serde_json::json!(file_url(&ann_gz)),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).expect("write gene-set reference catalog");
     catalog_path.to_string_lossy().to_string()
@@ -3870,6 +4313,229 @@ fn prepare_gene_set_test_genome(root: &Path, engine: &mut GentleEngine) -> Strin
     catalog_path
 }
 
+fn regulatory_reporter_study_test_request(
+    root: &Path,
+    genome_catalog_path: &str,
+    members: &[&str],
+) -> RegulatoryReporterStudyRequest {
+    let transcript_ids_by_member = members
+        .iter()
+        .map(|member| {
+            let transcript_id = match *member {
+                "POS1" => "TX_POS",
+                "NEG1" => "TX_NEG",
+                other => panic!("missing test transcript for {other}"),
+            };
+            ((*member).to_string(), transcript_id.to_string())
+        })
+        .collect();
+    let evidence_by_member = members
+        .iter()
+        .map(|member| {
+            (
+                (*member).to_string(),
+                vec![PromoterEvidenceItem {
+                    evidence_id: format!("{}_occupancy", member.to_ascii_lowercase()),
+                    kind: "occupancy".to_string(),
+                    source: "synthetic CUT&RUN test evidence".to_string(),
+                    summary: "Synthetic occupancy row for composer contract coverage".to_string(),
+                    interpretation_tags: vec![
+                        "occupancy_support".to_string(),
+                        "regulatory_function_not_inferred".to_string(),
+                    ],
+                    ..PromoterEvidenceItem::default()
+                }],
+            )
+        })
+        .collect();
+    RegulatoryReporterStudyRequest {
+        study_id: "toy_regulatory_panel".to_string(),
+        genome_id: "ToyGenome".to_string(),
+        source: Some(GeneSetRequest::ExplicitMembers {
+            members: members.iter().map(|member| (*member).to_string()).collect(),
+        }),
+        relationship: GeneSetCohortRelationship::Manual,
+        tss_policy: RegulatoryReporterTssPolicy {
+            selection: RegulatoryReporterTssSelection::ExplicitPerMember,
+            transcript_ids_by_member,
+        },
+        evidence_policy: RegulatoryReporterEvidencePolicy {
+            required_kinds_per_member: vec!["occupancy".to_string()],
+        },
+        evidence_by_member,
+        vector_seq_id: "missing_test_vector".to_string(),
+        vector_catalog_id: "missing_test_vector_catalog_row".to_string(),
+        genome_catalog_path: Some(genome_catalog_path.to_string()),
+        output_dir: root
+            .join("regulatory_reporter_study")
+            .to_string_lossy()
+            .to_string(),
+        ..RegulatoryReporterStudyRequest::default()
+    }
+}
+
+#[test]
+fn compose_regulatory_reporter_study_emits_tss_bound_candidates_and_readiness() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let genome_catalog_path = prepare_gene_set_test_genome(root, &mut engine);
+    let request =
+        regulatory_reporter_study_test_request(root, &genome_catalog_path, &["POS1", "NEG1"]);
+
+    let result = engine
+        .apply(Operation::ComposeRegulatoryReporterStudy {
+            request: Box::new(request),
+            path: None,
+        })
+        .expect("compose regulatory-reporter study");
+    let report = result
+        .regulatory_reporter_study
+        .as_deref()
+        .expect("regulatory-reporter study report");
+
+    assert_eq!(report.schema, REGULATORY_REPORTER_STUDY_SCHEMA);
+    assert_eq!(report.candidate_artifacts.len(), 2);
+    assert_eq!(report.panel_request.members.len(), 2);
+    assert_eq!(result.created_seq_ids.len(), 2);
+    assert_eq!(
+        report.readiness.overall,
+        PromoterReporterPanelReadinessOverall::Blocked,
+        "the composer must expose the existing context-bound vector gate"
+    );
+    assert!(report.readiness.checks.iter().any(|check| {
+        check.kind == PromoterReporterPanelReadinessCheckKind::ReporterVectorValidation
+            && check.state == PromoterReporterPanelReadinessState::Blocked
+    }));
+    assert!(Path::new(&report.panel_request_path).is_file());
+
+    for artifact in &report.candidate_artifacts {
+        assert!(
+            engine
+                .state()
+                .sequences
+                .contains_key(&artifact.source_seq_id)
+        );
+        assert!(artifact.evidence_kinds.contains(&"occupancy".to_string()));
+        assert!(
+            artifact
+                .evidence_kinds
+                .contains(&"transcript_tss_annotation".to_string())
+        );
+        assert!(Path::new(&artifact.candidate_set_path).is_file());
+        let bytes = fs::read(&artifact.candidate_set_path).expect("read candidate artifact");
+        assert_eq!(sha256_prefixed_bytes(&bytes), artifact.candidate_set_sha256);
+        let candidates: PromoterReporterCandidateSet =
+            serde_json::from_slice(&bytes).expect("parse candidate artifact");
+        assert_eq!(
+            candidates.anchor.as_ref().map(|anchor| anchor.kind),
+            Some(PromoterReporterAnchorKind::TranscriptionStartSite)
+        );
+        assert!(!candidates.recommended_candidate_id.is_empty());
+    }
+    assert_eq!(
+        report
+            .candidate_artifacts
+            .iter()
+            .map(|artifact| artifact.transcript_id.as_str())
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["TX_NEG", "TX_POS"])
+    );
+}
+
+#[test]
+fn compose_regulatory_reporter_study_requires_declared_evidence_before_writes() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let genome_catalog_path = prepare_gene_set_test_genome(root, &mut engine);
+    let mut request = regulatory_reporter_study_test_request(root, &genome_catalog_path, &["POS1"]);
+    request.evidence_by_member.clear();
+    let output_dir = PathBuf::from(&request.output_dir);
+    let sequence_count_before = engine.state().sequences.len();
+
+    let error = engine
+        .apply(Operation::ComposeRegulatoryReporterStudy {
+            request: Box::new(request),
+            path: None,
+        })
+        .expect_err("missing required evidence must fail closed");
+
+    assert!(
+        error
+            .message
+            .contains("lacks required evidence kind(s): occupancy")
+    );
+    assert_eq!(engine.state().sequences.len(), sequence_count_before);
+    assert!(!output_dir.exists());
+}
+
+fn write_regulatory_partner_test_reference_catalog(root: &Path) -> String {
+    let fasta_gz = root.join("regulatory_partner_toy.fa.gz");
+    let ann_gz = root.join("regulatory_partner_toy.gtf.gz");
+    let mut chr1 = "AT".repeat(1200);
+    // PAIR1: promoter-local anchor AAA at 40..43 and partner CCC at 49..52.
+    chr1.replace_range(460..463, "AAA");
+    chr1.replace_range(469..472, "CCC");
+    // ANCHOR1: anchor only, against a background without AAA/TTT or CCC/GGG.
+    chr1.replace_range(860..863, "AAA");
+    // NEGPAIR: genomic TTT/GGG become promoter-oriented AAA/CCC on the minus strand.
+    chr1.replace_range(1557..1560, "TTT");
+    chr1.replace_range(1548..1551, "GGG");
+    write_gzip(&fasta_gz, &format!(">chr1\n{chr1}\n"));
+    write_gzip(
+        &ann_gz,
+        concat!(
+            "chr1\tsrc\tgene\t481\t700\t.\t+\t.\tgene_id \"GENE_PAIR1\"; gene_name \"PAIR1\";\n",
+            "chr1\tsrc\ttranscript\t501\t650\t.\t+\t.\tgene_id \"GENE_PAIR1\"; gene_name \"PAIR1\"; transcript_id \"TX_PAIR1\";\n",
+            "chr1\tsrc\texon\t501\t650\t.\t+\t.\tgene_id \"GENE_PAIR1\"; gene_name \"PAIR1\"; transcript_id \"TX_PAIR1\"; exon_number \"1\";\n",
+            "chr1\tsrc\tgene\t881\t1100\t.\t+\t.\tgene_id \"GENE_ANCHOR1\"; gene_name \"ANCHOR1\";\n",
+            "chr1\tsrc\ttranscript\t901\t1050\t.\t+\t.\tgene_id \"GENE_ANCHOR1\"; gene_name \"ANCHOR1\"; transcript_id \"TX_ANCHOR1\";\n",
+            "chr1\tsrc\texon\t901\t1050\t.\t+\t.\tgene_id \"GENE_ANCHOR1\"; gene_name \"ANCHOR1\"; transcript_id \"TX_ANCHOR1\"; exon_number \"1\";\n",
+            "chr1\tsrc\tgene\t1301\t1520\t.\t-\t.\tgene_id \"GENE_NEGPAIR\"; gene_name \"NEGPAIR\";\n",
+            "chr1\tsrc\ttranscript\t1351\t1500\t.\t-\t.\tgene_id \"GENE_NEGPAIR\"; gene_name \"NEGPAIR\"; transcript_id \"TX_NEGPAIR\";\n",
+            "chr1\tsrc\texon\t1351\t1500\t.\t-\t.\tgene_id \"GENE_NEGPAIR\"; gene_name \"NEGPAIR\"; transcript_id \"TX_NEGPAIR\"; exon_number \"1\";\n",
+        ),
+    );
+    let cache_dir = root.join("regulatory_partner_reference_cache");
+    let catalog_path = root.join("regulatory_partner_reference_catalog.json");
+    fs::write(
+        &catalog_path,
+        format!(
+            r#"{{
+  "RegulatoryPartnerToy": {{
+    "description": "synthetic regulatory-partner test genome",
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
+  }}
+}}"#,
+            serde_json::json!(file_url(&fasta_gz)),
+            serde_json::json!(file_url(&ann_gz)),
+            serde_json::json!(cache_dir)
+        ),
+    )
+    .expect("write regulatory-partner reference catalog");
+    catalog_path.to_string_lossy().to_string()
+}
+
+fn prepare_regulatory_partner_test_genome(root: &Path, engine: &mut GentleEngine) -> String {
+    let catalog_path = write_regulatory_partner_test_reference_catalog(root);
+    let _guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+    engine
+        .apply(Operation::PrepareGenome {
+            genome_id: "RegulatoryPartnerToy".to_string(),
+            catalog_path: Some(catalog_path.clone()),
+            cache_dir: None,
+            timeout_seconds: None,
+        })
+        .expect("prepare regulatory-partner test genome");
+    catalog_path
+}
+
 fn write_ortholog_test_reference_catalog(root: &Path) -> String {
     let human_fasta = root.join("ortholog_human.fa.gz");
     let human_gtf = root.join("ortholog_human.gtf.gz");
@@ -3908,23 +4574,23 @@ fn write_ortholog_test_reference_catalog(root: &Path) -> String {
             r#"{{
   "HumanToy": {{
     "description": "ortholog human toy genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }},
   "MouseToy": {{
     "description": "ortholog mouse toy genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }}
 }}"#,
-            file_url(&human_fasta),
-            file_url(&human_gtf),
-            human_cache.display(),
-            file_url(&mouse_fasta),
-            file_url(&mouse_gtf),
-            mouse_cache.display()
+            serde_json::json!(file_url(&human_fasta)),
+            serde_json::json!(file_url(&human_gtf)),
+            serde_json::json!(human_cache),
+            serde_json::json!(file_url(&mouse_fasta)),
+            serde_json::json!(file_url(&mouse_gtf)),
+            serde_json::json!(mouse_cache)
         ),
     )
     .expect("write ortholog reference catalog");
@@ -4000,6 +4666,55 @@ fn write_ortholog_test_resource(root: &Path, include_ambiguous_mouse_row: bool) 
         ),
     )
     .expect("write ortholog resource");
+    path.to_string_lossy().to_string()
+}
+
+fn write_context_bound_ortholog_test_resource(root: &Path, target_genome_id: &str) -> String {
+    let path = root.join("context_bound_ortholog_resource.json");
+    fs::write(
+        &path,
+        format!(
+            r#"{{
+  "schema": "{}",
+  "id": "tp73_context_bound_orthologs",
+  "contexts": [
+    {{
+      "context_id": "human_context",
+      "organism": "Homo sapiens",
+      "genome_id": "HumanToy",
+      "annotation_source": "synthetic_gtf"
+    }},
+    {{
+      "context_id": "mouse_context",
+      "organism": "Mus musculus",
+      "genome_id": "{}",
+      "annotation_source": "synthetic_gtf"
+    }}
+  ],
+  "species_aliases": [
+    {{"species": "Homo sapiens", "aliases": ["human"]}},
+    {{"species": "Mus musculus", "aliases": ["mouse"]}}
+  ],
+  "rows": [
+    {{
+      "source_species": "Homo sapiens",
+      "source_context_id": "human_context",
+      "source_gene_symbol": "TP73",
+      "target_species": "Mus musculus",
+      "target_context_id": "mouse_context",
+      "target_gene_symbol": "Trp73",
+      "orthology_type": "ortholog_one2one",
+      "confidence": "provider_reviewed",
+      "source": "synthetic context-bound table",
+      "evidence": ["symbol_keyed_mapping_retained"]
+    }}
+  ]
+}}"#,
+            gentle_protocol::ORTHOLOG_RESOURCE_SCHEMA,
+            target_genome_id
+        ),
+    )
+    .expect("write context-bound ortholog resource");
     path.to_string_lossy().to_string()
 }
 
@@ -5179,6 +5894,411 @@ fn build_gene_set_promoter_cohort_uses_default_strand_geometry_and_keeps_unresol
 }
 
 #[test]
+fn inspect_regulatory_partner_screen_links_exact_motifs_tree_paths_and_occupancy_states() {
+    let _serial = jaspar_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+    crate::tf_motifs::reload();
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let genome_catalog_path = prepare_regulatory_partner_test_genome(root, &mut engine);
+    let resolution = engine
+        .resolve_gene_set(
+            GeneSetRequest::ExplicitMembers {
+                members: vec![
+                    "PAIR1".to_string(),
+                    "ANCHOR1".to_string(),
+                    "NEGPAIR".to_string(),
+                    "MISSING".to_string(),
+                ],
+            },
+            Some("RegulatoryPartnerToy"),
+            None,
+            Some(&genome_catalog_path),
+            None,
+            false,
+            false,
+        )
+        .expect("resolve regulatory-partner gene set");
+    let key_for = |symbol: &str| {
+        resolution
+            .resolved_members
+            .iter()
+            .find(|member| member.symbol == symbol)
+            .map(|member| member.dedup_key.clone())
+            .unwrap_or_else(|| panic!("resolved member {symbol}"))
+    };
+    let pair_key = key_for("PAIR1");
+    let negative_key = key_for("NEGPAIR");
+    let cutrun_support = GeneSetCutRunRegulatorySupportReport {
+        schema: GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA.to_string(),
+        op_id: Some("synthetic-cutrun-op".to_string()),
+        genome_id: "RegulatoryPartnerToy".to_string(),
+        dataset_ids: vec!["synthetic-anchor-cutrun".to_string()],
+        member_support: vec![
+            GeneSetCutRunMemberSupport {
+                member_dedup_key: pair_key.clone(),
+                symbol: "PAIR1".to_string(),
+                evaluation_state: GeneSetCutRunEvaluationState::Evaluated,
+                support_window_count: 1,
+                contributing_dataset_ids: vec!["synthetic-anchor-cutrun".to_string()],
+                ..GeneSetCutRunMemberSupport::default()
+            },
+            GeneSetCutRunMemberSupport {
+                member_dedup_key: negative_key.clone(),
+                symbol: "NEGPAIR".to_string(),
+                evaluation_state: GeneSetCutRunEvaluationState::Evaluated,
+                support_window_count: 0,
+                contributing_dataset_ids: vec!["synthetic-anchor-cutrun".to_string()],
+                ..GeneSetCutRunMemberSupport::default()
+            },
+        ],
+        ..GeneSetCutRunRegulatorySupportReport::default()
+    };
+    let output_path = root.join("regulatory_partner_screen.json");
+
+    let result = engine
+        .apply(Operation::InspectRegulatoryPartnerScreen {
+            genome_id: "RegulatoryPartnerToy".to_string(),
+            resolution: Box::new(resolution),
+            cutrun_support: Some(Box::new(cutrun_support)),
+            anchor_motifs: vec!["AAA".to_string()],
+            partner_motifs: vec!["CCC".to_string()],
+            min_llr_bits: 0.0,
+            per_motif_thresholds: vec![],
+            max_distance_bp: 20,
+            anchor_mode: RegulatoryPartnerAnchorMode::OccupancyPreferred,
+            upstream_bp: 80,
+            downstream_bp: 20,
+            genome_catalog_path: Some(genome_catalog_path),
+            cache_dir: None,
+            path: Some(output_path.to_string_lossy().to_string()),
+        })
+        .expect("inspect regulatory-partner screen");
+    let report = result
+        .regulatory_partner_screen
+        .expect("regulatory-partner report");
+    assert_eq!(report.schema, REGULATORY_PARTNER_SCREEN_SCHEMA);
+    assert_eq!(report.ledger.schema, REGULATORY_PARTNER_TUPLE_LEDGER_SCHEMA);
+    assert_eq!(
+        report.decision_tree.schema,
+        REGULATORY_PARTNER_DECISION_TREE_SCHEMA
+    );
+    assert_eq!(report.ledger.requested_member_count, 4);
+    assert_eq!(report.ledger.resolved_promoter_count, 3);
+    assert!(output_path.is_file());
+    assert!(
+        report
+            .ledger
+            .source_reports
+            .iter()
+            .all(|source| source.content_sha256.starts_with("sha256:"))
+    );
+
+    let pair = report
+        .ledger
+        .genes
+        .iter()
+        .find(|gene| gene.gene_symbol == "PAIR1")
+        .expect("PAIR1 row");
+    assert_eq!(pair.terminal_class, "occupancy_supported_tuple");
+    assert_eq!(
+        pair.occupancy_evaluation_state,
+        GeneSetCutRunEvaluationState::Evaluated
+    );
+    assert!(pair.promoter_occupancy_supported);
+    assert_eq!(pair.tss_position_0based, Some(80));
+    let pair_hits = report
+        .ledger
+        .motif_hits
+        .iter()
+        .filter(|hit| hit.member_dedup_key == pair_key)
+        .collect::<Vec<_>>();
+    assert!(pair_hits.iter().any(|hit| {
+        hit.role == RegulatoryPartnerMotifRole::Anchor
+            && hit.promoter_start_0based == 40
+            && hit.genomic_start_1based == 461
+            && hit.matched_sequence == "AAA"
+    }));
+    assert!(pair_hits.iter().any(|hit| {
+        hit.role == RegulatoryPartnerMotifRole::Partner
+            && hit.promoter_start_0based == 49
+            && hit.genomic_start_1based == 470
+            && hit.matched_sequence == "CCC"
+    }));
+    assert!(report.ledger.tuples.iter().any(|tuple| {
+        tuple.member_dedup_key == pair_key
+            && tuple.within_requested_distance
+            && (tuple.signed_anchor_to_partner_center_distance_bp - 9.0).abs() < f64::EPSILON
+    }));
+
+    let anchor_only = report
+        .ledger
+        .genes
+        .iter()
+        .find(|gene| gene.gene_symbol == "ANCHOR1")
+        .expect("ANCHOR1 row");
+    assert_eq!(anchor_only.terminal_class, "anchor_only");
+    assert_eq!(
+        anchor_only.occupancy_evaluation_state,
+        GeneSetCutRunEvaluationState::Unevaluated
+    );
+
+    let negative = report
+        .ledger
+        .genes
+        .iter()
+        .find(|gene| gene.gene_symbol == "NEGPAIR")
+        .expect("NEGPAIR row");
+    assert_eq!(negative.strand.as_deref(), Some("-"));
+    assert_eq!(negative.tss_position_0based, Some(80));
+    assert_eq!(negative.terminal_class, "tuple_without_occupancy_support");
+    assert!(report.ledger.motif_hits.iter().any(|hit| {
+        hit.member_dedup_key == negative_key
+            && hit.role == RegulatoryPartnerMotifRole::Anchor
+            && hit.promoter_forward_strand
+            && !hit.genomic_forward_strand
+            && hit.matched_sequence == "AAA"
+    }));
+
+    let missing = report
+        .ledger
+        .genes
+        .iter()
+        .find(|gene| gene.gene_symbol == "MISSING")
+        .expect("unresolved member row");
+    assert!(!missing.promoter_resolved);
+    assert_eq!(missing.terminal_class, "unresolved");
+    assert_eq!(
+        missing
+            .trace
+            .iter()
+            .map(|step| step.node_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["promoter_resolved", "unresolved"]
+    );
+}
+
+#[test]
+fn build_gene_set_promoter_cohort_emits_persisted_collection_lift_report() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let genome_catalog_path = prepare_gene_set_test_genome(root, &mut engine);
+    let resolution = engine
+        .resolve_gene_set(
+            GeneSetRequest::ExplicitMembers {
+                members: vec!["NEG1".to_string(), "POS1".to_string()],
+            },
+            Some("ToyGenome"),
+            None,
+            Some(&genome_catalog_path),
+            None,
+            false,
+            false,
+        )
+        .expect("resolve explicit gene set");
+
+    let result = engine
+        .apply(Operation::BuildGeneSetPromoterCohort {
+            genome_id: "ToyGenome".to_string(),
+            source: None,
+            resolution: Some(Box::new(resolution)),
+            relationship: GeneSetCohortRelationship::Manual,
+            upstream_bp: DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
+            downstream_bp: DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
+            gene_group_catalog_path: None,
+            genome_catalog_path: Some(genome_catalog_path),
+            cache_dir: None,
+            allow_draft: false,
+            allow_deprecated: false,
+            path: None,
+        })
+        .expect("build promoter cohort operation");
+    let generic = result
+        .collection_operation
+        .expect("generic collection operation report");
+    let cohort = result
+        .gene_set_promoter_cohort
+        .expect("promoter cohort report");
+    assert_eq!(
+        cohort.collection_operation.as_deref(),
+        Some(&generic),
+        "domain report and generic operation result must carry the same collection report"
+    );
+    assert_eq!(generic.schema, COLLECTION_OPERATION_REPORT_SCHEMA);
+    assert_eq!(generic.capability_name, "BuildGeneSetPromoterCohort");
+    assert_eq!(generic.lifting_mode, CollectionLiftingMode::Derive);
+    assert_eq!(
+        cohort.gene_set_resolution.op_id.as_deref(),
+        cohort.op_id.as_deref()
+    );
+    assert_eq!(
+        cohort.gene_set_resolution.run_id.as_deref(),
+        cohort.run_id.as_deref()
+    );
+    assert_eq!(
+        generic.fingerprint_algorithm,
+        COLLECTION_MEMBERSHIP_FINGERPRINT_ALGORITHM
+    );
+    assert!(
+        generic
+            .collection_membership_fingerprint_sha256
+            .starts_with("sha256:")
+    );
+    assert!(generic.applied);
+    assert!(!generic.dry_run);
+    assert_eq!(
+        generic.lift_policy.context_requirement,
+        CollectionContextRequirement::Homogeneous
+    );
+    assert_eq!(
+        generic.biological_contexts, cohort.gene_set_resolution.biological_contexts,
+        "the generic report needs its own portable copy of the source registry"
+    );
+    assert_eq!(
+        generic.biological_contexts.default_context_id.as_deref(),
+        Some(DEFAULT_BIOLOGICAL_CONTEXT_ID)
+    );
+
+    let source_rows = generic
+        .per_member_status
+        .iter()
+        .filter(|row| row.member.parent_member_id.is_none())
+        .collect::<Vec<_>>();
+    let derived_rows = generic
+        .per_member_status
+        .iter()
+        .filter(|row| row.member.parent_member_id.is_some())
+        .collect::<Vec<_>>();
+    assert_eq!(source_rows.len(), 2);
+    assert_eq!(derived_rows.len(), 2);
+    assert!(source_rows.iter().all(|row| {
+        row.outcome == CollectionMemberOutcome::Succeeded
+            && row.member.gene_symbol.is_some()
+            && row.produced_report_ids.len() == 1
+            && generic
+                .biological_contexts
+                .resolve(row.member.context_id.as_deref(), None)
+                .is_ok_and(|context| context.is_some())
+    }));
+    assert!(derived_rows.iter().all(|row| {
+        row.outcome == CollectionMemberOutcome::Succeeded
+            && source_rows.iter().any(|source| {
+                row.member.parent_member_id.as_deref()
+                    == Some(source.member.stable_member_id.as_str())
+            })
+            && row.produced_report_ids == source_rows[0].produced_report_ids
+            && generic
+                .biological_contexts
+                .resolve(row.member.context_id.as_deref(), None)
+                .is_ok_and(|context| context.is_some())
+    }));
+
+    let persisted = GentleEngine::gene_set_promoter_cohort_artifacts_from_state(engine.state());
+    assert_eq!(persisted.len(), 1);
+    assert_eq!(
+        persisted[0]
+            .collection_operation
+            .as_deref()
+            .map(|report| report.report_id.as_str()),
+        Some(generic.report_id.as_str())
+    );
+    let persisted_resolutions =
+        GentleEngine::gene_set_resolution_artifacts_from_state(engine.state());
+    let subject_report_id = match &generic.collection_subject {
+        CollectionSubjectRef::GeneSetResolution { report_id } => report_id,
+        other => panic!("expected gene-set resolution subject, got {other:?}"),
+    };
+    assert_eq!(
+        Some(subject_report_id.as_str()),
+        cohort.gene_set_resolution.op_id.as_deref(),
+        "collection subject should use the persisted source operation id"
+    );
+    assert!(persisted_resolutions.iter().any(|resolution| {
+        GentleEngine::gene_set_resolution_artifact_id(resolution) == *subject_report_id
+    }));
+}
+
+#[test]
+fn build_gene_set_promoter_cohort_rejects_missing_and_mixed_contexts_before_lookup() {
+    let engine = GentleEngine::new();
+    let member = |dedup_key: &str, context_id: Option<&str>| GeneSetResolvedMember {
+        dedup_key: dedup_key.to_string(),
+        symbol: dedup_key.to_string(),
+        context_id: context_id.map(str::to_string),
+        ..GeneSetResolvedMember::default()
+    };
+    let missing = GeneSetResolutionReport {
+        resolved_member_count: 1,
+        resolved_members: vec![member("GENE_A", None)],
+        ..GeneSetResolutionReport::default()
+    };
+    let error = engine
+        .build_gene_set_promoter_cohort(
+            "ToyGenome",
+            missing,
+            GeneSetCohortRelationship::Manual,
+            100,
+            20,
+            Some("does-not-need-to-exist.json"),
+            None,
+        )
+        .expect_err("missing context must fail before catalog lookup");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("missing_biological_context"));
+    assert!(
+        error
+            .cause_chain
+            .iter()
+            .any(|cause| cause.contains("missing_biological_context"))
+    );
+
+    let mixed = GeneSetResolutionReport {
+        genome_id: Some("ToyGenome".to_string()),
+        biological_contexts: BiologicalContextRegistry {
+            contexts: vec![
+                BiologicalContext {
+                    context_id: "toy".to_string(),
+                    genome_id: Some("ToyGenome".to_string()),
+                    ..BiologicalContext::default()
+                },
+                BiologicalContext {
+                    context_id: "other".to_string(),
+                    genome_id: Some("OtherGenome".to_string()),
+                    ..BiologicalContext::default()
+                },
+            ],
+            default_context_id: Some("toy".to_string()),
+        },
+        resolved_member_count: 2,
+        resolved_members: vec![
+            member("GENE_A", Some("toy")),
+            member("GENE_B", Some("other")),
+        ],
+        ..GeneSetResolutionReport::default()
+    };
+    let error = engine
+        .build_gene_set_promoter_cohort(
+            "ToyGenome",
+            mixed,
+            GeneSetCohortRelationship::Manual,
+            100,
+            20,
+            Some("does-not-need-to-exist.json"),
+            None,
+        )
+        .expect_err("mixed context must fail before catalog lookup");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("mixed_biological_context"));
+    assert!(
+        error
+            .cause_chain
+            .iter()
+            .any(|cause| cause.contains("mixed_biological_context"))
+    );
+}
+
+#[test]
 fn resolve_ortholog_promoter_cohort_uses_aliases_and_strand_geometry() {
     let td = tempdir().expect("tempdir");
     let root = td.path();
@@ -5227,6 +6347,7 @@ fn resolve_ortholog_promoter_cohort_uses_aliases_and_strand_geometry() {
     assert_eq!(anchor.promoter_end_1based, 1621);
     assert_eq!(anchor.tss_position_0based, 100);
     assert!(anchor.promoter_sequence.is_some());
+    assert!(anchor.context_id.is_some());
 
     let mouse = cohort
         .rows
@@ -5243,6 +6364,111 @@ fn resolve_ortholog_promoter_cohort_uses_aliases_and_strand_geometry() {
     assert_eq!(mouse.orthology_type.as_deref(), Some("one_to_one"));
     assert_eq!(mouse.confidence.as_deref(), Some("high"));
     assert_eq!(mouse.orthology_evidence, vec!["orthology_one2one"]);
+    assert!(mouse.context_id.is_some());
+    assert_eq!(
+        mouse.orthology_source_context_id.as_deref(),
+        anchor.context_id.as_deref()
+    );
+    assert_eq!(
+        mouse.orthology_target_context_id.as_deref(),
+        mouse.context_id.as_deref()
+    );
+    for row in &cohort.rows {
+        cohort
+            .biological_contexts
+            .context(row.context_id.as_deref().expect("resolved row context"))
+            .expect("row context resolves from report registry");
+    }
+}
+
+#[test]
+fn context_bound_ortholog_resource_preserves_symbol_resolution_and_context_provenance() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let catalog_path = prepare_ortholog_test_genomes(root, &mut engine);
+    let resource_path = write_context_bound_ortholog_test_resource(root, "MouseToy");
+    let target_genome_ids = BTreeMap::from([("mouse".to_string(), "MouseToy".to_string())]);
+
+    let cohort = engine
+        .resolve_ortholog_promoter_cohort(
+            "human",
+            "HumanToy",
+            "TP73",
+            &["mouse".to_string()],
+            &target_genome_ids,
+            &BTreeMap::new(),
+            &resource_path,
+            100,
+            20,
+            OrthologAmbiguityPolicy::Reject,
+            GeneSetCohortRelationship::Unspecified,
+            Some(&catalog_path),
+            None,
+        )
+        .expect("resolve context-bound symbol mapping");
+
+    assert_eq!(cohort.resolved_promoter_count, 2);
+    assert_eq!(cohort.biological_contexts.contexts.len(), 2);
+    let anchor = cohort
+        .rows
+        .iter()
+        .find(|row| row.role == OrthologPromoterRole::Anchor)
+        .expect("anchor row");
+    let target = cohort
+        .rows
+        .iter()
+        .find(|row| row.role == OrthologPromoterRole::Target)
+        .expect("target row");
+    assert_eq!(anchor.context_id.as_deref(), Some("human_context"));
+    assert_eq!(target.context_id.as_deref(), Some("mouse_context"));
+    assert_eq!(
+        target.orthology_source_context_id.as_deref(),
+        Some("human_context")
+    );
+    assert_eq!(
+        target.orthology_target_context_id.as_deref(),
+        Some("mouse_context")
+    );
+    assert_eq!(target.gene_symbol.as_deref(), Some("Trp73"));
+    assert_eq!(
+        target
+            .orthology_type
+            .as_ref()
+            .and_then(OrthologyType::cardinality),
+        Some(OrthologyCardinality::OneToOne)
+    );
+    assert_eq!(target.confidence.as_deref(), Some("provider_reviewed"));
+}
+
+#[test]
+fn ortholog_context_genome_mismatch_fails_before_catalog_lookup() {
+    let td = tempdir().expect("tempdir");
+    let resource_path = write_context_bound_ortholog_test_resource(td.path(), "WrongMouseGenome");
+    let engine = GentleEngine::new();
+    let target_genome_ids = BTreeMap::from([("mouse".to_string(), "MouseToy".to_string())]);
+
+    let error = engine
+        .resolve_ortholog_promoter_cohort(
+            "human",
+            "HumanToy",
+            "TP73",
+            &["mouse".to_string()],
+            &target_genome_ids,
+            &BTreeMap::new(),
+            &resource_path,
+            100,
+            20,
+            OrthologAmbiguityPolicy::Reject,
+            GeneSetCohortRelationship::Unspecified,
+            Some("/catalog/that/does/not/exist.json"),
+            None,
+        )
+        .expect_err("context mismatch must fail before catalog lookup");
+
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("WrongMouseGenome"));
+    assert!(error.message.contains("MouseToy"));
 }
 
 #[test]
@@ -5280,6 +6506,133 @@ fn resolve_ortholog_promoter_cohort_reports_ambiguity_unless_policy_allows_first
             .contains("Ambiguous local ortholog mapping")
     );
     assert_eq!(rejected.unresolved_rows[0].candidates.len(), 2);
+    assert!(rejected.unresolved_rows[0].candidate_mappings.is_empty());
+
+    let preserved = engine
+        .resolve_ortholog_promoter_cohort(
+            "Homo sapiens",
+            "HumanToy",
+            "ENSG_TP73",
+            &["Mus musculus".to_string()],
+            &target_genome_ids,
+            &BTreeMap::new(),
+            &resource_path,
+            100,
+            20,
+            OrthologAmbiguityPolicy::Preserve,
+            GeneSetCohortRelationship::Unspecified,
+            Some(&catalog_path),
+            None,
+        )
+        .expect("preserve ambiguity policy retains candidates");
+    assert_eq!(preserved.resolved_promoter_count, 1);
+    assert_eq!(preserved.unresolved_count, 1);
+    let preserved_target = &preserved.unresolved_rows[0];
+    assert!(
+        preserved_target
+            .reason
+            .contains("ambiguity_policy=preserve")
+    );
+    assert_eq!(preserved_target.candidates.len(), 2);
+    assert_eq!(preserved_target.candidate_mappings.len(), 2);
+    assert_eq!(
+        preserved_target
+            .candidate_mappings
+            .iter()
+            .map(|candidate| candidate.candidate_rank)
+            .collect::<Vec<_>>(),
+        vec![1, 2]
+    );
+    assert_eq!(
+        preserved_target.candidate_mappings[0]
+            .target_gene_symbol
+            .as_deref(),
+        Some("Trp73")
+    );
+    assert_eq!(
+        preserved_target.candidate_mappings[1]
+            .target_gene_symbol
+            .as_deref(),
+        Some("Trp73b")
+    );
+    assert_eq!(
+        preserved_target.candidate_mappings[0]
+            .orthology_type
+            .as_ref()
+            .and_then(OrthologyType::cardinality),
+        Some(OrthologyCardinality::OneToOne)
+    );
+    assert_eq!(
+        preserved_target.candidate_mappings[1]
+            .orthology_type
+            .as_ref()
+            .and_then(OrthologyType::cardinality),
+        Some(OrthologyCardinality::OneToMany)
+    );
+    assert_eq!(
+        preserved_target.candidate_mappings[1].source.as_deref(),
+        Some("synthetic ambiguous row")
+    );
+    assert!(
+        preserved_target.candidate_mappings[1]
+            .candidate_label
+            .contains("source=synthetic ambiguous row")
+    );
+    assert_eq!(
+        preserved_target.candidate_mappings[1].evidence,
+        vec!["synthetic_one2many".to_string()]
+    );
+    for candidate in &preserved_target.candidate_mappings {
+        assert_eq!(candidate.target_genome_id.as_deref(), Some("MouseToy"));
+        for context_id in [
+            candidate.source_context_id.as_deref(),
+            candidate.target_context_id.as_deref(),
+        ] {
+            preserved
+                .biological_contexts
+                .context(context_id.expect("candidate context id"))
+                .expect("candidate context copied into report");
+        }
+    }
+
+    let preserved_without_target_genome = engine
+        .resolve_ortholog_promoter_cohort(
+            "Homo sapiens",
+            "HumanToy",
+            "ENSG_TP73",
+            &["Mus musculus".to_string()],
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &resource_path,
+            100,
+            20,
+            OrthologAmbiguityPolicy::Preserve,
+            GeneSetCohortRelationship::Unspecified,
+            Some(&catalog_path),
+            None,
+        )
+        .expect("preserve ambiguity without inventing a target genome");
+    let unresolved_without_target_genome = &preserved_without_target_genome.unresolved_rows[0];
+    assert!(
+        preserved_without_target_genome
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("do not claim a genome identity"))
+    );
+    for candidate in &unresolved_without_target_genome.candidate_mappings {
+        assert_eq!(candidate.target_genome_id, None);
+        let target_context = preserved_without_target_genome
+            .biological_contexts
+            .context(
+                candidate
+                    .target_context_id
+                    .as_deref()
+                    .expect("candidate target context id"),
+            )
+            .expect("candidate target context");
+        assert_eq!(target_context.organism.as_deref(), Some("Mus musculus"));
+        assert_eq!(target_context.genome_id, None);
+    }
 
     let first = engine
         .resolve_ortholog_promoter_cohort(
@@ -5354,6 +6707,7 @@ fn summarize_ortholog_promoter_comparison_separates_sequence_tfbs_expression_and
             Some("rna_demo"),
             &[],
             &[],
+            None,
         )
         .expect("summarize ortholog comparison");
     assert_eq!(comparison.schema, "gentle.ortholog_promoter_comparison.v1");
@@ -5426,10 +6780,10 @@ fn summarize_ortholog_promoter_comparison_separates_sequence_tfbs_expression_and
     "species": "Homo sapiens",
     "target_factor": "SP1",
     "supported_reference_genome_ids": ["HumanToy"],
-    "peaks_local": "{}"
+    "peaks_local": {}
   }}
 }}"#,
-            peaks_path.display()
+            serde_json::json!(peaks_path)
         ),
     )
     .expect("write ortholog CUT&RUN catalog");
@@ -5460,6 +6814,7 @@ fn summarize_ortholog_promoter_comparison_separates_sequence_tfbs_expression_and
             None,
             &["ortholog_human_sp1".to_string()],
             &[],
+            None,
         )
         .expect("summarize ortholog comparison with CUT&RUN support");
     let human_support = supported
@@ -5481,6 +6836,78 @@ fn summarize_ortholog_promoter_comparison_separates_sequence_tfbs_expression_and
     assert_eq!(
         mouse_support.status,
         OrthologCutRunSupportStatus::NotComparable
+    );
+    let quantitative = supported
+        .cutrun_quantitative_comparison
+        .as_ref()
+        .expect("selected CUT&RUN sources should report quantitative comparability");
+    assert_eq!(
+        quantitative.status,
+        gentle_protocol::OrthologCutRunQuantitativeComparisonStatus::NotComparable
+    );
+    assert!(quantitative.detail.contains("qualitatively only"));
+}
+
+#[test]
+fn ortholog_promoter_conservation_aligns_indels_and_reports_anchor_intervals() {
+    fn row(role: OrthologPromoterRole, species: &str, sequence: &str) -> OrthologPromoterRow {
+        OrthologPromoterRow {
+            species: species.to_string(),
+            genome_id: format!("{species} genome"),
+            role,
+            gene_query: "TP73".to_string(),
+            display_label: "TP73".to_string(),
+            transcript_id: format!("{species}_tx"),
+            chromosome: "chr1".to_string(),
+            strand: "+".to_string(),
+            promoter_start_1based: 101,
+            promoter_end_1based: 100 + sequence.len(),
+            promoter_length_bp: sequence.len(),
+            tss_1based: 109,
+            tss_position_0based: 8,
+            sequence_orientation: "transcription_aligned".to_string(),
+            promoter_sequence: Some(sequence.to_string()),
+            ..OrthologPromoterRow::default()
+        }
+    }
+
+    let cohort = OrthologPromoterCohortReport {
+        schema: ORTHOLOG_PROMOTER_COHORT_SCHEMA.to_string(),
+        resolved_promoter_count: 3,
+        rows: vec![
+            row(OrthologPromoterRole::Anchor, "human", "AAAACCCCGGGGTTTT"),
+            row(OrthologPromoterRole::Target, "chimp", "AAAATCCCCGGGGTTTT"),
+            row(OrthologPromoterRole::Target, "mouse", "AAAACCCCGGGGTTTA"),
+        ],
+        ..OrthologPromoterCohortReport::default()
+    };
+    let report = GentleEngine::new()
+        .compare_ortholog_promoter_conservation(cohort, 4)
+        .expect("compare ortholog conservation");
+
+    assert_eq!(report.schema, "gentle.ortholog_promoter_conservation.v1");
+    assert_eq!(report.pairwise_alignments.len(), 2);
+    assert!(report.pairwise_alignments.iter().all(|row| {
+        row.alignment.mode == PairwiseAlignmentMode::Global
+            && row.alignment.identity_fraction > 0.85
+    }));
+    let downstream = report
+        .conserved_intervals
+        .iter()
+        .max_by_key(|interval| interval.length_bp)
+        .expect("conserved interval after indel-aware alignment");
+    assert!(downstream.length_bp >= 8);
+    assert_eq!(
+        downstream.supporting_species,
+        vec!["human", "chimp", "mouse"]
+    );
+    assert_eq!(
+        downstream.genomic_start_1based,
+        Some(101 + downstream.anchor_start_0based)
+    );
+    assert_eq!(
+        downstream.genomic_end_1based,
+        Some(downstream.anchor_end_0based_exclusive + 100)
     );
 }
 
@@ -5591,12 +7018,12 @@ fn inspect_cutrun_gene_set_regulatory_support_keeps_evaluated_denominators_hones
     "summary": "Toy gene-set CUT&RUN",
     "target_factor": "CTCF",
     "supported_reference_genome_ids": ["ToyGenome"],
-    "peaks_local": "{}",
-    "signal_local": "{}"
+    "peaks_local": {},
+    "signal_local": {}
   }}
 }}"#,
-            peaks_path.display(),
-            signal_path.display()
+            serde_json::json!(peaks_path),
+            serde_json::json!(signal_path)
         ),
     )
     .expect("write project CUT&RUN catalog");
@@ -6230,6 +7657,211 @@ fn test_engine_history_redo_clears_after_new_mutation() {
 }
 
 #[test]
+fn test_display_history_checkpoint_is_display_only_but_still_undoable() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("large_context".to_string(), seq(&"ATGC".repeat(1000)));
+    let mut engine = GentleEngine::from_state(state);
+
+    assert!(engine.state().display.show_features);
+    assert_eq!(engine.undo_available(), 0);
+    engine
+        .apply(Operation::SetDisplayVisibility {
+            target: DisplayTarget::Features,
+            visible: false,
+        })
+        .unwrap();
+
+    assert!(!engine.state().display.show_features);
+    assert_eq!(engine.undo_available(), 1);
+    assert_eq!(
+        engine.top_undo_checkpoint_kind(),
+        Some(EngineHistoryCheckpointKind::DisplayOnly)
+    );
+
+    engine.undo_last_operation().unwrap();
+    assert!(engine.state().display.show_features);
+    assert_eq!(engine.undo_available(), 0);
+    assert_eq!(engine.redo_available(), 1);
+    assert_eq!(
+        engine.top_redo_checkpoint_kind(),
+        Some(EngineHistoryCheckpointKind::DisplayOnly)
+    );
+
+    engine.redo_last_operation().unwrap();
+    assert!(!engine.state().display.show_features);
+    assert_eq!(engine.undo_available(), 1);
+    assert_eq!(
+        engine.top_undo_checkpoint_kind(),
+        Some(EngineHistoryCheckpointKind::DisplayOnly)
+    );
+
+    engine
+        .apply(Operation::SetLinearViewport {
+            start_bp: 250,
+            span_bp: 75,
+        })
+        .unwrap();
+    assert_eq!(
+        engine.top_undo_checkpoint_kind(),
+        Some(EngineHistoryCheckpointKind::DisplayOnly)
+    );
+    engine.undo_last_operation().unwrap();
+    assert_ne!(engine.state().display.linear_view_start_bp, 250);
+}
+
+#[test]
+fn test_data_mutation_history_checkpoint_remains_full() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("x".to_string(), seq(&"ATGC".repeat(100)));
+    let mut engine = GentleEngine::from_state(state);
+
+    engine
+        .apply(Operation::ExtractRegion {
+            input: "x".to_string(),
+            from: 2,
+            to: 7,
+            output_id: Some("part".to_string()),
+        })
+        .unwrap();
+
+    assert!(engine.state().sequences.contains_key("part"));
+    assert_eq!(engine.undo_available(), 1);
+    assert_eq!(
+        engine.top_undo_checkpoint_kind(),
+        Some(EngineHistoryCheckpointKind::Full)
+    );
+
+    engine.undo_last_operation().unwrap();
+    assert!(!engine.state().sequences.contains_key("part"));
+    assert_eq!(engine.redo_available(), 1);
+    assert_eq!(
+        engine.top_redo_checkpoint_kind(),
+        Some(EngineHistoryCheckpointKind::Full)
+    );
+}
+
+// Synthetic in-memory sequence/history only; reproducible without external data.
+fn rollback_history_fixture() -> GentleEngine {
+    let mut engine = GentleEngine::new();
+    for id in ["base", "redoable"] {
+        engine
+            .apply(Operation::CreateSequenceFromText {
+                sequence_text: "ACGTACGT".to_string(),
+                output_id: Some(id.to_string()),
+                name: None,
+                circular: false,
+            })
+            .expect("history fixture");
+    }
+    engine.undo_last_operation().expect("redo baseline");
+    engine.history_limit = 1;
+    engine
+}
+
+#[test]
+fn transaction_rollback_retains_shared_history_through_eviction_and_cancel_error() {
+    let mut engine = rollback_history_fixture();
+    let undo = engine.undo_stack[0].clone();
+    let redo = engine.redo_stack[0].clone();
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let journal = serde_json::to_value(engine.operation_log()).unwrap();
+    let mut last_op_counter = engine.op_counter;
+    let error = engine
+        .with_rollback_on_error(|engine| {
+            assert!(std::sync::Arc::ptr_eq(&undo, &engine.undo_stack[0]));
+            assert!(
+                std::sync::Arc::strong_count(&undo) >= 3,
+                "baseline shares checkpoint"
+            );
+            for id in ["first", "second", "third"] {
+                engine
+                    .apply(Operation::Reverse {
+                        input: "base".to_string(),
+                        output_id: Some(id.to_string()),
+                    })
+                    .expect("temporary history");
+            }
+            assert_eq!(engine.undo_available(), 1, "history limit still enforced");
+            assert_eq!(engine.redo_available(), 0);
+            last_op_counter = engine.op_counter;
+            Err::<(), _>("cancelled")
+        })
+        .expect_err("cancellation remains an error");
+    assert_eq!(error, "cancelled");
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+    assert_eq!(
+        serde_json::to_value(engine.operation_log()).unwrap(),
+        journal
+    );
+    assert!(std::sync::Arc::ptr_eq(&undo, &engine.undo_stack[0]));
+    assert!(std::sync::Arc::ptr_eq(&redo, &engine.redo_stack[0]));
+    assert!(
+        engine.op_counter >= last_op_counter,
+        "do not reuse aborted IDs"
+    );
+    engine.redo_last_operation().expect("retained redo works");
+    assert!(engine.state().sequences.contains_key("redoable"));
+}
+
+#[test]
+fn transaction_rollback_restores_engine_on_unwind() {
+    let mut engine = rollback_history_fixture();
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let history = serde_json::to_value(engine.history_summary()).unwrap();
+    let revision = engine.structural_revision();
+    let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _: Result<(), ()> = engine.with_rollback_on_error(|engine| {
+            engine.redo_last_operation().expect("mutate history");
+            panic!("synthetic transaction panic");
+        });
+    }));
+    assert!(panic.is_err(), "rollback must not swallow a panic");
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+    assert_eq!(
+        serde_json::to_value(engine.history_summary()).unwrap(),
+        history
+    );
+    assert!(engine.structural_revision() > revision);
+}
+
+#[test]
+fn shared_history_rebase_does_not_modify_another_snapshot() {
+    let mut live = rollback_history_fixture();
+    let mut detached = live.fork_detached_execution();
+    detached
+        .engine_mut()
+        .apply(Operation::Reverse {
+            input: "base".to_string(),
+            output_id: Some("detached".to_string()),
+        })
+        .expect("detached operation");
+    let mut witness = detached.engine().clone();
+    assert!(std::sync::Arc::ptr_eq(
+        &witness.undo_stack[0],
+        &detached.engine().undo_stack[0],
+    ));
+    live.auxiliary_metadata_mut().insert(
+        "synthetic_status".to_string(),
+        serde_json::json!("finished"),
+    );
+    live.commit_detached_execution(&mut detached)
+        .expect("merge disjoint live metadata");
+    live.undo_last_operation().expect("undo rebased checkpoint");
+    assert_eq!(
+        live.state().metadata["synthetic_status"],
+        serde_json::json!("finished")
+    );
+    witness
+        .undo_last_operation()
+        .expect("undo original checkpoint");
+    assert!(!witness.state().metadata.contains_key("synthetic_status"));
+}
+
+#[test]
 fn test_extract_region() {
     let mut state = ProjectState::default();
     state
@@ -6543,6 +8175,64 @@ fn test_ligation_protocol_sticky_uses_overhang_compatibility() {
 }
 
 #[test]
+fn test_sticky_ligation_restores_junction_sequence_and_transfers_features() {
+    let mut source = seq("ATGGATCCGC");
+    source.features_mut().extend([
+        gb_io::seq::Feature {
+            kind: "misc_feature".into(),
+            location: gb_io::seq::Location::simple_range(0, 2),
+            qualifiers: vec![("label".into(), Some("left_marker".to_string()))],
+        },
+        gb_io::seq::Feature {
+            kind: "misc_feature".into(),
+            location: gb_io::seq::Location::simple_range(8, 10),
+            qualifiers: vec![("label".into(), Some("right_marker".to_string()))],
+        },
+    ]);
+    let mut state = ProjectState::default();
+    state.sequences.insert("source".to_string(), source);
+    let mut engine = GentleEngine::from_state(state);
+    let digest = engine
+        .apply(Operation::Digest {
+            input: "source".to_string(),
+            enzymes: vec!["BamHI".to_string()],
+            output_prefix: Some("digest".to_string()),
+        })
+        .expect("digest source");
+    assert_eq!(digest.created_seq_ids.len(), 2);
+
+    let ligation = engine
+        .apply(Operation::Ligation {
+            inputs: digest.created_seq_ids,
+            circularize_if_possible: false,
+            output_id: Some("rejoined".to_string()),
+            protocol: LigationProtocol::Sticky,
+            output_prefix: None,
+            unique: Some(true),
+        })
+        .expect("re-ligate compatible digest fragments");
+    assert_eq!(ligation.created_seq_ids, vec!["rejoined".to_string()]);
+    let product = engine
+        .state()
+        .sequences
+        .get("rejoined")
+        .expect("rejoined product");
+    assert_eq!(product.get_forward_string(), "ATGGATCCGC");
+    let marker_bounds = product
+        .features()
+        .iter()
+        .filter_map(|feature| {
+            feature
+                .qualifier_values("label")
+                .next()
+                .map(|label| (label.to_string(), feature.location.find_bounds().unwrap()))
+        })
+        .collect::<BTreeMap<_, _>>();
+    assert_eq!(marker_bounds.get("left_marker"), Some(&(0, 2)));
+    assert_eq!(marker_bounds.get("right_marker"), Some(&(8, 10)));
+}
+
+#[test]
 fn test_workflow_digest_merge_ligation_is_deterministic() {
     let mut base = ProjectState::default();
     base.sequences
@@ -6790,6 +8480,853 @@ fn test_design_primer_pairs_persists_report() {
     assert_eq!(summary.op_id.as_deref(), Some(result.op_id.as_str()));
     assert_eq!(summary.run_id.as_deref(), Some("interactive"));
     assert_eq!(summary.backend_used, "internal");
+}
+
+fn primer_group_target_test_request(
+    coverage_policy: TranscriptAssayCoveragePolicy,
+) -> PrimerGroupTargetDesignRequest {
+    PrimerGroupTargetDesignRequest {
+        template_seq_ids: vec!["group_a".to_string(), "group_b".to_string()],
+        representative_seq_id: Some("group_a".to_string()),
+        target_start_0based: Some(50),
+        target_end_0based_exclusive: Some(80),
+        forward: PrimerDesignSideConstraint {
+            min_length: 18,
+            max_length: 20,
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 1_000,
+            ..PrimerDesignSideConstraint::default()
+        },
+        reverse: PrimerDesignSideConstraint {
+            min_length: 18,
+            max_length: 20,
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 1_000,
+            ..PrimerDesignSideConstraint::default()
+        },
+        min_amplicon_bp: 60,
+        max_amplicon_bp: 140,
+        max_tm_delta_c: Some(100.0),
+        max_pairs: Some(8),
+        max_search_records: Some(16),
+        coverage_policy,
+        search_policy: Some(TranscriptAssayPrimerSearchPolicy {
+            max_primer_window_bp: 64,
+            max_candidate_pairs_per_record: 50_000,
+            max_candidate_pairs_total: 100_000,
+            ..TranscriptAssayPrimerSearchPolicy::default()
+        }),
+        report_id: Some("related_group_test".to_string()),
+        ..PrimerGroupTargetDesignRequest::default()
+    }
+}
+
+fn primer_group_target_test_sequence() -> &'static str {
+    "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG"
+}
+
+#[test]
+fn primer_group_target_design_uses_exact_common_regions_and_tests_every_member() {
+    let reference = primer_group_target_test_sequence();
+    let mut altered = reference.as_bytes().to_vec();
+    altered[65] = if altered[65] == b'A' { b'C' } else { b'A' };
+    altered.push(b'G');
+    let altered = String::from_utf8(altered).expect("DNA test sequence");
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("group_a".to_string(), seq(reference));
+    state.sequences.insert("group_b".to_string(), seq(&altered));
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+
+    let mut request = primer_group_target_test_request(TranscriptAssayCoveragePolicy::RequireAll);
+    request.representative_seq_id = None;
+    let report = engine
+        .apply(Operation::DesignPrimerGroupTarget {
+            request,
+            path: None,
+        })
+        .expect("design one common primer pair")
+        .primer_group_target_design
+        .map(|report| *report)
+        .expect("group-target report");
+
+    assert_eq!(report.schema, PRIMER_GROUP_TARGET_DESIGN_SCHEMA);
+    assert_eq!(report.representative_seq_id, "group_b");
+    assert_eq!(report.members.len(), 2);
+    assert_eq!(report.alignments.len(), 1);
+    assert!(report.request_sha256.starts_with("sha256:"));
+    assert!(report.common_intervals_0based.len() >= 2);
+    assert!(!report.search_records.is_empty());
+    assert!(!report.pairs.is_empty());
+    assert!(report.complete_group_pair_count > 0);
+    assert_eq!(
+        report.completion_status,
+        PrimerGroupTargetCompletionStatus::Complete
+    );
+    let retained = report
+        .pair_evaluations
+        .iter()
+        .find(|row| row.retained_pair_rank == Some(1))
+        .expect("rank-one evaluation");
+    assert!(retained.complete_group_pair);
+    assert_eq!(retained.member_products.len(), 2);
+    assert!(retained.member_products.iter().all(|row| {
+        row.status == TranscriptAssayDetectionStatus::SingleProduct && row.product_count == 1
+    }));
+    assert!(
+        report
+            .backend_runs
+            .iter()
+            .all(|backend| backend.used == "internal")
+    );
+    assert!(report.pareto_frontier.non_dominated_candidate_count > 0);
+}
+
+#[test]
+fn primer_group_target_insertion_boundary_is_not_a_contiguous_common_interval() {
+    let reference = "AACCGGTTAACCGGTTAACCGGTT";
+    let member = "AACCGGTTAACCGGTTGGGGAACCGGTT";
+    let (_alignment, mask) =
+        GentleEngine::primer_group_target_common_mask("reference", reference, "member", member)
+            .expect("global related-sequence alignment");
+    let intervals = GentleEngine::primer_group_target_common_intervals(&mask, 2);
+    assert!(intervals.len() >= 2);
+    assert!(
+        intervals
+            .windows(2)
+            .all(|rows| rows[0].end_0based_exclusive < rows[1].start_0based),
+        "a member insertion must split exact common primer intervals"
+    );
+}
+
+#[test]
+fn primer_group_target_require_all_refuses_and_best_effort_keeps_uncovered_members() {
+    let reference = primer_group_target_test_sequence();
+    let member = format!(
+        "{}{}{}",
+        &reference[..65],
+        "GATTACA".repeat(15),
+        &reference[65..]
+    );
+    let make_engine = || {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("group_a".to_string(), seq(reference));
+        state.sequences.insert("group_b".to_string(), seq(&member));
+        let mut engine = GentleEngine::from_state(state);
+        engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+        engine
+    };
+
+    let strict_error = make_engine()
+        .apply(Operation::DesignPrimerGroupTarget {
+            request: primer_group_target_test_request(TranscriptAssayCoveragePolicy::RequireAll),
+            path: None,
+        })
+        .expect_err("require_all must not silently weaken group coverage");
+    assert!(strict_error.message.contains("require_all group target"));
+    assert!(strict_error.message.contains("group_b"));
+
+    let report = make_engine()
+        .apply(Operation::DesignPrimerGroupTarget {
+            request: primer_group_target_test_request(TranscriptAssayCoveragePolicy::BestEffort),
+            path: None,
+        })
+        .expect("explicit best effort may retain partial group coverage")
+        .primer_group_target_design
+        .map(|report| *report)
+        .expect("best-effort group-target report");
+    assert_eq!(
+        report.completion_status,
+        PrimerGroupTargetCompletionStatus::Partial
+    );
+    assert_eq!(report.complete_group_pair_count, 0);
+    assert!(report.maximum_single_pair_coverage_count < report.members.len());
+    assert!(report.pair_evaluations.iter().any(|row| {
+        row.uncovered_template_seq_ids
+            .iter()
+            .any(|seq_id| seq_id == "group_b")
+    }));
+}
+
+#[test]
+fn primer_group_target_search_budget_fails_before_backend_execution() {
+    let reference = primer_group_target_test_sequence();
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("group_a".to_string(), seq(reference));
+    state
+        .sequences
+        .insert("group_b".to_string(), seq(reference));
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    let mut request = primer_group_target_test_request(TranscriptAssayCoveragePolicy::RequireAll);
+    request.search_policy = Some(TranscriptAssayPrimerSearchPolicy {
+        max_primer_window_bp: 64,
+        max_candidate_pairs_per_record: 1,
+        max_candidate_pairs_total: 1,
+        ..TranscriptAssayPrimerSearchPolicy::default()
+    });
+    let error = engine
+        .apply(Operation::DesignPrimerGroupTarget {
+            request,
+            path: None,
+        })
+        .expect_err("over-budget group search must stop before pair generation");
+    assert!(error.message.contains("search_space_too_broad"));
+}
+
+#[test]
+fn primer_pair_pareto_frontier_keeps_tradeoffs_and_old_reports_default_it() {
+    let strong_score = PrimerPairParetoMetrics {
+        existing_candidate_score: 10.0,
+        tm_delta_c: 2.0,
+        primer_pair_complementary_run_bp: 4,
+        primer_pair_3prime_complementary_run_bp: 2,
+        ..PrimerPairParetoMetrics::default()
+    };
+    let balanced_tm = PrimerPairParetoMetrics {
+        existing_candidate_score: 8.0,
+        tm_delta_c: 0.2,
+        primer_pair_complementary_run_bp: 4,
+        primer_pair_3prime_complementary_run_bp: 2,
+        ..PrimerPairParetoMetrics::default()
+    };
+    let dominated = PrimerPairParetoMetrics {
+        existing_candidate_score: 7.0,
+        tm_delta_c: 3.0,
+        primer_pair_complementary_run_bp: 5,
+        primer_pair_3prime_complementary_run_bp: 3,
+        ..PrimerPairParetoMetrics::default()
+    };
+    assert!(GentleEngine::primer_pair_pareto_dominates(
+        &strong_score,
+        &dominated
+    ));
+    assert!(!GentleEngine::primer_pair_pareto_dominates(
+        &strong_score,
+        &balanced_tm
+    ));
+    let frontier = GentleEngine::primer_pair_pareto_frontier(vec![
+        PrimerPairParetoAlternative {
+            pair_id: "score".to_string(),
+            metrics: strong_score,
+            ..PrimerPairParetoAlternative::default()
+        },
+        PrimerPairParetoAlternative {
+            pair_id: "tm".to_string(),
+            metrics: balanced_tm,
+            ..PrimerPairParetoAlternative::default()
+        },
+        PrimerPairParetoAlternative {
+            pair_id: "dominated".to_string(),
+            metrics: dominated,
+            ..PrimerPairParetoAlternative::default()
+        },
+    ]);
+    assert_eq!(frontier.accepted_candidate_count, 3);
+    assert_eq!(frontier.evaluated_candidate_count, 3);
+    assert_eq!(frontier.non_dominated_candidate_count, 2);
+    assert_eq!(
+        frontier
+            .alternatives
+            .iter()
+            .map(|row| row.pair_id.as_str())
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["score", "tm"])
+    );
+
+    let old_primer: PrimerDesignReport = serde_json::from_value(json!({
+        "schema": "gentle.primer_design_report.v1",
+        "report_id": "old"
+    }))
+    .expect("old primer report without frontier remains readable");
+    assert!(old_primer.pareto_frontier.alternatives.is_empty());
+    let old_panel: TranscriptAssayPanelReport = serde_json::from_value(json!({
+        "schema": "gentle.transcript_assay_panel.v2",
+        "report_id": "old_panel"
+    }))
+    .expect("old transcript panel without frontier remains readable");
+    assert!(old_panel.pareto_frontier.alternatives.is_empty());
+}
+
+fn primer_selection_provenance_operation(
+    report_id: &str,
+    rejected_near_miss_limit: usize,
+) -> Operation {
+    Operation::DesignPrimerPairs {
+        template: "primer_provenance_tpl".to_string(),
+        roi_start_0based: 40,
+        roi_end_0based: 80,
+        forward: PrimerDesignSideConstraint {
+            min_length: 20,
+            max_length: 20,
+            start_0based: Some(0),
+            end_0based: Some(40),
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 1_000,
+            ..PrimerDesignSideConstraint::default()
+        },
+        reverse: PrimerDesignSideConstraint {
+            min_length: 20,
+            max_length: 20,
+            start_0based: Some(80),
+            end_0based: Some(120),
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 1_000,
+            ..PrimerDesignSideConstraint::default()
+        },
+        pair_constraints: PrimerDesignPairConstraint {
+            fixed_amplicon_start_0based: Some(5),
+            fixed_amplicon_end_0based_exclusive: Some(110),
+            rejected_near_miss_limit: Some(rejected_near_miss_limit),
+            ..PrimerDesignPairConstraint::default()
+        },
+        min_amplicon_bp: 40,
+        max_amplicon_bp: 150,
+        max_tm_delta_c: Some(100.0),
+        max_pairs: Some(10),
+        report_id: Some(report_id.to_string()),
+    }
+}
+
+fn primer_selection_provenance_engine() -> GentleEngine {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "primer_provenance_tpl".to_string(),
+        seq(
+            "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG",
+        ),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    engine
+}
+
+#[test]
+fn primer_selection_provenance_is_bounded_visible_and_report_fingerprinted() {
+    let mut without_capture = primer_selection_provenance_engine();
+    without_capture
+        .apply(primer_selection_provenance_operation(
+            "primer_provenance_disabled",
+            0,
+        ))
+        .expect("primer design without rejected-candidate capture");
+    let without_capture_report = without_capture
+        .get_primer_design_report("primer_provenance_disabled")
+        .expect("report without capture");
+    assert!(without_capture_report.rejected_near_misses.is_empty());
+    assert_eq!(
+        without_capture_report
+            .near_miss_capture
+            .as_ref()
+            .expect("disabled capture metadata")
+            .status,
+        PrimerPairCharacterizationStatus::NotRun
+    );
+
+    let mut engine = primer_selection_provenance_engine();
+    let result = engine
+        .apply(primer_selection_provenance_operation(
+            "primer_provenance_captured",
+            5,
+        ))
+        .expect("primer design with rejected-candidate capture");
+    let report = engine
+        .get_primer_design_report("primer_provenance_captured")
+        .expect("captured report");
+
+    assert!(!report.pairs.is_empty());
+    assert_eq!(
+        serde_json::to_value(&report.pairs).unwrap(),
+        serde_json::to_value(&without_capture_report.pairs).unwrap(),
+        "near-miss capture must not affect selected pair ranks or scores"
+    );
+    assert_eq!(
+        report.score_decomposition_status,
+        PrimerPairCharacterizationStatus::Pass
+    );
+    assert_eq!(report.score_model, PRIMER_DESIGN_SCORE_MODEL);
+    assert_eq!(report.score_direction, PRIMER_DESIGN_SCORE_DIRECTION);
+    assert_eq!(
+        report.excluded_region_analysis_status,
+        Some(PrimerPairCharacterizationStatus::NotRun)
+    );
+    assert!(
+        report
+            .excluded_region_analysis_reason
+            .contains("did not consult")
+    );
+    assert!(report.pairs.iter().all(|pair| {
+        let sum = pair
+            .score_terms
+            .iter()
+            .map(|term| term.contribution)
+            .sum::<f64>();
+        !pair.score_terms.is_empty()
+            && (pair.score - sum).abs()
+                <= PRIMER_DESIGN_SCORE_SUM_TOLERANCE * pair.score.abs().max(1.0)
+    }));
+
+    let capture = report.near_miss_capture.as_ref().expect("capture metadata");
+    assert_eq!(capture.status, PrimerPairCharacterizationStatus::Pass);
+    assert_eq!(capture.effective_limit, 5);
+    assert_eq!(capture.retained_candidate_count, 5);
+    assert!(capture.eligible_candidate_count > capture.retained_candidate_count);
+    assert_eq!(
+        capture.omitted_candidate_count,
+        capture
+            .eligible_candidate_count
+            .saturating_sub(capture.retained_candidate_count)
+    );
+    assert!(
+        capture.candidate_comparison_count
+            <= capture
+                .eligible_candidate_count
+                .saturating_mul(capture.effective_limit)
+    );
+    assert_eq!(report.rejected_near_misses.len(), 5);
+    assert!(
+        report
+            .rejected_near_misses
+            .iter()
+            .all(|row| !row.reasons.is_empty())
+    );
+    for reason in [
+        PrimerDesignRejectionReason::OutOfWindow,
+        PrimerDesignRejectionReason::GcOrTmOutOfBounds,
+        PrimerDesignRejectionReason::NonUniqueAnneal,
+        PrimerDesignRejectionReason::AmpliconOrRoiFailure,
+        PrimerDesignRejectionReason::PrimerConstraintFailure,
+        PrimerDesignRejectionReason::PairConstraintFailure,
+        PrimerDesignRejectionReason::PairEvaluationLimitSkipped,
+    ] {
+        let retained_for_reason = report
+            .rejected_near_misses
+            .iter()
+            .filter(|row| row.reasons.contains(&reason))
+            .count();
+        assert!(
+            report.rejection_summary.count_for_reason(reason) >= retained_for_reason,
+            "retained rows cannot exceed the authoritative rejection census"
+        );
+    }
+
+    let graph = result
+        .construct_reasoning_graph
+        .as_deref()
+        .expect("operation result reasoning graph");
+    assert_eq!(
+        report.construct_reasoning_graph_id.as_deref(),
+        Some(graph.graph_id.as_str())
+    );
+    assert_eq!(graph.decisions.len(), report.pairs.len());
+    assert!(graph.decisions.iter().all(|decision| {
+        decision.parameters_json["report_id"].as_str() == Some(report.report_id.as_str())
+            && decision.parameters_json["op_id"].as_str() == Some(result.op_id.as_str())
+            && decision.parameters_json["run_id"].as_str() == Some("interactive")
+            && decision.input_evidence_ids.len() == graph.evidence.len()
+    }));
+    assert!(graph.evidence.iter().all(|evidence| {
+        evidence.evidence_class == EvidenceClass::ContextEvidence
+            && evidence
+                .provenance_refs
+                .iter()
+                .any(|reference| reference == "primer_design_report:primer_provenance_captured")
+    }));
+    assert_eq!(
+        graph.annotation_candidates.len(),
+        report.rejected_near_misses.len()
+    );
+    #[cfg(feature = "desktop-gui")]
+    {
+        let overlay = crate::dna_display::ConstructReasoningOverlay::from_graph(graph);
+        assert_eq!(overlay.evidence.len(), report.rejected_near_misses.len());
+        assert!(overlay.evidence.iter().all(|row| {
+            row.context_tags
+                .iter()
+                .any(|tag| tag == "rejected_near_miss")
+                && !row.context_tags.iter().any(|tag| tag == "excluded_region")
+        }));
+    }
+    assert_eq!(
+        engine
+            .construct_reasoning_graph_snapshot_status(graph)
+            .freshness,
+        ConstructReasoningGraphFreshness::Current
+    );
+    let refreshed = engine
+        .refresh_construct_reasoning_graph_for_seq_id("primer_provenance_tpl")
+        .expect("current report-bound graph refreshes without changing graph family");
+    assert_eq!(refreshed.graph_id, graph.graph_id);
+    assert_eq!(refreshed.evidence, graph.evidence);
+    assert_eq!(refreshed.decisions, graph.decisions);
+
+    let mut store = engine.read_primer_design_store();
+    store
+        .reports
+        .get_mut("primer_provenance_captured")
+        .expect("mutable source report")
+        .pairs[0]
+        .score += 0.25;
+    engine
+        .write_primer_design_store(store)
+        .expect("mutate source report");
+    let stale = engine.construct_reasoning_graph_snapshot_status(graph);
+    assert_eq!(stale.freshness, ConstructReasoningGraphFreshness::Stale);
+    assert!(
+        stale
+            .reasons
+            .iter()
+            .any(|reason| reason.contains("primer-design report") && reason.contains("changed"))
+    );
+    let refresh_error = engine
+        .refresh_construct_reasoning_graph_for_seq_id("primer_provenance_tpl")
+        .expect_err("stale report-bound graph must not become a generic graph");
+    assert!(refresh_error.message.contains("rerun DesignPrimerPairs"));
+}
+
+#[test]
+fn old_primer_design_report_payload_defaults_selection_provenance_fields() {
+    let old_payload = json!({
+        "schema": PRIMER_DESIGN_REPORT_SCHEMA,
+        "report_id": "legacy_primer_report",
+        "template": "legacy_template",
+        "pair_count": 0,
+        "pairs": [],
+        "rejection_summary": {}
+    });
+    let report: PrimerDesignReport =
+        serde_json::from_value(old_payload).expect("deserialize legacy report");
+    assert_eq!(
+        report.score_decomposition_status,
+        PrimerPairCharacterizationStatus::NotRun
+    );
+    assert!(report.score_decomposition_reason.is_empty());
+    assert!(report.score_model.is_empty());
+    assert!(report.score_direction.is_empty());
+    assert!(report.rejected_near_misses.is_empty());
+    assert!(report.near_miss_capture.is_none());
+    assert!(report.excluded_region_analysis_status.is_none());
+    assert!(report.excluded_region_analysis_reason.is_empty());
+    assert!(report.construct_reasoning_graph_id.is_none());
+
+    let serialized = serde_json::to_value(report).expect("serialize legacy report");
+    for absent in [
+        "score_decomposition_status",
+        "score_decomposition_reason",
+        "score_model",
+        "score_direction",
+        "rejected_near_misses",
+        "near_miss_capture",
+        "excluded_region_analysis_status",
+        "excluded_region_analysis_reason",
+        "construct_reasoning_graph_id",
+    ] {
+        assert!(
+            serialized.get(absent).is_none(),
+            "default additive field '{absent}' should stay absent"
+        );
+    }
+}
+
+fn qpcr_selection_provenance_engine() -> GentleEngine {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "qpcr_near_miss_tpl".to_string(),
+        seq(
+            "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG",
+        ),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    engine
+}
+
+fn qpcr_selection_provenance_operation(
+    report_id: &str,
+    rejected_near_miss_limit: usize,
+) -> Operation {
+    let side = PrimerDesignSideConstraint {
+        min_length: 20,
+        max_length: 20,
+        min_tm_c: 0.0,
+        max_tm_c: 100.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 1000,
+        ..PrimerDesignSideConstraint::default()
+    };
+    Operation::DesignQpcrAssays {
+        template: "qpcr_near_miss_tpl".to_string(),
+        roi_start_0based: 40,
+        roi_end_0based: 80,
+        forward: PrimerDesignSideConstraint {
+            location_0based: Some(5),
+            ..side.clone()
+        },
+        reverse: PrimerDesignSideConstraint {
+            location_0based: Some(90),
+            ..side.clone()
+        },
+        probe: side,
+        pair_constraints: PrimerDesignPairConstraint {
+            rejected_near_miss_limit: Some(rejected_near_miss_limit),
+            ..PrimerDesignPairConstraint::default()
+        },
+        min_amplicon_bp: 40,
+        max_amplicon_bp: 150,
+        max_tm_delta_c: Some(100.0),
+        max_probe_tm_delta_c: Some(100.0),
+        max_assays: Some(10),
+        transcript_targeting: None,
+        report_id: Some(report_id.to_string()),
+    }
+}
+
+#[test]
+fn qpcr_selection_provenance_is_additive_bounded_and_report_fingerprinted() {
+    let mut without_capture = qpcr_selection_provenance_engine();
+    without_capture
+        .apply(qpcr_selection_provenance_operation(
+            "qpcr_provenance_disabled",
+            0,
+        ))
+        .expect("qPCR design without rejected-candidate capture");
+    let without_capture_report = without_capture
+        .get_qpcr_design_report("qpcr_provenance_disabled")
+        .expect("qPCR report without capture");
+    assert!(without_capture_report.rejected_near_misses.is_empty());
+    assert_eq!(
+        without_capture_report
+            .near_miss_capture
+            .as_ref()
+            .expect("disabled qPCR capture metadata")
+            .status,
+        PrimerPairCharacterizationStatus::NotRun
+    );
+
+    let mut engine = qpcr_selection_provenance_engine();
+    let result = engine
+        .apply(qpcr_selection_provenance_operation(
+            "qpcr_provenance_captured",
+            5,
+        ))
+        .expect("qPCR design with rejected-candidate capture");
+    let report = engine
+        .get_qpcr_design_report("qpcr_provenance_captured")
+        .expect("captured qPCR report");
+
+    assert!(!report.assays.is_empty());
+    assert_eq!(
+        serde_json::to_value(&report.assays).unwrap(),
+        serde_json::to_value(&without_capture_report.assays).unwrap(),
+        "qPCR near-miss capture must not affect selected assay ranks or scores"
+    );
+    assert_eq!(
+        report.score_decomposition_status,
+        PrimerPairCharacterizationStatus::Pass
+    );
+    assert_eq!(report.score_model, QPCR_ASSAY_SCORE_MODEL);
+    assert_eq!(report.score_direction, PRIMER_DESIGN_SCORE_DIRECTION);
+    assert_eq!(
+        report.excluded_region_analysis_status,
+        Some(PrimerPairCharacterizationStatus::NotRun)
+    );
+    assert!(
+        report
+            .excluded_region_analysis_reason
+            .contains("did not consult")
+    );
+    assert!(report.assays.iter().all(|assay| {
+        let sum = assay
+            .score_terms
+            .iter()
+            .map(|term| term.contribution)
+            .sum::<f64>();
+        !assay.score_terms.is_empty()
+            && (assay.score - sum).abs()
+                <= PRIMER_DESIGN_SCORE_SUM_TOLERANCE * assay.score.abs().max(1.0)
+    }));
+    for required_term in [
+        "probe_tm_offset_from_preferred",
+        "probe_amplicon_midpoint_distance",
+        "probe_self_complementarity_observed",
+        "probe_primer_complementarity_observed",
+        "probe_primer_three_prime_complementarity_observed",
+    ] {
+        assert!(
+            report.assays[0]
+                .score_terms
+                .iter()
+                .any(|term| term.term == required_term),
+            "missing qPCR score term {required_term}"
+        );
+    }
+    assert!(report.assays[0].score_terms.iter().any(|term| {
+        term.term == "probe_primer_complementarity_observed"
+            && term.weight == 0.0
+            && term.contribution == 0.0
+    }));
+
+    let capture = report
+        .near_miss_capture
+        .as_ref()
+        .expect("qPCR capture metadata");
+    assert_eq!(capture.status, PrimerPairCharacterizationStatus::Pass);
+    assert_eq!(capture.effective_limit, 5);
+    assert_eq!(capture.retained_candidate_count, 5);
+    assert!(capture.eligible_candidate_count > capture.retained_candidate_count);
+    assert_eq!(
+        capture.omitted_candidate_count,
+        capture
+            .eligible_candidate_count
+            .saturating_sub(capture.retained_candidate_count)
+    );
+    assert_eq!(report.rejected_near_misses.len(), 5);
+    for reason in [
+        QpcrDesignRejectionReason::PrimerOutOfWindow,
+        QpcrDesignRejectionReason::PrimerGcOrTmOutOfBounds,
+        QpcrDesignRejectionReason::PrimerNonUniqueAnneal,
+        QpcrDesignRejectionReason::PrimerAmpliconOrRoiFailure,
+        QpcrDesignRejectionReason::PrimerConstraintFailure,
+        QpcrDesignRejectionReason::PrimerPairConstraintFailure,
+        QpcrDesignRejectionReason::PrimerPairEvaluationLimitSkipped,
+        QpcrDesignRejectionReason::ProbeOutOfWindow,
+        QpcrDesignRejectionReason::ProbeGcOrTmOutOfBounds,
+        QpcrDesignRejectionReason::ProbeNonUniqueAnneal,
+        QpcrDesignRejectionReason::ProbeOrAssayFailure,
+    ] {
+        let retained_for_reason = report
+            .rejected_near_misses
+            .iter()
+            .filter(|row| row.reasons.contains(&reason))
+            .count();
+        assert!(
+            report.rejection_summary.count_for_reason(reason) >= retained_for_reason,
+            "retained qPCR rows cannot exceed the authoritative rejection census"
+        );
+    }
+
+    let graph = result
+        .construct_reasoning_graph
+        .as_deref()
+        .expect("qPCR operation result reasoning graph");
+    assert_eq!(
+        report.construct_reasoning_graph_id.as_deref(),
+        Some(graph.graph_id.as_str())
+    );
+    assert_eq!(graph.decisions.len(), report.assays.len());
+    assert_eq!(
+        graph.annotation_candidates.len(),
+        report.rejected_near_misses.len()
+    );
+    #[cfg(feature = "desktop-gui")]
+    {
+        let overlay = crate::dna_display::ConstructReasoningOverlay::from_graph(graph);
+        assert_eq!(overlay.evidence.len(), report.rejected_near_misses.len());
+        assert!(overlay.evidence.iter().all(|row| {
+            row.context_tags
+                .iter()
+                .any(|tag| tag == "rejected_near_miss")
+                && !row.context_tags.iter().any(|tag| tag == "excluded_region")
+        }));
+    }
+    assert!(graph.decisions.iter().all(|decision| {
+        decision.parameters_json["score_model"].as_str() == Some(QPCR_ASSAY_SCORE_MODEL)
+            && decision.parameters_json["score_terms"].is_array()
+            && decision.parameters_json["excluded_region_analysis_status"].as_str()
+                == Some("not_run")
+    }));
+    assert_eq!(
+        engine
+            .construct_reasoning_graph_snapshot_status(graph)
+            .freshness,
+        ConstructReasoningGraphFreshness::Current
+    );
+
+    let mut store = engine.read_primer_design_store();
+    store
+        .qpcr_reports
+        .get_mut("qpcr_provenance_captured")
+        .expect("mutable qPCR source report")
+        .assays[0]
+        .score += 0.25;
+    engine
+        .write_primer_design_store(store)
+        .expect("mutate qPCR source report");
+    let stale = engine.construct_reasoning_graph_snapshot_status(graph);
+    assert_eq!(stale.freshness, ConstructReasoningGraphFreshness::Stale);
+    assert!(
+        stale
+            .reasons
+            .iter()
+            .any(|reason| reason.contains("qPCR-design report") && reason.contains("changed"))
+    );
+    let refresh_error = engine
+        .refresh_construct_reasoning_graph_for_seq_id("qpcr_near_miss_tpl")
+        .expect_err("stale qPCR report-bound graph must not become a generic graph");
+    assert!(refresh_error.message.contains("DesignQpcrAssays"));
+}
+
+#[test]
+fn old_qpcr_design_report_payload_defaults_selection_provenance_fields() {
+    let old_payload = json!({
+        "schema": QPCR_DESIGN_REPORT_SCHEMA,
+        "report_id": "legacy_qpcr_report",
+        "template": "legacy_template",
+        "assay_count": 0,
+        "assays": [],
+        "rejection_summary": {}
+    });
+    let report: QpcrDesignReport =
+        serde_json::from_value(old_payload).expect("deserialize legacy qPCR report");
+    assert_eq!(
+        report.score_decomposition_status,
+        PrimerPairCharacterizationStatus::NotRun
+    );
+    assert!(report.score_decomposition_reason.is_empty());
+    assert!(report.score_model.is_empty());
+    assert!(report.score_direction.is_empty());
+    assert!(report.rejected_near_misses.is_empty());
+    assert!(report.near_miss_capture.is_none());
+    assert!(report.excluded_region_analysis_status.is_none());
+    assert!(report.excluded_region_analysis_reason.is_empty());
+    assert!(report.construct_reasoning_graph_id.is_none());
+
+    let serialized = serde_json::to_value(report).expect("serialize legacy qPCR report");
+    for absent in [
+        "score_decomposition_status",
+        "score_decomposition_reason",
+        "score_model",
+        "score_direction",
+        "rejected_near_misses",
+        "near_miss_capture",
+        "excluded_region_analysis_status",
+        "excluded_region_analysis_reason",
+        "construct_reasoning_graph_id",
+    ] {
+        assert!(
+            serialized.get(absent).is_none(),
+            "default additive qPCR field '{absent}' should stay absent"
+        );
+    }
 }
 
 #[test]
@@ -7753,6 +10290,398 @@ fn cdna_assay_nonspecific_test_engine() -> GentleEngine {
     GentleEngine::from_state(state)
 }
 
+fn external_primer_pair_input(
+    source_kind: ExternalPrimerPairSourceKind,
+    provider: &str,
+    catalogue_id: &str,
+    claimed_accession: &str,
+    forward: &str,
+    reverse: &str,
+) -> ExternalPrimerPairInput {
+    ExternalPrimerPairInput {
+        source_kind,
+        provider: provider.to_string(),
+        catalogue_id: catalogue_id.to_string(),
+        source_url: format!("https://example.invalid/{catalogue_id}"),
+        claimed_accession: claimed_accession.to_string(),
+        aliases: vec![format!("{catalogue_id}_alias")],
+        forward_sequence_5_to_3: forward.to_string(),
+        reverse_sequence_5_to_3: reverse.to_string(),
+        claimed_target: "provider-claimed TEST1 target".to_string(),
+        validation_claims: vec!["provider-validated".to_string()],
+        annotations: BTreeMap::from([(
+            "provider_note".to_string(),
+            format!("annotation for {catalogue_id}"),
+        )]),
+    }
+}
+
+fn external_primer_pair_import_request(
+    batch: ExternalPrimerPairBatch,
+    input_provenance: ExternalPrimerPairBatchProvenance,
+) -> ExternalPrimerPairImportRequest {
+    ExternalPrimerPairImportRequest {
+        report_id: "external_pair_test".to_string(),
+        seq_id: "cdna_src".to_string(),
+        source_feature_id: 0,
+        transcript_id: None,
+        min_amplicon_bp: Some(10),
+        max_amplicon_bp: Some(50),
+        max_mismatches: None,
+        require_3prime_exact_bases: Some(4),
+        transcript_order: CdnaAssayTranscriptOrder::TranscriptId,
+        transcript_map_coordinate_mode: CdnaAssayTranscriptMapCoordinateMode::Cdna,
+        specificity: None,
+        artifact_output_dir: None,
+        materialize_products: false,
+        product_gel_ladders: vec![],
+        batch,
+        input_provenance,
+    }
+}
+
+#[test]
+fn external_primer_pair_import_preserves_mixed_claims_and_computes_shared_metrics() {
+    let mut engine = cdna_assay_test_engine();
+    let td = tempdir().expect("tempdir");
+    let artifact_dir = td.path().join("artifacts");
+    let output_path = td.path().join("external_pairs.result.json");
+    let batch = ExternalPrimerPairBatch {
+        schema: EXTERNAL_PRIMER_PAIR_BATCH_SCHEMA.to_string(),
+        batch_id: "mixed_sources".to_string(),
+        pairs: vec![
+            external_primer_pair_input(
+                ExternalPrimerPairSourceKind::CommercialCatalogue,
+                "Example Oligos",
+                "EO-001",
+                "NM_VENDOR_CLAIM",
+                "aaa 1ccc",
+                "ccc 2aaa",
+            ),
+            external_primer_pair_input(
+                ExternalPrimerPairSourceKind::Literature,
+                "Example Publication",
+                "PMID-TEST",
+                "ENST_LITERATURE_CLAIM",
+                "AAACCC",
+                "CCCAAA",
+            ),
+        ],
+    };
+    let mut request = external_primer_pair_import_request(
+        batch,
+        ExternalPrimerPairBatchProvenance {
+            input_format: "json".to_string(),
+            source_path: "mixed_sources.json".to_string(),
+            source_sha256: "sha256:test-mixed-sources".to_string(),
+        },
+    );
+    request.artifact_output_dir = Some(artifact_dir.to_string_lossy().to_string());
+    request.materialize_products = true;
+
+    let result = engine
+        .apply(Operation::ImportExternalPrimerPairs {
+            request,
+            path: Some(output_path.to_string_lossy().to_string()),
+        })
+        .expect("external primer import");
+    let report = result
+        .external_primer_pair_import_report
+        .as_deref()
+        .expect("external primer report");
+    assert_eq!(report.schema, EXTERNAL_PRIMER_PAIR_IMPORT_REPORT_SCHEMA);
+    assert_eq!(report.source_record_count, 2);
+    assert_eq!(report.unique_pair_count, 1);
+    assert_eq!(report.duplicate_source_record_count, 1);
+    assert_eq!(report.pairs.len(), 1);
+
+    let pair = &report.pairs[0];
+    assert_eq!(pair.duplicate_source_record_count, 1);
+    assert_eq!(pair.sources.len(), 2);
+    assert_ne!(
+        pair.sources[0].source_record_id, pair.sources[1].source_record_id,
+        "source records with different accessions/claims need distinct provenance identities"
+    );
+    assert_eq!(
+        pair.sources
+            .iter()
+            .map(|source| source.claimed_accession.as_str())
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["ENST_LITERATURE_CLAIM", "NM_VENDOR_CLAIM"])
+    );
+    assert!(pair.sources.iter().all(|source| {
+        source.claim_evidence_status == "provenance_only_not_used_for_coverage_or_specificity"
+    }));
+    assert_eq!(
+        pair.origins,
+        vec![
+            PrimerPairSummaryOrigin::ImportedCommercial,
+            PrimerPairSummaryOrigin::ImportedExternal,
+        ]
+    );
+    assert!(!pair.vendor_claims_used_as_biological_evidence);
+    assert_eq!(pair.specificity.status, "not_run");
+    assert!(pair.specificity.report.is_none());
+
+    assert_eq!(pair.forward.sequence_5_to_3, "AAACCC");
+    assert_eq!(pair.reverse.sequence_5_to_3, "CCCAAA");
+    assert_eq!(pair.forward.length_nt, pair.forward.sequence_5_to_3.len());
+    assert_eq!(pair.reverse.length_nt, pair.reverse.sequence_5_to_3.len());
+    assert_eq!(
+        pair.forward.tm_c,
+        GentleEngine::estimate_primer_tm_c(pair.forward.sequence_5_to_3.as_bytes())
+    );
+    assert_eq!(
+        pair.reverse.tm_c,
+        GentleEngine::estimate_primer_tm_c(pair.reverse.sequence_5_to_3.as_bytes())
+    );
+    assert!((pair.tm_delta_c - (pair.forward.tm_c - pair.reverse.tm_c).abs()).abs() < f64::EPSILON);
+    assert!((pair.forward.gc_percent - pair.forward.gc_fraction * 100.0).abs() < f64::EPSILON);
+    assert!((pair.reverse.gc_percent - pair.reverse.gc_fraction * 100.0).abs() < f64::EPSILON);
+    assert!(!pair.forward.tm_method.is_empty());
+    assert!(pair.forward.tm_assumptions.contains("fixed assumptions"));
+    assert_eq!(pair.oligo_qc.oligo_count, 2);
+    assert_eq!(pair.oligo_qc.interaction_count, 1);
+
+    assert_eq!(pair.cdna_assay.product_count, 1);
+    assert!(pair.cdna_assay.transcript_map.is_some());
+    assert!(!pair.cdna_assay.genomic_carryover_risk.summary.is_empty());
+    let materialization = pair
+        .product_materialization
+        .as_ref()
+        .expect("materialized product summary");
+    assert_eq!(materialization.product_count, 1);
+    assert!(
+        pair.artifacts
+            .cdna_report_json_path
+            .as_deref()
+            .is_some_and(|path| Path::new(path).is_file())
+    );
+    assert!(
+        pair.artifacts
+            .transcript_map_svg_path
+            .as_deref()
+            .is_some_and(|path| Path::new(path).is_file())
+    );
+    assert!(
+        pair.artifacts
+            .product_gel_svg_path
+            .as_deref()
+            .is_some_and(|path| Path::new(path).is_file())
+    );
+
+    let persisted = engine
+        .get_external_primer_pair_import_report(&report.report_id)
+        .expect("persisted external primer report");
+    assert_eq!(persisted.pairs[0].pair_id, pair.pair_id);
+    let exported: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&output_path).expect("exported external primer report"),
+    )
+    .expect("parse exported report");
+    assert_eq!(
+        exported,
+        serde_json::to_value(report).expect("serialize operation report")
+    );
+}
+
+#[test]
+fn external_primer_pair_json_and_tsv_imports_share_sequence_derived_ids() {
+    let td = tempdir().expect("tempdir");
+    let json_path = td.path().join("pairs.json");
+    let tsv_path = td.path().join("pairs.tsv");
+    let pair = external_primer_pair_input(
+        ExternalPrimerPairSourceKind::CommercialCatalogue,
+        "Example Oligos",
+        "EO-002",
+        "NM_CLAIM",
+        "AAACCC",
+        "CCCAAA",
+    );
+    let batch = ExternalPrimerPairBatch {
+        schema: EXTERNAL_PRIMER_PAIR_BATCH_SCHEMA.to_string(),
+        batch_id: "json_batch".to_string(),
+        pairs: vec![pair.clone()],
+    };
+    fs::write(
+        &json_path,
+        serde_json::to_vec_pretty(&batch).expect("serialize JSON batch"),
+    )
+    .expect("write JSON batch");
+    fs::write(
+        &tsv_path,
+        concat!(
+            "source_kind\tprovider\tcatalogue_id\tsource_url\tclaimed_accession\taliases\tforward_sequence_5_to_3\treverse_sequence_5_to_3\tclaimed_target\tvalidation_claims\tannotations_json\n",
+            "commercial_catalogue\tExample Oligos\tEO-002\thttps://example.invalid/EO-002\tNM_CLAIM\tEO-002_alias\taa a1ccc\tccc2aaa\tprovider-claimed TEST1 target\tprovider-validated\t{\"provider_note\":\"annotation for EO-002\"}\n"
+        ),
+    )
+    .expect("write TSV batch");
+
+    let (json_batch, json_provenance) = GentleEngine::load_external_primer_pair_batch(
+        json_path.to_str().expect("JSON path"),
+        Some("json"),
+    )
+    .expect("load JSON batch");
+    let json_round_trip: ExternalPrimerPairBatch = serde_json::from_value(
+        serde_json::to_value(&json_batch).expect("serialize loaded JSON batch"),
+    )
+    .expect("round-trip loaded JSON batch");
+    assert_eq!(json_round_trip, json_batch);
+    let (tsv_batch, tsv_provenance) = GentleEngine::load_external_primer_pair_batch(
+        tsv_path.to_str().expect("TSV path"),
+        Some("auto"),
+    )
+    .expect("load TSV batch");
+
+    let mut json_engine = cdna_assay_test_engine();
+    let mut json_request = external_primer_pair_import_request(json_batch, json_provenance);
+    json_request.report_id.clear();
+    let json_result = json_engine
+        .apply(Operation::ImportExternalPrimerPairs {
+            request: json_request,
+            path: None,
+        })
+        .expect("evaluate JSON pair");
+    let mut tsv_engine = cdna_assay_test_engine();
+    let mut tsv_request = external_primer_pair_import_request(tsv_batch, tsv_provenance);
+    tsv_request.report_id.clear();
+    let tsv_result = tsv_engine
+        .apply(Operation::ImportExternalPrimerPairs {
+            request: tsv_request,
+            path: None,
+        })
+        .expect("evaluate TSV pair");
+    let json_pair = &json_result
+        .external_primer_pair_import_report
+        .as_ref()
+        .expect("JSON report")
+        .pairs[0];
+    let tsv_pair = &tsv_result
+        .external_primer_pair_import_report
+        .as_ref()
+        .expect("TSV report")
+        .pairs[0];
+    assert_eq!(json_pair.pair_id, tsv_pair.pair_id);
+    assert_eq!(json_pair.forward.primer_id, tsv_pair.forward.primer_id);
+    assert_eq!(json_pair.reverse.primer_id, tsv_pair.reverse.primer_id);
+    assert_eq!(json_pair.forward.tm_c, tsv_pair.forward.tm_c);
+    assert_eq!(json_pair.reverse.tm_c, tsv_pair.reverse.tm_c);
+    assert_eq!(
+        json_result
+            .external_primer_pair_import_report
+            .as_ref()
+            .expect("JSON report")
+            .report_id,
+        tsv_result
+            .external_primer_pair_import_report
+            .as_ref()
+            .expect("TSV report")
+            .report_id,
+        "equivalent JSON/TSV inputs should share an automatic report identity"
+    );
+    assert_eq!(
+        json_result
+            .external_primer_pair_import_report
+            .as_ref()
+            .expect("JSON report")
+            .normalized_batch_sha256,
+        tsv_result
+            .external_primer_pair_import_report
+            .as_ref()
+            .expect("TSV report")
+            .normalized_batch_sha256,
+        "equivalent JSON/TSV source semantics should share a normalized digest"
+    );
+
+    let mut baseline_request = external_primer_pair_import_request(
+        batch.clone(),
+        ExternalPrimerPairBatchProvenance::default(),
+    );
+    baseline_request.report_id.clear();
+    let mut constrained_request = baseline_request.clone();
+    constrained_request.max_amplicon_bp = Some(11);
+    let baseline = cdna_assay_test_engine()
+        .apply(Operation::ImportExternalPrimerPairs {
+            request: baseline_request,
+            path: None,
+        })
+        .expect("evaluate auto-id baseline");
+    let constrained = cdna_assay_test_engine()
+        .apply(Operation::ImportExternalPrimerPairs {
+            request: constrained_request,
+            path: None,
+        })
+        .expect("evaluate auto-id constrained import");
+    assert_ne!(
+        baseline
+            .external_primer_pair_import_report
+            .as_ref()
+            .expect("baseline report")
+            .report_id,
+        constrained
+            .external_primer_pair_import_report
+            .as_ref()
+            .expect("constrained report")
+            .report_id,
+        "automatic report ids must include biological evaluation settings"
+    );
+}
+
+#[test]
+fn external_primer_pair_import_rejects_malformed_sequence_and_provenance() {
+    let mut invalid_sequence_engine = cdna_assay_test_engine();
+    let invalid_sequence = ExternalPrimerPairBatch {
+        schema: EXTERNAL_PRIMER_PAIR_BATCH_SCHEMA.to_string(),
+        batch_id: "invalid_sequence".to_string(),
+        pairs: vec![external_primer_pair_input(
+            ExternalPrimerPairSourceKind::External,
+            "Example Source",
+            "EXT-1",
+            "TX_CLAIM",
+            "AAA ZCC",
+            "CCCAAA",
+        )],
+    };
+    let error = invalid_sequence_engine
+        .apply(Operation::ImportExternalPrimerPairs {
+            request: external_primer_pair_import_request(
+                invalid_sequence,
+                ExternalPrimerPairBatchProvenance::default(),
+            ),
+            path: None,
+        })
+        .expect_err("reject invalid IUPAC sequence");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("row 1 forward"));
+    assert!(error.message.contains("invalid IUPAC character 'Z'"));
+    assert!(error.message.contains("input character"));
+
+    let mut missing_catalogue_engine = cdna_assay_test_engine();
+    let missing_catalogue = ExternalPrimerPairBatch {
+        schema: EXTERNAL_PRIMER_PAIR_BATCH_SCHEMA.to_string(),
+        batch_id: "missing_catalogue".to_string(),
+        pairs: vec![external_primer_pair_input(
+            ExternalPrimerPairSourceKind::CommercialCatalogue,
+            "Example Oligos",
+            "",
+            "TX_CLAIM",
+            "AAACCC",
+            "CCCAAA",
+        )],
+    };
+    let error = missing_catalogue_engine
+        .apply(Operation::ImportExternalPrimerPairs {
+            request: external_primer_pair_import_request(
+                missing_catalogue,
+                ExternalPrimerPairBatchProvenance::default(),
+            ),
+            path: None,
+        })
+        .expect_err("reject incomplete commercial provenance");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("commercial_catalogue"));
+    assert!(error.message.contains("catalogue_id"));
+}
+
 fn primer_specificity_test_hit(
     role: PrimerSpecificityPrimerRole,
     hit_index: usize,
@@ -7770,10 +10699,14 @@ fn primer_specificity_test_hit(
     PrimerSpecificityPrimerHit {
         hit_index,
         role,
+        raw_subject_id: None,
         subject_id: subject_id.to_string(),
+        subject_annotation: None,
         identity_percent: 100.0,
         alignment_length_bp: end_1based.saturating_sub(start_1based).saturating_add(1),
         mismatches,
+        unaligned_query_bases: 0,
+        effective_mismatches: mismatches,
         gap_opens: 0,
         query_start_1based: 1,
         query_end_1based: end_1based.saturating_sub(start_1based).saturating_add(1),
@@ -7787,9 +10720,502 @@ fn primer_specificity_test_hit(
         query_coverage_fraction: 1.0,
         three_prime_window_bp: 5,
         three_prime_mismatches: 0,
+        binding_start_1based: Some(start_1based),
+        binding_end_1based: Some(end_1based),
+        full_alignment: None,
         accepted_by_policy: true,
         rejection_reasons: vec![],
     }
+}
+
+#[cfg(unix)]
+fn write_fake_blastdbcmd(path: &Path, sequence_count: u64, total_bases: u64) {
+    fs::write(
+        path,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'blastdbcmd: fake 1.0'; exit 0; fi\nif [ \"$1\" = '-db' ] && [ \"$3\" = '-info' ]; then printf 'Database: synthetic\\nBLASTDB Version: 5\\n\\t{sequence_count} sequences; {total_bases} total letters\\n'; exit 0; fi\nexit 2\n"
+        ),
+    )
+    .expect("write fake blastdbcmd");
+    let mut permissions = fs::metadata(path)
+        .expect("fake blastdbcmd metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions).expect("enable fake blastdbcmd");
+}
+
+fn primer_specificity_collection_test_design_report(
+    report_id: &str,
+    template: &str,
+    forward_sequence: &str,
+    reverse_sequence: &str,
+) -> PrimerDesignReport {
+    let primer = |sequence: &str, start_0based: usize| PrimerDesignPrimerRecord {
+        sequence: sequence.to_string(),
+        start_0based,
+        end_0based_exclusive: start_0based + sequence.len(),
+        length_bp: sequence.len(),
+        anneal_length_bp: sequence.len(),
+        ..PrimerDesignPrimerRecord::default()
+    };
+    PrimerDesignReport {
+        schema: "gentle.primer_design_report.v1".to_string(),
+        report_id: report_id.to_string(),
+        template: template.to_string(),
+        roi_start_0based: 20,
+        roi_end_0based: 80,
+        pair_count: 1,
+        pairs: vec![PrimerDesignPairRecord {
+            rank: 1,
+            forward: primer(forward_sequence, 0),
+            reverse: primer(reverse_sequence, 80),
+            amplicon_start_0based: 0,
+            amplicon_end_0based_exclusive: 80 + reverse_sequence.len(),
+            amplicon_length_bp: 80 + reverse_sequence.len(),
+            ..PrimerDesignPairRecord::default()
+        }],
+        ..PrimerDesignReport::default()
+    }
+}
+
+fn primer_specificity_parity_projection(report: &PrimerSpecificityReport) -> serde_json::Value {
+    serde_json::json!({
+        "schema": report.schema,
+        "report_id": report.report_id,
+        "primary_seq_id": report.primary_seq_id,
+        "related_seq_ids": report.related_seq_ids,
+        "external_inputs": report.external_inputs,
+        "request_summary": report.request_summary,
+        "effective_settings_summary": report.effective_settings_summary,
+        "primer_report_id": report.primer_report_id,
+        "pair_rank": report.pair_rank,
+        "pair_index": report.pair_index,
+        "target_kind": report.target_kind,
+        "target_genome_id": report.target_genome_id,
+        "blast_database": report.blast_database,
+        "intended_target": report.intended_target,
+        "policy": report.policy,
+        "primers": report.primers,
+        "forward_hits": report.forward_hits,
+        "reverse_hits": report.reverse_hits,
+        "amplicons": report.amplicons,
+        "compaction": report.compaction,
+        "search_completeness": report.search_completeness,
+        "summary": report.summary,
+        "genomic_specificity": report.genomic_specificity,
+        "transcriptome_specificity": report.transcriptome_specificity,
+        "design_provenance": report.design_provenance,
+        "characterization_dimensions": report.characterization_dimensions,
+        "warnings": report.warnings,
+    })
+}
+
+#[test]
+fn gene_set_primer_specificity_rejects_missing_or_mismatched_context_before_member_resolution() {
+    let mut engine = GentleEngine::new();
+    let resolution = GeneSetResolutionReport {
+        schema: GENE_SET_RESOLUTION_SCHEMA.to_string(),
+        generated_at_unix_ms: 1,
+        op_id: Some("missing_context_fixture".to_string()),
+        resolved_member_count: 1,
+        resolved_members: vec![GeneSetResolvedMember {
+            dedup_key: "gene_id:GENE_A".to_string(),
+            symbol: "GENEA".to_string(),
+            gene_id: Some("GENE_A".to_string()),
+            ..GeneSetResolvedMember::default()
+        }],
+        ..GeneSetResolutionReport::default()
+    };
+    let report_id = GentleEngine::gene_set_resolution_artifact_id(&resolution);
+    engine
+        .upsert_gene_set_resolution_artifact(resolution)
+        .expect("persist legacy context-free report");
+
+    let error = engine
+        .apply(Operation::AssessPrimerPairSpecificityCollection {
+            collection_subject: CollectionSubjectRef::GeneSetResolution { report_id },
+            member_bindings: vec![],
+            pair_rank: Some(1),
+            pair_index: None,
+            target_genome_id: "ToyGenome".to_string(),
+            policy: PrimerSpecificityPolicy::default(),
+            catalog_path: Some("does-not-need-to-exist.json".to_string()),
+            cache_dir: None,
+            path: None,
+        })
+        .expect_err("missing context must fail before member binding or BLAST");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("missing_biological_context"));
+    assert!(
+        error
+            .cause_chain
+            .iter()
+            .any(|cause| cause.contains("missing_biological_context"))
+    );
+
+    let mismatched = GeneSetResolutionReport {
+        schema: GENE_SET_RESOLUTION_SCHEMA.to_string(),
+        generated_at_unix_ms: 2,
+        op_id: Some("mismatched_context_fixture".to_string()),
+        genome_id: Some("ToyGenome".to_string()),
+        resolved_member_count: 1,
+        resolved_members: vec![GeneSetResolvedMember {
+            dedup_key: "gene_id:GENE_A".to_string(),
+            symbol: "GENEA".to_string(),
+            gene_id: Some("GENE_A".to_string()),
+            ..GeneSetResolvedMember::default()
+        }],
+        ..GeneSetResolutionReport::default()
+    };
+    let report_id = GentleEngine::gene_set_resolution_artifact_id(&mismatched);
+    engine
+        .upsert_gene_set_resolution_artifact(mismatched)
+        .expect("persist mismatched-context report");
+    let error = engine
+        .apply(Operation::AssessPrimerPairSpecificityCollection {
+            collection_subject: CollectionSubjectRef::GeneSetResolution { report_id },
+            member_bindings: vec![],
+            pair_rank: Some(1),
+            pair_index: None,
+            target_genome_id: "OtherGenome".to_string(),
+            policy: PrimerSpecificityPolicy::default(),
+            catalog_path: Some("does-not-need-to-exist.json".to_string()),
+            cache_dir: None,
+            path: None,
+        })
+        .expect_err("target-genome mismatch must fail before member binding or BLAST");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("mixed_biological_context"));
+}
+
+#[cfg(unix)]
+#[test]
+fn collection_primer_specificity_matches_direct_per_member_assessment() {
+    let _env_lock = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let temp = tempdir().expect("temporary collection specificity directory");
+    let root = temp.path();
+    let fasta = root.join("toy.fa");
+    let annotation = root.join("toy.gtf");
+    let cache = root.join("cache");
+    let catalog = root.join("catalog.json");
+    fs::write(&fasta, format!(">chr1\n{}\n", "ACGT".repeat(100)))
+        .expect("write collection specificity FASTA");
+    fs::write(
+        &annotation,
+        concat!(
+            "chr1\ttest\tgene\t1\t150\t.\t+\t.\tgene_id \"GENE_A\"; gene_name \"GENEA\";\n",
+            "chr1\ttest\tgene\t201\t350\t.\t+\t.\tgene_id \"GENE_B\"; gene_name \"GENEB\";\n",
+        ),
+    )
+    .expect("write collection specificity annotation");
+    fs::write(
+        &catalog,
+        format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "synthetic collection primer-specificity fixture",
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
+  }}
+}}"#,
+            serde_json::json!(fasta),
+            serde_json::json!(annotation),
+            serde_json::json!(cache)
+        ),
+    )
+    .expect("write collection specificity catalog");
+
+    let fake_makeblastdb = root.join("fake_makeblastdb.sh");
+    fs::write(
+        &fake_makeblastdb,
+        "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'makeblastdb: fake 1.0'; exit 0; fi\nout=''\nwhile [ $# -gt 0 ]; do\n  if [ \"$1\" = '-out' ]; then out=\"$2\"; shift 2; else shift; fi\ndone\nmkdir -p \"$(dirname \"$out\")\"\nprintf nhr > \"${out}.nhr\"\nprintf nin > \"${out}.nin\"\nprintf nsq > \"${out}.nsq\"\n",
+    )
+    .expect("write fake makeblastdb");
+    let fake_blastn = root.join("fake_blastn.sh");
+    fs::write(
+        &fake_blastn,
+        "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'blastn: fake 1.0'; exit 0; fi\nexit 0\n",
+    )
+    .expect("write fake blastn");
+    let fake_blastdbcmd = root.join("fake_blastdbcmd.sh");
+    write_fake_blastdbcmd(&fake_blastdbcmd, 1, 400);
+    for executable in [&fake_makeblastdb, &fake_blastn] {
+        let mut permissions = fs::metadata(executable)
+            .expect("fake executable metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(executable, permissions).expect("enable fake executable");
+    }
+    let _makeblastdb = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        &fake_makeblastdb.to_string_lossy(),
+    );
+    let _blastn = EnvVarGuard::set(
+        crate::genomes::BLASTN_ENV_BIN,
+        &fake_blastn.to_string_lossy(),
+    );
+    let _blastdbcmd = EnvVarGuard::set(
+        crate::genomes::BLASTDBCMD_ENV_BIN,
+        &fake_blastdbcmd.to_string_lossy(),
+    );
+
+    let mut engine = GentleEngine::new();
+    engine
+        .apply(Operation::PrepareGenome {
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            cache_dir: None,
+            timeout_seconds: None,
+        })
+        .expect("prepare collection specificity genome");
+    engine
+        .state_mut()
+        .sequences
+        .insert("seq_a".to_string(), seq(&"ACGT".repeat(30)));
+    engine
+        .state_mut()
+        .sequences
+        .insert("seq_b".to_string(), seq(&"TGCA".repeat(30)));
+
+    let design_reports = [
+        primer_specificity_collection_test_design_report(
+            "primer_report_a",
+            "seq_a",
+            "ACGTACGTACGTACGTACGT",
+            "TGCATGCATGCATGCATGCA",
+        ),
+        primer_specificity_collection_test_design_report(
+            "primer_report_b",
+            "seq_b",
+            "AAAACCCCGGGGTTTTACGT",
+            "TTTTGGGGCCCCAAAATGCA",
+        ),
+    ];
+    let mut store = engine.read_primer_design_store();
+    for report in &design_reports {
+        store
+            .reports
+            .insert(report.report_id.clone(), report.clone());
+    }
+    engine
+        .write_primer_design_store(store)
+        .expect("persist collection specificity primer reports");
+
+    let resolution = engine
+        .resolve_gene_set(
+            GeneSetRequest::ExplicitMembers {
+                members: vec!["GENEA".to_string(), "GENEB".to_string()],
+            },
+            Some("ToyGenome"),
+            None,
+            Some(&catalog.to_string_lossy()),
+            None,
+            false,
+            false,
+        )
+        .expect("resolve collection specificity gene set");
+    let resolution_id = GentleEngine::gene_set_resolution_artifact_id(&resolution);
+    engine
+        .upsert_gene_set_resolution_artifact(resolution.clone())
+        .expect("persist collection specificity gene set");
+
+    let policy = PrimerSpecificityPolicy::default();
+    let mut direct_by_design_report = BTreeMap::new();
+    for report in &design_reports {
+        let direct = engine
+            .assess_primer_pair_specificity(
+                Some(&report.report_id),
+                Some(1),
+                None,
+                None,
+                None,
+                "ToyGenome",
+                policy.clone(),
+                Some(&catalog.to_string_lossy()),
+                None,
+            )
+            .expect("run direct primer specificity");
+        direct_by_design_report.insert(report.report_id.clone(), direct);
+    }
+    let bindings = resolution
+        .resolved_members
+        .iter()
+        .map(|member| PrimerSpecificityCollectionMemberBinding {
+            stable_member_id: member.dedup_key.clone(),
+            primer_report_id: match member.symbol.as_str() {
+                "GENEA" => "primer_report_a",
+                "GENEB" => "primer_report_b",
+                other => panic!("unexpected resolved gene-set member {other}"),
+            }
+            .to_string(),
+        })
+        .collect::<Vec<_>>();
+    let result = engine
+        .apply(Operation::AssessPrimerPairSpecificityCollection {
+            collection_subject: CollectionSubjectRef::GeneSetResolution {
+                report_id: resolution_id,
+            },
+            member_bindings: bindings,
+            pair_rank: Some(1),
+            pair_index: None,
+            target_genome_id: "ToyGenome".to_string(),
+            policy,
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            cache_dir: None,
+            path: None,
+        })
+        .expect("run collection primer specificity");
+    let collection = result
+        .collection_operation
+        .expect("collection specificity report");
+    assert_eq!(collection.lifting_mode, CollectionLiftingMode::Map);
+    assert_eq!(collection.capability_name, "AssessPrimerPairSpecificity");
+    assert_eq!(
+        collection.lift_policy.context_requirement,
+        CollectionContextRequirement::Homogeneous
+    );
+    assert_eq!(
+        collection.biological_contexts,
+        resolution.biological_contexts
+    );
+    assert_eq!(collection.per_member_status.len(), 2);
+    assert!(collection.per_member_status.iter().all(|row| {
+        row.outcome == CollectionMemberOutcome::Succeeded
+            && row.produced_report_ids.len() == 1
+            && row.error.is_none()
+            && row.member.source_provenance.iter().any(|source| {
+                source.source_kind == "primer_design_report_binding"
+                    && source
+                        .note
+                        .as_deref()
+                        .is_some_and(|note| note.contains("explicit"))
+            })
+            && collection
+                .biological_contexts
+                .resolve(row.member.context_id.as_deref(), None)
+                .is_ok_and(|context| {
+                    context.is_some_and(|context| context.genome_id.as_deref() == Some("ToyGenome"))
+                })
+    }));
+
+    for row in &collection.per_member_status {
+        let produced_report_id = &row.produced_report_ids[0];
+        let mapped = engine
+            .get_primer_specificity_report(produced_report_id)
+            .expect("persisted mapped specificity report");
+        let design_report_id = mapped
+            .primer_report_id
+            .as_ref()
+            .expect("mapped report cites primer design");
+        let direct = direct_by_design_report
+            .get(design_report_id)
+            .expect("matching direct assessment");
+        assert_eq!(
+            primer_specificity_parity_projection(&mapped),
+            primer_specificity_parity_projection(direct),
+            "collection mapping must preserve the direct specificity result for {design_report_id}"
+        );
+    }
+
+    let project_sequence_map = execute_shell_command(
+        &mut engine,
+        &ShellCommand::CollectionsRunPrimerSpecificity {
+            collection_subject: CollectionSubjectRef::ProjectSequences {
+                seq_ids: vec!["seq_b".to_string(), "seq_a".to_string()],
+            },
+            member_bindings: vec![],
+            pair_rank: Some(1),
+            pair_index: None,
+            target_genome_id: "ToyGenome".to_string(),
+            policy: PrimerSpecificityPolicy::default(),
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            cache_dir: None,
+            path: None,
+        },
+    )
+    .expect("auto-resolve one primer report per project sequence")
+    .output;
+    let project_sequence_map =
+        serde_json::from_value::<CollectionOperationReport>(project_sequence_map["report"].clone())
+            .expect("project-sequence collection report");
+    assert!(project_sequence_map.per_member_status.iter().all(|row| {
+        row.outcome == CollectionMemberOutcome::Succeeded
+            && row.member.source_provenance.iter().any(|source| {
+                source.source_kind == "primer_design_report_binding"
+                    && source
+                        .note
+                        .as_deref()
+                        .is_some_and(|note| note.contains("unique_template_match"))
+            })
+    }));
+
+    let missing_bindings = engine
+        .apply(Operation::AssessPrimerPairSpecificityCollection {
+            collection_subject: collection.collection_subject.clone(),
+            member_bindings: vec![],
+            pair_rank: Some(1),
+            pair_index: None,
+            target_genome_id: "ToyGenome".to_string(),
+            policy: PrimerSpecificityPolicy::default(),
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            cache_dir: None,
+            path: None,
+        })
+        .expect("retain missing gene-set bindings as typed member failures")
+        .collection_operation
+        .expect("failed-member collection report");
+    assert!(missing_bindings.per_member_status.iter().all(|row| {
+        row.outcome == CollectionMemberOutcome::Failed
+            && row.produced_report_ids.is_empty()
+            && row.error.as_ref().is_some_and(|error| {
+                error
+                    .message
+                    .contains("requires an explicit member-to-primer-report binding")
+            })
+    }));
+    assert_eq!(missing_bindings.aggregate_warnings.len(), 2);
+
+    let mut mixed_resolution = resolution;
+    mixed_resolution.op_id = Some("mixed_context_fixture".to_string());
+    mixed_resolution
+        .biological_contexts
+        .contexts
+        .push(BiologicalContext {
+            context_id: "other_genome".to_string(),
+            genome_id: Some("OtherGenome".to_string()),
+            ..BiologicalContext::default()
+        });
+    mixed_resolution.resolved_members[1].context_id = Some("other_genome".to_string());
+    let mixed_resolution_id = GentleEngine::gene_set_resolution_artifact_id(&mixed_resolution);
+    engine
+        .upsert_gene_set_resolution_artifact(mixed_resolution)
+        .expect("persist mixed-context fixture");
+    let specificity_report_count = engine.list_primer_specificity_reports().len();
+    let error = engine
+        .apply(Operation::AssessPrimerPairSpecificityCollection {
+            collection_subject: CollectionSubjectRef::GeneSetResolution {
+                report_id: mixed_resolution_id,
+            },
+            member_bindings: vec![],
+            pair_rank: Some(1),
+            pair_index: None,
+            target_genome_id: "ToyGenome".to_string(),
+            policy: PrimerSpecificityPolicy::default(),
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            cache_dir: None,
+            path: None,
+        })
+        .expect_err("mixed contexts must fail before member or BLAST work");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("mixed_biological_context"));
+    assert_eq!(
+        engine.list_primer_specificity_reports().len(),
+        specificity_report_count,
+        "context rejection must not persist partial child reports"
+    );
 }
 
 #[test]
@@ -7842,7 +11268,22 @@ fn primer_specificity_pairs_forward_reverse_and_same_primer_warning_products() {
         &reverse_hits,
         &policy,
     );
-    GentleEngine::primer_specificity_finalize_amplicons(&mut amplicons, Some(140), &policy);
+    GentleEngine::primer_specificity_finalize_amplicons(
+        &mut amplicons,
+        &PrimerSpecificityIntendedTarget {
+            model: PrimerSpecificityIntendedTargetModel::GenomicInterval,
+            subject_id: Some("chr1".to_string()),
+            expected_product_range: Some(PrimerSpecificitySubjectRange {
+                start_1based: 100,
+                end_1based: 239,
+            }),
+            genomic_target_geometry_known: true,
+            contiguous_genomic_product_expected: true,
+            ..PrimerSpecificityIntendedTarget::default()
+        },
+        &policy,
+        crate::genomes::BlastDatabaseIndexKind::GenomicDna,
+    );
     let intended = amplicons
         .iter()
         .find(|amplicon| amplicon.intended)
@@ -7861,6 +11302,1598 @@ fn primer_specificity_pairs_forward_reverse_and_same_primer_warning_products() {
     assert!(same_primer_warning.specificity_failure);
     assert_eq!(same_primer_warning.start_1based, 500);
     assert_eq!(same_primer_warning.end_1based, 719);
+}
+
+#[test]
+fn primer_specificity_pairs_minus_strand_targets_without_role_order_assumptions() {
+    let policy = PrimerSpecificityPolicy::default();
+    let forward_hits = vec![primer_specificity_test_hit(
+        PrimerSpecificityPrimerRole::Forward,
+        0,
+        "chr1",
+        220,
+        239,
+        "-",
+        0,
+    )];
+    let reverse_hits = vec![primer_specificity_test_hit(
+        PrimerSpecificityPrimerRole::Reverse,
+        0,
+        "chr1",
+        100,
+        119,
+        "+",
+        0,
+    )];
+    let mut amplicons = GentleEngine::primer_specificity_collect_amplicons_for_hits(
+        &forward_hits,
+        &reverse_hits,
+        &policy,
+    );
+    GentleEngine::primer_specificity_finalize_amplicons(
+        &mut amplicons,
+        &PrimerSpecificityIntendedTarget {
+            model: PrimerSpecificityIntendedTargetModel::GenomicInterval,
+            subject_id: Some("chr1".to_string()),
+            expected_product_range: Some(PrimerSpecificitySubjectRange {
+                start_1based: 100,
+                end_1based: 239,
+            }),
+            genomic_target_geometry_known: true,
+            contiguous_genomic_product_expected: true,
+            ..PrimerSpecificityIntendedTarget::default()
+        },
+        &policy,
+        crate::genomes::BlastDatabaseIndexKind::GenomicDna,
+    );
+    let intended = amplicons
+        .iter()
+        .find(|amplicon| amplicon.intended)
+        .expect("minus-strand intended product");
+    assert_eq!(intended.start_1based, 100);
+    assert_eq!(intended.end_1based, 239);
+    assert_eq!(intended.left_role, PrimerSpecificityPrimerRole::Reverse);
+    assert_eq!(intended.right_role, PrimerSpecificityPrimerRole::Forward);
+}
+
+#[test]
+fn primer_specificity_uses_per_hsp_query_coordinates_not_aggregated_qcovs() {
+    let hit = BlastHit {
+        subject_id: "chr1".to_string(),
+        identity_percent: 100.0,
+        alignment_length: 8,
+        mismatches: 0,
+        gap_opens: 0,
+        query_start: 5,
+        query_end: 12,
+        subject_start: 100,
+        subject_end: 107,
+        evalue: 1e-8,
+        bit_score: 20.0,
+        query_coverage_percent: Some(100.0),
+        query_length: None,
+        aligned_query: None,
+        aligned_subject: None,
+    };
+    assert_eq!(
+        GentleEngine::primer_specificity_hsp_query_coverage_fraction(20, &hit),
+        0.4
+    );
+    assert_eq!(
+        GentleEngine::primer_specificity_effective_mismatch_count(20, &hit),
+        12,
+        "the twelve primer bases outside this HSP must count as effective mismatches"
+    );
+    let mut reverse_query_coordinates = hit;
+    reverse_query_coordinates.query_start = 12;
+    reverse_query_coordinates.query_end = 5;
+    assert_eq!(
+        GentleEngine::primer_specificity_hsp_query_coverage_fraction(
+            20,
+            &reverse_query_coordinates,
+        ),
+        0.4
+    );
+    reverse_query_coordinates.mismatches = 1;
+    assert_eq!(
+        GentleEngine::primer_specificity_effective_mismatch_count(20, &reverse_query_coordinates),
+        13
+    );
+}
+
+#[test]
+fn primer_specificity_uses_complete_blast_aligned_strings_without_subject_refetch() {
+    let query = "ACGTACGTACGT";
+    let hit = BlastHit {
+        subject_id: "ENST_DEMO.1".to_string(),
+        identity_percent: 91.7,
+        alignment_length: 12,
+        mismatches: 1,
+        gap_opens: 0,
+        query_start: 1,
+        query_end: 12,
+        subject_start: 240,
+        subject_end: 229,
+        evalue: 1e-8,
+        bit_score: 20.0,
+        query_coverage_percent: Some(100.0),
+        query_length: Some(12),
+        aligned_query: Some(query.to_string()),
+        aligned_subject: Some("ACGTACGTACGA".to_string()),
+    };
+    let alignment = GentleEngine::primer_specificity_full_alignment_from_blast_strings(
+        &hit,
+        query,
+        5,
+        &PrimerSpecificityFullAlignmentPolicy::default(),
+    )
+    .expect("valid aligned strings")
+    .expect("complete query HSP should provide native evidence");
+    assert_eq!(alignment.algorithm, "blast_full_query_aligned_strings_v1");
+    assert_eq!(alignment.status, "complete");
+    assert_eq!(alignment.strand, "-");
+    assert_eq!(alignment.aligned_subject_start_1based, 240);
+    assert_eq!(alignment.aligned_subject_end_1based, 229);
+    assert_eq!(alignment.effective_mismatches, 1);
+    assert_eq!(alignment.three_prime_mismatches, 1);
+    assert_eq!(alignment.relation_alignment, "|||||||||||X");
+
+    let partial = BlastHit {
+        query_start: 2,
+        query_end: 12,
+        aligned_query: Some(query[1..].to_string()),
+        aligned_subject: Some(query[1..].to_string()),
+        ..hit
+    };
+    assert!(
+        GentleEngine::primer_specificity_full_alignment_from_blast_strings(
+            &partial,
+            query,
+            5,
+            &PrimerSpecificityFullAlignmentPolicy::default(),
+        )
+        .expect("partial HSP is valid but not complete")
+        .is_none(),
+        "partial HSPs must retain the established subject-window realignment"
+    );
+}
+
+#[test]
+fn primer_specificity_design_citation_binds_the_exact_assessed_pair() {
+    let pair = PrimerDesignPairRecord {
+        rank: 1,
+        forward: PrimerDesignPrimerRecord {
+            sequence: "ACGTACGTACGTACGTACGT".to_string(),
+            ..PrimerDesignPrimerRecord::default()
+        },
+        reverse: PrimerDesignPrimerRecord {
+            sequence: "CCCCCCCCCCCCCCCCCCCC".to_string(),
+            ..PrimerDesignPrimerRecord::default()
+        },
+        ..PrimerDesignPairRecord::default()
+    };
+    let report = PrimerDesignReport {
+        schema: "gentle.primer_design_report.v1".to_string(),
+        report_id: "design_report".to_string(),
+        template: "template".to_string(),
+        generated_at_unix_ms: 42,
+        pairs: vec![pair.clone()],
+        ..PrimerDesignReport::default()
+    };
+    let assessed_forward = PrimerSpecificityInputPrimer {
+        role: PrimerSpecificityPrimerRole::Forward,
+        full_sequence: pair.forward.sequence.clone(),
+        annealing_sequence: pair.forward.sequence.clone(),
+        annealing_length_bp: pair.forward.sequence.len(),
+        ..PrimerSpecificityInputPrimer::default()
+    };
+    let assessed_reverse = PrimerSpecificityInputPrimer {
+        role: PrimerSpecificityPrimerRole::Reverse,
+        full_sequence: pair.reverse.sequence.clone(),
+        annealing_sequence: pair.reverse.sequence.clone(),
+        annealing_length_bp: pair.reverse.sequence.len(),
+        ..PrimerSpecificityInputPrimer::default()
+    };
+    let citation = GentleEngine::primer_specificity_design_provenance_from_report(
+        &report,
+        &pair,
+        Some(1),
+        Some(0),
+        &assessed_forward,
+        &assessed_reverse,
+    )
+    .expect("matching citation");
+    assert_eq!(citation.status, PrimerPairCharacterizationStatus::Pass);
+    assert_eq!(
+        citation.source_pair_content_sha256,
+        citation.assessed_pair_content_sha256
+    );
+    assert_eq!(
+        citation.pair_content_fingerprint_algorithm.as_deref(),
+        Some(PRIMER_DESIGN_PAIR_CONTENT_FINGERPRINT_ALGORITHM)
+    );
+
+    let mut changed_reverse = assessed_reverse.clone();
+    changed_reverse.full_sequence = "AAAAAAAAAAAAAAAAAAAA".to_string();
+    let drifted = GentleEngine::primer_specificity_design_provenance_from_report(
+        &report,
+        &pair,
+        Some(1),
+        Some(0),
+        &assessed_forward,
+        &changed_reverse,
+    )
+    .expect("drifted citation remains reportable");
+    assert_eq!(drifted.status, PrimerPairCharacterizationStatus::Fail);
+    assert_ne!(
+        drifted.source_pair_content_sha256,
+        drifted.assessed_pair_content_sha256
+    );
+
+    let unresolved = GentleEngine::default().primer_specificity_design_provenance_from_reference(
+        Some("missing_report"),
+        Some(1),
+        None,
+        &assessed_forward,
+        &assessed_reverse,
+    );
+    assert_eq!(
+        unresolved.status,
+        PrimerPairCharacterizationStatus::Incomplete
+    );
+    let not_run = GentleEngine::primer_specificity_design_provenance_not_run(
+        "No design report was supplied.",
+    );
+    assert_eq!(not_run.status, PrimerPairCharacterizationStatus::NotRun);
+}
+
+#[test]
+fn primer_specificity_transcript_set_accepts_every_declared_transcript_product() {
+    let policy = PrimerSpecificityPolicy::default();
+    let mut forward_hits = vec![];
+    let mut reverse_hits = vec![];
+    let mut expected_products = vec![];
+    for (index, (expected_transcript_id, observed_transcript_id)) in [
+        ("ENST00000465287", "ENST00000465287.1"),
+        ("ENST00000266269", "ENST00000266269.10"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        forward_hits.push(primer_specificity_test_hit(
+            PrimerSpecificityPrimerRole::Forward,
+            index,
+            observed_transcript_id,
+            if index == 0 { 528 } else { 1_991 },
+            if index == 0 { 547 } else { 2_010 },
+            "+",
+            0,
+        ));
+        reverse_hits.push(primer_specificity_test_hit(
+            PrimerSpecificityPrimerRole::Reverse,
+            index,
+            observed_transcript_id,
+            if index == 0 { 991 } else { 2_473 },
+            if index == 0 { 1_010 } else { 2_492 },
+            "-",
+            0,
+        ));
+        expected_products.push(PrimerSpecificityExpectedProduct {
+            target_space: crate::genomes::BlastDatabaseIndexKind::TranscriptomeCdna
+                .as_str()
+                .to_string(),
+            subject_id: expected_transcript_id.to_string(),
+            expected_product_range: Some(PrimerSpecificitySubjectRange {
+                start_1based: if index == 0 { 528 } else { 1_991 },
+                end_1based: if index == 0 { 1_010 } else { 2_492 },
+            }),
+            source_transcript_id: Some(expected_transcript_id.to_string()),
+        });
+    }
+    let target = PrimerSpecificityIntendedTarget {
+        model: PrimerSpecificityIntendedTargetModel::TranscriptSet,
+        expected_products,
+        genomic_target_geometry_known: true,
+        contiguous_genomic_product_expected: true,
+        source: "synthetic_multi_transcript_assay".to_string(),
+        ..PrimerSpecificityIntendedTarget::default()
+    };
+    let mut amplicons = GentleEngine::primer_specificity_collect_amplicons_for_hits(
+        &forward_hits,
+        &reverse_hits,
+        &policy,
+    );
+    GentleEngine::primer_specificity_finalize_amplicons(
+        &mut amplicons,
+        &target,
+        &policy,
+        crate::genomes::BlastDatabaseIndexKind::TranscriptomeCdna,
+    );
+    let summary = GentleEngine::primer_specificity_summary(
+        &forward_hits,
+        &reverse_hits,
+        &amplicons,
+        &target,
+        crate::genomes::BlastDatabaseIndexKind::TranscriptomeCdna,
+        true,
+    );
+    assert!(summary.specificity_pass);
+    assert_eq!(summary.intended_amplicon_count, 2);
+    assert_eq!(summary.unintended_amplicon_count, 0);
+
+    let mut incomplete_amplicons = GentleEngine::primer_specificity_collect_amplicons_for_hits(
+        &forward_hits[..1],
+        &reverse_hits[..1],
+        &policy,
+    );
+    GentleEngine::primer_specificity_finalize_amplicons(
+        &mut incomplete_amplicons,
+        &target,
+        &policy,
+        crate::genomes::BlastDatabaseIndexKind::TranscriptomeCdna,
+    );
+    let incomplete = GentleEngine::primer_specificity_summary(
+        &forward_hits[..1],
+        &reverse_hits[..1],
+        &incomplete_amplicons,
+        &target,
+        crate::genomes::BlastDatabaseIndexKind::TranscriptomeCdna,
+        true,
+    );
+    assert!(
+        !incomplete.specificity_pass,
+        "a complete search missing one declared transcript product must fail"
+    );
+}
+
+#[test]
+fn primer_specificity_assay_ceiling_keeps_patz1_long_products_as_nonfailing_warnings() {
+    let policy = PrimerSpecificityPolicy {
+        max_target_amplicon_bp: 4_000,
+        readiness_max_target_amplicon_bp: Some(1_000),
+        readiness_max_target_amplicon_bp_source:
+            PrimerSpecificityAmpliconCeilingSource::TranscriptAssayPanelAllowedRange,
+        ..PrimerSpecificityPolicy::default()
+    };
+    let mut forward_hits = vec![primer_specificity_test_hit(
+        PrimerSpecificityPrimerRole::Forward,
+        0,
+        "ENST00000930048.2",
+        865,
+        884,
+        "+",
+        0,
+    )];
+    let mut reverse_hits = vec![primer_specificity_test_hit(
+        PrimerSpecificityPrimerRole::Reverse,
+        0,
+        "ENST00000930048.2",
+        1_478,
+        1_497,
+        "-",
+        0,
+    )];
+    for (index, (subject_id, start_1based, end_1based)) in [
+        ("ENST00000266269.10", 606, 2_756),
+        ("ENST00000351933.9", 839, 2_851),
+        ("ENST00000405309.8", 839, 2_924),
+        ("ENST00000930049.2", 839, 2_818),
+        ("ENST00000930050.2", 839, 2_848),
+        ("ENST00000941424.2", 839, 2_986),
+        ("ENST00001069189.1", 839, 2_921),
+        ("ENST00001135483.1", 839, 2_989),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        forward_hits.push(primer_specificity_test_hit(
+            PrimerSpecificityPrimerRole::Forward,
+            index + 1,
+            subject_id,
+            start_1based,
+            start_1based + 19,
+            "+",
+            0,
+        ));
+        reverse_hits.push(primer_specificity_test_hit(
+            PrimerSpecificityPrimerRole::Reverse,
+            index + 1,
+            subject_id,
+            end_1based - 19,
+            end_1based,
+            "-",
+            0,
+        ));
+    }
+    let target = PrimerSpecificityIntendedTarget {
+        model: PrimerSpecificityIntendedTargetModel::TranscriptSet,
+        expected_products: vec![PrimerSpecificityExpectedProduct {
+            target_space: "transcriptome_cdna".to_string(),
+            subject_id: "ENST00000930048".to_string(),
+            expected_product_range: Some(PrimerSpecificitySubjectRange {
+                start_1based: 865,
+                end_1based: 1_497,
+            }),
+            source_transcript_id: Some("ENST00000930048".to_string()),
+        }],
+        genomic_target_geometry_known: true,
+        contiguous_genomic_product_expected: true,
+        source: "synthetic_patz1_assay_2".to_string(),
+        ..PrimerSpecificityIntendedTarget::default()
+    };
+    let mut amplicons = GentleEngine::primer_specificity_collect_amplicons_for_hits(
+        &forward_hits,
+        &reverse_hits,
+        &policy,
+    );
+    GentleEngine::primer_specificity_finalize_amplicons(
+        &mut amplicons,
+        &target,
+        &policy,
+        crate::genomes::BlastDatabaseIndexKind::TranscriptomeCdna,
+    );
+    let summary = GentleEngine::primer_specificity_summary(
+        &forward_hits,
+        &reverse_hits,
+        &amplicons,
+        &target,
+        crate::genomes::BlastDatabaseIndexKind::TranscriptomeCdna,
+        true,
+    );
+    assert!(summary.specificity_pass);
+    assert_eq!(summary.intended_amplicon_count, 1);
+    assert_eq!(summary.long_product_warning_count, 8);
+    assert_eq!(summary.failing_unintended_amplicon_count, 0);
+    assert_eq!(
+        amplicons
+            .iter()
+            .filter(|amplicon| amplicon.long_product_warning)
+            .count(),
+        8
+    );
+    assert!(
+        amplicons
+            .iter()
+            .filter(|amplicon| amplicon.long_product_warning)
+            .all(|amplicon| {
+                !amplicon.within_readiness_amplicon_range && !amplicon.specificity_failure
+            })
+    );
+}
+
+#[test]
+fn primer_specificity_indexed_pairing_and_compact_detail_are_bounded_and_deterministic() {
+    let policy = PrimerSpecificityPolicy {
+        max_target_amplicon_bp: 500,
+        readiness_max_target_amplicon_bp: Some(250),
+        report_detail_mode: PrimerSpecificityReportDetailMode::Compact,
+        ..PrimerSpecificityPolicy::default()
+    };
+    let mut forward_hits = vec![];
+    let mut reverse_hits = vec![];
+    for index in 0..500usize {
+        let start = index.saturating_mul(1_000).saturating_add(1);
+        let mut forward = primer_specificity_test_hit(
+            PrimerSpecificityPrimerRole::Forward,
+            index,
+            "ENST00000465287.1",
+            start,
+            start + 19,
+            "+",
+            0,
+        );
+        let mut reverse = primer_specificity_test_hit(
+            PrimerSpecificityPrimerRole::Reverse,
+            index,
+            "ENST00000465287.1",
+            start + 100,
+            start + 119,
+            "-",
+            0,
+        );
+        if index % 2 == 1 {
+            forward.accepted_by_policy = false;
+            forward.rejection_reasons = vec!["synthetic_rejected_hsp".to_string()];
+            reverse.accepted_by_policy = false;
+            reverse.rejection_reasons = vec!["synthetic_rejected_hsp".to_string()];
+        }
+        forward_hits.push(forward);
+        reverse_hits.push(reverse);
+    }
+    let annotation = BlastSubjectAnnotation {
+        record_id: "ENST00000465287.1".to_string(),
+        transcript_stable_id: Some("ENST00000465287".to_string()),
+        transcript_id: Some("ENST00000465287.1".to_string()),
+        gene_stable_id: Some("ENSG00000100105".to_string()),
+        gene_id: Some("ENSG00000100105.18".to_string()),
+        gene_symbol: Some("PATZ1".to_string()),
+        annotation_source: BlastSubjectAnnotationSource::EnsemblFastaDefline,
+        ..BlastSubjectAnnotation::default()
+    };
+    let annotations = BTreeMap::from([("ENST00000465287".to_string(), annotation)]);
+    GentleEngine::primer_specificity_apply_subject_annotations(&mut forward_hits, &annotations);
+    GentleEngine::primer_specificity_apply_subject_annotations(&mut reverse_hits, &annotations);
+    let (mut amplicons, comparisons) =
+        GentleEngine::primer_specificity_collect_amplicons_for_hits_with_stats(
+            &forward_hits,
+            &reverse_hits,
+            &policy,
+        );
+    assert_eq!(amplicons.len(), 500);
+    assert_eq!(comparisons, 500);
+    assert!(
+        comparisons < forward_hits.len().saturating_mul(reverse_hits.len()) / 100,
+        "indexed pairing should inspect nearby coordinate candidates, not the global cross product"
+    );
+
+    let full_json = serde_json::to_vec(&PrimerSpecificityReport {
+        schema: PRIMER_SPECIFICITY_REPORT_SCHEMA.to_string(),
+        forward_hits: forward_hits.clone(),
+        reverse_hits: reverse_hits.clone(),
+        amplicons: amplicons.clone(),
+        ..PrimerSpecificityReport::default()
+    })
+    .expect("serialize full synthetic report");
+    let mut warnings = vec![];
+    let compaction = GentleEngine::primer_specificity_apply_report_detail_mode(
+        &policy,
+        &mut forward_hits,
+        &mut reverse_hits,
+        &mut amplicons,
+        comparisons,
+        &mut warnings,
+    );
+    let compact_json = serde_json::to_vec(&PrimerSpecificityReport {
+        schema: PRIMER_SPECIFICITY_REPORT_SCHEMA.to_string(),
+        forward_hits,
+        reverse_hits,
+        amplicons: amplicons.clone(),
+        compaction: compaction.clone(),
+        warnings: warnings.clone(),
+        ..PrimerSpecificityReport::default()
+    })
+    .expect("serialize compact synthetic report");
+    assert_eq!(compaction.raw_forward_hit_count, 500);
+    assert_eq!(compaction.retained_forward_hit_count, 250);
+    assert_eq!(compaction.raw_reverse_hit_count, 500);
+    assert_eq!(compaction.retained_reverse_hit_count, 250);
+    assert_eq!(compaction.raw_amplicon_count, 500);
+    assert_eq!(compaction.retained_amplicon_count, 250);
+    assert_eq!(compaction.pairing_candidate_comparison_count, 500);
+    assert!(warnings.iter().any(|warning| warning.contains("Compact")));
+    assert!(
+        amplicons.iter().all(|amplicon| amplicon
+            .subject_annotation
+            .as_ref()
+            .is_some_and(|annotation| annotation.gene_symbol.as_deref() == Some("PATZ1"))),
+        "compact reports retain summary-level subject identity"
+    );
+    let compact_value: serde_json::Value =
+        serde_json::from_slice(&compact_json).expect("parse compact report JSON");
+    assert_eq!(
+        compact_value["amplicons"][0]["subject_annotation"]["gene_symbol"],
+        json!("PATZ1")
+    );
+    assert!(
+        compact_json.len() * 2 < full_json.len(),
+        "compact report should deterministically omit most rejected inline detail"
+    );
+}
+
+#[test]
+fn primer_specificity_same_gene_non_declared_transcript_stays_unintended() {
+    let annotation = BlastSubjectAnnotation {
+        record_id: "ENST00000999999.1".to_string(),
+        transcript_stable_id: Some("ENST00000999999".to_string()),
+        transcript_id: Some("ENST00000999999.1".to_string()),
+        gene_stable_id: Some("ENSG00000100105".to_string()),
+        gene_id: Some("ENSG00000100105.18".to_string()),
+        gene_symbol: Some("PATZ1".to_string()),
+        annotation_source: BlastSubjectAnnotationSource::EnsemblFastaDefline,
+        ..BlastSubjectAnnotation::default()
+    };
+    let mut forward = primer_specificity_test_hit(
+        PrimerSpecificityPrimerRole::Forward,
+        0,
+        "ENST00000999999.1",
+        10,
+        29,
+        "+",
+        0,
+    );
+    forward.subject_annotation = Some(annotation.clone());
+    let mut reverse = primer_specificity_test_hit(
+        PrimerSpecificityPrimerRole::Reverse,
+        0,
+        "ENST00000999999.1",
+        90,
+        109,
+        "-",
+        0,
+    );
+    reverse.subject_annotation = Some(annotation);
+    let policy = PrimerSpecificityPolicy::default();
+    let (mut amplicons, _) = GentleEngine::primer_specificity_collect_amplicons_for_hits_with_stats(
+        &[forward],
+        &[reverse],
+        &policy,
+    );
+    let intended_target = PrimerSpecificityIntendedTarget {
+        model: PrimerSpecificityIntendedTargetModel::TranscriptSet,
+        expected_products: vec![PrimerSpecificityExpectedProduct {
+            target_space: BlastDatabaseIndexKind::TranscriptomeCdna
+                .as_str()
+                .to_string(),
+            subject_id: "ENST00000465287.1".to_string(),
+            expected_product_range: None,
+            source_transcript_id: Some("ENST00000465287.1".to_string()),
+        }],
+        ..PrimerSpecificityIntendedTarget::default()
+    };
+    GentleEngine::primer_specificity_finalize_amplicons(
+        &mut amplicons,
+        &intended_target,
+        &policy,
+        BlastDatabaseIndexKind::TranscriptomeCdna,
+    );
+    assert_eq!(amplicons.len(), 1);
+    assert_eq!(
+        amplicons[0]
+            .subject_annotation
+            .as_ref()
+            .and_then(|annotation| annotation.gene_symbol.as_deref()),
+        Some("PATZ1")
+    );
+    assert!(
+        !amplicons[0].intended,
+        "gene annotation is descriptive; a different transcript of PATZ1 is not promoted"
+    );
+}
+
+#[test]
+fn primer_specificity_subject_id_matching_is_narrowly_ensembl_version_aware() {
+    assert!(GentleEngine::primer_specificity_subject_ids_match(
+        "ENST00000465287",
+        "ENST00000465287.1"
+    ));
+    assert!(GentleEngine::primer_specificity_subject_ids_match(
+        "ENSMUST00000193812.2",
+        "ENSMUST00000193812"
+    ));
+    assert!(!GentleEngine::primer_specificity_subject_ids_match(
+        "vendor.target",
+        "vendor.target.1"
+    ));
+    assert!(!GentleEngine::primer_specificity_subject_ids_match(
+        "NC_000022",
+        "NC_000022.11"
+    ));
+    assert!(!GentleEngine::primer_specificity_subject_ids_match(
+        "ENSG00000100000",
+        "ENSG00000100000.2"
+    ));
+}
+
+#[test]
+fn primer_specificity_v4_defaults_preserve_legacy_full_reports() {
+    let legacy_policy: PrimerSpecificityPolicy =
+        serde_json::from_str("{}").expect("deserialize pre-v2 policy");
+    assert_eq!(
+        legacy_policy.report_detail_mode,
+        PrimerSpecificityReportDetailMode::Full,
+        "a policy serialized before report-detail modes existed described a lossless report"
+    );
+    assert_eq!(
+        PrimerSpecificityPolicy::default().report_detail_mode,
+        PrimerSpecificityReportDetailMode::Compact,
+        "new calls should default to bounded compact output"
+    );
+    assert!(
+        legacy_policy
+            .readiness_max_target_amplicon_bp_reason
+            .is_none()
+    );
+
+    let legacy_report: PrimerSpecificityReport = serde_json::from_value(serde_json::json!({
+        "schema": "gentle.primer_specificity_report.v3",
+        "amplicons": [{
+            "kind": "forward_reverse",
+            "subject_id": "ENST00000465287.1",
+            "left_role": "forward",
+            "left_hit_index": 0,
+            "right_role": "reverse",
+            "right_hit_index": 0,
+            "start_1based": 528,
+            "end_1based": 1010,
+            "length_bp": 483,
+            "combined_mismatches": 0,
+            "max_three_prime_mismatches": 0,
+            "terminal_policy_pass": true,
+            "intended": true,
+            "specificity_failure": false
+        }]
+    }))
+    .expect("deserialize pre-v4 report");
+    assert_eq!(
+        legacy_report.compaction.detail_mode,
+        PrimerSpecificityReportDetailMode::Full
+    );
+    assert!(legacy_report.amplicons[0].within_readiness_amplicon_range);
+    assert!(!legacy_report.amplicons[0].long_product_warning);
+    assert!(legacy_report.amplicons[0].subject_annotation.is_none());
+    assert!(legacy_report.raw_detail_artifacts.is_empty());
+
+    let legacy_panel: TranscriptAssayPanelReport = serde_json::from_value(serde_json::json!({
+        "schema": "gentle.transcript_assay_panel.v2",
+        "report_id": "legacy_panel",
+        "source_seq_id": "legacy_source"
+    }))
+    .expect("deserialize panel without persisted genome anchor");
+    assert!(legacy_panel.source_genome_anchor.is_none());
+}
+
+#[test]
+fn transcript_assay_specificity_acceptance_states_serialize_distinctly() {
+    for (status, expected) in [
+        (
+            TranscriptAssayPanelSpecificityAcceptanceStatus::Pass,
+            "pass",
+        ),
+        (
+            TranscriptAssayPanelSpecificityAcceptanceStatus::SpecificityFail,
+            "specificity_fail",
+        ),
+        (
+            TranscriptAssayPanelSpecificityAcceptanceStatus::NotAssessed,
+            "not_assessed",
+        ),
+        (
+            TranscriptAssayPanelSpecificityAcceptanceStatus::Incomplete,
+            "incomplete",
+        ),
+    ] {
+        let value = serde_json::to_value(status).expect("serialize acceptance status");
+        assert_eq!(value, serde_json::Value::String(expected.to_string()));
+        let round_trip: TranscriptAssayPanelSpecificityAcceptanceStatus =
+            serde_json::from_value(value).expect("deserialize acceptance status");
+        assert_eq!(round_trip, status);
+    }
+}
+
+#[test]
+fn primer_specificity_dimensions_keep_isoform_coverage_separate_from_off_targets() {
+    let target = PrimerSpecificityIntendedTarget {
+        model: PrimerSpecificityIntendedTargetModel::TranscriptSet,
+        genomic_target_geometry_known: true,
+        contiguous_genomic_product_expected: false,
+        expected_products: ["TX1", "TX2"]
+            .into_iter()
+            .map(|transcript_id| PrimerSpecificityExpectedProduct {
+                target_space: crate::genomes::BlastDatabaseIndexKind::TranscriptomeCdna
+                    .as_str()
+                    .to_string(),
+                subject_id: transcript_id.to_string(),
+                expected_product_range: None,
+                source_transcript_id: Some(transcript_id.to_string()),
+            })
+            .collect(),
+        source: "transcript_assay_panel:synthetic".to_string(),
+        ..PrimerSpecificityIntendedTarget::default()
+    };
+    let policy = PrimerSpecificityPolicy::default();
+    let dimensions = GentleEngine::primer_specificity_characterization_dimensions(
+        &PrimerDesignProvenanceCitation {
+            status: PrimerPairCharacterizationStatus::Pass,
+            summary: "matched".to_string(),
+            ..PrimerDesignProvenanceCitation::default()
+        },
+        &PrimerSpecificityTargetAssessment {
+            target_space: "genomic_dna".to_string(),
+            status: "not_run".to_string(),
+            summary: "not run".to_string(),
+            ..PrimerSpecificityTargetAssessment::default()
+        },
+        &PrimerSpecificityTargetAssessment {
+            target_space: "transcriptome_cdna".to_string(),
+            status: "fail".to_string(),
+            intended_product_observed: true,
+            expected_intended_product_count: 2,
+            observed_intended_product_count: 2,
+            summary:
+                "all expected products were observed, but an unintended transcript product failed policy"
+                    .to_string(),
+            ..PrimerSpecificityTargetAssessment::default()
+        },
+        &PrimerSpecificitySearchCompleteness {
+            complete: true,
+            status: "complete".to_string(),
+            reason: "complete".to_string(),
+            ..PrimerSpecificitySearchCompleteness::default()
+        },
+        &target,
+        &policy,
+        "Transcriptome",
+    );
+    assert_eq!(
+        dimensions
+            .iter()
+            .find(|row| row.dimension == "intended_isoform_coverage")
+            .map(|row| row.status),
+        Some(PrimerPairCharacterizationStatus::Pass)
+    );
+    assert_eq!(
+        dimensions
+            .iter()
+            .find(|row| row.dimension == "junction_and_genomic_carryover")
+            .map(|row| row.status),
+        Some(PrimerPairCharacterizationStatus::NotRun)
+    );
+
+    let unresolved_target = PrimerSpecificityIntendedTarget {
+        expected_products: vec![],
+        ..target
+    };
+    let unresolved_dimensions = GentleEngine::primer_specificity_characterization_dimensions(
+        &PrimerDesignProvenanceCitation::default(),
+        &PrimerSpecificityTargetAssessment::default(),
+        &PrimerSpecificityTargetAssessment::default(),
+        &PrimerSpecificitySearchCompleteness::default(),
+        &unresolved_target,
+        &policy,
+        "Transcriptome",
+    );
+    assert_eq!(
+        unresolved_dimensions
+            .iter()
+            .find(|row| row.dimension == "intended_isoform_coverage")
+            .map(|row| row.status),
+        Some(PrimerPairCharacterizationStatus::Incomplete)
+    );
+}
+
+#[test]
+fn primer_specificity_derives_transcript_and_genomic_targets_from_cdna_assay() {
+    let mut engine = cdna_assay_nonspecific_test_engine();
+    engine.state_mut().metadata.insert(
+        PROVENANCE_METADATA_KEY.to_string(),
+        serde_json::json!({
+            GENOME_EXTRACTIONS_METADATA_KEY: [
+                {
+                    "seq_id": "cdna_nonspecific",
+                    "genome_id": "SyntheticGenome",
+                    "chromosome": "chr7",
+                    "start_1based": 1001,
+                    "end_1based": 1072,
+                    "anchor_strand": "+",
+                    "anchor_verified": true,
+                    "recorded_at_unix_ms": 1
+                }
+            ]
+        }),
+    );
+    let assay = engine
+        .test_cdna_pcr_assay(
+            "cdna_nonspecific",
+            0,
+            "AAACCC",
+            "CCCAAA",
+            None,
+            Some(10),
+            Some(80),
+            None,
+            Some(4),
+        )
+        .expect("computed multi-transcript cDNA assay");
+    let target = engine
+        .primer_specificity_intended_target_from_cdna_assay(&assay, "synthetic_external_pair");
+    assert_eq!(
+        target.model,
+        PrimerSpecificityIntendedTargetModel::TranscriptSet
+    );
+    assert!(target.genomic_target_geometry_known);
+    assert!(
+        target
+            .expected_products
+            .iter()
+            .any(|expected| expected.target_space == "genomic_dna")
+    );
+    assert_eq!(
+        target
+            .expected_products
+            .iter()
+            .filter(|expected| expected.target_space == "transcriptome_cdna")
+            .map(|expected| expected.subject_id.as_str())
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["TX_LONG", "TX_SHORT"])
+    );
+
+    let genomic_expected = target
+        .expected_products
+        .iter()
+        .filter(|expected| expected.target_space == "genomic_dna")
+        .collect::<Vec<_>>();
+    assert_eq!(genomic_expected.len(), 2);
+    let forward_sites = genomic_expected
+        .iter()
+        .map(|expected| {
+            let range = expected
+                .expected_product_range
+                .as_ref()
+                .expect("derived genomic product range");
+            (
+                expected.subject_id.clone(),
+                range.start_1based,
+                range.start_1based.saturating_add(5),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    let reverse_sites = genomic_expected
+        .iter()
+        .map(|expected| {
+            let range = expected
+                .expected_product_range
+                .as_ref()
+                .expect("derived genomic product range");
+            (
+                expected.subject_id.clone(),
+                range.end_1based.saturating_sub(5),
+                range.end_1based,
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(forward_sites.len(), 1);
+    assert_eq!(reverse_sites.len(), 2);
+    let forward_hits = forward_sites
+        .into_iter()
+        .enumerate()
+        .map(|(hit_index, (subject_id, start_1based, end_1based))| {
+            primer_specificity_test_hit(
+                PrimerSpecificityPrimerRole::Forward,
+                hit_index,
+                &subject_id,
+                start_1based,
+                end_1based,
+                "+",
+                0,
+            )
+        })
+        .collect::<Vec<_>>();
+    let reverse_hits = reverse_sites
+        .into_iter()
+        .enumerate()
+        .map(|(hit_index, (subject_id, start_1based, end_1based))| {
+            primer_specificity_test_hit(
+                PrimerSpecificityPrimerRole::Reverse,
+                hit_index,
+                &subject_id,
+                start_1based,
+                end_1based,
+                "-",
+                0,
+            )
+        })
+        .collect::<Vec<_>>();
+    let policy = PrimerSpecificityPolicy::default();
+    let mut amplicons = GentleEngine::primer_specificity_collect_amplicons_for_hits(
+        &forward_hits,
+        &reverse_hits,
+        &policy,
+    );
+    GentleEngine::primer_specificity_finalize_amplicons(
+        &mut amplicons,
+        &target,
+        &policy,
+        crate::genomes::BlastDatabaseIndexKind::GenomicDna,
+    );
+    assert!(
+        GentleEngine::primer_specificity_summary(
+            &forward_hits,
+            &reverse_hits,
+            &amplicons,
+            &target,
+            crate::genomes::BlastDatabaseIndexKind::GenomicDna,
+            true,
+        )
+        .specificity_pass,
+        "a complete clean search against derived imported-pair geometry can pass"
+    );
+}
+
+#[test]
+fn primer_specificity_completeness_requires_subject_limit_above_database_count() {
+    let database = crate::genomes::BlastDatabaseInspectionReport {
+        validation_status: "valid".to_string(),
+        sequence_count: Some(3),
+        ..crate::genomes::BlastDatabaseInspectionReport::default()
+    };
+    let complete_commands = vec![
+        vec!["-max_target_seqs".to_string(), "4".to_string()],
+        vec!["-max_target_seqs".to_string(), "5".to_string()],
+    ];
+    let complete = GentleEngine::primer_specificity_search_completeness_for_commands(
+        Some(&database),
+        &complete_commands,
+    );
+    assert!(complete.complete);
+    assert_eq!(complete.status, "complete");
+    assert_eq!(complete.required_max_target_seqs, Some(4));
+    assert_eq!(complete.observed_min_max_target_seqs, Some(4));
+
+    let incomplete_commands = vec![
+        vec!["-max_target_seqs".to_string(), "3".to_string()],
+        vec!["-dust".to_string(), "no".to_string()],
+    ];
+    let incomplete = GentleEngine::primer_specificity_search_completeness_for_commands(
+        Some(&database),
+        &incomplete_commands,
+    );
+    assert!(!incomplete.complete);
+    assert_eq!(incomplete.status, "incomplete");
+}
+
+#[test]
+fn primer_specificity_empty_amplicon_set_is_a_non_panicking_no_hit_result() {
+    let mut amplicons = vec![];
+    GentleEngine::primer_specificity_finalize_amplicons(
+        &mut amplicons,
+        &PrimerSpecificityIntendedTarget {
+            model: PrimerSpecificityIntendedTargetModel::GenomicInterval,
+            subject_id: Some("chr1".to_string()),
+            expected_product_range: Some(PrimerSpecificitySubjectRange {
+                start_1based: 1,
+                end_1based: 120,
+            }),
+            genomic_target_geometry_known: true,
+            contiguous_genomic_product_expected: true,
+            ..PrimerSpecificityIntendedTarget::default()
+        },
+        &PrimerSpecificityPolicy::default(),
+        crate::genomes::BlastDatabaseIndexKind::GenomicDna,
+    );
+    assert!(amplicons.is_empty());
+}
+
+#[test]
+fn primer_specificity_intended_genomic_product_uses_coordinates_not_cdna_length() {
+    let policy = PrimerSpecificityPolicy::default();
+    let forward_hits = vec![primer_specificity_test_hit(
+        PrimerSpecificityPrimerRole::Forward,
+        0,
+        "chr1",
+        100,
+        119,
+        "+",
+        0,
+    )];
+    let reverse_hits = vec![primer_specificity_test_hit(
+        PrimerSpecificityPrimerRole::Reverse,
+        0,
+        "chr1",
+        980,
+        1000,
+        "-",
+        0,
+    )];
+    let mut amplicons = GentleEngine::primer_specificity_collect_amplicons_for_hits(
+        &forward_hits,
+        &reverse_hits,
+        &policy,
+    );
+    let target = PrimerSpecificityIntendedTarget {
+        model: PrimerSpecificityIntendedTargetModel::GenomicInterval,
+        subject_id: Some("chr1".to_string()),
+        expected_product_range: Some(PrimerSpecificitySubjectRange {
+            start_1based: 100,
+            end_1based: 1000,
+        }),
+        genomic_target_geometry_known: true,
+        contiguous_genomic_product_expected: true,
+        source: "synthetic_intron_containing_target".to_string(),
+        ..PrimerSpecificityIntendedTarget::default()
+    };
+    GentleEngine::primer_specificity_finalize_amplicons(
+        &mut amplicons,
+        &target,
+        &policy,
+        crate::genomes::BlastDatabaseIndexKind::GenomicDna,
+    );
+    let intended = amplicons
+        .iter()
+        .find(|amplicon| amplicon.intended)
+        .expect("coordinate-matched genomic product");
+    assert_eq!(intended.length_bp, 901);
+    assert_ne!(
+        intended.length_bp, 140,
+        "cDNA length must not identify target"
+    );
+}
+
+#[test]
+fn junction_primer_can_pass_genomic_carryover_screen_without_intended_product() {
+    let policy = PrimerSpecificityPolicy::default();
+    let target = PrimerSpecificityIntendedTarget {
+        model: PrimerSpecificityIntendedTargetModel::JunctionSpanning,
+        subject_id: Some("chr1".to_string()),
+        genomic_target_geometry_known: true,
+        contiguous_genomic_product_expected: false,
+        source: "synthetic_junction_assay".to_string(),
+        ..PrimerSpecificityIntendedTarget::default()
+    };
+    let mut amplicons = vec![];
+    GentleEngine::primer_specificity_finalize_amplicons(
+        &mut amplicons,
+        &target,
+        &policy,
+        crate::genomes::BlastDatabaseIndexKind::GenomicDna,
+    );
+    let summary = GentleEngine::primer_specificity_summary(
+        &[],
+        &[],
+        &amplicons,
+        &target,
+        crate::genomes::BlastDatabaseIndexKind::GenomicDna,
+        true,
+    );
+    assert!(summary.specificity_pass);
+    assert_eq!(summary.status, "pass");
+    assert_eq!(summary.intended_amplicon_count, 0);
+    assert!(summary.summary.contains("junction-spanning"));
+}
+
+#[test]
+fn primer_specificity_withholds_pass_when_search_completeness_is_unproven() {
+    let target = PrimerSpecificityIntendedTarget {
+        model: PrimerSpecificityIntendedTargetModel::JunctionSpanning,
+        subject_id: Some("chr1".to_string()),
+        genomic_target_geometry_known: true,
+        contiguous_genomic_product_expected: false,
+        source: "synthetic_junction_assay".to_string(),
+        ..PrimerSpecificityIntendedTarget::default()
+    };
+    let summary = GentleEngine::primer_specificity_summary(
+        &[],
+        &[],
+        &[],
+        &target,
+        crate::genomes::BlastDatabaseIndexKind::GenomicDna,
+        false,
+    );
+    assert!(!summary.specificity_pass);
+    assert_eq!(summary.status, "incomplete");
+    assert!(
+        summary
+            .summary
+            .contains("exhaustive BLAST subject coverage")
+    );
+}
+
+#[test]
+fn primer_specificity_withholds_pass_when_genomic_geometry_is_unknown() {
+    let target = PrimerSpecificityIntendedTarget {
+        model: PrimerSpecificityIntendedTargetModel::JunctionSpanning,
+        subject_id: Some("chr1".to_string()),
+        genomic_target_geometry_known: false,
+        contiguous_genomic_product_expected: false,
+        source: "legacy_or_unresolved_target".to_string(),
+        ..PrimerSpecificityIntendedTarget::default()
+    };
+    let summary = GentleEngine::primer_specificity_summary(
+        &[],
+        &[],
+        &[],
+        &target,
+        crate::genomes::BlastDatabaseIndexKind::GenomicDna,
+        true,
+    );
+    assert!(!summary.specificity_pass);
+    assert_eq!(summary.status, "not_assessed");
+}
+
+#[test]
+fn legacy_primer_specificity_reports_default_to_incomplete_search_evidence() {
+    let report: PrimerSpecificityReport = serde_json::from_value(serde_json::json!({
+        "summary": {
+            "specificity_pass": true,
+            "status": "pass"
+        }
+    }))
+    .expect("deserialize legacy report");
+    assert!(!report.search_completeness.complete);
+    assert_eq!(report.search_completeness.status, "incomplete");
+    assert!(report.search_completeness.reason.contains("not recorded"));
+    assert!(!report.intended_target.genomic_target_geometry_known);
+    assert!(report.intended_target.expected_products.is_empty());
+    assert!(
+        report
+            .design_provenance
+            .source_pair_content_sha256
+            .is_none()
+    );
+    let legacy_target_json =
+        serde_json::to_value(&report.intended_target).expect("serialize legacy intended target");
+    assert!(
+        legacy_target_json
+            .get("genomic_target_geometry_known")
+            .is_none()
+    );
+    assert!(legacy_target_json.get("expected_products").is_none());
+}
+
+#[test]
+fn primer_specificity_normalizes_auxiliary_contig_subject_ids_and_aggregates_warnings() {
+    let aliases = BTreeMap::from([
+        ("KI270750.1".to_string(), "KI270750.1".to_string()),
+        ("ki270750.1".to_string(), "KI270750.1".to_string()),
+    ]);
+    assert_eq!(
+        GentleEngine::primer_specificity_normalize_subject_id("gb|KI270750.1|", &aliases),
+        "KI270750.1"
+    );
+    assert_eq!(
+        GentleEngine::primer_specificity_aggregate_warnings(vec![
+            "same diagnostic".to_string(),
+            "same diagnostic".to_string(),
+            "other diagnostic".to_string(),
+        ]),
+        vec![
+            "other diagnostic".to_string(),
+            "same diagnostic (repeated 2 times)".to_string(),
+        ]
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn primer_specificity_handoff_plans_without_running_and_imports_completed_outputs() {
+    let _env_lock = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let temp = tempdir().expect("temporary specificity handoff directory");
+    let root = temp.path();
+    let fasta = root.join("toy.fa");
+    let annotation = root.join("toy.gtf");
+    let cache = root.join("cache");
+    let catalog = root.join("catalog.json");
+    let mut chromosome = vec![b'A'; 220];
+    chromosome[9..29].copy_from_slice(b"ACGTACGTACGTACGTACGT");
+    chromosome[99..119].copy_from_slice(b"GGGGGGGGGGGGGGGGGGGG");
+    fs::write(
+        &fasta,
+        format!(
+            ">chr1\n{}\n",
+            String::from_utf8(chromosome).expect("ASCII chromosome")
+        ),
+    )
+    .expect("write toy FASTA");
+    fs::write(
+        &annotation,
+        "chr1\ttest\tgene\t1\t220\t.\t+\t.\tgene_id \"TOY1\"; gene_name \"TOY1\";\n",
+    )
+    .expect("write toy annotation");
+    fs::write(
+        &catalog,
+        format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "primer specificity handoff fixture",
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
+  }}
+}}"#,
+            serde_json::json!(fasta),
+            serde_json::json!(annotation),
+            serde_json::json!(cache)
+        ),
+    )
+    .expect("write toy catalog");
+
+    let fake_makeblastdb = root.join("fake_makeblastdb.sh");
+    fs::write(
+        &fake_makeblastdb,
+        "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'makeblastdb: fake 1.0'; exit 0; fi\nout=''\nwhile [ $# -gt 0 ]; do\n  if [ \"$1\" = '-out' ]; then out=\"$2\"; shift 2; else shift; fi\ndone\nmkdir -p \"$(dirname \"$out\")\"\nprintf nhr > \"${out}.nhr\"\nprintf nin > \"${out}.nin\"\nprintf nsq > \"${out}.nsq\"\n",
+    )
+    .expect("write fake makeblastdb");
+    let mut permissions = fs::metadata(&fake_makeblastdb)
+        .expect("fake makeblastdb metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_makeblastdb, permissions).expect("make fake makeblastdb executable");
+    let blast_was_run = root.join("blast_was_run");
+    let fake_blastn = root.join("fake_blastn.sh");
+    fs::write(
+        &fake_blastn,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'blastn: fake 1.0'; exit 0; fi\nprintf ran > '{}'\nexit 99\n",
+            blast_was_run.display()
+        ),
+    )
+    .expect("write fake blastn");
+    let mut permissions = fs::metadata(&fake_blastn)
+        .expect("fake blastn metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_blastn, permissions).expect("make fake blastn executable");
+    let fake_blastdbcmd = root.join("fake_blastdbcmd.sh");
+    write_fake_blastdbcmd(&fake_blastdbcmd, 1, 220);
+    let _makeblastdb = crate::tool_overrides::ScopedToolOverrideGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        &fake_makeblastdb.to_string_lossy(),
+    );
+    let _blastn = crate::tool_overrides::ScopedToolOverrideGuard::set(
+        crate::genomes::BLASTN_ENV_BIN,
+        &fake_blastn.to_string_lossy(),
+    );
+    let _blastdbcmd = crate::tool_overrides::ScopedToolOverrideGuard::set(
+        crate::genomes::BLASTDBCMD_ENV_BIN,
+        &fake_blastdbcmd.to_string_lossy(),
+    );
+
+    let mut engine = GentleEngine::new();
+    engine
+        .apply(Operation::PrepareGenome {
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            cache_dir: None,
+            timeout_seconds: None,
+        })
+        .expect("prepare toy specificity genome");
+    let bundle = root.join("handoff");
+    let handoff_result = engine
+        .apply(Operation::PreparePrimerPairSpecificityHandoff {
+            primer_report_id: None,
+            pair_rank: None,
+            pair_index: None,
+            forward_primer: Some("ACGTACGTACGTACGTACGT".to_string()),
+            reverse_primer: Some("CCCCCCCCCCCCCCCCCCCC".to_string()),
+            target_genome_id: "ToyGenome".to_string(),
+            policy: PrimerSpecificityPolicy::default(),
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            cache_dir: None,
+            output_dir: bundle.to_string_lossy().to_string(),
+        })
+        .expect("prepare specificity handoff operation");
+    let handoff = *handoff_result
+        .primer_specificity_handoff
+        .expect("handoff operation result");
+    assert_eq!(handoff.schema, "gentle.primer_specificity_handoff.v1");
+    assert_eq!(handoff.completion_policy, "all_commands_success");
+    assert_eq!(handoff.commands.len(), 2);
+    assert_eq!(
+        handoff
+            .blast_database
+            .as_ref()
+            .map(|database| database.validation_status.as_str()),
+        Some("valid")
+    );
+    assert!(
+        handoff
+            .blast_database
+            .as_ref()
+            .and_then(|database| database.content_fingerprint.as_ref())
+            .is_some()
+    );
+    assert!(!blast_was_run.exists(), "planning must not launch blastn");
+    assert!(Path::new(&handoff.handoff_path).is_file());
+    for command in &handoff.commands {
+        assert!(Path::new(&command.query_fasta_path).is_file());
+        assert!(!Path::new(&command.output_tsv_path).exists());
+        assert!(
+            command
+                .args
+                .windows(2)
+                .any(|row| row[0] == "-out" && row[1] == command.output_tsv_path)
+        );
+        assert!(
+            command
+                .args
+                .windows(2)
+                .any(|row| row == ["-max_target_seqs", "2"])
+        );
+        assert!(command.args.windows(2).any(|row| row == ["-dust", "no"]));
+        assert!(
+            command
+                .args
+                .windows(2)
+                .any(|row| { row[0] == "-outfmt" && row[1].ends_with("qcovs qlen qseq sseq") })
+        );
+        assert!(
+            command
+                .args
+                .windows(2)
+                .any(|row| row == ["-soft_masking", "false"])
+        );
+        fs::write(&command.output_tsv_path, "stale\n").expect("seed stale BLAST output");
+    }
+    assert!(handoff.search_completeness.complete);
+    assert_eq!(handoff.search_completeness.status, "complete");
+    assert_eq!(handoff.search_completeness.database_sequence_count, Some(1));
+    let replanned = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersSpecificityPlan {
+            primer_report_id: None,
+            pair_rank: None,
+            pair_index: None,
+            forward_primer: Some("ACGTACGTACGTACGTACGT".to_string()),
+            reverse_primer: Some("CCCCCCCCCCCCCCCCCCCC".to_string()),
+            target_genome_id: "ToyGenome".to_string(),
+            policy: PrimerSpecificityPolicy::default(),
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            cache_dir: None,
+            output_dir: bundle.to_string_lossy().to_string(),
+        },
+    )
+    .expect("replan specificity handoff through shell");
+    let replanned =
+        serde_json::from_value::<PrimerSpecificityHandoff>(replanned.output["handoff"].clone())
+            .expect("replanned shell handoff output");
+    assert_eq!(replanned.handoff_id, handoff.handoff_id);
+    assert!(
+        replanned
+            .commands
+            .iter()
+            .all(|command| !Path::new(&command.output_tsv_path).exists()),
+        "replanning must invalidate stale BLAST outputs"
+    );
+    let handoff = replanned;
+
+    let forward = handoff
+        .commands
+        .iter()
+        .find(|command| command.role == PrimerSpecificityPrimerRole::Forward)
+        .expect("forward command");
+    let reverse = handoff
+        .commands
+        .iter()
+        .find(|command| command.role == PrimerSpecificityPrimerRole::Reverse)
+        .expect("reverse command");
+    fs::write(
+        &forward.output_tsv_path,
+        "forward_annealing_segment\tchr1\t100\t20\t0\t0\t1\t20\t10\t29\t1e-20\t80\t100\t20\tACGTACGTACGTACGTACGT\tACGTACGTACGTACGTACGT\n",
+    )
+    .expect("write forward BLAST output");
+    fs::write(
+        &reverse.output_tsv_path,
+        "reverse_annealing_segment\tchr1\t100\t20\t0\t0\t1\t20\t119\t100\t1e-20\t80\t100\t20\tCCCCCCCCCCCCCCCCCCCC\tCCCCCCCCCCCCCCCCCCCC\n",
+    )
+    .expect("write reverse BLAST output");
+    let report_path = root.join("specificity_report.json");
+    let report = engine
+        .apply(Operation::ImportPrimerPairSpecificityHandoff {
+            handoff_path: handoff.handoff_path.clone(),
+            path: Some(report_path.to_string_lossy().to_string()),
+        })
+        .expect("import completed specificity handoff operation")
+        .primer_specificity_report
+        .map(|report| *report)
+        .expect("specificity import operation result");
+    assert!(report_path.is_file());
+    assert_eq!(report.schema, "gentle.primer_specificity_report.v4");
+    assert!(report.report_id.starts_with("primer_specificity_"));
+    assert!(report.op_id.is_some());
+    assert!(report.run_id.is_some());
+    assert_eq!(
+        report.design_provenance.status,
+        PrimerPairCharacterizationStatus::NotRun
+    );
+    assert!(
+        report
+            .external_inputs
+            .iter()
+            .any(|input| input.source_kind == "blast_database" && input.checksum.is_some())
+    );
+    assert!(
+        report
+            .external_inputs
+            .iter()
+            .any(|input| input.source_kind == "primer_specificity_handoff"
+                && input.source_id == handoff.handoff_id)
+    );
+    assert_eq!(
+        report
+            .characterization_dimensions
+            .iter()
+            .find(|dimension| dimension.dimension == "search_completeness")
+            .map(|dimension| dimension.status),
+        Some(PrimerPairCharacterizationStatus::Pass)
+    );
+    assert!(!report.summary.specificity_pass);
+    assert_eq!(report.summary.status, "not_assessed");
+    assert_eq!(report.summary.intended_amplicon_count, 0);
+    assert!(report.search_completeness.complete);
+    assert_eq!(report.forward_hits.len(), 1);
+    assert_eq!(report.reverse_hits.len(), 1);
+    let forward_alignment = report.forward_hits[0]
+        .full_alignment
+        .as_ref()
+        .expect("forward hit carries complete-primer alignment evidence");
+    assert_eq!(forward_alignment.status, "complete");
+    assert_eq!(
+        forward_alignment.algorithm,
+        "blast_full_query_aligned_strings_v1"
+    );
+    assert_eq!(forward_alignment.query_alignment, "ACGTACGTACGTACGTACGT");
+    assert_eq!(
+        forward_alignment.subject_alignment,
+        forward_alignment.query_alignment
+    );
+    assert_eq!(forward_alignment.matches, 20);
+    assert_eq!(forward_alignment.effective_mismatches, 0);
+    assert_eq!(forward_alignment.aligned_subject_start_1based, 10);
+    assert_eq!(forward_alignment.aligned_subject_end_1based, 29);
+    let reverse_alignment = report.reverse_hits[0]
+        .full_alignment
+        .as_ref()
+        .expect("reverse hit carries complete-primer alignment evidence");
+    assert_eq!(reverse_alignment.status, "complete");
+    assert_eq!(reverse_alignment.strand, "-");
+    assert_eq!(reverse_alignment.query_alignment, "CCCCCCCCCCCCCCCCCCCC");
+    assert_eq!(
+        reverse_alignment.subject_alignment,
+        reverse_alignment.query_alignment
+    );
+    assert_eq!(reverse_alignment.matches, 20);
+    assert_eq!(reverse_alignment.effective_mismatches, 0);
+    assert_eq!(reverse_alignment.aligned_subject_start_1based, 119);
+    assert_eq!(reverse_alignment.aligned_subject_end_1based, 100);
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("did not launch or monitor"))
+    );
+    assert_eq!(engine.list_primer_specificity_reports().len(), 1);
+    let persisted = engine
+        .get_primer_specificity_report(&report.report_id)
+        .expect("persisted primer-specificity report");
+    assert_eq!(persisted.op_id, report.op_id);
+    assert_eq!(persisted.run_id, report.run_id);
+    assert_eq!(persisted.external_inputs, report.external_inputs);
+    let listed = execute_shell_command(&mut engine, &ShellCommand::PrimersListReports)
+        .expect("list primer reports after specificity import");
+    assert_eq!(listed.output["specificity_report_count"], json!(1));
+    assert_eq!(
+        listed.output["specificity_reports"][0]["report_id"],
+        json!(report.report_id)
+    );
+    let shown = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersShowReport {
+            report_id: report.report_id.clone(),
+        },
+    )
+    .expect("show persisted primer-specificity report");
+    assert_eq!(shown.output["report_kind"], "primer_specificity");
+    assert_eq!(
+        shown.output["report"]["schema"],
+        PRIMER_SPECIFICITY_REPORT_SCHEMA
+    );
+    let persisted_export = root.join("persisted_specificity_export.json");
+    let exported = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersExportReport {
+            report_id: report.report_id.clone(),
+            path: persisted_export.to_string_lossy().to_string(),
+        },
+    )
+    .expect("export persisted primer-specificity report");
+    assert_eq!(
+        exported.output["schema"],
+        "gentle.primer_specificity_report_export.v1"
+    );
+    assert!(persisted_export.is_file());
+    fs::write(
+        PathBuf::from(&handoff.blast_db_prefix).with_extension("nsq"),
+        "replacement database content",
+    )
+    .expect("replace database at same prefix");
+    let changed = engine
+        .apply(Operation::ImportPrimerPairSpecificityHandoff {
+            handoff_path: handoff.handoff_path.clone(),
+            path: None,
+        })
+        .expect_err("same-prefix database replacement must invalidate handoff");
+    assert!(changed.message.contains("database content changed"));
 }
 
 #[test]
@@ -7884,6 +12917,11 @@ fn test_cdna_pcr_assay_detects_spliced_transcript_product() {
     assert_eq!(report.overall_status, "single_product");
     assert_eq!(report.detected_transcript_count, 1);
     assert_eq!(report.product_count, 1);
+    assert_eq!(
+        report.pair_id,
+        crate::digest_utils::primer_pair_full_id("AAACCC", "CCCAAA")
+    );
+    assert!(report.assay_test_id.starts_with("assay_test_sha256_"));
     let transcript = report
         .transcript_results
         .first()
@@ -7898,6 +12936,14 @@ fn test_cdna_pcr_assay_detects_spliced_transcript_product() {
     assert_eq!(transcript.exon_segments[1].exon_ordinal, 2);
     let product = transcript.products.first().expect("one product");
     assert_eq!(product.amplicon_length_bp, 21);
+    assert_eq!(
+        product.product_sequence_sha256.as_deref(),
+        Some(crate::digest_utils::oligo_sequence_sha256("AAACCCGGGCCCAAATTTGGG").as_str())
+    );
+    assert_eq!(
+        product.product_sequence_basis,
+        "mature_cdna_template_5prime_to_3prime_0based_half_open_including_binding_regions_excluding_nonannealing_tails_and_primer_induced_substitutions"
+    );
     assert!(product.spans_junction);
     assert!(!product.covered_junction_labels.is_empty());
     assert_eq!(product.source_ranges_0based.len(), 2);
@@ -7916,6 +12962,35 @@ fn test_cdna_pcr_assay_detects_spliced_transcript_product() {
     assert!(map.svg.contains(">E1<"));
     assert!(map.svg.contains(">E2<"));
     assert!(map.svg.contains("Junction E1-&gt;E2"));
+}
+
+#[test]
+fn experimental_assay_identity_fields_are_backward_compatible() {
+    let old_report: CdnaAssayTestReport = serde_json::from_value(serde_json::json!({
+        "schema": "gentle.cdna_assay_test_report.v1",
+        "transcript_results": [{
+            "transcript_id": "TX_OLD",
+            "products": [{
+                "amplicon_start_0based": 2,
+                "amplicon_end_0based_exclusive": 12,
+                "amplicon_length_bp": 10
+            }]
+        }]
+    }))
+    .expect("older cDNA assay report remains readable");
+    assert!(old_report.pair_id.is_empty());
+    assert!(old_report.assay_test_id.is_empty());
+    let old_product = &old_report.transcript_results[0].products[0];
+    assert!(old_product.product_sequence_sha256.is_none());
+    assert!(old_product.product_sequence_basis.is_empty());
+
+    let old_summary: PrimerPairCommunicationSummary = serde_json::from_value(serde_json::json!({
+        "schema": "gentle.primer_pair_summary.v2",
+        "assay_id": "legacy_assay"
+    }))
+    .expect("older primer-pair summary remains readable");
+    assert!(old_summary.pair_id.is_empty());
+    assert!(old_summary.probe.is_none());
 }
 
 #[test]
@@ -8251,6 +13326,71 @@ fn test_cdna_qpcr_assay_requires_probe_inside_cdna_product() {
     assert!(map.svg.contains("primer binding strand: forward"));
     assert!(map.svg.contains("primer binding strand: reverse"));
     assert!(map.svg.contains("probe binding strand: forward"));
+}
+
+#[test]
+fn test_cdna_pcr_assay_matches_mixed_iupac_base_as_allele_set() {
+    let transcript_sequences = [
+        ("TX_A", "AAAACCGGGGGATTT"),
+        ("TX_G", "AAAGCCGGGGGGTTT"),
+        ("TX_OTHER", "AAATCCGGGGGCTTT"),
+    ];
+    let spacer = "N".repeat(10);
+    let combined = transcript_sequences
+        .iter()
+        .map(|(_, sequence)| *sequence)
+        .collect::<Vec<_>>()
+        .join(&spacer);
+    let mut dna = seq(&combined);
+    let mut start = 0usize;
+    for (transcript_id, sequence) in transcript_sequences {
+        let end = start + sequence.len();
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::simple_range(start as i64, end as i64),
+            qualifiers: vec![
+                ("gene".into(), Some("MIXED".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(format!("MIXED {transcript_id}"))),
+            ],
+        });
+        start = end + spacer.len();
+    }
+    let mut state = ProjectState::default();
+    state.sequences.insert("cdna_iupac".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let report = engine
+        .test_cdna_pcr_assay(
+            "cdna_iupac",
+            0,
+            "AAARCC",
+            "AAAYCC",
+            None,
+            Some(10),
+            Some(30),
+            Some(0),
+            Some(4),
+        )
+        .expect("mixed-IUPAC cDNA assay report");
+    let product_counts = report
+        .transcript_results
+        .iter()
+        .map(|row| (row.transcript_id.as_str(), row.products.len()))
+        .collect::<BTreeMap<_, _>>();
+    assert_eq!(
+        product_counts["TX_A"], 1,
+        "R/Y must accept A-oriented alleles"
+    );
+    assert_eq!(
+        product_counts["TX_G"], 1,
+        "R/Y must accept G-oriented alleles"
+    );
+    assert_eq!(
+        product_counts["TX_OTHER"], 0,
+        "R/Y must reject unrelated alleles"
+    );
+    assert_eq!(report.product_count, 2);
 }
 
 #[test]
@@ -8594,6 +13734,295 @@ fn transcript_qpcr_panel_test_engine() -> GentleEngine {
             ],
         });
     }
+    let source_len = dna.len();
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "source".into(),
+        location: gb_io::seq::Location::simple_range(0, source_len as i64),
+        qualifiers: vec![
+            ("chromosome".into(), Some("chr1".to_string())),
+            ("assembly".into(), Some("synthetic_assembly".to_string())),
+            ("genomic_start_1based".into(), Some("1".to_string())),
+            ("genomic_end_1based".into(), Some(source_len.to_string())),
+            ("strand".into(), Some("+".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("panel_src".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    engine
+}
+
+fn irf9_informative_fallback_acceptance_engine() -> GentleEngine {
+    let common_tail = "GCTAGTCGATCGTACCGTACGATCGTACGA";
+    let tx1 = format!("ATGCCGTAGCTTACGATCCGTTAGCGTACCTGATCGGATCCGATTAAC{common_tail}");
+    let tx2 = format!("CGTACGATTCGGAACCTGATCGATGCTTACGGTACCGATCTAGGCTTA{common_tail}");
+    let shared = "GATCGTACCGATGCTAGCTAGGATCCGATCGTACGATCCGTTACGATGCTAGCTAGGCTA\
+         CGATCGGATCCGTACGATCGATGCTAGCTACCGATGCTAGCTAGGATCGTACCGATGCTAGCTA"
+        .replace(' ', "");
+    let spacer = "N".repeat(20);
+    let unassayable = "N".repeat(180);
+    let tx1_start = 0usize;
+    let tx1_end = tx1.len();
+    let tx2_start = tx1_end + spacer.len();
+    let tx2_end = tx2_start + tx2.len();
+    let shared_start = tx2_end + spacer.len();
+    let shared_end = shared_start + shared.len();
+    let unassayable_start = shared_end + spacer.len();
+    let unassayable_end = unassayable_start + unassayable.len();
+    let mut dna = seq(&format!(
+        "{tx1}{spacer}{tx2}{spacer}{shared}{spacer}{unassayable}"
+    ));
+    for transcript_id in ["IRF9_SYNTHETIC_A", "IRF9_SYNTHETIC_B"] {
+        let (first_start, first_end) = if transcript_id.ends_with('A') {
+            (tx1_start, tx1_end)
+        } else {
+            (tx2_start, tx2_end)
+        };
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::Join(vec![
+                gb_io::seq::Location::simple_range(first_start as i64, first_end as i64),
+                gb_io::seq::Location::simple_range(shared_start as i64, shared_end as i64),
+            ]),
+            qualifiers: vec![
+                ("gene".into(), Some("IRF9".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(format!("IRF9 {transcript_id}"))),
+            ],
+        });
+    }
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(
+            unassayable_start as i64,
+            unassayable_end as i64,
+        ),
+        qualifiers: vec![
+            ("gene".into(), Some("IRF9".to_string())),
+            ("transcript_id".into(), Some("ENST00000699070".to_string())),
+            (
+                "label".into(),
+                Some("IRF9 ENST00000699070 synthetic unassayable class".to_string()),
+            ),
+        ],
+    });
+    let source_len = dna.len();
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "source".into(),
+        location: gb_io::seq::Location::simple_range(0, source_len as i64),
+        qualifiers: vec![
+            ("chromosome".into(), Some("synthetic_IRF9".to_string())),
+            ("genomic_start_1based".into(), Some("1".to_string())),
+            ("genomic_end_1based".into(), Some(source_len.to_string())),
+            ("strand".into(), Some("+".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("irf9_fallback_fixture".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    engine
+}
+
+fn irf9_strict_one_per_class_operation(report_id: &str) -> Operation {
+    let side = transcript_assay_panel_relaxed_side();
+    Operation::DesignTranscriptAssayPanel {
+        seq_id: "irf9_fallback_fixture".to_string(),
+        source_feature_id: 0,
+        assay_kind: TranscriptAssayKind::TaqmanQpcr,
+        cdna_synthesis: TranscriptAssayCdnaSynthesis::Unspecified,
+        objective: TranscriptAssayPanelObjective::OnePerClass,
+        coverage_policy: TranscriptAssayCoveragePolicy::RequireAll,
+        coverage_universe: TranscriptAssayCoverageUniverse::default(),
+        assay_tier: TranscriptAssayUseTier::IsoformDiscrimination,
+        practicality: None,
+        forward: side.clone(),
+        reverse: side.clone(),
+        probe: side,
+        pair_constraints: PrimerDesignPairConstraint::default(),
+        min_amplicon_bp: Some(50),
+        max_amplicon_bp: Some(240),
+        max_tm_delta_c: Some(100.0),
+        max_probe_tm_delta_c: Some(100.0),
+        max_assays_per_class: Some(2),
+        max_mismatches: Some(0),
+        require_3prime_exact_bases: Some(8),
+        oligo_dt_5prime_risk_threshold_bp: None,
+        search_policy: None,
+        informative_selection: None,
+        junctions: vec![],
+        junction_evidence_paths: vec![],
+        junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
+        min_3prime_junction_overlap_bp: None,
+        min_5prime_junction_overlap_bp: None,
+        annotation_release: Some("synthetic IRF9 fallback acceptance v1".to_string()),
+        specificity: None,
+        report_id: Some(report_id.to_string()),
+        path: None,
+    }
+}
+
+fn transcript_endpoint_structural_failure_engine() -> GentleEngine {
+    let short_first = "ATGCCGTAGCTTACGAT";
+    let long_first = "CGTACGATTCGGAACCTGATCGATGCTTACGGTACCGATCTAGGCTTACGATCG";
+    let middle = "GATCGTACCGATGCTAGCTAGGATCCGATCGTACGATCCGTTACGATGCTAGCTAGGCTACGATCGGATCCGT";
+    let terminal_a = "GCTAACGATCCGATGCTAACGTCGATCGTAGCTAACCGATGCTAGCTTACCGATGCTAG";
+    let terminal_b = "TACGATGCTAGGCTACGATCGGATCCGTACGATTCGGAACCTGATCGATGCTTACGGT";
+    let spacer = "N".repeat(24);
+    let short_start = 0usize;
+    let short_end = short_start + short_first.len();
+    let long_start = short_end + spacer.len();
+    let long_end = long_start + long_first.len();
+    let middle_start = long_end + spacer.len();
+    let middle_end = middle_start + middle.len();
+    let terminal_a_start = middle_end + spacer.len();
+    let terminal_a_end = terminal_a_start + terminal_a.len();
+    let terminal_b_start = terminal_a_end + spacer.len();
+    let terminal_b_end = terminal_b_start + terminal_b.len();
+    let mut dna = seq(&format!(
+        "{short_first}{spacer}{long_first}{spacer}{middle}{spacer}{terminal_a}{spacer}{terminal_b}"
+    ));
+    for (transcript_id, first_start, first_end, terminal_start, terminal_end) in [
+        (
+            "TX_SHORT_A",
+            short_start,
+            short_end,
+            terminal_a_start,
+            terminal_a_end,
+        ),
+        (
+            "TX_SHORT_B",
+            short_start,
+            short_end,
+            terminal_b_start,
+            terminal_b_end,
+        ),
+        (
+            "TX_LONG_A",
+            long_start,
+            long_end,
+            terminal_a_start,
+            terminal_a_end,
+        ),
+    ] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::Join(vec![
+                gb_io::seq::Location::simple_range(first_start as i64, first_end as i64),
+                gb_io::seq::Location::simple_range(middle_start as i64, middle_end as i64),
+                gb_io::seq::Location::simple_range(terminal_start as i64, terminal_end as i64),
+            ]),
+            qualifiers: vec![
+                ("gene".into(), Some("ENDGEOM1".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(format!("ENDGEOM1 {transcript_id}"))),
+            ],
+        });
+    }
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("endpoint_structural".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
+    engine.state_mut().parameters.primer3_executable =
+        "definitely_missing_primer3_for_feasibility_test".to_string();
+    engine
+}
+
+fn transcript_endpoint_structural_failure_operation(
+    coverage_policy: TranscriptAssayCoveragePolicy,
+    side: PrimerDesignSideConstraint,
+) -> Operation {
+    Operation::DesignTranscriptAssayPanel {
+        seq_id: "endpoint_structural".to_string(),
+        source_feature_id: 0,
+        assay_kind: TranscriptAssayKind::EndpointRtPcr,
+        cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
+        objective: TranscriptAssayPanelObjective::IsoformEndMatrix,
+        coverage_policy,
+        coverage_universe: TranscriptAssayCoverageUniverse::default(),
+        assay_tier: TranscriptAssayUseTier::LongRangeStructureDiscovery,
+        practicality: None,
+        forward: side.clone(),
+        reverse: side.clone(),
+        probe: side,
+        pair_constraints: PrimerDesignPairConstraint::default(),
+        min_amplicon_bp: Some(40),
+        max_amplicon_bp: Some(10_000),
+        max_tm_delta_c: Some(100.0),
+        max_probe_tm_delta_c: None,
+        max_assays_per_class: None,
+        max_mismatches: Some(0),
+        require_3prime_exact_bases: Some(8),
+        oligo_dt_5prime_risk_threshold_bp: None,
+        search_policy: None,
+        informative_selection: None,
+        junctions: vec![],
+        junction_evidence_paths: vec![],
+        junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
+        min_3prime_junction_overlap_bp: None,
+        min_5prime_junction_overlap_bp: None,
+        annotation_release: Some("synthetic structural feasibility".to_string()),
+        specificity: None,
+        report_id: Some("endpoint_structural_feasibility".to_string()),
+        path: None,
+    }
+}
+
+fn transcript_assay_common_region_test_engine() -> GentleEngine {
+    let synthetic_dna = |mut state: u64, len: usize| {
+        (0..len)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                [b'A', b'C', b'G', b'T'][(state & 3) as usize] as char
+            })
+            .collect::<String>()
+    };
+    let shared = synthetic_dna(0x4d59_5df4_d0f3_3173, 220);
+    let tx_a_tail = synthetic_dna(0x1a2b_3c4d_5e6f_7788, 100);
+    let tx_b_tail = synthetic_dna(0x8877_6f5e_4d3c_2b1a, 100);
+    let spacer = "N".repeat(24);
+    let shared_start = 0usize;
+    let shared_end = shared.len();
+    let tx_a_start = shared_end + spacer.len();
+    let tx_a_end = tx_a_start + tx_a_tail.len();
+    let tx_b_start = tx_a_end + spacer.len();
+    let tx_b_end = tx_b_start + tx_b_tail.len();
+    let mut dna = seq(&format!("{shared}{spacer}{tx_a_tail}{spacer}{tx_b_tail}"));
+    for (transcript_id, tail_start, tail_end) in [
+        ("TX_COMMON_A", tx_a_start, tx_a_end),
+        ("TX_COMMON_B", tx_b_start, tx_b_end),
+    ] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::Join(vec![
+                gb_io::seq::Location::simple_range(shared_start as i64, shared_end as i64),
+                gb_io::seq::Location::simple_range(tail_start as i64, tail_end as i64),
+            ]),
+            qualifiers: vec![
+                ("gene".into(), Some("COMMON1".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(format!("COMMON1 {transcript_id}"))),
+            ],
+        });
+    }
+    let source_len = dna.len();
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "source".into(),
+        location: gb_io::seq::Location::simple_range(0, source_len as i64),
+        qualifiers: vec![
+            ("chromosome".into(), Some("chr1".to_string())),
+            ("genomic_start_1based".into(), Some("1".to_string())),
+            ("genomic_end_1based".into(), Some(source_len.to_string())),
+            ("strand".into(), Some("+".to_string())),
+        ],
+    });
     let mut state = ProjectState::default();
     state.sequences.insert("panel_src".to_string(), dna);
     let mut engine = GentleEngine::from_state(state);
@@ -8629,6 +14058,395 @@ fn transcript_qpcr_single_exon_fallback_engine() -> GentleEngine {
     let mut engine = GentleEngine::from_state(state);
     engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
     engine
+}
+
+fn transcript_assay_near_match_engine() -> GentleEngine {
+    let tx_a = "ATGCCGTAGCTTACGATCCGTTAGCGTACCTGATCGGATCCGATTAACGCTAGTCGATCGTACCGTACGATCGTACGAGGCTAACGATCCGATGCTAACG";
+    let mut tx_b = tx_a.as_bytes().to_vec();
+    tx_b[37] = if tx_b[37] == b'A' { b'C' } else { b'A' };
+    let tx_b = String::from_utf8(tx_b).expect("ASCII cDNA");
+    let spacer = "N".repeat(24);
+    let tx_a_start = 0usize;
+    let tx_a_end = tx_a.len();
+    let tx_b_start = tx_a_end + spacer.len();
+    let tx_b_end = tx_b_start + tx_b.len();
+    let mut dna = seq(&format!("{tx_a}{spacer}{tx_b}"));
+    for (transcript_id, start, end) in [
+        ("TX_NEAR_A", tx_a_start, tx_a_end),
+        ("TX_NEAR_B", tx_b_start, tx_b_end),
+    ] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::simple_range(start as i64, end as i64),
+            qualifiers: vec![
+                ("gene".into(), Some("NEAR1".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(format!("NEAR1 {transcript_id}"))),
+            ],
+        });
+    }
+    let mut state = ProjectState::default();
+    state.sequences.insert("near_match_qpcr".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    engine
+}
+
+fn terminal_exon_rt_primer_pool_request() -> TerminalExonRtPrimerPoolRequest {
+    TerminalExonRtPrimerPoolRequest {
+        schema: TERMINAL_EXON_RT_PRIMER_POOL_REQUEST_SCHEMA.to_string(),
+        fixed_adapter_5prime: "ACTTGCCTGTCGCTCTATCTTC".to_string(),
+        variable_length_bp: 22,
+        terminal_exon_search_window_bp: 80,
+        max_candidates_per_target: 5,
+        targets: vec![
+            TerminalExonRtPrimerTarget {
+                seq_id: "panel_src".to_string(),
+                source_feature_id: 0,
+                transcript_id: Some("TX1".to_string()),
+                label: Some("first priority".to_string()),
+            },
+            TerminalExonRtPrimerTarget {
+                seq_id: "panel_src".to_string(),
+                source_feature_id: 1,
+                transcript_id: Some("TX2".to_string()),
+                label: Some("second priority".to_string()),
+            },
+        ],
+        genomic_specificity: None,
+        report_id: Some("terminal_rt_pool_test".to_string()),
+    }
+}
+
+#[test]
+fn terminal_exon_rt_primer_pool_is_deterministic_persisted_exportable_and_undoable() {
+    let request = terminal_exon_rt_primer_pool_request();
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let report = engine
+        .apply(Operation::DesignTerminalExonRtPrimerPool {
+            request: request.clone(),
+        })
+        .expect("design terminal-exon RT-primer pool")
+        .terminal_exon_rt_primer_pool
+        .expect("terminal-exon RT-primer pool report");
+
+    assert_eq!(report.schema, TERMINAL_EXON_RT_PRIMER_POOL_REPORT_SCHEMA);
+    assert_eq!(report.report_id, "terminal_rt_pool_test");
+    assert_eq!(report.targets.len(), 2);
+    assert!(report.genomic_specificity.is_none());
+    assert_eq!(report.selected_pool_interactions.len(), 1);
+    assert!(report.tm_policy.contains("excluded from ranking"));
+    assert!(
+        report
+            .pool_selection_policy
+            .contains("bounded_beam_1024_precomputed_pair_matrix")
+    );
+    assert!(report.pool_selection_states_evaluated > 0);
+    let minimum_possible_worst_self_3prime = report
+        .targets
+        .iter()
+        .filter_map(|target| {
+            target
+                .candidates
+                .iter()
+                .map(|candidate| {
+                    candidate
+                        .ranking
+                        .full_oligo_self_3prime_complementary_run_bp
+                })
+                .min()
+        })
+        .max()
+        .unwrap_or(0);
+    let selected_worst_self_3prime = report
+        .targets
+        .iter()
+        .filter_map(|target| {
+            target
+                .candidates
+                .iter()
+                .find(|candidate| candidate.selected)
+        })
+        .map(|candidate| {
+            candidate
+                .ranking
+                .full_oligo_self_3prime_complementary_run_bp
+        })
+        .max()
+        .unwrap_or(0);
+    assert_eq!(
+        selected_worst_self_3prime, minimum_possible_worst_self_3prime,
+        "pool interactions must not be improved by sacrificing avoidable complete-oligo self 3-prime complementarity"
+    );
+    assert_eq!(report.targets[0].priority_1based, 1);
+    assert_eq!(report.targets[0].resolved_transcript_id, "TX1");
+    assert_eq!(report.targets[1].priority_1based, 2);
+    assert_eq!(report.targets[1].resolved_transcript_id, "TX2");
+    for target in &report.targets {
+        assert_eq!(target.candidates.len(), 5);
+        assert!(target.evaluated_candidate_count >= target.candidates.len());
+        let selected = target
+            .candidates
+            .iter()
+            .find(|candidate| candidate.selected)
+            .expect("selected candidate");
+        assert!(selected.rank >= 1);
+        assert_eq!(selected.variable_length_bp, 22);
+        assert_eq!(selected.variable_primer_5_to_3.len(), 22);
+        assert_eq!(
+            selected.full_oligo_5_to_3,
+            format!(
+                "{}{}",
+                request.fixed_adapter_5prime, selected.variable_primer_5_to_3
+            )
+        );
+        assert_eq!(
+            GentleEngine::reverse_complement(&selected.target_segment_5_to_3),
+            selected.variable_primer_5_to_3
+        );
+        assert!(
+            selected.transcript_local_start_0based >= target.terminal_exon_transcript_start_0based
+        );
+        assert!(
+            selected.transcript_local_end_0based_exclusive
+                <= target.terminal_exon_transcript_end_0based_exclusive
+        );
+        assert_eq!(
+            selected.distance_from_terminal_exon_start_bp,
+            selected
+                .transcript_local_start_0based
+                .saturating_sub(target.terminal_exon_transcript_start_0based)
+        );
+    }
+
+    let stored = engine
+        .get_terminal_exon_rt_primer_pool_report("terminal_rt_pool_test")
+        .expect("stored terminal-exon RT-primer pool");
+    assert_eq!(stored.request_sha256, report.request_sha256);
+    assert_eq!(
+        engine.list_terminal_exon_rt_primer_pool_reports()[0].selected_oligo_count,
+        2
+    );
+    let dir = tempfile::tempdir().expect("temporary export directory");
+    let path = dir.path().join("terminal_rt_pool.json");
+    let history_before_export = engine.history_summary();
+    engine
+        .apply(Operation::ExportTerminalExonRtPrimerPoolReport {
+            report_id: "terminal_rt_pool_test".to_string(),
+            path: path.to_string_lossy().to_string(),
+        })
+        .expect("export terminal-exon RT-primer pool through operation");
+    assert_eq!(
+        engine.history_summary().undo_count,
+        history_before_export.undo_count,
+        "report export must not add an undo checkpoint"
+    );
+    let exported: TerminalExonRtPrimerPoolReport = serde_json::from_slice(
+        &std::fs::read(&path).expect("read exported terminal-exon RT-primer pool"),
+    )
+    .expect("parse exported terminal-exon RT-primer pool");
+    assert_eq!(exported.request_sha256, report.request_sha256);
+
+    let selected_sequences = |report: &TerminalExonRtPrimerPoolReport| {
+        report
+            .targets
+            .iter()
+            .map(|target| {
+                target
+                    .candidates
+                    .iter()
+                    .find(|candidate| candidate.selected)
+                    .expect("selected candidate")
+                    .full_oligo_5_to_3
+                    .clone()
+            })
+            .collect::<Vec<_>>()
+    };
+    let mut repeated_engine = transcript_qpcr_panel_test_engine();
+    let repeated = repeated_engine
+        .apply(Operation::DesignTerminalExonRtPrimerPool { request })
+        .expect("repeat deterministic terminal-exon RT-primer pool design")
+        .terminal_exon_rt_primer_pool
+        .expect("repeated terminal-exon RT-primer pool report");
+    assert_eq!(selected_sequences(&report), selected_sequences(&repeated));
+    assert_eq!(
+        report.selected_pool_interactions,
+        repeated.selected_pool_interactions
+    );
+
+    engine
+        .undo_last_operation()
+        .expect("undo terminal-exon RT-primer pool design");
+    assert!(
+        engine
+            .get_terminal_exon_rt_primer_pool_report("terminal_rt_pool_test")
+            .is_err()
+    );
+}
+
+#[test]
+fn terminal_exon_rt_primer_genomic_exact_hits_require_a_perfect_full_length_match() {
+    let mut blast = demo_blast_report();
+    blast.query_length = 22;
+    blast.hits = vec![
+        BlastHit {
+            subject_id: "chr3".to_string(),
+            identity_percent: 100.0,
+            alignment_length: 22,
+            mismatches: 0,
+            gap_opens: 0,
+            query_start: 1,
+            query_end: 22,
+            subject_start: 220,
+            subject_end: 199,
+            evalue: 1e-8,
+            bit_score: 44.0,
+            query_coverage_percent: Some(100.0),
+            query_length: Some(22),
+            aligned_query: Some("ACGTACGTACGTACGTACGTAC".to_string()),
+            aligned_subject: Some("ACGTACGTACGTACGTACGTAC".to_string()),
+        },
+        BlastHit {
+            subject_id: "chr7".to_string(),
+            identity_percent: 95.45,
+            alignment_length: 22,
+            mismatches: 1,
+            gap_opens: 0,
+            query_start: 1,
+            query_end: 22,
+            subject_start: 10,
+            subject_end: 31,
+            evalue: 1e-4,
+            bit_score: 30.0,
+            query_coverage_percent: Some(100.0),
+            query_length: Some(22),
+            aligned_query: Some("ACGTACGTACGTACGTACGTAC".to_string()),
+            aligned_subject: Some("ACGTACGTACGTACGTACGTAT".to_string()),
+        },
+    ];
+
+    let hits = GentleEngine::terminal_exon_rt_primer_exact_genomic_hits(&blast, 22);
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].subject_id, "chr3");
+    assert_eq!((hits[0].start_1based, hits[0].end_1based), (199, 220));
+    assert_eq!(hits[0].strand, "-");
+    assert!(GentleEngine::terminal_exon_rt_subject_ids_match(
+        "chr3", "3"
+    ));
+    assert!(!GentleEngine::terminal_exon_rt_subject_ids_match(
+        "chr3", "4"
+    ));
+}
+
+#[test]
+fn terminal_exon_rt_primer_pool_requires_explicit_transcript_for_ambiguous_group() {
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let mut request = terminal_exon_rt_primer_pool_request();
+    request.targets.truncate(1);
+    request.targets[0].transcript_id = None;
+    let error = engine
+        .apply(Operation::DesignTerminalExonRtPrimerPool { request })
+        .expect_err("ambiguous transcript group must be rejected");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("TX1"));
+    assert!(error.message.contains("TX2"));
+    assert!(error.message.contains("specify transcript_id explicitly"));
+}
+
+#[test]
+fn terminal_exon_rt_primer_pool_maps_reverse_strand_terminal_exon_coordinates() {
+    let mut dna = seq(&"ACGT".repeat(40));
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(0, 30),
+            gb_io::seq::Location::simple_range(60, 100),
+        ]))),
+        qualifiers: vec![
+            ("gene".into(), Some("REVRT".to_string())),
+            ("transcript_id".into(), Some("REVRT-201".to_string())),
+            ("label".into(), Some("REVRT-201".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("reverse_rt".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let report = engine
+        .apply(Operation::DesignTerminalExonRtPrimerPool {
+            request: TerminalExonRtPrimerPoolRequest {
+                schema: TERMINAL_EXON_RT_PRIMER_POOL_REQUEST_SCHEMA.to_string(),
+                fixed_adapter_5prime: "ACTTGCCTGTCGCTCTATCTTC".to_string(),
+                variable_length_bp: 22,
+                terminal_exon_search_window_bp: 30,
+                max_candidates_per_target: 3,
+                targets: vec![TerminalExonRtPrimerTarget {
+                    seq_id: "reverse_rt".to_string(),
+                    source_feature_id: 0,
+                    transcript_id: Some("REVRT-201".to_string()),
+                    label: None,
+                }],
+                genomic_specificity: None,
+                report_id: Some("reverse_rt_pool".to_string()),
+            },
+        })
+        .expect("design reverse-strand terminal-exon RT primer")
+        .terminal_exon_rt_primer_pool
+        .expect("reverse-strand terminal-exon RT-primer pool report");
+    let target = &report.targets[0];
+    assert_eq!(target.strand, "-");
+    assert_eq!(target.terminal_exon_source_start_0based, 0);
+    assert_eq!(target.terminal_exon_source_end_0based_exclusive, 30);
+    let selected = target
+        .candidates
+        .iter()
+        .find(|candidate| candidate.selected)
+        .expect("selected reverse-strand candidate");
+    assert_eq!(
+        selected.source_start_0based,
+        target
+            .terminal_exon_source_end_0based_exclusive
+            .saturating_sub(selected.distance_from_terminal_exon_start_bp + 22)
+    );
+    assert_eq!(
+        selected.source_end_0based_exclusive,
+        target
+            .terminal_exon_source_end_0based_exclusive
+            .saturating_sub(selected.distance_from_terminal_exon_start_bp)
+    );
+}
+
+#[test]
+fn terminal_exon_rt_primer_candidate_policy_is_named_deterministic_and_tm_independent() {
+    let mut preferred = TerminalExonRtPrimerCandidate {
+        variable_primer_5_to_3: "AAAAAAAAAAAAAAAAAAAAAA".to_string(),
+        variable_tm_c: 5.0,
+        ranking: TerminalExonRtPrimerCandidateRanking {
+            distance_from_terminal_exon_start_bp: 0,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let mut later = TerminalExonRtPrimerCandidate {
+        variable_primer_5_to_3: "CCCCCCCCCCCCCCCCCCCCCC".to_string(),
+        variable_tm_c: 95.0,
+        ranking: TerminalExonRtPrimerCandidateRanking {
+            distance_from_terminal_exon_start_bp: 1,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    assert_eq!(
+        GentleEngine::compare_terminal_exon_rt_primer_candidates(&preferred, &later),
+        std::cmp::Ordering::Less
+    );
+
+    preferred.variable_tm_c = 99.0;
+    later.variable_tm_c = 1.0;
+    assert_eq!(
+        GentleEngine::compare_terminal_exon_rt_primer_candidates(&preferred, &later),
+        std::cmp::Ordering::Less,
+        "descriptive Tm must not affect the selection policy"
+    );
 }
 
 #[test]
@@ -8706,13 +14524,12 @@ fn transcript_qpcr_panel_reports_shared_components_and_characteristic_forward_ro
             .iter()
             .find(|row| row.transcript_id == transcript_id)
             .expect("duplicate transcript row");
-        assert_eq!(row.characteristic_status, "not_found");
-        assert!(row.characteristic_forward.is_none());
-        assert!(
-            row.notes
-                .iter()
-                .any(|note| note.contains("No single forward primer"))
+        assert_eq!(
+            row.characteristic_status,
+            "not_distinguishable_between_members"
         );
+        assert!(row.characteristic_forward.is_none());
+        assert!(row.notes.iter().any(|note| note.contains("byte-identical")));
     }
 
     let op_result = engine
@@ -8728,6 +14545,5574 @@ fn transcript_qpcr_panel_reports_shared_components_and_characteristic_forward_ro
         .expect("operation returns panel report");
     assert_eq!(op_report.shared_qpcr_report_id, "panel_shared");
     assert_eq!(op_report.transcript_rows.len(), 3);
+}
+
+fn transcript_assay_panel_relaxed_side() -> PrimerDesignSideConstraint {
+    PrimerDesignSideConstraint {
+        min_length: 18,
+        max_length: 24,
+        min_tm_c: 0.0,
+        max_tm_c: 100.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 10_000,
+        ..Default::default()
+    }
+}
+
+fn transcript_assay_panel_operation(
+    coverage_policy: TranscriptAssayCoveragePolicy,
+    side: PrimerDesignSideConstraint,
+    max_mismatches: usize,
+    report_id: &str,
+) -> Operation {
+    Operation::DesignTranscriptAssayPanel {
+        seq_id: "panel_src".to_string(),
+        source_feature_id: 0,
+        assay_kind: TranscriptAssayKind::TaqmanQpcr,
+        cdna_synthesis: TranscriptAssayCdnaSynthesis::Unspecified,
+        objective: TranscriptAssayPanelObjective::PanTranscript,
+        coverage_policy,
+        coverage_universe: TranscriptAssayCoverageUniverse::default(),
+        assay_tier: TranscriptAssayUseTier::Unspecified,
+        practicality: None,
+        forward: side.clone(),
+        reverse: side.clone(),
+        probe: side,
+        pair_constraints: PrimerDesignPairConstraint::default(),
+        min_amplicon_bp: Some(50),
+        max_amplicon_bp: Some(240),
+        max_tm_delta_c: Some(100.0),
+        max_probe_tm_delta_c: Some(100.0),
+        max_assays_per_class: Some(2),
+        max_mismatches: Some(max_mismatches),
+        require_3prime_exact_bases: Some(8),
+        oligo_dt_5prime_risk_threshold_bp: None,
+        search_policy: None,
+        informative_selection: None,
+        junctions: vec![],
+        junction_evidence_paths: vec![],
+        junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
+        min_3prime_junction_overlap_bp: None,
+        min_5prime_junction_overlap_bp: None,
+        annotation_release: None,
+        specificity: None,
+        report_id: Some(report_id.to_string()),
+        path: None,
+    }
+}
+
+#[test]
+fn transcript_assay_coverage_default_preserves_legacy_operation_bytes() {
+    let operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::BestEffort,
+        transcript_assay_panel_relaxed_side(),
+        0,
+        "coverage_default",
+    );
+    let serialized = serde_json::to_string(&operation).expect("serialize transcript assay op");
+    assert!(
+        !serialized.contains("coverage_universe"),
+        "the default universe must not perturb legacy operation digests: {serialized}"
+    );
+    let reparsed: Operation =
+        serde_json::from_str(&serialized).expect("deserialize legacy-shaped operation");
+    let Operation::DesignTranscriptAssayPanel {
+        coverage_universe, ..
+    } = reparsed
+    else {
+        panic!("expected transcript assay operation");
+    };
+    assert!(coverage_universe.is_default());
+}
+
+#[test]
+fn transcript_assay_coverage_explicit_keeps_objective_and_exact_cdna_equivalence() {
+    let mut operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::BestEffort,
+        transcript_assay_panel_relaxed_side(),
+        0,
+        "coverage_explicit",
+    );
+    let Operation::DesignTranscriptAssayPanel {
+        objective,
+        coverage_universe,
+        ..
+    } = &mut operation
+    else {
+        panic!("expected transcript assay operation");
+    };
+    *objective = TranscriptAssayPanelObjective::OnePerClass;
+    *coverage_universe = TranscriptAssayCoverageUniverse {
+        kind: TranscriptAssayCoverageUniverseKind::ExplicitTranscripts,
+        required_transcript_ids: vec!["TX3".to_string(), "TX2".to_string()],
+        required_uniprot_isoforms: vec![],
+        sources: vec![],
+    };
+
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let report = engine
+        .apply(operation)
+        .expect("design explicit-universe panel")
+        .transcript_assay_panel
+        .expect("transcript assay report");
+    assert_eq!(report.objective, TranscriptAssayPanelObjective::OnePerClass);
+    assert_eq!(
+        report.coverage_universe.kind,
+        TranscriptAssayCoverageUniverseKind::ExplicitTranscripts
+    );
+    assert_eq!(report.transcript_count, 2);
+    assert_eq!(report.equivalence_group_count, 1);
+    assert_eq!(
+        report.coverage_resolution.annotated_equivalence_group_count,
+        Some(2)
+    );
+    assert_eq!(
+        report
+            .coverage_resolution
+            .included_equivalence_group_ids
+            .len(),
+        1
+    );
+    assert_eq!(
+        report
+            .coverage_resolution
+            .excluded_annotated_equivalence_group_ids
+            .len(),
+        1
+    );
+    assert_eq!(
+        report.coverage_resolution.included_transcript_ids,
+        vec!["TX2".to_string(), "TX3".to_string()]
+    );
+    assert_eq!(
+        report.coverage_resolution.excluded_annotated_transcript_ids,
+        vec!["TX1".to_string()]
+    );
+    let group_ids = report
+        .coverage_resolution
+        .targets
+        .iter()
+        .filter_map(|target| target.equivalence_group_id.as_deref())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(group_ids.len(), 1, "byte-identical targets share one class");
+}
+
+#[test]
+fn transcript_assay_coverage_unresolved_target_fails_before_primer_search() {
+    let mut operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::BestEffort,
+        transcript_assay_panel_relaxed_side(),
+        0,
+        "coverage_unresolved",
+    );
+    let Operation::DesignTranscriptAssayPanel {
+        coverage_universe, ..
+    } = &mut operation
+    else {
+        panic!("expected transcript assay operation");
+    };
+    *coverage_universe = TranscriptAssayCoverageUniverse {
+        kind: TranscriptAssayCoverageUniverseKind::ExplicitTranscripts,
+        required_transcript_ids: vec!["TX_NOT_ANNOTATED".to_string()],
+        required_uniprot_isoforms: vec![],
+        sources: vec![],
+    };
+
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let error = engine
+        .apply(operation)
+        .expect_err("best_effort must not omit an unresolved mandatory target");
+    assert!(error.message.contains("unresolved before Primer3"));
+    assert!(error.message.contains("TX_NOT_ANNOTATED"));
+}
+
+#[test]
+fn transcript_assay_coverage_uniprot_is_content_bound_and_auditable() {
+    let temp = tempdir().expect("temporary UniProt coverage directory");
+    let audit_path = temp.path().join("uniprot_projection_audit.json");
+    let audit_bytes = serde_json::to_vec_pretty(&serde_json::json!({
+        "schema": UNIPROT_PROJECTION_AUDIT_REPORT_SCHEMA,
+        "report_id": "synthetic_uniprot_audit",
+        "projection_id": "synthetic_projection",
+        "entry_id": "PTEST1",
+        "seq_id": "panel_src",
+        "protein_isoform_inventory": {
+            "entry_id": "PTEST1",
+            "declared_named_isoform_count": 2,
+            "status": "complete",
+            "targets": [
+                {
+                    "entry_id": "PTEST1",
+                    "isoform_id": "PTEST1-1",
+                    "name": "Isoform 1",
+                    "is_canonical": true
+                },
+                {
+                    "entry_id": "PTEST1",
+                    "isoform_id": "PTEST1-2",
+                    "name": "Isoform 2",
+                    "is_canonical": false
+                }
+            ]
+        },
+        "rows": [
+            {
+                "transcript_id": "TX2",
+                "status": "consistent",
+                "link_resolution": {
+                    "matched_xrefs": [{
+                        "transcript_id": "TX2",
+                        "isoform_id": "PTEST1-1"
+                    }]
+                }
+            },
+            {
+                "transcript_id": "TX3",
+                "status": "warning",
+                "link_resolution": {
+                    "matched_xrefs": [{
+                        "transcript_id": "TX3",
+                        "isoform_id": "PTEST1-2"
+                    }]
+                }
+            }
+        ]
+    }))
+    .expect("serialize synthetic UniProt audit");
+    fs::write(&audit_path, &audit_bytes).expect("write synthetic UniProt audit");
+    let expected_sha256 = sha256_prefixed_bytes(&audit_bytes);
+
+    let mut operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::BestEffort,
+        transcript_assay_panel_relaxed_side(),
+        0,
+        "coverage_uniprot",
+    );
+    let Operation::DesignTranscriptAssayPanel {
+        objective,
+        coverage_universe,
+        ..
+    } = &mut operation
+    else {
+        panic!("expected transcript assay operation");
+    };
+    *objective = TranscriptAssayPanelObjective::OnePerClass;
+    let universe = TranscriptAssayCoverageUniverse {
+        kind: TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms,
+        required_transcript_ids: vec![],
+        required_uniprot_isoforms: vec![],
+        sources: vec![TranscriptAssayCoverageSourceRef {
+            source_kind: "uniprot_projection_audit".to_string(),
+            path: audit_path.to_string_lossy().to_string(),
+            expected_sha256: Some(expected_sha256.clone()),
+            ..TranscriptAssayCoverageSourceRef::default()
+        }],
+    };
+    *coverage_universe = universe;
+
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let report = engine
+        .apply(operation)
+        .expect("design UniProt-prioritized panel")
+        .transcript_assay_panel
+        .expect("transcript assay report");
+    assert_eq!(
+        report.coverage_resolution.included_transcript_ids,
+        vec!["TX2".to_string(), "TX3".to_string()]
+    );
+    assert_eq!(report.coverage_resolution.required_target_count, 2);
+    assert_eq!(
+        report.coverage_universe.sources[0]
+            .expected_sha256
+            .as_deref(),
+        Some(expected_sha256.as_str())
+    );
+    assert_eq!(
+        report.coverage_universe.sources[0].report_id.as_deref(),
+        Some("synthetic_uniprot_audit")
+    );
+    let target_debug = serde_json::to_string_pretty(&report.coverage_resolution.targets)
+        .expect("serialize coverage targets");
+    assert!(
+        report.coverage_resolution.targets.iter().all(|target| {
+            target.uniprot_entry_id.as_deref() == Some("PTEST1")
+                && target.mapped_transcript_ids.len() == 1
+                && target.equivalence_group_ids.len() == 1
+                && target.status == TranscriptAssayCoverageTargetStatus::Included
+                && target.coverage_status == TranscriptAssayCoverageEvaluationStatus::Covered
+                && target.distinction_status
+                    == TranscriptAssayCoverageDistinctionStatus::NotDistinguished
+                && target.not_distinguished_from_target_ids.len() == 1
+        }),
+        "{target_debug}"
+    );
+    assert_eq!(report.selected_assays.len(), 1);
+    assert_eq!(
+        report.selected_assays[0]
+            .single_product_coverage_target_ids
+            .len(),
+        2
+    );
+    assert!(report.uncovered_coverage_target_ids.is_empty());
+    assert_eq!(report.unresolved_coverage_target_pairs.len(), 1);
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| { warning.contains("PCR detects mapped mature cDNA") })
+    );
+}
+
+fn transcript_assay_inventory_rejection_fixture(
+    directory: &Path,
+) -> (Operation, UniprotLinkedTranscriptInventory, PathBuf) {
+    let audit_path = directory.join("projection_audit.json");
+    let audit_bytes = serde_json::to_vec_pretty(&serde_json::json!({
+        "schema": UNIPROT_PROJECTION_AUDIT_REPORT_SCHEMA,
+        "report_id": "inventory_rejection_projection_audit",
+        "projection_id": "inventory_rejection_projection",
+        "entry_id": "PTEST1",
+        "seq_id": "panel_src",
+        "protein_isoform_inventory": {
+            "entry_id": "PTEST1",
+            "declared_named_isoform_count": 1,
+            "status": "complete",
+            "targets": [{
+                "entry_id": "PTEST1",
+                "isoform_id": "PTEST1-1",
+                "name": "Isoform 1",
+                "is_canonical": true
+            }]
+        },
+        "rows": [{
+            "transcript_id": "TX1",
+            "status": "consistent",
+            "link_resolution": {
+                "matched_xrefs": [{
+                    "transcript_id": "TX1",
+                    "isoform_id": "PTEST1-1"
+                }]
+            }
+        }]
+    }))
+    .expect("serialize rejection-fixture projection audit");
+    fs::write(&audit_path, &audit_bytes).expect("write rejection-fixture projection audit");
+
+    let common_tail = "GCTAGTCGATCGTACCGTACGATCGTACGA";
+    let first_tx1 = format!("ATGCCGTAGCTTACGATCCGTTAGCGTACCTGATCGGATCCGATTAAC{common_tail}");
+    let shared = "GATCGTACCGATGCTAGCTAGGATCCGATCGTACGATCCGTTACGATGCTAGCTAGGCTA\
+         CGATCGGATCCGTACGATCGATGCTAGCTACCGATGCTAGCTAGGATCGTACCGATGCTAGCTA"
+        .replace(' ', "");
+    let tx1_sequence = format!("{first_tx1}{shared}");
+    let mut inventory = UniprotLinkedTranscriptInventory {
+        schema: UNIPROT_LINKED_TRANSCRIPT_INVENTORY_SCHEMA.to_string(),
+        inventory_id: "inventory_rejection_fixture".to_string(),
+        assembly: "synthetic_assembly".to_string(),
+        annotation_release: "synthetic_release_1".to_string(),
+        source_resource_id: "synthetic_transcript_resource".to_string(),
+        records: vec![UniprotLinkedTranscriptInventoryRecord {
+            entry_id: "PTEST1".to_string(),
+            isoform_id: "PTEST1-1".to_string(),
+            transcript_id: "TX1".to_string(),
+            locus_reference_accession: Some("LOCUS_TX1".to_string()),
+            status: UniprotLinkedTranscriptInventoryStatus::Resolved,
+            mature_cdna_sha256: Some(sha256_prefixed_str(&tx1_sequence)),
+            mature_cdna_length_bp: Some(tx1_sequence.len()),
+            diagnostics: vec![],
+        }],
+        ..UniprotLinkedTranscriptInventory::default()
+    };
+    refresh_transcript_assay_inventory_content_digest(&mut inventory);
+    let inventory_path = directory.join("linked_inventory.json");
+    let inventory_file_sha256 =
+        write_transcript_assay_inventory_fixture(&inventory_path, &inventory);
+
+    let mut operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::BestEffort,
+        transcript_assay_panel_relaxed_side(),
+        0,
+        "inventory_rejection",
+    );
+    let Operation::DesignTranscriptAssayPanel {
+        objective,
+        coverage_universe,
+        annotation_release,
+        ..
+    } = &mut operation
+    else {
+        unreachable!();
+    };
+    *objective = TranscriptAssayPanelObjective::OnePerClass;
+    *annotation_release = Some("synthetic_release_1".to_string());
+    *coverage_universe = TranscriptAssayCoverageUniverse {
+        kind: TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms,
+        sources: vec![
+            TranscriptAssayCoverageSourceRef {
+                source_kind: "uniprot_projection_audit".to_string(),
+                path: audit_path.to_string_lossy().to_string(),
+                expected_sha256: Some(sha256_prefixed_bytes(&audit_bytes)),
+                ..TranscriptAssayCoverageSourceRef::default()
+            },
+            TranscriptAssayCoverageSourceRef {
+                source_kind: "uniprot_linked_transcript_inventory".to_string(),
+                path: inventory_path.to_string_lossy().to_string(),
+                expected_sha256: Some(inventory_file_sha256),
+                ..TranscriptAssayCoverageSourceRef::default()
+            },
+        ],
+        ..TranscriptAssayCoverageUniverse::default()
+    };
+    (operation, inventory, inventory_path)
+}
+
+fn refresh_transcript_assay_inventory_content_digest(
+    inventory: &mut UniprotLinkedTranscriptInventory,
+) {
+    inventory.content_sha256.clear();
+    inventory.content_sha256 = sha256_prefixed_bytes(
+        &serde_json::to_vec(inventory).expect("serialize canonical inventory fixture"),
+    );
+}
+
+fn write_transcript_assay_inventory_fixture(
+    path: &Path,
+    inventory: &UniprotLinkedTranscriptInventory,
+) -> String {
+    let bytes = serde_json::to_vec_pretty(inventory).expect("serialize inventory fixture");
+    fs::write(path, &bytes).expect("write inventory fixture");
+    sha256_prefixed_bytes(&bytes)
+}
+
+fn transcript_assay_inventory_source_mut(
+    operation: &mut Operation,
+) -> &mut TranscriptAssayCoverageSourceRef {
+    let Operation::DesignTranscriptAssayPanel {
+        coverage_universe, ..
+    } = operation
+    else {
+        unreachable!();
+    };
+    coverage_universe
+        .sources
+        .iter_mut()
+        .find(|source| source.source_kind == "uniprot_linked_transcript_inventory")
+        .expect("linked-transcript inventory source")
+}
+
+#[test]
+fn transcript_assay_inventory_rejects_assembly_mismatch_independently() {
+    let temp = tempdir().expect("temporary inventory rejection directory");
+    let (mut operation, mut inventory, inventory_path) =
+        transcript_assay_inventory_rejection_fixture(temp.path());
+    inventory.assembly = "different_assembly".to_string();
+    refresh_transcript_assay_inventory_content_digest(&mut inventory);
+    let source_sha256 = write_transcript_assay_inventory_fixture(&inventory_path, &inventory);
+    transcript_assay_inventory_source_mut(&mut operation).expected_sha256 = Some(source_sha256);
+
+    let error = transcript_qpcr_panel_test_engine()
+        .apply(operation)
+        .expect_err("assembly mismatch must fail before Primer3");
+    assert!(error.message.contains("assembly 'different_assembly'"));
+    assert!(error.message.contains("does not match assay assembly"));
+}
+
+#[test]
+fn transcript_assay_inventory_rejects_annotation_release_mismatch_independently() {
+    let temp = tempdir().expect("temporary inventory rejection directory");
+    let (mut operation, mut inventory, inventory_path) =
+        transcript_assay_inventory_rejection_fixture(temp.path());
+    inventory.annotation_release = "different_release".to_string();
+    refresh_transcript_assay_inventory_content_digest(&mut inventory);
+    let source_sha256 = write_transcript_assay_inventory_fixture(&inventory_path, &inventory);
+    transcript_assay_inventory_source_mut(&mut operation).expected_sha256 = Some(source_sha256);
+
+    let error = transcript_qpcr_panel_test_engine()
+        .apply(operation)
+        .expect_err("annotation-release mismatch must fail before Primer3");
+    assert!(
+        error
+            .message
+            .contains("annotation release 'different_release'")
+    );
+    assert!(
+        error
+            .message
+            .contains("does not match assay annotation release")
+    );
+}
+
+#[test]
+fn transcript_assay_inventory_rejects_source_file_digest_mismatch_independently() {
+    let temp = tempdir().expect("temporary inventory rejection directory");
+    let (mut operation, _inventory, _inventory_path) =
+        transcript_assay_inventory_rejection_fixture(temp.path());
+    transcript_assay_inventory_source_mut(&mut operation).expected_sha256 =
+        Some(format!("sha256:{}", "0".repeat(64)));
+
+    let error = transcript_qpcr_panel_test_engine()
+        .apply(operation)
+        .expect_err("source-file digest mismatch must fail before Primer3");
+    assert!(error.message.contains("Transcript assay coverage source"));
+    assert!(error.message.contains("but 'sha256:000000"));
+    assert!(error.message.contains("was required"));
+}
+
+#[test]
+fn transcript_assay_inventory_rejects_declared_content_digest_mismatch_independently() {
+    let temp = tempdir().expect("temporary inventory rejection directory");
+    let (mut operation, mut inventory, inventory_path) =
+        transcript_assay_inventory_rejection_fixture(temp.path());
+    inventory.source_resource_id = "drifted_resource_without_rebinding_content".to_string();
+    let source_sha256 = write_transcript_assay_inventory_fixture(&inventory_path, &inventory);
+    transcript_assay_inventory_source_mut(&mut operation).expected_sha256 = Some(source_sha256);
+
+    let error = transcript_qpcr_panel_test_engine()
+        .apply(operation)
+        .expect_err("canonical content-digest mismatch must fail before Primer3");
+    assert!(error.message.contains("declares content_sha256"));
+    assert!(error.message.contains("canonical content hashes to"));
+}
+
+#[test]
+fn transcript_assay_inventory_same_id_different_cdna_digest_is_not_covered() {
+    let temp = tempdir().expect("temporary inventory rejection directory");
+    let (mut operation, mut inventory, inventory_path) =
+        transcript_assay_inventory_rejection_fixture(temp.path());
+    inventory.records[0].mature_cdna_sha256 =
+        Some(sha256_prefixed_str("different mature cDNA content"));
+    refresh_transcript_assay_inventory_content_digest(&mut inventory);
+    let source_sha256 = write_transcript_assay_inventory_fixture(&inventory_path, &inventory);
+    transcript_assay_inventory_source_mut(&mut operation).expected_sha256 = Some(source_sha256);
+
+    let error = transcript_qpcr_panel_test_engine()
+        .apply(operation)
+        .expect_err("same transcript id with a different cDNA digest must fail closed");
+    assert!(error.message.contains("unresolved before Primer3"));
+    assert!(error.message.contains("Linked transcript 'TX1'"));
+    assert!(
+        error
+            .message
+            .contains("no current assay template has that sequence")
+    );
+}
+
+#[test]
+fn transcript_assay_coverage_joins_off_locus_inventory_by_exact_cdna_digest() {
+    let temp = tempdir().expect("temporary UniProt inventory coverage directory");
+    let audit_path = temp.path().join("projection_audit.json");
+    let audit_bytes = serde_json::to_vec_pretty(&serde_json::json!({
+        "schema": UNIPROT_PROJECTION_AUDIT_REPORT_SCHEMA,
+        "report_id": "synthetic_projection_audit",
+        "projection_id": "synthetic_projection",
+        "entry_id": "PTEST1",
+        "seq_id": "panel_src",
+        "protein_isoform_inventory": {
+            "entry_id": "PTEST1",
+            "declared_named_isoform_count": 2,
+            "status": "complete",
+            "targets": [
+                {"entry_id":"PTEST1","isoform_id":"PTEST1-1","name":"One","is_canonical":true},
+                {"entry_id":"PTEST1","isoform_id":"PTEST1-2","name":"Two","is_canonical":false}
+            ]
+        },
+        "rows": []
+    }))
+    .expect("serialize projection audit");
+    fs::write(&audit_path, &audit_bytes).expect("write projection audit");
+
+    let common_tail = "GCTAGTCGATCGTACCGTACGATCGTACGA";
+    let first_tx1 = format!("ATGCCGTAGCTTACGATCCGTTAGCGTACCTGATCGGATCCGATTAAC{common_tail}");
+    let first_tx2 = format!("CGTACGATTCGGAACCTGATCGATGCTTACGGTACCGATCTAGGCTTA{common_tail}");
+    let shared = "GATCGTACCGATGCTAGCTAGGATCCGATCGTACGATCCGTTACGATGCTAGCTAGGCTA\
+         CGATCGGATCCGTACGATCGATGCTAGCTACCGATGCTAGCTAGGATCGTACCGATGCTAGCTA"
+        .replace(' ', "");
+    let tx1_sequence = format!("{first_tx1}{shared}");
+    let tx2_sequence = format!("{first_tx2}{shared}");
+    let tx1 = (sha256_prefixed_str(&tx1_sequence), tx1_sequence.len());
+    let tx2 = (sha256_prefixed_str(&tx2_sequence), tx2_sequence.len());
+    let mut inventory = UniprotLinkedTranscriptInventory {
+        schema: UNIPROT_LINKED_TRANSCRIPT_INVENTORY_SCHEMA.to_string(),
+        inventory_id: "synthetic_linked_inventory".to_string(),
+        assembly: "synthetic_assembly".to_string(),
+        annotation_release: "synthetic_release_1".to_string(),
+        source_resource_id: "synthetic_transcript_resource".to_string(),
+        records: vec![
+            ("PTEST1-1", "ENST00000443914.8", &tx1),
+            ("PTEST1-1", "ENST00000999999.1", &tx1),
+            ("PTEST1-2", "ENST00000699071.2", &tx2),
+            ("PTEST1-2", "ENST00000907730.1", &tx2),
+        ]
+        .into_iter()
+        .map(|(isoform_id, transcript_id, (digest, length))| {
+            UniprotLinkedTranscriptInventoryRecord {
+                entry_id: "PTEST1".to_string(),
+                isoform_id: isoform_id.to_string(),
+                transcript_id: transcript_id.to_string(),
+                locus_reference_accession: Some(format!("LOCUS_{transcript_id}")),
+                status: UniprotLinkedTranscriptInventoryStatus::Resolved,
+                mature_cdna_sha256: Some(digest.clone()),
+                mature_cdna_length_bp: Some(*length),
+                diagnostics: vec![],
+            }
+        })
+        .collect(),
+        ..UniprotLinkedTranscriptInventory::default()
+    };
+    inventory.content_sha256 = sha256_prefixed_bytes(
+        &serde_json::to_vec(&inventory).expect("serialize canonical inventory"),
+    );
+    let inventory_path = temp.path().join("linked_inventory.json");
+    let inventory_bytes = serde_json::to_vec_pretty(&inventory).expect("serialize inventory");
+    let inventory_file_sha256 = sha256_prefixed_bytes(&inventory_bytes);
+    fs::write(&inventory_path, &inventory_bytes).expect("write inventory");
+
+    let mut operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::BestEffort,
+        transcript_assay_panel_relaxed_side(),
+        0,
+        "coverage_inventory_join",
+    );
+    let Operation::DesignTranscriptAssayPanel {
+        objective,
+        coverage_universe,
+        annotation_release,
+        ..
+    } = &mut operation
+    else {
+        panic!("expected transcript assay operation");
+    };
+    *objective = TranscriptAssayPanelObjective::OnePerClass;
+    *annotation_release = Some("synthetic_release_1".to_string());
+    *coverage_universe = TranscriptAssayCoverageUniverse {
+        kind: TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms,
+        sources: vec![
+            TranscriptAssayCoverageSourceRef {
+                source_kind: "uniprot_projection_audit".to_string(),
+                path: audit_path.to_string_lossy().to_string(),
+                expected_sha256: Some(sha256_prefixed_bytes(&audit_bytes)),
+                ..TranscriptAssayCoverageSourceRef::default()
+            },
+            TranscriptAssayCoverageSourceRef {
+                source_kind: "uniprot_linked_transcript_inventory".to_string(),
+                path: inventory_path.to_string_lossy().to_string(),
+                expected_sha256: Some(inventory_file_sha256.clone()),
+                ..TranscriptAssayCoverageSourceRef::default()
+            },
+        ],
+        ..TranscriptAssayCoverageUniverse::default()
+    };
+
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let local_transcript_ids = BTreeMap::from([
+        ("TX1", "ENST00000443914"),
+        ("TX2", "ENST00000699071"),
+        ("TX3", "ENST00000907730"),
+    ]);
+    for feature in engine
+        .state_mut()
+        .sequences
+        .get_mut("panel_src")
+        .expect("panel source")
+        .features_mut()
+    {
+        for (key, value) in &mut feature.qualifiers {
+            if key == "transcript_id"
+                && let Some(transcript_id) = value.as_mut()
+                && let Some(versionless) = local_transcript_ids.get(transcript_id.as_str())
+            {
+                *transcript_id = (*versionless).to_string();
+            }
+        }
+    }
+    let report = engine
+        .apply(operation.clone())
+        .expect("design inventory-backed panel")
+        .transcript_assay_panel
+        .expect("transcript assay report");
+    assert!(
+        report
+            .coverage_resolution
+            .linked_transcript_inventory_authoritative
+    );
+    assert_eq!(
+        report.coverage_resolution.linked_transcript_inventory_ids,
+        vec!["synthetic_linked_inventory".to_string()]
+    );
+    assert_eq!(
+        report
+            .coverage_resolution
+            .linked_transcript_resolutions
+            .len(),
+        4
+    );
+    let primary_record = report
+        .coverage_resolution
+        .linked_transcript_resolutions
+        .iter()
+        .find(|record| record.transcript_id == "ENST00000443914.8")
+        .expect("versioned primary inventory record");
+    assert_eq!(
+        primary_record.matched_local_transcript_ids,
+        vec!["ENST00000443914".to_string()]
+    );
+    assert!(primary_record.equivalence_group_id.is_some());
+    assert!(
+        report
+            .coverage_resolution
+            .linked_transcript_resolutions
+            .iter()
+            .all(|record| record.equivalence_group_id.is_some())
+    );
+    let first_target = report
+        .coverage_resolution
+        .targets
+        .iter()
+        .find(|target| target.uniprot_isoform_id.as_deref() == Some("PTEST1-1"))
+        .expect("first protein target");
+    assert_eq!(
+        first_target.mapped_transcript_ids,
+        vec![
+            "ENST00000443914.8".to_string(),
+            "ENST00000999999.1".to_string()
+        ]
+    );
+    assert_eq!(
+        first_target.cdna_digest_matched_transcript_ids,
+        vec![
+            "ENST00000443914.8".to_string(),
+            "ENST00000999999.1".to_string()
+        ]
+    );
+    assert_eq!(
+        first_target.genomic_specificity_unassessed_transcript_ids,
+        vec!["ENST00000999999.1".to_string()]
+    );
+    assert!(first_target.unassessed_transcript_ids.is_empty());
+    let coverage_summary = GentleEngine::experimental_assay_coverage_summary(&report);
+    assert!(coverage_summary.uniprot_coverage_available);
+    assert!(coverage_summary.linked_transcript_inventory_authoritative);
+    assert_eq!(
+        coverage_summary.linked_transcript_inventory_ids,
+        vec!["synthetic_linked_inventory".to_string()]
+    );
+    assert_eq!(coverage_summary.uniprot_linked_transcript_record_count, 4);
+    assert_eq!(
+        coverage_summary.covered_uniprot_linked_transcript_record_count,
+        4
+    );
+    assert_eq!(
+        coverage_summary.distinct_uniprot_linked_mature_cdna_count,
+        2
+    );
+    assert_eq!(
+        coverage_summary.covered_distinct_uniprot_linked_mature_cdna_count,
+        2
+    );
+    assert!(
+        coverage_summary
+            .coverage_source_report_ids
+            .contains(&"synthetic_linked_inventory".to_string())
+    );
+    assert!(
+        coverage_summary
+            .coverage_source_sha256s
+            .contains(&inventory_file_sha256)
+    );
+    assert_eq!(
+        coverage_summary.genomic_specificity_unassessed_uniprot_linked_transcript_ids,
+        vec!["ENST00000999999.1".to_string()]
+    );
+    assert!(coverage_summary.summary_lines.iter().any(|line| {
+        line.contains("ENST00000999999.1") && line.contains("genomic loci remain unassessed")
+    }));
+
+    let mut mismatched_release = operation.clone();
+    let Operation::DesignTranscriptAssayPanel {
+        annotation_release, ..
+    } = &mut mismatched_release
+    else {
+        unreachable!();
+    };
+    *annotation_release = Some("different_release".to_string());
+    let release_error = transcript_qpcr_panel_test_engine()
+        .apply(mismatched_release)
+        .expect_err("release mismatch must fail before Primer3");
+    assert!(release_error.message.contains("annotation release"));
+    assert!(release_error.message.contains("does not match"));
+
+    inventory.assembly = "different_assembly".to_string();
+    inventory.content_sha256.clear();
+    inventory.content_sha256 = sha256_prefixed_bytes(
+        &serde_json::to_vec(&inventory).expect("serialize changed inventory identity"),
+    );
+    let changed_inventory_bytes =
+        serde_json::to_vec_pretty(&inventory).expect("serialize changed inventory");
+    fs::write(&inventory_path, &changed_inventory_bytes).expect("rewrite inventory");
+    let Operation::DesignTranscriptAssayPanel {
+        coverage_universe, ..
+    } = &mut operation
+    else {
+        unreachable!();
+    };
+    coverage_universe.sources[1].expected_sha256 =
+        Some(sha256_prefixed_bytes(&changed_inventory_bytes));
+    let assembly_error = transcript_qpcr_panel_test_engine()
+        .apply(operation)
+        .expect_err("assembly mismatch must fail before Primer3");
+    assert!(assembly_error.message.contains("assembly"));
+    assert!(assembly_error.message.contains("does not match"));
+}
+
+#[test]
+fn transcript_assay_inventory_prefers_declared_assembly_over_resource_id() {
+    let engine = transcript_qpcr_panel_test_engine();
+    let dna = engine
+        .state()
+        .sequences
+        .get("panel_src")
+        .expect("synthetic panel sequence");
+    let resource_anchor = SequenceGenomeAnchorSummary {
+        seq_id: "panel_src".to_string(),
+        genome_id: "Human synthetic assembly resource".to_string(),
+        chromosome: "chr1".to_string(),
+        start_1based: 1,
+        end_1based: dna.len(),
+        strand: Some('+'),
+        anchor_verified: Some(true),
+    };
+
+    assert_eq!(
+        GentleEngine::transcript_qpcr_panel_expected_assembly(dna, Some(&resource_anchor))
+            .as_deref(),
+        Some("synthetic_assembly")
+    );
+}
+
+#[test]
+fn transcript_assay_coverage_rejects_legacy_uniprot_audit_without_inventory() {
+    let temp = tempdir().expect("temporary UniProt coverage directory");
+    let audit_path = temp.path().join("legacy_uniprot_projection_audit.json");
+    let audit_bytes = serde_json::to_vec_pretty(&serde_json::json!({
+        "schema": UNIPROT_PROJECTION_AUDIT_REPORT_SCHEMA,
+        "report_id": "legacy_uniprot_audit",
+        "projection_id": "synthetic_projection",
+        "entry_id": "PTEST1",
+        "seq_id": "panel_src",
+        "rows": [{
+            "transcript_id": "TX1",
+            "status": "consistent",
+            "link_resolution": {
+                "matched_xrefs": [{
+                    "transcript_id": "TX1",
+                    "isoform_id": "PTEST1-1"
+                }]
+            }
+        }]
+    }))
+    .expect("serialize legacy audit");
+    fs::write(&audit_path, &audit_bytes).expect("write legacy audit");
+
+    let mut operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::BestEffort,
+        transcript_assay_panel_relaxed_side(),
+        0,
+        "coverage_uniprot_legacy",
+    );
+    let Operation::DesignTranscriptAssayPanel {
+        coverage_universe, ..
+    } = &mut operation
+    else {
+        panic!("expected transcript assay operation");
+    };
+    let universe = TranscriptAssayCoverageUniverse {
+        kind: TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms,
+        sources: vec![TranscriptAssayCoverageSourceRef {
+            source_kind: "uniprot_projection_audit".to_string(),
+            path: audit_path.to_string_lossy().to_string(),
+            expected_sha256: Some(sha256_prefixed_bytes(&audit_bytes)),
+            ..TranscriptAssayCoverageSourceRef::default()
+        }],
+        ..TranscriptAssayCoverageUniverse::default()
+    };
+    *coverage_universe = universe;
+
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let error = engine
+        .apply(operation)
+        .expect_err("legacy transcript-derived audit must not define protein targets");
+    assert!(error.message.contains("complete protein_isoform_inventory"));
+    assert!(error.message.contains("regenerate the projection audit"));
+}
+
+#[test]
+fn transcript_assay_coverage_unmapped_named_uniprot_isoform_fails_before_primer3() {
+    let temp = tempdir().expect("temporary UniProt coverage directory");
+    let audit_path = temp.path().join("unmapped_uniprot_isoform_audit.json");
+    let audit_bytes = serde_json::to_vec_pretty(&serde_json::json!({
+        "schema": UNIPROT_PROJECTION_AUDIT_REPORT_SCHEMA,
+        "report_id": "unmapped_uniprot_audit",
+        "projection_id": "synthetic_projection",
+        "entry_id": "PTEST1",
+        "seq_id": "panel_src",
+        "protein_isoform_inventory": {
+            "entry_id": "PTEST1",
+            "declared_named_isoform_count": 2,
+            "status": "complete",
+            "targets": [
+                {"entry_id": "PTEST1", "isoform_id": "PTEST1-1", "name": "One", "is_canonical": true},
+                {"entry_id": "PTEST1", "isoform_id": "PTEST1-2", "name": "Two", "is_canonical": false}
+            ]
+        },
+        "rows": [{
+            "transcript_id": "TX1",
+            "status": "consistent",
+            "link_resolution": {
+                "matched_xrefs": [{"transcript_id": "TX1", "isoform_id": "PTEST1-1"}]
+            }
+        }]
+    }))
+    .expect("serialize unmapped audit");
+    fs::write(&audit_path, &audit_bytes).expect("write unmapped audit");
+
+    let mut operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::BestEffort,
+        transcript_assay_panel_relaxed_side(),
+        0,
+        "coverage_uniprot_unmapped",
+    );
+    let Operation::DesignTranscriptAssayPanel {
+        coverage_universe, ..
+    } = &mut operation
+    else {
+        panic!("expected transcript assay operation");
+    };
+    *coverage_universe = TranscriptAssayCoverageUniverse {
+        kind: TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms,
+        sources: vec![TranscriptAssayCoverageSourceRef {
+            source_kind: "uniprot_projection_audit".to_string(),
+            path: audit_path.to_string_lossy().to_string(),
+            expected_sha256: Some(sha256_prefixed_bytes(&audit_bytes)),
+            ..TranscriptAssayCoverageSourceRef::default()
+        }],
+        ..TranscriptAssayCoverageUniverse::default()
+    };
+
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let error = engine
+        .apply(operation)
+        .expect_err("unmapped named protein isoform must fail before Primer3");
+    assert!(error.message.contains("unresolved before Primer3"));
+    assert!(error.message.contains("PTEST1-2"));
+}
+
+#[test]
+fn transcript_assay_coverage_canonical_only_uniprot_entry_is_one_target() {
+    let temp = tempdir().expect("temporary UniProt coverage directory");
+    let audit_path = temp.path().join("canonical_only_uniprot_audit.json");
+    let audit_bytes = serde_json::to_vec_pretty(&serde_json::json!({
+        "schema": UNIPROT_PROJECTION_AUDIT_REPORT_SCHEMA,
+        "report_id": "canonical_only_uniprot_audit",
+        "projection_id": "synthetic_projection",
+        "entry_id": "PTEST1",
+        "seq_id": "panel_src",
+        "protein_isoform_inventory": {
+            "entry_id": "PTEST1",
+            "status": "canonical_only",
+            "targets": [{
+                "entry_id": "PTEST1",
+                "isoform_id": "PTEST1",
+                "name": "Canonical UniProt protein",
+                "is_canonical": true
+            }]
+        },
+        "rows": [
+            {
+                "transcript_id": "TX1",
+                "status": "warning",
+                "link_resolution": {"matched_xrefs": [{"transcript_id": "TX1"}]}
+            },
+            {
+                "transcript_id": "TX2",
+                "status": "consistent",
+                "link_resolution": {"matched_xrefs": [{"transcript_id": "TX2"}]}
+            }
+        ]
+    }))
+    .expect("serialize canonical-only audit");
+    fs::write(&audit_path, &audit_bytes).expect("write canonical-only audit");
+
+    let mut operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::BestEffort,
+        transcript_assay_panel_relaxed_side(),
+        0,
+        "coverage_uniprot_canonical_only",
+    );
+    let Operation::DesignTranscriptAssayPanel {
+        objective,
+        coverage_universe,
+        ..
+    } = &mut operation
+    else {
+        panic!("expected transcript assay operation");
+    };
+    *objective = TranscriptAssayPanelObjective::OnePerClass;
+    let universe = TranscriptAssayCoverageUniverse {
+        kind: TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms,
+        sources: vec![TranscriptAssayCoverageSourceRef {
+            source_kind: "uniprot_projection_audit".to_string(),
+            path: audit_path.to_string_lossy().to_string(),
+            expected_sha256: Some(sha256_prefixed_bytes(&audit_bytes)),
+            ..TranscriptAssayCoverageSourceRef::default()
+        }],
+        ..TranscriptAssayCoverageUniverse::default()
+    };
+    *coverage_universe = universe.clone();
+
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let report = engine
+        .apply(operation)
+        .expect("design canonical-only protein target panel")
+        .transcript_assay_panel
+        .expect("transcript assay report");
+    assert_eq!(report.coverage_resolution.required_target_count, 1);
+    assert_eq!(report.coverage_resolution.targets.len(), 1);
+    let target = &report.coverage_resolution.targets[0];
+    assert_eq!(target.mapped_transcript_ids, ["TX1", "TX2"]);
+    assert_eq!(target.resolved_transcript_id.as_deref(), Some("TX2"));
+    assert_eq!(
+        target.coverage_status,
+        TranscriptAssayCoverageEvaluationStatus::Covered
+    );
+    assert_eq!(
+        target.distinction_status,
+        TranscriptAssayCoverageDistinctionStatus::NotApplicableSingleTarget
+    );
+
+    let mut endpoint_operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::RequireAll,
+        transcript_assay_panel_relaxed_side(),
+        0,
+        "coverage_uniprot_canonical_endpoint",
+    );
+    let Operation::DesignTranscriptAssayPanel {
+        assay_kind,
+        cdna_synthesis,
+        objective,
+        coverage_universe,
+        min_amplicon_bp,
+        max_amplicon_bp,
+        ..
+    } = &mut endpoint_operation
+    else {
+        panic!("expected transcript assay operation");
+    };
+    *assay_kind = TranscriptAssayKind::EndpointRtPcr;
+    *cdna_synthesis = TranscriptAssayCdnaSynthesis::OligoDt;
+    *objective = TranscriptAssayPanelObjective::IsoformEndMatrix;
+    *coverage_universe = universe;
+    *min_amplicon_bp = Some(40);
+    *max_amplicon_bp = Some(10_000);
+    let feasibility = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&endpoint_operation)
+        .expect("inspect canonical-only endpoint feasibility");
+    assert_eq!(feasibility.coverage_resolution.required_target_count, 1);
+    assert_eq!(
+        feasibility.reaction_count, 1,
+        "multiple transcript mappings must not multiply mandatory endpoint reactions"
+    );
+}
+
+#[cfg(unix)]
+fn transcript_assay_specificity_execution_manifest(
+    handoff: &TranscriptAssayPanelSpecificityHandoff,
+    emit_intended_hits: bool,
+) -> TranscriptAssayPanelSpecificityExecutionManifest {
+    let mut executions = vec![];
+    for assay in &handoff.assays {
+        for command in &assay.handoff.commands {
+            let bytes = if emit_intended_hits {
+                let target_ranges = match command.role {
+                    PrimerSpecificityPrimerRole::Forward => {
+                        &assay.handoff.intended_target.forward_binding_ranges
+                    }
+                    PrimerSpecificityPrimerRole::Reverse => {
+                        &assay.handoff.intended_target.reverse_binding_ranges
+                    }
+                };
+                let has_contiguous_expected_product = assay
+                    .handoff
+                    .intended_target
+                    .expected_products
+                    .iter()
+                    .any(|product| product.target_space == "genomic_dna");
+                target_ranges
+                    .iter()
+                    .filter(|_| has_contiguous_expected_product || target_ranges.len() == 1)
+                    .map(|range| {
+                        let (subject_start, subject_end) = match command.role {
+                            PrimerSpecificityPrimerRole::Forward => {
+                                (range.start_1based, range.end_1based)
+                            }
+                            PrimerSpecificityPrimerRole::Reverse => {
+                                (range.end_1based, range.start_1based)
+                            }
+                        };
+                        format!(
+                            "{}\tchr1\t100\t{}\t0\t0\t1\t{}\t{}\t{}\t1e-20\t80\t100\n",
+                            command.query_label,
+                            command.query_length_bp,
+                            command.query_length_bp,
+                            subject_start,
+                            subject_end,
+                        )
+                    })
+                    .collect::<String>()
+                    .into_bytes()
+            } else {
+                vec![]
+            };
+            fs::write(&command.output_tsv_path, &bytes)
+                .expect("write externally executed panel BLAST output");
+            executions.push(TranscriptAssayPanelSpecificityCommandExecution {
+                command_id: command.command_id.clone(),
+                assay_id: assay.assay_id.clone(),
+                exit_code: Some(0),
+                output_path: command.output_tsv_path.clone(),
+                output_size_bytes: Some(bytes.len() as u64),
+                output_sha256: Some(sha256_prefixed_bytes(&bytes)),
+            });
+        }
+    }
+    TranscriptAssayPanelSpecificityExecutionManifest {
+        schema: TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_EXECUTION_MANIFEST_SCHEMA.to_string(),
+        handoff_id: handoff.handoff_id.clone(),
+        panel_digest: handoff.panel_digest.clone(),
+        executions,
+    }
+}
+
+#[cfg(unix)]
+fn transcript_assay_specificity_execution_manifest_with_off_target(
+    handoff: &TranscriptAssayPanelSpecificityHandoff,
+) -> TranscriptAssayPanelSpecificityExecutionManifest {
+    let mut manifest = transcript_assay_specificity_execution_manifest(handoff, false);
+    let assay = handoff.assays.first().expect("one planned assay");
+    for command in &assay.handoff.commands {
+        let (subject_start, subject_end) = match command.role {
+            PrimerSpecificityPrimerRole::Forward => {
+                (700usize, 700 + command.query_length_bp.saturating_sub(1))
+            }
+            PrimerSpecificityPrimerRole::Reverse => {
+                (850usize, 850 - command.query_length_bp.saturating_sub(1))
+            }
+        };
+        let bytes = format!(
+            "{}\tchr1\t100\t{}\t0\t0\t1\t{}\t{}\t{}\t1e-20\t80\t100\n",
+            command.query_label,
+            command.query_length_bp,
+            command.query_length_bp,
+            subject_start,
+            subject_end,
+        )
+        .into_bytes();
+        fs::write(&command.output_tsv_path, &bytes)
+            .expect("write synthetic off-target BLAST output");
+        let execution = manifest
+            .executions
+            .iter_mut()
+            .find(|row| row.command_id == command.command_id)
+            .expect("execution row for synthetic off-target command");
+        execution.output_size_bytes = Some(bytes.len() as u64);
+        execution.output_sha256 = Some(sha256_prefixed_bytes(&bytes));
+    }
+    manifest
+}
+
+#[cfg(unix)]
+#[test]
+fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_outcomes() {
+    let _env_lock = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let temp = tempdir().expect("temporary panel specificity directory");
+    let root = temp.path();
+    let fasta = root.join("toy.fa");
+    let annotation = root.join("toy.gtf");
+    let cache = root.join("cache");
+    let catalog = root.join("catalog.json");
+    fs::write(&fasta, format!(">chr1\n{}\n", "A".repeat(1_000)))
+        .expect("write panel specificity FASTA");
+    fs::write(
+        &annotation,
+        "chr1\ttest\tgene\t1\t1000\t.\t+\t.\tgene_id \"TOY1\"; gene_name \"TOY1\";\n",
+    )
+    .expect("write panel specificity annotation");
+    fs::write(
+        &catalog,
+        format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "synthetic aggregate panel specificity fixture",
+    "reference_name": "synthetic-assembly",
+    "reference_release": "synthetic-release-1",
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
+  }}
+}}"#,
+            serde_json::json!(fasta),
+            serde_json::json!(annotation),
+            serde_json::json!(cache)
+        ),
+    )
+    .expect("write panel specificity catalog");
+    let fake_makeblastdb = root.join("fake_makeblastdb.sh");
+    fs::write(
+        &fake_makeblastdb,
+        "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'makeblastdb: fake 1.0'; exit 0; fi\nout=''\nwhile [ $# -gt 0 ]; do\n  if [ \"$1\" = '-out' ]; then out=\"$2\"; shift 2; else shift; fi\ndone\nmkdir -p \"$(dirname \"$out\")\"\nprintf nhr > \"${out}.nhr\"\nprintf nin > \"${out}.nin\"\nprintf nsq > \"${out}.nsq\"\n",
+    )
+    .expect("write fake makeblastdb");
+    let mut permissions = fs::metadata(&fake_makeblastdb)
+        .expect("fake makeblastdb metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_makeblastdb, permissions).expect("enable fake makeblastdb");
+    let fake_blastn = root.join("fake_blastn.sh");
+    fs::write(
+        &fake_blastn,
+        "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'blastn: fake 1.0'; exit 0; fi\nexit 99\n",
+    )
+    .expect("write fake blastn");
+    let mut permissions = fs::metadata(&fake_blastn)
+        .expect("fake blastn metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_blastn, permissions).expect("enable fake blastn");
+    let fake_blastdbcmd = root.join("fake_blastdbcmd.sh");
+    write_fake_blastdbcmd(&fake_blastdbcmd, 1, 1_000);
+    let _makeblastdb = crate::tool_overrides::ScopedToolOverrideGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        &fake_makeblastdb.to_string_lossy(),
+    );
+    let _blastn = crate::tool_overrides::ScopedToolOverrideGuard::set(
+        crate::genomes::BLASTN_ENV_BIN,
+        &fake_blastn.to_string_lossy(),
+    );
+    let _blastdbcmd = crate::tool_overrides::ScopedToolOverrideGuard::set(
+        crate::genomes::BLASTDBCMD_ENV_BIN,
+        &fake_blastdbcmd.to_string_lossy(),
+    );
+
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let panel_source_len = engine
+        .state()
+        .sequences
+        .get("panel_src")
+        .expect("panel source sequence")
+        .len();
+    engine.state_mut().metadata.insert(
+        PROVENANCE_METADATA_KEY.to_string(),
+        serde_json::json!({
+            GENOME_EXTRACTIONS_METADATA_KEY: [
+                {
+                    "seq_id": "panel_src",
+                    "genome_id": "ToyGenome",
+                    "operation": "synthetic_fixture",
+                    "catalog_path": catalog.to_string_lossy(),
+                    "gene_query": null,
+                    "occurrence": null,
+                    "gene_id": null,
+                    "gene_name": null,
+                    "strand": "+",
+                    "sequence_source_type": "local",
+                    "annotation_source_type": "local",
+                    "sequence_source": fasta.to_string_lossy(),
+                    "annotation_source": annotation.to_string_lossy(),
+                    "sequence_sha1": null,
+                    "annotation_sha1": null,
+                    "chromosome": "chr1",
+                    "start_1based": 1,
+                    "end_1based": panel_source_len,
+                    "anchor_strand": "+",
+                    "anchor_verified": true,
+                    "recorded_at_unix_ms": 1
+                }
+            ]
+        }),
+    );
+    engine
+        .apply(Operation::PrepareGenome {
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            cache_dir: None,
+            timeout_seconds: None,
+        })
+        .expect("prepare aggregate specificity genome");
+    let mut specificity_policy = PrimerSpecificityPolicy {
+        max_3prime_mismatches: 5,
+        ..PrimerSpecificityPolicy::default()
+    };
+    // This atomicity fixture supplies synthetic BLAST rows that are not
+    // sequence-consistent with its all-A reference; full alignment has its own tests.
+    specificity_policy.full_alignment.mode = PrimerSpecificityFullAlignmentMode::Disabled;
+
+    for report_id in [
+        "panel_external_pass",
+        "panel_external_fail",
+        "panel_external_incomplete",
+        "panel_external_search_incomplete",
+    ] {
+        let mut operation = transcript_assay_panel_operation(
+            TranscriptAssayCoveragePolicy::BestEffort,
+            transcript_assay_panel_relaxed_side(),
+            1,
+            report_id,
+        );
+        let Operation::DesignTranscriptAssayPanel { objective, .. } = &mut operation else {
+            unreachable!("transcript assay panel helper returned another operation")
+        };
+        *objective = TranscriptAssayPanelObjective::OnePerClass;
+        let report = engine
+            .apply(operation)
+            .expect("design persisted transcript assay panel")
+            .transcript_assay_panel
+            .expect("transcript assay panel result");
+        assert!(
+            report.selected_assays.len() >= 2,
+            "aggregate fixture must exercise more than one selected assay"
+        );
+        assert_eq!(
+            report
+                .source_genome_anchor
+                .as_ref()
+                .map(|anchor| anchor.chromosome.as_str()),
+            Some("chr1"),
+            "the panel must persist its design-time genome anchor"
+        );
+    }
+    engine.state_mut().metadata.remove(PROVENANCE_METADATA_KEY);
+    let panel_source = engine
+        .state_mut()
+        .sequences
+        .get_mut("panel_src")
+        .expect("panel source sequence");
+    let source_feature = panel_source
+        .features_mut()
+        .iter_mut()
+        .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("source"))
+        .expect("panel source feature");
+    source_feature.qualifiers.retain(|(key, _)| {
+        !matches!(
+            key.as_ref(),
+            "chromosome" | "genomic_start_1based" | "genomic_end_1based" | "strand"
+        )
+    });
+    let mut unanchored_operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::BestEffort,
+        transcript_assay_panel_relaxed_side(),
+        1,
+        "panel_external_not_assessed",
+    );
+    let Operation::DesignTranscriptAssayPanel { objective, .. } = &mut unanchored_operation else {
+        unreachable!("transcript assay panel helper returned another operation")
+    };
+    *objective = TranscriptAssayPanelObjective::OnePerClass;
+    let unanchored_panel = engine
+        .apply(unanchored_operation)
+        .expect("design legacy-like unanchored transcript assay panel")
+        .transcript_assay_panel
+        .expect("unanchored transcript assay panel result");
+    assert!(unanchored_panel.source_genome_anchor.is_none());
+
+    let pass_plan = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersTranscriptAssaySpecificityPlan {
+            panel_report_id: "panel_external_pass".to_string(),
+            target_genome_id: "ToyGenome".to_string(),
+            policy: specificity_policy.clone(),
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            cache_dir: None,
+            output_dir: root.join("pass").to_string_lossy().to_string(),
+        },
+    )
+    .expect("execute complete-panel specificity planning command");
+    assert!(!pass_plan.state_changed);
+    let pass_handoff = serde_json::from_value::<TranscriptAssayPanelSpecificityHandoff>(
+        pass_plan.output["handoff"].clone(),
+    )
+    .expect("parse planned aggregate handoff");
+    assert_eq!(pass_handoff.assays.len(), pass_handoff.selected_assay_count);
+    assert_eq!(pass_handoff.policy_schema, PRIMER_SPECIFICITY_POLICY_SCHEMA);
+    assert!(Path::new(&pass_handoff.execution_manifest_template_path).is_file());
+    let planned_panel = engine
+        .get_transcript_assay_panel_report("panel_external_pass")
+        .expect("planned source panel");
+    assert_eq!(
+        pass_handoff.policy.readiness_max_target_amplicon_bp,
+        Some(planned_panel.max_amplicon_bp)
+    );
+    let expected_ceiling_reason = format!(
+        "Transcript assay panel '{}' declares an allowed product range of {}-{} bp; its upper bound is the ordinary assay/readiness ceiling.",
+        planned_panel.report_id, planned_panel.min_amplicon_bp, planned_panel.max_amplicon_bp
+    );
+    assert_eq!(
+        pass_handoff
+            .policy
+            .readiness_max_target_amplicon_bp_reason
+            .as_deref(),
+        Some(expected_ceiling_reason.as_str()),
+        "panel-derived readiness ceiling must explain its declared range"
+    );
+    for planned_assay in &pass_handoff.assays {
+        let selected_assay = planned_panel
+            .selected_assays
+            .iter()
+            .find(|assay| assay.assay_id == planned_assay.assay_id)
+            .expect("planned selected assay");
+        let intended_group_ids = selected_assay
+            .single_product_equivalence_group_ids
+            .iter()
+            .collect::<BTreeSet<_>>();
+        let expected_transcript_ids = planned_panel
+            .equivalence_groups
+            .iter()
+            .filter(|group| intended_group_ids.contains(&group.equivalence_group_id))
+            .flat_map(|group| group.members.iter())
+            .map(|member| member.transcript_id.as_str())
+            .collect::<BTreeSet<_>>();
+        let planned_transcript_ids = planned_assay
+            .handoff
+            .intended_target
+            .expected_products
+            .iter()
+            .filter(|product| product.target_space == "transcriptome_cdna")
+            .map(|product| product.subject_id.as_str())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            planned_assay.handoff.intended_target.model,
+            PrimerSpecificityIntendedTargetModel::TranscriptSet
+        );
+        assert_eq!(planned_transcript_ids, expected_transcript_ids);
+    }
+    let pass_manifest = transcript_assay_specificity_execution_manifest(&pass_handoff, true);
+    // Exercise the MCP adapter on an independent copy of the same synthetic
+    // panel. Its handoff and finalization must use the shared biological path.
+    let mcp_state_path = root.join("mcp-panel.json");
+    engine
+        .state()
+        .save_to_path(mcp_state_path.to_str().unwrap())
+        .unwrap();
+    let mcp_call = |name: &str, arguments: serde_json::Value| {
+        let result = crate::mcp_server::mcp_tool_call_for_capability_surface_tests(
+            mcp_state_path.to_str().unwrap(),
+            name,
+            arguments,
+        );
+        assert_ne!(result["isError"], true, "{name}: {result}");
+        serde_json::from_str::<serde_json::Value>(result["content"][0]["text"].as_str().unwrap())
+            .unwrap()
+    };
+    let before_mcp_plan = fs::read(&mcp_state_path).unwrap();
+    let mcp_plan = mcp_call(
+        "transcript_assay_specificity_plan",
+        serde_json::json!({
+            "panel_report_id":"panel_external_pass", "target_genome_id":"ToyGenome",
+            "output_dir":root.join("mcp-pass"), "catalog_path":catalog,
+            "max_3prime_mismatches":5, "full_alignment":"disabled", "confirm":true
+        }),
+    );
+    assert_eq!(fs::read(&mcp_state_path).unwrap(), before_mcp_plan);
+    let mcp_handoff: TranscriptAssayPanelSpecificityHandoff =
+        serde_json::from_value(mcp_plan["handoff"].clone()).unwrap();
+    assert_eq!(
+        mcp_handoff.selected_assay_count,
+        pass_handoff.selected_assay_count
+    );
+    assert_eq!(
+        mcp_handoff.policy.readiness_max_target_amplicon_bp,
+        pass_handoff.policy.readiness_max_target_amplicon_bp
+    );
+    let mcp_manifest = transcript_assay_specificity_execution_manifest(&mcp_handoff, true);
+    let mcp_acceptance_path = root.join("mcp-acceptance.json");
+    let mcp_finalized = mcp_call(
+        "transcript_assay_specificity_finalize",
+        serde_json::json!({
+            "handoff_path":mcp_handoff.handoff_path, "execution_manifest":mcp_manifest,
+            "path":mcp_acceptance_path, "confirm":true
+        }),
+    );
+    assert_eq!(mcp_finalized["acceptance"]["status"], "pass");
+    assert_eq!(mcp_finalized["acceptance"]["accepted"], true);
+    let exported_acceptance: serde_json::Value =
+        serde_json::from_slice(&fs::read(&mcp_acceptance_path).unwrap()).unwrap();
+    assert_eq!(exported_acceptance, mcp_finalized["acceptance"]);
+    assert_ne!(fs::read(&mcp_state_path).unwrap(), before_mcp_plan);
+    let mcp_reopened = mcp_call(
+        "primer_reports",
+        serde_json::json!({
+            "family":"transcript_assay_panel", "action":"show", "report_id":"panel_external_pass"
+        }),
+    );
+    assert_eq!(
+        mcp_reopened["report"]["specificity_acceptance"]["status"],
+        "pass"
+    );
+    let panel_export_path = root.join("mcp-panel-export.json");
+    let before_export = fs::read(&mcp_state_path).unwrap();
+    mcp_call(
+        "primer_reports",
+        serde_json::json!({
+            "family":"transcript_assay_panel", "action":"export", "report_id":"panel_external_pass",
+            "path":panel_export_path, "confirm":true
+        }),
+    );
+    let exported_panel: serde_json::Value =
+        serde_json::from_slice(&fs::read(panel_export_path).unwrap()).unwrap();
+    assert_eq!(exported_panel, mcp_reopened["report"]);
+    assert_eq!(fs::read(&mcp_state_path).unwrap(), before_export);
+    let pass_finalize = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersTranscriptAssaySpecificityFinalize {
+            handoff_path: pass_handoff.handoff_path.clone(),
+            execution_manifest_json: serde_json::to_string(&pass_manifest)
+                .expect("serialize aggregate execution manifest"),
+            path: None,
+        },
+    )
+    .expect("execute passing panel specificity finalization command");
+    assert!(pass_finalize.state_changed);
+    let pass = serde_json::from_value::<TranscriptAssayPanelSpecificityAcceptance>(
+        pass_finalize.output["acceptance"].clone(),
+    )
+    .expect("parse aggregate acceptance");
+    assert_eq!(
+        pass.status,
+        TranscriptAssayPanelSpecificityAcceptanceStatus::Pass,
+        "{}",
+        serde_json::to_string_pretty(&pass).expect("serialize failed panel acceptance")
+    );
+    assert!(pass.accepted);
+    assert_eq!(pass.assessed_assay_count, pass.expected_assay_count);
+    let persisted_pass = engine
+        .get_transcript_assay_panel_report("panel_external_pass")
+        .expect("persisted accepted panel");
+    assert_eq!(
+        persisted_pass
+            .specificity_acceptance
+            .as_ref()
+            .map(|acceptance| acceptance.status),
+        Some(TranscriptAssayPanelSpecificityAcceptanceStatus::Pass)
+    );
+    assert_eq!(
+        persisted_pass.genomic_specificity_assessments.len(),
+        pass.expected_assay_count
+    );
+    assert!(persisted_pass.selected_assays.iter().all(|assay| {
+        assay.primer_pair_summary.whole_genome_specificity_status == "external_blast_pass"
+    }));
+    let genomic_only_readiness = engine
+        .apply(Operation::BuildExperimentalAssayHandoff {
+            panel_report_id: "panel_external_pass".to_string(),
+            policy: ExperimentalAssayReadinessPolicy::default(),
+            variant_evidence_paths: vec![],
+            order_form_id: None,
+            path: None,
+            order_table_path: None,
+            virtual_gel_svg_path: None,
+            virtual_gel_ladders: vec![],
+            virtual_gel_render_options: Default::default(),
+        })
+        .expect("build readiness handoff from genomic-only specificity evidence")
+        .experimental_assay_handoff
+        .expect("genomic-only readiness handoff");
+    for card in &genomic_only_readiness.cards {
+        assert_eq!(
+            card.gate_outcomes
+                .iter()
+                .find(|gate| gate.gate == "genomic_carryover")
+                .map(|gate| gate.status),
+            Some(ExperimentalAssayGateStatus::Pass)
+        );
+        assert_eq!(
+            card.gate_outcomes
+                .iter()
+                .find(|gate| gate.gate == "transcriptome_specificity")
+                .map(|gate| gate.status),
+            Some(ExperimentalAssayGateStatus::NotEvaluated)
+        );
+        assert!(
+            card.blockers
+                .iter()
+                .any(|blocker| blocker == "transcriptome_specificity"),
+            "genomic specificity alone must not make an RT-PCR/qPCR assay order-ready"
+        );
+    }
+
+    let fail_handoff = engine
+        .prepare_transcript_assay_panel_specificity_handoff(
+            "panel_external_fail",
+            "ToyGenome",
+            specificity_policy.clone(),
+            Some(&catalog.to_string_lossy()),
+            None,
+            &root.join("fail").to_string_lossy(),
+        )
+        .expect("plan biologically failing panel handoff");
+    let fail_manifest =
+        transcript_assay_specificity_execution_manifest_with_off_target(&fail_handoff);
+    let specificity_fail = engine
+        .finalize_transcript_assay_panel_specificity_handoff(
+            &fail_handoff.handoff_path,
+            fail_manifest.clone(),
+            None,
+        )
+        .expect("interpret a completed BLAST search with one unintended product");
+    assert_eq!(
+        specificity_fail.status,
+        TranscriptAssayPanelSpecificityAcceptanceStatus::SpecificityFail
+    );
+    assert!(!specificity_fail.accepted);
+    assert!(specificity_fail.issues.is_empty());
+    let persisted_fail = engine
+        .get_transcript_assay_panel_report("panel_external_fail")
+        .expect("persisted biologically failing panel");
+    assert_eq!(
+        persisted_fail
+            .specificity_acceptance
+            .as_ref()
+            .map(|acceptance| acceptance.status),
+        Some(TranscriptAssayPanelSpecificityAcceptanceStatus::SpecificityFail)
+    );
+    assert_eq!(
+        persisted_fail.genomic_specificity_assessments.len(),
+        specificity_fail.expected_assay_count
+    );
+    let persisted_failing_assay_ids = persisted_fail
+        .genomic_specificity_assessments
+        .iter()
+        .filter(|assessment| assessment.status == "external_blast_specificity_fail")
+        .map(|assessment| assessment.assay_id.as_str())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        persisted_failing_assay_ids,
+        specificity_fail
+            .failing_assay_ids
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>()
+    );
+    assert!(!persisted_failing_assay_ids.is_empty());
+    assert!(
+        persisted_fail
+            .genomic_specificity_assessments
+            .iter()
+            .any(|assessment| assessment.status == "external_blast_pass"),
+        "an empty complete genomic search remains a pass for the junction-spanning assay"
+    );
+
+    let mut tampered_handoff = fail_handoff.clone();
+    tampered_handoff.assays[0]
+        .handoff
+        .blast_db_prefix
+        .push_str(".different_database");
+    fs::write(
+        &fail_handoff.handoff_path,
+        serde_json::to_vec_pretty(&tampered_handoff).expect("serialize tampered handoff"),
+    )
+    .expect("write tampered aggregate handoff");
+    let tampered = engine
+        .finalize_transcript_assay_panel_specificity_handoff(
+            &fail_handoff.handoff_path,
+            fail_manifest,
+            None,
+        )
+        .expect("classify tampered handoff as incomplete");
+    assert_eq!(
+        tampered.status,
+        TranscriptAssayPanelSpecificityAcceptanceStatus::Incomplete
+    );
+    assert!(
+        tampered
+            .issues
+            .iter()
+            .any(|issue| issue.code == "handoff_content_mismatch")
+    );
+
+    let incomplete_handoff = engine
+        .prepare_transcript_assay_panel_specificity_handoff(
+            "panel_external_incomplete",
+            "ToyGenome",
+            specificity_policy,
+            Some(&catalog.to_string_lossy()),
+            None,
+            &root.join("incomplete").to_string_lossy(),
+        )
+        .expect("plan incomplete panel handoff");
+    let mut incomplete_manifest =
+        transcript_assay_specificity_execution_manifest(&incomplete_handoff, false);
+    let failed_execution = incomplete_manifest
+        .executions
+        .first_mut()
+        .expect("one declared command execution");
+    failed_execution.exit_code = Some(17);
+    failed_execution.output_size_bytes = None;
+    failed_execution.output_sha256 = None;
+    let failed_execution_assay_id = failed_execution.assay_id.clone();
+    incomplete_manifest.panel_digest = "sha256:stale-panel".to_string();
+    let incomplete = engine
+        .finalize_transcript_assay_panel_specificity_handoff(
+            &incomplete_handoff.handoff_path,
+            incomplete_manifest,
+            None,
+        )
+        .expect("classify failed process as incomplete");
+    assert_eq!(
+        incomplete.status,
+        TranscriptAssayPanelSpecificityAcceptanceStatus::Incomplete
+    );
+    assert!(!incomplete.accepted);
+    assert!(
+        incomplete
+            .issues
+            .iter()
+            .any(|issue| issue.code == "execution_failed")
+    );
+    assert!(
+        incomplete
+            .issues
+            .iter()
+            .any(|issue| issue.code == "panel_digest_mismatch")
+    );
+    assert!(
+        incomplete
+            .execution_failed_assay_ids
+            .contains(&failed_execution_assay_id)
+    );
+    let persisted_incomplete = engine
+        .get_transcript_assay_panel_report("panel_external_incomplete")
+        .expect("persisted incomplete panel");
+    assert!(persisted_incomplete.specificity_acceptance.is_none());
+    assert!(
+        persisted_incomplete
+            .genomic_specificity_assessments
+            .is_empty()
+    );
+
+    let search_incomplete_handoff = engine
+        .prepare_transcript_assay_panel_specificity_handoff(
+            "panel_external_search_incomplete",
+            "ToyGenome",
+            PrimerSpecificityPolicy {
+                max_3prime_mismatches: 5,
+                ..PrimerSpecificityPolicy::default()
+            },
+            Some(&catalog.to_string_lossy()),
+            None,
+            &root.join("search-incomplete").to_string_lossy(),
+        )
+        .expect("plan panel before database subject count changes");
+    let search_incomplete_manifest =
+        transcript_assay_specificity_execution_manifest(&search_incomplete_handoff, false);
+    write_fake_blastdbcmd(&fake_blastdbcmd, 10, 1_000);
+    let search_incomplete = engine
+        .finalize_transcript_assay_panel_specificity_handoff(
+            &search_incomplete_handoff.handoff_path,
+            search_incomplete_manifest,
+            None,
+        )
+        .expect("classify a no-longer-exhaustive search as incomplete");
+    assert_eq!(
+        search_incomplete.status,
+        TranscriptAssayPanelSpecificityAcceptanceStatus::Incomplete
+    );
+    assert!(
+        search_incomplete
+            .issues
+            .iter()
+            .any(|issue| issue.code == "specificity_search_incomplete")
+    );
+    let persisted_search_incomplete = engine
+        .get_transcript_assay_panel_report("panel_external_search_incomplete")
+        .expect("persisted source panel after incomplete search");
+    assert!(persisted_search_incomplete.specificity_acceptance.is_none());
+    assert!(
+        persisted_search_incomplete
+            .genomic_specificity_assessments
+            .is_empty(),
+        "a partially assessed incomplete panel must not be attached"
+    );
+    write_fake_blastdbcmd(&fake_blastdbcmd, 1, 1_000);
+
+    let not_assessed_handoff = engine
+        .prepare_transcript_assay_panel_specificity_handoff(
+            "panel_external_not_assessed",
+            "ToyGenome",
+            PrimerSpecificityPolicy {
+                max_3prime_mismatches: 5,
+                ..PrimerSpecificityPolicy::default()
+            },
+            Some(&catalog.to_string_lossy()),
+            None,
+            &root.join("not_assessed").to_string_lossy(),
+        )
+        .expect("plan unanchored panel handoff");
+    let not_assessed_manifest =
+        transcript_assay_specificity_execution_manifest(&not_assessed_handoff, false);
+    let not_assessed = engine
+        .finalize_transcript_assay_panel_specificity_handoff(
+            &not_assessed_handoff.handoff_path,
+            not_assessed_manifest,
+            None,
+        )
+        .expect("interpret complete but unassessable genomic search");
+    assert_eq!(
+        not_assessed.status,
+        TranscriptAssayPanelSpecificityAcceptanceStatus::NotAssessed
+    );
+    assert!(!not_assessed.accepted);
+    assert!(not_assessed.issues.is_empty());
+    assert!(!not_assessed.not_assessed_assay_ids.is_empty());
+    assert!(not_assessed.execution_failed_assay_ids.is_empty());
+    let serialized =
+        serde_json::to_value(&not_assessed).expect("serialize not-assessed acceptance");
+    assert_eq!(serialized["status"], "not_assessed");
+}
+
+#[test]
+fn transcript_assay_panel_groups_only_byte_identical_cdna_and_persists_matrix() {
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let result = engine
+        .apply(transcript_assay_panel_operation(
+            TranscriptAssayCoveragePolicy::BestEffort,
+            transcript_assay_panel_relaxed_side(),
+            1,
+            "panel_v2_equivalence",
+        ))
+        .expect("best-effort transcript assay panel");
+    let report = result
+        .transcript_assay_panel
+        .expect("transcript assay panel report");
+    assert_eq!(report.schema, "gentle.transcript_assay_panel.v2");
+    assert_eq!(report.transcript_count, 3);
+    assert_eq!(report.equivalence_group_count, 2);
+    let duplicate_group = report
+        .equivalence_groups
+        .iter()
+        .find(|group| group.member_count == 2)
+        .expect("byte-identical TX2/TX3 group");
+    assert_eq!(
+        duplicate_group
+            .members
+            .iter()
+            .map(|member| member.transcript_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["TX2", "TX3"]
+    );
+    for transcript_id in ["TX2", "TX3"] {
+        let row = report
+            .transcript_rows
+            .iter()
+            .find(|row| row.transcript_id == transcript_id)
+            .expect("duplicate transcript row");
+        assert_eq!(
+            row.status,
+            TranscriptAssayMemberStatus::NotDistinguishableBetweenMembers
+        );
+    }
+    assert!(report.candidate_assay_count > 0);
+    assert_eq!(report.assay_kind, TranscriptAssayKind::TaqmanQpcr);
+    assert!(report.selected_assays.iter().all(|assay| {
+        assay.assay_kind == TranscriptAssayKind::TaqmanQpcr
+            && assay.probe.is_some()
+            && assay.assay.is_some()
+    }));
+    assert!(report.selected_assays.iter().all(|selected| {
+        selected.assay.as_ref().is_some_and(|assay| {
+            let score_from_terms = assay
+                .score_terms
+                .iter()
+                .map(|term| term.contribution)
+                .sum::<f64>();
+            !assay.score_terms.is_empty()
+                && (assay.score - score_from_terms).abs()
+                    <= PRIMER_DESIGN_SCORE_SUM_TOLERANCE * assay.score.abs().max(1.0)
+                && assay
+                    .score_terms
+                    .iter()
+                    .any(|term| term.term == "probe_tm_offset_from_preferred")
+                && assay
+                    .score_terms
+                    .iter()
+                    .any(|term| term.term == "probe_amplicon_midpoint_distance")
+        })
+    }));
+    assert!(
+        report
+            .backend_runs
+            .iter()
+            .all(|run| run.generated_candidate_count <= 2),
+        "max_assays_per_class must cap unique candidates across all candidate windows"
+    );
+    assert_eq!(
+        report.exact_negative_prefilter_count, 0,
+        "mismatch-aware scans must not be discarded by exact-match absence"
+    );
+    assert!(report.full_assay_evaluation_count > 0);
+
+    let persisted = engine
+        .get_transcript_assay_panel_report("panel_v2_equivalence")
+        .expect("persisted transcript assay panel");
+    assert_eq!(persisted.equivalence_groups.len(), 2);
+    let saved: ProjectState = serde_json::from_str(
+        &serde_json::to_string(engine.state()).expect("serialize project state"),
+    )
+    .expect("deserialize project state");
+    let reloaded = GentleEngine::from_state(saved);
+    assert_eq!(
+        reloaded
+            .get_transcript_assay_panel_report("panel_v2_equivalence")
+            .expect("reloaded transcript assay panel")
+            .schema,
+        "gentle.transcript_assay_panel.v2"
+    );
+}
+
+#[test]
+fn experimental_assay_handoff_links_every_selected_pair_and_records_default_gates() {
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let mut panel_operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::BestEffort,
+        transcript_assay_panel_relaxed_side(),
+        1,
+        "experimental_handoff_panel",
+    );
+    let Operation::DesignTranscriptAssayPanel {
+        annotation_release, ..
+    } = &mut panel_operation
+    else {
+        unreachable!("transcript assay helper returned another operation")
+    };
+    *annotation_release = Some("synthetic-annotation-1".to_string());
+    let panel = engine
+        .apply(panel_operation)
+        .expect("design source transcript panel")
+        .transcript_assay_panel
+        .expect("source transcript panel report");
+    assert!(!panel.selected_assays.is_empty());
+
+    let build = || Operation::BuildExperimentalAssayHandoff {
+        panel_report_id: panel.report_id.clone(),
+        policy: ExperimentalAssayReadinessPolicy::default(),
+        variant_evidence_paths: vec![],
+        order_form_id: None,
+        path: None,
+        order_table_path: None,
+        virtual_gel_svg_path: None,
+        virtual_gel_ladders: vec![],
+        virtual_gel_render_options: Default::default(),
+    };
+    let handoff = engine
+        .apply(build())
+        .expect("build experimental handoff")
+        .experimental_assay_handoff
+        .expect("experimental handoff report");
+    assert_eq!(handoff.schema, EXPERIMENTAL_ASSAY_HANDOFF_SCHEMA);
+    assert_eq!(handoff.cards.len(), panel.selected_assays.len());
+    assert_eq!(handoff.assay_tests.len(), panel.selected_assays.len());
+    assert_eq!(
+        handoff.order_readiness_table.len(),
+        panel.selected_assays.len()
+    );
+    assert!(handoff.policy.require_critical_qc_pass);
+    assert!(handoff.policy.require_specificity_pass);
+    assert!(handoff.policy.require_genomic_carryover_pass);
+    assert!(handoff.policy.require_transcriptome_specificity_pass);
+    assert!(!handoff.policy.require_assay_test);
+    assert!(!handoff.policy.require_variant_evaluation);
+
+    let mut unsupported_policy = ExperimentalAssayReadinessPolicy::default();
+    unsupported_policy.schema = "gentle.experimental_assay_readiness_policy.v99".to_string();
+    let unsupported_policy_error = engine
+        .apply(Operation::BuildExperimentalAssayHandoff {
+            panel_report_id: panel.report_id.clone(),
+            policy: unsupported_policy,
+            variant_evidence_paths: vec![],
+            order_form_id: None,
+            path: None,
+            order_table_path: None,
+            virtual_gel_svg_path: None,
+            virtual_gel_ladders: vec![],
+            virtual_gel_render_options: Default::default(),
+        })
+        .expect_err("unsupported readiness policy schema must fail closed");
+    assert!(unsupported_policy_error.message.contains("policy schema"));
+
+    for card in &handoff.cards {
+        assert!(card.pair_id.starts_with("pair_sha256_"));
+        assert_eq!(card.pair_id, card.pair_summary.pair_id);
+        assert_eq!(card.assay_test_link.pair_id, card.pair_id);
+        assert!(card.assay_test_link.oligo_identity_verified);
+        assert!(
+            card.assay_test_link
+                .assay_test_id
+                .starts_with("assay_test_sha256_")
+        );
+        assert_eq!(card.oligos.len(), 3, "TaqMan cards retain their probe");
+        assert!(card.oligos.iter().all(|oligo| {
+            oligo.oligo_id.starts_with("oligo_sha256_")
+                && oligo.sequence_sha256.starts_with("sha256:")
+                && oligo.tube_id.starts_with("O-")
+        }));
+        let genomic_carryover = card
+            .gate_outcomes
+            .iter()
+            .find(|gate| gate.gate == "genomic_carryover")
+            .expect("genomic carryover gate");
+        assert!(genomic_carryover.required);
+        assert_eq!(
+            genomic_carryover.status,
+            ExperimentalAssayGateStatus::NotEvaluated
+        );
+        assert!(card.blockers.iter().any(|code| code == "genomic_carryover"));
+        let transcriptome_specificity = card
+            .gate_outcomes
+            .iter()
+            .find(|gate| gate.gate == "transcriptome_specificity")
+            .expect("transcriptome specificity gate");
+        assert!(transcriptome_specificity.required);
+        assert_eq!(
+            transcriptome_specificity.status,
+            ExperimentalAssayGateStatus::NotEvaluated
+        );
+        assert!(
+            card.blockers
+                .iter()
+                .any(|code| code == "transcriptome_specificity")
+        );
+        let variants = card
+            .gate_outcomes
+            .iter()
+            .find(|gate| gate.gate == "variant_evidence")
+            .expect("variant evidence gate");
+        assert!(!variants.required);
+        assert_eq!(variants.status, ExperimentalAssayGateStatus::NotEvaluated);
+        assert!(!card.blockers.iter().any(|code| code == "variant_evidence"));
+    }
+    for assay_test in &handoff.assay_tests {
+        assert!(assay_test.product_count > 0);
+        assert!(assay_test.transcript_results.iter().all(|transcript| {
+            transcript.products.iter().all(|product| {
+                product
+                    .product_sequence_sha256
+                    .as_deref()
+                    .is_some_and(|digest| digest.starts_with("sha256:"))
+            })
+        }));
+    }
+
+    let repeated = engine
+        .apply(build())
+        .expect("repeat deterministic experimental handoff")
+        .experimental_assay_handoff
+        .expect("repeated experimental handoff report");
+    assert_eq!(repeated.package_id, handoff.package_id);
+    assert_eq!(
+        repeated
+            .cards
+            .iter()
+            .map(|card| card.card_id.as_str())
+            .collect::<Vec<_>>(),
+        handoff
+            .cards
+            .iter()
+            .map(|card| card.card_id.as_str())
+            .collect::<Vec<_>>()
+    );
+
+    let export_dir = tempdir().expect("experimental handoff export dir");
+    let json_path = export_dir.path().join("handoff.json");
+    let table_path = export_dir.path().join("handoff.tsv");
+    let gel_path = export_dir.path().join("handoff.gel.svg");
+    let exported = engine
+        .apply(Operation::BuildExperimentalAssayHandoff {
+            panel_report_id: panel.report_id.clone(),
+            policy: ExperimentalAssayReadinessPolicy::default(),
+            variant_evidence_paths: vec![],
+            order_form_id: None,
+            path: Some(json_path.to_string_lossy().to_string()),
+            order_table_path: Some(table_path.to_string_lossy().to_string()),
+            virtual_gel_svg_path: Some(gel_path.to_string_lossy().to_string()),
+            virtual_gel_ladders: vec![],
+            virtual_gel_render_options: Default::default(),
+        })
+        .expect("export experimental handoff")
+        .experimental_assay_handoff
+        .expect("exported handoff report");
+    let exported_json: ExperimentalAssayHandoffReport =
+        serde_json::from_slice(&fs::read(&json_path).expect("read experimental handoff JSON"))
+            .expect("parse experimental handoff JSON");
+    assert_eq!(exported_json.package_id, exported.package_id);
+    let order_table = fs::read_to_string(&table_path).expect("read handoff order table");
+    assert!(order_table.starts_with("card_id\tassay_id\tpair_id\t"));
+    assert!(
+        exported
+            .cards
+            .iter()
+            .all(|card| order_table.contains(&card.pair_id))
+    );
+    let virtual_gel = exported.virtual_gel.as_ref().expect("virtual gel report");
+    assert_eq!(
+        virtual_gel.schema,
+        "gentle.experimental_assay_virtual_gel.v1"
+    );
+    assert_eq!(virtual_gel.sample_lane_count, exported.cards.len());
+    assert_eq!(virtual_gel.conditions_source, "default_visualization_only");
+    assert!(virtual_gel.rendered_product_count > 0);
+    assert!(virtual_gel.svg_sha256.starts_with("sha256:"));
+    let gel_svg = fs::read_to_string(&gel_path).expect("read virtual gel SVG");
+    assert_eq!(
+        virtual_gel.svg_sha256,
+        format!("sha256:{}", sha256_hex_str(&gel_svg))
+    );
+    assert!(gel_svg.contains("[gentle] Serial Gel Preview"));
+    assert!(gel_svg.contains("data-provenance-source=\"gentle\""));
+    for card in &exported.cards {
+        assert!(
+            gel_svg.contains(&format!("Pair {} |", card.pair_rank)),
+            "missing one comparable sample lane for primer pair {}",
+            card.pair_rank
+        );
+    }
+
+    let first_assay = panel.selected_assays.first().expect("selected assay");
+    let first_forward = first_assay.primer_pair.forward.sequence.clone();
+    let duplicate_line = |name: &str| OligoOrderLineItem {
+        name: name.to_string(),
+        role: "forward".to_string(),
+        sequence_5_to_3: first_forward.clone(),
+        length_nt: first_forward.len(),
+        modifications: vec!["5phos".to_string()],
+        scale: "25nmol".to_string(),
+        purification: "HPLC".to_string(),
+        provenance: OligoOrderLineProvenance {
+            source_kind: "synthetic_test".to_string(),
+            role: "forward".to_string(),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let order_form = engine
+        .create_oligo_order_form_from_request(OligoOrderFormCreateRequest {
+            schema: OLIGO_ORDER_FORM_SCHEMA.to_string(),
+            form_id: Some("experimental_handoff_order".to_string()),
+            target_label: "synthetic assay handoff".to_string(),
+            line_items: vec![duplicate_line("forward_a"), duplicate_line("forward_b")],
+            ..Default::default()
+        })
+        .expect("create linked duplicate order form");
+    assert_eq!(order_form.duplicate_groups.len(), 1);
+    let linked = engine
+        .apply(Operation::BuildExperimentalAssayHandoff {
+            panel_report_id: panel.report_id.clone(),
+            policy: ExperimentalAssayReadinessPolicy::default(),
+            variant_evidence_paths: vec![],
+            order_form_id: Some(order_form.form_id.clone()),
+            path: None,
+            order_table_path: None,
+            virtual_gel_svg_path: None,
+            virtual_gel_ladders: vec![],
+            virtual_gel_render_options: Default::default(),
+        })
+        .expect("build order-linked handoff")
+        .experimental_assay_handoff
+        .expect("order-linked handoff report");
+    assert_eq!(
+        linked.source_order_form_id.as_deref(),
+        Some(order_form.form_id.as_str())
+    );
+    assert!(
+        linked
+            .source_order_form_sha256
+            .as_deref()
+            .is_some_and(|digest| digest.starts_with("sha256:"))
+    );
+    let linked_card = linked
+        .cards
+        .iter()
+        .find(|card| card.assay_id == first_assay.assay_id)
+        .expect("linked first assay card");
+    let linked_forward = linked_card
+        .oligos
+        .iter()
+        .find(|oligo| oligo.role == "forward")
+        .expect("linked forward oligo");
+    assert_eq!(linked_forward.formulations.len(), 1);
+    assert_eq!(linked_forward.formulations[0].modifications, vec!["5phos"]);
+    assert_eq!(linked_forward.formulations[0].order_line_ids.len(), 2);
+    let duplicate_gate = linked_card
+        .gate_outcomes
+        .iter()
+        .find(|gate| gate.gate == "duplicate_review")
+        .expect("duplicate review gate");
+    assert_eq!(
+        duplicate_gate.status,
+        ExperimentalAssayGateStatus::Incomplete
+    );
+    assert!(
+        linked_card
+            .blockers
+            .iter()
+            .any(|code| code == "duplicate_review")
+    );
+
+    engine
+        .review_oligo_order_form_duplicates(
+            &order_form.form_id,
+            Some("test reviewer"),
+            Some("keep-separate"),
+            Some("reviewed for handoff"),
+        )
+        .expect("review linked duplicate order form");
+    let reviewed = engine
+        .apply(Operation::BuildExperimentalAssayHandoff {
+            panel_report_id: panel.report_id.clone(),
+            policy: ExperimentalAssayReadinessPolicy::default(),
+            variant_evidence_paths: vec![],
+            order_form_id: Some(order_form.form_id.clone()),
+            path: None,
+            order_table_path: None,
+            virtual_gel_svg_path: None,
+            virtual_gel_ladders: vec![],
+            virtual_gel_render_options: Default::default(),
+        })
+        .expect("build reviewed order-linked handoff")
+        .experimental_assay_handoff
+        .expect("reviewed order-linked handoff report");
+    let reviewed_duplicate_gate = reviewed.cards[0]
+        .gate_outcomes
+        .iter()
+        .find(|gate| gate.gate == "duplicate_review")
+        .expect("reviewed duplicate gate");
+    assert_eq!(
+        reviewed_duplicate_gate.status,
+        ExperimentalAssayGateStatus::Pass
+    );
+
+    let first_pair_id = handoff.cards[0].pair_id.clone();
+    let first_reverse = first_assay.primer_pair.reverse.sequence.clone();
+    let forward_start_1based = 100usize;
+    let forward_end_1based = forward_start_1based + first_forward.len() - 1;
+    let reverse_start_1based = 300usize;
+    let reverse_end_1based = reverse_start_1based + first_reverse.len() - 1;
+    let terminal_reference = first_forward
+        .chars()
+        .last()
+        .expect("non-empty forward primer");
+    let terminal_alternate = if terminal_reference == 'A' { 'C' } else { 'A' };
+    let variant_fixture = tempdir().expect("generated variant evidence fixture");
+    let variant_vcf_path = variant_fixture.path().join("variants.vcf");
+    fs::write(
+        &variant_vcf_path,
+        format!(
+            "##fileformat=VCFv4.2\n##reference=synthetic-assembly\n##contig=<ID=chrSynthetic,length=1000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchrSynthetic\t{forward_end_1based}\trsTerminal\t{terminal_reference}\t{terminal_alternate}\t.\tPASS\tAF=0.2\n"
+        ),
+    )
+    .expect("write synthetic variant VCF");
+    let variant_evidence_dir = variant_fixture.path().join("evidence");
+    let variant_screen = engine
+        .apply(Operation::ScreenPrimerVariants {
+            request: Box::new(PrimerVariantScreenRequest {
+                reference_assembly: "synthetic-assembly".to_string(),
+                source: PrimerVariantSourceInput {
+                    vcf_path: Some(variant_vcf_path.to_string_lossy().to_string()),
+                    reference_assembly: "synthetic-assembly".to_string(),
+                    source_name: "synthetic variants".to_string(),
+                    source_release: "1".to_string(),
+                    population: "synthetic".to_string(),
+                    retrieval_time: "deterministic-fixture".to_string(),
+                    allele_frequency_info_field: Some("AF".to_string()),
+                    ..Default::default()
+                },
+                candidates: vec![PrimerVariantScreenCandidate {
+                    candidate_id: "experimental-handoff-selected-pair".to_string(),
+                    pair_id: Some(first_pair_id.clone()),
+                    source: PrimerVariantCandidateSource {
+                        candidate_id: "experimental-handoff-selected-pair".to_string(),
+                        source_kind: PrimerVariantCandidateSourceKind::DeNovo,
+                        source_id: first_assay.assay_id.clone(),
+                        provider: "GENtle synthetic test".to_string(),
+                        content_sha256: "sha256:synthetic-panel-source".to_string(),
+                        ..Default::default()
+                    },
+                    forward: PrimerVariantScreenOligo {
+                        sequence_5_to_3: first_forward.clone(),
+                        binding_segments: vec![PrimerVariantBindingSegment {
+                            reference_name: "chrSynthetic".to_string(),
+                            start_1based: forward_start_1based,
+                            end_1based: forward_end_1based,
+                            strand: PrimerVariantBindingStrand::Plus,
+                            oligo_start_0based: 0,
+                            oligo_end_0based_exclusive: first_forward.len(),
+                            reference_sequence_5_to_3: first_forward.clone(),
+                        }],
+                    },
+                    reverse: PrimerVariantScreenOligo {
+                        sequence_5_to_3: first_reverse.clone(),
+                        binding_segments: vec![PrimerVariantBindingSegment {
+                            reference_name: "chrSynthetic".to_string(),
+                            start_1based: reverse_start_1based,
+                            end_1based: reverse_end_1based,
+                            strand: PrimerVariantBindingStrand::Minus,
+                            oligo_start_0based: 0,
+                            oligo_end_0based_exclusive: first_reverse.len(),
+                            reference_sequence_5_to_3: GentleEngine::reverse_complement(
+                                &first_reverse,
+                            ),
+                        }],
+                    },
+                    ..Default::default()
+                }],
+                maximum_allowed_frequency: Some(0.01),
+                ..Default::default()
+            }),
+            path: None,
+            evidence_dir: Some(variant_evidence_dir.to_string_lossy().to_string()),
+        })
+        .expect("generate primer variant evidence")
+        .primer_variant_screen
+        .expect("primer variant screen report");
+    assert_eq!(
+        variant_screen.evidence_reports[0].status,
+        PrimerVariantEvidenceStatus::VariantDetected
+    );
+    let detected_variant_path =
+        variant_evidence_dir.join(format!("{first_pair_id}.primer_variant_evidence.json"));
+    assert!(detected_variant_path.is_file());
+    let variant_handoff = engine
+        .apply(Operation::BuildExperimentalAssayHandoff {
+            panel_report_id: panel.report_id.clone(),
+            policy: ExperimentalAssayReadinessPolicy::default(),
+            variant_evidence_paths: vec![detected_variant_path.to_string_lossy().to_string()],
+            order_form_id: None,
+            path: None,
+            order_table_path: None,
+            virtual_gel_svg_path: None,
+            virtual_gel_ladders: vec![],
+            virtual_gel_render_options: Default::default(),
+        })
+        .expect("build handoff with detected variant evidence")
+        .experimental_assay_handoff
+        .expect("variant handoff report");
+    let variant_card = variant_handoff
+        .cards
+        .iter()
+        .find(|card| card.pair_id == first_pair_id)
+        .expect("variant-linked assay card");
+    assert_eq!(
+        variant_card.variant_evidence_status,
+        PrimerVariantEvidenceStatus::VariantDetected
+    );
+    assert!(
+        variant_card
+            .variant_evidence_report_sha256
+            .as_deref()
+            .is_some_and(|digest| digest.starts_with("sha256:"))
+    );
+    let variant_gate = variant_card
+        .gate_outcomes
+        .iter()
+        .find(|gate| gate.gate == "variant_evidence")
+        .expect("variant evidence gate");
+    assert!(!variant_gate.required);
+    assert_eq!(variant_gate.status, ExperimentalAssayGateStatus::Fail);
+    assert!(
+        variant_card
+            .blockers
+            .iter()
+            .any(|code| code == "variant_evidence")
+    );
+
+    let mut wrong_variant = tempfile::NamedTempFile::new().expect("variant evidence fixture");
+    serde_json::to_writer_pretty(
+        &mut wrong_variant,
+        &PrimerVariantEvidenceReport {
+            schema: PRIMER_VARIANT_EVIDENCE_SCHEMA.to_string(),
+            evidence_id: "variant_evidence_wrong_pair".to_string(),
+            pair_id: crate::digest_utils::primer_pair_full_id("AAAA", "TTTT"),
+            reference_assembly: "synthetic-assembly".to_string(),
+            source_name: "synthetic variants".to_string(),
+            source_release: "1".to_string(),
+            population: "synthetic".to_string(),
+            retrieval_time: "deterministic-fixture".to_string(),
+            content_sha256: "sha256:synthetic".to_string(),
+            ..Default::default()
+        },
+    )
+    .expect("write variant evidence fixture");
+    let error = engine
+        .apply(Operation::BuildExperimentalAssayHandoff {
+            panel_report_id: panel.report_id.clone(),
+            policy: ExperimentalAssayReadinessPolicy::default(),
+            variant_evidence_paths: vec![wrong_variant.path().to_string_lossy().to_string()],
+            order_form_id: None,
+            path: None,
+            order_table_path: None,
+            virtual_gel_svg_path: None,
+            virtual_gel_ladders: vec![],
+            virtual_gel_render_options: Default::default(),
+        })
+        .expect_err("variant evidence for another pair must not be silently ignored");
+    assert!(error.message.contains("not selected in panel"));
+}
+
+#[test]
+fn transcript_assay_practicality_classifies_preferred_range_boundaries() {
+    let policy = TranscriptAssayPracticalityPolicy {
+        preferred_amplicon_bp: Some(TranscriptAssayAmpliconRange {
+            min_bp: 70,
+            max_bp: 150,
+        }),
+        allowed_amplicon_bp: Some(TranscriptAssayAmpliconRange {
+            min_bp: 50,
+            max_bp: 500,
+        }),
+    };
+    for length in [70, 150] {
+        assert_eq!(
+            GentleEngine::transcript_assay_practicality_classification(length, Some(&policy)),
+            TranscriptAssayPracticalityClassification::Routine
+        );
+    }
+    assert_eq!(
+        GentleEngine::transcript_assay_practicality_classification(69, Some(&policy)),
+        TranscriptAssayPracticalityClassification::AllowedNonpreferred
+    );
+    assert_eq!(
+        GentleEngine::transcript_assay_practicality_classification(151, Some(&policy)),
+        TranscriptAssayPracticalityClassification::LongRangeFallback
+    );
+    assert_eq!(
+        GentleEngine::transcript_assay_practicality_classification(100, None),
+        TranscriptAssayPracticalityClassification::Unspecified
+    );
+}
+
+#[test]
+fn transcript_assay_selection_orders_biology_then_practicality_then_score() {
+    let common_fallback = (
+        TranscriptAssayCommonRegionStatus::Confirmed,
+        TranscriptAssayPracticalityClassification::LongRangeFallback,
+        -100.0,
+        "common_fallback",
+    );
+    let noncommon_routine = (
+        TranscriptAssayCommonRegionStatus::NotCommon,
+        TranscriptAssayPracticalityClassification::Routine,
+        100.0,
+        "noncommon_routine",
+    );
+    assert_eq!(
+        GentleEngine::transcript_assay_selection_preference(
+            TranscriptAssayUseTier::RoutineCommonRegionScreen,
+            common_fallback,
+            noncommon_routine,
+        ),
+        Ordering::Greater,
+        "annotation-confirmed biology must outrank routine length"
+    );
+
+    let common_routine = (
+        TranscriptAssayCommonRegionStatus::Confirmed,
+        TranscriptAssayPracticalityClassification::Routine,
+        -100.0,
+        "common_routine",
+    );
+    let common_fallback_high_score = (
+        TranscriptAssayCommonRegionStatus::Confirmed,
+        TranscriptAssayPracticalityClassification::LongRangeFallback,
+        100.0,
+        "common_fallback_high_score",
+    );
+    assert_eq!(
+        GentleEngine::transcript_assay_selection_preference(
+            TranscriptAssayUseTier::RoutineCommonRegionScreen,
+            common_routine,
+            common_fallback_high_score,
+        ),
+        Ordering::Greater,
+        "routine length must outrank the old score after equal biology"
+    );
+
+    let common_allowed_short = (
+        TranscriptAssayCommonRegionStatus::Confirmed,
+        TranscriptAssayPracticalityClassification::AllowedNonpreferred,
+        -100.0,
+        "common_allowed_short",
+    );
+    assert_eq!(
+        GentleEngine::transcript_assay_selection_preference(
+            TranscriptAssayUseTier::RoutineCommonRegionScreen,
+            common_allowed_short,
+            common_fallback_high_score,
+        ),
+        Ordering::Greater,
+        "an allowed short product must outrank a true long-range fallback"
+    );
+
+    let better_score = (
+        TranscriptAssayCommonRegionStatus::Confirmed,
+        TranscriptAssayPracticalityClassification::Routine,
+        2.0,
+        "better_score",
+    );
+    let worse_score = (
+        TranscriptAssayCommonRegionStatus::Confirmed,
+        TranscriptAssayPracticalityClassification::Routine,
+        1.0,
+        "worse_score",
+    );
+    assert_eq!(
+        GentleEngine::transcript_assay_selection_preference(
+            TranscriptAssayUseTier::RoutineCommonRegionScreen,
+            better_score,
+            worse_score,
+        ),
+        Ordering::Greater
+    );
+}
+
+#[test]
+fn transcript_assay_routine_common_region_records_annotation_and_practicality() {
+    let mut engine = transcript_assay_common_region_test_engine();
+    let mut operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::RequireAll,
+        transcript_assay_panel_relaxed_side(),
+        0,
+        "panel_routine_common",
+    );
+    let Operation::DesignTranscriptAssayPanel {
+        assay_kind,
+        assay_tier,
+        practicality,
+        min_amplicon_bp,
+        max_amplicon_bp,
+        max_assays_per_class,
+        ..
+    } = &mut operation
+    else {
+        unreachable!("transcript assay helper returned another operation")
+    };
+    *assay_kind = TranscriptAssayKind::SybrQpcr;
+    *assay_tier = TranscriptAssayUseTier::RoutineCommonRegionScreen;
+    *min_amplicon_bp = Some(50);
+    *max_amplicon_bp = Some(240);
+    *max_assays_per_class = Some(12);
+    *practicality = Some(TranscriptAssayPracticalityPolicy {
+        preferred_amplicon_bp: Some(TranscriptAssayAmpliconRange {
+            min_bp: 50,
+            max_bp: 240,
+        }),
+        allowed_amplicon_bp: Some(TranscriptAssayAmpliconRange {
+            min_bp: 50,
+            max_bp: 240,
+        }),
+    });
+
+    let report = engine
+        .apply(operation)
+        .expect("routine common-region panel")
+        .transcript_assay_panel
+        .expect("routine common-region report");
+    assert_eq!(
+        report.assay_tier,
+        TranscriptAssayUseTier::RoutineCommonRegionScreen
+    );
+    assert_eq!(
+        report
+            .practicality_policy
+            .as_ref()
+            .and_then(|policy| policy.preferred_amplicon_bp.as_ref())
+            .map(|range| (range.min_bp, range.max_bp)),
+        Some((50, 240))
+    );
+    assert!(!report.selected_assays.is_empty());
+    for assay in &report.selected_assays {
+        let summary = &assay.primer_pair_summary;
+        assert_eq!(
+            summary.assay_tier,
+            TranscriptAssayUseTier::RoutineCommonRegionScreen
+        );
+        assert_eq!(
+            summary.common_region_evidence.status,
+            TranscriptAssayCommonRegionStatus::Confirmed
+        );
+        assert_eq!(
+            summary.practicality_classification,
+            TranscriptAssayPracticalityClassification::Routine
+        );
+        assert!(
+            summary
+                .common_region_evidence
+                .basis
+                .contains("array intensity were not used")
+        );
+        assert!(summary.selection_reasons.iter().any(|reason| {
+            reason.code == PrimerPairSelectionReasonCode::CommonRegionAnnotationConfirmed
+        }));
+        assert!(
+            summary
+                .selection_explanation
+                .contains("transcript annotation confirms")
+        );
+        assert!(summary.considered_alternatives.len() <= 5);
+    }
+}
+
+#[test]
+fn transcript_assay_panel_primer_pair_summary_survives_api_shell_and_export() {
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let report = engine
+        .apply(transcript_assay_panel_operation(
+            TranscriptAssayCoveragePolicy::BestEffort,
+            transcript_assay_panel_relaxed_side(),
+            1,
+            "panel_pair_summary",
+        ))
+        .expect("design transcript assay panel")
+        .transcript_assay_panel
+        .expect("operation/API transcript assay panel result");
+    assert!(!report.selected_assays.is_empty());
+
+    for assay in &report.selected_assays {
+        let summary = &assay.primer_pair_summary;
+        assert_eq!(summary.schema, PRIMER_PAIR_SUMMARY_SCHEMA);
+        assert_eq!(summary.assay_id, assay.assay_id);
+        assert_eq!(summary.pair_rank, assay.rank);
+        assert_eq!(summary.design_transcript_id, assay.design_transcript_id);
+        assert!(summary.display_label.contains("F-R") || summary.display_label.contains("F-E"));
+        assert!(summary.aliases.is_empty());
+        assert_eq!(summary.selection_role, None);
+        assert_eq!(summary.satisfied_design_objective, "pan_transcript");
+        assert!(summary.selection_reasons.iter().any(|reason| {
+            reason.code == PrimerPairSelectionReasonCode::DesignObjective
+                && reason.related_ids.iter().any(|id| id == "pan_transcript")
+        }));
+        assert!(!summary.selection_explanation.is_empty());
+        assert_eq!(
+            summary.selection_provenance_status,
+            "de_novo_no_external_selection_evidence"
+        );
+        assert!(!summary.selected_because_of_junction_evidence);
+        assert!(summary.selection_evidence.is_empty());
+        assert_eq!(
+            summary.design_equivalence_group_id,
+            assay.design_equivalence_group_id
+        );
+        assert_eq!(
+            summary.binding_coordinate_system,
+            "design_transcript_cdna_0based_half_open"
+        );
+        assert_eq!(
+            summary.design_amplicon_start_0based,
+            assay.primer_pair.amplicon_start_0based
+        );
+        assert_eq!(
+            summary.design_amplicon_end_0based_exclusive,
+            assay.primer_pair.amplicon_end_0based_exclusive
+        );
+        assert_eq!(
+            summary.design_amplicon_length_bp,
+            assay.primer_pair.amplicon_length_bp
+        );
+        assert!(
+            summary.design_amplicon_start_0based <= summary.design_amplicon_end_0based_exclusive
+        );
+        assert_eq!(
+            summary.design_amplicon_end_0based_exclusive - summary.design_amplicon_start_0based,
+            summary.design_amplicon_length_bp
+        );
+        for (summary_primer, source_primer) in [
+            (&summary.forward, &assay.primer_pair.forward),
+            (&summary.reverse, &assay.primer_pair.reverse),
+        ] {
+            assert_eq!(
+                summary_primer.primer_id,
+                short_sha256_id("primer", &source_primer.sequence)
+            );
+            assert_ne!(summary_primer.primer_id, summary_primer.display_label);
+            assert_eq!(summary_primer.origin, PrimerPairSummaryOrigin::DeNovo);
+            assert!(summary_primer.aliases.is_empty());
+            assert!(!summary_primer.exon_ordinals.is_empty());
+            assert_eq!(summary_primer.sequence_5_to_3, source_primer.sequence);
+            assert_eq!(summary_primer.length_nt, source_primer.length_bp);
+            assert_eq!(
+                summary_primer.length_nt,
+                summary_primer.sequence_5_to_3.len()
+            );
+            assert_eq!(
+                summary_primer.anneal_length_nt,
+                source_primer.anneal_length_bp
+            );
+            assert_eq!(summary_primer.tm_c.to_bits(), source_primer.tm_c.to_bits());
+            assert_eq!(
+                summary_primer.gc_fraction.to_bits(),
+                source_primer.gc_fraction.to_bits()
+            );
+            assert!((summary_primer.gc_percent - source_primer.gc_fraction * 100.0).abs() < 1e-12);
+            assert_eq!(summary_primer.anneal_hit_count, source_primer.anneal_hits);
+            assert_eq!(
+                summary_primer.binding_start_0based,
+                source_primer.start_0based
+            );
+            assert_eq!(
+                summary_primer.binding_end_0based_exclusive,
+                source_primer.end_0based_exclusive
+            );
+            assert_eq!(
+                summary_primer.three_prime_base,
+                source_primer.three_prime_base
+            );
+            assert_eq!(
+                summary_primer.three_prime_gc_clamp,
+                source_primer.three_prime_gc_clamp
+            );
+            assert_eq!(
+                summary_primer.longest_homopolymer_run_bp,
+                source_primer.longest_homopolymer_run_bp
+            );
+            assert_eq!(
+                summary_primer.self_complementary_run_bp,
+                source_primer.self_complementary_run_bp
+            );
+        }
+        assert_eq!(
+            summary.tm_delta_c.to_bits(),
+            assay.primer_pair.tm_delta_c.to_bits()
+        );
+        assert!(
+            (summary.tm_delta_c - (summary.forward.tm_c - summary.reverse.tm_c).abs()).abs()
+                < 1e-12
+        );
+        assert_eq!(
+            serde_json::to_value(&summary.oligo_qc.rule_flags).expect("serialize summary flags"),
+            serde_json::to_value(&assay.primer_pair.rule_flags)
+                .expect("serialize canonical pair flags")
+        );
+        assert_eq!(
+            summary.oligo_qc.primer_pair_complementary_run_bp,
+            assay.primer_pair.primer_pair_complementary_run_bp
+        );
+        assert_eq!(
+            summary.oligo_qc.primer_pair_3prime_complementary_run_bp,
+            assay.primer_pair.primer_pair_3prime_complementary_run_bp
+        );
+        let expected_products = report
+            .detection_matrix
+            .iter()
+            .filter(|cell| cell.assay_id == assay.assay_id)
+            .count();
+        assert_eq!(summary.predicted_products.len(), expected_products);
+        let expected_amplicon_lengths = report
+            .detection_matrix
+            .iter()
+            .filter(|cell| cell.assay_id == assay.assay_id)
+            .flat_map(|cell| cell.amplicon_lengths_bp.iter().copied())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        assert_eq!(
+            summary.predicted_amplicon_lengths_bp,
+            expected_amplicon_lengths
+        );
+        for product in &summary.predicted_products {
+            let source = report
+                .detection_matrix
+                .iter()
+                .find(|cell| {
+                    cell.assay_id == assay.assay_id
+                        && cell.transcript_feature_id == product.transcript_feature_id
+                        && cell.transcript_id == product.transcript_id
+                })
+                .expect("summary product source row");
+            assert_eq!(product.equivalence_group_id, source.equivalence_group_id);
+            assert_eq!(product.detection_status, source.status);
+            assert_eq!(product.detail_status, source.detail_status);
+            assert_eq!(product.product_count, source.product_count);
+            assert_eq!(product.amplicon_lengths_bp, source.amplicon_lengths_bp);
+        }
+        assert_eq!(
+            summary.junction_spanning_status,
+            if assay
+                .junction_matches
+                .iter()
+                .any(|row| row.forward_spans || row.reverse_spans)
+            {
+                "requested_junction_spanning_primer"
+            } else {
+                "no_requested_junction_match_reported"
+            }
+        );
+        assert_eq!(summary.whole_genome_specificity_status, "not_run");
+        assert_eq!(summary.genomic_carryover_status, "not_evaluated");
+        assert_eq!(
+            summary.provenance.source_report_schema,
+            TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA
+        );
+        assert_eq!(
+            summary.provenance.gentle_version,
+            crate::about::GENTLE_PACKAGE_VERSION
+        );
+        if let Some(backend_run) = report
+            .backend_runs
+            .iter()
+            .find(|run| run.equivalence_group_id == assay.design_equivalence_group_id)
+        {
+            assert_eq!(
+                summary.provenance.primer_backend_requested,
+                backend_run.backend.requested
+            );
+            assert_eq!(
+                summary.provenance.primer_backend_used,
+                if backend_run.backend.used.trim().is_empty() {
+                    report.provenance.primer_backend.as_str()
+                } else {
+                    backend_run.backend.used.as_str()
+                }
+            );
+            assert_eq!(
+                summary.provenance.primer3_version,
+                backend_run.backend.primer3_version
+            );
+        } else {
+            assert_eq!(
+                summary.provenance.primer_backend_requested,
+                report.provenance.primer_backend
+            );
+            assert_eq!(
+                summary.provenance.primer_backend_used,
+                report.provenance.primer_backend
+            );
+            assert_eq!(summary.provenance.primer3_version, None);
+        }
+        assert_eq!(
+            summary.provenance.exon_numbering_reference_transcript_id,
+            assay.design_transcript_id
+        );
+        assert_eq!(
+            summary.provenance.exon_numbering_basis,
+            "design_transcript_5prime_to_3prime"
+        );
+        assert_eq!(
+            summary.provenance.exon_numbering_status,
+            "reference_transcript_recorded_annotation_release_missing"
+        );
+    }
+
+    let first_summary = serde_json::to_value(&report.selected_assays[0].primer_pair_summary)
+        .expect("serialize canonical pair summary");
+
+    let shell = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersShowTranscriptAssayPanel {
+            report_id: report.report_id.clone(),
+        },
+    )
+    .expect("shared CLI/MCP shell show route");
+    assert_eq!(
+        shell.output["report"]["selected_assays"][0]["primer_pair_summary"],
+        first_summary
+    );
+
+    let temp = tempdir().expect("pair summary export tempdir");
+    let path = temp.path().join("panel.json");
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersExportTranscriptAssayPanel {
+            report_id: report.report_id.clone(),
+            path: path.to_string_lossy().to_string(),
+        },
+    )
+    .expect("shared transcript panel export route");
+    let exported: serde_json::Value =
+        serde_json::from_slice(&fs::read(&path).expect("read exported transcript panel report"))
+            .expect("parse exported transcript panel report");
+    assert_eq!(
+        exported["selected_assays"][0]["primer_pair_summary"],
+        first_summary
+    );
+    assert!(
+        exported["selected_assays"][0]["primer_pair_summary"]
+            .get("recommended_annealing_temperature")
+            .is_none(),
+        "primer Tm must not be relabeled or converted into a guessed PCR annealing temperature"
+    );
+
+    let mut store = engine.read_primer_design_store();
+    let stored = store
+        .transcript_assay_panels
+        .get_mut(&report.report_id)
+        .expect("persisted transcript panel");
+    let legacy_design_transcript_id = stored.selected_assays[0].design_transcript_id.clone();
+    stored.selected_assays[0].junction_matches = vec![TranscriptAssayJunctionMatch {
+        junction_id: "legacy_requested_junction".to_string(),
+        transcript_id: legacy_design_transcript_id,
+        transcript_local_position_0based: 40,
+        forward_spans: true,
+        reverse_spans: false,
+        spanning_role: "forward".to_string(),
+    }];
+    for assay in &mut stored.selected_assays {
+        assay.primer_pair_summary = PrimerPairCommunicationSummary::default();
+    }
+    engine
+        .write_primer_design_store(store)
+        .expect("store legacy-shaped transcript panel");
+    let enriched = engine
+        .get_transcript_assay_panel_report(&report.report_id)
+        .expect("enrich legacy-shaped transcript panel on read");
+    let legacy = &enriched.selected_assays[0].primer_pair_summary;
+    assert_eq!(legacy.schema, PRIMER_PAIR_SUMMARY_SCHEMA);
+    assert_eq!(
+        legacy.forward.sequence_5_to_3,
+        report.selected_assays[0].primer_pair.forward.sequence
+    );
+    assert_eq!(
+        legacy.reverse.sequence_5_to_3,
+        report.selected_assays[0].primer_pair.reverse.sequence
+    );
+    assert_eq!(
+        legacy.design_amplicon_start_0based,
+        report.selected_assays[0].primer_pair.amplicon_start_0based
+    );
+    assert_eq!(
+        legacy.design_amplicon_end_0based_exclusive,
+        report.selected_assays[0]
+            .primer_pair
+            .amplicon_end_0based_exclusive
+    );
+    assert_eq!(
+        legacy.design_amplicon_length_bp,
+        report.selected_assays[0].primer_pair.amplicon_length_bp
+    );
+    assert_eq!(
+        legacy.selection_provenance_status,
+        "legacy_report_selection_provenance_unavailable"
+    );
+    assert_eq!(
+        legacy.provenance.exon_numbering_status,
+        "geometry_not_persisted_in_legacy_report_re_run_required"
+    );
+    assert_eq!(legacy.forward.origin, PrimerPairSummaryOrigin::Unknown);
+    assert_eq!(legacy.reverse.origin, PrimerPairSummaryOrigin::Unknown);
+    assert_eq!(
+        legacy.junction_spanning_status,
+        "requested_junction_spanning_primer"
+    );
+    assert!(legacy.forward.primer_spans_junction);
+    assert!(!legacy.reverse.primer_spans_junction);
+    assert_eq!(
+        legacy.selection_audit_status,
+        PrimerPairSelectionAuditStatus::Computed,
+        "stored canonical detection matrices permit a deterministic audit upgrade"
+    );
+    assert!(legacy.amplicon_spans_junction);
+    assert!(legacy.selection_evidence.is_empty());
+    assert!(legacy.selection_explanation.is_empty());
+}
+
+#[test]
+fn transcript_assay_panel_summary_keeps_design_amplicon_without_detected_products() {
+    let mut report = TranscriptAssayPanelReport {
+        schema: TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA.to_string(),
+        selected_assays: vec![TranscriptAssayPanelAssay {
+            assay_id: "junction_pair_without_matrix_product".to_string(),
+            rank: 1,
+            design_equivalence_group_id: "eq1".to_string(),
+            design_transcript_id: "TX1".to_string(),
+            primer_pair: PrimerDesignPairRecord {
+                amplicon_start_0based: 25,
+                amplicon_end_0based_exclusive: 66,
+                amplicon_length_bp: 41,
+                ..Default::default()
+            },
+            ..Default::default()
+        }],
+        provenance: TranscriptAssayPanelProvenance {
+            primer_backend: "internal".to_string(),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    GentleEngine::refresh_transcript_assay_panel_primer_pair_summaries(&mut report);
+    let summary = &report.selected_assays[0].primer_pair_summary;
+    assert_eq!(summary.design_amplicon_start_0based, 25);
+    assert_eq!(summary.design_amplicon_end_0based_exclusive, 66);
+    assert_eq!(summary.design_amplicon_length_bp, 41);
+    assert!(summary.predicted_amplicon_lengths_bp.is_empty());
+    assert!(summary.predicted_products.is_empty());
+}
+
+#[test]
+fn transcript_assay_panel_summary_normalizes_blank_specificity_to_not_run() {
+    let mut report = TranscriptAssayPanelReport {
+        schema: TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA.to_string(),
+        selected_assays: vec![TranscriptAssayPanelAssay {
+            assay_id: "blank_specificity".to_string(),
+            design_equivalence_group_id: "eq1".to_string(),
+            design_transcript_id: "TX1".to_string(),
+            ..Default::default()
+        }],
+        specificity_followups: vec![TranscriptAssaySpecificityFollowup {
+            assay_id: "blank_specificity".to_string(),
+            genomic_confirmation_status: "  \t".to_string(),
+            ..Default::default()
+        }],
+        provenance: TranscriptAssayPanelProvenance {
+            primer_backend: "internal".to_string(),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    GentleEngine::refresh_transcript_assay_panel_primer_pair_summaries(&mut report);
+    assert_eq!(
+        report.selected_assays[0]
+            .primer_pair_summary
+            .whole_genome_specificity_status,
+        "not_run"
+    );
+}
+
+#[test]
+fn transcript_assay_panel_primer_pair_summary_reports_actual_oligo_qc_reason() {
+    let sequence = "AAAAAAAAAA".to_string();
+    let primer = PrimerDesignPrimerRecord {
+        sequence: sequence.clone(),
+        length_bp: sequence.len(),
+        anneal_length_bp: sequence.len(),
+        longest_homopolymer_run_bp: sequence.len(),
+        ..Default::default()
+    };
+    let mut report = TranscriptAssayPanelReport {
+        schema: TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA.to_string(),
+        selected_assays: vec![TranscriptAssayPanelAssay {
+            assay_id: "assay_with_qc_warning".to_string(),
+            rank: 1,
+            design_equivalence_group_id: "eq1".to_string(),
+            design_transcript_id: "TX1".to_string(),
+            primer_pair: PrimerDesignPairRecord {
+                forward: primer.clone(),
+                reverse: primer,
+                ..Default::default()
+            },
+            ..Default::default()
+        }],
+        specificity_followups: vec![TranscriptAssaySpecificityFollowup {
+            assay_id: "assay_with_qc_warning".to_string(),
+            local_cdna_matrix_status: "completed".to_string(),
+            genomic_confirmation_status: "not_run".to_string(),
+            ..Default::default()
+        }],
+        provenance: TranscriptAssayPanelProvenance {
+            primer_backend: "internal".to_string(),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    GentleEngine::refresh_transcript_assay_panel_primer_pair_summaries(&mut report);
+    let summary = &report.selected_assays[0].primer_pair_summary;
+    assert_eq!(summary.oligo_qc.status, "warning");
+    assert!(
+        summary
+            .oligo_qc
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("10 bp homopolymer run")),
+        "QC must carry the concrete warning reason rather than only a warning label"
+    );
+}
+
+#[test]
+fn transcript_assay_panel_require_all_refuses_and_best_effort_is_explicit() {
+    let impossible_side = PrimerDesignSideConstraint {
+        min_length: 500,
+        max_length: 500,
+        min_tm_c: 0.0,
+        max_tm_c: 1000.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 10_000,
+        ..Default::default()
+    };
+    let mut strict_engine = transcript_qpcr_panel_test_engine();
+    let error = strict_engine
+        .apply(transcript_assay_panel_operation(
+            TranscriptAssayCoveragePolicy::RequireAll,
+            impossible_side.clone(),
+            0,
+            "strict_must_not_persist",
+        ))
+        .expect_err("require_all must refuse an uncovered pan-transcript panel");
+    assert!(error.message.contains("coverage policy 'require_all'"));
+    assert!(error.message.contains("Uncovered equivalence classes"));
+    assert!(
+        strict_engine
+            .get_transcript_assay_panel_report("strict_must_not_persist")
+            .is_err()
+    );
+
+    let mut best_effort_engine = transcript_qpcr_panel_test_engine();
+    let result = best_effort_engine
+        .apply(transcript_assay_panel_operation(
+            TranscriptAssayCoveragePolicy::BestEffort,
+            impossible_side,
+            0,
+            "explicit_partial",
+        ))
+        .expect("explicit best-effort panel");
+    let report = result
+        .transcript_assay_panel
+        .expect("partial transcript assay panel report");
+    assert_eq!(
+        report.completion_status,
+        TranscriptAssayPanelCompletionStatus::Partial
+    );
+    assert_eq!(
+        report.coverage_policy,
+        TranscriptAssayCoveragePolicy::BestEffort
+    );
+    assert_eq!(report.selected_assay_count, 0);
+    assert_eq!(
+        report.uncovered_equivalence_group_ids.len(),
+        report.equivalence_group_count
+    );
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("best_effort"))
+    );
+}
+
+fn preapproved_informative_fallback_policy(
+    report_id: &str,
+    max_assays: usize,
+) -> TranscriptAssayFallbackSubmissionPolicy {
+    TranscriptAssayFallbackSubmissionPolicy {
+        mode: TranscriptAssayFallbackSubmissionMode::PreapprovedInformativePartial,
+        fallback_report_id: report_id.to_string(),
+        informative_selection: TranscriptAssayInformativeSelectionPolicy {
+            max_assays,
+            minimum_resolvable_size_difference_bp: 20,
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+#[test]
+fn irf9_strict_failure_retains_typed_uncovered_transcript() {
+    let acceptance: serde_json::Value = serde_json::from_str(include_str!(
+        "../../test_files/fixtures/transcript_assay_fallback/irf9_acceptance_reference.json"
+    ))
+    .expect("IRF9 fallback acceptance metadata");
+    let expected_uncovered_transcript = acceptance["strict_uncovered_transcript_id"]
+        .as_str()
+        .expect("fixture uncovered transcript");
+    assert_eq!(
+        acceptance["external_reproduction_evidence"]["operation_sha256"],
+        "sha256:035c423b839f6d03166490b2e4efb510bde1deed397765a5081b1b3cb0e81a46"
+    );
+    let mut engine = irf9_informative_fallback_acceptance_engine();
+    let error = engine
+        .apply(irf9_strict_one_per_class_operation("irf9_strict"))
+        .expect_err("synthetic IRF9 strict panel must be infeasible");
+    assert_eq!(error.code, ErrorCode::TranscriptAssayCoverageInfeasible);
+    let infeasibility = error
+        .cause_chain
+        .iter()
+        .find_map(|entry| {
+            serde_json::from_str::<TranscriptAssayPanelInfeasibilityReport>(entry).ok()
+        })
+        .expect("typed strict infeasibility record");
+    assert_eq!(
+        infeasibility.schema,
+        TRANSCRIPT_ASSAY_PANEL_INFEASIBILITY_SCHEMA
+    );
+    assert_eq!(
+        infeasibility.strict_report_id.as_deref(),
+        Some("irf9_strict")
+    );
+    assert!(infeasibility.candidate_assay_count > 0);
+    assert!(
+        infeasibility
+            .uncovered_equivalence_groups
+            .iter()
+            .any(|group| {
+                group
+                    .transcript_ids
+                    .iter()
+                    .any(|transcript_id| transcript_id == expected_uncovered_transcript)
+            })
+    );
+    assert!(
+        engine
+            .get_transcript_assay_panel_report("irf9_strict")
+            .is_err(),
+        "the failed strict operation must not be reinterpreted or persisted as a panel"
+    );
+}
+
+#[test]
+fn irf9_preapproved_fallback_is_separate_partial_and_digest_linked() {
+    let mut engine = irf9_informative_fallback_acceptance_engine();
+    let strict_operation = irf9_strict_one_per_class_operation("irf9_strict_parent");
+    let strict_operation_sha256 =
+        GentleEngine::transcript_assay_operation_sha256(&strict_operation)
+            .expect("strict operation digest");
+    let fallback_policy = preapproved_informative_fallback_policy("irf9_informative_partial", 2);
+    let fallback_policy_sha256 = crate::digest_utils::sha256_prefixed_bytes(
+        &serde_json::to_vec(&fallback_policy).expect("fallback policy bytes"),
+    );
+    let operation = Operation::DesignTranscriptAssayPanelWithFallback {
+        strict_operation: Box::new(strict_operation),
+        fallback_submission: fallback_policy,
+        path: None,
+    };
+    let operation_json = serde_json::to_string(&operation).expect("serialize fallback operation");
+    let command = crate::engine_shell::parse_shell_line(&format!(
+        "primers design-transcript-assay-panel '{operation_json}'"
+    ))
+    .expect("parse documented fallback shell route");
+    let shell_result = crate::engine_shell::execute_shell_command(&mut engine, &command)
+        .expect("pre-approved IRF9 fallback shell execution");
+    assert_eq!(
+        shell_result.output["schema"],
+        "gentle.transcript_assay_panel_command.v3"
+    );
+    let execution: TranscriptAssayFallbackExecutionReport =
+        serde_json::from_value(shell_result.output["fallback_execution"].clone())
+            .expect("fallback execution audit");
+    let strict_failure = execution
+        .strict_infeasibility
+        .as_ref()
+        .expect("preserved strict failure");
+    let fallback = execution
+        .fallback_panel_report
+        .as_deref()
+        .expect("separate fallback panel");
+
+    assert_eq!(execution.strict_operation_sha256, strict_operation_sha256);
+    assert_eq!(execution.fallback_policy_sha256, fallback_policy_sha256);
+    assert_eq!(
+        execution.engine_revision,
+        crate::about::GENTLE_SOURCE_REVISION
+    );
+    assert!(execution.fallback_submitted);
+    assert!(execution.fallback_error.is_none());
+    assert!(execution.summary.contains("ENST00000699070"));
+    assert!(execution.summary.contains("separate partial panel"));
+    assert!(
+        strict_failure
+            .uncovered_equivalence_groups
+            .iter()
+            .any(|group| {
+                group
+                    .transcript_ids
+                    .iter()
+                    .any(|transcript_id| transcript_id == "ENST00000699070")
+            })
+    );
+    assert_eq!(fallback.report_id, "irf9_informative_partial");
+    assert_eq!(
+        fallback.completion_status,
+        TranscriptAssayPanelCompletionStatus::Partial
+    );
+    assert_eq!(
+        fallback.coverage_policy,
+        TranscriptAssayCoveragePolicy::BestEffort
+    );
+    assert_eq!(
+        fallback.objective,
+        TranscriptAssayPanelObjective::MaximallyInformativePanel
+    );
+    let informative = fallback
+        .informative_selection
+        .as_ref()
+        .expect("informative selection audit");
+    assert!(informative.selected_assay_count <= 2);
+    assert_eq!(
+        informative.selected_assay_count,
+        fallback.selected_assay_count
+    );
+    assert!(fallback.selected_assays.iter().all(|assay| {
+        assay.primer_pair_summary.selection_audit_generator_revision
+            == crate::about::GENTLE_SOURCE_REVISION
+    }));
+    let selected_assay_ids = fallback
+        .selected_assays
+        .iter()
+        .map(|assay| assay.assay_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let observable_signature = |assay_id: &str, group_id: &str| {
+        fallback
+            .detection_matrix
+            .iter()
+            .find(|cell| cell.assay_id == assay_id && cell.equivalence_group_id == group_id)
+            .filter(|cell| cell.status == TranscriptAssayDetectionStatus::SingleProduct)
+            .map(|cell| cell.amplicon_lengths_bp.clone())
+            .unwrap_or_default()
+    };
+    let recomputed_covered = fallback
+        .equivalence_groups
+        .iter()
+        .filter(|group| {
+            selected_assay_ids.iter().any(|assay_id| {
+                !observable_signature(assay_id, &group.equivalence_group_id).is_empty()
+            })
+        })
+        .count();
+    let minimum_difference_bp = informative
+        .policy
+        .minimum_resolvable_size_difference_bp
+        .max(1);
+    let signatures_separate = |left: &[usize], right: &[usize]| {
+        if left.is_empty() != right.is_empty() {
+            return true;
+        }
+        if left.is_empty() || left == right {
+            return false;
+        }
+        left.iter().any(|left_bp| {
+            right
+                .iter()
+                .all(|right_bp| left_bp.abs_diff(*right_bp) >= minimum_difference_bp)
+        }) || right.iter().any(|right_bp| {
+            left.iter()
+                .all(|left_bp| right_bp.abs_diff(*left_bp) >= minimum_difference_bp)
+        })
+    };
+    let mut recomputed_separated = 0usize;
+    for (left_index, left) in fallback.equivalence_groups.iter().enumerate() {
+        for right in fallback
+            .equivalence_groups
+            .iter()
+            .skip(left_index.saturating_add(1))
+        {
+            if selected_assay_ids.iter().any(|assay_id| {
+                signatures_separate(
+                    &observable_signature(assay_id, &left.equivalence_group_id),
+                    &observable_signature(assay_id, &right.equivalence_group_id),
+                )
+            }) {
+                recomputed_separated = recomputed_separated.saturating_add(1);
+            }
+        }
+    }
+    assert_eq!(informative.covered_target_count, recomputed_covered);
+    assert_eq!(
+        informative.separated_target_pair_count, recomputed_separated,
+        "reported information values must recompute from the saved detection matrix"
+    );
+    let fallback_gel = fallback
+        .fallback_virtual_gel
+        .as_ref()
+        .expect("combined fallback gel disposition");
+    match fallback_gel.status {
+        TranscriptAssayFallbackVirtualGelStatus::Generated => {
+            assert!(fallback_gel.svg.contains("Informative Partial Fallback"));
+            assert_eq!(
+                fallback_gel.svg_sha256,
+                crate::digest_utils::sha256_prefixed_bytes(fallback_gel.svg.as_bytes())
+            );
+        }
+        TranscriptAssayFallbackVirtualGelStatus::NoPredictedProducts => {
+            assert!(fallback_gel.no_products_reason.is_some());
+        }
+        TranscriptAssayFallbackVirtualGelStatus::NotApplicable => {
+            panic!("fallback gel must be generated or carry an explicit no-products reason")
+        }
+    }
+    assert!(
+        fallback
+            .uncovered_equivalence_group_ids
+            .iter()
+            .any(|group_id| {
+                strict_failure
+                    .uncovered_equivalence_groups
+                    .iter()
+                    .any(|group| &group.equivalence_group_id == group_id)
+            })
+    );
+    let provenance = fallback
+        .fallback_provenance
+        .as_ref()
+        .expect("parent fallback provenance");
+    assert_eq!(
+        provenance.parent_strict_operation_sha256,
+        strict_operation_sha256
+    );
+    assert_eq!(provenance.parent_failure_id, strict_failure.failure_id);
+    assert_eq!(provenance.fallback_policy_sha256, fallback_policy_sha256);
+    assert_eq!(execution.fallback_operation_diff, provenance.operation_diff);
+    assert_eq!(
+        execution
+            .fallback_operation_diff
+            .iter()
+            .map(|entry| entry.field.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "coverage_policy",
+            "objective",
+            "informative_selection",
+            "report_id"
+        ]
+    );
+    assert!(
+        engine
+            .get_transcript_assay_panel_report("irf9_strict_parent")
+            .is_err()
+    );
+    assert!(
+        engine
+            .get_transcript_assay_panel_report("irf9_informative_partial")
+            .is_ok()
+    );
+    assert!(
+        engine
+            .read_primer_design_store()
+            .transcript_assay_fallback_executions
+            .contains_key(&execution.execution_id)
+    );
+}
+
+#[test]
+fn strict_success_does_not_submit_preapproved_fallback() {
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let strict_operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::RequireAll,
+        transcript_assay_panel_relaxed_side(),
+        0,
+        "strict_success_parent",
+    );
+    let result = engine
+        .apply(Operation::DesignTranscriptAssayPanelWithFallback {
+            strict_operation: Box::new(strict_operation),
+            fallback_submission: preapproved_informative_fallback_policy(
+                "unused_informative_fallback",
+                2,
+            ),
+            path: None,
+        })
+        .expect("strict successful transcript panel");
+    let execution = result
+        .transcript_assay_fallback_execution
+        .as_deref()
+        .expect("execution audit");
+    assert!(execution.strict_panel_report.is_some());
+    assert!(!execution.fallback_submitted);
+    assert!(execution.fallback_panel_report.is_none());
+    assert!(
+        engine
+            .get_transcript_assay_panel_report("unused_informative_fallback")
+            .is_err()
+    );
+}
+
+#[test]
+fn noncoverage_failure_never_submits_preapproved_fallback() {
+    let mut engine = irf9_informative_fallback_acceptance_engine();
+    let mut strict_operation = irf9_strict_one_per_class_operation("missing_source_parent");
+    let Operation::DesignTranscriptAssayPanel { seq_id, .. } = &mut strict_operation else {
+        panic!("strict transcript operation");
+    };
+    *seq_id = "missing_sequence".to_string();
+    let error = engine
+        .apply(Operation::DesignTranscriptAssayPanelWithFallback {
+            strict_operation: Box::new(strict_operation),
+            fallback_submission: preapproved_informative_fallback_policy(
+                "must_not_run_fallback",
+                2,
+            ),
+            path: None,
+        })
+        .expect_err("missing source is not coverage infeasibility");
+    assert_eq!(error.code, ErrorCode::NotFound);
+    assert!(
+        engine
+            .read_primer_design_store()
+            .transcript_assay_fallback_executions
+            .is_empty()
+    );
+}
+
+#[test]
+fn legacy_study_request_defaults_to_no_fallback() {
+    let request: GeneIsoformAssayStudyPlanRequest =
+        serde_json::from_value(serde_json::json!({})).expect("legacy request shape");
+    assert_eq!(
+        request.fallback_submission.mode,
+        TranscriptAssayFallbackSubmissionMode::Never
+    );
+}
+
+#[test]
+fn transcript_assay_panel_does_not_equate_one_base_near_matches() {
+    let impossible_side = PrimerDesignSideConstraint {
+        min_length: 500,
+        max_length: 500,
+        min_tm_c: 0.0,
+        max_tm_c: 1000.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 10_000,
+        ..Default::default()
+    };
+    let mut engine = transcript_assay_near_match_engine();
+    let result = engine
+        .apply(Operation::DesignTranscriptAssayPanel {
+            seq_id: "near_match_qpcr".to_string(),
+            source_feature_id: 0,
+            assay_kind: TranscriptAssayKind::TaqmanQpcr,
+            cdna_synthesis: TranscriptAssayCdnaSynthesis::Unspecified,
+            objective: TranscriptAssayPanelObjective::PanTranscript,
+            coverage_policy: TranscriptAssayCoveragePolicy::BestEffort,
+            coverage_universe: TranscriptAssayCoverageUniverse::default(),
+            assay_tier: TranscriptAssayUseTier::Unspecified,
+            practicality: None,
+            forward: impossible_side.clone(),
+            reverse: impossible_side.clone(),
+            probe: impossible_side,
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: Some(40),
+            max_amplicon_bp: Some(200),
+            max_tm_delta_c: Some(100.0),
+            max_probe_tm_delta_c: Some(100.0),
+            max_assays_per_class: Some(1),
+            max_mismatches: Some(0),
+            require_3prime_exact_bases: Some(8),
+            oligo_dt_5prime_risk_threshold_bp: None,
+            search_policy: None,
+            junctions: vec![],
+            junction_evidence_paths: vec![],
+            junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
+            min_3prime_junction_overlap_bp: None,
+            min_5prime_junction_overlap_bp: None,
+            annotation_release: None,
+            specificity: None,
+            informative_selection: None,
+            report_id: Some("near_match_classes".to_string()),
+            path: None,
+        })
+        .expect("best-effort near-match panel");
+    let report = result
+        .transcript_assay_panel
+        .expect("near-match transcript panel report");
+    assert_eq!(report.transcript_count, 2);
+    assert_eq!(report.equivalence_group_count, 2);
+    assert!(
+        report
+            .equivalence_groups
+            .iter()
+            .all(|group| group.member_count == 1)
+    );
+    assert!(
+        report
+            .transcript_rows
+            .iter()
+            .all(|row| row.status != TranscriptAssayMemberStatus::NotDistinguishableBetweenMembers)
+    );
+}
+
+#[test]
+fn transcript_assay_panel_old_payload_defaults_to_taqman_mode() {
+    let report: TranscriptAssayPanelReport = serde_json::from_value(serde_json::json!({
+        "schema": "gentle.transcript_assay_panel.v2",
+        "report_id": "legacy_panel",
+        "source_seq_id": "legacy_seq",
+        "source_feature_id": 0,
+        "objective": "pan_transcript"
+    }))
+    .expect("deserialize pre-assay-kind panel payload");
+    assert_eq!(report.assay_kind, TranscriptAssayKind::TaqmanQpcr);
+    assert_eq!(
+        report.cdna_synthesis,
+        TranscriptAssayCdnaSynthesis::Unspecified
+    );
+    assert_eq!(report.oligo_dt_5prime_risk_threshold_bp, None);
+    assert_eq!(report.assay_tier, TranscriptAssayUseTier::Unspecified);
+    assert!(report.practicality_policy.is_none());
+    assert!(report.coverage_universe.is_default());
+    assert!(report.coverage_resolution.universe.is_default());
+
+    let cell: TranscriptAssayDetectionCell = serde_json::from_value(serde_json::json!({
+        "assay_id": "legacy_assay",
+        "equivalence_group_id": "legacy_group",
+        "transcript_feature_id": 1,
+        "transcript_id": "legacy_tx",
+        "status": "no_product"
+    }))
+    .expect("deserialize pre-RT-assessment detection cell");
+    assert_eq!(
+        cell.oligo_dt_5prime_reach.status,
+        TranscriptAssayOligoDtReachStatus::NotApplicable
+    );
+}
+
+#[test]
+fn transcript_endpoint_feasibility_reports_stable_structural_blockers_before_primer3() {
+    let mut engine = transcript_endpoint_structural_failure_engine();
+    let operation = transcript_endpoint_structural_failure_operation(
+        TranscriptAssayCoveragePolicy::RequireAll,
+        PrimerDesignSideConstraint::default(),
+    );
+    let first = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&operation)
+        .expect("inspect endpoint feasibility");
+    let second = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&operation)
+        .expect("repeat endpoint feasibility");
+    assert_eq!(first, second, "feasibility ids and ordering must be stable");
+    assert_eq!(first.schema, TRANSCRIPT_ASSAY_PANEL_FEASIBILITY_SCHEMA);
+    assert_eq!(first.reaction_count, 3);
+    assert_eq!(first.structurally_impossible_reaction_ids.len(), 2);
+    assert_eq!(first.primer3_warranted_reaction_count, 1);
+    assert_eq!(first.primer3_candidate_pair_limit_per_reaction, 4);
+    assert!(first.primer3_warranted_template_bp_total > 0);
+    assert_eq!(
+        first.primer3_warranted_template_bp_total,
+        first.primer3_warranted_max_template_bp
+    );
+    assert_eq!(first.primer3_candidate_pair_request_upper_bound, 4);
+    assert_eq!(
+        first.execution_recommendation,
+        "reject_before_primer_search"
+    );
+    let search_plan = first.search_plan.as_ref().expect("bounded search plan");
+    assert_eq!(
+        search_plan.schema,
+        TRANSCRIPT_ASSAY_PRIMER_SEARCH_PLAN_SCHEMA
+    );
+    assert_eq!(search_plan.operation_sha256, first.operation_sha256);
+    assert_eq!(search_plan.target_count, 1);
+    assert!(!search_plan.records.is_empty());
+    assert!(search_plan.records.iter().all(|record| {
+        record
+            .left_interval
+            .end_0based_exclusive
+            .saturating_sub(record.left_interval.start_0based)
+            <= search_plan.policy.max_primer_window_bp
+            && record
+                .right_interval
+                .end_0based_exclusive
+                .saturating_sub(record.right_interval.start_0based)
+                <= search_plan.policy.max_primer_window_bp
+            && record.estimated_candidate_pair_count
+                <= search_plan.policy.max_candidate_pairs_per_record
+            && record
+                .primer3_fields
+                .iter()
+                .any(|field| field.name == "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST")
+            && record
+                .primer3_fields
+                .iter()
+                .any(|field| field.name == "PRIMER_PRODUCT_SIZE_RANGE")
+    }));
+    assert_eq!(
+        search_plan.estimated_candidate_pair_count_total,
+        search_plan
+            .records
+            .iter()
+            .map(|record| record.estimated_candidate_pair_count)
+            .sum::<usize>()
+    );
+    assert_eq!(
+        search_plan.candidate_pair_search_space_upper_bound_total,
+        search_plan
+            .records
+            .iter()
+            .map(|record| record.candidate_pair_search_space_upper_bound)
+            .sum::<usize>()
+    );
+    let blocked = first
+        .reactions
+        .iter()
+        .filter(|reaction| {
+            reaction.status == TranscriptAssayEndReactionFeasibilityStatus::StructurallyImpossible
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(blocked.len(), 2);
+    assert!(blocked.iter().all(|reaction| {
+        reaction.forward_window_length_bp == 17
+            && !reaction.primer3_warranted
+            && reaction.blockers.iter().any(|blocker| {
+                blocker.code == "first_end_shorter_than_minimum_primer"
+                    && blocker.detail.contains("17 bp")
+                    && blocker.detail.contains("20 bp")
+            })
+    }));
+    let before = engine
+        .state()
+        .metadata
+        .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+        .cloned();
+    let error = engine
+        .apply(operation)
+        .expect_err("strict structural blocker must fail before Primer3");
+    assert!(
+        error.message.contains("before Primer3"),
+        "{}",
+        error.message
+    );
+    assert!(
+        !error.message.contains("definitely_missing_primer3"),
+        "the missing executable proves Primer3 was never reached: {}",
+        error.message
+    );
+    assert_eq!(
+        engine
+            .state()
+            .metadata
+            .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+            .cloned(),
+        before
+    );
+}
+
+#[test]
+fn transcript_endpoint_search_budget_refuses_before_primer3_without_weakening_coverage() {
+    let relaxed_side = PrimerDesignSideConstraint {
+        min_length: 8,
+        max_length: 12,
+        min_tm_c: 0.0,
+        max_tm_c: 100.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 10_000,
+        ..PrimerDesignSideConstraint::default()
+    };
+    let mut operation = transcript_endpoint_structural_failure_operation(
+        TranscriptAssayCoveragePolicy::RequireAll,
+        relaxed_side,
+    );
+    let Operation::DesignTranscriptAssayPanel { search_policy, .. } = &mut operation else {
+        panic!("endpoint fixture must produce transcript-assay operation");
+    };
+    *search_policy = Some(TranscriptAssayPrimerSearchPolicy {
+        max_candidate_pairs_per_record: 1,
+        max_records_per_target: 1,
+        max_candidate_pairs_total: 1,
+        ..TranscriptAssayPrimerSearchPolicy::default()
+    });
+
+    let mut engine = transcript_endpoint_structural_failure_engine();
+    let feasibility = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&operation)
+        .expect("inspect deliberately tiny search budget");
+    let search_plan = feasibility.search_plan.expect("search plan");
+    assert_eq!(
+        search_plan.status,
+        TranscriptAssayPrimerSearchPlanStatus::SearchSpaceTooBroad
+    );
+    assert_eq!(
+        feasibility.execution_recommendation,
+        "search_space_too_broad"
+    );
+    assert_eq!(
+        feasibility.coverage_policy,
+        TranscriptAssayCoveragePolicy::RequireAll
+    );
+    let before = serde_json::to_value(engine.state()).expect("serialize preflight state");
+    let error = engine
+        .apply(operation)
+        .expect_err("excessive bounded search must fail before Primer3");
+    assert!(error.message.contains("search_space_too_broad"));
+    assert!(!error.message.contains("definitely_missing_primer3"));
+    assert_eq!(
+        serde_json::to_value(engine.state()).expect("serialize state after rejection"),
+        before
+    );
+}
+
+#[test]
+fn transcript_assay_cdna_similarity_map_is_content_bound_and_advisory() {
+    let engine = transcript_endpoint_structural_failure_engine();
+    let baseline_operation = transcript_endpoint_structural_failure_operation(
+        TranscriptAssayCoveragePolicy::RequireAll,
+        PrimerDesignSideConstraint::default(),
+    );
+    let baseline = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&baseline_operation)
+        .expect("inspect baseline bounded search");
+    let baseline_plan = baseline.search_plan.expect("baseline search plan");
+    let baseline_record = baseline_plan.records.first().expect("baseline record");
+
+    let temp = tempdir().expect("tempdir");
+    let map_path = temp.path().join("cdna_similarity_map.json");
+    let map = TranscriptAssayCdnaSimilarityMap {
+        schema: TRANSCRIPT_ASSAY_CDNA_SIMILARITY_MAP_SCHEMA.to_string(),
+        map_id: "synthetic_paralog_map".to_string(),
+        target_space: "transcriptome_cdna".to_string(),
+        target_resource_id: "synthetic_cdna_catalog".to_string(),
+        database_content_fingerprint: "sha256:synthetic_cdna_database".to_string(),
+        blast_program: "blastn".to_string(),
+        blast_task: "blastn".to_string(),
+        blast_tool_version: "synthetic 1.0".to_string(),
+        blast_options: vec!["-dust".to_string(), "no".to_string()],
+        intervals: vec![TranscriptAssayCdnaSimilarityInterval {
+            interval_id: "paralog_interval_1".to_string(),
+            transcript_id: baseline_record.representative_transcript_id.clone(),
+            template_sha256: baseline_record.template_sha256.clone(),
+            start_0based: baseline_record.left_interval.start_0based,
+            end_0based_exclusive: baseline_record.left_interval.end_0based_exclusive,
+            classification: TranscriptAssayCdnaSimilarityClassification::Paralog,
+            guidance: TranscriptAssayCdnaSimilarityGuidance::Deprioritize,
+            subject_ids: vec!["SYNTHETIC_PARALOG_TX".to_string()],
+            subject_gene_ids: vec!["SYNTHETIC_PARALOG_GENE".to_string()],
+            subject_gene_symbols: vec!["PARALOG1".to_string()],
+            best_identity_fraction: Some(0.96),
+            best_query_coverage_fraction: Some(0.85),
+            basis: "Synthetic whole-cDNA alignment evidence for planner testing.".to_string(),
+        }],
+        warnings: vec!["Synthetic evidence; not a specificity verdict.".to_string()],
+        ..TranscriptAssayCdnaSimilarityMap::default()
+    };
+    let map_bytes = serde_json::to_vec_pretty(&map).expect("serialize similarity map");
+    fs::write(&map_path, &map_bytes).expect("write similarity map");
+    let map_sha256 = sha256_prefixed_bytes(&map_bytes);
+
+    let mut guided_operation = baseline_operation.clone();
+    let Operation::DesignTranscriptAssayPanel { search_policy, .. } = &mut guided_operation else {
+        panic!("endpoint fixture must produce transcript-assay operation");
+    };
+    *search_policy = Some(TranscriptAssayPrimerSearchPolicy {
+        cdna_similarity_map: Some(TranscriptAssayCdnaSimilarityMapRef {
+            path: map_path.to_string_lossy().to_string(),
+            expected_sha256: map_sha256.clone(),
+        }),
+        ..TranscriptAssayPrimerSearchPolicy::default()
+    });
+
+    let guided = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&guided_operation)
+        .expect("inspect similarity-guided bounded search");
+    let guided_repeat = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&guided_operation)
+        .expect("repeat similarity-guided bounded search");
+    assert_eq!(guided, guided_repeat, "guided plans must be deterministic");
+    let guided_plan = guided.search_plan.expect("guided search plan");
+    assert_eq!(
+        guided_plan.cdna_similarity_map_id.as_deref(),
+        Some("synthetic_paralog_map")
+    );
+    assert_eq!(
+        guided_plan.cdna_similarity_map_sha256.as_deref(),
+        Some(map_sha256.as_str())
+    );
+    assert_eq!(
+        guided_plan
+            .cdna_similarity_database_content_fingerprint
+            .as_deref(),
+        Some("sha256:synthetic_cdna_database")
+    );
+    assert!(guided_plan.similarity_guided_record_count > 0);
+    assert!(guided_plan.records.iter().any(|record| {
+        record
+            .similarity_risk_interval_ids
+            .iter()
+            .any(|id| id == "paralog_interval_1")
+            && record.similarity_risk_overlap_bp > 0
+    }));
+    assert!(guided_plan.warnings.iter().any(|warning| {
+        warning.contains("advisory search-order evidence")
+            && warning.contains("complete-cDNA and genomic specificity QA")
+    }));
+
+    let primer3_fields_by_geometry = |plan: &TranscriptAssayPrimerSearchPlan| {
+        plan.records
+            .iter()
+            .map(|record| {
+                (
+                    (
+                        record.target_id.clone(),
+                        record.left_interval.start_0based,
+                        record.left_interval.end_0based_exclusive,
+                        record.right_interval.start_0based,
+                        record.right_interval.end_0based_exclusive,
+                    ),
+                    record.primer3_fields.clone(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>()
+    };
+    assert_eq!(
+        primer3_fields_by_geometry(&guided_plan),
+        primer3_fields_by_geometry(&baseline_plan),
+        "advisory similarity evidence must not exclude regions or alter Primer3 constraints"
+    );
+
+    let mut bad_digest_operation = guided_operation;
+    let Operation::DesignTranscriptAssayPanel { search_policy, .. } = &mut bad_digest_operation
+    else {
+        unreachable!();
+    };
+    search_policy
+        .as_mut()
+        .and_then(|policy| policy.cdna_similarity_map.as_mut())
+        .expect("map reference")
+        .expected_sha256 = "sha256:wrong".to_string();
+    let error = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&bad_digest_operation)
+        .expect_err("changed evidence must fail closed");
+    assert!(error.message.contains("but 'sha256:wrong' was required"));
+}
+
+#[test]
+fn transcript_assay_cdna_similarity_risk_orders_lower_risk_records_first() {
+    let mut low_risk = TranscriptAssayPrimerSearchRecord {
+        search_record_id: "record_b".to_string(),
+        estimated_candidate_pair_count: 500,
+        ..TranscriptAssayPrimerSearchRecord::default()
+    };
+    let high_risk = TranscriptAssayPrimerSearchRecord {
+        search_record_id: "record_a".to_string(),
+        estimated_candidate_pair_count: 1,
+        similarity_risk_interval_ids: vec!["paralog_interval".to_string()],
+        similarity_risk_overlap_bp: 10,
+        ..TranscriptAssayPrimerSearchRecord::default()
+    };
+    assert_eq!(
+        GentleEngine::transcript_assay_search_record_ordering(&low_risk, &high_risk),
+        Ordering::Less,
+        "advisory cDNA similarity risk must take precedence over candidate-count cost"
+    );
+    low_risk.similarity_risk_overlap_bp = 10;
+    assert_eq!(
+        GentleEngine::transcript_assay_search_record_ordering(&low_risk, &high_risk),
+        Ordering::Greater,
+        "candidate-count cost remains the deterministic tie-breaker"
+    );
+
+    let legacy: TranscriptAssayPrimerSearchRecord = serde_json::from_value(serde_json::json!({
+        "search_record_id": "legacy_record"
+    }))
+    .expect("old search record remains readable");
+    assert!(legacy.similarity_risk_interval_ids.is_empty());
+    assert_eq!(legacy.similarity_risk_overlap_bp, 0);
+    let legacy_policy: TranscriptAssayPrimerSearchPolicy =
+        serde_json::from_value(serde_json::json!({})).expect("old search policy remains readable");
+    assert!(legacy_policy.cdna_similarity_map.is_none());
+    assert!(legacy_policy.build_cdna_similarity_map.is_none());
+    assert!(legacy_policy.interval_evidence.is_empty());
+    assert!(legacy_policy.project_interval_evidence.is_none());
+    assert_eq!(
+        legacy_policy.primer3_chemistry,
+        Primer3ChemistryProfile::default()
+    );
+    assert!(legacy_policy.max_junction_single_side_match_bp.is_none());
+    assert!(legacy_policy.min_intervening_intron_bp.is_none());
+
+    let legacy_specificity_policy: PrimerSpecificityPolicy =
+        serde_json::from_value(serde_json::json!({}))
+            .expect("old specificity policy remains readable");
+    assert_eq!(
+        legacy_specificity_policy.full_alignment.mode,
+        PrimerSpecificityFullAlignmentMode::Disabled
+    );
+    assert!(
+        legacy_specificity_policy
+            .reviewed_off_target_allowlist
+            .is_empty()
+    );
+    let current_specificity_policy = PrimerSpecificityPolicy::default();
+    let current_specificity_json =
+        serde_json::to_value(&current_specificity_policy).expect("serialize current policy");
+    assert_eq!(
+        current_specificity_json["full_alignment"]["mode"],
+        "best_effort"
+    );
+    assert_eq!(
+        serde_json::from_value::<PrimerSpecificityPolicy>(current_specificity_json)
+            .expect("round-trip current specificity policy")
+            .full_alignment,
+        current_specificity_policy.full_alignment
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn transcript_assay_cdna_similarity_map_producer_binds_resource_and_classification() {
+    let _env_lock = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let temp = tempdir().expect("temporary cDNA similarity resource");
+    let root = temp.path();
+    let source_fasta = root.join("synthetic.cdna.fa");
+    let cache_dir = root.join("cache");
+    let catalog_path = root.join("catalog.json");
+    fs::write(
+        &source_fasta,
+        ">ENST00000000001.1 cdna gene:ENSG00000000001.1 gene_symbol:PANEL1\nACGTACGTACGTACGTACGTACGTACGTACGT\n>ENST00000000002.1 cdna gene:ENSG00000000001.1 gene_symbol:PANEL1\nTTTTCCCCAAAAGGGGTTTTCCCCAAAAGGGG\n>ENST00000000003.1 cdna gene:ENSG00000000001.1 gene_symbol:PANEL1\nTTTTCCCCAAAAGGGGTTTTCCCCAAAAGGGG\n>ENST99999999999.1 cdna gene:ENSG99999999999.1 gene_symbol:PAR1\nACGTACGTACGTACGTGGGGAAAACCCCTTTT\n",
+    )
+    .expect("write synthetic cDNA FASTA");
+    fs::write(
+        &catalog_path,
+        format!(
+            r#"{{
+  "Synthetic cDNA": {{
+    "description": "synthetic transcript-assay similarity fixture",
+    "sequence_local": {},
+    "cache_dir": {},
+    "blast_index_kind": "transcriptome_cdna",
+    "reference_name": "synthetic.cdna",
+    "reference_release": "synthetic-v1",
+    "blast_masking": "unmasked"
+  }}
+}}"#,
+            serde_json::json!(source_fasta),
+            serde_json::json!(cache_dir)
+        ),
+    )
+    .expect("write synthetic cDNA catalog");
+
+    let fake_makeblastdb = root.join("makeblastdb.sh");
+    fs::write(
+        &fake_makeblastdb,
+        "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'makeblastdb: fake 1.0'; exit 0; fi\nout=''\nwhile [ \"$#\" -gt 0 ]; do\n  if [ \"$1\" = '-out' ]; then shift; out=\"$1\"; fi\n  shift\ndone\nif [ -z \"$out\" ]; then echo 'missing -out' >&2; exit 2; fi\nmkdir -p \"$(dirname \"$out\")\"\nprintf nhr > \"${out}.nhr\"\nprintf nin > \"${out}.nin\"\nprintf nsq > \"${out}.nsq\"\n",
+    )
+    .expect("write fake makeblastdb");
+    let fake_blastdbcmd = root.join("blastdbcmd.sh");
+    write_fake_blastdbcmd(&fake_blastdbcmd, 4, 128);
+    let fake_blastn = root.join("blastn.sh");
+    fs::write(
+        &fake_blastn,
+        "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'blastn: fake 1.0'; exit 0; fi\nprintf 'query\\tENST00000000001.1\\t100\\t20\\t0\\t0\\t1\\t20\\t1\\t20\\t1e-20\\t80\\t100\\n'\nprintf 'query\\tENST99999999999.1\\t95\\t20\\t1\\t0\\t7\\t26\\t1\\t20\\t1e-12\\t60\\t100\\n'\n",
+    )
+    .expect("write fake blastn");
+    for executable in [&fake_makeblastdb, &fake_blastn] {
+        let mut permissions = fs::metadata(executable)
+            .expect("fake executable metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(executable, permissions).expect("enable fake executable");
+    }
+    let _makeblastdb = crate::tool_overrides::ScopedToolOverrideGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        fake_makeblastdb.to_string_lossy().as_ref(),
+    );
+    let _blastdbcmd = crate::tool_overrides::ScopedToolOverrideGuard::set(
+        crate::genomes::BLASTDBCMD_ENV_BIN,
+        fake_blastdbcmd.to_string_lossy().as_ref(),
+    );
+    let _blastn = crate::tool_overrides::ScopedToolOverrideGuard::set(
+        crate::genomes::BLASTN_ENV_BIN,
+        fake_blastn.to_string_lossy().as_ref(),
+    );
+    let catalog =
+        crate::genomes::GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref())
+            .expect("open synthetic cDNA catalog");
+    catalog
+        .prepare_blast_sequence_resource("Synthetic cDNA", None)
+        .expect("prepare synthetic cDNA resource");
+    let annotations = catalog
+        .blast_subject_annotation_lookup("Synthetic cDNA", None)
+        .expect("load synthetic subject annotations");
+    assert!(
+        annotations
+            .values()
+            .any(|row| row.gene_symbol.as_deref() == Some("PAR1"))
+    );
+
+    let mut engine = transcript_qpcr_panel_test_engine();
+    for (index, feature) in engine
+        .state_mut()
+        .sequences
+        .get_mut("panel_src")
+        .expect("panel source")
+        .features_mut()
+        .iter_mut()
+        .filter(|feature| feature.kind == "mRNA")
+        .enumerate()
+    {
+        let transcript_id = format!("ENST{:011}.1", index + 1);
+        for (key, value) in &mut feature.qualifiers {
+            if key == "transcript_id" {
+                *value = Some(transcript_id.clone());
+            }
+        }
+    }
+    let request = TranscriptAssayCdnaSimilarityMapBuildRequest {
+        seq_id: "panel_src".to_string(),
+        source_feature_id: 0,
+        target_resource_id: "Synthetic cDNA".to_string(),
+        paralog_gene_symbols: vec!["PAR1".to_string()],
+        min_alignment_bp: 18,
+        min_identity_fraction: 0.9,
+        catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+        cache_dir: None,
+        ..TranscriptAssayCdnaSimilarityMapBuildRequest::default()
+    };
+    let mut progress = vec![];
+    let first = engine
+        .apply_with_progress(
+            Operation::BuildTranscriptAssayCdnaSimilarityMap {
+                request: request.clone(),
+                path: None,
+            },
+            |event| {
+                progress.push(event);
+                true
+            },
+        )
+        .expect("build cDNA similarity map");
+    let first = first
+        .transcript_assay_cdna_similarity_map
+        .map(|report| *report)
+        .expect("cDNA similarity map result");
+    let second = engine
+        .apply(Operation::BuildTranscriptAssayCdnaSimilarityMap {
+            request,
+            path: None,
+        })
+        .expect("repeat deterministic cDNA similarity map")
+        .transcript_assay_cdna_similarity_map
+        .map(|report| *report)
+        .expect("repeated cDNA similarity map result");
+    assert_eq!(first.schema, TRANSCRIPT_ASSAY_CDNA_SIMILARITY_MAP_SCHEMA);
+    assert_eq!(first.map_id, second.map_id);
+    assert_eq!(
+        first.database_content_fingerprint,
+        second.database_content_fingerprint
+    );
+    assert!(first.database_content_fingerprint.starts_with("sha256:"));
+    assert_eq!(first.source_seq_id.as_deref(), Some("panel_src"));
+    assert_eq!(first.source_feature_id, Some(0));
+    assert!(!first.blast_runs.is_empty());
+    assert!(first.intervals.iter().any(|row| {
+        row.classification == TranscriptAssayCdnaSimilarityClassification::Paralog
+            && row
+                .subject_gene_symbols
+                .iter()
+                .any(|symbol| symbol == "PAR1")
+            && row.guidance == TranscriptAssayCdnaSimilarityGuidance::Deprioritize
+    }));
+    assert!(first.intervals.iter().any(|row| {
+        matches!(
+            row.classification,
+            TranscriptAssayCdnaSimilarityClassification::IntendedTarget
+                | TranscriptAssayCdnaSimilarityClassification::IntendedFamily
+        ) && row
+            .subject_gene_symbols
+            .iter()
+            .any(|symbol| symbol == "PANEL1")
+    }));
+    assert!(!progress.is_empty());
+}
+
+#[test]
+fn transcript_assay_interval_evidence_and_primer3_chemistry_are_explicit() {
+    let engine = transcript_endpoint_structural_failure_engine();
+    let baseline_operation = transcript_endpoint_structural_failure_operation(
+        TranscriptAssayCoveragePolicy::RequireAll,
+        PrimerDesignSideConstraint::default(),
+    );
+    let baseline = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&baseline_operation)
+        .expect("inspect baseline search plan");
+    let baseline_record = baseline
+        .search_plan
+        .as_ref()
+        .and_then(|plan| plan.records.first())
+        .expect("one baseline search record")
+        .clone();
+    let soft_start = baseline_record.left_interval.start_0based;
+    let hard_start = baseline_record.right_interval.start_0based;
+    let mut operation = baseline_operation;
+    let Operation::DesignTranscriptAssayPanel { search_policy, .. } = &mut operation else {
+        unreachable!();
+    };
+    *search_policy = Some(TranscriptAssayPrimerSearchPolicy {
+        primer3_chemistry: Primer3ChemistryProfile {
+            name: Primer3ChemistryProfileName::StandardPcr,
+            overrides: BTreeMap::from([("PRIMER_DNA_CONC".to_string(), "75.0".to_string())]),
+        },
+        interval_evidence: vec![
+            TranscriptAssayPrimerIntervalEvidence {
+                evidence_id: "soft_paralog_region".to_string(),
+                transcript_id: baseline_record.representative_transcript_id.clone(),
+                template_sha256: baseline_record.template_sha256.clone(),
+                start_0based: soft_start,
+                end_0based_exclusive: soft_start + 1,
+                kind: TranscriptAssayPrimerIntervalEvidenceKind::ParalogOrCdnaSimilarity,
+                disposition: TranscriptAssayPrimerIntervalDisposition::Deprioritize,
+                reason: "synthetic soft risk".to_string(),
+                ..TranscriptAssayPrimerIntervalEvidence::default()
+            },
+            TranscriptAssayPrimerIntervalEvidence {
+                evidence_id: "hard_common_variant".to_string(),
+                transcript_id: baseline_record.representative_transcript_id.clone(),
+                template_sha256: baseline_record.template_sha256.clone(),
+                start_0based: hard_start,
+                end_0based_exclusive: hard_start + 1,
+                kind: TranscriptAssayPrimerIntervalEvidenceKind::KnownVariant,
+                disposition: TranscriptAssayPrimerIntervalDisposition::Exclude,
+                reason: "synthetic hard exclusion".to_string(),
+                ..TranscriptAssayPrimerIntervalEvidence::default()
+            },
+        ],
+        ..TranscriptAssayPrimerSearchPolicy::default()
+    });
+    let report = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&operation)
+        .expect("inspect evidence-aware search plan");
+    let plan = report.search_plan.expect("evidence-aware search plan");
+    assert_eq!(plan.hard_exclusion_interval_count, 1);
+    assert_eq!(plan.soft_deprioritization_interval_count, 1);
+    assert!(plan.records.iter().any(|record| {
+        record
+            .design_risk_interval_ids
+            .iter()
+            .any(|id| id == "soft_paralog_region")
+    }));
+    assert!(plan.records.iter().any(|record| {
+        let fields = record
+            .primer3_fields
+            .iter()
+            .map(|field| (field.name.as_str(), field.value.as_str()))
+            .collect::<BTreeMap<_, _>>();
+        fields.contains_key("SEQUENCE_EXCLUDED_REGION")
+            && fields.get("PRIMER_SALT_MONOVALENT") == Some(&"50.0")
+            && fields.get("PRIMER_SALT_DIVALENT") == Some(&"1.5")
+            && fields.get("PRIMER_DNTP_CONC") == Some(&"0.6")
+            && fields.get("PRIMER_DNA_CONC") == Some(&"75.0")
+    }));
+
+    let mut invalid_operation = operation;
+    let Operation::DesignTranscriptAssayPanel { search_policy, .. } = &mut invalid_operation else {
+        unreachable!();
+    };
+    search_policy
+        .as_mut()
+        .expect("search policy")
+        .primer3_chemistry
+        .overrides
+        .insert("PRIMER_NUM_RETURN".to_string(), "999".to_string());
+    let error = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&invalid_operation)
+        .expect_err("non-chemistry Primer3 override must fail closed");
+    assert!(
+        error
+            .message
+            .contains("Unsupported Primer3 chemistry override")
+    );
+}
+
+#[test]
+fn transcript_assay_intron_and_junction_side_limits_are_preflight_gates() {
+    let engine = transcript_endpoint_structural_failure_engine();
+    let mut operation = transcript_endpoint_structural_failure_operation(
+        TranscriptAssayCoveragePolicy::RequireAll,
+        PrimerDesignSideConstraint::default(),
+    );
+    let Operation::DesignTranscriptAssayPanel { search_policy, .. } = &mut operation else {
+        unreachable!();
+    };
+    *search_policy = Some(TranscriptAssayPrimerSearchPolicy {
+        min_intervening_intron_bp: Some(1_000_000),
+        ..TranscriptAssayPrimerSearchPolicy::default()
+    });
+    let report = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&operation)
+        .expect("inspect impossible minimum intron gate");
+    let plan = report.search_plan.expect("search plan");
+    assert_eq!(
+        plan.status,
+        TranscriptAssayPrimerSearchPlanStatus::NoAdmissibleRegions
+    );
+    assert!(!plan.blocked_target_ids.is_empty());
+
+    let Operation::DesignTranscriptAssayPanel { search_policy, .. } = &mut operation else {
+        unreachable!();
+    };
+    let policy = search_policy.as_mut().expect("search policy");
+    policy.min_intervening_intron_bp = None;
+    policy.max_junction_single_side_match_bp = Some(3);
+    let error = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&operation)
+        .expect_err("junction maximum below required overlap must fail");
+    assert!(
+        error
+            .message
+            .contains("must be >= the largest required junction overlap")
+    );
+}
+
+#[test]
+fn reviewed_specificity_allowance_is_visible_and_does_not_override_other_products() {
+    let mut amplicons = vec![
+        PrimerSpecificityAmplicon {
+            kind: PrimerSpecificityAmpliconKind::ForwardReverse,
+            subject_id: "TX_ALLOWED".to_string(),
+            start_1based: 10,
+            end_1based: 110,
+            length_bp: 101,
+            terminal_policy_pass: true,
+            within_readiness_amplicon_range: true,
+            ..PrimerSpecificityAmplicon::default()
+        },
+        PrimerSpecificityAmplicon {
+            kind: PrimerSpecificityAmpliconKind::ForwardReverse,
+            subject_id: "TX_UNREVIEWED".to_string(),
+            start_1based: 20,
+            end_1based: 120,
+            length_bp: 101,
+            terminal_policy_pass: true,
+            within_readiness_amplicon_range: true,
+            ..PrimerSpecificityAmplicon::default()
+        },
+    ];
+    let policy = PrimerSpecificityPolicy {
+        min_total_mismatches_to_unintended_target: 2,
+        reviewed_off_target_allowlist: vec![PrimerSpecificityReviewedOffTargetAllowance {
+            allowance_id: "reviewed_tx_allowed".to_string(),
+            target_space: "transcriptome_cdna".to_string(),
+            subject_id: "TX_ALLOWED".to_string(),
+            start_1based: Some(10),
+            end_1based: Some(110),
+            reviewer: "test reviewer".to_string(),
+            reason: "Synthetic accepted family member".to_string(),
+            evidence_sha256: "sha256:synthetic-review-evidence".to_string(),
+        }],
+        ..PrimerSpecificityPolicy::default()
+    };
+    GentleEngine::primer_specificity_finalize_amplicons(
+        &mut amplicons,
+        &PrimerSpecificityIntendedTarget::default(),
+        &policy,
+        BlastDatabaseIndexKind::TranscriptomeCdna,
+    );
+    assert!(amplicons[0].reviewed_allowlisted);
+    assert_eq!(
+        amplicons[0].reviewed_allowance_id.as_deref(),
+        Some("reviewed_tx_allowed")
+    );
+    assert!(!amplicons[0].specificity_failure);
+    assert!(amplicons[1].specificity_failure);
+}
+
+#[test]
+fn primer_specificity_full_alignment_html_projects_persisted_json_only() {
+    let mut engine = GentleEngine::new();
+    let report = PrimerSpecificityReport {
+        schema: PRIMER_SPECIFICITY_REPORT_SCHEMA.to_string(),
+        report_id: "alignment_html_report".to_string(),
+        target_kind: "transcriptome_cdna".to_string(),
+        target_genome_id: "synthetic_cdna".to_string(),
+        forward_hits: vec![PrimerSpecificityPrimerHit {
+            hit_index: 0,
+            role: PrimerSpecificityPrimerRole::Forward,
+            subject_id: "TX<1>".to_string(),
+            full_alignment: Some(PrimerSpecificityFullAlignment {
+                status: "complete".to_string(),
+                algorithm: "full_query_semiglobal_subject_window_v1".to_string(),
+                score: 37,
+                aligned_subject_start_1based: 10,
+                aligned_subject_end_1based: 29,
+                strand: "+".to_string(),
+                query_alignment: "ACGTACGTACGTACGTACGT".to_string(),
+                relation_alignment: "||||||||||||||||||||".to_string(),
+                subject_alignment: "ACGTACGTACGTACGTACGT".to_string(),
+                cigar: "20=".to_string(),
+                matches: 20,
+                three_prime_window_bp: 5,
+                subject_window_sha256: "sha256:synthetic-window".to_string(),
+                ..PrimerSpecificityFullAlignment::default()
+            }),
+            ..PrimerSpecificityPrimerHit::default()
+        }],
+        ..PrimerSpecificityReport::default()
+    };
+    let mut store = PrimerDesignStore {
+        schema: PRIMER_DESIGN_REPORTS_SCHEMA.to_string(),
+        ..PrimerDesignStore::default()
+    };
+    store
+        .primer_specificity_reports
+        .insert(report.report_id.clone(), report);
+    engine
+        .write_primer_design_store(store)
+        .expect("persist synthetic specificity report");
+    let temp = tempdir().expect("tempdir");
+    let html_path = temp.path().join("alignments.html");
+    let digest = engine
+        .render_primer_specificity_alignment_html(
+            "alignment_html_report",
+            &html_path.to_string_lossy(),
+        )
+        .expect("render alignment HTML");
+    let html = fs::read_to_string(&html_path).expect("read alignment HTML");
+    assert!(digest.starts_with("sha256:"));
+    assert!(html.contains("data-role=\"forward\""));
+    assert!(html.contains("20="));
+    assert!(html.contains("TX&lt;1&gt;"));
+    assert!(html.contains("BLAST and alignment were not rerun"));
+}
+
+#[test]
+fn transcript_assay_specificity_redesign_is_content_bound_and_read_only() {
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let mut operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::BestEffort,
+        transcript_assay_panel_relaxed_side(),
+        8,
+        "specificity_redesign_source",
+    );
+    let Operation::DesignTranscriptAssayPanel { objective, .. } = &mut operation else {
+        unreachable!();
+    };
+    *objective = TranscriptAssayPanelObjective::OnePerClass;
+    let panel = engine
+        .apply(operation.clone())
+        .expect("design source panel")
+        .transcript_assay_panel
+        .expect("source panel report");
+    let rejected = panel.selected_assays.first().expect("selected assay");
+    let panel_digest =
+        GentleEngine::transcript_assay_panel_specificity_digest(&panel).expect("panel digest");
+    let acceptance = TranscriptAssayPanelSpecificityAcceptance {
+        schema: TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_ACCEPTANCE_SCHEMA.to_string(),
+        acceptance_id: "synthetic_specificity_failure".to_string(),
+        panel_report_id: panel.report_id.clone(),
+        panel_digest: panel_digest.clone(),
+        status: TranscriptAssayPanelSpecificityAcceptanceStatus::SpecificityFail,
+        failing_assay_ids: vec![rejected.assay_id.clone()],
+        passing_assay_ids: panel
+            .selected_assays
+            .iter()
+            .skip(1)
+            .map(|assay| assay.assay_id.clone())
+            .collect(),
+        assessments: vec![TranscriptAssayGenomicSpecificityAssessment {
+            assay_id: rejected.assay_id.clone(),
+            assay_rank: rejected.rank,
+            status: "external_blast_specificity_fail".to_string(),
+            report: PrimerSpecificityReport {
+                report_id: "synthetic_cdna_failure_report".to_string(),
+                target_kind: "transcriptome_cdna".to_string(),
+                amplicons: vec![PrimerSpecificityAmplicon {
+                    subject_id: "PARALOG_TX".to_string(),
+                    start_1based: 100,
+                    end_1based: 220,
+                    specificity_failure: true,
+                    failure_reasons: vec!["perfect unintended cDNA product".to_string()],
+                    ..PrimerSpecificityAmplicon::default()
+                }],
+                ..PrimerSpecificityReport::default()
+            },
+        }],
+        ..TranscriptAssayPanelSpecificityAcceptance::default()
+    };
+    let temp = tempdir().expect("tempdir");
+    let acceptance_path = temp.path().join("acceptance.json");
+    let acceptance_bytes = serde_json::to_vec_pretty(&acceptance).expect("acceptance JSON");
+    fs::write(&acceptance_path, &acceptance_bytes).expect("write acceptance");
+    let operation_sha256 =
+        GentleEngine::transcript_assay_operation_sha256(&operation).expect("operation digest");
+    let request = TranscriptAssaySpecificityRedesignRequest {
+        panel_report_id: panel.report_id.clone(),
+        expected_panel_digest: panel_digest,
+        acceptance_path: acceptance_path.to_string_lossy().to_string(),
+        expected_acceptance_sha256: sha256_prefixed_bytes(&acceptance_bytes),
+        design_operation: serde_json::to_value(&operation).expect("operation JSON"),
+        expected_design_operation_sha256: operation_sha256.clone(),
+        attempt_number: 1,
+        max_replacements_per_failed_assay: 2,
+        backend: Some(PrimerDesignBackend::Internal),
+        primer3_executable: None,
+    };
+    let before = serde_json::to_value(engine.state()).expect("state before redesign");
+    let report = engine
+        .redesign_transcript_assay_specificity_failures(request, |_| true)
+        .expect("redesign disposition");
+    assert_eq!(report.schema, TRANSCRIPT_ASSAY_SPECIFICITY_REDESIGN_SCHEMA);
+    assert_eq!(report.original_design_operation_sha256, operation_sha256);
+    assert_eq!(report.dispositions.len(), 1);
+    assert_eq!(report.dispositions[0].replaces_assay_id, rejected.assay_id);
+    assert!(
+        report.dispositions[0]
+            .off_target_causes
+            .iter()
+            .any(|cause| cause.contains("perfect unintended cDNA product"))
+    );
+    assert!(matches!(
+        report.dispositions[0].status,
+        TranscriptAssaySpecificityRedesignDispositionStatus::SubstituteProposed
+            | TranscriptAssaySpecificityRedesignDispositionStatus::InfeasibleUnderApprovedConstraints
+    ));
+    for candidate in &report.dispositions[0].substitutes {
+        assert_eq!(candidate.replaces_assay_id, rejected.assay_id);
+        assert!(
+            candidate
+                .required_next_gates
+                .iter()
+                .any(|gate| gate == "complete_cdna_specificity")
+        );
+    }
+    assert_eq!(
+        serde_json::to_value(engine.state()).expect("state after redesign"),
+        before,
+        "specificity redesign must not mutate the approved source state"
+    );
+}
+
+#[test]
+fn transcript_assay_panel_path_is_classified_as_external_output() {
+    let mut operation = transcript_endpoint_structural_failure_operation(
+        TranscriptAssayCoveragePolicy::RequireAll,
+        PrimerDesignSideConstraint::default(),
+    );
+    let Operation::DesignTranscriptAssayPanel { path, .. } = &mut operation else {
+        panic!("endpoint fixture must produce transcript-assay operation");
+    };
+    *path = Some("panel/report.json".to_string());
+    assert_eq!(
+        GentleEngine::collect_run_bundle_export_paths(&operation),
+        vec!["panel/report.json".to_string()]
+    );
+
+    let Operation::DesignTranscriptAssayPanel { path, .. } = &mut operation else {
+        unreachable!();
+    };
+    *path = None;
+    assert!(GentleEngine::collect_run_bundle_export_paths(&operation).is_empty());
+}
+
+#[test]
+fn transcript_assay_search_estimate_rejects_local_repeat_candidates_deterministically() {
+    let template = b"ACGTACGTACGTACGTACGTACGTACGTACGT";
+    let side = PrimerDesignSideConstraint {
+        min_length: 8,
+        max_length: 8,
+        min_tm_c: 0.0,
+        max_tm_c: 100.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 1,
+        ..PrimerDesignSideConstraint::default()
+    };
+    let constraints = GentleEngine::normalize_primer_side_sequence_constraints(&side)
+        .expect("normalize repeated-sequence constraints");
+    let first = GentleEngine::estimate_primer_side_search_candidates(
+        template,
+        &side,
+        &constraints,
+        false,
+        6,
+    );
+    let second = GentleEngine::estimate_primer_side_search_candidates(
+        template,
+        &side,
+        &constraints,
+        false,
+        6,
+    );
+    assert!(first.candidates.is_empty());
+    assert_eq!(first.rejected_starts, second.rejected_starts);
+    assert!(
+        first
+            .rejected_starts
+            .iter()
+            .any(|(_, reason)| reason == "local_non_unique_sequence")
+    );
+    assert!(first.rejected_starts.iter().all(|(_, reason)| matches!(
+        reason.as_str(),
+        "local_non_unique_sequence" | "no_complete_primer_interval"
+    )));
+}
+
+#[test]
+fn primer3_runtime_policy_warns_then_reduces_without_changing_work_counters() {
+    let policy = TranscriptAssayPrimerSearchPolicy::default();
+    let progress = Primer3Progress {
+        record: 1,
+        completed: 1,
+        bound: 100,
+        ..Primer3Progress::default()
+    };
+    let warning = GentleEngine::assess_primer3_runtime(
+        Some(&progress),
+        Duration::from_secs(11 * 60),
+        Duration::ZERO,
+        &policy,
+    );
+    assert_eq!(warning.status, "suspicious_runtime_projection");
+    assert!(!warning.reduce);
+    assert!(warning.projected_total_ms.is_some());
+
+    let reduction = GentleEngine::assess_primer3_runtime(
+        Some(&progress),
+        Duration::from_secs(31 * 60),
+        Duration::ZERO,
+        &policy,
+    );
+    assert_eq!(reduction.status, "runtime_reduction_projected_too_long");
+    assert!(reduction.reduce);
+
+    let stalled = GentleEngine::assess_primer3_runtime(
+        None,
+        Duration::from_secs(5 * 60 * 60),
+        Duration::from_secs(5 * 60 * 60),
+        &policy,
+    );
+    assert_eq!(stalled.status, "runtime_reduction_no_progress");
+    assert!(stalled.reduce);
+    assert_eq!((progress.completed, progress.bound), (1, 100));
+}
+
+#[cfg(unix)]
+#[test]
+fn primer3_runtime_reduction_stops_child_and_preserves_output_receipt() {
+    let temp = tempdir().expect("temporary Primer3 runtime-reduction fixture");
+    let primer3 = install_fake_long_running_progress_primer3(temp.path());
+    let template = "ATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCGATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCG";
+    let side = PrimerDesignSideConstraint {
+        min_tm_c: 0.0,
+        max_tm_c: 100.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 100,
+        ..PrimerDesignSideConstraint::default()
+    };
+    let side_constraints = GentleEngine::normalize_primer_side_sequence_constraints(&side)
+        .expect("normalize Primer3 runtime-reduction side constraints");
+    let pair_constraints =
+        GentleEngine::normalize_primer_pair_constraints(&PrimerDesignPairConstraint::default())
+            .expect("normalize Primer3 runtime-reduction pair constraints");
+    let options = Primer3PairDesignOptions {
+        runtime_policy: TranscriptAssayPrimerSearchPolicy {
+            runtime_warning_after_secs: 0,
+            runtime_warning_projected_total_secs: 0,
+            runtime_reduce_after_secs: 0,
+            runtime_reduce_projected_total_secs: 0,
+            runtime_no_progress_reduce_after_secs: 60,
+            ..TranscriptAssayPrimerSearchPolicy::default()
+        },
+        ..Primer3PairDesignOptions::default()
+    };
+    let mut progress = vec![];
+    let error = GentleEngine::design_primer_pairs_primer3_with_options(
+        template,
+        20,
+        40,
+        &side,
+        &side_constraints,
+        &side,
+        &side_constraints,
+        &pair_constraints,
+        40,
+        100,
+        100.0,
+        1,
+        &primer3,
+        &options,
+        Some(&mut |row| {
+            progress.push(row);
+            true
+        }),
+    )
+    .expect_err("projected runtime policy must stop the fake Primer3 child");
+    assert!(GentleEngine::is_primer3_runtime_reduction_error(&error));
+    assert!(
+        error
+            .message
+            .contains("runtime_reduction_projected_too_long")
+    );
+    assert!(error.message.contains("child_status="));
+    assert!(error.message.contains("stdout_bytes=0"));
+    assert!(error.message.contains("stdout_sha256=sha256:"));
+    assert!(error.message.contains("stderr_bytes="));
+    assert!(error.message.contains("stderr_sha256=sha256:"));
+    assert_eq!(progress.len(), 1);
+    assert_eq!(
+        progress[0].runtime_assessment.as_deref(),
+        Some("runtime_reduction_projected_too_long")
+    );
+}
+
+#[test]
+fn transcript_endpoint_best_effort_preserves_structural_failures_without_search() {
+    let mut engine = transcript_endpoint_structural_failure_engine();
+    let impossible_side = PrimerDesignSideConstraint {
+        min_length: 100,
+        max_length: 110,
+        min_tm_c: 0.0,
+        max_tm_c: 100.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 10_000,
+        ..PrimerDesignSideConstraint::default()
+    };
+    let operation = transcript_endpoint_structural_failure_operation(
+        TranscriptAssayCoveragePolicy::BestEffort,
+        impossible_side,
+    );
+    let expected_operation_sha256 = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&operation)
+        .expect("inspect exact best-effort operation")
+        .operation_sha256;
+    let report = engine
+        .apply(operation)
+        .expect("explicit best effort returns a partial report")
+        .transcript_assay_panel
+        .expect("best-effort endpoint report");
+    assert_eq!(
+        report.completion_status,
+        TranscriptAssayPanelCompletionStatus::Partial
+    );
+    assert!(report.selected_assays.is_empty());
+    assert_eq!(report.uncovered_equivalence_group_ids.len(), 3);
+    assert!(report.end_reactions.iter().all(|reaction| {
+        reaction.status == "structurally_impossible"
+            && reaction
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("minimum_primer"))
+    }));
+    let feasibility = report.feasibility.expect("embedded feasibility report");
+    assert_eq!(feasibility.operation_sha256, expected_operation_sha256);
+    assert_eq!(
+        feasibility.execution_recommendation,
+        "return_best_effort_without_primer_search"
+    );
+    assert_eq!(feasibility.primer3_warranted_reaction_count, 0);
+    assert!(report.warnings.iter().any(|warning| {
+        warning.contains("structurally impossible") && warning.contains("not sent to Primer3")
+    }));
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| { warning.contains("must not be interpreted as isoform absence") })
+    );
+}
+
+#[test]
+fn gene_isoform_assay_study_policy_defaults_legacy_endpoint_coverage_to_strict() {
+    let mut legacy =
+        serde_json::to_value(GeneIsoformAssayStudyPolicy::default()).expect("serialize policy");
+    legacy
+        .as_object_mut()
+        .expect("policy object")
+        .remove("endpoint_coverage_policy");
+    let parsed: GeneIsoformAssayStudyPolicy =
+        serde_json::from_value(legacy).expect("deserialize legacy policy");
+    assert_eq!(
+        parsed.endpoint_coverage_policy,
+        TranscriptAssayCoveragePolicy::RequireAll
+    );
+}
+
+#[test]
+fn transcript_assay_endpoint_end_matrix_is_primer_only_and_warns_for_oligo_dt() {
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let side = transcript_assay_panel_relaxed_side();
+    let report = engine
+        .apply(Operation::DesignTranscriptAssayPanel {
+            seq_id: "panel_src".to_string(),
+            source_feature_id: 0,
+            assay_kind: TranscriptAssayKind::EndpointRtPcr,
+            cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
+            objective: TranscriptAssayPanelObjective::IsoformEndMatrix,
+            coverage_policy: TranscriptAssayCoveragePolicy::BestEffort,
+            coverage_universe: TranscriptAssayCoverageUniverse::default(),
+            assay_tier: TranscriptAssayUseTier::Unspecified,
+            practicality: None,
+            forward: side.clone(),
+            reverse: side.clone(),
+            probe: side,
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: Some(50),
+            max_amplicon_bp: Some(10_000),
+            max_tm_delta_c: Some(100.0),
+            max_probe_tm_delta_c: None,
+            max_assays_per_class: Some(4),
+            max_mismatches: Some(0),
+            require_3prime_exact_bases: Some(8),
+            oligo_dt_5prime_risk_threshold_bp: None,
+            search_policy: None,
+            junctions: vec![],
+            junction_evidence_paths: vec![],
+            junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
+            min_3prime_junction_overlap_bp: None,
+            min_5prime_junction_overlap_bp: None,
+            annotation_release: Some("synthetic-test".to_string()),
+            specificity: None,
+            informative_selection: None,
+            report_id: Some("endpoint_end_matrix".to_string()),
+            path: None,
+        })
+        .expect("endpoint end-matrix design")
+        .transcript_assay_panel
+        .expect("endpoint report");
+    assert_eq!(report.assay_kind, TranscriptAssayKind::EndpointRtPcr);
+    assert_eq!(report.max_amplicon_bp, 10_000);
+    assert!(report.end_classes.len() >= 3);
+    assert_eq!(report.end_reactions.len(), 2);
+    let represented_reactions = report
+        .selected_assays
+        .iter()
+        .flat_map(|assay| assay.end_reaction_ids.iter().cloned())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(represented_reactions.len(), report.end_reactions.len());
+    assert!(!report.selected_assays.is_empty());
+    assert!(report.selected_assays.iter().all(|assay| {
+        assay.probe.is_none()
+            && assay.assay.is_none()
+            && assay.assay_kind == TranscriptAssayKind::EndpointRtPcr
+    }));
+    assert!(report.selected_assays.iter().all(|assay| {
+        let summary = &assay.primer_pair_summary;
+        summary.selection_provenance_status == "de_novo_no_external_selection_evidence"
+            && !summary.selected_because_of_junction_evidence
+            && summary.selection_evidence.is_empty()
+            && summary.aliases.is_empty()
+            && summary.provenance.annotation_release.as_deref() == Some("synthetic-test")
+    }));
+    assert!(report.selected_assays.iter().all(|assay| {
+        !assay
+            .primer_pair_summary
+            .selection_reasons
+            .iter()
+            .any(|reason| reason.message.to_ascii_lowercase().contains("clariom"))
+    }));
+    assert!(
+        report
+            .order_ready_primers
+            .iter()
+            .all(|primer| primer.role == "forward" || primer.role == "reverse")
+    );
+    assert!(!report.band_size_matrix.is_empty());
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("reverse-transcription completeness"))
+    );
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("must not be interpreted as isoform absence"))
+    );
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("5' RACE"))
+    );
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| { warning.contains("semi-quantitative") && warning.contains("not") })
+    );
+    assert!(report.detection_matrix.iter().any(|cell| {
+        cell.oligo_dt_5prime_reach.status
+            == TranscriptAssayOligoDtReachStatus::DistanceReportedUnthresholded
+            && cell
+                .oligo_dt_5prime_reach
+                .maximum_required_cdna_reach_from_3prime_end_bp
+                .is_some()
+    }));
+}
+
+#[test]
+fn transcript_assay_sybr_evaluates_patz1_clariom_juc_without_probe() {
+    let sequence_fixture = "test_files/fixtures/transcript_assay_panel/patz1";
+    let evidence_fixture = "test_files/fixtures/isoform_evidence/patz1";
+    let mut engine = GentleEngine::default();
+    engine
+        .apply(Operation::LoadFile {
+            path: format!("{sequence_fixture}/patz1_assay_minus_strand.gb"),
+            as_id: Some("patz1_juc_assay".to_string()),
+        })
+        .expect("load synthetic PATZ1 locus");
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    let side = PrimerDesignSideConstraint {
+        min_length: 12,
+        max_length: 20,
+        min_tm_c: 0.0,
+        max_tm_c: 100.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 10_000,
+        ..Default::default()
+    };
+    let report = engine
+        .apply(Operation::DesignTranscriptAssayPanel {
+            seq_id: "patz1_juc_assay".to_string(),
+            source_feature_id: 1,
+            assay_kind: TranscriptAssayKind::SybrQpcr,
+            cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
+            objective: TranscriptAssayPanelObjective::OnePerClass,
+            coverage_policy: TranscriptAssayCoveragePolicy::BestEffort,
+            coverage_universe: TranscriptAssayCoverageUniverse::default(),
+            assay_tier: TranscriptAssayUseTier::IsoformDiscrimination,
+            practicality: None,
+            forward: side.clone(),
+            reverse: side.clone(),
+            probe: side,
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: Some(30),
+            max_amplicon_bp: Some(120),
+            max_tm_delta_c: Some(100.0),
+            max_probe_tm_delta_c: None,
+            max_assays_per_class: Some(4),
+            max_mismatches: Some(0),
+            require_3prime_exact_bases: Some(6),
+            oligo_dt_5prime_risk_threshold_bp: Some(200),
+            search_policy: None,
+            junctions: vec![
+                TranscriptAssayJunctionRequest {
+                    junction_id: "PATZ1-202_local_40".to_string(),
+                    priority: TranscriptAssayJunctionPriority::Preferred,
+                    coordinate_kind: TranscriptAssayJunctionCoordinateKind::TranscriptLocal,
+                    transcript_id: Some("PATZ1-202".to_string()),
+                    transcript_local_position_0based: Some(40),
+                    source_kind: "explicit_transcript_local".to_string(),
+                    ..Default::default()
+                },
+                TranscriptAssayJunctionRequest {
+                    junction_id: "PATZ1-202_genomic_intron".to_string(),
+                    priority: TranscriptAssayJunctionPriority::Preferred,
+                    coordinate_kind: TranscriptAssayJunctionCoordinateKind::GenomicIntronSpan,
+                    transcript_id: Some("PATZ1-202".to_string()),
+                    genomic_start_1based: Some(31_325_860),
+                    genomic_end_1based: Some(31_325_979),
+                    source_kind: "explicit_genomic".to_string(),
+                    ..Default::default()
+                },
+            ],
+            junction_evidence_paths: vec![format!("{evidence_fixture}/patz1_probe_evidence.json")],
+            junction_evidence_priority: TranscriptAssayJunctionPriority::Required,
+            min_3prime_junction_overlap_bp: Some(4),
+            min_5prime_junction_overlap_bp: Some(7),
+            annotation_release: Some("synthetic GRCh38.p14 fixture".to_string()),
+            specificity: None,
+            informative_selection: None,
+            report_id: Some("patz1_sybr_juc".to_string()),
+            path: None,
+        })
+        .expect("PATZ1 SYBR junction design")
+        .transcript_assay_panel
+        .expect("PATZ1 SYBR report");
+    assert_eq!(report.assay_kind, TranscriptAssayKind::SybrQpcr);
+    assert_eq!(report.provenance.junction_sources.len(), 1);
+    assert_eq!(report.junction_evaluations.len(), 3);
+    let search_plan = report.search_plan.as_ref().expect("junction search plan");
+    let junction_records = search_plan
+        .records
+        .iter()
+        .filter(|record| record.junction_id.is_some())
+        .collect::<Vec<_>>();
+    assert!(junction_records.len() >= 3);
+    assert!(junction_records.iter().all(|record| {
+        record
+            .primer3_fields
+            .iter()
+            .any(|field| field.name == "SEQUENCE_OVERLAP_JUNCTION_LIST")
+            && record
+                .left_interval
+                .junction_ids
+                .contains(record.junction_id.as_ref().expect("junction id"))
+            && record
+                .right_interval
+                .junction_ids
+                .contains(record.junction_id.as_ref().expect("junction id"))
+    }));
+    for source_kind in [
+        "explicit_transcript_local",
+        "explicit_genomic",
+        "clariom_juc",
+    ] {
+        let evaluation = report
+            .junction_evaluations
+            .iter()
+            .find(|row| row.source_kind == source_kind)
+            .unwrap_or_else(|| panic!("missing {source_kind} junction evaluation"));
+        assert_eq!(evaluation.status, "selected_spanning_assay");
+    }
+    assert!(!report.short_sybr_junction_assays.is_empty());
+    assert!(
+        report
+            .short_sybr_junction_assays
+            .iter()
+            .all(|assay| assay.probe.is_none() && assay.assay.is_none())
+    );
+    assert!(report.short_sybr_junction_assays.iter().any(|assay| {
+        assay
+            .junction_matches
+            .iter()
+            .any(|junction| junction.forward_spans || junction.reverse_spans)
+    }));
+    for assay in &report.selected_assays {
+        let design_cell = report
+            .detection_matrix
+            .iter()
+            .find(|cell| {
+                cell.assay_id == assay.assay_id && cell.transcript_id == assay.design_transcript_id
+            })
+            .unwrap_or_else(|| {
+                panic!(
+                    "missing detection-matrix row for assay {} on design transcript {}",
+                    assay.assay_id, assay.design_transcript_id
+                )
+            });
+        assert_eq!(
+            design_cell.status,
+            TranscriptAssayDetectionStatus::SingleProduct,
+            "a selected primer pair must detect its own design transcript"
+        );
+        assert!(
+            design_cell
+                .amplicon_lengths_bp
+                .contains(&assay.primer_pair.amplicon_length_bp),
+            "the design-transcript product must retain the selected pair's amplicon length"
+        );
+    }
+    let evidence_assay = report
+        .selected_assays
+        .iter()
+        .find(|assay| {
+            assay
+                .primer_pair_summary
+                .selected_because_of_junction_evidence
+        })
+        .expect("selected assay influenced by structured Clariom junction evidence");
+    let summary = &evidence_assay.primer_pair_summary;
+    assert!(summary.display_label.starts_with("PATZ1_"));
+    assert!(summary.amplicon_spans_junction);
+    assert!(summary.forward.primer_spans_junction || summary.reverse.primer_spans_junction);
+    assert_eq!(
+        summary.junction_spanning_status,
+        "requested_junction_spanning_primer"
+    );
+    assert_eq!(
+        summary.provenance.annotation_release.as_deref(),
+        Some("synthetic GRCh38.p14 fixture")
+    );
+    assert_eq!(
+        summary.provenance.exon_numbering_reference_transcript_id,
+        evidence_assay.design_transcript_id
+    );
+    assert_eq!(
+        summary.selection_provenance_status,
+        "de_novo_with_structured_selection_evidence"
+    );
+    assert!(!summary.retained_because_of_differential_junction_evidence);
+    assert!(!summary.retained_despite_zero_marginal_discrimination);
+    assert!(summary.selection_reasons.iter().any(|reason| {
+        reason.code == PrimerPairSelectionReasonCode::JunctionEvidence
+            && !reason.related_ids.is_empty()
+    }));
+    let junction_evidence = summary
+        .selection_evidence
+        .iter()
+        .filter(|row| row.evidence_kind == PrimerPairSelectionEvidenceKind::Juc)
+        .collect::<Vec<_>>();
+    assert!(!junction_evidence.is_empty());
+    for evidence in junction_evidence {
+        assert_eq!(
+            evidence.influence,
+            PrimerPairSelectionInfluence::ProbeRegionInfluenced
+        );
+        assert_ne!(
+            evidence.influence,
+            PrimerPairSelectionInfluence::ProbeSequenceReused
+        );
+        assert_eq!(
+            evidence.requirement,
+            PrimerPairEvidenceRequirement::Required
+        );
+        assert_eq!(evidence.platform.as_deref(), Some("Clariom_D_Human"));
+        assert_eq!(
+            evidence.contrast.as_deref(),
+            Some("synthetic_case_vs_control")
+        );
+        assert_eq!(
+            evidence.measured_statistic.as_deref(),
+            Some("log2_fold_change")
+        );
+        assert_eq!(evidence.measured_value, Some(-1.2));
+        assert_eq!(evidence.absolute_effect_threshold, None);
+        assert_eq!(
+            evidence.differential_eligibility,
+            PrimerPairDifferentialEvidenceEligibility::NotAssessed
+        );
+        assert_eq!(
+            evidence.disposition,
+            PrimerPairEvidenceDisposition::IncompleteMissingThreshold
+        );
+        assert_eq!(
+            evidence.intensity_source.as_deref(),
+            Some("synthetic_log2_fold_change")
+        );
+        assert!(
+            evidence
+                .source_sha256
+                .as_deref()
+                .is_some_and(|value| value.starts_with("sha256:"))
+        );
+        assert!(evidence.applies_to.iter().any(|value| value == "pair"));
+    }
+    let all_selection_evidence = report
+        .selected_assays
+        .iter()
+        .flat_map(|assay| assay.primer_pair_summary.selection_evidence.iter())
+        .collect::<Vec<_>>();
+    assert!(all_selection_evidence.iter().any(|row| {
+        row.evidence_kind == PrimerPairSelectionEvidenceKind::Juc
+            && row.feature_id.as_deref() == Some("JUC2200054820.hg.1")
+    }));
+    assert!(all_selection_evidence.iter().any(|row| {
+        row.evidence_kind == PrimerPairSelectionEvidenceKind::Psr
+            && row.feature_id.as_deref() == Some("PSR2200160982.hg.1")
+            && row.requirement == PrimerPairEvidenceRequirement::Contextual
+            && row.measured_value == Some(0.8)
+            && row.influence == PrimerPairSelectionInfluence::ProbeRegionInfluenced
+    }));
+    let psr_supported_assay = report
+        .selected_assays
+        .iter()
+        .find(|assay| {
+            assay
+                .primer_pair_summary
+                .selection_evidence
+                .iter()
+                .any(|row| row.evidence_kind == PrimerPairSelectionEvidenceKind::Psr)
+        })
+        .expect("selected PATZ1 assay overlapping the synthetic PSR region");
+    assert_eq!(
+        psr_supported_assay
+            .primer_pair_summary
+            .common_region_evidence
+            .status,
+        TranscriptAssayCommonRegionStatus::NotCommon,
+        "PSR support must not manufacture an annotation-common region"
+    );
+    assert!(
+        psr_supported_assay
+            .primer_pair_summary
+            .common_region_evidence
+            .supporting_psr_evidence_ids
+            .is_empty()
+    );
+    let duplicate = report
+        .short_sybr_junction_assays
+        .iter()
+        .find(|assay| assay.assay_id == evidence_assay.assay_id)
+        .expect("short SYBR view carries selected evidence assay");
+    assert_eq!(
+        duplicate.primer_pair_summary.selection_evidence,
+        summary.selection_evidence
+    );
+    assert!(report.detection_matrix.iter().all(|cell| {
+        cell.product_count == 0
+            || cell.oligo_dt_5prime_reach.status
+                == TranscriptAssayOligoDtReachStatus::WithinConfiguredThreshold
+    }));
+}
+
+#[test]
+fn transcript_assay_report_distinguishes_differential_junction_obligation_from_redundancy() {
+    let fixture = "test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json";
+    let mut report: ProbeRegionEvidenceInterpretationReport = serde_json::from_slice(
+        &std::fs::read(fixture).expect("read synthetic probe-evidence fixture"),
+    )
+    .expect("parse synthetic probe-evidence fixture");
+    report.min_abs_logfc = Some(0.5);
+    report.threshold_source =
+        Some("gene_isoform_assay_study_policy.min_abs_regional_effect".to_string());
+    report.policy_sha256 = Some("sha256:synthetic-policy".to_string());
+    report.interpretation_request_sha256 = "sha256:synthetic-request".to_string();
+    let tmp = tempdir().expect("tempdir");
+    let evidence_path = tmp.path().join("thresholded_probe_evidence.json");
+    std::fs::write(
+        &evidence_path,
+        serde_json::to_vec_pretty(&report).expect("serialize thresholded evidence"),
+    )
+    .expect("write thresholded evidence");
+
+    let (_, _, evidence, warnings) = GentleEngine::transcript_assay_load_junction_evidence(
+        evidence_path.to_str().expect("utf-8 temp path"),
+        TranscriptAssayJunctionPriority::Required,
+        None,
+    )
+    .expect("load threshold-qualified junction evidence");
+    assert!(warnings.is_empty(), "unexpected warnings: {warnings:?}");
+    let eligible = evidence
+        .iter()
+        .find(|row| row.evidence_kind == PrimerPairSelectionEvidenceKind::Juc)
+        .expect("JUC evidence row");
+    assert_eq!(eligible.absolute_effect_threshold, Some(0.5));
+    assert_eq!(
+        eligible.differential_eligibility,
+        PrimerPairDifferentialEvidenceEligibility::Eligible
+    );
+    assert_eq!(
+        eligible.disposition,
+        PrimerPairEvidenceDisposition::RequiredValidationObligation
+    );
+    assert!(eligible.interpretation_report_sha256.is_some());
+
+    let (_, _, preferred_evidence, _) = GentleEngine::transcript_assay_load_junction_evidence(
+        evidence_path.to_str().expect("utf-8 temp path"),
+        TranscriptAssayJunctionPriority::Preferred,
+        None,
+    )
+    .expect("load preferred threshold-qualified junction evidence");
+    assert!(preferred_evidence.iter().any(|row| {
+        row.evidence_kind == PrimerPairSelectionEvidenceKind::Juc
+            && row.disposition == PrimerPairEvidenceDisposition::PreferredDifferential
+    }));
+
+    report.min_abs_logfc = Some(2.0);
+    let below_path = tmp.path().join("below_threshold_probe_evidence.json");
+    std::fs::write(
+        &below_path,
+        serde_json::to_vec_pretty(&report).expect("serialize below-threshold evidence"),
+    )
+    .expect("write below-threshold evidence");
+    let (_, _, below_evidence, _) = GentleEngine::transcript_assay_load_junction_evidence(
+        below_path.to_str().expect("utf-8 temp path"),
+        TranscriptAssayJunctionPriority::Preferred,
+        None,
+    )
+    .expect("load below-threshold evidence");
+    let below = below_evidence
+        .iter()
+        .find(|row| row.evidence_kind == PrimerPairSelectionEvidenceKind::Juc)
+        .expect("below-threshold JUC row");
+    assert_eq!(
+        below.disposition,
+        PrimerPairEvidenceDisposition::IneligibleBelowThreshold
+    );
+
+    let group_ids = vec!["class_a".to_string(), "class_b".to_string()];
+    let common_signature = vec!["class_a".to_string(), "class_b".to_string()];
+    let one_juc_observation = evidence
+        .into_iter()
+        .find(|row| row.evidence_kind == PrimerPairSelectionEvidenceKind::Juc)
+        .expect("eligible JUC evidence");
+    let projected_juc_evidence = (1..=4)
+        .map(|projection| {
+            let mut row = one_juc_observation.clone();
+            row.junction_id = format!("projection_{projection}");
+            row
+        })
+        .collect::<Vec<_>>();
+    let mut assays = vec![
+        TranscriptAssayPanelAssay {
+            assay_id: "common_abundance".to_string(),
+            single_product_equivalence_group_ids: common_signature.clone(),
+            primer_pair_summary: PrimerPairCommunicationSummary {
+                selection_explanation: "Selected as a common abundance assay.".to_string(),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        TranscriptAssayPanelAssay {
+            assay_id: "differential_junction_validation".to_string(),
+            single_product_equivalence_group_ids: common_signature,
+            primer_pair_summary: PrimerPairCommunicationSummary {
+                selection_explanation: "Selected as a required junction assay.".to_string(),
+                selection_evidence: projected_juc_evidence,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    ];
+    GentleEngine::annotate_transcript_assay_panel_selection_audit(&mut assays, &group_ids, &[]);
+
+    let junction_summary = &assays[1].primer_pair_summary;
+    assert!(junction_summary.retained_because_of_differential_junction_evidence);
+    assert!(junction_summary.retained_despite_zero_marginal_discrimination);
+    assert_eq!(junction_summary.exclusive_binary_distinction_count, 0);
+    assert_eq!(
+        junction_summary.binary_redundant_with_assay_ids,
+        vec!["common_abundance".to_string()]
+    );
+    assert!(junction_summary.selection_reasons.iter().any(|reason| {
+        reason.code == PrimerPairSelectionReasonCode::DifferentialJunctionEvidence
+            && reason.message.contains("threshold=0.500000")
+            && reason.message.contains("not a significance")
+    }));
+    assert!(
+        junction_summary
+            .selection_explanation
+            .contains("zero exclusive binary transcript distinctions")
+    );
+    assert_eq!(
+        junction_summary.selection_audit_status,
+        PrimerPairSelectionAuditStatus::Computed
+    );
+    assert_eq!(
+        junction_summary.selection_audit_method,
+        "binary_detection_leave_one_out_v1"
+    );
+    assert_eq!(junction_summary.selection_evidence_observation_count, 1);
+    assert_eq!(junction_summary.selection_evidence_projection_count, 4);
+    assert_eq!(junction_summary.selection_evidence_matched_target_count, 4);
+}
+
+#[test]
+fn legacy_primer_pair_summary_does_not_present_missing_audit_as_zero() {
+    let summary: PrimerPairCommunicationSummary = serde_json::from_value(serde_json::json!({
+        "schema": "gentle.primer_pair_summary.v2",
+        "assay_id": "legacy_pair"
+    }))
+    .expect("deserialize additive legacy summary");
+    assert_eq!(
+        summary.selection_audit_status,
+        PrimerPairSelectionAuditStatus::NotComputedLegacy
+    );
+    assert!(summary.selection_audit_method.is_empty());
+    assert_eq!(summary.incremental_binary_distinction_count, 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn transcript_assay_primer3_emits_native_junction_overlap_tags() {
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let tmp = tempdir().expect("tempdir");
+    let (fake_primer3, _capture_path) = install_fake_primer3_zero_pairs(tmp.path());
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
+    engine.state_mut().parameters.primer3_executable = fake_primer3;
+    let side = transcript_assay_panel_relaxed_side();
+    let report = engine
+        .apply(Operation::DesignTranscriptAssayPanel {
+            seq_id: "panel_src".to_string(),
+            source_feature_id: 0,
+            assay_kind: TranscriptAssayKind::SybrQpcr,
+            cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
+            objective: TranscriptAssayPanelObjective::OnePerClass,
+            coverage_policy: TranscriptAssayCoveragePolicy::BestEffort,
+            coverage_universe: TranscriptAssayCoverageUniverse::default(),
+            assay_tier: TranscriptAssayUseTier::Unspecified,
+            practicality: None,
+            forward: side.clone(),
+            reverse: side.clone(),
+            probe: side,
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: Some(50),
+            max_amplicon_bp: Some(180),
+            max_tm_delta_c: Some(100.0),
+            max_probe_tm_delta_c: None,
+            max_assays_per_class: Some(1),
+            max_mismatches: Some(0),
+            require_3prime_exact_bases: Some(8),
+            oligo_dt_5prime_risk_threshold_bp: None,
+            search_policy: None,
+            junctions: vec![TranscriptAssayJunctionRequest {
+                junction_id: "TX1_exon_1_2".to_string(),
+                priority: TranscriptAssayJunctionPriority::Required,
+                coordinate_kind: TranscriptAssayJunctionCoordinateKind::ExonOrdinals,
+                transcript_id: Some("TX1".to_string()),
+                from_exon_ordinal: Some(1),
+                to_exon_ordinal: Some(2),
+                source_kind: "test".to_string(),
+                ..Default::default()
+            }],
+            junction_evidence_paths: vec![],
+            junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
+            min_3prime_junction_overlap_bp: Some(5),
+            min_5prime_junction_overlap_bp: Some(8),
+            annotation_release: Some("synthetic-test".to_string()),
+            specificity: None,
+            informative_selection: None,
+            report_id: Some("primer3_junction_tags".to_string()),
+            path: None,
+        })
+        .expect("Primer3 junction request")
+        .transcript_assay_panel
+        .expect("Primer3 transcript panel report");
+    let request = report
+        .backend_runs
+        .iter()
+        .filter_map(|run| run.backend.primer3_request_boulder_io.as_deref())
+        .find(|request| request.contains("SEQUENCE_OVERLAP_JUNCTION_LIST="))
+        .expect("junction-target Primer3 request");
+    assert!(request.contains("PRIMER_MIN_3_PRIME_OVERLAP_OF_JUNCTION=5"));
+    assert!(request.contains("PRIMER_MIN_5_PRIME_OVERLAP_OF_JUNCTION=8"));
+    assert!(request.contains("SEQUENCE_PRIMER_PAIR_OK_REGION_LIST="));
+    assert!(request.contains("PRIMER_MAX_POLY_X=6"));
+    assert!(request.contains("PRIMER_MAX_NS_ACCEPTED=0"));
+    assert!(
+        !request.contains("SEQUENCE_TARGET="),
+        "a flanked target would conflict with a primer-overlap junction request"
+    );
+}
+
+fn long_endpoint_transcript_engine() -> GentleEngine {
+    let first = "ATGCCGTAGCTTACGATCCGTTAGCGTACCTGATCGGATCCGATTAACGCTAGTCGATCGTACCGTACGATCGTACGA";
+    let middle = "ACGT".repeat(2_300);
+    let terminal = "GCTAACGATCCGATGCTAACGTCGATCGTAGCTAACCGATGCTAGCTTACCGATGCTAGGCTACGATCGGATCCGTAC";
+    let intron = "N".repeat(20);
+    let first_start = 0usize;
+    let first_end = first.len();
+    let middle_start = first_end + intron.len();
+    let middle_end = middle_start + middle.len();
+    let terminal_start = middle_end + intron.len();
+    let terminal_end = terminal_start + terminal.len();
+    let mut dna = seq(&format!("{first}{intron}{middle}{intron}{terminal}"));
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(first_start as i64, first_end as i64),
+            gb_io::seq::Location::simple_range(middle_start as i64, middle_end as i64),
+            gb_io::seq::Location::simple_range(terminal_start as i64, terminal_end as i64),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("LONGTX1".to_string())),
+            ("transcript_id".into(), Some("LONGTX1-201".to_string())),
+            (
+                "label".into(),
+                Some("LONGTX1 synthetic long transcript".to_string()),
+            ),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("long_endpoint".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    engine
+}
+
+#[test]
+fn transcript_assay_endpoint_long_product_respects_ten_kb_ceiling() {
+    let mut engine = long_endpoint_transcript_engine();
+    let side = transcript_assay_panel_relaxed_side();
+    let report = engine
+        .apply(Operation::DesignTranscriptAssayPanel {
+            seq_id: "long_endpoint".to_string(),
+            source_feature_id: 0,
+            assay_kind: TranscriptAssayKind::EndpointRtPcr,
+            cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
+            objective: TranscriptAssayPanelObjective::IsoformEndMatrix,
+            coverage_policy: TranscriptAssayCoveragePolicy::RequireAll,
+            coverage_universe: TranscriptAssayCoverageUniverse::default(),
+            assay_tier: TranscriptAssayUseTier::LongRangeStructureDiscovery,
+            practicality: Some(TranscriptAssayPracticalityPolicy {
+                preferred_amplicon_bp: Some(TranscriptAssayAmpliconRange {
+                    min_bp: 9_000,
+                    max_bp: 9_500,
+                }),
+                allowed_amplicon_bp: Some(TranscriptAssayAmpliconRange {
+                    min_bp: 9_000,
+                    max_bp: 10_000,
+                }),
+            }),
+            forward: side.clone(),
+            reverse: side.clone(),
+            probe: side,
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: Some(9_000),
+            max_amplicon_bp: Some(10_000),
+            max_tm_delta_c: Some(100.0),
+            max_probe_tm_delta_c: None,
+            max_assays_per_class: Some(3),
+            max_mismatches: Some(0),
+            require_3prime_exact_bases: Some(8),
+            oligo_dt_5prime_risk_threshold_bp: Some(5_000),
+            search_policy: None,
+            junctions: vec![],
+            junction_evidence_paths: vec![],
+            junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
+            min_3prime_junction_overlap_bp: None,
+            min_5prime_junction_overlap_bp: None,
+            annotation_release: Some("synthetic-long-transcript".to_string()),
+            specificity: None,
+            informative_selection: None,
+            report_id: Some("long_endpoint_10kb".to_string()),
+            path: None,
+        })
+        .expect("long endpoint design below 10 kb ceiling")
+        .transcript_assay_panel
+        .expect("long endpoint report");
+    assert!(
+        report
+            .selected_assays
+            .iter()
+            .any(|assay| { (9_000..=10_000).contains(&assay.primer_pair.amplicon_length_bp) })
+    );
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("Oligo-dT"))
+    );
+    assert_eq!(report.oligo_dt_5prime_risk_threshold_bp, Some(5_000));
+    assert!(report.detection_matrix.iter().any(|cell| {
+        cell.oligo_dt_5prime_reach.status == TranscriptAssayOligoDtReachStatus::Elevated5PrimeRisk
+            && cell
+                .oligo_dt_5prime_reach
+                .maximum_required_cdna_reach_from_3prime_end_bp
+                .is_some_and(|reach| reach > 5_000)
+            && cell
+                .oligo_dt_5prime_reach
+                .product_reaches
+                .iter()
+                .any(|product| product.exceeds_configured_threshold == Some(true))
+    }));
+
+    let error = engine
+        .apply(Operation::DesignTranscriptAssayPanel {
+            seq_id: "long_endpoint".to_string(),
+            source_feature_id: 0,
+            assay_kind: TranscriptAssayKind::EndpointRtPcr,
+            cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
+            objective: TranscriptAssayPanelObjective::IsoformEndMatrix,
+            coverage_policy: TranscriptAssayCoveragePolicy::BestEffort,
+            coverage_universe: TranscriptAssayCoverageUniverse::default(),
+            assay_tier: TranscriptAssayUseTier::LongRangeStructureDiscovery,
+            practicality: Some(TranscriptAssayPracticalityPolicy {
+                preferred_amplicon_bp: Some(TranscriptAssayAmpliconRange {
+                    min_bp: 9_000,
+                    max_bp: 9_500,
+                }),
+                allowed_amplicon_bp: Some(TranscriptAssayAmpliconRange {
+                    min_bp: 9_000,
+                    max_bp: 10_001,
+                }),
+            }),
+            forward: transcript_assay_panel_relaxed_side(),
+            reverse: transcript_assay_panel_relaxed_side(),
+            probe: transcript_assay_panel_relaxed_side(),
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: Some(9_000),
+            max_amplicon_bp: Some(10_001),
+            max_tm_delta_c: Some(100.0),
+            max_probe_tm_delta_c: None,
+            max_assays_per_class: Some(1),
+            max_mismatches: Some(0),
+            require_3prime_exact_bases: Some(8),
+            oligo_dt_5prime_risk_threshold_bp: None,
+            search_policy: None,
+            junctions: vec![],
+            junction_evidence_paths: vec![],
+            junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
+            min_3prime_junction_overlap_bp: None,
+            min_5prime_junction_overlap_bp: None,
+            annotation_release: None,
+            specificity: None,
+            informative_selection: None,
+            report_id: Some("over_ceiling".to_string()),
+            path: None,
+        })
+        .expect_err("endpoint products above 10 kb must be refused");
+    assert!(error.message.contains("10,000 bp ceiling"));
 }
 
 fn write_gzip_fasta_records(path: &Path, records: &[(&str, &str)]) {
@@ -9080,6 +20465,13 @@ fn test_design_qpcr_assays_transcript_aware_either_falls_back_to_unique_exon_cha
         targeting_result.realized_specificity_evidence,
         Some(QpcrTranscriptSpecificityEvidence::UniqueExonOrChain)
     );
+    let capture = report
+        .near_miss_capture
+        .as_ref()
+        .expect("transcript-aware qPCR capture metadata");
+    assert_eq!(capture.status, PrimerPairCharacterizationStatus::Incomplete);
+    assert!(capture.reason.contains("transcript-local"));
+    assert!(report.rejected_near_misses.is_empty());
     assert!(!report.assays.is_empty());
     assert!(report.assays.iter().all(|assay| {
         assay.transcript_context.as_ref().is_some_and(|context| {
@@ -9234,6 +20626,20 @@ fn test_design_qpcr_assays_internal_emits_progress_events() {
     assert!(final_progress.done);
 }
 
+#[test]
+fn test_parse_primer3_progress_line_accepts_bounded_counter_contract() {
+    let progress = GentleEngine::parse_primer3_progress_line("PRIMER3_PROGRESS=record=3 125<400")
+        .expect("valid Primer3 progress line");
+    assert_eq!(progress.record, 3);
+    assert_eq!(progress.completed, 125);
+    assert_eq!(progress.bound, 400);
+    assert_eq!(progress.fraction(), Some(0.3125));
+
+    assert!(GentleEngine::parse_primer3_progress_line("ordinary stderr").is_none());
+    assert!(GentleEngine::parse_primer3_progress_line("PRIMER3_PROGRESS=record=1 11<10").is_none());
+    assert!(GentleEngine::parse_primer3_progress_line("PRIMER3_PROGRESS=record=x 1<10").is_none());
+}
+
 #[cfg(unix)]
 #[test]
 fn test_design_primer_pairs_primer3_zero_pairs_persists_request_and_explain() {
@@ -9247,6 +20653,114 @@ fn test_design_primer_pairs_primer3_zero_pairs_persists_request_and_explain() {
     let tmp = tempdir().expect("tempdir");
     let (fake_primer3, request_capture) = install_fake_primer3_zero_pairs(tmp.path());
     engine.state_mut().parameters.primer3_executable = fake_primer3.clone();
+    let mut forward = PrimerDesignSideConstraint::default();
+    forward.min_length = 20;
+    forward.max_length = 20;
+    forward.fixed_5prime = Some("ATGCGTACGATCGTAGCTAG".to_string());
+    let mut reverse = PrimerDesignSideConstraint::default();
+    reverse.min_length = 20;
+    reverse.max_length = 20;
+    reverse.fixed_5prime = Some("CGATCGATGCTAGCTAGCTA".to_string());
+
+    let mut progress_events = Vec::new();
+    engine
+        .apply_with_progress(
+            Operation::DesignPrimerPairs {
+                template: "tpl".to_string(),
+                roi_start_0based: 10,
+                roi_end_0based: 30,
+                forward,
+                reverse,
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: 20,
+                max_amplicon_bp: 80,
+                max_tm_delta_c: Some(10.0),
+                max_pairs: Some(10),
+                report_id: Some("tp73_roi_primer3_zero".to_string()),
+            },
+            |progress| {
+                if let OperationProgress::PrimerDesign(progress) = progress {
+                    progress_events.push(progress);
+                }
+                true
+            },
+        )
+        .expect("fake primer3 zero-pair design should complete");
+
+    let bounded = progress_events
+        .iter()
+        .filter_map(|progress| progress.primer3_progress.as_ref())
+        .collect::<Vec<_>>();
+    assert_eq!(bounded.len(), 2);
+    assert_eq!((bounded[0].completed, bounded[0].bound), (4, 16));
+    assert_eq!((bounded[1].completed, bounded[1].bound), (16, 16));
+    assert!(
+        progress_events
+            .iter()
+            .any(|progress| progress.stage == "primer3_search")
+    );
+
+    let report = engine
+        .get_primer_design_report("tp73_roi_primer3_zero")
+        .expect("primer3 zero-pair report");
+    assert_eq!(report.backend.used, "primer3");
+    assert_eq!(report.pair_count, 0);
+    assert_eq!(
+        report.score_decomposition_status,
+        PrimerPairCharacterizationStatus::NotRun
+    );
+    assert!(report.score_decomposition_reason.contains("No primer pair"));
+    let capture = report
+        .near_miss_capture
+        .as_ref()
+        .expect("Primer3 capture completeness");
+    assert_eq!(capture.status, PrimerPairCharacterizationStatus::Incomplete);
+    assert!(capture.reason.contains("Primer3-internal"));
+    assert!(report.rejected_near_misses.is_empty());
+    assert!(
+        report
+            .backend
+            .primer3_explain
+            .as_deref()
+            .unwrap_or_default()
+            .contains("PRIMER_PAIR_EXPLAIN")
+    );
+    assert!(
+        report
+            .backend
+            .primer3_explain
+            .as_deref()
+            .unwrap_or_default()
+            .contains("unparsed PRIMER3_PROGRESS")
+    );
+    let request_payload = report
+        .backend
+        .primer3_request_boulder_io
+        .as_deref()
+        .expect("request payload should be captured");
+    assert!(request_payload.contains("SEQUENCE_TEMPLATE="));
+    assert!(request_payload.contains("SEQUENCE_PRIMER=ATGCGTACGATCGTAGCTAG"));
+    assert!(request_payload.contains("SEQUENCE_PRIMER_REVCOMP=CGATCGATGCTAGCTAGCTA"));
+    assert!(request_payload.contains("PRIMER_EXPLAIN_FLAG=1"));
+
+    let captured = std::fs::read_to_string(&request_capture).expect("captured stdin payload");
+    assert_eq!(captured, request_payload);
+}
+
+#[cfg(unix)]
+#[test]
+fn test_design_primer_pairs_primer3_runs_legacy_binary_without_progress_flag() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "tpl".to_string(),
+        seq("ATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCGATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCG"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
+    let tmp = tempdir().expect("tempdir");
+    let (fake_primer3, request_capture, invocation_capture) =
+        install_fake_legacy_primer3_zero_pairs(tmp.path());
+    engine.state_mut().parameters.primer3_executable = fake_primer3;
 
     engine
         .apply(Operation::DesignPrimerPairs {
@@ -9260,33 +20774,194 @@ fn test_design_primer_pairs_primer3_zero_pairs_persists_request_and_explain() {
             max_amplicon_bp: 80,
             max_tm_delta_c: Some(10.0),
             max_pairs: Some(10),
-            report_id: Some("tp73_roi_primer3_zero".to_string()),
+            report_id: Some("legacy_primer3".to_string()),
         })
-        .expect("fake primer3 zero-pair design should complete");
+        .expect("legacy Primer3 should be retried without --progress");
 
-    let report = engine
-        .get_primer_design_report("tp73_roi_primer3_zero")
-        .expect("primer3 zero-pair report");
-    assert_eq!(report.backend.used, "primer3");
-    assert_eq!(report.pair_count, 0);
-    assert!(
-        report
-            .backend
-            .primer3_explain
-            .as_deref()
-            .unwrap_or_default()
-            .contains("PRIMER_PAIR_EXPLAIN")
+    let captured = std::fs::read_to_string(request_capture).expect("legacy captured request");
+    assert!(captured.contains("SEQUENCE_TEMPLATE="));
+    let invocations = std::fs::read_to_string(invocation_capture).expect("legacy invocations");
+    assert_eq!(
+        invocations.lines().filter(|line| *line == "--help").count(),
+        1,
+        "progress capability should be cached for one executable identity"
     );
-    let request_payload = report
-        .backend
-        .primer3_request_boulder_io
-        .as_deref()
-        .expect("request payload should be captured");
-    assert!(request_payload.contains("SEQUENCE_TEMPLATE="));
-    assert!(request_payload.contains("PRIMER_EXPLAIN_FLAG=1"));
+    assert!(!invocations.lines().any(|line| line == "--progress"));
+    assert!(engine.get_primer_design_report("legacy_primer3").is_ok());
+}
 
-    let captured = std::fs::read_to_string(&request_capture).expect("captured stdin payload");
-    assert_eq!(captured, request_payload);
+#[cfg(unix)]
+#[test]
+fn test_design_primer_pairs_primer3_retries_when_help_and_runtime_disagree() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "tpl".to_string(),
+        seq("ATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCGATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCG"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
+    let tmp = tempdir().expect("tempdir");
+    let (fake_primer3, request_capture) = install_fake_inconsistent_primer3_zero_pairs(tmp.path());
+    engine.state_mut().parameters.primer3_executable = fake_primer3;
+
+    engine
+        .apply(Operation::DesignPrimerPairs {
+            template: "tpl".to_string(),
+            roi_start_0based: 10,
+            roi_end_0based: 30,
+            forward: PrimerDesignSideConstraint::default(),
+            reverse: PrimerDesignSideConstraint::default(),
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: 20,
+            max_amplicon_bp: 80,
+            max_tm_delta_c: Some(10.0),
+            max_pairs: Some(10),
+            report_id: Some("inconsistent_primer3".to_string()),
+        })
+        .expect("Primer3 should retry without --progress after a runtime rejection");
+
+    let captured = std::fs::read_to_string(request_capture).expect("fallback captured request");
+    assert!(captured.contains("SEQUENCE_TEMPLATE="));
+    assert!(
+        engine
+            .get_primer_design_report("inconsistent_primer3")
+            .is_ok()
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn test_design_primer_pairs_requests_sigusr1_when_primer3_progress_stalls() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "tpl".to_string(),
+        seq("ATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCGATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCG"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
+    let tmp = tempdir().expect("tempdir");
+    engine.state_mut().parameters.primer3_executable =
+        install_fake_signal_driven_primer3(tmp.path());
+    let mut bounded = Vec::new();
+
+    engine
+        .apply_with_progress(
+            Operation::DesignPrimerPairs {
+                template: "tpl".to_string(),
+                roi_start_0based: 10,
+                roi_end_0based: 30,
+                forward: PrimerDesignSideConstraint::default(),
+                reverse: PrimerDesignSideConstraint::default(),
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: 20,
+                max_amplicon_bp: 80,
+                max_tm_delta_c: Some(10.0),
+                max_pairs: Some(10),
+                report_id: Some("signal_primer3".to_string()),
+            },
+            |progress| {
+                if let OperationProgress::PrimerDesign(progress) = progress
+                    && let Some(progress) = progress.primer3_progress
+                {
+                    bounded.push((progress.completed, progress.bound));
+                }
+                true
+            },
+        )
+        .expect("SIGUSR1 should request a terminal Primer3 progress report");
+
+    assert_eq!(bounded.first().copied(), Some((1, 10)));
+    assert_eq!(bounded.last().copied(), Some((10, 10)));
+}
+
+#[cfg(unix)]
+#[test]
+fn test_design_primer_pairs_does_not_signal_before_first_progress_row() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "tpl".to_string(),
+        seq("ATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCGATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCG"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
+    let tmp = tempdir().expect("tempdir");
+    engine.state_mut().parameters.primer3_executable =
+        install_fake_delayed_progress_primer3(tmp.path());
+
+    engine
+        .apply(Operation::DesignPrimerPairs {
+            template: "tpl".to_string(),
+            roi_start_0based: 10,
+            roi_end_0based: 30,
+            forward: PrimerDesignSideConstraint::default(),
+            reverse: PrimerDesignSideConstraint::default(),
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: 20,
+            max_amplicon_bp: 80,
+            max_tm_delta_c: Some(10.0),
+            max_pairs: Some(10),
+            report_id: Some("delayed_progress_primer3".to_string()),
+        })
+        .expect("help-advertised progress must not authorize SIGUSR1 before a progress row");
+
+    assert!(
+        engine
+            .get_primer_design_report("delayed_progress_primer3")
+            .is_ok()
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn test_auto_primer3_progress_cancellation_does_not_fall_back_or_commit() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "tpl".to_string(),
+        seq("ATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCGATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCG"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Auto;
+    let tmp = tempdir().expect("tempdir");
+    let (fake_primer3, _) = install_fake_primer3_zero_pairs(tmp.path());
+    engine.state_mut().parameters.primer3_executable = fake_primer3;
+
+    let error = engine
+        .apply_with_progress(
+            Operation::DesignPrimerPairs {
+                template: "tpl".to_string(),
+                roi_start_0based: 10,
+                roi_end_0based: 30,
+                forward: PrimerDesignSideConstraint::default(),
+                reverse: PrimerDesignSideConstraint::default(),
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: 20,
+                max_amplicon_bp: 80,
+                max_tm_delta_c: Some(10.0),
+                max_pairs: Some(10),
+                report_id: Some("cancelled_primer3".to_string()),
+            },
+            |progress| {
+                !matches!(
+                    progress,
+                    OperationProgress::PrimerDesign(PrimerDesignProgress {
+                        primer3_progress: Some(_),
+                        ..
+                    })
+                )
+            },
+        )
+        .expect_err("Primer3 progress callback should cancel the operation");
+
+    assert!(
+        error
+            .message
+            .contains("cancelled during progress reporting")
+    );
+    assert!(
+        engine
+            .get_primer_design_report("cancelled_primer3")
+            .is_err()
+    );
 }
 
 #[cfg(unix)]
@@ -9319,10 +20994,51 @@ fn test_primer3_preflight_report_success() {
     );
     assert!(report.reachable);
     assert!(report.version_probe_ok);
+    assert_eq!(report.progress_supported, Some(true));
+    assert_eq!(report.status_code, Some(0));
     assert_eq!(
         report.version.as_deref(),
         Some("primer3_core synthetic-fixture 2.6.1")
     );
+    assert!(report.detail.is_none());
+    assert!(report.error.is_none());
+}
+
+#[cfg(unix)]
+#[test]
+fn test_primer3_preflight_prefers_native_about_probe() {
+    let mut engine = GentleEngine::new();
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
+    let tmp = tempdir().expect("tempdir");
+    let fake_primer3 = install_fake_native_primer3_about(tmp.path());
+    let report = engine.primer3_preflight_report(None, Some(fake_primer3.as_str()));
+    assert!(report.reachable);
+    assert!(report.version_probe_ok);
+    assert_eq!(report.progress_supported, Some(false));
+    assert_eq!(report.status_code, Some(0));
+    assert_eq!(report.version.as_deref(), Some("libprimer3 release 2.6.1"));
+    assert!(report.detail.is_none());
+    assert!(report.error.is_none());
+}
+
+#[cfg(unix)]
+#[test]
+fn test_primer3_preflight_preserves_diagnostics_when_both_probes_fail() {
+    let mut engine = GentleEngine::new();
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
+    let tmp = tempdir().expect("tempdir");
+    let fake_primer3 = install_fake_primer3_failed_version_probes(tmp.path());
+    let report = engine.primer3_preflight_report(None, Some(fake_primer3.as_str()));
+    assert!(report.reachable);
+    assert!(!report.version_probe_ok);
+    assert_eq!(report.progress_supported, Some(false));
+    assert_eq!(report.status_code, Some(255));
+    assert!(report.version.is_none());
+    let detail = report.detail.as_deref().expect("failed-probe diagnostics");
+    assert!(detail.contains("--about"));
+    assert!(detail.contains("unknown option: --about"));
+    assert!(detail.contains("--version"));
+    assert!(detail.contains("Copyright (c) 1996-2022"));
     assert!(report.error.is_none());
 }
 
@@ -9346,6 +21062,7 @@ fn test_primer3_preflight_report_missing_executable() {
     );
     assert!(!report.reachable);
     assert!(!report.version_probe_ok);
+    assert_eq!(report.progress_supported, None);
     assert!(report.error.is_some());
 }
 
@@ -9373,6 +21090,20 @@ fn test_real_primer3_preflight_is_opt_in() {
         report.reachable,
         "expected a reachable primer3 executable when {} is set, got {:?}",
         EXTERNAL_PRIMER_BINARY_TEST_ENV, report
+    );
+    assert!(
+        report.version_probe_ok,
+        "expected a successful Primer3 version probe when {} is set, got {:?}",
+        EXTERNAL_PRIMER_BINARY_TEST_ENV, report
+    );
+    assert!(
+        report
+            .version
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty()),
+        "expected a non-empty Primer3 version when {} is set, got {:?}",
+        EXTERNAL_PRIMER_BINARY_TEST_ENV,
+        report
     );
 }
 
@@ -10196,6 +21927,7 @@ fn test_design_primer_pairs_enforces_pair_constraints() {
         forbidden_amplicon_motifs: vec![],
         fixed_amplicon_start_0based: Some(pair.amplicon_start_0based),
         fixed_amplicon_end_0based_exclusive: Some(pair.amplicon_end_0based_exclusive),
+        rejected_near_miss_limit: None,
     };
     engine
         .apply(Operation::DesignPrimerPairs {
@@ -10230,6 +21962,7 @@ fn test_design_primer_pairs_enforces_pair_constraints() {
                 forbidden_amplicon_motifs: vec![motif],
                 fixed_amplicon_start_0based: None,
                 fixed_amplicon_end_0based_exclusive: None,
+                rejected_near_miss_limit: None,
             },
             min_amplicon_bp: 40,
             max_amplicon_bp: 150,
@@ -10452,6 +22185,34 @@ fn test_primer_pair_scoring_penalizes_dimer_prone_pairs() {
     assert!(good.score > bad.score);
     assert!(good.rule_flags.primer_pair_dimer_risk_low);
     assert!(!bad.rule_flags.primer_pair_dimer_risk_low);
+}
+
+#[test]
+fn test_primer_pair_builder_rejects_overlapping_binding_footprints() {
+    let forward = PrimerDesignPrimerRecord {
+        sequence: "GTAAGCTAGCATCGGGATCCG".to_string(),
+        start_0based: 25,
+        end_0based_exclusive: 46,
+        tm_c: 65.2,
+        gc_fraction: 0.57,
+        anneal_hits: 1,
+        ..PrimerDesignPrimerRecord::default()
+    };
+    let reverse = PrimerDesignPrimerRecord {
+        sequence: "GATCCGTTAGCGTACCTGATCG".to_string(),
+        start_0based: 44,
+        end_0based_exclusive: 66,
+        tm_c: 65.2,
+        gc_fraction: 0.55,
+        anneal_hits: 1,
+        ..PrimerDesignPrimerRecord::default()
+    };
+
+    assert!(
+        GentleEngine::build_primer_design_pair_record(forward, reverse, 25, 66, 40, 250, 3.0, 120,)
+            .is_none(),
+        "opposing PCR primer binding footprints cannot overlap"
+    );
 }
 
 #[test]
@@ -10862,6 +22623,12 @@ fn test_set_parameter_linear_helical_display_controls() {
     let mut engine = GentleEngine::new();
     engine
         .apply(Operation::SetParameter {
+            name: "linear_show_sequence_bases".to_string(),
+            value: serde_json::json!(false),
+        })
+        .unwrap();
+    engine
+        .apply(Operation::SetParameter {
             name: "linear_sequence_helical_letters_enabled".to_string(),
             value: serde_json::json!(true),
         })
@@ -10920,6 +22687,7 @@ fn test_set_parameter_linear_helical_display_controls() {
             .display
             .linear_sequence_helical_letters_enabled
     );
+    assert!(!engine.state().display.linear_show_sequence_bases);
     assert_eq!(
         engine
             .state()
@@ -11648,29 +23416,63 @@ fn test_fetch_genbank_accession_operation_loads_sequence_and_anchor() {
 
 #[test]
 fn test_fetch_ensembl_region_operation_loads_sequence_and_anchor() {
+    use std::io::{BufRead, BufReader};
+    use std::net::TcpListener;
+
     let _guard = crate::genomes::genbank_env_lock()
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    let td = tempdir().unwrap();
-    let region_dir = td
-        .path()
-        .join("mock_ensembl")
-        .join("sequence")
-        .join("region")
-        .join("homo_sapiens");
-    fs::create_dir_all(&region_dir).unwrap();
-    fs::write(
-        region_dir.join("17:7668402..7668409:-1"),
-        r#"{
+    // Region URLs contain colons, which are not portable fixture filenames.
+    // Serve one synthetic response locally and exercise the real HTTP path.
+    let listener = TcpListener::bind("127.0.0.1:0").expect("local Ensembl fixture");
+    listener.set_nonblocking(true).unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let server = std::thread::spawn(move || {
+        let deadline = std::time::Instant::now() + Duration::from_secs(60);
+        let mut stream = loop {
+            match listener.accept() {
+                Ok((stream, _)) => break stream,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    assert!(
+                        std::time::Instant::now() < deadline,
+                        "Ensembl fixture timed out"
+                    );
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) => panic!("Ensembl fixture accept: {error}"),
+            }
+        };
+        // Windows inherits the listener's nonblocking mode on accepted sockets.
+        // The request reader needs blocking I/O bounded by the timeouts below.
+        stream
+            .set_nonblocking(false)
+            .expect("blocking Ensembl fixture connection");
+        stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        stream
+            .set_write_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        let mut reader = BufReader::new(&stream);
+        let mut request_line = String::new();
+        reader.read_line(&mut request_line).unwrap();
+        loop {
+            let mut header = String::new();
+            assert!(reader.read_line(&mut header).unwrap() > 0);
+            if header == "\r\n" {
+                break;
+            }
+        }
+        let body = r#"{
   "id": "chromosome:GRCh38:17:7668402:7668409:-1",
   "desc": "chromosome:GRCh38:17:7668402:7668409:-1",
   "seq": "ACGTACGT",
   "molecule": "dna"
 }
-"#,
-    )
-    .unwrap();
-    let base_url = format!("file://{}", td.path().join("mock_ensembl").display());
+"#;
+        write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+        request_line
+    });
     let _ensembl_env = EnvVarGuard::set("GENTLE_ENSEMBL_REST_BASE_URL", &base_url);
 
     let mut engine = GentleEngine::new();
@@ -11685,6 +23487,10 @@ fn test_fetch_ensembl_region_operation_loads_sequence_and_anchor() {
             coord_system_version: None,
         })
         .expect("fetch Ensembl region");
+    assert_eq!(
+        server.join().expect("Ensembl fixture server"),
+        "GET /sequence/region/homo_sapiens/17:7668402..7668409:-1?content-type=application/json HTTP/1.1\r\n"
+    );
 
     assert_eq!(result.created_seq_ids, vec!["tp53_roi".to_string()]);
     let sequence = engine
@@ -11751,6 +23557,7 @@ fn test_fetch_ensembl_region_operation_loads_sequence_and_anchor() {
 
 #[test]
 fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
+    // Hand-crafted DNA/GTF and refSNP JSON; ToyGenome.1 is synthetic assembly identity.
     let _guard = crate::genomes::genbank_env_lock()
         .lock()
         .unwrap_or_else(|e| e.into_inner());
@@ -11775,15 +23582,15 @@ fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
         format!(
             r#"{{
   "ToyGenome": {{
-    "description": "toy dbsnp genome",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "description": "toy dbsnp genome ToyGenome.1 (synthetic assembly)",
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta_path.display(),
-            ann_path.display(),
-            cache_dir.display()
+            serde_json::json!(fasta_path),
+            serde_json::json!(ann_path),
+            serde_json::json!(cache_dir)
         ),
     )
     .unwrap();
@@ -11816,8 +23623,38 @@ fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
               "spdi": {
                 "seq_id": "NC_000001.11",
                 "position": 29,
-                "deleted_sequence": "A",
+                "deleted_sequence": "C",
+                "inserted_sequence": "C"
+              }
+            }
+          },
+          {
+            "allele": {
+              "spdi": {
+                "seq_id": "NC_000001.11",
+                "position": 29,
+                "deleted_sequence": "C",
+                "inserted_sequence": "A"
+              }
+            }
+          },
+          {
+            "allele": {
+              "spdi": {
+                "seq_id": "NC_000001.11",
+                "position": 29,
+                "deleted_sequence": "C",
                 "inserted_sequence": "G"
+              }
+            }
+          },
+          {
+            "allele": {
+              "spdi": {
+                "seq_id": "NC_000001.11",
+                "position": 29,
+                "deleted_sequence": "C",
+                "inserted_sequence": "T"
               }
             }
           }
@@ -11919,6 +23756,37 @@ fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
         marker.qualifier_values("gentle_generated").next(),
         Some("dbsnp_variant_marker")
     );
+    assert_eq!(marker.qualifier_values("vcf_ref").next(), Some("C"));
+    assert_eq!(marker.qualifier_values("vcf_alt").next(), Some("A,G,T"));
+    assert_eq!(
+        marker.qualifier_values("dbsnp_reference_check").next(),
+        Some("match")
+    );
+    assert_eq!(
+        marker.qualifier_values("dbsnp_assembly_check").next(),
+        Some("match")
+    );
+    assert_eq!(
+        marker.qualifier_values("dbsnp_assembly_fallback").next(),
+        Some("false")
+    );
+    assert_eq!(marker.qualifier_values("gene").next(), Some("tagA"));
+    assert_eq!(marker.qualifier_values("dbsnp_gene").next(), Some("tagA"));
+
+    let materialized = engine
+        .apply(Operation::MaterializeVariantAllele {
+            input: "rs123_local".to_string(),
+            variant_label_or_id: Some("rs123".to_string()),
+            allele: VariantAlleleChoice::Alternate,
+            alternate_allele: Some("T".to_string()),
+            output_id: Some("rs123_alt".to_string()),
+        })
+        .expect("materialize alternate allele from fetched dbSNP marker");
+    assert_eq!(materialized.created_seq_ids, vec!["rs123_alt".to_string()]);
+    assert_eq!(
+        engine.state().sequences["rs123_alt"].forward_bytes()[20],
+        b'T'
+    );
 
     let provenance = engine
         .state()
@@ -11954,6 +23822,435 @@ fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
 }
 
 #[test]
+fn dbsnp_fetch_checks_reference_and_assembly_and_retains_non_snv_spdi() {
+    // All sequences, annotations and refSNP records are hand-crafted synthetic inputs.
+    // The NC_ identifier exercises existing contig alias resolution, not real variant biology.
+    let _guard = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let fasta = td.path().join("synthetic.fa");
+    let annotation = td.path().join("synthetic.gtf");
+    let cache = td.path().join("cache");
+    let catalog_path = td.path().join("catalog.json");
+    fs::write(&fasta, format!(">chr1\n{}\n", "C".repeat(80))).expect("write DNA");
+    fs::write(
+        &annotation,
+        "chr1\tsynthetic\tgene\t1\t80\t.\t+\t.\tgene_id \"SYN_GENE\";\n",
+    )
+    .expect("write GTF");
+    fs::write(
+        &catalog_path,
+        serde_json::to_vec(&json!({
+            "BoundGenome": {
+                "description": "Hand-crafted SyntheticAsm1 assembly",
+                "sequence_local": fasta, "annotations_local": annotation, "cache_dir": cache,
+            },
+            "UnlabelledGenome": {
+                "description": "Hand-crafted assembly without a family token",
+                "sequence_local": fasta, "annotations_local": annotation, "cache_dir": cache,
+            }
+        }))
+        .expect("catalog JSON"),
+    )
+    .expect("write catalog");
+    let source_path = td.path().join("record.json");
+    let _dbsnp_env = EnvVarGuard::set(
+        "GENTLE_NCBI_DBSNP_REFSNP_URL",
+        &format!("file://{}", source_path.display()),
+    );
+    let catalog = catalog_path.to_string_lossy().to_string();
+    let cache = cache.to_string_lossy().to_string();
+    let mut engine = GentleEngine::new();
+    for genome in ["BoundGenome", "UnlabelledGenome"] {
+        engine
+            .apply(Operation::PrepareGenome {
+                genome_id: genome.to_string(),
+                catalog_path: Some(catalog.clone()),
+                cache_dir: Some(cache.clone()),
+                timeout_seconds: None,
+            })
+            .expect("prepare synthetic genome");
+    }
+    for (
+        case,
+        genome,
+        assembly,
+        reference,
+        alternate,
+        reference_check,
+        assembly_check,
+        fallback,
+        snv,
+    ) in [
+        (
+            "match",
+            "BoundGenome",
+            "SyntheticAsm1",
+            "C",
+            "T",
+            "match",
+            "match",
+            false,
+            true,
+        ),
+        (
+            "mismatch",
+            "BoundGenome",
+            "SyntheticAsm1",
+            "A",
+            "T",
+            "mismatch",
+            "match",
+            false,
+            true,
+        ),
+        (
+            "fallback_mismatch",
+            "BoundGenome",
+            "SyntheticAsm2",
+            "A",
+            "T",
+            "mismatch",
+            "unavailable",
+            true,
+            true,
+        ),
+        (
+            "fallback_match",
+            "BoundGenome",
+            "SyntheticAsm2",
+            "C",
+            "T",
+            "match",
+            "unavailable",
+            true,
+            true,
+        ),
+        (
+            "unlabelled",
+            "UnlabelledGenome",
+            "SyntheticAsm1",
+            "C",
+            "T",
+            "match",
+            "unavailable",
+            false,
+            true,
+        ),
+        (
+            "deletion",
+            "BoundGenome",
+            "SyntheticAsm1",
+            "C",
+            "",
+            "match",
+            "match",
+            false,
+            false,
+        ),
+        (
+            "insertion",
+            "BoundGenome",
+            "SyntheticAsm1",
+            "",
+            "T",
+            "unavailable",
+            "match",
+            false,
+            false,
+        ),
+        (
+            "replacement",
+            "BoundGenome",
+            "SyntheticAsm1",
+            "CC",
+            "TT",
+            "match",
+            "match",
+            false,
+            false,
+        ),
+        (
+            "mixed_deletion",
+            "BoundGenome",
+            "SyntheticAsm1",
+            "C",
+            "T",
+            "match",
+            "match",
+            false,
+            false,
+        ),
+        (
+            "mixed_insertion",
+            "BoundGenome",
+            "SyntheticAsm1",
+            "C",
+            "T",
+            "match",
+            "match",
+            false,
+            false,
+        ),
+        (
+            "ambiguous",
+            "BoundGenome",
+            "SyntheticAsm1",
+            "N",
+            "T",
+            "unavailable",
+            "match",
+            false,
+            false,
+        ),
+    ] {
+        let spdi = |inserted: &str| {
+            json!({
+                "seq_id": "NC_000001.11", "position": 29,
+                "deleted_sequence": reference, "inserted_sequence": inserted,
+            })
+        };
+        let mut raw_alleles = vec![spdi(reference), spdi(alternate)];
+        if matches!(case, "mixed_deletion" | "mixed_insertion") {
+            // Different indel reference spans must not disappear from SNV classification.
+            raw_alleles.push(json!({
+                "seq_id": "NC_000001.11", "position": 29,
+                "deleted_sequence": if case == "mixed_deletion" { "CC" } else { "" },
+                "inserted_sequence": if case == "mixed_deletion" { "" } else { "A" },
+            }));
+        }
+        let document = json!({"refsnp_id": "123", "primary_snapshot_data": {
+            "placements_with_allele": [{
+                "seq_id": "NC_000001.11", "is_ptlp": true,
+                "placement_annot": {"seq_id_traits_by_assembly": [{
+                    "assembly_name": assembly, "is_chromosome": true,
+                    "is_top_level": true, "is_alt": false, "is_patch": false,
+                }]},
+                "alleles": raw_alleles.iter().map(|raw| json!({"allele": {"spdi": raw}})).collect::<Vec<_>>(),
+            }]
+        }});
+        fs::write(
+            &source_path,
+            serde_json::to_vec(&document).expect("refSNP JSON"),
+        )
+        .expect("write refSNP");
+        let input = format!("slice_{case}");
+        let result = engine
+            .apply(Operation::FetchDbSnpRegion {
+                rs_id: "rs123".to_string(),
+                genome_id: genome.to_string(),
+                flank_bp: Some(4),
+                output_id: Some(input.clone()),
+                annotation_scope: Some(GenomeAnnotationScope::None),
+                max_annotation_features: None,
+                catalog_path: Some(catalog.clone()),
+                cache_dir: Some(cache.clone()),
+            })
+            .expect("fetch synthetic local record");
+        let marker = engine.state().sequences[&input]
+            .features()
+            .iter()
+            .find(|feature| {
+                feature
+                    .qualifier_values("label")
+                    .any(|value| value == "rs123")
+            })
+            .expect("variant marker");
+        assert_eq!(
+            marker.qualifier_values("dbsnp_reference_check").next(),
+            Some(reference_check),
+            "{case}"
+        );
+        assert_eq!(
+            marker.qualifier_values("dbsnp_assembly_check").next(),
+            Some(assembly_check),
+            "{case}"
+        );
+        assert_eq!(
+            marker.qualifier_values("dbsnp_assembly_fallback").next(),
+            Some(if fallback { "true" } else { "false" }),
+            "{case}"
+        );
+        assert_eq!(
+            marker.qualifier_values("dbsnp_variant_class").next(),
+            Some(if snv { "snv" } else { "non_snv" }),
+            "{case}"
+        );
+        assert_eq!(
+            marker.qualifier_values("vcf_ref").next(),
+            snv.then_some(reference),
+            "{case}"
+        );
+        assert_eq!(
+            marker.qualifier_values("vcf_alt").next(),
+            snv.then_some(alternate),
+            "{case}"
+        );
+        let retained = marker
+            .qualifier_values("dbsnp_spdi")
+            .map(|value| serde_json::from_str::<serde_json::Value>(value).expect("retained SPDI"))
+            .collect::<Vec<_>>();
+        assert_eq!(retained, raw_alleles, "{case}");
+        assert_eq!(
+            result
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("assembly fallback")),
+            fallback,
+            "{case}"
+        );
+        assert_eq!(
+            result
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("reference check")),
+            reference_check != "match",
+            "{case}"
+        );
+        if snv && reference_check == "match" && assembly_check == "match" {
+            let materialized = engine
+                .apply(Operation::MaterializeVariantAllele {
+                    input: input.clone(),
+                    variant_label_or_id: Some("rs123".to_string()),
+                    allele: VariantAlleleChoice::Alternate,
+                    alternate_allele: Some("T".to_string()),
+                    output_id: Some(format!("alternate_{case}")),
+                })
+                .expect("materialize bound matching SNV");
+            assert_eq!(
+                engine.state().sequences[&materialized.created_seq_ids[0]].forward_bytes()[4],
+                b'T'
+            );
+        } else {
+            let before = serde_json::to_value(engine.state()).expect("snapshot");
+            for allele in [
+                VariantAlleleChoice::Reference,
+                VariantAlleleChoice::Alternate,
+            ] {
+                let error = engine
+                    .apply(Operation::MaterializeVariantAllele {
+                        input: input.clone(),
+                        variant_label_or_id: Some("rs123".to_string()),
+                        alternate_allele: matches!(allele, VariantAlleleChoice::Alternate)
+                            .then(|| "T".to_string()),
+                        allele,
+                        output_id: Some(format!("rejected_{case}")),
+                    })
+                    .expect_err("unverified or non-SNV marker cannot authorize output");
+                assert_eq!(error.code, ErrorCode::InvalidInput, "{case}");
+                assert_eq!(
+                    serde_json::to_value(engine.state()).expect("unchanged state"),
+                    before,
+                    "{case}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn dbsnp_reference_check_validates_the_full_reference_and_keeps_unknown_explicit() {
+    // Hand-crafted two-base replacement; no real variant or source sequence.
+    let document = json!({"primary_snapshot_data": {"placements_with_allele": [{
+        "seq_id": "chr1", "alleles": [{"allele": {"spdi": {
+            "seq_id": "chr1", "position": 1,
+            "deleted_sequence": "CC", "inserted_sequence": "TT"
+        }}}]
+    }]}});
+    let placement = GentleEngine::resolve_dbsnp_primary_placement(&document, "rsSynthetic", None)
+        .expect("synthetic placement");
+    for (sequence, start, expected) in [
+        (b"ACCGT".as_slice(), 1, "match"),
+        (b"accgt".as_slice(), 1, "match"),
+        (b"ACTGT".as_slice(), 1, "mismatch"),
+        (b"ACNGT".as_slice(), 1, "unavailable"),
+        (b"AC".as_slice(), 1, "unavailable"),
+        (b"ACCGT".as_slice(), usize::MAX, "unavailable"),
+    ] {
+        assert_eq!(
+            placement.reference_check(sequence, start).as_str(),
+            expected
+        );
+    }
+}
+
+#[test]
+fn test_fetch_ensembl_gene_honors_assembly_and_strand_aware_flanks() {
+    let _guard = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let mock_root = td.path().join("mock_ensembl");
+    let lookup_dir = mock_root.join("lookup").join("symbol").join("homo_sapiens");
+    let sequence_dir = mock_root.join("sequence").join("id");
+    fs::create_dir_all(&lookup_dir).expect("lookup fixture directory");
+    fs::create_dir_all(&sequence_dir).expect("sequence fixture directory");
+    fs::write(
+        lookup_dir.join("TP73"),
+        r#"{
+          "id":"ENSGTESTTP73",
+          "display_name":"TP73",
+          "species":"homo_sapiens",
+          "assembly_name":"GRCh38",
+          "strand":-1,
+          "seq_region_name":"1",
+          "start":100,
+          "end":199,
+          "Transcript":[]
+        }"#,
+    )
+    .expect("write lookup fixture");
+    fs::write(
+        sequence_dir.join("ENSGTESTTP73"),
+        serde_json::json!({
+            "id": "ENSGTESTTP73",
+            "desc": "chromosome:GRCh38:1:90:209:-1",
+            "seq": "A".repeat(120),
+            "molecule": "dna"
+        })
+        .to_string(),
+    )
+    .expect("write sequence fixture");
+    let base_url = format!("file://{}", mock_root.display());
+    let _ensembl_env = EnvVarGuard::set("GENTLE_ENSEMBL_REST_BASE_URL", &base_url);
+
+    let mut engine = GentleEngine::new();
+    engine
+        .apply(Operation::FetchEnsemblGene {
+            query: "TP73".to_string(),
+            species: Some("homo_sapiens".to_string()),
+            assembly: Some("GRCh38".to_string()),
+            flank_5prime_bp: Some(10),
+            flank_3prime_bp: Some(10),
+            entry_id: Some("tp73_flanked".to_string()),
+        })
+        .expect("fetch flanked Ensembl gene fixture");
+    let entry = engine
+        .get_ensembl_gene_entry("tp73_flanked")
+        .expect("stored flanked Ensembl entry");
+    assert_eq!(entry.assembly_name.as_deref(), Some("GRCh38"));
+    assert_eq!(entry.flank_5prime_bp, 10);
+    assert_eq!(entry.flank_3prime_bp, 10);
+    assert_eq!(entry.sequence_genomic_start_1based, Some(90));
+    assert_eq!(entry.sequence_genomic_end_1based, Some(209));
+    assert!(entry.sequence_source_url.contains("expand_5prime=10"));
+    assert!(entry.sequence_source_url.contains("expand_3prime=10"));
+
+    let mismatch = engine
+        .apply(Operation::FetchEnsemblGene {
+            query: "TP73".to_string(),
+            species: Some("homo_sapiens".to_string()),
+            assembly: Some("GRCm39".to_string()),
+            flank_5prime_bp: Some(10),
+            flank_3prime_bp: Some(10),
+            entry_id: Some("tp73_wrong_assembly".to_string()),
+        })
+        .expect_err("assembly mismatch should fail closed");
+    assert!(mismatch.message.contains("not requested assembly 'GRCm39'"));
+}
+
+#[test]
 fn test_fetch_ensembl_gene_live_tp53_skips_without_internet() {
     let _guard = crate::genomes::genbank_env_lock()
         .lock()
@@ -11968,10 +24265,13 @@ fn test_fetch_ensembl_gene_live_tp53_skips_without_internet() {
     let result = match engine.apply(Operation::FetchEnsemblGene {
         query: "TP53".to_string(),
         species: Some("homo_sapiens".to_string()),
+        assembly: Some("GRCh38".to_string()),
+        flank_5prime_bp: None,
+        flank_3prime_bp: None,
         entry_id: Some("tp53_live".to_string()),
     }) {
         Ok(result) => result,
-        Err(err) if err.code == ErrorCode::Io => {
+        Err(err) if transient_live_service_error(&err) => {
             eprintln!("Skipping live Ensembl gene fetch test after request failure: {err:?}");
             return;
         }
@@ -12007,17 +24307,15 @@ fn test_fetch_dbsnp_region_operation_emits_staged_progress_updates() {
     let catalog_path_str = catalog_path.to_string_lossy().to_string();
     fs::write(
         &catalog_path,
-        format!(
-            r#"{{
-  "ToyGenome": {{
-    "description": "toy dbsnp genome",
-    "sequence_local": "{root}/toy.fa",
-    "annotations_local": "{root}/toy.gtf",
-    "cache_dir": "{root}/cache"
-  }}
-}}"#,
-            root = td.path().display()
-        ),
+        serde_json::json!({
+            "ToyGenome": {
+                "description": "toy dbsnp genome",
+                "sequence_local": td.path().join("toy.fa"),
+                "annotations_local": td.path().join("toy.gtf"),
+                "cache_dir": cache_dir,
+            }
+        })
+        .to_string(),
     )
     .expect("catalog");
     fs::write(
@@ -12134,6 +24432,206 @@ fn test_genome_chromosome_matches_accepts_refseq_accessions_for_sex_and_mito_con
         "1",
         "NC_000016.10"
     ));
+}
+
+#[test]
+fn export_tss_view_svg_scores_exact_matrices_headless_and_refuses_plain_sequences() {
+    use gentle_protocol::tss_workspace::{TssInventoryRequest, TssMaterializeRequest};
+    let _guard = crate::tf_motifs::test_registry_lock().lock().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("dnp73.svg");
+    let mut engine = GentleEngine::new();
+    engine
+        .apply(Operation::LoadFile {
+            path: "test_files/tp73.ncbi.gb".to_string(),
+            as_id: Some("tp73_locus".to_string()),
+        })
+        .unwrap();
+    // A plain locus carries no annotated-TSS metadata and must fail closed.
+    let plain = engine.apply(Operation::ExportTssViewSvg {
+        seq_id: "tp73_locus".to_string(),
+        collection_id: None,
+        path: out.to_string_lossy().to_string(),
+        report: None,
+        local_motifs: vec!["MA0861.2".to_string()],
+        score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+        clip_negative: true,
+        start_0based: None,
+        end_0based_exclusive: None,
+        width_px: None,
+    });
+    assert!(
+        plain.is_err(),
+        "a locus without TSS metadata must be refused"
+    );
+    assert!(!out.exists(), "a refused export must not write a file");
+
+    let inventory = TssInventoryRequest {
+        seq_id: "tp73_locus".to_string(),
+        gene_query: "TP73".to_string(),
+        collection_id: "tp73_tss".to_string(),
+        upstream_bp: 500,
+        downstream_bp: 200,
+    };
+    let preview = engine
+        .apply(Operation::InspectTssInventory {
+            request: inventory.clone(),
+        })
+        .unwrap();
+    let report = preview.tss_inventory.expect("inventory report");
+    // The internal dNp73 start is the one with a complete upstream flank here.
+    let row = report
+        .rows
+        .iter()
+        .find(|row| row.genomic_tss.start_0based + 1 == 3_690_672)
+        .expect("annotated dNp73 start at 1:3690672");
+    assert_eq!(row.local_strand, "+");
+    // The P1/TAp73 start begins this excerpt, so its window is unavailable, not clipped.
+    assert!(report.rows.iter().any(|r| {
+        r.genomic_tss.start_0based + 1 == 3_652_516
+            && matches!(
+                r.availability,
+                gentle_protocol::tss_workspace::TssWindowAvailability::MissingFlanks
+            )
+    }));
+    let created = engine
+        .apply(Operation::MaterializeTssWindows {
+            request: TssMaterializeRequest {
+                inventory,
+                expected_approval_sha256: report.approval_sha256.clone(),
+                selected_tss_ids: vec![row.tss_id.clone()],
+            },
+        })
+        .unwrap();
+    let window = created.created_seq_ids.first().expect("one TSS window");
+
+    let result = engine
+        .apply(Operation::ExportTssViewSvg {
+            seq_id: window.clone(),
+            collection_id: None,
+            path: out.to_string_lossy().to_string(),
+            report: None,
+            local_motifs: vec![
+                "MA0861.2".to_string(),
+                "MA0024.3".to_string(),
+                "MA1961.2".to_string(),
+            ],
+            score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+            clip_negative: true,
+            start_0based: None,
+            end_0based_exclusive: None,
+            width_px: None,
+        })
+        .unwrap();
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|m| m.contains("3 exact matrix accession"))
+    );
+    let svg = std::fs::read_to_string(&out).unwrap();
+    // Each factor keeps its own lane, exact accession and separate scale.
+    for (factor, accession) in [
+        ("TP73", "MA0861.2"),
+        ("E2F1", "MA0024.3"),
+        ("PATZ1", "MA1961.2"),
+    ] {
+        assert!(
+            svg.contains(&format!("Locally computed | {factor} | {accession}")),
+            "missing locally computed lane for {factor}"
+        );
+    }
+    // Genomic, TSS-relative and local coordinates stay aligned on the plus strand.
+    assert!(svg.contains("local 501 | TSS +0 bp | 1:3690672 (+)"));
+    assert!(svg.contains("local 1 | TSS -500 bp | 1:3690172 (+)"));
+    // Trailing positions without a complete motif window are marked, not scored as zero.
+    assert!(svg.contains("data-role=\"terminal-unavailable\""));
+    assert!(svg.contains("Unavailable is not zero"));
+
+    let sequence_before = engine.state.sequences[window].get_forward_string();
+    let partial = dir.path().join("dnp73 proximal.svg");
+    let narrowed = engine
+        .apply(Operation::ExportTssViewSvg {
+            seq_id: window.clone(),
+            collection_id: None,
+            path: partial.to_string_lossy().to_string(),
+            report: None,
+            local_motifs: vec!["MA0861.2".into(), "MA0024.3".into(), "MA1961.2".into()],
+            score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+            clip_negative: true,
+            start_0based: Some(400),
+            end_0based_exclusive: Some(701),
+            width_px: None,
+        })
+        .unwrap();
+    assert!(
+        narrowed
+            .messages
+            .iter()
+            .any(|m| m.contains("in local 401..701") && m.contains("full 701-bp annotated window"))
+    );
+    let partial_svg = std::fs::read_to_string(&partial).unwrap();
+    // 301 bases, each matrix's full footprint, both strands. Counts must not
+    // remain the full-window 1372/1380/1382 merely because the picture is cropped.
+    for (accession, full_count, partial_count) in [
+        ("MA0861.2", 1372, 572),
+        ("MA0024.3", 1380, 580),
+        ("MA1961.2", 1382, 582),
+    ] {
+        assert!(svg.contains(&format!(
+            "{full_count}/{full_count} evaluated strand-windows"
+        )));
+        let lane = partial_svg
+            .split(&format!(
+                "<g data-lane-id=\"local/{accession}/llr_background_tail_log10\">"
+            ))
+            .nth(1)
+            .unwrap()
+            .split("</title>")
+            .next()
+            .unwrap();
+        assert!(lane.contains(&format!(
+            "{partial_count}/{partial_count} evaluated strand-windows in local 401..701"
+        )));
+    }
+    assert_eq!(
+        engine.state.sequences[window].get_forward_string(),
+        sequence_before
+    );
+
+    let invalid = engine.apply(Operation::ExportTssViewSvg {
+        seq_id: window.clone(),
+        collection_id: None,
+        path: partial.to_string_lossy().to_string(),
+        report: None,
+        local_motifs: vec!["MA0861.2".into()],
+        score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+        clip_negative: true,
+        start_0based: Some(701),
+        end_0based_exclusive: Some(701),
+        width_px: None,
+    });
+    assert!(invalid.is_err());
+    assert_eq!(std::fs::read_to_string(&partial).unwrap(), partial_svg);
+
+    // An unknown accession is refused outright rather than silently dropped.
+    assert!(
+        engine
+            .apply(Operation::ExportTssViewSvg {
+                seq_id: window.clone(),
+                collection_id: None,
+                path: dir.path().join("bad.svg").to_string_lossy().to_string(),
+                report: None,
+                local_motifs: vec!["TP73".to_string()],
+                score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+                clip_negative: true,
+                start_0based: None,
+                end_0based_exclusive: None,
+                width_px: None,
+            })
+            .is_err(),
+        "a factor-name alias must not resolve to a matrix"
+    );
 }
 
 #[test]
@@ -12602,7 +25100,8 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
         UNIPROT_PROJECTION_TRANSCRIPT_ACCOUNTING_SCHEMA
     );
     assert_eq!(accounting.rows.len(), 1);
-    assert!(accounting.rows[0].translated_nt > 0);
+    assert_eq!(accounting.rows[0].translated_nt, 142);
+    assert_eq!(accounting.rows[0].expected_aa_count, 47);
 
     let exon_compare = engine
         .compare_uniprot_projection_to_ensembl_exons(
@@ -12648,6 +25147,15 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
         .expect("audit report attached");
     assert_eq!(audit_report.schema, UNIPROT_PROJECTION_AUDIT_REPORT_SCHEMA);
     assert_eq!(audit_report.rows.len(), 1);
+    assert_eq!(
+        audit_report.protein_isoform_inventory.status,
+        UniprotProteinIsoformInventoryStatus::CanonicalOnly
+    );
+    assert_eq!(audit_report.protein_isoform_inventory.targets.len(), 1);
+    assert_eq!(
+        audit_report.protein_isoform_inventory.targets[0].isoform_id,
+        "PTEST1"
+    );
     assert!(
         audit_report
             .maintainer_email_draft
@@ -12696,6 +25204,13 @@ fn test_transcript_protein_expert_supports_transcript_only_rows() {
             .collect(),
     });
     dna.features_mut().push(gb_io::seq::Feature {
+        kind: "gene".into(),
+        location: gb_io::seq::Location::simple_range(0, dna_len_i64),
+        qualifiers: vec![("standard_name".into(), Some("UNRELATED_REGION".to_string()))]
+            .into_iter()
+            .collect(),
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
         kind: "mRNA".into(),
         location: gb_io::seq::Location::simple_range(0, 180),
         qualifiers: vec![
@@ -12725,6 +25240,7 @@ fn test_transcript_protein_expert_supports_transcript_only_rows() {
         panic!("expected isoform-architecture payload for transcript protein expert");
     };
     assert_eq!(view.seq_id, "toy_tx_only");
+    assert_eq!(view.gene_symbol, "TPROT");
     assert_eq!(view.protein_lanes.len(), 1);
     let comparison = view.protein_lanes[0]
         .comparison
@@ -12994,13 +25510,774 @@ fn test_ensembl_gene_entry_store_and_import_sequence() {
                     .any(|value| value == "ENSETOYGENE1")),
         "expanded Ensembl gene import should preserve exon features"
     );
+
+    let anchor = engine
+        .sequence_genome_anchor_summary("tp53_ensembl_gene_seq")
+        .expect("canonical Ensembl genome anchor");
+    assert_eq!(anchor.genome_id, "GRCh38");
+    assert_eq!(anchor.chromosome, "17");
+    assert_eq!(anchor.start_1based, 7_668_402);
+    assert_eq!(anchor.end_1based, 7_668_513);
+    assert_eq!(anchor.strand, Some('-'));
+    assert_eq!(anchor.anchor_verified, Some(true));
+
+    let panel_id = "ensembl_ensg00000141510_v1";
+    assert!(engine.isoform_panel_is_available("tp53_ensembl_gene_seq", panel_id));
+    let panel = engine
+        .get_isoform_panel_record("tp53_ensembl_gene_seq", panel_id)
+        .expect("automatically derived Ensembl isoform panel")
+        .resource;
+    assert_eq!(panel.isoforms.len(), 1);
+    let isoform = &panel.isoforms[0];
+    assert_eq!(isoform.isoform_id, "ENSTTOYGENE1.1");
+    assert_eq!(
+        isoform.annotation_transcript_id.as_deref(),
+        Some("ENSTTOYGENE1.1")
+    );
+    assert_eq!(
+        isoform.annotation_translation_id.as_deref(),
+        Some("ENSPTOYGENE1.1")
+    );
+    assert_eq!(isoform.transcript_strand.as_deref(), Some("-"));
+    assert_eq!(
+        isoform.transcript_biotype.as_deref(),
+        Some("protein_coding")
+    );
+    assert_eq!(isoform.exon_ranges_genomic_1based.len(), 1);
+    assert_eq!(
+        isoform.exon_ranges_genomic_1based[0].start_1based,
+        7_668_402
+    );
+    assert_eq!(isoform.exon_ranges_genomic_1based[0].end_1based, 7_668_513);
+    assert_eq!(isoform.cds_ranges_genomic_1based.len(), 1);
+    assert_eq!(isoform.cds_ranges_genomic_1based[0].start_1based, 7_668_412);
+    assert_eq!(isoform.cds_ranges_genomic_1based[0].end_1based, 7_668_450);
+    assert_eq!(
+        isoform.coding_start_status.as_deref(),
+        Some("annotation_translation_boundary")
+    );
+
+    let temp = tempfile::tempdir().expect("temporary immediate BED import");
+    let bed_path = temp.path().join("tp53_peak.bed");
+    std::fs::write(&bed_path, "chr17\t7668401\t7668406\tpeak-1\t8\t+\n")
+        .expect("write matching BED track");
+    engine
+        .apply(Operation::ImportGenomeBedTrack {
+            seq_id: "tp53_ensembl_gene_seq".to_string(),
+            path: bed_path.to_string_lossy().to_string(),
+            track_name: Some("immediate-enrichment".to_string()),
+            min_score: None,
+            max_score: None,
+            clear_existing: Some(false),
+        })
+        .expect("matching BED track should project immediately after Ensembl import");
+    assert!(
+        engine.state().sequences["tp53_ensembl_gene_seq"]
+            .features()
+            .iter()
+            .any(GentleEngine::is_generated_genome_bed_feature)
+    );
+}
+
+#[test]
+fn test_ensembl_gene_import_persists_verified_plus_strand_anchor() {
+    let mut entry = synthetic_ensembl_gene_entry("toy_plus_ensembl_gene", "ENSGTOYPLUS", "TOYPLUS");
+    entry.strand = Some(1);
+    for transcript in &mut entry.transcripts {
+        transcript.strand = Some(1);
+        for exon in &mut transcript.exons {
+            exon.strand = Some(1);
+        }
+    }
+    let mut engine = GentleEngine::default();
+    engine
+        .upsert_ensembl_gene_entry(entry)
+        .expect("upsert plus-strand Ensembl gene entry");
+    engine
+        .apply(Operation::ImportEnsemblGeneSequence {
+            entry_id: "toy_plus_ensembl_gene".to_string(),
+            output_id: Some("toy_plus_locus".to_string()),
+        })
+        .expect("import plus-strand Ensembl gene");
+
+    let anchor = engine
+        .sequence_genome_anchor_summary("toy_plus_locus")
+        .expect("verified plus-strand anchor");
+    assert_eq!(anchor.strand, Some('+'));
+    assert_eq!(anchor.anchor_verified, Some(true));
+    assert!(engine.isoform_panel_is_available("toy_plus_locus", "ensembl_ensgtoyplus_v1"));
+}
+
+#[test]
+fn test_ensembl_gene_import_does_not_guess_cds_outside_annotated_exons() {
+    let mut entry = synthetic_ensembl_gene_entry(
+        "toy_nonoverlap_ensembl_gene",
+        "ENSGTOYNONOVERLAP",
+        "TOYNONOVERLAP",
+    );
+    let translation = entry.transcripts[0]
+        .translation
+        .as_mut()
+        .expect("synthetic translation");
+    translation.genomic_start_1based = Some(7_668_300);
+    translation.genomic_end_1based = Some(7_668_350);
+
+    let mut engine = GentleEngine::default();
+    engine
+        .upsert_ensembl_gene_entry(entry)
+        .expect("upsert non-overlapping Ensembl annotation");
+    engine
+        .apply(Operation::ImportEnsemblGeneSequence {
+            entry_id: "toy_nonoverlap_ensembl_gene".to_string(),
+            output_id: Some("toy_nonoverlap_locus".to_string()),
+        })
+        .expect("import annotation without inventing CDS geometry");
+
+    let sequence = &engine.state().sequences["toy_nonoverlap_locus"];
+    assert!(
+        !sequence
+            .features()
+            .iter()
+            .any(|feature| feature.kind.eq_ignore_ascii_case("CDS")),
+        "translation bounds outside annotated exons must not become a guessed contiguous CDS"
+    );
+    let panel = engine
+        .get_isoform_panel_record("toy_nonoverlap_locus", "ensembl_ensgtoynonoverlap_v1")
+        .expect("annotation-derived panel")
+        .resource;
+    assert!(panel.isoforms[0].cds_ranges_genomic_1based.is_empty());
+    assert_eq!(
+        panel.isoforms[0].coding_start_status.as_deref(),
+        Some("not_assessable_translation_does_not_overlap_annotated_exons")
+    );
+}
+
+#[test]
+fn test_ensembl_gene_import_marks_inconsistent_sequence_span_unverified() {
+    let mut entry = synthetic_ensembl_gene_entry(
+        "toy_unverified_ensembl_gene",
+        "ENSGTOYUNVERIFIED",
+        "TOYUNVERIFIED",
+    );
+    entry.sequence_genomic_end_1based = Some(7_668_514);
+    let mut engine = GentleEngine::default();
+    engine
+        .upsert_ensembl_gene_entry(entry)
+        .expect("upsert inconsistent Ensembl entry");
+    let result = engine
+        .apply(Operation::ImportEnsemblGeneSequence {
+            entry_id: "toy_unverified_ensembl_gene".to_string(),
+            output_id: Some("toy_unverified_locus".to_string()),
+        })
+        .expect("import should preserve an explicitly unverified anchor");
+
+    assert_eq!(
+        engine
+            .sequence_genome_anchor_summary("toy_unverified_locus")
+            .expect("unverified anchor summary")
+            .anchor_verified,
+        Some(false)
+    );
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("unverified genome anchor"))
+    );
+}
+
+#[test]
+fn prepare_gene_locus_evidence_runs_fully_offline_with_normalized_score_sources() {
+    let _guard = jaspar_test_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    crate::tf_motifs::reload_builtin_for_test();
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let fixture = root.join("test_files/fixtures/gene_locus_evidence/general_locus_demo");
+    let mut request: GeneLocusEvidencePreparationRequest = serde_json::from_slice(
+        &fs::read(fixture.join("preparation_request.json")).expect("read preparation request"),
+    )
+    .expect("parse preparation request");
+    request.ensembl_entry_path = Some(
+        fixture
+            .join("ensembl_gene_entry.json")
+            .to_string_lossy()
+            .to_string(),
+    );
+    for track in &mut request.local_tracks {
+        track.path = fixture
+            .join(Path::new(&track.path).file_name().expect("track file name"))
+            .to_string_lossy()
+            .to_string();
+    }
+    for track in &mut request.regulatory_score_tracks {
+        if track.provider_kind == GeneLocusRegulatoryScoreProviderKind::ExternalModelScores {
+            track.source_path = Some(
+                fixture
+                    .join("external_model_scores.json")
+                    .to_string_lossy()
+                    .to_string(),
+            );
+        }
+    }
+    let output = tempdir().expect("temporary gene-locus outputs");
+    request.svg_path = output
+        .path()
+        .join("locus.svg")
+        .to_string_lossy()
+        .to_string();
+    request.png_path = Some(
+        output
+            .path()
+            .join("locus.png")
+            .to_string_lossy()
+            .to_string(),
+    );
+    request.pdf_path = Some(
+        output
+            .path()
+            .join("locus.pdf")
+            .to_string_lossy()
+            .to_string(),
+    );
+    request.display_report_path = Some(
+        output
+            .path()
+            .join("locus.report.json")
+            .to_string_lossy()
+            .to_string(),
+    );
+    request.reporter_report_path = Some(
+        output
+            .path()
+            .join("locus.reporter.json")
+            .to_string_lossy()
+            .to_string(),
+    );
+    request.receipt_path = Some(
+        output
+            .path()
+            .join("locus.receipt.json")
+            .to_string_lossy()
+            .to_string(),
+    );
+    let ensembl_intervals = output.path().join("ensembl-regulation.intervals.tsv");
+    let ensembl_index = output.path().join("ensembl-regulation.index.json");
+    let ensembl_source = crate::ensembl_regulation::source_descriptor(
+        crate::ensembl_regulation::ENSEMBL_REGULATION_2026_08_GRCH38_SOURCE_ID,
+    )
+    .expect("pinned human Ensembl Regulation source");
+    let mut interval_bytes = Vec::new();
+    crate::ensembl_regulation::write_intervals_header(&mut interval_bytes, &ensembl_source)
+        .expect("write Ensembl interval header");
+    for row in [
+        EnsemblRegulationInterval {
+            chromosome: "Synthetic1".to_string(),
+            start_0based: 100_120,
+            end_0based_exclusive: 100_250,
+            feature_id: "ENSR_TEST_LOCUS_PROMOTER".to_string(),
+            feature_type: "promoter".to_string(),
+            strand: None,
+            extended_start_0based: Some(100_090),
+            extended_end_0based_exclusive: Some(100_280),
+            associated_gene_ids: vec!["ENSGDEMO0001".to_string()],
+            associated_gene_names: vec!["LOCUSDEMO".to_string()],
+            ..Default::default()
+        },
+        EnsemblRegulationInterval {
+            chromosome: "Synthetic1".to_string(),
+            start_0based: 100_520,
+            end_0based_exclusive: 100_650,
+            feature_id: "ENSR_TEST_LOCUS_ENHANCER".to_string(),
+            feature_type: "enhancer".to_string(),
+            strand: Some('+'),
+            associated_gene_ids: vec!["ENSGDEMO0001".to_string()],
+            associated_gene_names: vec!["LOCUSDEMO".to_string()],
+            ..Default::default()
+        },
+    ] {
+        crate::ensembl_regulation::write_interval(&mut interval_bytes, &row)
+            .expect("write Ensembl interval row");
+    }
+    fs::write(&ensembl_intervals, interval_bytes).expect("write Ensembl intervals");
+    let prepared_ensembl_index = crate::ensembl_regulation::prepare_interval_index(
+        ensembl_intervals.to_string_lossy().as_ref(),
+        ensembl_index.to_string_lossy().as_ref(),
+        ensembl_source,
+    )
+    .expect("prepare Ensembl interval index");
+    request.ensembl_regulation = Some(GeneLocusEnsemblRegulationRequest {
+        source_id: crate::ensembl_regulation::ENSEMBL_REGULATION_2026_08_GRCH38_SOURCE_ID
+            .to_string(),
+        interval_index_path: ensembl_index.to_string_lossy().to_string(),
+        intervals_path: Some(ensembl_intervals.to_string_lossy().to_string()),
+        expected_index_sha256: Some(format!(
+            "sha256:{}",
+            crate::digest_utils::sha256_file_hex(&ensembl_index)
+                .expect("digest Ensembl interval index")
+        )),
+        expected_intervals_sha256: Some(prepared_ensembl_index.intervals_sha256),
+        feature_types: vec!["promoter".to_string(), "enhancer".to_string()],
+        max_rows: 10,
+        availability_policy: GeneLocusEnsemblRegulationAvailabilityPolicy::Required,
+    });
+
+    let mut engine = GentleEngine::default();
+    let result = engine
+        .apply(Operation::PrepareGeneLocusEvidence {
+            request: Box::new(request.clone()),
+        })
+        .expect("prepare offline gene-locus evidence");
+    let receipt = result
+        .gene_locus_evidence_preparation
+        .as_deref()
+        .expect("typed preparation receipt");
+    assert!(!receipt.ensembl_network_used);
+    assert!(receipt.ensembl_entry_source_path.is_none());
+    assert!(
+        receipt
+            .ensembl_entry_source_sha256
+            .as_deref()
+            .is_some_and(|digest| digest.starts_with("sha256:"))
+    );
+    assert_eq!(receipt.sequence_id, "general_locus_demo");
+    assert_eq!(receipt.panel_id, "general_locus_demo_panel");
+    assert_eq!(
+        receipt.transcript_ids,
+        vec!["ENSTDEMO0001.2", "ENSTDEMO0002.3"]
+    );
+    assert_eq!(receipt.imported_tracks.len(), 2);
+    assert!(
+        receipt
+            .imported_tracks
+            .iter()
+            .all(|track| track.path.is_none())
+    );
+    assert_eq!(receipt.scale_bar.length_bp, 1_000);
+    assert!(receipt.reporter_architecture_report_sha256.is_some());
+    assert_eq!(receipt.reporter_architecture_ids.len(), 6);
+    let ensembl_binding = receipt
+        .ensembl_regulation
+        .as_ref()
+        .expect("Ensembl Regulation receipt binding");
+    assert_eq!(
+        ensembl_binding.availability,
+        GeneLocusEnsemblRegulationAvailability::Available
+    );
+    assert_eq!(
+        ensembl_binding
+            .source
+            .as_ref()
+            .map(|source| source.annotation_release.as_str()),
+        Some("2026-08")
+    );
+    assert!(
+        ensembl_binding
+            .source_binding
+            .as_ref()
+            .is_some_and(|binding| binding.index_sha256.starts_with("sha256:")
+                && binding.intervals_sha256.starts_with("sha256:")
+                && binding.interval_index_path.as_deref() == Some("ensembl-regulation.index.json"))
+    );
+    assert!(
+        receipt
+            .warnings
+            .iter()
+            .all(|warning| !warning.contains("flank was clipped")),
+        "flanks that exactly reach the loaded sequence boundary are complete"
+    );
+    assert_eq!(
+        receipt
+            .genome_anchor
+            .as_ref()
+            .and_then(|row| row.anchor_verified),
+        Some(true)
+    );
+    assert!(
+        receipt
+            .artifacts
+            .iter()
+            .any(|row| row.kind == "svg" && row.size_bytes > 0)
+    );
+    assert!(
+        receipt
+            .artifacts
+            .iter()
+            .any(|row| row.kind == "png" && row.size_bytes > 0)
+    );
+    assert!(
+        receipt
+            .artifacts
+            .iter()
+            .any(|row| row.kind == "pdf" && row.size_bytes > 0)
+    );
+    assert!(receipt.artifacts.iter().any(|row| {
+        row.kind == "reporter_report_json"
+            && row.size_bytes > 0
+            && !row.path.contains(output.path().to_string_lossy().as_ref())
+    }));
+
+    let reporter_report = result
+        .promoter_reporter_architecture_comparison
+        .as_deref()
+        .expect("composed promoter-reporter architecture report");
+    assert_eq!(reporter_report.architectures.len(), 6);
+    assert!(reporter_report.locus_evidence.is_some());
+    let persisted_report: PromoterReporterArchitectureComparisonReport = serde_json::from_slice(
+        &fs::read(
+            request
+                .reporter_report_path
+                .as_ref()
+                .expect("reporter report path"),
+        )
+        .expect("read generated reporter report"),
+    )
+    .expect("parse generated reporter report");
+    assert_eq!(persisted_report.architectures.len(), 6);
+    assert!(persisted_report.locus_evidence.is_some());
+
+    let report: GeneLocusEvidenceDisplayReport = serde_json::from_slice(
+        &fs::read(request.display_report_path.as_ref().expect("report path"))
+            .expect("read generated display report"),
+    )
+    .expect("parse generated display report");
+    assert_eq!(report.isoform_evidence.transcripts.len(), 2);
+    assert_eq!(
+        report
+            .codon_markers
+            .iter()
+            .filter(|marker| marker.kind == GeneLocusCodonKind::Start)
+            .count(),
+        2,
+        "both annotation-derived CDS starts should remain distinct"
+    );
+    assert_eq!(report.occupancy_groups.len(), 2);
+    let ensembl_evidence = report
+        .ensembl_regulation
+        .as_ref()
+        .expect("source-bound Ensembl Regulation evidence");
+    assert_eq!(ensembl_evidence.rows.len(), 2);
+    let promoter_annotation = ensembl_evidence
+        .rows
+        .iter()
+        .find(|row| row.feature_id == "ENSR_TEST_LOCUS_PROMOTER")
+        .expect("synthetic Ensembl promoter row");
+    assert_eq!(promoter_annotation.extended_local_start_1based, Some(91));
+    assert_eq!(promoter_annotation.extended_local_end_1based, Some(280));
+    assert!(
+        ensembl_evidence
+            .rows
+            .iter()
+            .all(|row| row.relationship_statement.contains("do not establish"))
+    );
+    assert!(ensembl_evidence.rows.iter().all(|row| {
+        row.canonical_feature_url
+            .starts_with("https://regulation.ensembl.org/")
+    }));
+    assert!(
+        ensembl_evidence
+            .rows
+            .iter()
+            .all(|row| row.source_id == ensembl_evidence.requested_source_id
+                && !row.source_id.contains("screen")),
+        "the canonical Ensembl layer must not enumerate SCREEN project features"
+    );
+    let tp73_lane = report.occupancy_groups[0]
+        .lanes
+        .iter()
+        .find(|lane| lane.lane.track_name == "TP73 CUT&RUN")
+        .expect("prepared TP73 occupancy lane");
+    assert_eq!(tp73_lane.state, GeneLocusOccupancyLaneState::Available);
+    assert_eq!(tp73_lane.source_id, "synthetic:cutrun:tp73");
+    assert_eq!(tp73_lane.assay.as_deref(), Some("CUT&RUN"));
+    assert_eq!(tp73_lane.factor.as_deref(), Some("TP73"));
+    assert!(
+        tp73_lane
+            .source_sha256
+            .as_deref()
+            .is_some_and(|digest| digest.starts_with("sha256:"))
+    );
+    let absent_lane = report.occupancy_groups[0]
+        .lanes
+        .iter()
+        .find(|lane| lane.lane.track_name == "SERPINE1 CUT&RUN (not supplied)")
+        .expect("requested absent occupancy lane");
+    assert_eq!(absent_lane.state, GeneLocusOccupancyLaneState::NotPrepared);
+    assert!(absent_lane.lane.intervals.is_empty());
+    assert_eq!(
+        report.occupancy_groups[1].lanes[0].role,
+        GeneLocusOccupancyLaneRole::ChromatinContext
+    );
+    assert!(
+        report
+            .regulatory_score_tracks
+            .iter()
+            .filter(|track| track.provider_kind == GeneLocusRegulatoryScoreProviderKind::JasparPwm)
+            .count()
+            >= 4
+    );
+    let patz1_track = report
+        .regulatory_score_tracks
+        .iter()
+        .find(|track| track.track_id == "patz1_jaspar")
+        .expect("PATZ1 JASPAR track");
+    assert_eq!(patz1_track.source_ids, ["MA1961.2"]);
+    assert_eq!(patz1_track.factors[0].factor_id, "PATZ1");
+    let e2f1_track = report
+        .regulatory_score_tracks
+        .iter()
+        .find(|track| track.track_id == "e2f1_jaspar")
+        .expect("E2F1 JASPAR track");
+    assert_eq!(e2f1_track.source_ids, ["MA0024.3"]);
+    assert_eq!(e2f1_track.factors[0].factor_id, "E2F1");
+    let tp73_track = report
+        .regulatory_score_tracks
+        .iter()
+        .find(|track| track.track_id == "tp73_jaspar")
+        .expect("TP73 JASPAR track");
+    let sp1_track = report
+        .regulatory_score_tracks
+        .iter()
+        .find(|track| track.track_id == "sp1_jaspar")
+        .expect("SP1 JASPAR track");
+    assert_eq!(tp73_track.source_ids, ["MA0861.2"]);
+    assert_eq!(sp1_track.source_ids, ["MA0079.5"]);
+    // Overlap is intentional in this synthetic fixture, not a biological claim.
+    let tp73_sites = &tp73_track.sites;
+    let sp1_sites = &sp1_track.sites;
+    assert!(
+        tp73_sites.iter().any(|site| {
+            site.local_start_0based == 171 && site.local_end_0based_exclusive == 187
+        })
+    );
+    assert!(
+        sp1_sites.iter().any(|site| {
+            site.local_start_0based == 186 && site.local_end_0based_exclusive == 195
+        })
+    );
+    assert!(tp73_sites.iter().any(|tp73| {
+        sp1_sites.iter().any(|sp1| {
+            tp73.local_start_0based < sp1.local_end_0based_exclusive
+                && sp1.local_start_0based < tp73.local_end_0based_exclusive
+        })
+    }));
+    assert!(report.regulatory_score_tracks.iter().any(|track| {
+        track.provider_kind == GeneLocusRegulatoryScoreProviderKind::ExternalModelScores
+            && track.provider_id == "synthetic_regulatory_model"
+            && track.calibration_state
+                == GeneLocusRegulatoryCalibrationState::ProviderDeclaredUncalibrated
+    }));
+    assert!(
+        report
+            .regulatory_score_tracks
+            .iter()
+            .all(|track| track.source_path.is_none())
+    );
+    assert!(
+        report
+            .regulatory_score_tracks
+            .iter()
+            .all(|track| { track.scale_mode == GeneLocusRegulatoryScoreScaleMode::Independent })
+    );
+    let tp73_matrix = report
+        .regulatory_score_tracks
+        .iter()
+        .find(|track| track.track_id == "tp73_jaspar")
+        .and_then(|track| track.source_ids.first())
+        .cloned()
+        .expect("resolved TP73 matrix id");
+    let sp1_matrix = report
+        .regulatory_score_tracks
+        .iter()
+        .find(|track| track.track_id == "sp1_jaspar")
+        .and_then(|track| track.source_ids.first())
+        .cloned()
+        .expect("resolved SP1 matrix id");
+    let multi_source_report = engine
+        .build_gene_locus_evidence_display_report(
+            "general_locus_demo",
+            &GeneLocusEvidenceDisplayRequest {
+                isoform_evidence: GeneIsoformEvidenceRequest {
+                    panel_id: "general_locus_demo_panel".to_string(),
+                    ..Default::default()
+                },
+                upstream_bp: 150,
+                downstream_bp: 200,
+                regulatory_score_tracks: vec![GeneLocusRegulatoryScoreTrackRequest {
+                    track_id: "explicit_multi_matrix".to_string(),
+                    provider_kind: GeneLocusRegulatoryScoreProviderKind::JasparPwm,
+                    source_ids: vec![tp73_matrix.clone(), sp1_matrix.clone()],
+                    source_factor_bindings: vec![
+                        GeneLocusRegulatorySourceFactorBinding {
+                            source_id: tp73_matrix,
+                            factors: vec![GeneLocusRegulatoryFactor {
+                                factor_id: "TP73".to_string(),
+                                factor_label: Some("p73".to_string()),
+                            }],
+                        },
+                        GeneLocusRegulatorySourceFactorBinding {
+                            source_id: sp1_matrix,
+                            factors: vec![GeneLocusRegulatoryFactor {
+                                factor_id: "SP1".to_string(),
+                                factor_label: Some("SP1".to_string()),
+                            }],
+                        },
+                    ],
+                    score_kind: "llr_bits".to_string(),
+                    clip_negative: false,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+        )
+        .expect("build one multi-matrix request with source-specific factors");
+    assert_eq!(multi_source_report.regulatory_score_tracks.len(), 2);
+    assert!(
+        multi_source_report
+            .regulatory_score_tracks
+            .iter()
+            .all(|track| track.factors.len() == 1),
+        "factor lists must remain bound per resolved matrix rather than being copied wholesale"
+    );
+
+    let svg = fs::read_to_string(&request.svg_path).expect("read generated SVG");
+    assert!(svg.contains("data-gentle-genomic-scale-bar=\"true\""));
+    assert!(svg.contains("data-gentle-scale-bp=\"1000\""));
+    assert!(svg.contains("data-gentle-occupancy-role=\"chromatin_context\""));
+    assert!(svg.contains("data-gentle-occupancy-state=\"not_prepared\""));
+    assert!(svg.contains("data-gentle-occupancy-source=\"synthetic:cutrun:tp73\""));
+    assert!(svg.contains("data-gentle-occupancy-assay=\"CUT&amp;RUN\""));
+    assert!(svg.contains("data-gentle-regulatory-provider=\"jaspar_pwm\""));
+    assert!(svg.contains("data-gentle-regulatory-provider=\"external_model_scores\""));
+    assert!(svg.contains("data-gentle-overlay-id=\"promoter_reporter_architecture_comparison\""));
+    assert!(svg.contains("data-gentle-overlay-schematic="));
+    assert!(svg.contains("data-gentle-overlay-legend=\"spliced_cdna\""));
+    assert!(svg.contains("spliced exon / cDNA"));
+    assert!(svg.contains("data-gentle-regulatory-score-track=\"patz1_jaspar\""));
+    assert!(svg.contains("data-gentle-regulatory-score-track=\"e2f1_jaspar\""));
+    assert!(svg.contains("Ensembl-annotated regulatory regions"));
+    assert!(svg.contains("data-gentle-ensembl-feature=\"ENSR_TEST_LOCUS_PROMOTER\""));
+    assert!(svg.contains("data-gentle-ensembl-extended-span=\"ENSR_TEST_LOCUS_PROMOTER\""));
+    assert!(svg.contains("LUC"));
+    assert!(svg.contains("synthetic tails are schematic"));
+    for architecture_id in &receipt.reporter_architecture_ids {
+        assert!(
+            svg.contains(architecture_id),
+            "combined SVG should expose architecture {architecture_id}"
+        );
+    }
+    assert!(
+        fs::metadata(request.png_path.as_ref().expect("png path"))
+            .expect("generated PNG metadata")
+            .len()
+            > 0
+    );
+    assert!(
+        fs::metadata(request.pdf_path.as_ref().expect("pdf path"))
+            .expect("generated PDF metadata")
+            .len()
+            > 0
+    );
+    let pdf = fs::read(request.pdf_path.as_ref().expect("pdf path")).expect("read PDF");
+    let pdf_text = String::from_utf8_lossy(&pdf);
+    assert_eq!(pdf_text.matches("/Subtype /Link").count(), 3);
+    assert!(pdf_text.contains("/Annots ["));
+    assert!(pdf_text.contains("regulation.ensembl.org"));
+
+    let mut unavailable_request = request;
+    unavailable_request.svg_path = output
+        .path()
+        .join("locus-unavailable.svg")
+        .to_string_lossy()
+        .to_string();
+    unavailable_request.png_path = None;
+    unavailable_request.pdf_path = None;
+    unavailable_request.display_report_path = None;
+    unavailable_request.reporter_report_path = None;
+    unavailable_request.receipt_path = None;
+    unavailable_request.ensembl_regulation = Some(GeneLocusEnsemblRegulationRequest {
+        source_id: crate::ensembl_regulation::ENSEMBL_REGULATION_2026_08_GRCH38_SOURCE_ID
+            .to_string(),
+        interval_index_path: output
+            .path()
+            .join("not-installed.index.json")
+            .to_string_lossy()
+            .to_string(),
+        availability_policy: GeneLocusEnsemblRegulationAvailabilityPolicy::RetainUnavailable,
+        ..Default::default()
+    });
+    let mut unavailable_engine = GentleEngine::default();
+    let unavailable_result = unavailable_engine
+        .apply(Operation::PrepareGeneLocusEvidence {
+            request: Box::new(unavailable_request.clone()),
+        })
+        .expect("retain unavailable Ensembl Regulation evidence");
+    assert_eq!(
+        unavailable_result
+            .gene_locus_evidence_preparation
+            .as_ref()
+            .and_then(|receipt| receipt.ensembl_regulation.as_ref())
+            .map(|binding| binding.availability),
+        Some(GeneLocusEnsemblRegulationAvailability::Unavailable)
+    );
+    assert_eq!(
+        unavailable_result
+            .gene_locus_evidence_preparation
+            .as_ref()
+            .and_then(|receipt| receipt.ensembl_regulation.as_ref())
+            .and_then(|binding| binding.source.as_ref())
+            .map(|source| source.source_id.as_str()),
+        Some(crate::ensembl_regulation::ENSEMBL_REGULATION_2026_08_GRCH38_SOURCE_ID)
+    );
+    let unavailable_svg =
+        fs::read_to_string(&unavailable_request.svg_path).expect("read unavailable Ensembl SVG");
+    assert!(unavailable_svg.contains("data-gentle-ensembl-unavailable=\"true\""));
+
+    let mut required_request = unavailable_request;
+    required_request.svg_path = output
+        .path()
+        .join("locus-required-missing.svg")
+        .to_string_lossy()
+        .to_string();
+    required_request
+        .ensembl_regulation
+        .as_mut()
+        .expect("required Ensembl request")
+        .availability_policy = GeneLocusEnsemblRegulationAvailabilityPolicy::Required;
+    let error = GentleEngine::default()
+        .apply(Operation::PrepareGeneLocusEvidence {
+            request: Box::new(required_request),
+        })
+        .expect_err("required unavailable Ensembl index must fail");
+    assert_eq!(error.code, ErrorCode::NotFound);
+}
+
+#[test]
+fn legacy_gene_locus_preparation_payloads_omit_optional_reporter_composition_fields() {
+    let request = GeneLocusEvidencePreparationRequest::default();
+    let request_json =
+        serde_json::to_value(&request).expect("serialize legacy preparation request");
+    assert!(request_json.get("reporter_architecture_request").is_none());
+    assert!(request_json.get("reporter_report_path").is_none());
+    assert!(request_json.get("ensembl_regulation").is_none());
+
+    let receipt = GeneLocusEvidencePreparationReceipt::default();
+    let receipt_json =
+        serde_json::to_value(&receipt).expect("serialize legacy preparation receipt");
+    assert!(
+        receipt_json
+            .get("reporter_architecture_report_sha256")
+            .is_none()
+    );
+    assert!(receipt_json.get("reporter_architecture_ids").is_none());
+    assert!(receipt_json.get("ensembl_regulation").is_none());
 }
 
 #[test]
 fn test_ensembl_gene_import_negative_strand_derives_gene_oriented_protein() {
-    let mut sequence_bytes = vec![b'A'; 80];
-    sequence_bytes[10..19].copy_from_slice(b"ATGAAACCC");
-    sequence_bytes[40..52].copy_from_slice(b"GGGTTTAAATGA");
+    let mut sequence_bytes = vec![b'A'; 130];
+    sequence_bytes[40..49].copy_from_slice(b"ATGAAACCC");
+    sequence_bytes[70..82].copy_from_slice(b"GGGTTTAAATGA");
     let sequence = String::from_utf8(sequence_bytes).expect("ascii sequence");
     let entry = EnsemblGeneEntry {
         schema: "gentle.ensembl_gene_entry.v1".to_string(),
@@ -13016,8 +26293,12 @@ fn test_ensembl_gene_import_negative_strand_derives_gene_oriented_protein() {
         seq_region_name: Some("17".to_string()),
         genomic_start_1based: Some(1000),
         genomic_end_1based: Some(1079),
+        sequence_genomic_start_1based: Some(980),
+        sequence_genomic_end_1based: Some(1109),
+        flank_5prime_bp: 30,
+        flank_3prime_bp: 20,
         sequence,
-        sequence_length: 80,
+        sequence_length: 130,
         transcripts: vec![EnsemblGeneTranscriptSummary {
             transcript_id: "ENSTTOYNEG1".to_string(),
             transcript_version: Some(1),
@@ -13081,6 +26362,18 @@ fn test_ensembl_gene_import_negative_strand_derives_gene_oriented_protein() {
         .sequences
         .get("toy_negative_locus")
         .expect("imported locus");
+    let gene = imported
+        .features()
+        .iter()
+        .find(|feature| feature.kind.eq_ignore_ascii_case("gene"))
+        .expect("imported gene feature");
+    assert_eq!(
+        gene.location,
+        gb_io::seq::Location::simple_range(30, 110),
+        "negative-strand 5-prime flank should precede the gene in the gene-oriented sequence"
+    );
+    assert_eq!(gene.qualifier_values("flank_5prime_bp").next(), Some("30"));
+    assert_eq!(gene.qualifier_values("flank_3prime_bp").next(), Some("20"));
     let mrna = imported
         .features()
         .iter()
@@ -13090,6 +26383,32 @@ fn test_ensembl_gene_import_negative_strand_derives_gene_oriented_protein() {
         !matches!(mrna.location, gb_io::seq::Location::Complement(_)),
         "same-strand transcripts should be forward on Ensembl's gene-oriented sequence"
     );
+    engine
+        .state_mut()
+        .sequences
+        .get_mut("toy_negative_locus")
+        .expect("imported negative-strand locus")
+        .features_mut()
+        .push(gb_io::seq::Feature {
+            kind: "track".into(),
+            location: gb_io::seq::Location::simple_range(90, 100),
+            qualifiers: vec![
+                (
+                    "gentle_generated".into(),
+                    Some(GENOME_BIGWIG_TRACK_GENERATED_TAG.to_string()),
+                ),
+                ("gentle_track_source".into(), Some("BigWig".to_string())),
+                (
+                    "gentle_track_name".into(),
+                    Some("TOYNEG occupancy".to_string()),
+                ),
+                (
+                    "gentle_track_file".into(),
+                    Some("synthetic://toy-negative.bigWig".to_string()),
+                ),
+                ("score".into(), Some("8.000000".to_string())),
+            ],
+        });
 
     let feature_query = SequenceFeatureQuery {
         seq_id: "toy_negative_locus".to_string(),
@@ -13125,6 +26444,118 @@ fn test_ensembl_gene_import_negative_strand_derives_gene_oriented_protein() {
         derive.warnings.is_empty(),
         "negative-strand Ensembl import should not introduce stop-codon warnings: {:?}",
         derive.warnings
+    );
+
+    let locus_view = engine
+        .inspect_feature_expert(
+            "toy_negative_locus",
+            &FeatureExpertTarget::GeneLocusEvidence {
+                request: GeneLocusEvidenceDisplayRequest {
+                    isoform_evidence: GeneIsoformEvidenceRequest {
+                        panel_id: "ensembl_ensgtoyneg1_v1".to_string(),
+                        annotation_release: Some(
+                            "synthetic Ensembl negative-strand fixture".to_string(),
+                        ),
+                        occupancy_track_names: vec!["TOYNEG occupancy".to_string()],
+                        ..Default::default()
+                    },
+                    upstream_bp: 30,
+                    downstream_bp: 20,
+                    motifs: vec!["TP73".to_string()],
+                    motif_top_hit_count: 1,
+                    ..Default::default()
+                },
+            },
+        )
+        .expect("compose negative-strand Ensembl locus evidence");
+    let FeatureExpertView::GeneLocusEvidence(locus_report) = locus_view else {
+        panic!("expected gene-locus evidence for negative-strand Ensembl import");
+    };
+    assert_eq!(locus_report.gene_strand, "-");
+    assert_eq!(
+        locus_report.local_axis_direction,
+        GeneLocusLocalAxisDirection::IncreasingLeftToRight,
+        "the imported sequence is already gene-oriented and must not be mirrored again"
+    );
+    assert!(
+        locus_report.axis_left_genomic_1based > locus_report.axis_right_genomic_1based,
+        "gene-oriented local coordinates should carry descending genomic labels"
+    );
+    let start = locus_report
+        .codon_markers
+        .iter()
+        .find(|marker| marker.kind == GeneLocusCodonKind::Start)
+        .expect("annotation-backed start marker");
+    let stop = locus_report
+        .codon_markers
+        .iter()
+        .find(|marker| marker.kind == GeneLocusCodonKind::Stop)
+        .expect("annotation-backed stop marker");
+    assert!(start.local_position_1based < stop.local_position_1based);
+    assert!(start.genomic_position_1based > stop.genomic_position_1based);
+    assert_eq!(start.local_strand, "+");
+    assert_eq!(start.genomic_strand, "-");
+    let interval = &locus_report.occupancy_groups[0].lanes[0].lane.intervals[0];
+    assert_eq!(
+        (
+            interval.local_start_1based,
+            interval.local_end_1based,
+            interval.genomic_start_1based,
+            interval.genomic_end_1based,
+        ),
+        (91, 100, 1_010, 1_019),
+        "the known local BigWig interval must retain its labelled genomic side"
+    );
+    let motif_hit = &locus_report.motif_tracks[0].top_hits[0];
+    assert!(!motif_hit.local_strand.is_empty());
+    assert_eq!(
+        motif_hit.genomic_strand,
+        if motif_hit.local_strand == "+" {
+            "-"
+        } else {
+            "+"
+        }
+    );
+    assert_eq!(
+        motif_hit.genomic_start_1based,
+        1_109usize.saturating_sub(motif_hit.local_end_0based_exclusive.saturating_sub(1))
+    );
+    assert_eq!(
+        motif_hit.genomic_end_1based,
+        1_109usize.saturating_sub(motif_hit.local_start_0based)
+    );
+    let score_site = &locus_report.regulatory_score_tracks[0].sites[0];
+    assert_eq!(score_site.local_strand, motif_hit.local_strand);
+    assert_eq!(score_site.genomic_strand, motif_hit.genomic_strand);
+    let svg = render_feature_expert_svg(&FeatureExpertView::GeneLocusEvidence(locus_report));
+    assert!(svg.contains("data-gentle-local-axis-direction=\"increasing_left_to_right\""));
+    assert!(svg.contains("data-gentle-genomic-strand=\"-\""));
+
+    let reporter = engine
+        .compare_promoter_reporter_architectures(PromoterReporterArchitectureComparisonRequest {
+            seq_id: "toy_negative_locus".to_string(),
+            gene_label: Some("TOYNEG".to_string()),
+            transcript_ids: vec!["ENSTTOYNEG1.1".to_string()],
+            promoter_upstream_bp: 20,
+            tss_proximal_downstream_bp: 5,
+            ..Default::default()
+        })
+        .expect("compose reporter geometry for gene-oriented negative-strand import");
+    assert_eq!(reporter.transcripts[0].strand, "+");
+    assert_eq!(reporter.transcripts[0].local_strand, "+");
+    assert_eq!(reporter.transcripts[0].genomic_strand, "-");
+    assert_eq!(reporter.tss_classes[0].local_strand, "+");
+    assert_eq!(reporter.tss_classes[0].genomic_strand, "-");
+    assert!(
+        reporter.tss_classes[0]
+            .class_id
+            .contains("_local_plus_genomic_minus_tss_")
+    );
+    assert!(
+        reporter
+            .architectures
+            .iter()
+            .all(|row| { row.local_strand == "+" && row.genomic_strand == "-" })
     );
 }
 
@@ -13387,6 +26818,7 @@ SQ   SEQUENCE   20 AA;  2222 MW;  0000000000000000 CRC64;
             projection_id: "PMIS1@toy_mismatch".to_string(),
             entry_id: "PMIS1".to_string(),
             seq_id: "toy_mismatch".to_string(),
+            source_sequence_sha256: None,
             created_at_unix_ms: 1,
             op_id: None,
             run_id: None,
@@ -14379,6 +27811,62 @@ fn test_render_rna_structure_svg_requires_rna_biotype() {
 }
 
 #[test]
+fn annotated_format_parity_save_file_through_shared_shell() {
+    // Synthetic annotated circular sequence; no external fixture or network dependency.
+    let mut sequence = gb_io::seq::Seq::empty();
+    sequence.seq = b"ATGCCA".to_vec();
+    sequence.topology = gb_io::seq::Topology::Circular;
+    sequence.name = Some("SYNTHETIC".into());
+    sequence
+        .comments
+        .push("Synthetic provenance, not experimental evidence".into());
+    sequence.features.push(gb_io::seq::Feature {
+        kind: "misc_feature".into(),
+        location: gb_io::seq::Location::from_gb_format("complement(2..5)").unwrap(),
+        qualifiers: vec![(
+            "note".into(),
+            Some("raw_score=4; not binding probability".into()),
+        )],
+    });
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("s".into(), DNAsequence::from_genbank_seq(sequence));
+    let mut engine = GentleEngine::from_state(state);
+    let temp = tempfile::tempdir().unwrap();
+    let mut records = Vec::new();
+    for (format, extension) in [(ExportFormat::GenBank, "gb"), (ExportFormat::Embl, "embl")] {
+        let path = temp.path().join(format!("test.{extension}"));
+        let op = Operation::SaveFile {
+            seq_id: "s".into(),
+            path: path.display().to_string(),
+            format,
+        };
+        let command = crate::engine_shell::parse_shell_line(&format!(
+            "op '{}'",
+            serde_json::to_string(&op).unwrap()
+        ))
+        .unwrap();
+        execute_shell_command(&mut engine, &command).unwrap();
+        let text = std::fs::read_to_string(path).unwrap();
+        records.push(if extension == "gb" {
+            gb_io::reader::SeqReader::new(text.as_bytes())
+                .next()
+                .unwrap()
+                .unwrap()
+        } else {
+            crate::dna_sequence::parse_embl_records(&text)
+                .unwrap()
+                .remove(0)
+        });
+    }
+    assert_eq!(records[0].seq.to_ascii_uppercase(), records[1].seq);
+    assert_eq!(records[0].features, records[1].features);
+    assert_eq!(records[0].topology, records[1].topology);
+    assert_eq!(records[0].comments, records[1].comments);
+}
+
+#[test]
 fn test_save_file_operation_genbank() {
     let mut state = ProjectState::default();
     state.sequences.insert("s".to_string(), seq("ATGCCA"));
@@ -15014,6 +28502,899 @@ fn test_inspect_splicing_feature_expert_view() {
 }
 
 #[test]
+fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_strand() {
+    let fixture = "test_files/fixtures/isoform_evidence/patz1";
+    let temp = tempdir().expect("temp dir");
+    let mut engine = GentleEngine::default();
+    engine
+        .apply(Operation::LoadFile {
+            path: format!("{fixture}/patz1_minus_strand.gb"),
+            as_id: Some("patz1_isoform_evidence".to_string()),
+        })
+        .expect("load synthetic PATZ1 locus");
+    engine
+        .apply(Operation::ImportIsoformPanel {
+            seq_id: "patz1_isoform_evidence".to_string(),
+            panel_path: format!("{fixture}/patz1_isoform_panel.json"),
+            panel_id: None,
+            strict: false,
+        })
+        .expect("import synthetic PATZ1 panel");
+    let dna = engine
+        .state_mut()
+        .sequences
+        .get_mut("patz1_isoform_evidence")
+        .expect("loaded PATZ1 sequence");
+    for (track_name, source_path, start, end, score) in [
+        (
+            "SAOS-2 TAp73alpha TP73",
+            "/external/cutrun/tp73_saos2_TA_R1.bigWig",
+            145,
+            176,
+            12.0,
+        ),
+        (
+            "SAOS-2 DNp73beta TP73",
+            "/external/cutrun/tp73_saos2_DN_R1.bigWig",
+            88,
+            132,
+            6.0,
+        ),
+        (
+            "unrelated occupancy track",
+            "/external/cutrun/unrelated.bigWig",
+            40,
+            60,
+            30.0,
+        ),
+    ] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "track".into(),
+            location: gb_io::seq::Location::simple_range(start, end),
+            qualifiers: vec![
+                (
+                    "gentle_generated".into(),
+                    Some(GENOME_BIGWIG_TRACK_GENERATED_TAG.to_string()),
+                ),
+                ("gentle_track_source".into(), Some("BigWig".to_string())),
+                ("gentle_track_name".into(), Some(track_name.to_string())),
+                ("gentle_track_file".into(), Some(source_path.to_string())),
+                ("score".into(), Some(format!("{score:.6}"))),
+            ],
+        });
+    }
+    let noncoding_transcript = dna
+        .features_mut()
+        .iter_mut()
+        .find(|feature| {
+            feature
+                .qualifier_values("transcript_id")
+                .any(|value| value == "PATZ1-202")
+        })
+        .expect("synthetic noncoding transcript");
+    noncoding_transcript.qualifiers.push((
+        "transcript_biotype".into(),
+        Some("retained_intron".to_string()),
+    ));
+
+    let rna_report = RnaReadInterpretationReport {
+        schema: RNA_READ_REPORT_SCHEMA.to_string(),
+        report_id: "patz1_synthetic_rna".to_string(),
+        seq_id: "patz1_isoform_evidence".to_string(),
+        input_path: "synthetic://patz1-rna-reads".to_string(),
+        junction_support_frequencies: vec![RnaReadJunctionSupportFrequency {
+            donor_1based: 180,
+            acceptor_1based: 141,
+            support_read_count: 7,
+            support_fraction: 0.7,
+        }],
+        ..Default::default()
+    };
+    let mut rna_store = RnaReadReportStore {
+        schema: RNA_READ_REPORTS_SCHEMA.to_string(),
+        ..Default::default()
+    };
+    rna_store
+        .reports
+        .insert(rna_report.report_id.clone(), rna_report);
+    engine
+        .write_rna_read_report_store(rna_store)
+        .expect("store synthetic RNA report");
+
+    let qpcr_report = QpcrDesignReport {
+        schema: QPCR_DESIGN_REPORT_SCHEMA.to_string(),
+        report_id: "patz1_synthetic_qpcr".to_string(),
+        template: "patz1_isoform_evidence".to_string(),
+        assay_count: 1,
+        assays: vec![QpcrAssayRecord {
+            rank: 1,
+            score: 2.5,
+            forward: PrimerDesignPrimerRecord {
+                sequence: "ACGTACGTACGTACGTACGT".to_string(),
+                ..Default::default()
+            },
+            reverse: PrimerDesignPrimerRecord {
+                sequence: "TGCATGCATGCATGCATGCA".to_string(),
+                ..Default::default()
+            },
+            probe: PrimerDesignPrimerRecord {
+                sequence: "CGTACGTACGTACGT".to_string(),
+                ..Default::default()
+            },
+            amplicon_length_bp: 96,
+            transcript_context: Some(QpcrTranscriptAssayContext {
+                assay_class_label: "junction_spanning".to_string(),
+                explanation:
+                    "Synthetic candidate spanning the PATZ1 long/alternative-family junction."
+                        .to_string(),
+                covered_junction_labels: vec!["181..220->101..140".to_string()],
+                supported_transcript_ids: vec!["PATZ1-201".to_string(), "PATZ1-203".to_string()],
+                satisfies_requested_targeting: true,
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let mismatched_qpcr_report = QpcrDesignReport {
+        report_id: "patz1_wrong_template_qpcr".to_string(),
+        template: "another_sequence".to_string(),
+        assays: qpcr_report.assays.clone(),
+        assay_count: qpcr_report.assay_count,
+        ..qpcr_report.clone()
+    };
+    let mut primer_store = engine.read_primer_design_store();
+    primer_store
+        .qpcr_reports
+        .insert(qpcr_report.report_id.clone(), qpcr_report);
+    primer_store.qpcr_reports.insert(
+        mismatched_qpcr_report.report_id.clone(),
+        mismatched_qpcr_report,
+    );
+    engine
+        .write_primer_design_store(primer_store)
+        .expect("store synthetic qPCR report");
+
+    let mut mismatched_probe_report: serde_json::Value = serde_json::from_slice(
+        &fs::read(format!("{fixture}/patz1_probe_evidence.json")).expect("read probe fixture"),
+    )
+    .expect("parse probe fixture");
+    mismatched_probe_report["seq_id"] = serde_json::json!("another_sequence");
+    let mismatched_probe_path = temp.path().join("wrong_sequence_probe.json");
+    fs::write(
+        &mismatched_probe_path,
+        serde_json::to_vec_pretty(&mismatched_probe_report).expect("serialize mismatched probe"),
+    )
+    .expect("write mismatched probe");
+
+    let request = GeneIsoformEvidenceRequest {
+        panel_id: "patz1_synthetic_v1".to_string(),
+        annotation_release: Some("Ensembl116-like synthetic model".to_string()),
+        rna_read_report_ids: vec!["patz1_synthetic_rna".to_string()],
+        qpcr_report_ids: vec![
+            "patz1_synthetic_qpcr".to_string(),
+            "patz1_wrong_template_qpcr".to_string(),
+        ],
+        probe_evidence_paths: vec![
+            format!("{fixture}/patz1_probe_evidence.json"),
+            mismatched_probe_path.to_string_lossy().to_string(),
+        ],
+        cdna_est_resource_paths: vec![format!("{fixture}/patz1_cdna_est.json")],
+        expression_tsv_path: Some(format!("{fixture}/patz1_expression.tsv")),
+        occupancy_track_names: vec![
+            "SAOS-2 TAp73alpha TP73".to_string(),
+            "SAOS-2 DNp73beta TP73".to_string(),
+        ],
+    };
+    let state_before = serde_json::to_value(engine.state()).expect("serialize state before");
+    let view = engine
+        .inspect_feature_expert(
+            "patz1_isoform_evidence",
+            &FeatureExpertTarget::IsoformEvidence {
+                request: request.clone(),
+            },
+        )
+        .expect("inspect PATZ1 isoform evidence");
+    let state_after = serde_json::to_value(engine.state()).expect("serialize state after");
+    assert_eq!(
+        state_before, state_after,
+        "inspection must remain pure read"
+    );
+    let FeatureExpertView::IsoformEvidence(report) = view else {
+        panic!("expected isoform evidence view");
+    };
+    assert_eq!(report.schema, GENE_ISOFORM_EVIDENCE_SCHEMA);
+    assert_eq!(report.gene_symbol, "PATZ1");
+    assert_eq!(report.assembly, "GRCh38.p14");
+    assert_eq!(report.chromosome.as_deref(), Some("22"));
+    assert_eq!(report.gene_strand, "-");
+    assert_eq!(report.families.len(), 3);
+    assert_eq!(report.transcripts.len(), 3);
+    assert_eq!(report.transcript_metrics.len(), 3);
+    let inferred_coding_metrics = report
+        .transcript_metrics
+        .iter()
+        .find(|row| row.transcript_id == "PATZ1-201")
+        .expect("inferred coding transcript metrics");
+    assert!(inferred_coding_metrics.protein_identity_sha256.is_some());
+    assert_eq!(
+        inferred_coding_metrics.predicted_molecular_weight_kda, None,
+        "the fixture has no complete annotated CDS, so inferred ORF mass must remain unavailable"
+    );
+    assert_eq!(
+        inferred_coding_metrics.protein_mass_basis.as_deref(),
+        Some("unavailable_due_to_incomplete_or_unresolved_cds")
+    );
+    assert!(
+        inferred_coding_metrics
+            .flags
+            .iter()
+            .any(|flag| flag == "protein_mass_unavailable_incomplete_cds")
+    );
+    let noncoding_metrics = report
+        .transcript_metrics
+        .iter()
+        .find(|row| row.transcript_id == "PATZ1-202")
+        .expect("noncoding transcript metrics");
+    assert_eq!(noncoding_metrics.protein_identity_sha256, None);
+    assert_eq!(noncoding_metrics.predicted_molecular_weight_kda, None);
+    let long = report
+        .transcripts
+        .iter()
+        .find(|row| row.transcript_id == "PATZ1-201")
+        .expect("long transcript row");
+    assert_ne!(
+        long.exon_family_ids_5_to_3, long.exon_family_ids_genomic_ascending,
+        "minus-strand biological order must differ from genomic ascending order"
+    );
+    assert!(
+        long.exon_family_ids_5_to_3[0].contains("31325980-31326019"),
+        "5' end of minus-strand transcript should be the highest genomic exon"
+    );
+    let supported_junction = report
+        .junctions
+        .iter()
+        .find(|row| row.junction_id == "JCT:GRCh38.p14:31325940-31325979:-")
+        .expect("stable supported junction id");
+    assert_eq!(supported_junction.transcript_donor_1based, 31325979);
+    assert_eq!(supported_junction.transcript_acceptor_1based, 31325940);
+    assert!(
+        supported_junction
+            .components
+            .abundance
+            .measurements
+            .iter()
+            .any(|measurement| {
+                measurement.classification == "dataset_relative_rna_read_support"
+                    && measurement.value == Some(0.7)
+                    && measurement.unit.as_deref() == Some("read_fraction")
+            })
+    );
+    assert_eq!(
+        supported_junction.components.abundance.classification,
+        "incompatible_measurement_units"
+    );
+    assert_eq!(supported_junction.components.abundance.value, None);
+    assert_eq!(supported_junction.components.abundance.unit, None);
+    assert!(report.warnings.iter().any(|warning| {
+        warning.contains(&supported_junction.junction_id)
+            && warning.contains("input_value")
+            && warning.contains("read_fraction")
+    }));
+    let expression_items = report
+        .evidence_items
+        .iter()
+        .filter(|item| item.source_kind == IsoformEvidenceSourceKind::Expression)
+        .collect::<Vec<_>>();
+    assert_eq!(expression_items.len(), 9);
+    assert!(expression_items.iter().any(|item| {
+        item.family_ids == vec!["patz1_long".to_string()]
+            && item.condition.as_deref() == Some("TAp73alpha")
+            && item.value == Some(8.0)
+            && item.unit.as_deref() == Some("input_value")
+    }));
+    assert_eq!(
+        supported_junction.components.assayability.classification,
+        "qpcr_candidate_available"
+    );
+    assert!(report.evidence_items.iter().any(|item| {
+        item.evidence_id == "cdna_synthetic_long_alt_shared_junction"
+            && item.status == IsoformEvidenceAssessmentStatus::Observed
+    }));
+    assert!(report.evidence_items.iter().any(|item| {
+        item.evidence_id == "cdna_synthetic_wrong_assembly"
+            && item.status == IsoformEvidenceAssessmentStatus::Unknown
+            && item.target_ids.is_empty()
+    }));
+    assert!(report.evidence_items.iter().any(|item| {
+        item.source_kind == IsoformEvidenceSourceKind::ArrayProbe
+            && item.status == IsoformEvidenceAssessmentStatus::ConstraintOnly
+            && item.probe_class == Some(GeneLocusProbeClass::Juc)
+            && item.probe_classification_basis.as_deref() == Some("explicit_probe_type_or_level")
+            && item.condition.as_deref() == Some("synthetic_case_vs_control")
+            && item
+                .notes
+                .iter()
+                .any(|note| note.contains("not establish isoform support"))
+    }));
+    assert!(report.junctions.iter().any(|row| {
+        row.junction_id != supported_junction.junction_id
+            && !report.evidence_items.iter().any(|item| {
+                item.status == IsoformEvidenceAssessmentStatus::Observed
+                    && matches!(
+                        item.source_kind,
+                        IsoformEvidenceSourceKind::RnaRead
+                            | IsoformEvidenceSourceKind::Cdna
+                            | IsoformEvidenceSourceKind::Est
+                    )
+                    && item.target_ids.contains(&row.junction_id)
+            })
+    }));
+    assert_eq!(report.assay_candidates.len(), 1);
+    assert_eq!(report.occupancy_lanes.len(), 2);
+    assert_eq!(
+        report.occupancy_lanes[0].track_name,
+        "SAOS-2 TAp73alpha TP73"
+    );
+    assert_eq!(
+        report.occupancy_lanes[1].track_name,
+        "SAOS-2 DNp73beta TP73"
+    );
+    assert_eq!(report.occupancy_shared_abs_max_score, Some(12.0));
+    assert!(report.evidence_items.iter().any(|item| {
+        item.source_kind == IsoformEvidenceSourceKind::OccupancyTrack
+            && item.notes.iter().any(|note| {
+                note.contains("locus-level occupancy")
+                    && note.contains("does not identify a regulated isoform")
+            })
+    }));
+    assert!(report.occupancy_lanes.iter().all(|lane| {
+        lane.source_path
+            .as_deref()
+            .is_some_and(|path| path.ends_with(".bigWig"))
+    }));
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("GRCh37") && warning.contains("not attached"))
+    );
+    assert!(report.warnings.iter().any(|warning| {
+        warning.contains("wrong_sequence_probe.json") && warning.contains("another_sequence")
+    }));
+    assert!(report.warnings.iter().any(|warning| {
+        warning.contains("patz1_wrong_template_qpcr") && warning.contains("another_sequence")
+    }));
+
+    let mut multi_contrast: serde_json::Value = serde_json::from_slice(
+        &fs::read(format!("{fixture}/patz1_probe_evidence.json"))
+            .expect("read probe fixture for multi-contrast test"),
+    )
+    .expect("parse probe fixture for multi-contrast test");
+    let rows = multi_contrast["evidence_rows"]
+        .as_array()
+        .expect("probe evidence rows")
+        .clone();
+    let mut second_contrast = rows[0].clone();
+    second_contrast["evidence_id"] = serde_json::json!("JUC2200054820.hg.1.second");
+    second_contrast["contrast"] = serde_json::json!("synthetic_second_vs_control");
+    second_contrast["logfc"] = serde_json::json!(2.4);
+    let mut missing_effect = rows[0].clone();
+    missing_effect["evidence_id"] = serde_json::json!("JUC2200054820.hg.1.missing");
+    missing_effect["contrast"] = serde_json::json!("synthetic_missing_vs_control");
+    missing_effect["logfc"] = serde_json::Value::Null;
+    let ordered_rows = vec![
+        rows[0].clone(),
+        second_contrast.clone(),
+        missing_effect,
+        rows[1].clone(),
+    ];
+    multi_contrast["evidence_rows"] = serde_json::Value::Array(ordered_rows.clone());
+    let ordered_path = temp.path().join("probe_multi_contrast_ordered.json");
+    fs::write(
+        &ordered_path,
+        serde_json::to_vec_pretty(&multi_contrast).expect("serialize multi-contrast fixture"),
+    )
+    .expect("write multi-contrast fixture");
+    multi_contrast["evidence_rows"] =
+        serde_json::Value::Array(ordered_rows.into_iter().rev().collect());
+    let reversed_path = temp.path().join("probe_multi_contrast_reversed.json");
+    fs::write(
+        &reversed_path,
+        serde_json::to_vec_pretty(&multi_contrast).expect("serialize reversed fixture"),
+    )
+    .expect("write reversed fixture");
+
+    let contrast_component = |path: &Path| {
+        let view = engine
+            .inspect_feature_expert(
+                "patz1_isoform_evidence",
+                &FeatureExpertTarget::IsoformEvidence {
+                    request: GeneIsoformEvidenceRequest {
+                        panel_id: "patz1_synthetic_v1".to_string(),
+                        annotation_release: Some("Ensembl116-like synthetic model".to_string()),
+                        probe_evidence_paths: vec![path.to_string_lossy().to_string()],
+                        ..Default::default()
+                    },
+                },
+            )
+            .expect("inspect multi-contrast evidence");
+        let FeatureExpertView::IsoformEvidence(report) = view else {
+            panic!("expected multi-contrast isoform evidence");
+        };
+        report
+            .junctions
+            .iter()
+            .find(|row| row.junction_id == "JCT:GRCh38.p14:31325860-31325979:-")
+            .expect("probe-mapped junction")
+            .components
+            .responsiveness
+            .clone()
+    };
+    let ordered_component = contrast_component(&ordered_path);
+    let reversed_component = contrast_component(&reversed_path);
+    assert_eq!(
+        ordered_component.measurements, reversed_component.measurements,
+        "component measurements must be independent of evidence-row order"
+    );
+    assert_eq!(ordered_component.measurements.len(), 2);
+    assert!(
+        ordered_component
+            .measurements
+            .iter()
+            .all(|measurement| measurement.value != Some(0.0)),
+        "missing effects must remain missing rather than becoming zero"
+    );
+    assert_eq!(
+        ordered_component
+            .measurements
+            .iter()
+            .filter_map(|measurement| measurement.condition.as_deref())
+            .collect::<Vec<_>>(),
+        vec!["synthetic_case_vs_control", "synthetic_second_vs_control"]
+    );
+    assert_eq!(ordered_component.value, None);
+    assert_eq!(ordered_component.unit.as_deref(), Some("logFC"));
+
+    let mut wildcard_request = request.clone();
+    wildcard_request.occupancy_track_names = vec!["*".to_string()];
+    let wildcard_view = engine
+        .inspect_feature_expert(
+            "patz1_isoform_evidence",
+            &FeatureExpertTarget::IsoformEvidence {
+                request: wildcard_request,
+            },
+        )
+        .expect("inspect all projected occupancy tracks");
+    let FeatureExpertView::IsoformEvidence(wildcard_report) = wildcard_view else {
+        panic!("expected wildcard isoform evidence view");
+    };
+    assert_eq!(wildcard_report.occupancy_lanes.len(), 3);
+    for selected_lane in &report.occupancy_lanes {
+        let wildcard_lane = wildcard_report
+            .occupancy_lanes
+            .iter()
+            .find(|lane| lane.track_name == selected_lane.track_name)
+            .expect("selected lane should survive wildcard selection");
+        assert_eq!(wildcard_lane.lane_id, selected_lane.lane_id);
+    }
+
+    let svg_path = temp.path().join("patz1_isoform_evidence.svg");
+    engine
+        .render_feature_expert_svg_to_path(
+            "patz1_isoform_evidence",
+            &FeatureExpertTarget::IsoformEvidence {
+                request: request.clone(),
+            },
+            &svg_path.to_string_lossy(),
+        )
+        .expect("render isoform evidence SVG");
+    let svg = fs::read_to_string(svg_path).expect("read rendered SVG");
+    assert!(svg.contains(GENE_ISOFORM_EVIDENCE_SCHEMA));
+    assert!(svg.contains("PATZ1 isoform evidence"));
+    assert!(svg.contains("5' -&gt; 3'") || svg.contains("5' -> 3'"));
+    assert!(svg.contains("data-gentle-occupancy-lane"));
+    assert!(svg.contains("data-gentle-occupancy-interval"));
+    assert!(svg.contains("SAOS-2 TAp73alpha TP73"));
+    assert!(svg.contains("SAOS-2 DNp73beta TP73"));
+    assert!(svg.contains("locus occupancy is not isoform-specific regulation"));
+
+    let probe_effect_path = temp.path().join("patz1_probe_effects.tsv");
+    fs::write(
+        &probe_effect_path,
+        concat!(
+            "primary_gene\tprobeset_id\tprobeset_type\tseqname\tstrand\tstart\tstop\ttranscript_cluster_id\texon_id\tjunction_start_edge\tjunction_stop_edge\tpm_probe_count\tlog2_TAp73alpha_minus_GFP\tlog2_DNp73beta_minus_GFP\n",
+            "PATZ1\tPSR_demo\tmain->psr\tchr22\t-\t31325809\t31325820\tTC_demo\tEX_demo\t\t\t6\t-0.6899\t0.2224\n",
+            "PATZ1\tJUC_demo\tmain->juc\tchr22\t-\t\t\tTC_demo\tEX_a_to_EX_b\t31325840\t31325879\t4\t-0.2331\t-0.0829\n",
+        ),
+    )
+    .expect("write synthetic locus probe-effect table");
+    let locus_request = GeneLocusEvidenceDisplayRequest {
+        isoform_evidence: request,
+        upstream_bp: 25,
+        downstream_bp: 15,
+        probe_effect_table_paths: vec![probe_effect_path.to_string_lossy().to_string()],
+        probe_effect_contrasts: vec!["TAp73alpha-GFP".to_string(), "DNp73beta-GFP".to_string()],
+        probe_effect_coordinate_system: Some("GRCh38.p14".to_string()),
+        occupancy_layout: GeneLocusOccupancyLayout {
+            schema: GENE_LOCUS_OCCUPANCY_LAYOUT_SCHEMA.to_string(),
+            groups: vec![
+                GeneLocusOccupancyGroupRequest {
+                    group_id: "saos2".to_string(),
+                    label: "Saos-2".to_string(),
+                    scale_mode: GeneLocusOccupancyScaleMode::SharedGroup,
+                    lanes: vec![
+                        GeneLocusOccupancyLaneRequest {
+                            track_name: "SAOS-2 TAp73alpha TP73".to_string(),
+                            display_label: Some("TAp73alpha".to_string()),
+                            condition_label: Some("TA".to_string()),
+                            role: GeneLocusOccupancyLaneRole::Experimental,
+                            ..Default::default()
+                        },
+                        GeneLocusOccupancyLaneRequest {
+                            track_name: "SAOS-2 DNp73beta TP73".to_string(),
+                            display_label: Some("DNp73beta".to_string()),
+                            condition_label: Some("DN".to_string()),
+                            role: GeneLocusOccupancyLaneRole::Experimental,
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                },
+                GeneLocusOccupancyGroupRequest {
+                    group_id: "comparison".to_string(),
+                    label: "Separate comparison context".to_string(),
+                    scale_mode: GeneLocusOccupancyScaleMode::Independent,
+                    lanes: vec![
+                        GeneLocusOccupancyLaneRequest {
+                            track_name: "unrelated occupancy track".to_string(),
+                            role: GeneLocusOccupancyLaneRole::Other,
+                            ..Default::default()
+                        },
+                        GeneLocusOccupancyLaneRequest {
+                            track_name: "requested but absent".to_string(),
+                            source_id: Some("synthetic:absent".to_string()),
+                            assay: Some("CUT&RUN".to_string()),
+                            role: GeneLocusOccupancyLaneRole::Experimental,
+                            ..Default::default()
+                        },
+                        GeneLocusOccupancyLaneRequest {
+                            track_name: "wrong assembly source".to_string(),
+                            source_id: Some("synthetic:wrong-assembly".to_string()),
+                            source_assembly: Some("GRCh37".to_string()),
+                            role: GeneLocusOccupancyLaneRole::Experimental,
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                },
+            ],
+        },
+        motifs: vec!["TP73".to_string()],
+        motif_score_kind: "llr_bits".to_string(),
+        motif_clip_negative: false,
+        motif_display_threshold: None,
+        motif_top_hit_count: 3,
+        ..Default::default()
+    };
+    let locus_state_before =
+        serde_json::to_value(engine.state()).expect("serialize state before locus inspection");
+    let locus_view = engine
+        .inspect_feature_expert(
+            "patz1_isoform_evidence",
+            &FeatureExpertTarget::GeneLocusEvidence {
+                request: locus_request.clone(),
+            },
+        )
+        .expect("inspect composed PATZ1 locus evidence");
+    let locus_state_after =
+        serde_json::to_value(engine.state()).expect("serialize state after locus inspection");
+    assert_eq!(
+        locus_state_before, locus_state_after,
+        "locus composition must remain a pure read"
+    );
+    let FeatureExpertView::GeneLocusEvidence(locus_report) = locus_view else {
+        panic!("expected gene locus evidence view");
+    };
+    assert_eq!(locus_report.schema, GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA);
+    assert_eq!(locus_report.gene_strand, "-");
+    let binding = locus_report
+        .sequence_binding
+        .as_ref()
+        .expect("new reports bind their source DNA");
+    let source_dna = &engine.state().sequences["patz1_isoform_evidence"];
+    assert_eq!(binding.sequence_length_bp, source_dna.len());
+    assert_eq!(
+        binding.sequence_sha256,
+        crate::digest_utils::sha256_prefixed_str(&source_dna.get_forward_string())
+    );
+    assert_eq!(binding.genome_anchor.as_ref().unwrap().chromosome, "22");
+    assert_eq!(
+        locus_report.local_axis_direction,
+        GeneLocusLocalAxisDirection::DecreasingLeftToRight,
+        "the genomic-orientation PATZ1 fixture still needs local coordinate reversal"
+    );
+    assert_eq!(locus_report.probe_effect_overlays.len(), 2);
+    assert_eq!(locus_report.probe_effect_contrasts.len(), 2);
+    assert_eq!(
+        locus_report.probe_effect_overlays[0].probe_class,
+        GeneLocusProbeClass::Juc,
+        "negative-strand rows should be ordered from high to low genomic coordinates"
+    );
+    assert_eq!(
+        locus_report.probe_effect_overlays[1].probe_class,
+        GeneLocusProbeClass::Psr
+    );
+    assert_eq!(
+        locus_report.probe_effect_overlays[1].effects[0].value,
+        -0.6899
+    );
+    assert!(
+        locus_report.axis_left_genomic_1based > locus_report.axis_right_genomic_1based,
+        "minus-strand locus must read 5' to 3' while genomic coordinates descend"
+    );
+    assert_eq!(locus_report.isoform_evidence.occupancy_lanes.len(), 0);
+    assert_eq!(locus_report.transcript_metrics.len(), 3);
+    assert!(
+        locus_report
+            .transcript_metrics
+            .iter()
+            .all(|row| row.spliced_exon_length_bp > 0)
+    );
+    assert!(
+        locus_report
+            .transcript_metrics
+            .iter()
+            .all(|row| !row.flags.iter().any(|flag| flag == "incomplete_5prime_cds")),
+        "noncoding/no-CDS models must not be mislabeled as incomplete CDS"
+    );
+    let noncoding_metrics = locus_report
+        .transcript_metrics
+        .iter()
+        .find(|row| row.transcript_id == "PATZ1-202")
+        .expect("noncoding transcript metrics");
+    assert_eq!(noncoding_metrics.coding_status, "noncoding_or_no_cds");
+    assert_eq!(noncoding_metrics.cds_length_bp, 0);
+    assert_eq!(noncoding_metrics.expected_peptide_length_aa, None);
+    assert!(
+        noncoding_metrics
+            .flags
+            .iter()
+            .any(|flag| flag == "noncoding_transcript_annotation")
+    );
+    assert_eq!(locus_report.occupancy_groups.len(), 2);
+    assert_eq!(locus_report.occupancy_groups[0].group_abs_max_score, 12.0);
+    assert!(
+        locus_report.occupancy_groups[0]
+            .lanes
+            .iter()
+            .all(|lane| lane.display_abs_max_score == 12.0)
+    );
+    assert_eq!(
+        locus_report.occupancy_groups[1].lanes[0].display_abs_max_score,
+        30.0
+    );
+    assert_eq!(
+        locus_report.occupancy_groups[1].lanes[1].state,
+        GeneLocusOccupancyLaneState::NotPrepared
+    );
+    assert_eq!(
+        locus_report.occupancy_groups[1].lanes[2].state,
+        GeneLocusOccupancyLaneState::AssemblyMismatch
+    );
+    assert_eq!(locus_report.assay_overlays.len(), 1);
+    assert_eq!(locus_report.assay_overlays[0].assay_ids.len(), 1);
+    assert_eq!(locus_report.motif_tracks.len(), 1);
+    assert_eq!(locus_report.motif_tracks[0].motif_id, "MA0861.2");
+    assert!(
+        locus_report.motif_tracks[0]
+            .provenance
+            .contains("active local JASPAR motif registry")
+    );
+    assert!(locus_report.provenance.iter().any(|source| {
+        source.source_kind == "occupancy_layout"
+            && source.schema.as_deref() == Some(GENE_LOCUS_OCCUPANCY_LAYOUT_SCHEMA)
+    }));
+    assert!(locus_report.provenance.iter().any(|source| {
+        source.source_kind == "projected_occupancy_track"
+            && source.source_id.starts_with("OCC:")
+            && source.path.is_none()
+    }));
+    assert!(locus_report.provenance.iter().any(|source| {
+        source.source_kind == "tfbs_motif_matrix" && source.source_id == "MA0861.2"
+    }));
+    assert!(
+        locus_report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("upstream flank was clipped"))
+    );
+
+    let locus_svg_path = temp.path().join("patz1_gene_locus_evidence.svg");
+    engine
+        .render_feature_expert_svg_to_path(
+            "patz1_isoform_evidence",
+            &FeatureExpertTarget::GeneLocusEvidence {
+                request: locus_request,
+            },
+            &locus_svg_path.to_string_lossy(),
+        )
+        .expect("render composed PATZ1 locus evidence SVG");
+    let locus_svg = fs::read_to_string(locus_svg_path).expect("read locus evidence SVG");
+    assert!(locus_svg.contains(GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA));
+    assert!(locus_svg.contains("data-gentle-occupancy-group=\"saos2\""));
+    assert!(locus_svg.contains("data-gentle-motif-track=\"MA0861.2\""));
+    assert!(locus_svg.contains("data-gentle-probe-class=\"psr\""));
+    assert!(locus_svg.contains("data-gentle-probe-class=\"juc\""));
+    assert!(locus_svg.contains("data-gentle-probe-coordinate-system=\"GRCh38.p14\""));
+    assert!(locus_svg.contains("data-gentle-probe-effect-contrast=\"TAp73alpha_minus_GFP\""));
+    assert!(locus_svg.contains("data-gentle-probe-effect-contrast=\"DNp73beta_minus_GFP\""));
+    assert!(locus_svg.contains("data-gentle-probe-effect-value=\"-0.6899\""));
+    assert_eq!(locus_svg.matches("data-gentle-assay-junction").count(), 1);
+    assert!(locus_svg.contains("Evidence provenance"));
+    assert!(locus_svg.contains("data-gentle-provenance-source"));
+}
+
+#[test]
+fn gene_transcript_assay_routine_composes_existing_reports_without_rerunning_them() {
+    let temp = tempdir().expect("routine tempdir");
+    let isoform_path = temp.path().join("isoform_evidence.json");
+    let isoform_report = GeneIsoformEvidenceReport {
+        schema: GENE_ISOFORM_EVIDENCE_SCHEMA.to_string(),
+        seq_id: "synthetic_gene".to_string(),
+        gene_symbol: "GENE1".to_string(),
+        panel_id: "gene1_panel".to_string(),
+        annotation_release: Some("Synthetic release 1".to_string()),
+        exon_families: vec![GeneIsoformExonFamilyRow {
+            exon_family_id: "EXF:synthetic".to_string(),
+            specificity_class: "shared".to_string(),
+            recommendation: GeneIsoformRecommendation {
+                tier: GeneIsoformRecommendationTier::AnnotationCandidate,
+                recommended_use: "routine_common_region_screen".to_string(),
+                rule: "synthetic annotation rule".to_string(),
+                ..Default::default()
+            },
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let isoform_bytes =
+        serde_json::to_vec_pretty(&isoform_report).expect("serialize isoform evidence");
+    fs::write(&isoform_path, &isoform_bytes).expect("write isoform evidence");
+    let isoform_digest = crate::digest_utils::sha256_prefixed_bytes(&isoform_bytes);
+
+    let panel = TranscriptAssayPanelReport {
+        schema: TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA.to_string(),
+        report_id: "gene1_common_control".to_string(),
+        source_seq_id: "synthetic_gene".to_string(),
+        assay_kind: TranscriptAssayKind::SybrQpcr,
+        objective: TranscriptAssayPanelObjective::PanTranscript,
+        assay_tier: TranscriptAssayUseTier::Unspecified,
+        completion_status: TranscriptAssayPanelCompletionStatus::Complete,
+        selected_assays: vec![TranscriptAssayPanelAssay {
+            assay_id: "assay_common_1".to_string(),
+            rank: 1,
+            assay_kind: TranscriptAssayKind::SybrQpcr,
+            ..Default::default()
+        }],
+        order_ready_primers: vec![TranscriptAssayOrderPrimer {
+            line_id: "primer_common_f".to_string(),
+            assay_id: "assay_common_1".to_string(),
+            assay_rank: 1,
+            name: "GENE1_common_F".to_string(),
+            role: "forward".to_string(),
+            sequence_5_to_3: "ACGTACGTACGTACGTACGT".to_string(),
+            length_nt: 20,
+        }],
+        ..Default::default()
+    };
+    let mut engine = GentleEngine::default();
+    let mut store = engine.read_primer_design_store();
+    store
+        .transcript_assay_panels
+        .insert(panel.report_id.clone(), panel);
+    engine
+        .write_primer_design_store(store)
+        .expect("persist synthetic transcript-assay panel");
+
+    let output_path = temp.path().join("routine.json");
+    let state_before = serde_json::to_value(engine.state()).expect("serialize state before");
+    let result = engine
+        .apply(Operation::ComposeGeneTranscriptAssayRoutine {
+            request: GeneTranscriptAssayRoutineRequest {
+                label: "GENE1 validation routine".to_string(),
+                isoform_evidence_path: isoform_path.to_string_lossy().to_string(),
+                expected_isoform_evidence_sha256: Some(isoform_digest.clone()),
+                transcript_assay_panel_report_ids: vec!["gene1_common_control".to_string()],
+                ..Default::default()
+            },
+            path: Some(output_path.to_string_lossy().to_string()),
+        })
+        .expect("compose gene transcript-assay routine");
+    let state_after = serde_json::to_value(engine.state()).expect("serialize state after");
+    assert_eq!(
+        state_before, state_after,
+        "composition must remain a pure read"
+    );
+    let routine = result
+        .gene_transcript_assay_routine
+        .expect("routine report");
+    assert_eq!(routine.schema, GENE_TRANSCRIPT_ASSAY_ROUTINE_SCHEMA);
+    assert_eq!(routine.isoform_evidence_sha256, isoform_digest);
+    assert_eq!(routine.assay_panels.len(), 1);
+    assert_eq!(
+        routine.assay_panels[0].role,
+        GeneTranscriptAssayRoutinePanelRole::CommonControl
+    );
+    assert_eq!(routine.assay_panels[0].specificity_status, None);
+    assert!(!routine.assay_panels[0].specificity_accepted);
+    assert_eq!(routine.order_ready_primers.len(), 1);
+    assert!(output_path.is_file());
+
+    let wrapped_isoform_path = temp.path().join("isoform_evidence_view.json");
+    let wrapped_isoform_bytes =
+        serde_json::to_vec_pretty(&FeatureExpertView::IsoformEvidence(isoform_report.clone()))
+            .expect("serialize wrapped isoform evidence");
+    fs::write(&wrapped_isoform_path, &wrapped_isoform_bytes)
+        .expect("write wrapped isoform evidence");
+    let wrapped_isoform_digest = crate::digest_utils::sha256_prefixed_bytes(&wrapped_isoform_bytes);
+    let wrapped_result = engine
+        .apply(Operation::ComposeGeneTranscriptAssayRoutine {
+            request: GeneTranscriptAssayRoutineRequest {
+                label: "GENE1 wrapped validation routine".to_string(),
+                isoform_evidence_path: wrapped_isoform_path.to_string_lossy().to_string(),
+                expected_isoform_evidence_sha256: Some(wrapped_isoform_digest.clone()),
+                transcript_assay_panel_report_ids: vec!["gene1_common_control".to_string()],
+                ..Default::default()
+            },
+            path: None,
+        })
+        .expect("compose from wrapped feature-expert isoform evidence");
+    let wrapped_routine = wrapped_result
+        .gene_transcript_assay_routine
+        .expect("wrapped routine report");
+    assert_eq!(
+        wrapped_routine.isoform_evidence_sha256,
+        wrapped_isoform_digest
+    );
+    assert_eq!(wrapped_routine.gene_symbol, "GENE1");
+
+    let error = engine
+        .apply(Operation::ComposeGeneTranscriptAssayRoutine {
+            request: GeneTranscriptAssayRoutineRequest {
+                label: "stale routine".to_string(),
+                isoform_evidence_path: isoform_path.to_string_lossy().to_string(),
+                expected_isoform_evidence_sha256: Some("sha256:stale".to_string()),
+                transcript_assay_panel_report_ids: vec!["gene1_common_control".to_string()],
+                ..Default::default()
+            },
+            path: None,
+        })
+        .expect_err("stale isoform-evidence digest must be rejected");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("expected 'sha256:stale'"));
+
+    let empty_report_path = temp.path().join("empty_report.json");
+    fs::write(&empty_report_path, "{}").expect("write empty report");
+    let error = engine
+        .apply(Operation::ComposeGeneTranscriptAssayRoutine {
+            request: GeneTranscriptAssayRoutineRequest {
+                label: "invalid empty report".to_string(),
+                isoform_evidence_path: empty_report_path.to_string_lossy().to_string(),
+                ..Default::default()
+            },
+            path: None,
+        })
+        .expect_err("default-filled empty JSON must not be accepted as isoform evidence");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(
+        error
+            .message
+            .contains("missing its schema or source sequence id")
+    );
+}
+
+#[test]
 fn test_splicing_expert_view_reports_cds_flank_phase_forward() {
     let mut dna = DNAsequence::from_sequence(&"A".repeat(64)).expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {
@@ -15246,7 +29627,8 @@ fn test_derive_transcript_sequences_derives_all_mrna_features() {
 
 #[test]
 fn test_derive_transcript_sequences_reverse_strand_uses_reverse_complement() {
-    let mut dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("sequence");
+    // Synthetic, non-palindromic exon sequence exposes a second reverse complement.
+    let mut dna = DNAsequence::from_sequence("AAAACCGTGGGATTTTACGA").expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {
         kind: "mRNA".into(),
         location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::Join(vec![
@@ -15271,6 +29653,8 @@ fn test_derive_transcript_sequences_reverse_strand_uses_reverse_complement() {
         .to_ascii_uppercase();
     let joined = format!("{}{}", &source[2..6], &source[10..14]);
     let expected = GentleEngine::reverse_complement(&joined);
+    assert_eq!(expected, "AATCGGTT");
+    assert_ne!(expected, joined);
     let result = engine
         .apply(Operation::DeriveTranscriptSequences {
             seq_id: "s".to_string(),
@@ -15286,6 +29670,711 @@ fn test_derive_transcript_sequences_reverse_strand_uses_reverse_complement() {
         .get(&result.created_seq_ids[0])
         .expect("derived");
     assert_eq!(derived.get_forward_string(), expected);
+    assert!(derived.features().iter().all(|feature| {
+        !feature_is_reverse(feature)
+            && feature.qualifier_values("strand").next() == Some("+")
+            && feature.qualifier_values("source_strand").next() == Some("-")
+    }));
+    let (rederived, _, _, reverse, _, _) = GentleEngine::derive_transcript_sequence_from_feature(
+        derived.get_forward_string().as_bytes(),
+        &derived.features()[0],
+        derived.features(),
+        0,
+        &result.created_seq_ids[0],
+    )
+    .expect("rederive an already oriented transcript without a CDS");
+    assert!(!reverse);
+    assert_eq!(rederived.get_forward_string(), expected);
+}
+
+#[test]
+fn test_derive_transcript_sequences_local_strand_survives_project_round_trip() {
+    // Existing hand-crafted two-exon fixtures both yield ATGAAACCCTAA (MKP).
+    for reverse in [false, true] {
+        let transcript_qualifiers = vec![
+            ("gene".into(), Some("TOY".to_string())),
+            ("transcript_id".into(), Some("TX_LOCAL".to_string())),
+        ];
+        let cds_qualifiers = vec![
+            ("transcript_id".into(), Some("TX_LOCAL".to_string())),
+            ("codon_start".into(), Some("1".to_string())),
+            ("transl_table".into(), Some("11".to_string())),
+        ];
+        let dna = if reverse {
+            reverse_transcript_translation_test_sequence(
+                vec![],
+                transcript_qualifiers,
+                cds_qualifiers,
+            )
+        } else {
+            transcript_translation_test_sequence(vec![], transcript_qualifiers, cds_qualifiers)
+        };
+        let original = dna.clone_seq_record();
+        let mut state = ProjectState::default();
+        state.sequences.insert("source".to_string(), dna);
+        let mut engine = GentleEngine::from_state(state);
+        let result = engine
+            .apply(Operation::DeriveTranscriptSequences {
+                seq_id: "source".to_string(),
+                feature_ids: vec![1],
+                scope: None,
+                output_prefix: Some("first".to_string()),
+            })
+            .expect("derive transcript on either source strand");
+        assert_eq!(
+            engine.state().sequences["source"].clone_seq_record(),
+            original
+        );
+        let cdna_id = &result.created_seq_ids[0];
+        let encoded = serde_json::to_string(engine.state()).expect("serialize derived cDNA");
+        let decoded: ProjectState = serde_json::from_str(&encoded).expect("restore derived cDNA");
+        let mut restored = GentleEngine::from_state(decoded);
+        let cdna = &restored.state().sequences[cdna_id];
+        assert_eq!(cdna.get_forward_string(), "ATGAAACCCTAA");
+        for feature in cdna.features() {
+            assert!(!feature_is_reverse(feature));
+            assert_eq!(feature.qualifier_values("strand").next(), Some("+"));
+            assert_eq!(
+                feature.qualifier_values("source_strand").next(),
+                Some(if reverse { "-" } else { "+" })
+            );
+        }
+        let result = restored
+            .apply(Operation::DeriveTranscriptSequences {
+                seq_id: cdna_id.clone(),
+                feature_ids: vec![0],
+                scope: None,
+                output_prefix: Some("second".to_string()),
+            })
+            .expect("rederive restored, transcript-oriented cDNA");
+        let rederived = &restored.state().sequences[&result.created_seq_ids[0]];
+        assert_eq!(rederived.get_forward_string(), "ATGAAACCCTAA");
+        let cds = rederived
+            .features()
+            .iter()
+            .find(|feature| feature.kind.to_string() == "CDS")
+            .expect("rederived coding annotation");
+        assert_eq!(cds.qualifier_values("translation").next(), Some("MKP"));
+        assert_eq!(cds.qualifier_values("codon_start").next(), Some("1"));
+        assert_eq!(cds.qualifier_values("transl_table").next(), Some("11"));
+        assert_eq!(cds.qualifier_values("source_strand").next(), Some("+"));
+    }
+}
+
+#[test]
+fn test_tp73_dnp73beta_terminal_exon_skip_preserves_annotated_cds_through_shell() {
+    let mut engine = GentleEngine::default();
+    engine
+        .apply(Operation::LoadFile {
+            path: Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("test_files/tp73.ncbi.gb")
+                .to_string_lossy()
+                .into_owned(),
+            as_id: Some("tp73".to_string()),
+        })
+        .expect("load committed public TP73 locus");
+    let source = &engine.state().sequences["tp73"];
+    let feature_id = source
+        .features()
+        .iter()
+        .position(|feature| {
+            feature.kind.to_string() == "mRNA"
+                && feature
+                    .qualifier_values("transcript_id")
+                    .any(|id| id == "NM_001126241.3")
+        })
+        .expect("DeltaNp73beta RefSeq transcript");
+    let mut exon_ranges = vec![];
+    collect_location_ranges_usize(&source.features()[feature_id].location, &mut exon_ranges);
+    let matching = GentleEngine::collect_matching_cds_features_for_derivation(
+        source.features(),
+        &source.features()[feature_id],
+        &exon_ranges,
+    )
+    .expect("unique variant-linked CDS");
+    assert_eq!(matching.len(), 1);
+    assert_eq!(
+        matching[0].qualifier_values("protein_id").next(),
+        Some("NP_001119713.1")
+    );
+    assert!(
+        matching[0]
+            .qualifier_values("transcript_id")
+            .next()
+            .is_none()
+    );
+    let (full_cdna, _, _, _, _, full) = GentleEngine::derive_transcript_sequence_from_feature(
+        source.get_forward_string().to_ascii_uppercase().as_bytes(),
+        &source.features()[feature_id],
+        source.features(),
+        feature_id,
+        "tp73",
+    )
+    .expect("derive annotated beta cDNA");
+    let full = full.expect("annotated beta translation");
+    assert_eq!(
+        full.derivation_mode,
+        TranscriptProteinDerivationMode::AnnotatedCds
+    );
+    assert_eq!(full.cds_ranges_1based, vec![(235, 1587)]);
+    assert_eq!(full.cds_length_bp, 1353);
+    assert_eq!(full.protein_length_aa, 450);
+    assert!(full.terminal_stop_trimmed);
+    assert_eq!(full_cdna.len(), 5026);
+    assert!(
+        !full
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("inferred"))
+    );
+
+    let plan_command = crate::engine_shell::parse_shell_line(&format!(
+        "transcripts exon-skip-plan tp73 --feature-id {feature_id} --skip 80232..83686 --plan-id beta_without_last"
+    )).expect("parse shared plan command");
+    let plan = execute_shell_command(&mut engine, &plan_command).expect("plan beta terminal skip");
+    let terminal = plan.output["plan"]["candidate_exons"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|exon| exon["candidate_id"] == "exon_11")
+        .unwrap();
+    assert_eq!(terminal["length_bp"], 3455);
+    assert_eq!(terminal["coding_skip_bp"], 16); // Not the alpha isoform's 333 bp.
+    assert_eq!(terminal["coding_skip_mod3"], 1);
+
+    let command = crate::engine_shell::parse_shell_line(
+        "transcripts exon-skip-materialize beta_without_last --return cdna-fasta --return amino-acid-sequence"
+    ).expect("parse shared materialization command");
+    let materialized = execute_shell_command(&mut engine, &command).expect("materialize beta skip");
+    let report = &materialized.output["report"];
+    let cdna_id = report["cdna_seq_id"].as_str().unwrap();
+    let cdna = &engine.state().sequences[cdna_id];
+    assert_eq!(cdna.len(), 1571);
+    let cds = cdna
+        .features()
+        .iter()
+        .find(|feature| feature.kind.to_string() == "CDS")
+        .unwrap();
+    assert_eq!(cds.location.find_bounds().unwrap(), (234, 1571));
+    assert_eq!(
+        cds.qualifier_values("protein_derivation_mode").next(),
+        Some("annotated_cds")
+    );
+    assert_eq!(
+        cds.qualifier_values("translation").next(),
+        Some(&full.protein_sequence[..445])
+    );
+    assert_eq!(
+        cds.qualifier_values("source_protein_id").next(),
+        Some("NP_001119713.1")
+    );
+    assert!(cds.qualifier_values("protein_id").next().is_none());
+    assert!(
+        report["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|warning| {
+                warning
+                    .as_str()
+                    .unwrap()
+                    .contains("CDS length 1337 bp is not divisible by 3")
+            })
+    );
+    assert!(
+        report["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|warning| { warning.as_str().unwrap().contains("annotated 3' CDS end") })
+    );
+    assert!(
+        !report["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|warning| { warning.as_str().unwrap().contains("inferred a forward ORF") })
+    );
+    let saved: DNAsequence = serde_json::from_value(serde_json::to_value(cdna).unwrap()).unwrap();
+    let (_, _, _, _, _, rederived) = GentleEngine::derive_transcript_sequence_from_feature(
+        saved.get_forward_string().as_bytes(),
+        &saved.features()[0],
+        saved.features(),
+        0,
+        cdna_id,
+    )
+    .expect("rederive saved coding fragment");
+    let rederived = rederived.unwrap();
+    assert_eq!(rederived.cds_length_bp, 1337);
+    assert_eq!(rederived.cds_ranges_1based, vec![(235, 1571)]);
+    assert_eq!(rederived.protein_sequence, full.protein_sequence[..445]);
+    let genomic_id = report["genomic_seq_id"].as_str().unwrap();
+    let genomic = &engine.state().sequences[genomic_id];
+    let projected_id = genomic
+        .features()
+        .iter()
+        .position(|feature| {
+            feature.kind.to_string() == "mRNA"
+                && feature
+                    .qualifier_values("synthetic_origin")
+                    .any(|origin| origin == "exon_skip_isoform_genomic_annotation")
+        })
+        .unwrap();
+    let (_, _, _, _, _, projected) = GentleEngine::derive_transcript_sequence_from_feature(
+        genomic.get_forward_string().as_bytes(),
+        &genomic.features()[projected_id],
+        genomic.features(),
+        projected_id,
+        genomic_id,
+    )
+    .expect("projected genomic annotation remains reusable");
+    assert_eq!(projected.unwrap().cds_length_bp, 1337);
+}
+
+#[test]
+fn test_transcript_cds_resolution_rejects_ambiguity_and_incompatible_variant_links() {
+    // Hand-crafted two-exon coding model; no external biological claim.
+    let mut dna = transcript_translation_test_sequence(
+        vec![],
+        vec![
+            ("gene".into(), Some("toyA".to_string())),
+            ("transcript_id".into(), Some("TX_TOY".to_string())),
+            (
+                "product".into(),
+                Some("toy transcript variant 3".to_string()),
+            ),
+        ],
+        vec![
+            ("gene".into(), Some("toyA".to_string())),
+            (
+                "note".into(),
+                Some("encoded by transcript variant 3; synthetic".to_string()),
+            ),
+            ("protein_id".into(), Some("PROTEIN_TOY".to_string())),
+        ],
+    );
+    let transcript = dna.features()[1].clone();
+    let cds = dna.features()[2].clone();
+    let exons = vec![(0, 6), (10, 16)];
+    for case in [
+        "other_variant",
+        "other_gene",
+        "opposite_strand",
+        "intron_span",
+        "conflicting_id",
+    ] {
+        let mut incompatible = cds.clone();
+        match case {
+            "other_variant" => {
+                incompatible.qualifiers = vec![
+                    ("gene".into(), Some("toyA".to_string())),
+                    ("note".into(), Some("transcript variant 4".to_string())),
+                ]
+            }
+            "other_gene" => incompatible.qualifiers[0].1 = Some("otherGene".to_string()),
+            "opposite_strand" => {
+                incompatible.location =
+                    gb_io::seq::Location::Complement(Box::new(cds.location.clone()))
+            }
+            "intron_span" => incompatible.location = gb_io::seq::Location::simple_range(0, 16),
+            "conflicting_id" => incompatible
+                .qualifiers
+                .push(("transcript_id".into(), Some("OTHER_TX".to_string()))),
+            _ => unreachable!(),
+        }
+        assert!(
+            GentleEngine::collect_matching_cds_features_for_derivation(
+                &[incompatible],
+                &transcript,
+                &exons,
+            )
+            .unwrap()
+            .is_empty(),
+            "must reject {case}"
+        );
+    }
+    let mut mislabeled_geometry = cds.clone();
+    mislabeled_geometry
+        .qualifiers
+        .push(("transcript_id".into(), Some("TX_TOY".to_string())));
+    mislabeled_geometry.location = gb_io::seq::Location::simple_range(0, 16);
+    assert!(
+        GentleEngine::resolve_transcript_source_cds_ranges_0based(
+            &transcript,
+            &[mislabeled_geometry],
+            &exons,
+        )
+        .is_err(),
+        "an explicit transcript binding cannot silently become ORF inference"
+    );
+    let mut alternate = cds.clone();
+    alternate.location = gb_io::seq::Location::Join(vec![
+        gb_io::seq::Location::simple_range(3, 6),
+        gb_io::seq::Location::simple_range(10, 16),
+    ]);
+    alternate.qualifiers[2].1 = Some("ALTERNATE".to_string());
+    for features in [
+        vec![cds.clone(), alternate.clone()],
+        vec![alternate, cds.clone()],
+    ] {
+        let error = GentleEngine::resolve_transcript_source_cds_ranges_0based(
+            &transcript,
+            &features,
+            &exons,
+        )
+        .expect_err("distinct coding models must not be merged");
+        assert_eq!(error.code, ErrorCode::InvalidInput);
+        assert!(error.message.contains("Ambiguous CDS association"));
+    }
+    let mut exact = cds.clone();
+    exact
+        .qualifiers
+        .push(("transcript_id".into(), Some("TX_TOY".to_string())));
+    dna.features_mut().push(exact);
+    let matches = GentleEngine::collect_matching_cds_features_for_derivation(
+        dna.features(),
+        &transcript,
+        &exons,
+    )
+    .unwrap();
+    assert_eq!(matches.len(), 1);
+    assert_eq!(
+        matches[0].qualifier_values("transcript_id").next(),
+        Some("TX_TOY")
+    );
+
+    let mut state = ProjectState::default();
+    let mut ambiguous = dna.clone();
+    ambiguous.features_mut()[2]
+        .qualifiers
+        .push(("transcript_id".into(), Some("TX_TOY".to_string())));
+    ambiguous.features_mut()[2].location = gb_io::seq::Location::simple_range(0, 6);
+    state.sequences.insert("s".to_string(), ambiguous);
+    let error = GentleEngine::from_state(state)
+        .apply(Operation::PlanExonSkippedIsoform {
+            seq_id: "s".to_string(),
+            transcript_feature_id: 1,
+            criteria: vec![],
+            plan_id: None,
+        })
+        .expect_err("public planner must reject overlapping CDS models too");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+}
+
+#[test]
+fn test_transcript_cds_resolution_keeps_explicit_fragment_identity_and_coding_order() {
+    // Hand-crafted split CDS, as in a transcript-bound GFF model.
+    let exons = [(0, 6), (10, 16)];
+    for reverse in [false, true] {
+        let join = gb_io::seq::Location::Join(
+            exons
+                .iter()
+                .map(|(start, end)| gb_io::seq::Location::simple_range(*start as i64, *end as i64))
+                .collect(),
+        );
+        let transcript = gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: if reverse {
+                gb_io::seq::Location::Complement(Box::new(join))
+            } else {
+                join
+            },
+            qualifiers: vec![
+                ("transcript_id".into(), Some("TX_FRAGMENTS".to_string())),
+                ("gene_id".into(), Some("123".to_string())),
+                ("gene".into(), Some("toy".to_string())),
+            ],
+        };
+        let mut features = exons
+            .iter()
+            .map(|(start, end)| {
+                let location = gb_io::seq::Location::simple_range(*start as i64, *end as i64);
+                gb_io::seq::Feature {
+                    kind: "CDS".into(),
+                    location: if reverse {
+                        gb_io::seq::Location::Complement(Box::new(location))
+                    } else {
+                        location
+                    },
+                    qualifiers: vec![
+                        ("transcript_id".into(), Some("TX_FRAGMENTS".to_string())),
+                        ("protein_id".into(), Some("SAME_PROTEIN".to_string())),
+                        ("gene".into(), Some("toy".to_string())),
+                        ("transl_table".into(), Some("4".to_string())),
+                    ],
+                }
+            })
+            .collect::<Vec<_>>();
+        let resolved = GentleEngine::resolve_transcript_source_cds_ranges_0based(
+            &transcript,
+            &features,
+            &exons,
+        )
+        .unwrap();
+        assert_eq!(resolved, exons);
+        let matches = GentleEngine::collect_matching_cds_features_for_derivation(
+            &features,
+            &transcript,
+            &exons,
+        )
+        .unwrap();
+        assert_eq!(
+            matches[0].location.find_bounds().unwrap(),
+            if reverse { (10, 16) } else { (0, 6) }
+        );
+        features[1].qualifiers[3].1 = Some("11".to_string());
+        assert!(
+            GentleEngine::resolve_transcript_source_cds_ranges_0based(
+                &transcript,
+                &features,
+                &exons,
+            )
+            .is_err(),
+            "conflicting fragment translation tables are ambiguous"
+        );
+    }
+}
+
+#[test]
+fn test_exon_skip_five_prime_cds_projection_preserves_phase_on_both_strands() {
+    // Synthetic ATGGAATTTTAA CDS split 4/5/3 bp; remove its first exon.
+    for reverse in [false, true] {
+        for (codon_start, projected_codon_start, protein) in
+            [(1, 3, "F"), (2, 1, "NF"), (3, 2, "IL")]
+        {
+            let sequence = "ATGGNNNAATTTNNNTAA";
+            let bases = if reverse {
+                String::from_utf8(bio::alphabets::dna::revcomp(sequence.as_bytes())).unwrap()
+            } else {
+                sequence.to_string()
+            };
+            let mut dna = DNAsequence::from_sequence(&bases).unwrap();
+            let ranges = [(0, 4), (7, 12), (15, 18)];
+            let location = gb_io::seq::Location::Join(
+                ranges
+                    .into_iter()
+                    .map(|(start, end)| {
+                        let (start, end) = if reverse {
+                            (18 - end, 18 - start)
+                        } else {
+                            (start, end)
+                        };
+                        gb_io::seq::Location::simple_range(start, end)
+                    })
+                    .collect(),
+            );
+            let location = if reverse {
+                gb_io::seq::Location::Complement(Box::new(location))
+            } else {
+                location
+            };
+            dna.features_mut().push(gb_io::seq::Feature {
+                kind: "mRNA".into(),
+                location: location.clone(),
+                qualifiers: vec![("transcript_id".into(), Some("TX_PARTIAL".to_string()))],
+            });
+            dna.features_mut().push(gb_io::seq::Feature {
+                kind: "CDS".into(),
+                location,
+                qualifiers: vec![
+                    ("transcript_id".into(), Some("TX_PARTIAL".to_string())),
+                    ("codon_start".into(), Some(codon_start.to_string())),
+                    ("transl_table".into(), Some("4".to_string())),
+                ],
+            });
+            let mut state = ProjectState::default();
+            state.sequences.insert("s".to_string(), dna);
+            let mut engine = GentleEngine::from_state(state);
+            engine
+                .apply(Operation::PlanExonSkippedIsoform {
+                    seq_id: "s".to_string(),
+                    transcript_feature_id: 0,
+                    criteria: vec![ExonSkipSelectionCriterion::ManualExonIds {
+                        candidate_ids: vec!["exon_1".to_string()],
+                    }],
+                    plan_id: Some("skip_start".to_string()),
+                })
+                .unwrap();
+            let report = engine
+                .apply(Operation::MaterializeExonSkippedIsoform {
+                    plan_id: "skip_start".to_string(),
+                    selected_candidate_ids: vec![],
+                    output_prefix: None,
+                    return_kinds: vec![ExonSkipReturnKind::AminoAcidSequence],
+                })
+                .unwrap()
+                .exon_skip_materialization
+                .unwrap();
+            assert_eq!(report.return_payloads[0].text, protein);
+            assert!(
+                report
+                    .warnings
+                    .iter()
+                    .any(|warning| warning.contains("annotated 5' CDS start"))
+            );
+            let cdna_id = report.cdna_seq_id.unwrap();
+            let cdna = &engine.state().sequences[&cdna_id];
+            assert_eq!(cdna.get_forward_string(), "AATTTTAA");
+            for feature in cdna.features() {
+                assert!(
+                    !feature_is_reverse(feature),
+                    "cDNA is already transcript-oriented"
+                );
+                assert_eq!(feature.qualifier_values("strand").next(), Some("+"));
+                assert_eq!(
+                    feature.qualifier_values("source_strand").next(),
+                    Some(if reverse { "-" } else { "+" })
+                );
+            }
+            let cds = cdna
+                .features()
+                .iter()
+                .find(|feature| feature.kind.to_string() == "CDS")
+                .unwrap();
+            assert_eq!(cds.qualifier_values("codon_start").next(), Some("1"));
+            assert_eq!(
+                cds.qualifier_values("source_codon_start").next(),
+                Some(projected_codon_start.to_string().as_str())
+            );
+            assert_eq!(cds.qualifier_values("transl_table").next(), Some("4"));
+            assert_eq!(
+                cds.qualifier_values("translation_table_source").next(),
+                Some("explicit_cds_qualifier")
+            );
+            let (rederived_cdna, _, _, rederived_reverse, _, rederived) =
+                GentleEngine::derive_transcript_sequence_from_feature(
+                    cdna.get_forward_string().as_bytes(),
+                    &cdna.features()[0],
+                    cdna.features(),
+                    0,
+                    &cdna_id,
+                )
+                .unwrap();
+            assert!(
+                !rederived_reverse,
+                "source strand must not reverse an oriented cDNA again"
+            );
+            assert_eq!(rederived_cdna.get_forward_string(), "AATTTTAA");
+            assert_eq!(
+                rederived.unwrap().protein_sequence,
+                protein,
+                "phase must not be trimmed twice"
+            );
+            let genomic_id = report.genomic_seq_id.unwrap();
+            let genomic = &engine.state().sequences[&genomic_id];
+            let feature_id = genomic
+                .features()
+                .iter()
+                .position(|feature| {
+                    feature.kind.to_string() == "mRNA"
+                        && feature
+                            .qualifier_values("synthetic_origin")
+                            .any(|origin| origin == "exon_skip_isoform_genomic_annotation")
+                })
+                .unwrap();
+            assert_eq!(feature_is_reverse(&genomic.features()[feature_id]), reverse);
+            let (_, _, _, _, _, rederived) = GentleEngine::derive_transcript_sequence_from_feature(
+                genomic.get_forward_string().as_bytes(),
+                &genomic.features()[feature_id],
+                genomic.features(),
+                feature_id,
+                &genomic_id,
+            )
+            .unwrap();
+            let rederived = rederived.unwrap();
+            assert_eq!(rederived.translation_table, 4);
+            assert_eq!(rederived.protein_sequence, protein);
+        }
+    }
+}
+
+#[test]
+fn test_exon_skip_removed_cds_does_not_replace_it_with_an_unrelated_orf() {
+    // Two synthetic exons: a complete MK CDS followed by a UTR containing MP ORF.
+    for annotated in [true, false] {
+        let mut dna = DNAsequence::from_sequence("ATGAAATAANNNATGCCCTAA").unwrap();
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::Join(vec![
+                gb_io::seq::Location::simple_range(0, 9),
+                gb_io::seq::Location::simple_range(12, 21),
+            ]),
+            qualifiers: vec![("transcript_id".into(), Some("TX_REMOVED".to_string()))],
+        });
+        if annotated {
+            dna.features_mut().push(gb_io::seq::Feature {
+                kind: "CDS".into(),
+                location: gb_io::seq::Location::simple_range(0, 9),
+                qualifiers: vec![("transcript_id".into(), Some("TX_REMOVED".to_string()))],
+            });
+        }
+        let mut state = ProjectState::default();
+        state.sequences.insert("s".to_string(), dna);
+        let mut engine = GentleEngine::from_state(state);
+        let plan = engine
+            .apply(Operation::PlanExonSkippedIsoform {
+                seq_id: "s".to_string(),
+                transcript_feature_id: 0,
+                criteria: vec![ExonSkipSelectionCriterion::ManualExonIds {
+                    candidate_ids: vec!["exon_1".to_string()],
+                }],
+                plan_id: Some("remove_cds".to_string()),
+            })
+            .unwrap()
+            .exon_skip_selection_plan
+            .unwrap();
+        assert_eq!(
+            plan.candidate_exons[1].coding_context,
+            if annotated { "utr_only" } else { "unknown" }
+        );
+        if !annotated {
+            assert!(!plan.candidate_exons[1].frame_neutral_coding_skip);
+        }
+        let report = engine
+            .apply(Operation::MaterializeExonSkippedIsoform {
+                plan_id: "remove_cds".to_string(),
+                selected_candidate_ids: vec![],
+                output_prefix: None,
+                return_kinds: vec![ExonSkipReturnKind::AminoAcidSequence],
+            })
+            .unwrap()
+            .exon_skip_materialization
+            .unwrap();
+        assert_eq!(report.return_payloads[0].available, !annotated);
+        if annotated {
+            assert!(
+                report
+                    .warnings
+                    .iter()
+                    .any(|warning| warning.contains("removed all annotated CDS bases"))
+            );
+            let cdna_id = report.cdna_seq_id.unwrap();
+            let cdna = &engine.state().sequences[&cdna_id];
+            let saved: DNAsequence =
+                serde_json::from_value(serde_json::to_value(cdna).unwrap()).unwrap();
+            assert_eq!(
+                saved.features()[0]
+                    .qualifier_values("cds_ranges_1based")
+                    .next(),
+                Some("")
+            );
+            assert!(
+                GentleEngine::infer_transcript_protein_derivation_without_annotation(
+                    &saved.get_forward_string(),
+                    &saved.features()[0],
+                    0,
+                    &cdna_id,
+                    saved.features(),
+                    "TX_REMOVED",
+                    "partial",
+                )
+                .unwrap()
+                .is_none()
+            );
+        } else {
+            assert_eq!(report.return_payloads[0].text, "MP");
+        }
+    }
 }
 
 #[test]
@@ -17876,6 +32965,7 @@ fn test_render_dotplot_svg_operation() {
             max_mismatches: 0,
             tile_bp: None,
             store_as: Some("pair_dotplot".to_string()),
+            inspection_provenance: None,
         })
         .expect("compute dotplot");
 
@@ -18022,6 +33112,7 @@ fn test_visual_benchmark_dotplot_context_renders_antisense_and_repeat_lanes() {
             max_mismatches: 0,
             tile_bp: None,
             store_as: Some("visual_context_dotplot".to_string()),
+            inspection_provenance: None,
         })
         .expect("compute visual context dotplot");
 
@@ -18618,6 +33709,7 @@ fn test_render_pool_gel_svg_operation() {
             container_ids: None,
             arrangement_id: None,
             conditions: None,
+            render_options: None,
         })
         .unwrap();
     assert!(res.messages.iter().any(|m| m.contains("serial gel SVG")));
@@ -20286,6 +35378,26 @@ fn test_render_pool_gel_svg_operation_from_containers_and_arrangement() {
     );
     let mut engine = GentleEngine::from_state(state);
 
+    let arrangement_layout = engine
+        .build_serial_gel_layout_for_render(
+            &[],
+            None,
+            Some("arr-1"),
+            None,
+            Some(&GelRunConditions::default()),
+        )
+        .expect("build arrangement gel layout");
+    let ordered_sample_lanes = arrangement_layout
+        .lanes
+        .iter()
+        .filter(|lane| !lane.is_ladder)
+        .map(|lane| (lane.name.as_str(), lane.role_label.as_deref()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        ordered_sample_lanes,
+        vec![("Tube A", Some("lane_1")), ("Tube B", Some("lane_2"))]
+    );
+
     let tmp_container = tempfile::NamedTempFile::new().unwrap();
     let path_container = tmp_container.path().with_extension("container.gel.svg");
     let path_container_text = path_container.display().to_string();
@@ -20297,6 +35409,7 @@ fn test_render_pool_gel_svg_operation_from_containers_and_arrangement() {
             container_ids: Some(vec!["container-2".to_string()]),
             arrangement_id: None,
             conditions: None,
+            render_options: None,
         })
         .unwrap();
     assert!(
@@ -20320,6 +35433,7 @@ fn test_render_pool_gel_svg_operation_from_containers_and_arrangement() {
             container_ids: None,
             arrangement_id: Some("arr-1".to_string()),
             conditions: None,
+            render_options: None,
         })
         .unwrap();
     assert!(
@@ -20350,6 +35464,7 @@ fn test_render_pool_gel_svg_operation_missing_input_fails() {
             container_ids: None,
             arrangement_id: None,
             conditions: None,
+            render_options: None,
         })
         .unwrap_err();
     assert!(err.message.contains("not found"));
@@ -20377,6 +35492,11 @@ fn test_render_pool_gel_svg_operation_applies_conditions_and_fragment_table() {
                 buffer_model: GelBufferModel::Tbe,
                 topology_aware: true,
             }),
+            render_options: Some(PoolGelRenderOptions {
+                lane_label_layout: GelLaneLabelLayout::Angled,
+                band_label_layout: GelBandLabelLayout::Panel,
+                isoform_marker_mode: GelIsoformMarkerMode::Auto,
+            }),
         })
         .unwrap();
     assert!(
@@ -20384,8 +35504,14 @@ fn test_render_pool_gel_svg_operation_applies_conditions_and_fragment_table() {
             .iter()
             .any(|m| m.contains("1.6% agarose | TBE | topology-aware on"))
     );
+    assert!(
+        res.messages
+            .iter()
+            .any(|m| m.contains("lane labels: angled, band labels: panel"))
+    );
     let text = std::fs::read_to_string(path_text).unwrap();
     assert!(text.contains("Fragment table"));
+    assert!(text.contains("data-label-layout=\"angled\""));
     assert!(text.contains("plasmid (5000 bp, circular)"));
     assert!(text.contains("conditions: 1.6% agarose | TBE | topology-aware on"));
 }
@@ -20474,6 +35600,7 @@ fn test_render_pool_gel_svg_operation_from_arrangement_adds_comparison_hints() {
             container_ids: None,
             arrangement_id: Some("arr-gibson".to_string()),
             conditions: None,
+            render_options: None,
         })
         .unwrap();
     let text = std::fs::read_to_string(path_text).unwrap();
@@ -20512,6 +35639,7 @@ fn test_render_pool_gel_svg_operation_infers_explicit_circular_forms_from_sequen
             container_ids: None,
             arrangement_id: None,
             conditions: Some(GelRunConditions::default()),
+            render_options: None,
         })
         .unwrap();
     let text = std::fs::read_to_string(path_text).unwrap();
@@ -20545,6 +35673,221 @@ fn test_export_pool_operation() {
     assert_eq!(v["pool_id"], "pool_1");
     assert_eq!(v["human_id"], "test pool");
     assert_eq!(v["member_count"], 2);
+}
+
+#[test]
+fn collection_pool_export_matches_direct_export_and_round_trips_report() {
+    let mut state = ProjectState::default();
+    let mut circular = seq("ATGCGGATCC");
+    circular.set_circular(true);
+    circular.set_name("Circular member");
+    state.sequences.insert("a".to_string(), circular);
+    state.sequences.insert("b".to_string(), seq("TTAACCGG"));
+    state.container_state.containers.insert(
+        "tube-pool".to_string(),
+        Container {
+            container_id: "tube-pool".to_string(),
+            kind: ContainerKind::Pool,
+            name: Some("Two-member physical pool".to_string()),
+            members: vec!["a".to_string(), "b".to_string()],
+            declared_contents_exclusive: true,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let temp = tempdir().expect("tempdir");
+    let direct_path = temp.path().join("direct.pool.gentle.json");
+    let collection_path = temp.path().join("collection.pool.gentle.json");
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::ExportPool {
+            inputs: vec!["a".to_string(), "b".to_string()],
+            path: direct_path.display().to_string(),
+            pool_id: Some("exported-pool".to_string()),
+            human_id: Some("Exported physical pool".to_string()),
+        })
+        .expect("direct pool export");
+    let result = engine
+        .apply(Operation::ExportPoolCollection {
+            collection_subject: CollectionSubjectRef::Container {
+                container_id: "tube-pool".to_string(),
+            },
+            path: collection_path.display().to_string(),
+            pool_id: Some("exported-pool".to_string()),
+            human_id: Some("Exported physical pool".to_string()),
+        })
+        .expect("collection pool export");
+
+    let direct: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&direct_path).expect("read direct pool artifact"))
+            .expect("parse direct artifact");
+    let lifted: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&collection_path).expect("read lifted pool artifact"),
+    )
+    .expect("parse lifted artifact");
+    assert_eq!(lifted, direct);
+
+    let report = result
+        .collection_pool_export
+        .expect("collection pool export report");
+    assert_eq!(report.schema, COLLECTION_POOL_EXPORT_REPORT_SCHEMA);
+    assert_eq!(report.artifact_schema, "gentle.pool.v1");
+    assert_eq!(report.member_count, 2);
+    assert_eq!(report.source_container_id, "tube-pool");
+    assert!(report.source_container_declared_contents_exclusive);
+    assert_eq!(
+        report.collection_operation.lifting_mode,
+        CollectionLiftingMode::Combine
+    );
+    assert_eq!(
+        report.collection_operation.fingerprint_algorithm,
+        COLLECTION_MEMBERSHIP_FINGERPRINT_ALGORITHM
+    );
+    assert_eq!(report.collection_operation.per_member_status.len(), 2);
+    assert!(
+        report
+            .collection_operation
+            .per_member_status
+            .iter()
+            .all(|row| {
+                row.outcome == CollectionMemberOutcome::Succeeded
+                    && row.produced_report_ids == [report.collection_operation.report_id.clone()]
+                    && row.member.container_id.as_deref() == Some("tube-pool")
+            })
+    );
+    let encoded = serde_json::to_string(&report).expect("serialize collection pool report");
+    let decoded: CollectionPoolExportReport =
+        serde_json::from_str(&encoded).expect("deserialize collection pool report");
+    assert_eq!(decoded, report);
+}
+
+#[test]
+fn collection_pool_export_rejects_nonexclusive_or_nonphysical_subjects_before_writing() {
+    let mut state = ProjectState::default();
+    state.sequences.insert("a".to_string(), seq("ATGC"));
+    state.container_state.containers.insert(
+        "known-subset".to_string(),
+        Container {
+            container_id: "known-subset".to_string(),
+            kind: ContainerKind::Pool,
+            name: None,
+            members: vec!["a".to_string()],
+            declared_contents_exclusive: false,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    state.container_state.containers.insert(
+        "in-silico-selection".to_string(),
+        Container {
+            container_id: "in-silico-selection".to_string(),
+            kind: ContainerKind::Selection,
+            name: None,
+            members: vec!["a".to_string()],
+            declared_contents_exclusive: true,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let temp = tempdir().expect("tempdir");
+    let subset_path = temp.path().join("subset.pool.gentle.json");
+    let selection_path = temp.path().join("selection.pool.gentle.json");
+    let logical_path = temp.path().join("logical.pool.gentle.json");
+    let mut engine = GentleEngine::from_state(state);
+
+    let subset_error = engine
+        .apply(Operation::ExportPoolCollection {
+            collection_subject: CollectionSubjectRef::Container {
+                container_id: "known-subset".to_string(),
+            },
+            path: subset_path.display().to_string(),
+            pool_id: None,
+            human_id: None,
+        })
+        .expect_err("non-exclusive container must be rejected");
+    assert!(
+        subset_error
+            .cause_chain
+            .iter()
+            .any(|cause| cause == "container_declared_contents_exclusive=false")
+    );
+    assert!(!subset_path.exists());
+
+    let selection_error = engine
+        .apply(Operation::ExportPoolCollection {
+            collection_subject: CollectionSubjectRef::Container {
+                container_id: "in-silico-selection".to_string(),
+            },
+            path: selection_path.display().to_string(),
+            pool_id: None,
+            human_id: None,
+        })
+        .expect_err("in-silico selection must be rejected");
+    assert!(
+        selection_error
+            .cause_chain
+            .iter()
+            .any(|cause| cause == "container_kind=selection")
+    );
+    assert!(!selection_path.exists());
+
+    let logical_error = engine
+        .apply(Operation::ExportPoolCollection {
+            collection_subject: CollectionSubjectRef::GeneSetResolution {
+                report_id: "genes:set".to_string(),
+            },
+            path: logical_path.display().to_string(),
+            pool_id: None,
+            human_id: None,
+        })
+        .expect_err("logical gene set must not become a physical pool");
+    assert!(
+        logical_error
+            .cause_chain
+            .iter()
+            .any(|cause| { cause == "collection_lift_rejection_reason=requires_physical_pool" })
+    );
+    assert!(!logical_path.exists());
+}
+
+#[test]
+fn collection_pool_export_rejects_missing_container_member_before_writing() {
+    let mut state = ProjectState::default();
+    state.sequences.insert("present".to_string(), seq("ATGC"));
+    state.container_state.containers.insert(
+        "incomplete-container".to_string(),
+        Container {
+            container_id: "incomplete-container".to_string(),
+            kind: ContainerKind::Pool,
+            name: None,
+            members: vec!["present".to_string(), "missing".to_string()],
+            declared_contents_exclusive: true,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let temp = tempdir().expect("tempdir");
+    let output_path = temp.path().join("must-not-exist.pool.gentle.json");
+    let mut engine = GentleEngine::from_state(state);
+
+    let error = engine
+        .apply(Operation::ExportPoolCollection {
+            collection_subject: CollectionSubjectRef::Container {
+                container_id: "incomplete-container".to_string(),
+            },
+            path: output_path.display().to_string(),
+            pool_id: None,
+            human_id: None,
+        })
+        .expect_err("missing container member must reject the atomic export");
+
+    assert_eq!(error.code, ErrorCode::NotFound);
+    assert!(
+        error
+            .message
+            .contains("references unknown sequence 'missing'")
+    );
+    assert!(!output_path.exists());
 }
 
 #[test]
@@ -22015,6 +37358,46 @@ fn test_digest_container_and_state_summary_include_containers() {
 }
 
 #[test]
+fn digest_sequence_and_container_reject_partially_unknown_enzyme_lists_before_mutation() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "digest_input".to_string(),
+        DNAsequence::from_sequence("ATGGATCCGCATGGATCCGC").expect("digest input sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let initial_sequence_count = engine.state().sequences.len();
+
+    let direct = engine
+        .apply(Operation::Digest {
+            input: "digest_input".to_string(),
+            enzymes: vec!["BamHI".to_string(), "NotAnEnzyme".to_string()],
+            output_prefix: Some("direct_fragment".to_string()),
+        })
+        .expect_err("partially unknown direct digest enzymes must fail");
+    assert_eq!(direct.code, ErrorCode::InvalidInput);
+    assert!(direct.message.contains("NotAnEnzyme"));
+    assert_eq!(engine.state().sequences.len(), initial_sequence_count);
+
+    let container_id = engine
+        .state()
+        .container_state
+        .seq_to_latest_container
+        .get("digest_input")
+        .expect("source singleton container")
+        .clone();
+    let container = engine
+        .apply(Operation::DigestContainer {
+            container_id,
+            enzymes: vec!["BamHI".to_string(), "NotAnEnzyme".to_string()],
+            output_prefix: Some("container_fragment".to_string()),
+        })
+        .expect_err("partially unknown container digest enzymes must fail");
+    assert_eq!(container.code, ErrorCode::InvalidInput);
+    assert!(container.message.contains("NotAnEnzyme"));
+    assert_eq!(engine.state().sequences.len(), initial_sequence_count);
+}
+
+#[test]
 fn test_set_container_declared_contents_exclusive_updates_summary() {
     let mut state = ProjectState::default();
     state.sequences.insert(
@@ -22077,14 +37460,14 @@ fn test_prepare_genome_and_extract_region_operations() {
         r#"{{
   "ToyGenome": {{
     "description": "toy genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }}
 }}"#,
-        file_url(&fasta_gz),
-        file_url(&ann_gz),
-        cache_dir.display()
+        serde_json::json!(file_url(&fasta_gz)),
+        serde_json::json!(file_url(&ann_gz)),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -22221,14 +37604,14 @@ fn test_extract_genome_gene_reports_alias_guidance_for_contig_mismatch() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        ann.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(ann),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -22295,14 +37678,14 @@ fn test_extract_genome_gene_attaches_transcript_features_from_annotation() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        ann.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(ann),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -22450,14 +37833,14 @@ fn test_extract_genome_gene_exon_concat_respects_negative_strand_orientation() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        ann.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(ann),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -22517,7 +37900,7 @@ fn test_extract_genome_gene_exon_concat_respects_negative_strand_orientation() {
         .expect("expected negative-strand exon-concatenated synthetic sequence");
     assert_eq!(
         exon_concat.get_forward_string(),
-        format!("CCCC{}TTTT", " ".repeat(24))
+        format!("CCCC{}TTTT", "N".repeat(24))
     );
     let exon_features: Vec<_> = exon_concat
         .features()
@@ -22525,11 +37908,21 @@ fn test_extract_genome_gene_exon_concat_respects_negative_strand_orientation() {
         .filter(|feature| feature.kind.to_string().eq_ignore_ascii_case("exon"))
         .collect();
     assert_eq!(exon_features.len(), 2);
+    let mut exon_ranges = vec![];
+    for feature in &exon_features {
+        collect_location_ranges_usize(&feature.location, &mut exon_ranges);
+    }
+    assert_eq!(exon_ranges, vec![(0, 4), (28, 32)]);
     let first_genomic_start = exon_features[0]
         .qualifier_values("genomic_start_1based")
         .next()
         .unwrap_or_default();
     assert_eq!(first_genomic_start, "9");
+    let second_genomic_start = exon_features[1]
+        .qualifier_values("genomic_start_1based")
+        .next()
+        .unwrap_or_default();
+    assert_eq!(second_genomic_start, "1");
 }
 
 #[test]
@@ -22556,14 +37949,14 @@ fn test_extract_genome_gene_coding_with_promoter_extends_plus_strand_from_first_
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        ann.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(ann),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -22654,14 +38047,14 @@ fn test_extract_genome_gene_coding_with_promoter_extends_minus_strand_on_five_pr
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        ann.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(ann),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -22734,14 +38127,14 @@ fn test_reverse_strand_gene_extraction_can_seed_full_promoter_slice_via_region_e
         format!(
             r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         ),
     )
     .unwrap();
@@ -22886,14 +38279,14 @@ fn test_extract_genome_promoter_slice_derives_reverse_strand_interval_and_proven
         format!(
             r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         ),
     )
     .unwrap();
@@ -23101,14 +38494,14 @@ fn test_extract_genome_gene_include_annotation_false_disables_projection() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        ann.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(ann),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -23184,14 +38577,14 @@ fn test_extract_genome_gene_annotation_cap_falls_back_to_core() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        ann.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(ann),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -23293,14 +38686,14 @@ fn test_extract_genome_region_include_annotation_attaches_features_and_sets_name
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        ann.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(ann),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -23444,14 +38837,14 @@ fn test_extract_genome_region_full_scope_feature_cap_falls_back_to_core() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        ann.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(ann),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
     let catalog_path_str = catalog_path.to_string_lossy().to_string();
@@ -23541,14 +38934,14 @@ fn test_prepare_genome_operation_supports_timeout_seconds() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        ann.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(ann),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -23581,14 +38974,14 @@ fn test_extend_genome_anchor_plus_strand_adds_lineage_and_provenance() {
         r#"{{
   "ToyGenome": {{
     "description": "toy genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }}
 }}"#,
-        file_url(&fasta_gz),
-        file_url(&ann_gz),
-        cache_dir.display()
+        serde_json::json!(file_url(&fasta_gz)),
+        serde_json::json!(file_url(&ann_gz)),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
     let catalog_path_str = catalog_path.to_string_lossy().to_string();
@@ -23686,6 +39079,208 @@ fn test_extend_genome_anchor_plus_strand_adds_lineage_and_provenance() {
 }
 
 #[test]
+fn prepared_anchor_extension_restores_an_unavailable_tss_flank_without_padding() {
+    use gentle_protocol::tss_workspace::{
+        TssInventoryRequest, TssMaterializeRequest, TssWindowAvailability,
+    };
+    // Hand-crafted reference/annotations in a temporary directory, recreated here.
+    // Mirror the same exon/CDS geometry on both strands; no production data.
+    for reverse in [false, true] {
+        let dir = tempdir().unwrap();
+        let fasta = dir.path().join("reference.fa");
+        let gtf = dir.path().join("reference.gtf");
+        fs::write(&fasta, format!(">chr1\n{}\n", "ACGT".repeat(500))).unwrap();
+        let strand = if reverse { '-' } else { '+' };
+        let (gene_start, gene_end, excerpt_start, excerpt_end, first_exon, second_exon) = if reverse
+        {
+            (1101, 1700, 1001, 1700, (1651, 1700), (1101, 1150))
+        } else {
+            (301, 900, 301, 1000, (301, 350), (851, 900))
+        };
+        let mut annotation = format!(
+            "chr1\tsynthetic\tgene\t{gene_start}\t{gene_end}\t.\t{strand}\t.\tgene_id \"gene_TOY\"; gene_name \"TOY\";\n\
+         chr1\tsynthetic\ttranscript\t{gene_start}\t{gene_end}\t.\t{strand}\t.\tgene_id \"gene_TOY\"; gene_name \"TOY\"; transcript_id \"tx_TOY\";\n"
+        );
+        for (number, (start, end)) in [(1, first_exon), (2, second_exon)] {
+            annotation.push_str(&format!(
+            "chr1\tsynthetic\texon\t{start}\t{end}\t.\t{strand}\t.\tgene_id \"gene_TOY\"; gene_name \"TOY\"; transcript_id \"tx_TOY\"; exon_number \"{number}\";\n\
+             chr1\tsynthetic\tCDS\t{}\t{}\t.\t{strand}\t0\tgene_id \"gene_TOY\"; gene_name \"TOY\"; transcript_id \"tx_TOY\";\n",
+            start + 10, end - 10,
+        ));
+        }
+        fs::write(&gtf, annotation).unwrap();
+        let catalog = dir.path().join("catalog.json");
+        fs::write(
+            &catalog,
+            serde_json::to_vec(&serde_json::json!({
+                "ToyTssReference": { "sequence_local": fasta, "annotations_local": gtf,
+                    "cache_dir": dir.path().join("cache") }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let catalog_path = catalog.to_string_lossy().into_owned();
+        let mut engine = GentleEngine::new();
+        engine
+            .apply(Operation::PrepareGenome {
+                genome_id: "ToyTssReference".into(),
+                catalog_path: Some(catalog_path.clone()),
+                cache_dir: None,
+                timeout_seconds: None,
+            })
+            .unwrap();
+        engine
+            .apply(Operation::ExtractGenomeRegion {
+                genome_id: "ToyTssReference".into(),
+                chromosome: "chr1".into(),
+                start_1based: excerpt_start,
+                end_1based: excerpt_end,
+                output_id: Some("excerpt".into()),
+                annotation_scope: None,
+                max_annotation_features: None,
+                include_genomic_annotation: None,
+                catalog_path: Some(catalog_path.clone()),
+                cache_dir: None,
+            })
+            .unwrap();
+        if reverse {
+            // Model a correctly reverse-oriented loaded excerpt independently of
+            // extension: exact local exon and CDS ranges, plus a negative anchor.
+            let mut record = engine.state.sequences["excerpt"]
+                .clone_seq_record()
+                .revcomp();
+            for feature in &mut record.features {
+                for (key, value) in &mut feature.qualifiers {
+                    if &**key == "strand" {
+                        *value = Some("+".into());
+                    } else if &**key == "cds_ranges_1based" {
+                        *value = Some("11-40,561-590".into());
+                    }
+                }
+            }
+            engine
+                .state
+                .sequences
+                .insert("excerpt".into(), DNAsequence::from_genbank_seq(record));
+            let anchor = engine
+                .state
+                .metadata
+                .get_mut(PROVENANCE_METADATA_KEY)
+                .unwrap()
+                .get_mut(GENOME_EXTRACTIONS_METADATA_KEY)
+                .unwrap()
+                .as_array_mut()
+                .unwrap()
+                .last_mut()
+                .unwrap();
+            anchor["anchor_strand"] = serde_json::json!("-");
+            anchor["strand"] = serde_json::json!("-");
+        }
+        let request = TssInventoryRequest {
+            seq_id: "excerpt".into(),
+            gene_query: "TOY".into(),
+            collection_id: "before_extension".into(),
+            upstream_bp: 50,
+            downstream_bp: 20,
+        };
+        let before = engine.inspect_tss_inventory(&request).unwrap();
+        assert_eq!(before.rows.len(), 1);
+        assert_eq!(
+            before.rows[0].availability,
+            TssWindowAvailability::MissingFlanks
+        );
+        let original = engine.state.sequences["excerpt"].clone_seq_record();
+        let extension = engine
+            .apply(Operation::ExtendGenomeAnchor {
+                seq_id: "excerpt".into(),
+                side: GenomeAnchorSide::FivePrime,
+                length_bp: 50,
+                output_id: Some("with_flank".into()),
+                catalog_path: Some(catalog_path),
+                cache_dir: None,
+                prepared_genome_id: Some("ToyTssReference".into()),
+            })
+            .unwrap();
+        let telemetry = extension.genome_annotation_projection.as_ref().unwrap();
+        assert_eq!(telemetry.requested_scope, "core");
+        assert_eq!(telemetry.effective_scope, "core");
+        assert_eq!(telemetry.genes_attached, 1);
+        assert_eq!(telemetry.transcripts_attached, 1);
+        assert!(!telemetry.fallback_applied);
+        let after = engine
+            .inspect_tss_inventory(&TssInventoryRequest {
+                seq_id: "with_flank".into(),
+                collection_id: "after_extension".into(),
+                ..request
+            })
+            .unwrap();
+        assert_eq!(
+            engine.state.sequences["excerpt"].clone_seq_record(),
+            original
+        );
+        assert_eq!(after.rows.len(), 1);
+        assert_eq!(after.rows[0].availability, TssWindowAvailability::Available);
+        assert_eq!(after.rows[0].genomic_tss, before.rows[0].genomic_tss);
+        assert_eq!(after.rows[0].tss_local_0based, 50);
+        assert_ne!(before.approval_sha256, after.approval_sha256);
+        assert_eq!(
+            engine.state.sequences["with_flank"].get_forward_string(),
+            "GTAC".repeat(187) + "GT"
+        );
+        let dna = &engine.state.sequences["with_flank"];
+        let transcript = dna
+            .features()
+            .iter()
+            .find(|feature| &*feature.kind == "mRNA")
+            .unwrap();
+        let mut exon_ranges = vec![];
+        collect_location_ranges_usize(&transcript.location, &mut exon_ranges);
+        assert_eq!(exon_ranges, vec![(50, 100), (600, 650)]);
+        assert!(!feature_is_reverse(transcript));
+        assert_eq!(transcript.qualifier_values("strand").next(), Some("+"));
+        assert_eq!(
+            transcript.qualifier_values("cds_ranges_1based").next(),
+            Some("61-90,611-640")
+        );
+        if reverse {
+            assert_eq!(
+                transcript.qualifier_values("genomic_strand").next(),
+                Some("-")
+            );
+        }
+        let node_id = &engine.state.lineage.seq_to_node["with_flank"];
+        assert!(matches!(
+            engine.state.lineage.nodes[node_id].origin,
+            SequenceOrigin::Derived
+        ));
+        let anchor = engine.latest_genome_anchor_for_seq("with_flank").unwrap();
+        assert_eq!(anchor.strand, Some(strand));
+        assert_eq!(
+            (anchor.start_1based, anchor.end_1based),
+            if reverse { (1001, 1750) } else { (251, 1000) }
+        );
+        engine
+            .apply(Operation::MaterializeTssWindows {
+                request: TssMaterializeRequest {
+                    inventory: after.request.clone(),
+                    expected_approval_sha256: after.approval_sha256,
+                    selected_tss_ids: vec![after.rows[0].tss_id.clone()],
+                },
+            })
+            .unwrap();
+        let collection = engine.get_tss_collection("after_extension").unwrap();
+        assert_eq!(collection.members.len(), 1);
+        let window = &engine.state.sequences[&collection.members[0].tss.output_seq_id];
+        assert_eq!(window.len(), 71);
+        assert_eq!(window.get_forward_string(), "GTAC".repeat(17) + "GTA");
+        assert_eq!(
+            engine.state.sequences["excerpt"].clone_seq_record(),
+            original
+        );
+    }
+}
+
+#[test]
 fn test_extend_genome_anchor_reverse_strand_respects_5prime_and_3prime_physical_direction() {
     let td = tempdir().unwrap();
     let root = td.path();
@@ -23702,14 +39297,14 @@ fn test_extend_genome_anchor_reverse_strand_respects_5prime_and_3prime_physical_
         r#"{{
   "ToyGenome": {{
     "description": "toy genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }}
 }}"#,
-        file_url(&fasta_gz),
-        file_url(&ann_gz),
-        cache_dir.display()
+        serde_json::json!(file_url(&fasta_gz)),
+        serde_json::json!(file_url(&ann_gz)),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
     let catalog_path_str = catalog_path.to_string_lossy().to_string();
@@ -23878,25 +39473,25 @@ fn test_extend_genome_anchor_uses_compatible_prepared_assembly_fallback() {
         r#"{{
   "Human GRCh38 Ensembl 116": {{
     "ncbi_taxonomy_id": 9606,
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }},
   "Human GRCh38 NCBI RefSeq GCF_000001405.40": {{
     "ncbi_taxonomy_id": 9606,
     "ncbi_assembly_accession": "GCF_000001405.40",
     "ncbi_assembly_name": "GRCh38.p14",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        ann.display(),
-        cache_dir.display(),
-        fasta.display(),
-        ann.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(ann),
+        serde_json::json!(cache_dir),
+        serde_json::json!(fasta),
+        serde_json::json!(ann),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
     let catalog_path_str = catalog_path.to_string_lossy().to_string();
@@ -24071,14 +39666,14 @@ fn test_extend_genome_anchor_strict_verification_accepts_verified_anchor() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        gtf.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(gtf),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
     let catalog_path_str = catalog_path.to_string_lossy().to_string();
@@ -24144,14 +39739,14 @@ fn test_extend_genome_anchor_warns_when_clipped_at_chromosome_start() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        gtf.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(gtf),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
     let catalog_path_str = catalog_path.to_string_lossy().to_string();
@@ -24235,14 +39830,14 @@ fn test_verify_genome_anchor_records_unverified_status_in_provenance() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        gtf.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(gtf),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
     let catalog_path_str = catalog_path.to_string_lossy().to_string();
@@ -24353,14 +39948,14 @@ fn test_import_genome_bed_track_supports_plain_and_gzip() {
         r#"{{
   "ToyGenome": {{
     "description": "toy genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }}
 }}"#,
-        file_url(&fasta_gz),
-        file_url(&ann_gz),
-        cache_dir.display()
+        serde_json::json!(file_url(&fasta_gz)),
+        serde_json::json!(file_url(&ann_gz)),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
     let catalog_path_str = catalog_path.to_string_lossy().to_string();
@@ -24479,14 +40074,14 @@ fn test_import_genome_bed_track_supports_concatenated_gzip_members() {
         r#"{{
   "ToyGenome": {{
     "description": "toy genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }}
 }}"#,
-        file_url(&fasta_gz),
-        file_url(&ann_gz),
-        cache_dir.display()
+        serde_json::json!(file_url(&fasta_gz)),
+        serde_json::json!(file_url(&ann_gz)),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
     let catalog_path_str = catalog_path.to_string_lossy().to_string();
@@ -24578,14 +40173,14 @@ fn test_import_genome_bigwig_track_uses_converter_and_filters_scores() {
         r#"{{
   "ToyGenome": {{
     "description": "toy genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }}
 }}"#,
-        file_url(&fasta_gz),
-        file_url(&ann_gz),
-        cache_dir.display()
+        serde_json::json!(file_url(&fasta_gz)),
+        serde_json::json!(file_url(&ann_gz)),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
     let catalog_path_str = catalog_path.to_string_lossy().to_string();
@@ -24816,17 +40411,17 @@ fn test_prepare_cutrun_dataset_respects_cache_env_and_reports_status() {
   "toy_cutrun": {{
     "summary": "Toy CUT&RUN",
     "target_factor": "CTCF",
-    "peaks_local": "{}",
-    "signal_local": "{}",
-    "reads_r1_local": "{}",
-    "reads_r2_local": "{}",
+    "peaks_local": {},
+    "signal_local": {},
+    "reads_r1_local": {},
+    "reads_r2_local": {},
     "read_layout": "paired_end"
   }}
 }}"#,
-            peaks_path.display(),
-            signal_path.display(),
-            reads_r1_path.display(),
-            reads_r2_path.display()
+            serde_json::json!(peaks_path),
+            serde_json::json!(signal_path),
+            serde_json::json!(reads_r1_path),
+            serde_json::json!(reads_r2_path)
         ),
     )
     .expect("write CUT&RUN catalog");
@@ -24905,10 +40500,10 @@ fn test_prepare_cutrun_dataset_reuses_existing_running_activity() {
   "toy_cutrun": {{
     "summary": "Toy CUT&RUN",
     "target_factor": "CTCF",
-    "peaks_local": "{}"
+    "peaks_local": {}
   }}
 }}"#,
-            peaks_path.display(),
+            serde_json::json!(peaks_path),
         ),
     )
     .expect("write CUT&RUN catalog");
@@ -24963,10 +40558,10 @@ fn test_stale_cutrun_prepare_activity_can_be_superseded_by_new_prepare() {
   "toy_cutrun": {{
     "summary": "Toy CUT&RUN",
     "target_factor": "CTCF",
-    "peaks_local": "{}"
+    "peaks_local": {}
   }}
 }}"#,
-            peaks_path.display(),
+            serde_json::json!(peaks_path),
         ),
     )
     .expect("write CUT&RUN catalog");
@@ -25056,13 +40651,13 @@ fn test_interpret_cutrun_reads_resolves_prepared_dataset_raw_reads() {
   "toy_cutrun_reads": {{
     "summary": "Toy CUT&RUN raw reads",
     "supported_reference_genome_ids": ["ToyGenome"],
-    "reads_r1_local": "{}",
-    "reads_r2_local": "{}",
+    "reads_r1_local": {},
+    "reads_r2_local": {},
     "read_layout": "paired_end"
   }}
 }}"#,
-            reads_r1_path.display(),
-            reads_r2_path.display()
+            serde_json::json!(reads_r1_path),
+            serde_json::json!(reads_r2_path)
         ),
     )
     .expect("write CUT&RUN raw-read catalog");
@@ -25163,12 +40758,12 @@ fn test_project_cutrun_dataset_imports_peaks_and_signal_on_anchored_sequence() {
     "summary": "Toy CUT&RUN",
     "target_factor": "CTCF",
     "supported_reference_genome_ids": ["ToyGenome"],
-    "peaks_local": "{}",
-    "signal_local": "{}"
+    "peaks_local": {},
+    "signal_local": {}
   }}
 }}"#,
-            peaks_path.display(),
-            signal_path.display()
+            serde_json::json!(peaks_path),
+            serde_json::json!(signal_path)
         ),
     )
     .expect("write CUT&RUN catalog");
@@ -25250,10 +40845,10 @@ fn test_project_cutrun_dataset_rejects_incompatible_reference_genome() {
   "toy_cutrun": {{
     "summary": "Toy CUT&RUN",
     "supported_reference_genome_ids": ["OtherGenome"],
-    "peaks_local": "{}"
+    "peaks_local": {}
   }}
 }}"#,
-            peaks_path.display()
+            serde_json::json!(peaks_path)
         ),
     )
     .expect("write incompatible CUT&RUN catalog");
@@ -25407,6 +41002,77 @@ fn test_interpret_cutrun_reads_builds_paired_end_roi_report_with_orphans() {
         .get_cutrun_read_report("toy_cutrun_reads")
         .expect("stored CUT&RUN report");
     assert_eq!(stored.fragment_count, 3);
+}
+
+#[test]
+fn test_interpret_cutrun_reads_uses_zero_flank_imported_anchor_without_prepared_genome() {
+    let td = tempdir().expect("tempdir");
+    let input_r1 = td.path().join("reads.fasta");
+    fs::write(&input_r1, ">read_1\nGCCGTAGC\n").expect("write CUT&RUN FASTA");
+
+    let mut engine = GentleEngine::default();
+    engine.state_mut().sequences.insert(
+        "imported_roi".to_string(),
+        DNAsequence::from_sequence("AAAGCCGTAGCTTACGGAACCTTT")
+            .expect("valid imported anchored sequence"),
+    );
+    engine.state_mut().metadata.insert(
+        PROVENANCE_METADATA_KEY.to_string(),
+        serde_json::json!({
+            GENOME_EXTRACTIONS_METADATA_KEY: [
+                {
+                    "seq_id": "imported_roi",
+                    "recorded_at_unix_ms": 1,
+                    "operation": "LoadSequence",
+                    "genome_id": "UnavailableGenome",
+                    "catalog_path": "missing-reference-catalog.json",
+                    "cache_dir": null,
+                    "chromosome": "chr1",
+                    "start_1based": 101,
+                    "end_1based": 124,
+                    "anchor_strand": "+",
+                    "anchor_verified": true
+                }
+            ]
+        }),
+    );
+
+    let result = engine
+        .apply(Operation::InterpretCutRunReads {
+            seq_id: "imported_roi".to_string(),
+            input_r1_path: Some(input_r1.to_string_lossy().to_string()),
+            input_r2_path: None,
+            dataset_id: None,
+            catalog_path: None,
+            cache_dir: None,
+            input_format: CutRunInputFormat::Fasta,
+            read_layout: CutRunReadLayout::SingleEnd,
+            roi_flank_bp: 0,
+            seed_filter: CutRunSeedFilterConfig {
+                kmer_len: 4,
+                min_seed_matches: 1,
+            },
+            align_config: CutRunAlignConfig {
+                max_mismatches: 0,
+                min_identity_fraction: 1.0,
+                max_fragment_span_bp: 64,
+            },
+            deduplicate_fragments: false,
+            report_id: Some("imported_roi_reads".to_string()),
+            checkpoint_path: None,
+            checkpoint_every_reads: 10,
+        })
+        .expect("zero-flank interpretation should reuse the imported anchored sequence");
+    let report = result
+        .cutrun_read_report
+        .expect("zero-flank CUT&RUN read report");
+    assert_eq!(report.reference_window_start_1based, 101);
+    assert_eq!(report.reference_window_end_1based, 124);
+    assert_eq!(report.reference_window_length_bp, 24);
+    assert_eq!(report.roi_local_start_1based, 1);
+    assert_eq!(report.roi_local_end_1based, 24);
+    assert_eq!(report.total_units, 1);
+    assert_eq!(report.mapped_units, 1);
 }
 
 #[test]
@@ -25902,11 +41568,11 @@ fn test_inspect_cutrun_regulatory_support_reports_context_supported_windows_and_
     "target_factor": "CTCF",
     "species": "Synthetic species",
     "supported_reference_genome_ids": ["ToyGenome"],
-    "reads_r1_local": "{}",
+    "reads_r1_local": {},
     "read_layout": "single_end"
   }}
 }}"#,
-            reads_path.display()
+            serde_json::json!(reads_path)
         ),
     )
     .expect("write CUT&RUN dataset catalog");
@@ -26052,11 +41718,11 @@ fn test_inspect_cutrun_regulatory_support_reports_context_when_target_motif_unre
     "target_factor": "NON_DNA_BINDING_COFACTOR",
     "species": "Synthetic species",
     "supported_reference_genome_ids": ["ToyGenome"],
-    "reads_r1_local": "{}",
+    "reads_r1_local": {},
     "read_layout": "single_end"
   }}
 }}"#,
-            reads_path.display()
+            serde_json::json!(reads_path)
         ),
     )
     .expect("write cofactor CUT&RUN dataset catalog");
@@ -26193,11 +41859,11 @@ fn test_inspect_cutrun_regulatory_support_reports_motif_poor_supported_windows()
     "target_factor": "CTCF",
     "species": "Synthetic species",
     "supported_reference_genome_ids": ["ToyGenome"],
-    "reads_r1_local": "{}",
+    "reads_r1_local": {},
     "read_layout": "single_end"
   }}
 }}"#,
-            reads_path.display()
+            serde_json::json!(reads_path)
         ),
     )
     .expect("write motif-poor CUT&RUN dataset catalog");
@@ -26633,10 +42299,10 @@ fn test_prepare_helper_genome_via_genbank_accession_and_extract() {
   "Helper pUC19": {{
     "description": "helper vector from GenBank accession",
     "genbank_accession": "L09137",
-    "cache_dir": "{}"
+    "cache_dir": {}
   }}
 }}"#,
-        cache_dir.display()
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
     let catalog_path_str = catalog_path.to_string_lossy().to_string();
@@ -26762,14 +42428,14 @@ fn test_extract_helper_region_auto_annotates_puc_mcs() {
                 r#"{{
   "{genome_id}": {{
     "description": "synthetic helper",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-                seq_path.display(),
-                ann_path.display(),
-                cache_dir.display()
+                serde_json::json!(seq_path),
+                serde_json::json!(ann_path),
+                serde_json::json!(cache_dir)
             ),
         )
         .unwrap();
@@ -26854,14 +42520,14 @@ fn test_extract_helper_region_skips_mcs_annotation_when_motif_not_unique() {
             r#"{{
   "Helper pUC19": {{
     "description": "synthetic helper",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            seq_path.display(),
-            ann_path.display(),
-            cache_dir.display()
+            serde_json::json!(seq_path),
+            serde_json::json!(ann_path),
+            serde_json::json!(cache_dir)
         ),
     )
     .unwrap();
@@ -26932,14 +42598,14 @@ fn test_extract_helper_region_prefers_existing_mcs_annotation() {
             r#"{{
   "Helper pUC19": {{
     "description": "synthetic helper",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            seq_path.display(),
-            ann_path.display(),
-            cache_dir.display()
+            serde_json::json!(seq_path),
+            serde_json::json!(ann_path),
+            serde_json::json!(cache_dir)
         ),
     )
     .unwrap();
@@ -27020,14 +42686,14 @@ fn test_extract_helper_region_does_not_apply_mcs_fallback_for_non_puc_ids() {
             r#"{{
   "Helper pGEX-like": {{
     "description": "synthetic helper",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            seq_path.display(),
-            ann_path.display(),
-            cache_dir.display()
+            serde_json::json!(seq_path),
+            serde_json::json!(ann_path),
+            serde_json::json!(cache_dir)
         ),
     )
     .unwrap();
@@ -27273,6 +42939,8 @@ fn test_import_blast_hits_track_operation_adds_features_and_clears_previous() {
                 task: "blastn-short".to_string(),
                 blastn_executable: "blastn".to_string(),
                 blast_db_prefix: "/tmp/blastdb/genome".to_string(),
+                blast_database_content_fingerprint: None,
+                blast_database_index_kind: None,
                 command: vec![
                     "-db".to_string(),
                     "/tmp/blastdb/genome".to_string(),
@@ -28674,6 +44342,7 @@ fn test_compute_dotplot_stores_and_retrieves_view() {
             max_mismatches: 0,
             tile_bp: Some(128),
             store_as: Some("promoter_dotplot".to_string()),
+            inspection_provenance: None,
         })
         .expect("compute dotplot");
     assert!(
@@ -28687,6 +44356,9 @@ fn test_compute_dotplot_stores_and_retrieves_view() {
     let rows = engine.list_dotplot_views(Some("s"));
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].dotplot_id, "promoter_dotplot");
+    assert_eq!(rows[0].op_id.as_deref(), Some(result.op_id.as_str()));
+    assert_eq!(rows[0].run_id.as_deref(), Some("interactive"));
+    assert!(rows[0].inspection_provenance.is_none());
     let view = engine
         .get_dotplot_view("promoter_dotplot")
         .expect("dotplot view");
@@ -28694,6 +44366,9 @@ fn test_compute_dotplot_stores_and_retrieves_view() {
     assert_eq!(view.owner_seq_id, "s");
     assert_eq!(view.seq_id, "s");
     assert!(view.reference_seq_id.is_none());
+    assert_eq!(view.op_id.as_deref(), Some(result.op_id.as_str()));
+    assert_eq!(view.run_id.as_deref(), Some("interactive"));
+    assert!(view.inspection_provenance.is_none());
     assert_eq!(view.word_size, 4);
     assert!(!view.points.is_empty());
     assert_eq!(view.point_count, view.points.len());
@@ -28704,6 +44379,103 @@ fn test_compute_dotplot_stores_and_retrieves_view() {
     assert!(view.boxplot_bin_count > 0);
     assert!(view.boxplot_bins.iter().any(|bin| bin.hit_count > 0));
     assert!(view.reference_annotation.is_none());
+}
+
+#[test]
+fn construct_reasoning_dotplot_request_mismatch_persists_failed_citation() {
+    let sequence = format!(
+        "{}{}{}{}{}",
+        "ACGT".repeat(12),
+        "AAAAAAAAAAAAAA",
+        "ATATATATATATATATATAT",
+        "GATTACAGATTACCCGGGGATTACAGATTA",
+        "GCGTACGCTATTTTTAGCGTACGC"
+    );
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "reasoning_mismatch".to_string(),
+        DNAsequence::from_sequence(&sequence).expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let graph = engine
+        .build_construct_reasoning_graph("reasoning_mismatch", None, None)
+        .expect("reasoning graph");
+    let action = graph
+        .inspection_actions
+        .first()
+        .cloned()
+        .expect("dotplot inspection action");
+    let snapshot_status = engine.construct_reasoning_graph_snapshot_status(&graph);
+    assert_eq!(
+        snapshot_status.freshness,
+        ConstructReasoningGraphFreshness::Current
+    );
+    let resolved =
+        construct_reasoning_action_dotplot_request(&action, &graph.seq_id, sequence.len())
+            .expect("resolved action request");
+    let citation = construct_reasoning_dotplot_inspection_provenance(
+        &graph,
+        &action,
+        &snapshot_status,
+        &resolved,
+        DotplotInspectionRequestSnapshot {
+            dotplot_id: "reasoning_mismatch_plot".to_string(),
+            seq_id: resolved.seq_id.clone(),
+            reference_seq_id: None,
+            span_start_0based: resolved.span_start_0based,
+            span_end_0based: resolved.span_end_0based,
+            reference_span_start_0based: resolved.span_start_0based,
+            reference_span_end_0based: resolved.span_end_0based,
+            mode: resolved.mode,
+            word_size: 4,
+            step_bp: 1,
+            max_mismatches: 0,
+            tile_bp: None,
+        },
+    );
+    assert_eq!(citation.status, DotplotInspectionProvenanceStatus::Pass);
+
+    engine
+        .apply(Operation::ComputeDotplot {
+            seq_id: resolved.seq_id,
+            reference_seq_id: None,
+            span_start_0based: Some(resolved.span_start_0based),
+            span_end_0based: Some(resolved.span_end_0based),
+            reference_span_start_0based: None,
+            reference_span_end_0based: None,
+            mode: resolved.mode,
+            word_size: 5,
+            step_bp: 1,
+            max_mismatches: 0,
+            tile_bp: None,
+            store_as: Some("reasoning_mismatch_plot".to_string()),
+            inspection_provenance: Some(Box::new(citation)),
+        })
+        .expect("compute dotplot with mismatched cited options");
+
+    let view = engine
+        .get_dotplot_view("reasoning_mismatch_plot")
+        .expect("stored dotplot");
+    let citation = view
+        .inspection_provenance
+        .as_ref()
+        .expect("persisted inspection citation");
+    assert_eq!(citation.status, DotplotInspectionProvenanceStatus::Fail);
+    assert!(citation.verification_reasons.iter().any(|reason| {
+        reason.contains("Cited dotplot request") && reason.contains("resolved request")
+    }));
+    let summary = engine
+        .list_dotplot_views(Some("reasoning_mismatch"))
+        .into_iter()
+        .next()
+        .expect("dotplot summary");
+    assert_eq!(
+        summary
+            .inspection_provenance
+            .as_ref()
+            .map(|citation| citation.status),
+        Some(DotplotInspectionProvenanceStatus::Fail)
+    );
 }
 
 #[test]
@@ -28731,6 +44503,7 @@ fn test_compute_self_dotplot_carries_reference_exon_annotation_when_available() 
             max_mismatches: 0,
             tile_bp: None,
             store_as: Some("annotated_self_dotplot".to_string()),
+            inspection_provenance: None,
         })
         .expect("compute annotated self dotplot");
 
@@ -28805,6 +44578,7 @@ fn test_dotplot_reference_annotation_preserves_antisense_exons_and_repeatmasker_
             max_mismatches: 0,
             tile_bp: None,
             store_as: Some("context_dotplot".to_string()),
+            inspection_provenance: None,
         })
         .expect("compute context dotplot");
 
@@ -28900,6 +44674,7 @@ fn test_compute_pair_dotplot_uses_reference_sequence_span() {
             max_mismatches: 0,
             tile_bp: None,
             store_as: Some("pair_dotplot".to_string()),
+            inspection_provenance: None,
         })
         .expect("compute pair dotplot");
     assert!(
@@ -29395,6 +45170,7 @@ fn test_compute_pair_reverse_complement_maps_expected_antidiagonal_hits() {
             max_mismatches: 0,
             tile_bp: None,
             store_as: Some("pair_revcomp".to_string()),
+            inspection_provenance: None,
         })
         .expect("compute pair reverse-complement dotplot");
 
@@ -29455,6 +45231,7 @@ fn test_compute_dotplot_exact_seed_large_pair_grid_bypasses_pair_eval_guard() {
         max_mismatches: 0,
         tile_bp: None,
         store_as: Some("pair_exact_large".to_string()),
+        inspection_provenance: None,
     });
     assert!(
         result.is_ok(),
@@ -29615,6 +45392,457 @@ fn test_build_splicing_expert_view_accepts_gene_seed_feature() {
     assert_eq!(view.group_label, "GENE1");
     assert_eq!(view.transcript_count, 2);
     assert!(!view.transcripts.is_empty());
+}
+
+#[test]
+fn test_build_splicing_expert_view_carries_stable_content_fingerprint() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_seed".to_string(), splicing_seed_feature_sequence());
+    let engine = GentleEngine::from_state(state);
+
+    let first = engine
+        .build_splicing_expert_view("seq_seed", 2, SplicingScopePreset::TargetGroupTargetStrand)
+        .expect("first splicing view");
+    let second = engine
+        .build_splicing_expert_view("seq_seed", 2, SplicingScopePreset::TargetGroupTargetStrand)
+        .expect("second splicing view");
+
+    assert!(first.presentation_fingerprint_sha256.starts_with("sha256:"));
+    assert_eq!(
+        first.presentation_fingerprint_sha256,
+        second.presentation_fingerprint_sha256
+    );
+
+    let mut unhashed = first.clone();
+    unhashed.presentation_fingerprint_sha256.clear();
+    let serialized = serde_json::to_vec(&unhashed).expect("serialize unhashed splicing view");
+    assert_eq!(
+        first.presentation_fingerprint_sha256,
+        crate::digest_utils::sha256_prefixed_bytes(&serialized)
+    );
+
+    let mut modified = first.clone();
+    modified.group_label = "GENE1_REVISED".to_string();
+    let original_fingerprint = modified.presentation_fingerprint_sha256.clone();
+    assert!(
+        !GentleEngine::normalize_splicing_expert_view_fingerprint(&mut modified)
+            .expect("normalize modified fingerprint")
+    );
+    assert_ne!(
+        modified.presentation_fingerprint_sha256,
+        original_fingerprint
+    );
+    assert!(
+        GentleEngine::normalize_splicing_expert_view_fingerprint(&mut modified)
+            .expect("revalidate normalized fingerprint")
+    );
+}
+
+// Hand-crafted synthetic locus/entries, recreated from the inline splicing
+// fixture. Identifiers model exact relations, not any natural gene or protein.
+fn splicing_uniprot_test_engine(entries: Vec<UniprotEntry>, gene_id: Option<&str>) -> GentleEngine {
+    let mut dna = splicing_seed_feature_sequence();
+    for (index, feature) in dna.features_mut().iter_mut().take(2).enumerate() {
+        feature.qualifiers = vec![
+            ("gene".into(), Some("GENE1".to_string())),
+            (
+                "transcript_id".into(),
+                Some(format!("ENST0000090000{}.7", index + 1)),
+            ),
+            (
+                "label".into(),
+                Some("same synthetic display label".to_string()),
+            ),
+        ];
+    }
+    if let Some(gene_id) = gene_id {
+        for feature in dna.features_mut() {
+            feature
+                .qualifiers
+                .push(("gene_id".into(), Some(gene_id.to_string())));
+        }
+    }
+    let mut state = ProjectState::default();
+    state.sequences.insert("s".to_string(), dna);
+    state.metadata.insert(
+        UNIPROT_ENTRIES_METADATA_KEY.to_string(),
+        serde_json::to_value(UniprotEntryStore {
+            schema: UNIPROT_ENTRIES_SCHEMA.to_string(),
+            entries: entries
+                .into_iter()
+                .map(|entry| (entry.entry_id.clone(), entry))
+                .collect(),
+            ..Default::default()
+        })
+        .expect("synthetic UniProt store"),
+    );
+    GentleEngine::from_state(state)
+}
+
+fn splicing_uniprot_test_entry(entry_id: &str, xrefs: Vec<UniprotEnsemblXref>) -> UniprotEntry {
+    UniprotEntry {
+        entry_id: entry_id.to_string(),
+        accession: format!("SYNTHETIC_{entry_id}"),
+        reviewed: Some(true),
+        gene_names: vec!["GENE1".to_string()],
+        protein_name: Some("same synthetic display label".to_string()),
+        sequence: "MA".to_string(),
+        sequence_length: 2,
+        ensembl_xrefs: xrefs,
+        ..Default::default()
+    }
+}
+
+#[test]
+fn test_splicing_uniprot_reference_ignores_names_lengths_and_unrelated_projections() {
+    let baseline_engine = splicing_uniprot_test_engine(vec![], Some("ENSG00000900001"));
+    let baseline = baseline_engine
+        .build_splicing_expert_view("s", 2, SplicingScopePreset::TargetGroupTargetStrand)
+        .unwrap();
+    let entries = vec![
+        splicing_uniprot_test_entry("name_only", vec![]),
+        splicing_uniprot_test_entry(
+            "unrelated",
+            vec![UniprotEnsemblXref {
+                transcript_id: Some("ENST00000900003.7".to_string()),
+                gene_id: Some("ENSG00000900002".to_string()),
+                ..Default::default()
+            }],
+        ),
+        splicing_uniprot_test_entry(
+            "prefix_only",
+            vec![UniprotEnsemblXref {
+                transcript_id: Some("ENST00000900001_extra".to_string()),
+                gene_id: Some("ENSG00000900001_extra".to_string()),
+                ..Default::default()
+            }],
+        ),
+    ];
+    let mut engine = splicing_uniprot_test_engine(entries, Some("ENSG00000900001"));
+    let projection = UniprotGenomeProjection {
+        projection_id: "unrelated_projection".to_string(),
+        entry_id: "unrelated".to_string(),
+        seq_id: "s".to_string(),
+        transcript_projections: vec![UniprotTranscriptProjection {
+            transcript_id: "ENST00000900001".to_string(),
+            transcript_feature_id: Some(0),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    engine.state_mut().metadata.insert(
+        UNIPROT_GENOME_PROJECTIONS_METADATA_KEY.to_string(),
+        serde_json::to_value(UniprotGenomeProjectionStore {
+            projections: HashMap::from([(projection.projection_id.clone(), projection)]),
+            ..Default::default()
+        })
+        .unwrap(),
+    );
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let view = engine
+        .build_splicing_expert_view("s", 2, SplicingScopePreset::TargetGroupTargetStrand)
+        .unwrap();
+    assert!(view.matrix_rows.iter().all(|row| {
+        row.uniprot_reference.status == SplicingUniprotReferenceStatus::NotEvaluated
+            && row.uniprot_reference.sources.is_empty()
+    }));
+    assert_eq!(
+        view.presentation_fingerprint_sha256,
+        baseline.presentation_fingerprint_sha256
+    );
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+}
+
+#[test]
+fn test_splicing_uniprot_reference_requires_explicit_annotation_ids_not_labels() {
+    let entry = splicing_uniprot_test_entry(
+        "label_only",
+        vec![UniprotEnsemblXref {
+            transcript_id: Some("ENST00000900001".to_string()),
+            gene_id: Some("ENSG00000900001".to_string()),
+            ..Default::default()
+        }],
+    );
+    let mut engine = splicing_uniprot_test_engine(vec![entry], None);
+    for feature in engine
+        .state_mut()
+        .sequences
+        .get_mut("s")
+        .unwrap()
+        .features_mut()
+    {
+        feature.qualifiers = vec![
+            ("gene".into(), Some("ENSG00000900001".to_string())),
+            ("label".into(), Some("ENST00000900001".to_string())),
+            ("protein_id".into(), Some("ENST00000900001".to_string())),
+        ];
+    }
+    let view = engine
+        .build_splicing_expert_view("s", 2, SplicingScopePreset::TargetGroupTargetStrand)
+        .unwrap();
+    assert!(
+        view.transcripts
+            .iter()
+            .all(|lane| lane.transcript_id == "ENST00000900001")
+    );
+    assert!(view.matrix_rows.iter().all(|row|
+        row.uniprot_reference.status == SplicingUniprotReferenceStatus::NotEvaluated));
+}
+
+#[test]
+fn test_splicing_uniprot_reference_normalizes_exact_transcripts_and_binds_sources() {
+    let entry = splicing_uniprot_test_entry(
+        "matched",
+        vec![UniprotEnsemblXref {
+            transcript_id: Some(" enst00000900001.99 ".to_string()),
+            protein_id: Some("ENSP00000900001.2".to_string()),
+            gene_id: Some("ENSG00000900001".to_string()),
+            isoform_id: Some("SYNTHETIC_matched-2".to_string()),
+        }],
+    );
+    let expected_hash =
+        crate::digest_utils::sha256_prefixed_bytes(&serde_json::to_vec(&entry).unwrap());
+    let mut engine = splicing_uniprot_test_engine(vec![entry], None);
+    let target = FeatureExpertTarget::SplicingFeature {
+        feature_id: 2,
+        scope: SplicingScopePreset::AllOverlappingAnyStrand,
+    };
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let FeatureExpertView::Splicing(view) = engine.inspect_feature_expert("s", &target).unwrap()
+    else {
+        panic!("splicing view");
+    };
+    let matched = view.uniprot_reference_for_transcript(0).unwrap();
+    assert_eq!(matched.status, SplicingUniprotReferenceStatus::Referenced);
+    assert_eq!(matched.sources.len(), 1);
+    let source = &matched.sources[0];
+    assert_eq!(source.entry_id, "matched");
+    assert_eq!(source.accession, "SYNTHETIC_matched");
+    assert_eq!(source.reviewed, Some(true));
+    assert_eq!(source.entry_sha256, expected_hash);
+    assert_eq!(
+        source.matched_locus_transcript_ids,
+        vec!["ENST00000900001".to_string()]
+    );
+    assert!(source.matched_locus_gene_id.is_none());
+    assert_eq!(
+        source.matched_transcript_xrefs[0].transcript_id.as_deref(),
+        Some(" enst00000900001.99 ")
+    );
+    assert_eq!(
+        source.matched_transcript_xrefs[0].isoform_id.as_deref(),
+        Some("SYNTHETIC_matched-2")
+    );
+    assert_eq!(
+        view.uniprot_reference_for_transcript(1).unwrap().status,
+        SplicingUniprotReferenceStatus::NotReferenced
+    );
+    assert_eq!(
+        view.transcripts
+            .iter()
+            .map(|lane| lane.transcript_feature_id)
+            .collect::<Vec<_>>(),
+        view.matrix_rows
+            .iter()
+            .map(|row| row.transcript_feature_id)
+            .collect::<Vec<_>>()
+    );
+    let command =
+        crate::engine_shell::parse_shell_line("inspect-feature-expert s splicing 2").unwrap();
+    let result = execute_shell_command(&mut engine, &command).unwrap();
+    assert!(!result.state_changed);
+    assert_eq!(
+        result.output,
+        serde_json::to_value(FeatureExpertView::Splicing(view)).unwrap()
+    );
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+}
+
+#[test]
+fn test_splicing_uniprot_reference_accepts_only_exact_stable_gene_relations() {
+    let entry = splicing_uniprot_test_entry(
+        "gene_only",
+        vec![UniprotEnsemblXref {
+            transcript_id: Some("ENST00000900003".to_string()),
+            gene_id: Some("ENSG00000900001.9".to_string()),
+            ..Default::default()
+        }],
+    );
+    let engine = splicing_uniprot_test_engine(vec![entry], Some("ENSG00000900001.3"));
+    let view = engine
+        .build_splicing_expert_view("s", 2, SplicingScopePreset::TargetGroupTargetStrand)
+        .unwrap();
+    for row in &view.matrix_rows {
+        assert_eq!(
+            row.uniprot_reference.status,
+            SplicingUniprotReferenceStatus::NotReferenced
+        );
+        let source = &row.uniprot_reference.sources[0];
+        assert_eq!(
+            source.matched_locus_gene_id.as_deref(),
+            Some("ENSG00000900001")
+        );
+        assert!(source.matched_locus_transcript_ids.is_empty());
+        assert!(source.matched_transcript_xrefs.is_empty());
+    }
+    let entry = splicing_uniprot_test_entry(
+        "symbol_gene_id",
+        vec![UniprotEnsemblXref {
+            gene_id: Some("GENE1".to_string()),
+            ..Default::default()
+        }],
+    );
+    let engine = splicing_uniprot_test_engine(vec![entry], Some("GENE1"));
+    let view = engine
+        .build_splicing_expert_view("s", 2, SplicingScopePreset::TargetGroupTargetStrand)
+        .unwrap();
+    assert!(view.matrix_rows.iter().all(|row|
+        row.uniprot_reference.status == SplicingUniprotReferenceStatus::NotEvaluated));
+}
+
+#[test]
+fn test_splicing_uniprot_reference_gene_relevance_does_not_identify_an_unlabelled_transcript() {
+    let entry = splicing_uniprot_test_entry(
+        "gene_only",
+        vec![UniprotEnsemblXref {
+            gene_id: Some("ENSG00000900001".to_string()),
+            ..Default::default()
+        }],
+    );
+    let mut engine = splicing_uniprot_test_engine(vec![entry], Some("ENSG00000900001"));
+    let feature = &mut engine
+        .state_mut()
+        .sequences
+        .get_mut("s")
+        .unwrap()
+        .features_mut()[0];
+    feature
+        .qualifiers
+        .retain(|(key, _)| key.to_string() != "transcript_id");
+    let view = engine
+        .build_splicing_expert_view("s", 2, SplicingScopePreset::TargetGroupTargetStrand)
+        .unwrap();
+    let unidentified = view.uniprot_reference_for_transcript(0).unwrap();
+    assert_eq!(
+        unidentified.status,
+        SplicingUniprotReferenceStatus::NotEvaluated
+    );
+    assert_eq!(unidentified.sources.len(), 1);
+    assert!(unidentified.summary_lines()[0].contains("no explicit transcript identity"));
+    assert_eq!(
+        view.uniprot_reference_for_transcript(1).unwrap().status,
+        SplicingUniprotReferenceStatus::NotReferenced
+    );
+}
+
+#[test]
+fn test_splicing_uniprot_reference_preserves_ambiguity_and_fingerprint_binding() {
+    let mut entry = splicing_uniprot_test_entry(
+        "ambiguous",
+        vec![
+            UniprotEnsemblXref {
+                transcript_id: Some("ENST00000900001".to_string()),
+                protein_id: Some("ENSP00000900001".to_string()),
+                ..Default::default()
+            },
+            UniprotEnsemblXref {
+                transcript_id: Some("ENST00000900001.2".to_string()),
+                protein_id: Some("ENSP00000900002".to_string()),
+                ..Default::default()
+            },
+        ],
+    );
+    let first_engine = splicing_uniprot_test_engine(vec![entry.clone()], None);
+    let first = first_engine
+        .build_splicing_expert_view("s", 2, SplicingScopePreset::TargetGroupTargetStrand)
+        .unwrap();
+    let evidence = first.uniprot_reference_for_transcript(0).unwrap();
+    assert_eq!(evidence.status, SplicingUniprotReferenceStatus::Referenced);
+    assert_eq!(evidence.sources[0].matched_transcript_xrefs.len(), 2);
+    assert!(
+        evidence
+            .diagnostics
+            .iter()
+            .any(|line| line.contains("ambiguous"))
+    );
+    entry.reviewed = Some(false);
+    let second_engine = splicing_uniprot_test_engine(vec![entry.clone()], None);
+    let second = second_engine
+        .build_splicing_expert_view("s", 2, SplicingScopePreset::TargetGroupTargetStrand)
+        .unwrap();
+    assert_eq!(
+        second.uniprot_reference_for_transcript(0).unwrap().status,
+        evidence.status
+    );
+    assert_ne!(
+        second.presentation_fingerprint_sha256,
+        first.presentation_fingerprint_sha256
+    );
+    assert_ne!(
+        second.uniprot_reference_for_transcript(0).unwrap().sources[0].entry_sha256,
+        evidence.sources[0].entry_sha256
+    );
+
+    let mut other = entry.clone();
+    other.entry_id = "another".to_string();
+    other.reviewed = None;
+    let a = splicing_uniprot_test_engine(vec![entry.clone(), other.clone()], None)
+        .build_splicing_expert_view("s", 2, SplicingScopePreset::TargetGroupTargetStrand)
+        .unwrap();
+    let b = splicing_uniprot_test_engine(vec![other, entry], None)
+        .build_splicing_expert_view("s", 2, SplicingScopePreset::TargetGroupTargetStrand)
+        .unwrap();
+    assert_eq!(
+        a.presentation_fingerprint_sha256,
+        b.presentation_fingerprint_sha256
+    );
+    let evidence = a.uniprot_reference_for_transcript(0).unwrap();
+    assert_eq!(evidence.sources[0].entry_id, "ambiguous");
+    assert_eq!(evidence.sources[1].entry_id, "another");
+    assert_eq!(evidence.sources[1].reviewed, None);
+    assert!(
+        evidence
+            .diagnostics
+            .iter()
+            .any(|line| line.contains("Multiple loaded entries"))
+    );
+}
+
+#[test]
+fn test_splicing_uniprot_reference_does_not_choose_a_gene_in_a_multigene_scope() {
+    let entry = splicing_uniprot_test_entry(
+        "gene_only",
+        vec![UniprotEnsemblXref {
+            gene_id: Some("ENSG00000900001".to_string()),
+            ..Default::default()
+        }],
+    );
+    let mut engine = splicing_uniprot_test_engine(vec![entry], Some("ENSG00000900001"));
+    let feature = &mut engine
+        .state_mut()
+        .sequences
+        .get_mut("s")
+        .unwrap()
+        .features_mut()[1];
+    feature
+        .qualifiers
+        .retain(|(key, _)| key.to_string() != "gene_id");
+    feature
+        .qualifiers
+        .push(("gene_id".into(), Some("ENSG00000900002".to_string())));
+    let view = engine
+        .build_splicing_expert_view("s", 2, SplicingScopePreset::AllOverlappingAnyStrand)
+        .unwrap();
+    assert!(view.matrix_rows.iter().all(|row| {
+        row.uniprot_reference.status == SplicingUniprotReferenceStatus::NotEvaluated
+            && row
+                .uniprot_reference
+                .diagnostics
+                .iter()
+                .any(|line| line.contains("Multiple explicit"))
+    }));
 }
 
 #[test]
@@ -30096,7 +46324,7 @@ fn test_build_lineage_svg_graph_projects_gene_set_artifacts() {
         .clone()
         .expect("gene-set resolution");
 
-    engine
+    let promoter_result = engine
         .apply(Operation::BuildGeneSetPromoterCohort {
             genome_id: "ToyGenome".to_string(),
             source: None,
@@ -30112,12 +46340,37 @@ fn test_build_lineage_svg_graph_projects_gene_set_artifacts() {
             path: None,
         })
         .expect("build lineage promoter cohort");
+    let promoter_cohort = promoter_result
+        .gene_set_promoter_cohort
+        .as_ref()
+        .expect("promoter cohort report");
+    assert_eq!(
+        promoter_cohort.gene_set_resolution.op_id, resolution.op_id,
+        "derivation must retain the persisted source report identity"
+    );
+    assert_ne!(
+        promoter_cohort.gene_set_resolution.op_id.as_deref(),
+        Some(promoter_result.op_id.as_str()),
+        "the derived operation must not replace an existing source report identity"
+    );
 
     let (nodes, edges) = build_lineage_svg_graph(engine.state(), engine.operation_log());
+    let source_gene_set_node_id = format!(
+        "gene_set:{}",
+        GentleEngine::gene_set_resolution_artifact_id(&resolution)
+    );
     let gene_set_node = nodes
         .iter()
-        .find(|node| node.kind == LineageSvgNodeKind::GeneSet)
+        .find(|node| node.node_id == source_gene_set_node_id)
         .expect("gene-set lineage node");
+    assert_eq!(
+        nodes
+            .iter()
+            .filter(|node| node.kind == LineageSvgNodeKind::GeneSet)
+            .count(),
+        1,
+        "one persisted gene set must project to one lineage node"
+    );
     assert_ne!(gene_set_node.kind, LineageSvgNodeKind::Sequence);
     assert_eq!(gene_set_node.title, "Lineage panel");
     assert!(gene_set_node.subtitle.contains("members=2"));
@@ -30152,7 +46405,7 @@ fn test_build_lineage_svg_graph_projects_gene_set_artifacts() {
     let (reloaded_nodes, reloaded_edges) = build_lineage_svg_graph(&reloaded_state, &[]);
     let reloaded_gene_set_node = reloaded_nodes
         .iter()
-        .find(|node| node.kind == LineageSvgNodeKind::GeneSet)
+        .find(|node| node.node_id == source_gene_set_node_id)
         .expect("reloaded gene-set node");
     assert_eq!(reloaded_gene_set_node.title, "Lineage panel");
     assert!(reloaded_edges.iter().any(|edge| {
@@ -31603,6 +47856,157 @@ fn test_summarize_rna_read_gene_support_filters_requested_gene_in_multi_gene_spa
             .messages
             .iter()
             .any(|message| message.contains("accepted_target_reads=3"))
+    );
+}
+
+#[test]
+fn test_allele_hash_screen_sources_target_gene_reads_from_rna_report() {
+    let fixture_dir = PathBuf::from("test_files/fixtures/allele_hash_screen");
+    let read_path = fixture_dir.join("fus_reads.fastq");
+    let mut hits = Vec::<RnaReadInterpretationHit>::new();
+    let reader = bio::io::fastq::Reader::from_file(&read_path).expect("open FUS fixture");
+    for (record_index, record) in reader.records().enumerate() {
+        let record = record.expect("read FUS fixture");
+        let source_length = record.seq().len();
+        hits.push(RnaReadInterpretationHit {
+            record_index,
+            header_id: record.id().to_string(),
+            read_length_bp: source_length,
+            sequence: String::from_utf8(record.seq().to_vec()).expect("ASCII fixture sequence"),
+            passed_seed_filter: true,
+            best_mapping: Some(RnaReadMappingHit {
+                transcript_feature_id: 0,
+                transcript_id: "FUS_TX1".to_string(),
+                transcript_label: "FUS_TX1".to_string(),
+                strand: "+".to_string(),
+                target_start_1based: 1,
+                target_end_1based: source_length,
+                target_start_offset_0based: 0,
+                target_end_offset_0based_exclusive: source_length,
+                score: 100,
+                identity_fraction: 1.0,
+                query_coverage_fraction: 1.0,
+                ..RnaReadMappingHit::default()
+            }),
+            ..RnaReadInterpretationHit::default()
+        });
+    }
+
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(61)).expect("synthetic FUS anchor");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(0, 61),
+        qualifiers: vec![
+            ("gene".into(), Some("FUS".to_string())),
+            ("transcript_id".into(), Some("FUS_TX1".to_string())),
+            ("label".into(), Some("FUS_TX1".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("fus_anchor".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .upsert_rna_read_report(RnaReadInterpretationReport {
+            schema: "gentle.rna_read_report.v1".to_string(),
+            report_id: "fus_aligned_reads".to_string(),
+            seq_id: "fus_anchor".to_string(),
+            seed_feature_id: 0,
+            input_path: read_path.display().to_string(),
+            input_format: RnaReadInputFormat::Fasta,
+            scope: SplicingScopePreset::TargetGroupTargetStrand,
+            target_gene_ids: vec!["FUS".to_string()],
+            read_count_total: hits.len(),
+            read_count_seed_passed: hits.len(),
+            read_count_aligned: hits.len(),
+            hits,
+            ..RnaReadInterpretationReport::default()
+        })
+        .expect("persist FUS RNA-read report");
+
+    let dir = tempdir().expect("temp dir");
+    let request = |out_dir: &Path| AlleleHashScreenRequest {
+        gene: "FUS".to_string(),
+        transcript_fasta: fixture_dir.join("fus_transcripts.fa").display().to_string(),
+        variant_table: Some(fixture_dir.join("fus_variants.tsv").display().to_string()),
+        out_dir: out_dir.display().to_string(),
+        kmer_len: 9,
+        min_unique_kmer_hits: 1,
+        ..AlleleHashScreenRequest::default()
+    };
+    let mut explicit_request = request(&dir.path().join("explicit"));
+    explicit_request.read_files = vec![read_path.display().to_string()];
+    let explicit = crate::allele_hash_screen::run_allele_hash_screen(explicit_request)
+        .expect("explicit fixture baseline");
+    let mut report_request = request(&dir.path().join("report"));
+    report_request.from_rna_report = Some("fus_aligned_reads".to_string());
+    let sourced = engine
+        .run_allele_hash_screen_with_project_sources(report_request)
+        .expect("report-sourced allele screen");
+
+    let classifications = |report: &crate::allele_hash_screen::AlleleHashScreenReport| {
+        report
+            .reads
+            .iter()
+            .map(|read| (read.read_id.clone(), read.classification))
+            .collect::<BTreeMap<_, _>>()
+    };
+    assert_eq!(classifications(&sourced), classifications(&explicit));
+    assert_eq!(
+        classifications(&sourced)["fus_hap2_alt_v1"],
+        AlleleReadClassification::Hap2
+    );
+    assert_eq!(
+        sourced
+            .source_provenance
+            .iter()
+            .find(|row| row.origin == AlleleReadSourceOrigin::RnaReportTargetMapped)
+            .map(|row| row.evidence_observation_count),
+        Some(5)
+    );
+    assert!(
+        sourced
+            .reads
+            .iter()
+            .all(|read| read.source_origins == vec![AlleleReadSourceOrigin::RnaReportTargetMapped])
+    );
+    let expression_support = sourced
+        .rna_report_expression_support
+        .as_ref()
+        .expect("RNA-report expression support");
+    assert_eq!(expression_support.report_id, "fus_aligned_reads");
+    assert_eq!(expression_support.target_gene_retained_read_support, 5);
+    assert_eq!(
+        expression_support
+            .transcript_retained_read_support
+            .get("FUS_TX1"),
+        Some(&5)
+    );
+    let transcript_representation = sourced
+        .transcript_summaries
+        .iter()
+        .find(|summary| summary.transcript_id == "FUS_TX1")
+        .and_then(|summary| summary.representation.as_ref())
+        .expect("FUS_TX1 representation");
+    assert_eq!(
+        transcript_representation.expression_weight.basis,
+        AllelicExpressionWeightBasis::InformativeReadDepthWithRnaReportTranscriptSupport
+    );
+    assert_eq!(
+        transcript_representation
+            .expression_weight
+            .retained_read_support,
+        Some(5)
+    );
+    assert_eq!(
+        transcript_representation
+            .expression_weight
+            .retained_read_support_scope,
+        Some(AllelicExpressionSupportScope::Transcript)
+    );
+    assert!(
+        transcript_representation
+            .caveats
+            .contains(&AllelicRepresentationCaveat::LowRnaReportExpressionSupport)
     );
 }
 
@@ -33478,9 +49882,12 @@ fn test_rna_read_progress_emit_policy_supports_read_and_timer_triggers() {
 }
 
 #[test]
-#[cfg(debug_assertions)]
-fn test_rna_read_progress_update_stride_default_debug() {
-    assert_eq!(RNA_READ_PROGRESS_UPDATE_EVERY_READS, 1_000);
+fn test_rna_read_progress_update_stride_is_profile_independent() {
+    assert_eq!(RNA_READ_PROGRESS_UPDATE_EVERY_READS, 10_000);
+    assert_eq!(
+        RNA_READ_PROGRESS_UPDATE_MAX_INTERVAL,
+        Duration::from_secs(2)
+    );
 }
 
 #[test]
@@ -33520,7 +49927,8 @@ fn test_interpret_rna_reads_progress_reports_histogram_updates() {
     let td = tempdir().expect("tempdir");
     let input_path = td.path().join("reads_many.fa");
     let mut fasta = String::new();
-    for idx in 0..1001usize {
+    let read_count = RNA_READ_PROGRESS_UPDATE_EVERY_READS + 1;
+    for idx in 0..read_count {
         fasta.push_str(&format!(">read_{}\n{}\n", idx + 1, read_sequence));
     }
     fs::write(&input_path, fasta).expect("write reads");
@@ -33557,7 +49965,11 @@ fn test_interpret_rna_reads_progress_reports_histogram_updates() {
 
     assert!(!progress_events.is_empty());
     assert_eq!(progress_events.first().map(|p| p.reads_processed), Some(0));
-    assert!(progress_events.iter().any(|p| p.reads_processed >= 1000));
+    assert!(
+        progress_events
+            .iter()
+            .any(|p| p.reads_processed >= RNA_READ_PROGRESS_UPDATE_EVERY_READS)
+    );
     assert!(
         progress_events.iter().any(|p| {
             !p.done
@@ -33575,8 +49987,8 @@ fn test_interpret_rna_reads_progress_reports_histogram_updates() {
     );
     let last = progress_events.last().expect("last progress");
     assert!(last.done);
-    assert_eq!(last.reads_processed, 1001);
-    assert_eq!(last.reads_total, 1001);
+    assert_eq!(last.reads_processed, read_count);
+    assert_eq!(last.reads_total, read_count);
     assert!(last.input_bytes_total > 0);
     assert_eq!(last.input_bytes_processed, last.input_bytes_total);
     assert!(!last.bins.is_empty());
@@ -34523,6 +50935,7 @@ fn test_infer_read_exon_path_prefers_chain_strand_on_cross_strand_tie() {
             strand: "+".to_string(),
             exon_ordinals: vec![1, 2],
             transitions: vec![(1, 2)],
+            ..TranscriptExonPathModel::default()
         },
         TranscriptExonPathModel {
             transcript_feature_id: 5,
@@ -34531,6 +50944,7 @@ fn test_infer_read_exon_path_prefers_chain_strand_on_cross_strand_tie() {
             strand: "-".to_string(),
             exon_ordinals: vec![1, 2],
             transitions: vec![(1, 2)],
+            ..TranscriptExonPathModel::default()
         },
     ];
     let supported_exons = [1usize, 2usize].into_iter().collect::<HashSet<_>>();
@@ -34550,6 +50964,939 @@ fn test_infer_read_exon_path_prefers_chain_strand_on_cross_strand_tie() {
     assert!(inferred.strand_diagnostics.competing_opposite_strand);
     assert!(inferred.strand_diagnostics.ambiguous_near_tie);
     assert_eq!(inferred.strand_diagnostics.selected_strand, "+");
+}
+
+#[test]
+fn test_transcript_exon_path_stays_local_when_global_projection_repeats() {
+    let global_ordinals = vec![2, 3, 7, 10, 11, 12, 13, 15, 13];
+    let global_transitions = global_ordinals
+        .windows(2)
+        .map(|pair| (pair[0], pair[1]))
+        .collect::<Vec<_>>();
+    let model = TranscriptExonPathModel {
+        transcript_feature_id: 68,
+        transcript_id: "ENST00001135483".to_string(),
+        transcript_label: "PATZ1-213".to_string(),
+        strand: "+".to_string(),
+        exon_ordinals: global_ordinals.clone(),
+        exon_local_ordinals: vec![],
+        transitions: global_transitions.clone(),
+        transcript_local_ordinals: vec![1, 2, 3, 4, 5],
+        transcript_local_transition_edges: vec![(3, 7), (7, 10), (10, 11), (12, 13)],
+    };
+    let supported_exons = global_ordinals.into_iter().collect::<HashSet<_>>();
+    let supported_transitions = global_transitions.into_iter().collect::<HashSet<_>>();
+
+    let inferred = GentleEngine::infer_read_exon_path(
+        &[model],
+        &supported_exons,
+        &supported_transitions,
+        "ENST00001135483",
+    );
+
+    assert_eq!(inferred.transcript_id, "ENST00001135483");
+    assert_eq!(inferred.path, "2:3:7:10:11:12:13:15:13");
+    assert_eq!(inferred.transcript_exon_path, "1:2:3:4:5");
+    assert_eq!(inferred.confirmed_transitions, 8);
+    assert_eq!(inferred.total_transitions, 8);
+}
+
+#[test]
+fn test_dexseq_exonic_part_path_marks_intra_exon_bins_without_changing_local_path() {
+    let global_ordinals = vec![2, 3, 7, 10, 11, 12, 13, 14, 15];
+    let real_splice_transitions = vec![(2, 3), (3, 7), (7, 10), (10, 11)];
+    let model = TranscriptExonPathModel {
+        transcript_feature_id: 68,
+        transcript_id: "ENST00001135483".to_string(),
+        transcript_label: "PATZ1-213".to_string(),
+        strand: "+".to_string(),
+        exon_ordinals: global_ordinals.clone(),
+        exon_local_ordinals: vec![1, 2, 3, 4, 5, 5, 5, 5, 5],
+        transitions: real_splice_transitions.clone(),
+        transcript_local_ordinals: vec![1, 2, 3, 4, 5],
+        transcript_local_transition_edges: real_splice_transitions.clone(),
+    };
+    let supported_exons = global_ordinals.iter().copied().collect::<HashSet<_>>();
+    let supported_transitions = real_splice_transitions
+        .iter()
+        .copied()
+        .collect::<HashSet<_>>();
+
+    let inferred = GentleEngine::infer_read_exon_path(
+        &[model],
+        &supported_exons,
+        &supported_transitions,
+        "ENST00001135483",
+    );
+
+    assert_eq!(inferred.transcript_id, "ENST00001135483");
+    assert_eq!(inferred.path, "2:3:7:10:11_12_13_14_15");
+    assert_eq!(inferred.transcript_exon_path, "1:2:3:4:5");
+    assert_eq!(inferred.confirmed_transitions, 4);
+    assert_eq!(inferred.total_transitions, 4);
+    let ordinals = GentleEngine::parse_exon_path(&inferred.path).0;
+    let unique_ordinals = ordinals.iter().copied().collect::<HashSet<_>>();
+    assert_eq!(
+        ordinals.len(),
+        unique_ordinals.len(),
+        "DEXSeq-style exonic-part paths must not repeat global ordinals"
+    );
+}
+
+#[test]
+fn test_seed_support_exon_summaries_are_disjoint_exonic_parts() {
+    let transcript_lanes = vec![
+        SplicingTranscriptLane {
+            transcript_feature_id: 1,
+            transcript_id: "tx_full".to_string(),
+            label: "TX full".to_string(),
+            strand: "+".to_string(),
+            exons: vec![
+                SplicingRange {
+                    start_1based: 10,
+                    end_1based: 20,
+                },
+                SplicingRange {
+                    start_1based: 40,
+                    end_1based: 80,
+                },
+            ],
+            exon_cds_phases: vec![],
+            introns: vec![],
+            has_target_feature: true,
+        },
+        SplicingTranscriptLane {
+            transcript_feature_id: 2,
+            transcript_id: "tx_nested".to_string(),
+            label: "TX nested".to_string(),
+            strand: "+".to_string(),
+            exons: vec![
+                SplicingRange {
+                    start_1based: 10,
+                    end_1based: 20,
+                },
+                SplicingRange {
+                    start_1based: 40,
+                    end_1based: 60,
+                },
+            ],
+            exon_cds_phases: vec![],
+            introns: vec![],
+            has_target_feature: false,
+        },
+        SplicingTranscriptLane {
+            transcript_feature_id: 3,
+            transcript_id: "tx_shifted".to_string(),
+            label: "TX shifted".to_string(),
+            strand: "+".to_string(),
+            exons: vec![
+                SplicingRange {
+                    start_1based: 10,
+                    end_1based: 20,
+                },
+                SplicingRange {
+                    start_1based: 61,
+                    end_1based: 70,
+                },
+            ],
+            exon_cds_phases: vec![],
+            introns: vec![],
+            has_target_feature: false,
+        },
+    ];
+
+    let summaries = GentleEngine::collect_seed_support_exon_summaries(&transcript_lanes);
+    let spans = summaries
+        .iter()
+        .map(|row| {
+            (
+                row.start_1based,
+                row.end_1based,
+                row.support_transcript_count,
+                row.constitutive,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        spans,
+        vec![
+            (10, 20, 3, true),
+            (40, 60, 2, false),
+            (61, 70, 2, false),
+            (71, 80, 1, false),
+        ]
+    );
+    for pair in summaries.windows(2) {
+        assert!(
+            pair[0].end_1based < pair[1].start_1based,
+            "exonic-part bins must be disjoint and sorted by genomic coordinate"
+        );
+    }
+}
+
+#[test]
+fn test_minus_strand_exonic_part_path_keeps_transcript_order_and_intra_exon_marker() {
+    let dna = DNAsequence::from_sequence(&"A".repeat(50)).expect("synthetic dna");
+    let lane = SplicingTranscriptLane {
+        transcript_feature_id: 7,
+        transcript_id: "tx_minus".to_string(),
+        label: "TX minus".to_string(),
+        strand: "-".to_string(),
+        exons: vec![
+            SplicingRange {
+                start_1based: 10,
+                end_1based: 20,
+            },
+            SplicingRange {
+                start_1based: 30,
+                end_1based: 40,
+            },
+        ],
+        exon_cds_phases: vec![],
+        introns: vec![],
+        has_target_feature: true,
+    };
+    let splitter_lane = SplicingTranscriptLane {
+        transcript_feature_id: 8,
+        transcript_id: "tx_splitter".to_string(),
+        label: "TX splitter".to_string(),
+        strand: "-".to_string(),
+        exons: vec![SplicingRange {
+            start_1based: 15,
+            end_1based: 20,
+        }],
+        exon_cds_phases: vec![],
+        introns: vec![],
+        has_target_feature: false,
+    };
+    let summaries =
+        GentleEngine::collect_seed_support_exon_summaries(&[lane.clone(), splitter_lane]);
+    let template = GentleEngine::make_transcript_template(&dna, &lane, 3);
+    let (_seed_to_exons, _seed_to_transitions, models, _transition_rows) =
+        GentleEngine::build_seed_support_indexes(&summaries, &[template], 3);
+    let model = models
+        .iter()
+        .find(|model| model.transcript_id == "tx_minus")
+        .expect("minus transcript model");
+    assert_eq!(model.exon_ordinals, vec![3, 2, 1]);
+    assert_eq!(model.exon_local_ordinals, vec![1, 2, 2]);
+    assert_eq!(model.transitions, vec![(3, 2)]);
+
+    let supported_exons = model.exon_ordinals.iter().copied().collect::<HashSet<_>>();
+    let supported_transitions = model.transitions.iter().copied().collect::<HashSet<_>>();
+    let inferred = GentleEngine::infer_read_exon_path(
+        &models,
+        &supported_exons,
+        &supported_transitions,
+        "tx_minus",
+    );
+
+    assert_eq!(inferred.path, "3:2_1");
+    assert_eq!(inferred.transcript_exon_path, "1:2");
+    assert_eq!(inferred.confirmed_transitions, 1);
+    assert_eq!(inferred.total_transitions, 1);
+}
+
+#[test]
+fn test_parse_exon_path_keeps_underscore_as_intra_exon_boundary() {
+    let (ordinals, transitions) = GentleEngine::parse_exon_path("13_15");
+    assert_eq!(ordinals, vec![13, 15]);
+    assert_eq!(transitions, vec!['_']);
+}
+
+#[test]
+fn test_export_rna_read_exon_abundance_skips_intra_exon_bin_edges() {
+    let mut engine = GentleEngine::default();
+    engine
+        .upsert_rna_read_report(RnaReadInterpretationReport {
+            schema: "gentle.rna_read_report.v1".to_string(),
+            report_id: "rna_reads_intra_bin_abundance".to_string(),
+            seq_id: "seq_bins".to_string(),
+            hits: vec![RnaReadInterpretationHit {
+                record_index: 0,
+                header_id: "read_bins".to_string(),
+                sequence: "AACCGG".to_string(),
+                read_length_bp: 6,
+                exon_path_transcript_id: "tx_bins".to_string(),
+                transcript_exon_path: "1:2".to_string(),
+                exon_path: "13_15:16".to_string(),
+                ..RnaReadInterpretationHit::default()
+            }],
+            ..RnaReadInterpretationReport::default()
+        })
+        .expect("upsert abundance report");
+
+    let td = tempdir().expect("tempdir");
+    let abundance_tsv = td.path().join("abundance.tsv");
+    let abundance_export = engine
+        .export_rna_read_exon_abundance_tsv(
+            "rna_reads_intra_bin_abundance",
+            abundance_tsv.to_str().expect("abundance tsv"),
+            RnaReadHitSelection::All,
+            &[],
+            None,
+        )
+        .expect("export abundance");
+    assert_eq!(abundance_export.selected_read_count, 1);
+    assert_eq!(abundance_export.exon_row_count, 3);
+    assert_eq!(abundance_export.transition_row_count, 1);
+    let abundance_text = fs::read_to_string(abundance_tsv).expect("read abundance tsv");
+    assert!(abundance_text.contains("\texon\t13\t"));
+    assert!(abundance_text.contains("\texon\t15\t"));
+    assert!(abundance_text.contains("\texon\t16\t"));
+    assert!(abundance_text.contains("\ttransition\t\t15\t16\t"));
+    assert!(!abundance_text.contains("\ttransition\t\t13\t15\t"));
+}
+
+fn rna_read_dexseq_verification_test_engine() -> GentleEngine {
+    let mut engine = GentleEngine::default();
+    engine
+        .upsert_rna_read_report(RnaReadInterpretationReport {
+            schema: "gentle.rna_read_report.v1".to_string(),
+            report_id: "dexseq_verification_test".to_string(),
+            seq_id: "dexseq_verification_seq".to_string(),
+            exonic_part_bins: vec![
+                RnaReadExonicPartBin {
+                    global_ordinal: 1,
+                    gene_id: "GENE1".to_string(),
+                    exonic_part_number: 1,
+                    start_1based: 10,
+                    end_1based: 20,
+                    strand: "+".to_string(),
+                    transcripts: vec!["TX1".to_string()],
+                    constitutive: true,
+                },
+                RnaReadExonicPartBin {
+                    global_ordinal: 2,
+                    gene_id: "GENE1".to_string(),
+                    exonic_part_number: 2,
+                    start_1based: 30,
+                    end_1based: 40,
+                    strand: "+".to_string(),
+                    transcripts: vec!["TX1".to_string()],
+                    constitutive: true,
+                },
+            ],
+            hits: vec![RnaReadInterpretationHit {
+                record_index: 0,
+                header_id: "read_both_parts".to_string(),
+                passed_seed_filter: true,
+                exon_path: "1:2".to_string(),
+                best_mapping: Some(RnaReadMappingHit::default()),
+                ..RnaReadInterpretationHit::default()
+            }],
+            ..RnaReadInterpretationReport::default()
+        })
+        .expect("persist synthetic DEXSeq verification report");
+    engine
+}
+
+#[cfg(unix)]
+fn write_fake_dexseq_rscript(dir: &Path, body: &str) -> PathBuf {
+    let path = dir.join("Rscript");
+    fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("write fake DEXSeq Rscript");
+    let mut permissions = fs::metadata(&path)
+        .expect("fake DEXSeq Rscript metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&path, permissions).expect("enable fake DEXSeq Rscript");
+    path
+}
+
+fn declared_r_packages(script: &str) -> BTreeSet<String> {
+    let line = script
+        .lines()
+        .find(|line| line.trim_start().starts_with("required_packages <- c("))
+        .expect("required_packages declaration");
+    let mut packages = BTreeSet::new();
+    let mut rest = line;
+    while let Some(start) = rest.find('"') {
+        rest = &rest[start + 1..];
+        let end = rest.find('"').expect("closing package quote");
+        packages.insert(rest[..end].to_string());
+        rest = &rest[end + 1..];
+    }
+    packages
+}
+
+#[test]
+fn test_rna_read_dexseq_verifier_r_package_contract_matches_helper() {
+    let declared = declared_r_packages(include_str!("../../scripts/rna_read_dexseq_verify.R"));
+    assert_eq!(
+        declared,
+        crate::engine::rna_reads::RNA_READ_DEXSEQ_VERIFY_REQUIRED_R_PACKAGES
+            .iter()
+            .map(|package| (*package).to_string())
+            .collect()
+    );
+}
+
+#[test]
+fn test_rna_read_dexseq_verification_operation_round_trips() {
+    let operation = Operation::VerifyRnaReadDexseqExports {
+        report_id: "reads".to_string(),
+        gff_path: "out.gff".to_string(),
+        counts_path: "out.tsv".to_string(),
+        selection: RnaReadHitSelection::Aligned,
+        selected_record_indices: vec![3, 5],
+        subset_spec: Some("reviewed subset".to_string()),
+        r_library_paths: vec![".r-lib".to_string(), "/opt/R/library".to_string()],
+    };
+    let encoded = serde_json::to_value(&operation).expect("serialize DEXSeq verification op");
+    let decoded: Operation =
+        serde_json::from_value(encoded).expect("deserialize DEXSeq verification op");
+
+    assert!(matches!(
+        decoded,
+        Operation::VerifyRnaReadDexseqExports {
+            report_id,
+            gff_path,
+            counts_path,
+            selection,
+            selected_record_indices,
+            subset_spec,
+            r_library_paths,
+        } if report_id == "reads"
+            && gff_path == "out.gff"
+            && counts_path == "out.tsv"
+            && selection == RnaReadHitSelection::Aligned
+            && selected_record_indices == vec![3, 5]
+            && subset_spec.as_deref() == Some("reviewed subset")
+            && r_library_paths == vec![".r-lib", "/opt/R/library"]
+    ));
+}
+
+#[cfg(unix)]
+#[test]
+fn test_rna_read_dexseq_verifier_uses_fake_rscript_and_returns_summary() {
+    let engine = rna_read_dexseq_verification_test_engine();
+    let td = tempdir().expect("tempdir");
+    let r_library = td.path().join("r-library");
+    fs::create_dir(&r_library).expect("create R library");
+    let rscript = write_fake_dexseq_rscript(
+        td.path(),
+        &format!(
+            "if [ \"$1\" = \"--version\" ]; then\n  echo 'Rscript (R) version 4.4.1'\nelif [ \"$1\" = \"--vanilla\" ]; then\n  printf 'LIBPATH\\t{}\\nPACKAGE\\tDEXSeq\\t1.52.0\\n'\nelse\n  echo 'DEXSEQ_OK genes=1 exonic_parts=2 total_counts=2'\nfi",
+            r_library.display()
+        ),
+    );
+    let gff_path = td.path().join("verified.gff");
+    let counts_path = td.path().join("verified.tsv");
+
+    let verification = engine
+        .verify_rna_read_dexseq_exports_with_program(
+            "dexseq_verification_test",
+            gff_path.to_str().expect("GFF path"),
+            counts_path.to_str().expect("counts path"),
+            RnaReadHitSelection::All,
+            &[],
+            Some("all synthetic reads"),
+            &[r_library.display().to_string()],
+            rscript.to_str().expect("Rscript path"),
+            Duration::from_secs(10),
+            Duration::from_secs(10),
+        )
+        .expect("verify DEXSeq exports");
+
+    assert_eq!(
+        verification.schema,
+        "gentle.rna_read_dexseq_verification.v1"
+    );
+    assert_eq!(verification.verifier_status, "verified");
+    assert_eq!(
+        verification.verifier_stdout_summary.as_deref(),
+        Some("DEXSEQ_OK genes=1 exonic_parts=2 total_counts=2")
+    );
+    assert_eq!(
+        verification
+            .dependency_checks
+            .iter()
+            .map(|row| (row.name.as_str(), row.status.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("Rscript", "present"), ("DEXSeq", "present")]
+    );
+    assert!(
+        verification
+            .command
+            .contains("Rscript scripts/rna_read_dexseq_verify.R")
+    );
+    assert!(
+        verification
+            .command
+            .contains(&r_library.display().to_string())
+    );
+    assert!(gff_path.is_file());
+    assert!(counts_path.is_file());
+}
+
+#[cfg(unix)]
+#[test]
+fn test_rna_read_dexseq_verifier_reports_missing_package_without_running_helper() {
+    let engine = rna_read_dexseq_verification_test_engine();
+    let td = tempdir().expect("tempdir");
+    let rscript = write_fake_dexseq_rscript(
+        td.path(),
+        "if [ \"$1\" = \"--version\" ]; then\n  echo 'Rscript (R) version 4.4.1'\nelif [ \"$1\" = \"--vanilla\" ]; then\n  printf 'PACKAGE\\tDEXSeq\\tMISSING\\n'\nelse\n  echo 'verifier must not run' >&2\n  exit 97\nfi",
+    );
+
+    let verification = engine
+        .verify_rna_read_dexseq_exports_with_program(
+            "dexseq_verification_test",
+            td.path().join("missing.gff").to_str().expect("GFF path"),
+            td.path().join("missing.tsv").to_str().expect("counts path"),
+            RnaReadHitSelection::All,
+            &[],
+            None,
+            &[],
+            rscript.to_str().expect("Rscript path"),
+            Duration::from_secs(10),
+            Duration::from_secs(10),
+        )
+        .expect("inspect missing DEXSeq dependency");
+
+    assert_eq!(verification.verifier_status, "dependency_missing");
+    let dexseq = verification
+        .dependency_checks
+        .iter()
+        .find(|row| row.name == "DEXSeq")
+        .expect("DEXSeq dependency row");
+    assert_eq!(dexseq.status, "missing");
+    assert!(verification.verifier_stdout_summary.is_none());
+}
+
+#[cfg(unix)]
+#[test]
+fn test_rna_read_dexseq_verifier_execution_is_bounded() {
+    let engine = rna_read_dexseq_verification_test_engine();
+    let td = tempdir().expect("tempdir");
+    let rscript = write_fake_dexseq_rscript(
+        td.path(),
+        "if [ \"$1\" = \"--version\" ]; then\n  echo 'Rscript (R) version 4.4.1'\nelif [ \"$1\" = \"--vanilla\" ]; then\n  printf 'PACKAGE\\tDEXSeq\\t1.52.0\\n'\nelse\n  while :; do :; done\nfi",
+    );
+
+    let verification = engine
+        .verify_rna_read_dexseq_exports_with_program(
+            "dexseq_verification_test",
+            td.path().join("timeout.gff").to_str().expect("GFF path"),
+            td.path().join("timeout.tsv").to_str().expect("counts path"),
+            RnaReadHitSelection::All,
+            &[],
+            None,
+            &[],
+            rscript.to_str().expect("Rscript path"),
+            Duration::from_secs(10),
+            Duration::from_millis(250),
+        )
+        .expect("bound DEXSeq verifier");
+
+    assert_eq!(verification.verifier_status, "verification_timed_out");
+    assert!(
+        verification
+            .dependency_checks
+            .iter()
+            .all(|row| row.status == "present")
+    );
+    assert!(
+        verification
+            .command
+            .contains("Rscript scripts/rna_read_dexseq_verify.R")
+    );
+    assert!(
+        verification
+            .verifier_detail
+            .as_deref()
+            .is_some_and(|detail| detail.contains("timed out"))
+    );
+}
+
+#[test]
+#[ignore = "requires a local R installation with the Bioconductor DEXSeq package"]
+fn test_rna_read_dexseq_verifier_with_real_rscript() {
+    let engine = rna_read_dexseq_verification_test_engine();
+    let td = tempdir().expect("tempdir");
+    let verification = engine
+        .verify_rna_read_dexseq_exports(
+            "dexseq_verification_test",
+            td.path().join("real.gff").to_str().expect("GFF path"),
+            td.path().join("real.tsv").to_str().expect("counts path"),
+            RnaReadHitSelection::All,
+            &[],
+            Some("all synthetic reads"),
+            &[],
+        )
+        .expect("run real DEXSeq verification");
+
+    assert_eq!(
+        verification.verifier_status,
+        "verified",
+        "{}",
+        verification.verifier_detail.as_deref().unwrap_or_default()
+    );
+}
+
+#[test]
+fn test_rna_read_dexseq_exports_share_partition_join_keys_and_counts() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_dexseq".to_string(), splicing_test_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    let feature_id = engine
+        .state()
+        .sequences
+        .get("seq_dexseq")
+        .expect("DEXSeq test sequence")
+        .features()
+        .iter()
+        .position(GentleEngine::is_mrna_feature)
+        .expect("DEXSeq seed transcript");
+    let splicing = engine
+        .build_splicing_expert_view(
+            "seq_dexseq",
+            feature_id,
+            SplicingScopePreset::TargetGroupTargetStrand,
+        )
+        .expect("DEXSeq splicing view");
+    let bins = {
+        let dna = engine
+            .state()
+            .sequences
+            .get("seq_dexseq")
+            .expect("DEXSeq test sequence");
+        GentleEngine::collect_rna_read_exonic_part_bins(
+            dna,
+            "seq_dexseq",
+            &splicing.transcripts,
+            &[],
+            &splicing.group_label,
+        )
+    };
+    let summaries = GentleEngine::collect_seed_support_exon_summaries(&splicing.transcripts);
+    assert_eq!(bins.len(), summaries.len());
+    assert!(bins.len() >= 3);
+    for (index, (bin, summary)) in bins.iter().zip(&summaries).enumerate() {
+        assert_eq!(bin.global_ordinal, index + 1);
+        assert_eq!(bin.gene_id, "GENE1");
+        assert_eq!(bin.exonic_part_number, index + 1);
+        assert_eq!(bin.start_1based, summary.start_1based);
+        assert_eq!(bin.end_1based, summary.end_1based);
+        assert_eq!(bin.strand, "+");
+        assert!(!bin.transcripts.is_empty());
+    }
+
+    let first = bins[0].global_ordinal;
+    let second = bins[1].global_ordinal;
+    let last = bins.last().expect("last DEXSeq bin").global_ordinal;
+    engine
+        .upsert_rna_read_report(RnaReadInterpretationReport {
+            schema: "gentle.rna_read_report.v1".to_string(),
+            report_id: "rna_reads_dexseq".to_string(),
+            seq_id: "seq_dexseq".to_string(),
+            exonic_part_bins: bins.clone(),
+            hits: vec![
+                RnaReadInterpretationHit {
+                    record_index: 0,
+                    header_id: "read_first_second".to_string(),
+                    passed_seed_filter: true,
+                    exon_path: format!("{first}_{second}_{second}"),
+                    best_mapping: Some(RnaReadMappingHit::default()),
+                    ..RnaReadInterpretationHit::default()
+                },
+                RnaReadInterpretationHit {
+                    record_index: 1,
+                    header_id: "read_last".to_string(),
+                    passed_seed_filter: true,
+                    exon_path: last.to_string(),
+                    best_mapping: Some(RnaReadMappingHit::default()),
+                    ..RnaReadInterpretationHit::default()
+                },
+                RnaReadInterpretationHit {
+                    record_index: 2,
+                    header_id: "read_low_quality".to_string(),
+                    passed_seed_filter: false,
+                    exon_path: second.to_string(),
+                    best_mapping: None,
+                    ..RnaReadInterpretationHit::default()
+                },
+                RnaReadInterpretationHit {
+                    record_index: 3,
+                    header_id: "read_empty".to_string(),
+                    passed_seed_filter: true,
+                    exon_path: String::new(),
+                    best_mapping: None,
+                    ..RnaReadInterpretationHit::default()
+                },
+            ],
+            ..RnaReadInterpretationReport::default()
+        })
+        .expect("persist DEXSeq report");
+
+    let td = tempdir().expect("tempdir");
+    let gff_path = td.path().join("dexseq.gff");
+    let count_path = td.path().join("dexseq_counts.tsv");
+    let gff_export = engine
+        .export_rna_read_dexseq_annotation_gff(
+            "rna_reads_dexseq",
+            gff_path.to_str().expect("GFF path"),
+        )
+        .expect("export DEXSeq GFF");
+    let count_export = engine
+        .export_rna_read_dexseq_counts_tsv(
+            "rna_reads_dexseq",
+            count_path.to_str().expect("count path"),
+            RnaReadHitSelection::All,
+            &[],
+            Some("all retained synthetic reads"),
+        )
+        .expect("export DEXSeq counts");
+    assert_eq!(gff_export.exonic_part_count, bins.len());
+    assert_eq!(
+        gff_export.row_count,
+        gff_export
+            .aggregate_gene_count
+            .saturating_add(gff_export.exonic_part_count)
+    );
+    assert_eq!(count_export.exonic_part_count, bins.len());
+    assert_eq!(count_export.row_count, bins.len() + 5);
+    assert_eq!(count_export.selected_read_count, 4);
+    assert_eq!(count_export.empty_count, 1);
+    assert_eq!(count_export.lowaqual_count, 1);
+    assert_eq!(count_export.notaligned_count, 2);
+
+    let gff_text = fs::read_to_string(gff_path).expect("read DEXSeq GFF");
+    let count_text = fs::read_to_string(count_path).expect("read DEXSeq counts");
+    let gff_keys = gff_text
+        .lines()
+        .filter_map(|line| {
+            let columns = line.split('\t').collect::<Vec<_>>();
+            if columns.get(2).copied() != Some("exonic_part") {
+                return None;
+            }
+            let attributes = *columns.get(8)?;
+            let gene_id = attributes.split("gene_id \"").nth(1)?.split('"').next()?;
+            let part = attributes
+                .split("exonic_part_number \"")
+                .nth(1)?
+                .split('"')
+                .next()?;
+            Some(format!("{gene_id}:E{part}"))
+        })
+        .collect::<BTreeSet<_>>();
+    let count_rows = count_text
+        .lines()
+        .filter(|line| !line.starts_with('_'))
+        .filter_map(|line| {
+            let (key, count) = line.split_once('\t')?;
+            Some((key.to_string(), count.parse::<usize>().ok()?))
+        })
+        .collect::<BTreeMap<_, _>>();
+    assert_eq!(
+        gff_keys,
+        count_rows.keys().cloned().collect::<BTreeSet<_>>()
+    );
+    assert_eq!(count_rows.get("GENE1:E001"), Some(&1));
+    assert_eq!(count_rows.get("GENE1:E002"), Some(&2));
+    assert_eq!(count_text.lines().next(), Some("GENE1:E001\t1"));
+    assert!(count_text.contains("_ambiguous\t0\n"));
+    assert!(count_text.contains("_empty\t1\n"));
+    assert!(count_text.contains("_ambiguous_readpair\t0\n"));
+
+    let operation_gff_path = td.path().join("dexseq_operation.gff");
+    let operation_count_path = td.path().join("dexseq_operation_counts.tsv");
+    engine
+        .apply(Operation::ExportRnaReadDexseqAnnotationGff {
+            report_id: "rna_reads_dexseq".to_string(),
+            path: operation_gff_path.display().to_string(),
+        })
+        .expect("operation DEXSeq annotation export");
+    engine
+        .apply(Operation::ExportRnaReadDexseqCountsTsv {
+            report_id: "rna_reads_dexseq".to_string(),
+            path: operation_count_path.display().to_string(),
+            selection: RnaReadHitSelection::All,
+            selected_record_indices: vec![],
+            subset_spec: None,
+        })
+        .expect("operation DEXSeq count export");
+    assert!(operation_gff_path.is_file());
+    assert!(operation_count_path.is_file());
+}
+
+#[test]
+fn test_rna_read_dexseq_partition_builds_sorted_aggregate_gene_ids() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(60)).expect("synthetic DNA");
+    for (gene_id, transcript_id, start_0based, end_0based) in [
+        ("GENEB", "TX_B", 20i64, 40i64),
+        ("GENEA", "TX_A", 10i64, 30i64),
+    ] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::simple_range(start_0based, end_0based),
+            qualifiers: vec![
+                ("gene".into(), Some(gene_id.to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+            ],
+        });
+    }
+    let lanes = vec![
+        SplicingTranscriptLane {
+            transcript_feature_id: 0,
+            transcript_id: "TX_B".to_string(),
+            label: "TX B".to_string(),
+            strand: "+".to_string(),
+            exons: vec![SplicingRange {
+                start_1based: 21,
+                end_1based: 40,
+            }],
+            exon_cds_phases: vec![],
+            introns: vec![],
+            has_target_feature: false,
+        },
+        SplicingTranscriptLane {
+            transcript_feature_id: 1,
+            transcript_id: "TX_A".to_string(),
+            label: "TX A".to_string(),
+            strand: "+".to_string(),
+            exons: vec![SplicingRange {
+                start_1based: 11,
+                end_1based: 30,
+            }],
+            exon_cds_phases: vec![],
+            introns: vec![],
+            has_target_feature: true,
+        },
+    ];
+
+    let bins = GentleEngine::collect_rna_read_exonic_part_bins(
+        &dna,
+        "aggregate_seq",
+        &lanes,
+        &[],
+        "GENEA",
+    );
+    assert_eq!(
+        bins.iter()
+            .map(|bin| (
+                bin.start_1based,
+                bin.end_1based,
+                bin.gene_id.as_str(),
+                bin.exonic_part_number,
+            ))
+            .collect::<Vec<_>>(),
+        vec![
+            (11, 20, "GENEA", 1),
+            (21, 30, "GENEA+GENEB", 1),
+            (31, 40, "GENEB", 1),
+        ]
+    );
+    assert_eq!(bins[1].transcripts, vec!["TX_A", "TX_B"]);
+}
+
+#[test]
+fn test_rna_read_dexseq_minus_strand_parts_number_by_genomic_coordinate() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(60)).expect("synthetic DNA");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(10, 20),
+            gb_io::seq::Location::simple_range(30, 40),
+        ]))),
+        qualifiers: vec![
+            ("gene".into(), Some("MINUS1".to_string())),
+            ("transcript_id".into(), Some("TX_MINUS".to_string())),
+        ],
+    });
+    let lanes = vec![SplicingTranscriptLane {
+        transcript_feature_id: 0,
+        transcript_id: "TX_MINUS".to_string(),
+        label: "TX minus".to_string(),
+        strand: "-".to_string(),
+        exons: vec![
+            SplicingRange {
+                start_1based: 11,
+                end_1based: 20,
+            },
+            SplicingRange {
+                start_1based: 31,
+                end_1based: 40,
+            },
+        ],
+        exon_cds_phases: vec![],
+        introns: vec![],
+        has_target_feature: true,
+    }];
+
+    let bins =
+        GentleEngine::collect_rna_read_exonic_part_bins(&dna, "minus_seq", &lanes, &[], "MINUS1");
+    assert_eq!(bins.len(), 2);
+    assert_eq!(bins[0].start_1based, 11);
+    assert_eq!(bins[0].exonic_part_number, 1);
+    assert_eq!(bins[1].start_1based, 31);
+    assert_eq!(bins[1].exonic_part_number, 2);
+    assert!(bins.iter().all(|bin| bin.strand == "-"));
+
+    let mut engine = GentleEngine::default();
+    engine
+        .upsert_rna_read_report(RnaReadInterpretationReport {
+            schema: "gentle.rna_read_report.v1".to_string(),
+            report_id: "minus_dexseq".to_string(),
+            seq_id: "minus_seq".to_string(),
+            exonic_part_bins: bins,
+            ..RnaReadInterpretationReport::default()
+        })
+        .expect("persist minus-strand DEXSeq report");
+    let td = tempdir().expect("tempdir");
+    let path = td.path().join("minus.gff");
+    engine
+        .export_rna_read_dexseq_annotation_gff(
+            "minus_dexseq",
+            path.to_str().expect("minus GFF path"),
+        )
+        .expect("export minus-strand GFF");
+    let gff = fs::read_to_string(path).expect("read minus-strand GFF");
+    assert!(
+        gff.lines()
+            .filter(|line| line.contains("\texonic_part\t"))
+            .all(|line| line.split('\t').nth(6) == Some("-"))
+    );
+}
+
+#[test]
+fn test_rna_read_dexseq_export_rejects_reports_without_persisted_bins() {
+    let mut engine = GentleEngine::default();
+    engine
+        .upsert_rna_read_report(RnaReadInterpretationReport {
+            schema: "gentle.rna_read_report.v1".to_string(),
+            report_id: "legacy_rna_reads".to_string(),
+            seq_id: "legacy_seq".to_string(),
+            ..RnaReadInterpretationReport::default()
+        })
+        .expect("persist legacy report");
+    let td = tempdir().expect("tempdir");
+    let gff_error = engine
+        .export_rna_read_dexseq_annotation_gff(
+            "legacy_rna_reads",
+            td.path().join("legacy.gff").to_str().expect("GFF path"),
+        )
+        .expect_err("legacy GFF export must fail");
+    let counts_error = engine
+        .export_rna_read_dexseq_counts_tsv(
+            "legacy_rna_reads",
+            td.path()
+                .join("legacy_counts.tsv")
+                .to_str()
+                .expect("count path"),
+            RnaReadHitSelection::All,
+            &[],
+            None,
+        )
+        .expect_err("legacy count export must fail");
+    for error in [gff_error, counts_error] {
+        assert_eq!(error.code, ErrorCode::InvalidInput);
+        assert!(error.message.contains("predates DEXSeq export"));
+        assert!(error.message.contains("re-run alignment"));
+    }
 }
 
 #[test]
@@ -34743,6 +52090,7 @@ fn test_mapped_support_counts_follow_transcript_offsets_not_genomic_span_overlap
         transcript_count: 2,
         unique_exon_count: 3,
         instruction: String::new(),
+        presentation_fingerprint_sha256: String::new(),
         transcripts: vec![
             SplicingTranscriptLane {
                 transcript_feature_id: 1,
@@ -34990,7 +52338,7 @@ fn test_inspect_splicing_attract_evidence_filters_exact_species_and_classifies_r
     assert!(
         view.active_resource_fingerprint
             .as_deref()
-            .map(|value| value.starts_with("sha1:"))
+            .map(|value| value.starts_with("sha256:"))
             .unwrap_or(false)
     );
     assert_eq!(view.summary_rows.len(), 2);
@@ -35080,7 +52428,7 @@ fn test_inspect_splicing_attract_evidence_falls_back_when_requested_species_miss
     assert!(
         view.active_resource_fingerprint
             .as_deref()
-            .map(|value| value.starts_with("sha1:"))
+            .map(|value| value.starts_with("sha256:"))
             .unwrap_or(false)
     );
     assert_eq!(view.hit_count, 1);
@@ -36654,6 +54002,87 @@ fn test_rna_read_transcript_catalog_index_roundtrip_supports_concatemer_inspecti
 }
 
 #[test]
+fn uniprot_linked_transcript_inventory_preserves_off_resource_denominator_records() {
+    let transcript_file = tempfile::NamedTempFile::new().expect("temp transcript FASTA");
+    std::fs::write(
+        transcript_file.path(),
+        ">TX_A.1 gene=GENE_X transcript=TX_A.1\nATGCCCTAA\n\
+         >TX_B.2 gene=GENE_X transcript=TX_B.2\nATGCCCTAA\n\
+         >TX_C.1 gene=GENE_X transcript=TX_C.1\nATGAAATAA\n",
+    )
+    .expect("write transcript FASTA");
+    let output_file = tempfile::NamedTempFile::new().expect("temp inventory output");
+    let request = UniprotLinkedTranscriptInventoryRequest {
+        inventory_id: "synthetic_inventory".to_string(),
+        assembly: "synthetic_assembly".to_string(),
+        annotation_release: "synthetic_release_1".to_string(),
+        source_resource_id: "synthetic_transcript_catalog".to_string(),
+        transcript_fasta_paths: vec![transcript_file.path().display().to_string()],
+        links: vec![
+            ("ISO-1", "TX_A.1"),
+            ("ISO-1", "TX_B.2"),
+            ("ISO-2", "TX_C.1"),
+            ("ISO-3", "TX_PATCH.1"),
+        ]
+        .into_iter()
+        .map(
+            |(isoform_id, transcript_id)| UniprotLinkedTranscriptInventoryLink {
+                entry_id: "ENTRY_X".to_string(),
+                isoform_id: isoform_id.to_string(),
+                transcript_id: transcript_id.to_string(),
+                locus_reference_accession: Some(format!("LOCUS_{transcript_id}")),
+            },
+        )
+        .collect(),
+        output_path: output_file.path().display().to_string(),
+    };
+
+    let first = GentleEngine::build_uniprot_linked_transcript_inventory(&request)
+        .expect("build linked-transcript inventory");
+    let second = GentleEngine::build_uniprot_linked_transcript_inventory(&request)
+        .expect("rebuild linked-transcript inventory");
+    assert_eq!(first, second, "equivalent inputs must be byte-stable");
+    assert_eq!(first.records.len(), 4);
+    assert_eq!(
+        first
+            .records
+            .iter()
+            .filter_map(|record| record.mature_cdna_sha256.as_deref())
+            .collect::<BTreeSet<_>>()
+            .len(),
+        2,
+        "two exact cDNA identities should represent three resolved records"
+    );
+    let missing = first
+        .records
+        .iter()
+        .find(|record| record.transcript_id == "TX_PATCH.1")
+        .expect("missing patch-style transcript remains in denominator");
+    assert_eq!(
+        missing.status,
+        UniprotLinkedTranscriptInventoryStatus::MissingTranscriptSequence
+    );
+    assert!(missing.mature_cdna_sha256.is_none());
+    assert!(first.content_sha256.starts_with("sha256:"));
+
+    let mut engine = GentleEngine::new();
+    let result = engine
+        .apply(Operation::BuildUniprotLinkedTranscriptInventory {
+            request: request.clone(),
+        })
+        .expect("run inventory operation");
+    let operation_inventory = result
+        .uniprot_linked_transcript_inventory
+        .expect("operation inventory");
+    assert_eq!(*operation_inventory, first);
+    let exported: UniprotLinkedTranscriptInventory = serde_json::from_slice(
+        &std::fs::read(&request.output_path).expect("read exported inventory"),
+    )
+    .expect("parse exported inventory");
+    assert_eq!(exported, first);
+}
+
+#[test]
 fn test_build_rna_read_alignment_display_reports_query_orientation_and_exact_midline() {
     let mut state = ProjectState::default();
     state
@@ -37151,6 +54580,7 @@ fn test_export_rna_read_exon_paths_and_abundance_tsv() {
     assert!(path_text.contains("# seed_filter: k=10 stride=1"));
     assert!(path_text.contains("adjacent windows overlap by 9 bp"));
     assert!(path_text.contains("exon_path"));
+    assert!(path_text.contains("transcript_exon_path"));
     assert!(path_text.contains("reverse_complement_applied"));
 
     let abundance_tsv = td.path().join("abundance.tsv");
@@ -37917,6 +55347,7 @@ fn test_collect_rna_seed_hash_catalog_rows_deduplicates_overlapping_templates() 
         strand: "+".to_string(),
         sequence: b"ACG".to_vec(),
         genomic_positions_1based: vec![100, 101, 102],
+        transcript_local_exon_ordinals: vec![1, 1, 1],
         kmer_positions: HashMap::from([(bits, vec![0])]),
     };
     let template_b = SplicingTranscriptTemplate {
@@ -37926,6 +55357,7 @@ fn test_collect_rna_seed_hash_catalog_rows_deduplicates_overlapping_templates() 
         strand: "+".to_string(),
         sequence: b"ACG".to_vec(),
         genomic_positions_1based: vec![100, 101, 102],
+        transcript_local_exon_ordinals: vec![1, 1, 1],
         kmer_positions: HashMap::from([(bits, vec![0])]),
     };
     let rows =
@@ -37946,6 +55378,7 @@ fn test_build_rna_read_seed_histogram_index_deduplicates_shared_template_positio
         strand: "+".to_string(),
         sequence: b"ACG".to_vec(),
         genomic_positions_1based: vec![100, 101, 102],
+        transcript_local_exon_ordinals: vec![1, 1, 1],
         kmer_positions: HashMap::from([(bits, vec![0])]),
     };
     let template_b = SplicingTranscriptTemplate {
@@ -37955,6 +55388,7 @@ fn test_build_rna_read_seed_histogram_index_deduplicates_shared_template_positio
         strand: "+".to_string(),
         sequence: b"ACG".to_vec(),
         genomic_positions_1based: vec![100, 101, 102],
+        transcript_local_exon_ordinals: vec![1, 1, 1],
         kmer_positions: HashMap::from([(bits, vec![0])]),
     };
     let bins = GentleEngine::build_rna_read_seed_histogram_bins(300);
@@ -38132,6 +55566,77 @@ fn query_sequence_features_applies_qualifier_filters_and_pagination() {
             .expect("gene value"),
         "TP73"
     );
+}
+
+#[test]
+fn query_sequence_features_sorts_matching_array_tracks_by_nearest_base() {
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(30)).expect("sequence");
+    for (start, end, label) in [(10, 20, "array-left"), (80, 90, "array-right")] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "track".into(),
+            location: gb_io::seq::Location::simple_range(start, end),
+            qualifiers: vec![
+                ("label".into(), Some(label.to_string())),
+                ("gentle_track_source".into(), Some("Array".to_string())),
+            ],
+        });
+    }
+    let mut state = ProjectState::default();
+    state.sequences.insert("array-locus".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let result = engine
+        .query_sequence_features(SequenceFeatureQuery {
+            seq_id: "array-locus".to_string(),
+            qualifier_filters: vec![SequenceFeatureQualifierFilter {
+                key: "gentle_track_source".to_string(),
+                value_contains: Some("Array".to_string()),
+                ..SequenceFeatureQualifierFilter::default()
+            }],
+            nearest_to_0based: Some(75),
+            include_qualifiers: true,
+            ..SequenceFeatureQuery::default()
+        })
+        .expect("nearest feature query should succeed");
+
+    assert_eq!(result.sort_by, "distance");
+    assert_eq!(result.nearest_to_0based, Some(75));
+    assert_eq!(result.rows.len(), 2);
+    assert_eq!(result.rows[0].label, "array-right");
+    assert_eq!(result.rows[0].distance_to_query_bp, Some(5));
+    assert_eq!(result.rows[1].label, "array-left");
+    assert_eq!(result.rows[1].distance_to_query_bp, Some(56));
+}
+
+#[test]
+fn query_sequence_features_rejects_nearest_point_outside_sequence() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "short-sequence".to_string(),
+        DNAsequence::from_sequence("ACGT").expect("sequence"),
+    );
+    let engine = GentleEngine::from_state(state);
+
+    let err = engine
+        .query_sequence_features(SequenceFeatureQuery {
+            seq_id: "short-sequence".to_string(),
+            nearest_to_0based: Some(4),
+            ..SequenceFeatureQuery::default()
+        })
+        .expect_err("nearest point equal to sequence length must fail");
+
+    assert_eq!(err.code, ErrorCode::InvalidInput);
+    assert!(err.message.contains("outside sequence length 4"));
+}
+
+#[test]
+fn legacy_sequence_feature_query_defaults_nearest_point_to_none() {
+    let query: SequenceFeatureQuery = serde_json::from_value(serde_json::json!({
+        "seq_id": "legacy-sequence"
+    }))
+    .expect("legacy feature query");
+
+    assert_eq!(query.nearest_to_0based, None);
 }
 
 #[test]
@@ -38941,7 +56446,7 @@ fn apply_summarize_tfbs_score_tracks_operation_returns_score_track_payload() {
         assert_eq!(normalization.background_model, "uniform_random_dna");
         assert_eq!(
             normalization.chance_model,
-            "quantized_iid_uniform_window_dp"
+            GentleEngine::TFBS_MODELED_TAIL_METHOD
         );
         assert!(normalization.p99_score >= normalization.p95_score);
         assert!(normalization.observed_peak_delta_from_p99.is_finite());
@@ -39391,6 +56896,136 @@ fn summarize_tfbs_score_tracks_supports_inline_sequence_targets() {
 }
 
 #[test]
+fn summarize_tfbs_score_tracks_validity_distinguishes_ambiguity_zero_and_legacy() {
+    // Synthetic promoter fragments; generated here, no experimental sequence.
+    let engine = GentleEngine::new();
+    let score = |sequence_text: String, topology| {
+        engine
+            .summarize_tfbs_score_tracks(
+                SequenceScanTarget::InlineSequence {
+                    sequence_text,
+                    topology,
+                    id_hint: Some("synthetic-validity".into()),
+                    span_start_0based: None,
+                    span_end_0based_exclusive: None,
+                },
+                &["SP1".into(), "TP53".into()],
+                TfbsScoreTrackValueKind::LlrBits,
+                true,
+            )
+            .unwrap()
+    };
+    for topology in [
+        InlineSequenceTopology::Linear,
+        InlineSequenceTopology::Circular,
+    ] {
+        let report = score(format!("{}N{}", "A".repeat(40), "A".repeat(40)), topology);
+        for track in &report.tracks {
+            assert!(!track.fully_evaluated());
+            assert_eq!(track.score_at(40, false), None);
+            assert_eq!(track.score_at(40, true), None);
+            assert_eq!(track.score_at(0, false), Some(0.0));
+            assert!(track.directional_summary.is_none());
+            assert!(
+                track
+                    .top_peaks
+                    .iter()
+                    .all(|p| track.score_at(p.start_0based, p.is_reverse).is_some())
+            );
+        }
+        assert_eq!(
+            GentleEngine::require_evaluated_tfbs_tracks(&report)
+                .unwrap_err()
+                .code,
+            ErrorCode::InvalidInput
+        );
+        assert!(
+            report
+                .correlation_summary
+                .as_ref()
+                .is_none_or(|s| s.rows.is_empty())
+        );
+        let svg = crate::render_tfbs_score_tracks::render_tfbs_score_tracks_svg(&report);
+        assert!(svg.contains("gaps, not zero"));
+        let mut legacy = serde_json::to_value(&report).unwrap();
+        for row in legacy["tracks"].as_array_mut().unwrap() {
+            row.as_object_mut().unwrap().remove("score_validity");
+        }
+        let legacy: TfbsScoreTrackReport = serde_json::from_value(legacy).unwrap();
+        assert_eq!(legacy.tracks[0].evaluated_strand_windows(), 0);
+        assert_eq!(legacy.tracks[0].score_at(0, false), None);
+        assert!(
+            crate::render_tfbs_score_tracks::render_tfbs_score_tracks_svg(&legacy)
+                .contains("max unavailable")
+        );
+        let mut malformed = report.clone();
+        malformed.tracks[0]
+            .score_validity
+            .as_mut()
+            .unwrap()
+            .forward
+            .pop();
+        assert_eq!(malformed.tracks[0].score_at(0, false), None);
+    }
+    let absent = score("N".repeat(60), InlineSequenceTopology::Linear);
+    for track in &absent.tracks {
+        assert_eq!(track.evaluated_strand_windows(), 0);
+        assert!(track.max_position_0based.is_none());
+        assert!(track.normalization_reference.is_none());
+        assert!(track.top_peaks.is_empty());
+    }
+    let canonical = score("A".repeat(60), InlineSequenceTopology::Linear);
+    assert!(canonical.tracks.iter().all(|t| t.fully_evaluated()));
+    GentleEngine::require_evaluated_tfbs_tracks(&canonical).unwrap();
+    for track in &canonical.tracks {
+        assert_eq!(track.max_score, 0.0);
+        assert!(track.max_position_0based.is_none());
+        assert!(track.normalization_reference.is_some());
+        // Evaluated zero tracks must not become shared/cohort-specific peaks.
+        let rows = ["synthetic-a", "synthetic-b"].map(|gene| MultiGenePromoterTfbsSummaryRow {
+            gene_label: gene.into(),
+            tf_id: track.tf_id.clone(),
+            max_score: track.max_score,
+            peak_position_0based: track.max_position_0based,
+            ..Default::default()
+        });
+        let (shared, specific) = GentleEngine::summarize_promoter_cohort_peak_sets(&rows, 2);
+        assert!(shared.is_empty());
+        assert!(specific.is_empty());
+    }
+}
+
+#[test]
+fn summarize_tfbs_similarity_refuses_incomplete_numeric_tracks_without_output() {
+    let temp = tempdir().unwrap();
+    let path = temp.path().join("not-produced.json");
+    let mut engine = GentleEngine::new();
+    let result = engine.apply(Operation::SummarizeTfbsTrackSimilarity {
+        target: SequenceScanTarget::InlineSequence {
+            sequence_text: "ACGTN".repeat(20),
+            topology: InlineSequenceTopology::Linear,
+            id_hint: None,
+            span_start_0based: None,
+            span_end_0based_exclusive: None,
+        },
+        anchor_motif: "SP1".into(),
+        candidate_motifs: vec!["TP53".into()],
+        ranking_metric: TfbsTrackSimilarityRankingMetric::SmoothedSpearman,
+        score_kind: TfbsScoreTrackValueKind::LlrBits,
+        clip_negative: true,
+        species_filters: vec![],
+        include_remote_metadata: false,
+        limit: Some(1),
+        path: Some(path.to_string_lossy().into_owned()),
+    });
+    let error = result.unwrap_err();
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("unavailable or unassessed"));
+    assert!(!path.exists());
+    assert!(engine.state().sequences.is_empty());
+}
+
+#[test]
 fn summarize_tfbs_score_tracks_expands_builtin_tf_groups() {
     let engine = GentleEngine::new();
     let report = engine
@@ -39456,14 +57091,14 @@ fn apply_summarize_multi_gene_promoter_tfbs_returns_transcription_aligned_report
         format!(
             r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            gtf.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(gtf),
+            serde_json::json!(cache_dir)
         ),
     )
     .expect("write catalog");
@@ -39601,14 +57236,14 @@ fn apply_summarize_promoter_cohort_comparison_returns_pairwise_payload_and_unres
         format!(
             r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            gtf.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(gtf),
+            serde_json::json!(cache_dir)
         ),
     )
     .expect("write catalog");
@@ -39793,14 +57428,14 @@ fn promoter_cohort_comparison_flags_declared_relationship_expectations() {
         format!(
             r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            gtf.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(gtf),
+            serde_json::json!(cache_dir)
         ),
     )
     .expect("write catalog");
@@ -40875,10 +58510,28 @@ fn assert_task_severity_ids_are_fact_evidence(fact: &DesignFact) {
         let score = severity
             .score
             .expect("engine-generated task severity should carry a score");
+        let base_score = severity
+            .base_score
+            .expect("engine-generated task severity should carry an intrinsic score");
         assert!(
-            (0.0..=1.0).contains(&score),
+            (0.0..=1.0).contains(&score) && (0.0..=1.0).contains(&base_score),
             "task severity score should be normalized: {:?}",
             severity
+        );
+        assert_eq!(
+            severity.base_severity,
+            Some(GentleEngine::construct_reasoning_severity_from_score(
+                base_score
+            ))
+        );
+        assert_eq!(
+            severity.severity,
+            GentleEngine::construct_reasoning_severity_from_score(score)
+        );
+        assert_eq!(
+            severity.objective_adjustment,
+            Some(score - base_score),
+            "objective adjustment should equal the actual post-clamp score delta"
         );
         for evidence_id in &severity.supporting_evidence_ids {
             assert!(
@@ -41246,12 +58899,20 @@ fn construct_reasoning_task_severity_scores_follow_construct_objective() {
             ..HostRouteStep::default()
         }],
         preferred_routine_families: vec!["gibson".to_string()],
+        intended_tasks: Some(vec![
+            ConstructReasoningRiskTask::CloningStability,
+            ConstructReasoningRiskTask::ConstructMaintenance,
+        ]),
         ..ConstructObjective::default()
     });
     let sequencing_graph = build_graph(ConstructObjective {
         title: "Nanopore and mapping QC".to_string(),
         goal: "Nanopore sequencing and read mapping review for the construct".to_string(),
         preferred_routine_families: vec!["nanopore_sequencing".to_string()],
+        intended_tasks: Some(vec![
+            ConstructReasoningRiskTask::NanoporeSequencing,
+            ConstructReasoningRiskTask::ReadMapping,
+        ]),
         notes: vec!["inspect alignment uniqueness".to_string()],
         ..ConstructObjective::default()
     });
@@ -41284,28 +58945,36 @@ fn construct_reasoning_task_severity_scores_follow_construct_objective() {
     );
     assert_eq!(
         sequencing_cloning_stability.severity,
-        ConstructReasoningSeverity::Low,
-        "unperformed cloning task should be down-weighted, not silently treated as critical"
+        ConstructReasoningSeverity::None,
+        "unperformed cloning task should be explicitly non-applicable"
+    );
+    assert_eq!(
+        sequencing_cloning_stability.applicability,
+        ConstructReasoningTaskApplicability::NotApplicable
     );
     assert!(
-        sequencing_cloning_stability.score.unwrap() <= 0.05,
-        "unperformed cloning task should be scored at the floor"
+        sequencing_cloning_stability.score.unwrap() == 0.0,
+        "unperformed cloning task should have zero effective priority"
     );
     assert!(
         sequencing_cloning_stability
             .rationale
-            .contains("down-weighted"),
-        "objective down-weighting should be visible in rationale"
+            .contains("intrinsic score"),
+        "objective non-applicability should preserve the intrinsic score in rationale"
     );
     assert_eq!(
         cloning_read_mapping.severity,
-        ConstructReasoningSeverity::Low,
-        "unperformed mapping task should be down-weighted"
+        ConstructReasoningSeverity::None,
+        "unperformed mapping task should be explicitly non-applicable"
     );
-    assert!(cloning_read_mapping.score.unwrap() <= 0.05);
+    assert_eq!(
+        cloning_read_mapping.applicability,
+        ConstructReasoningTaskApplicability::NotApplicable
+    );
+    assert_eq!(cloning_read_mapping.score, Some(0.0));
     assert!(
-        cloning_read_mapping.rationale.contains("down-weighted"),
-        "mapping down-weighting should be visible in rationale"
+        cloning_read_mapping.rationale.contains("intrinsic score"),
+        "mapping non-applicability should be visible in rationale"
     );
 
     let cloning_nanopore = construct_reasoning_task_severity(
@@ -41321,14 +58990,101 @@ fn construct_reasoning_task_severity_scores_follow_construct_objective() {
         "nanopore objective should raise the nanopore-specific repeat score"
     );
     assert!(
-        cloning_nanopore.score.unwrap() <= 0.05,
-        "task absent from cloning objective should remain at the lowest score"
+        cloning_nanopore.score.unwrap() == 0.0,
+        "task absent from cloning objective should have zero effective priority"
     );
+    assert!(cloning_nanopore.base_score.unwrap() > 0.0);
     assert_eq!(
         cloning_stability.supporting_evidence_ids,
         sequencing_cloning_stability.supporting_evidence_ids,
         "objective-specific scoring should preserve underlying evidence ids"
     );
+    assert!(cloning_stability.base_score.unwrap() > 0.0);
+    assert!((cloning_stability.objective_adjustment.unwrap() - 0.08).abs() < f64::EPSILON);
+    assert_eq!(
+        sequencing_cloning_stability.objective_adjustment,
+        sequencing_cloning_stability.base_score.map(|score| -score)
+    );
+}
+
+#[test]
+fn construct_reasoning_task_applicability_prefers_typed_intent_and_is_conservative_for_legacy_text()
+{
+    let explicit = ConstructObjective {
+        intended_tasks: Some(vec![ConstructReasoningRiskTask::Pcr]),
+        ..ConstructObjective::default()
+    };
+    let (pcr, pcr_basis, _) = GentleEngine::construct_reasoning_objective_task_relevance(
+        &explicit,
+        ConstructReasoningRiskTask::Pcr,
+    );
+    let (nanopore, nanopore_basis, _) = GentleEngine::construct_reasoning_objective_task_relevance(
+        &explicit,
+        ConstructReasoningRiskTask::NanoporeSequencing,
+    );
+    assert_eq!(pcr, ConstructReasoningTaskApplicability::Applicable);
+    assert_eq!(nanopore, ConstructReasoningTaskApplicability::NotApplicable);
+    assert_eq!(
+        pcr_basis,
+        ConstructReasoningTaskApplicabilityBasis::ExplicitObjectiveTasks
+    );
+    assert_eq!(nanopore_basis, pcr_basis);
+    let explicit_none = ConstructObjective {
+        intended_tasks: Some(vec![]),
+        ..ConstructObjective::default()
+    };
+    let (pcr, basis, _) = GentleEngine::construct_reasoning_objective_task_relevance(
+        &explicit_none,
+        ConstructReasoningRiskTask::Pcr,
+    );
+    assert_eq!(pcr, ConstructReasoningTaskApplicability::NotApplicable);
+    assert_eq!(
+        basis,
+        ConstructReasoningTaskApplicabilityBasis::ExplicitObjectiveTasks
+    );
+
+    let legacy_negated = ConstructObjective {
+        goal: "Avoid PCR and qPCR; no nanopore or read mapping; confirm the plasmid by Sanger sequencing"
+            .to_string(),
+        host_species: Some("Escherichia coli".to_string()),
+        required_roles: vec![ConstructRole::Cds],
+        ..ConstructObjective::default()
+    };
+    for task in [
+        ConstructReasoningRiskTask::Pcr,
+        ConstructReasoningRiskTask::NanoporeSequencing,
+        ConstructReasoningRiskTask::ReadMapping,
+    ] {
+        let (applicability, basis, _) =
+            GentleEngine::construct_reasoning_objective_task_relevance(&legacy_negated, task);
+        assert_eq!(
+            applicability,
+            ConstructReasoningTaskApplicability::Unknown,
+            "negated PCR, Sanger sequencing, and unrelated metadata must not infer {task:?}"
+        );
+        assert_eq!(basis, ConstructReasoningTaskApplicabilityBasis::Unspecified);
+    }
+
+    let legacy_positive = ConstructObjective {
+        goal: "Run qPCR and nanopore sequencing with read mapping".to_string(),
+        ..ConstructObjective::default()
+    };
+    for task in [
+        ConstructReasoningRiskTask::Pcr,
+        ConstructReasoningRiskTask::NanoporeSequencing,
+        ConstructReasoningRiskTask::ReadMapping,
+    ] {
+        let (applicability, basis, _) =
+            GentleEngine::construct_reasoning_objective_task_relevance(&legacy_positive, task);
+        assert_eq!(
+            applicability,
+            ConstructReasoningTaskApplicability::Applicable
+        );
+        assert_eq!(
+            basis,
+            ConstructReasoningTaskApplicabilityBasis::LegacyObjectiveInference
+        );
+    }
 }
 
 fn alu_like_demo_sequence_text() -> String {
@@ -41396,6 +59152,13 @@ fn synthetic_curated_repeat_evidence(
         ),
         provenance_kind: "sequence_feature_annotation".to_string(),
         provenance_refs: vec![format!("repeat_family:{evidence_id}")],
+        repeat_annotation: Some(ConstructReasoningRepeatAnnotation {
+            source_kind: source_kind.to_string(),
+            repeat_name: repeat_name.map(str::to_string),
+            repeat_class: repeat_class.map(str::to_string),
+            repeat_family: repeat_family.map(str::to_string),
+            source_refs: vec![format!("repeat_family:{evidence_id}")],
+        }),
         notes: {
             let mut notes = vec![format!("repeat_source={source_kind}")];
             if let Some(value) = repeat_name {
@@ -41438,6 +59201,9 @@ fn synthetic_provenance_only_repeat_evidence(
     row.notes.retain(|note| !note.starts_with("repeat_source="));
     row.notes
         .push("repeat_source=repeat_family_annotation".to_string());
+    if let Some(annotation) = &mut row.repeat_annotation {
+        annotation.source_kind = "repeat_family_annotation".to_string();
+    }
     row
 }
 
@@ -41690,6 +59456,54 @@ fn construct_reasoning_repeat_family_provenance_confidence_tracks_corroboration(
 }
 
 #[test]
+fn construct_reasoning_repeat_family_provenance_preserves_overlapping_families() {
+    let internal_alu =
+        synthetic_internal_repeat_evidence("internal_alu_nested", &["alu_like"], 0, 120);
+    let curated_alu = synthetic_curated_repeat_evidence(
+        "curated_alu_nested",
+        Some("AluY"),
+        Some("SINE"),
+        Some("Alu"),
+        0,
+        120,
+    );
+    let curated_line = synthetic_curated_repeat_evidence(
+        "curated_line_nested",
+        Some("L1PA2"),
+        Some("LINE"),
+        Some("L1"),
+        20,
+        100,
+    );
+
+    let provenances =
+        GentleEngine::construct_reasoning_repeat_family_provenances_for_evidence_rows(&[
+            &internal_alu,
+            &curated_alu,
+            &curated_line,
+        ]);
+    assert_eq!(provenances.len(), 2);
+    let alu = provenances
+        .iter()
+        .find(|row| row.repeat_family.as_deref() == Some("Alu"))
+        .expect("Alu provenance");
+    assert_eq!(
+        alu.agreement,
+        ConstructReasoningRepeatFamilyAgreement::Family
+    );
+    assert_eq!(alu.confidence, Some(0.95));
+    let line = provenances
+        .iter()
+        .find(|row| row.repeat_family.as_deref() == Some("L1"))
+        .expect("LINE provenance");
+    assert_eq!(
+        line.agreement,
+        ConstructReasoningRepeatFamilyAgreement::CuratedAnnotation
+    );
+    assert_eq!(line.confidence, Some(0.8));
+}
+
+#[test]
 fn build_construct_reasoning_graph_detects_alu_like_mobile_element_candidates() {
     let sequence = alu_like_demo_sequence_text();
     let dna = DNAsequence::from_sequence(&sequence).expect("sequence");
@@ -41866,6 +59680,12 @@ fn build_construct_reasoning_graph_upgrades_alu_like_with_overlapping_rmsk_famil
     assert_eq!(curated_rows.len(), 2);
     assert!(curated_rows.iter().all(|row| {
         row.evidence_class == EvidenceClass::ReliableAnnotation
+            && row.repeat_annotation.as_ref().is_some_and(|annotation| {
+                annotation.source_kind == "ucsc_rmsk"
+                    && annotation.repeat_name.as_deref() == Some("AluY")
+                    && annotation.repeat_class.as_deref() == Some("SINE")
+                    && annotation.repeat_family.as_deref() == Some("Alu")
+            })
             && row.notes.iter().any(|note| note == "repeat_family=Alu")
             && row
                 .context_tags
@@ -41972,6 +59792,11 @@ fn build_construct_reasoning_graph_upgrades_alu_like_with_overlapping_rmsk_famil
     assert_eq!(provenance.family_name.as_deref(), Some("Alu"));
     assert_eq!(provenance.evidence_ids.len(), 2);
     assert_eq!(provenance.confidence, Some(0.95));
+    assert_eq!(mobile_action.repeat_family_provenances.len(), 1);
+    assert_eq!(
+        mobile_action.repeat_family_provenances[0].agreement,
+        ConstructReasoningRepeatFamilyAgreement::Family
+    );
 }
 
 #[test]
@@ -42214,6 +60039,271 @@ fn derive_promoter_window_records_support_reverse_and_forward_tss_geometry() {
     assert_eq!(forward[0].tss_local_0based, 500);
     assert_eq!(forward[0].start_0based, 0);
     assert_eq!(forward[0].end_0based_exclusive, 701);
+}
+
+#[test]
+fn promoter_window_tss_clusters_retain_membership_and_first_exon_structure() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(6000)).expect("sequence");
+    for (transcript_id, ranges) in [
+        ("CD44-201", vec![(1000, 1100), (1500, 1600)]),
+        ("CD44-202", vec![(1020, 1100), (1500, 1650)]),
+        ("CD44-203", vec![(1300, 1400), (1700, 1800)]),
+    ] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::Join(
+                ranges
+                    .into_iter()
+                    .map(|(start, end)| gb_io::seq::Location::simple_range(start, end))
+                    .collect(),
+            ),
+            qualifiers: vec![
+                ("gene".into(), Some("CD44".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(transcript_id.to_string())),
+            ],
+        });
+    }
+    let engine = GentleEngine::from_state(ProjectState {
+        sequences: HashMap::from([("cd44".to_string(), dna.clone())]),
+        ..ProjectState::default()
+    });
+
+    let clustered = engine.derive_promoter_window_records(
+        &dna,
+        Some("CD44"),
+        None,
+        1000,
+        200,
+        PromoterWindowCollapseMode::TssCluster { tolerance_bp: 25 },
+    );
+    assert_eq!(clustered.len(), 2);
+    assert_eq!(
+        clustered[0].transcript_ids,
+        vec!["CD44-201".to_string(), "CD44-202".to_string()]
+    );
+    assert_eq!(clustered[0].transcript_count, 2);
+    assert_eq!(clustered[0].tss_local_0based, 1000);
+    assert_eq!(clustered[0].tss_cluster_tolerance_bp, Some(25));
+    assert_eq!(
+        clustered[0].grouping_reason.as_deref(),
+        Some("same_gene_and_strand_with_overlapping_first_exon_and_tss_within_tolerance")
+    );
+    assert!(clustered[0].promoter_class_id.is_some());
+    assert_eq!(clustered[1].transcript_ids, vec!["CD44-203".to_string()]);
+
+    let stricter = engine.derive_promoter_window_records(
+        &dna,
+        Some("CD44"),
+        None,
+        1000,
+        200,
+        PromoterWindowCollapseMode::TssCluster { tolerance_bp: 10 },
+    );
+    assert_eq!(stricter.len(), 3);
+}
+
+#[test]
+fn promoter_window_tss_clusters_support_reverse_strand_first_exons() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(7000)).expect("sequence");
+    for (transcript_id, ranges) in [
+        ("REV-201", vec![(4000, 4100), (4500, 4601)]),
+        ("REV-202", vec![(4000, 4110), (4520, 4581)]),
+        ("REV-203", vec![(4000, 4100), (4700, 4801)]),
+    ] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::Join(
+                ranges
+                    .into_iter()
+                    .map(|(start, end)| gb_io::seq::Location::simple_range(start, end))
+                    .collect(),
+            ))),
+            qualifiers: vec![
+                ("gene".into(), Some("REVGENE".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(transcript_id.to_string())),
+            ],
+        });
+    }
+    let engine = GentleEngine::from_state(ProjectState {
+        sequences: HashMap::from([("reverse_gene".to_string(), dna.clone())]),
+        ..ProjectState::default()
+    });
+
+    let clustered = engine.derive_promoter_window_records(
+        &dna,
+        Some("REVGENE"),
+        None,
+        1000,
+        200,
+        PromoterWindowCollapseMode::TssCluster { tolerance_bp: 20 },
+    );
+    assert_eq!(clustered.len(), 2);
+    assert_eq!(clustered[0].strand, "-");
+    assert_eq!(
+        clustered[0].transcript_ids,
+        vec!["REV-201".to_string(), "REV-202".to_string()]
+    );
+    assert_eq!(clustered[0].tss_local_0based, 4580);
+    assert_eq!(clustered[1].transcript_ids, vec!["REV-203".to_string()]);
+}
+
+fn promoter_reporter_motif_anchor_engine(strand: &str) -> GentleEngine {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(5000)).expect("sequence");
+    let transcript_location = if strand == "-" {
+        gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::simple_range(2400, 3001)))
+    } else {
+        gb_io::seq::Location::simple_range(2000, 2600)
+    };
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: transcript_location,
+        qualifiers: vec![
+            ("gene".into(), Some("TGFB1".to_string())),
+            ("transcript_id".into(), Some("TGFB1-201".to_string())),
+            ("label".into(), Some("TGFB1-201".to_string())),
+        ],
+    });
+    let motif_range = if strand == "-" {
+        (3500, 3510)
+    } else {
+        (1300, 1310)
+    };
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "TFBS".into(),
+        location: gb_io::seq::Location::simple_range(motif_range.0, motif_range.1),
+        qualifiers: vec![
+            ("label".into(), Some("TP73 response element".to_string())),
+            ("bound_moiety".into(), Some("TP73".to_string())),
+            ("matrix_id".into(), Some("MA0861.1".to_string())),
+        ],
+    });
+    GentleEngine::from_state(ProjectState {
+        sequences: HashMap::from([("tgfb1_promoter".to_string(), dna)]),
+        ..ProjectState::default()
+    })
+}
+
+fn promoter_reporter_motif_policy(max_fragment_length_bp: usize) -> PromoterReporterFragmentPolicy {
+    PromoterReporterFragmentPolicy {
+        anchor: Some(PromoterReporterAnchorRequest::MotifHit {
+            label_or_id: "TP73".to_string(),
+            occurrence: 1,
+        }),
+        collapse_mode: PromoterWindowCollapseMode::TssCluster { tolerance_bp: 50 },
+        promoter_upstream_baseline_bp: 500,
+        anchor_flank_bp: 150,
+        max_fragment_length_bp,
+    }
+}
+
+#[test]
+fn suggest_promoter_reporter_fragments_uses_both_strand_motif_anchor_geometry() {
+    let forward = promoter_reporter_motif_anchor_engine("+")
+        .suggest_promoter_reporter_fragments(
+            "tgfb1_promoter",
+            None,
+            Some("TGFB1"),
+            None,
+            200,
+            500,
+            5,
+            &promoter_reporter_motif_policy(5000),
+        )
+        .expect("forward motif-anchored candidate set");
+    assert_eq!(forward.candidates.len(), 1);
+    assert_eq!(forward.candidates[0].start_0based, 1150);
+    assert_eq!(forward.candidates[0].end_0based_exclusive, 2201);
+    assert_eq!(forward.candidates[0].length_bp, 1051);
+    assert_eq!(
+        forward.anchor.as_ref().map(|anchor| anchor.kind.as_str()),
+        Some("motif_hit")
+    );
+    assert!(forward.anchor.as_ref().is_some_and(|anchor| {
+        anchor
+            .interpretation_tags
+            .iter()
+            .any(|tag| tag == "occupancy_not_inferred")
+    }));
+
+    let reverse = promoter_reporter_motif_anchor_engine("-")
+        .suggest_promoter_reporter_fragments(
+            "tgfb1_promoter",
+            None,
+            Some("TGFB1"),
+            None,
+            200,
+            500,
+            5,
+            &promoter_reporter_motif_policy(5000),
+        )
+        .expect("reverse motif-anchored candidate set");
+    assert_eq!(reverse.candidates.len(), 1);
+    assert_eq!(reverse.candidates[0].start_0based, 2800);
+    assert_eq!(reverse.candidates[0].end_0based_exclusive, 3660);
+    assert_eq!(reverse.candidates[0].length_bp, 860);
+}
+
+#[test]
+fn suggest_promoter_reporter_fragments_reports_overlength_rejection() {
+    let report = promoter_reporter_motif_anchor_engine("+")
+        .suggest_promoter_reporter_fragments(
+            "tgfb1_promoter",
+            None,
+            Some("TGFB1"),
+            None,
+            200,
+            500,
+            5,
+            &promoter_reporter_motif_policy(1000),
+        )
+        .expect("typed overlength rejection report");
+
+    assert!(report.candidates.is_empty());
+    assert!(report.recommended_candidate_id.is_empty());
+    assert_eq!(report.rejected_candidates.len(), 1);
+    assert_eq!(
+        report.rejected_candidates[0].reason_kind,
+        "max_fragment_length_exceeded"
+    );
+    assert_eq!(report.rejected_candidates[0].length_bp, 1051);
+    assert_eq!(report.rejected_candidates[0].max_fragment_length_bp, 1000);
+}
+
+#[test]
+fn suggest_promoter_reporter_fragments_accepts_explicit_interval_anchor() {
+    let policy = PromoterReporterFragmentPolicy {
+        anchor: Some(PromoterReporterAnchorRequest::ExplicitInterval {
+            label: "reviewed TP73 interval".to_string(),
+            start_0based: 1800,
+            end_0based_exclusive: 1810,
+        }),
+        collapse_mode: PromoterWindowCollapseMode::Transcript,
+        promoter_upstream_baseline_bp: 500,
+        anchor_flank_bp: 150,
+        max_fragment_length_bp: 5000,
+    };
+    let report = promoter_reporter_motif_anchor_engine("+")
+        .suggest_promoter_reporter_fragments(
+            "tgfb1_promoter",
+            None,
+            Some("TGFB1"),
+            None,
+            200,
+            500,
+            5,
+            &policy,
+        )
+        .expect("explicit-interval candidate set");
+
+    let anchor = report.anchor.expect("resolved explicit anchor");
+    assert_eq!(anchor.kind, PromoterReporterAnchorKind::ExplicitInterval);
+    assert_eq!(anchor.start_0based, 1800);
+    assert_eq!(anchor.end_0based_exclusive, 1810);
+    assert_eq!(anchor.evidence_kind, "caller_declared_interval");
+    assert_eq!(report.candidates[0].start_0based, 1500);
+    assert_eq!(report.candidates[0].end_0based_exclusive, 2201);
 }
 
 #[test]
@@ -42748,6 +60838,89 @@ fn export_promoter_artifact_manifest_marks_present_and_missing_required_artifact
 }
 
 #[test]
+fn export_promoter_artifact_manifest_resolves_only_against_manifest_directory() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("tp73_relative_artifact_manifest".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let current_dir = std::env::current_dir().expect("current directory");
+    let dir = tempfile::tempdir_in(&current_dir).expect("tempdir inside cwd");
+    let artifact_dir = dir.path().join("artifacts with spaces");
+    fs::create_dir_all(&artifact_dir).expect("create artifact directory");
+    let present_path = artifact_dir.join("present.json");
+    fs::write(&present_path, "{}").expect("write present artifact");
+    // This path exists from cwd, but not from the manifest directory. Never
+    // change process cwd: other engine tests may be running in parallel.
+    let cwd_only_path = present_path
+        .strip_prefix(&current_dir)
+        .expect("tempdir should be inside current directory");
+    assert!(
+        cwd_only_path.is_relative(),
+        "test path must stay cwd-relative"
+    );
+
+    assert!(cwd_only_path.exists());
+    assert!(!artifact_dir.join(cwd_only_path).exists());
+    let manifest_path = artifact_dir.join("manifest.json");
+    let result = engine
+        .apply(Operation::ExportPromoterArtifactManifest {
+            input: "tp73_relative_artifact_manifest".to_string(),
+            gene_label: Some("TP73".to_string()),
+            artifacts: vec![
+                PromoterArtifactManifestEntry {
+                    artifact_id: "relative".to_string(),
+                    path: "present.json".to_string(),
+                    required: true,
+                    ..PromoterArtifactManifestEntry::default()
+                },
+                PromoterArtifactManifestEntry {
+                    artifact_id: "cwd_only".to_string(),
+                    path: cwd_only_path.to_string_lossy().to_string(),
+                    required: true,
+                    ..PromoterArtifactManifestEntry::default()
+                },
+                PromoterArtifactManifestEntry {
+                    artifact_id: "absolute".to_string(),
+                    path: present_path.to_string_lossy().to_string(),
+                    required: true,
+                    ..PromoterArtifactManifestEntry::default()
+                },
+                PromoterArtifactManifestEntry {
+                    artifact_id: "empty".to_string(),
+                    required: true,
+                    ..PromoterArtifactManifestEntry::default()
+                },
+            ],
+            path: manifest_path.to_string_lossy().to_string(),
+        })
+        .expect("promoter artifact manifest");
+
+    let report = result.promoter_artifact_manifest.expect("manifest result");
+    assert_eq!(report.present_artifact_count, 2);
+    assert_eq!(report.missing_required_artifact_count, 2);
+    assert_eq!(report.artifacts[0].path, "present.json");
+    assert_eq!(report.artifacts[0].status, "present");
+    assert_eq!(report.artifacts[1].status, "missing");
+    assert_eq!(report.artifacts[2].status, "present");
+    assert_eq!(report.artifacts[3].status, "missing_empty_path");
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("cwd_only"))
+    );
+    let persisted: serde_json::Value =
+        serde_json::from_slice(&fs::read(manifest_path).expect("written manifest"))
+            .expect("manifest JSON");
+    assert_eq!(
+        persisted,
+        serde_json::to_value(&report).expect("result JSON")
+    );
+}
+
+#[test]
 fn build_construct_reasoning_graph_derives_promoter_assay_from_generated_promoter_window() {
     let mut dna = DNAsequence::from_sequence(&"A".repeat(6001)).expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {
@@ -42916,6 +61089,7 @@ fn suggest_promoter_reporter_fragments_keeps_tss_context_and_sequence_beyond_var
             200,
             500,
             5,
+            &PromoterReporterFragmentPolicy::default(),
         )
         .expect("candidate set");
 
@@ -42928,10 +61102,161 @@ fn suggest_promoter_reporter_fragments_keeps_tss_context_and_sequence_beyond_var
     assert_eq!(report.candidates[0].end_0based_exclusive, 3501);
     assert!(report.candidates[0].recommended);
     assert!(report.candidates[0].promoter_overlap);
+
+    let legacy_shape = serde_json::to_value(&report).expect("serialize legacy candidate set");
+    assert!(legacy_shape.get("anchor").is_none());
+    assert!(legacy_shape.get("fragment_policy").is_none());
+    assert!(legacy_shape.get("rejected_candidates").is_none());
+    let candidate = &legacy_shape["candidates"][0];
+    assert!(candidate.get("anchor").is_none());
+    assert!(candidate.get("promoter_class_id").is_none());
+    let reparsed: PromoterReporterCandidateSet =
+        serde_json::from_value(legacy_shape).expect("parse legacy candidate payload");
+    assert!(reparsed.fragment_policy.is_default());
+    assert!(reparsed.rejected_candidates.is_empty());
 }
 
 #[test]
-fn materialize_variant_allele_sequence_supports_snv_and_rejects_multiallelic_alt() {
+fn promoter_reporter_fragment_policy_defaults_from_legacy_operation_json() {
+    let legacy = serde_json::json!({
+        "SuggestPromoterReporterFragments": {
+            "input": "vkorc1_demo",
+            "variant_label_or_id": "rs9923231",
+            "retain_downstream_from_tss_bp": 200,
+            "retain_upstream_beyond_variant_bp": 500,
+            "max_candidates": 5
+        }
+    });
+    let operation: Operation =
+        serde_json::from_value(legacy).expect("parse legacy promoter-reporter operation");
+    let Operation::SuggestPromoterReporterFragments {
+        fragment_policy, ..
+    } = &operation
+    else {
+        panic!("expected promoter-reporter operation");
+    };
+    assert!(fragment_policy.is_default());
+    let serialized = serde_json::to_value(operation).expect("serialize default policy operation");
+    assert!(
+        serialized["SuggestPromoterReporterFragments"]
+            .get("fragment_policy")
+            .is_none()
+    );
+}
+
+#[test]
+fn dbsnp_selected_placement_keeps_its_own_position_and_alleles() {
+    // Synthetic placements share an accession but not a position or reference.
+    let placement = |position: usize, reference: &str, preferred: bool| {
+        json!({
+            "seq_id": "NC_000016.10",
+            "is_ptlp": preferred,
+            "placement_annot": {"seq_id_traits_by_assembly": [{
+                "assembly_name": "GRCh38.p14", "is_chromosome": true,
+                "is_top_level": true, "is_alt": false, "is_patch": false
+            }]},
+            "alleles": [
+                {"allele": {"spdi": {"seq_id": "NC_000016.10", "position": position,
+                    "deleted_sequence": reference, "inserted_sequence": reference}}},
+                {"allele": {"spdi": {"seq_id": "NC_000016.10", "position": position,
+                    "deleted_sequence": reference, "inserted_sequence": "T"}}},
+                {"allele": {"spdi": {"seq_id": "NC_000016.10", "position": position,
+                    "deleted_sequence": "G", "inserted_sequence": "A"}}}
+            ]
+        })
+    };
+    let document = json!({"refsnp_id": "123", "primary_snapshot_data": {
+        "placements_with_allele": [placement(10, "A", false), placement(29, "C", true)]
+    }});
+    let resolved =
+        GentleEngine::resolve_dbsnp_primary_placement(&document, "rs123", Some("grch38"))
+            .expect("resolve selected synthetic placement");
+    assert_eq!(resolved.position_1based, 30);
+    assert_eq!(resolved.reference_allele.as_deref(), Some("C"));
+    assert_eq!(resolved.alternate_alleles, ["T"]);
+}
+
+#[test]
+fn materialize_variant_allele_rejects_invalid_choices_without_creating_sequence() {
+    // Hand-crafted SNV inputs; no biological/clinical assertion is made.
+    let mut dna = DNAsequence::from_sequence("ACCGT").expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "variation".into(),
+        location: gb_io::seq::Location::simple_range(2, 3),
+        qualifiers: vec![
+            ("label".into(), Some("rsDemo".to_string())),
+            ("vcf_ref".into(), Some("C".to_string())),
+            ("vcf_alt".into(), Some("A,G,C,N,.,*".to_string())),
+        ],
+    });
+    let mut engine = GentleEngine::from_state(ProjectState {
+        sequences: HashMap::from([("demo".to_string(), dna)]),
+        ..Default::default()
+    });
+    for (allele, selected) in [
+        (VariantAlleleChoice::Alternate, None),
+        (VariantAlleleChoice::Alternate, Some("")),
+        (VariantAlleleChoice::Alternate, Some("T")),
+        (VariantAlleleChoice::Alternate, Some("C")),
+        (VariantAlleleChoice::Alternate, Some("N")),
+        (VariantAlleleChoice::Alternate, Some(".")),
+        (VariantAlleleChoice::Alternate, Some("*")),
+        (VariantAlleleChoice::Alternate, Some("AT")),
+        (VariantAlleleChoice::Reference, Some("A")),
+    ] {
+        let error = engine
+            .apply(Operation::MaterializeVariantAllele {
+                input: "demo".to_string(),
+                variant_label_or_id: Some("rsDemo".to_string()),
+                allele,
+                alternate_allele: selected.map(str::to_string),
+                output_id: Some("rejected".to_string()),
+            })
+            .expect_err("invalid allele selection must fail");
+        assert_eq!(error.code, ErrorCode::InvalidInput);
+        assert!(!engine.state().sequences.contains_key("rejected"));
+        assert_eq!(
+            engine.state().sequences["demo"].get_forward_string(),
+            "ACCGT"
+        );
+    }
+    let result = engine
+        .apply(Operation::MaterializeVariantAllele {
+            input: "demo".to_string(),
+            variant_label_or_id: Some("rsDemo".to_string()),
+            allele: VariantAlleleChoice::Alternate,
+            alternate_allele: Some(" g ".to_string()),
+            output_id: Some("selected".to_string()),
+        })
+        .expect("explicit lower-case base");
+    assert_eq!(result.created_seq_ids, ["selected"]);
+    assert_eq!(
+        engine.state().sequences["selected"].get_forward_string(),
+        "ACGGT"
+    );
+    assert_eq!(
+        engine.state().sequences["selected"].features()[0]
+            .qualifier_values("materialized_base")
+            .next(),
+        Some("G")
+    );
+
+    let legacy: Operation = serde_json::from_value(json!({"MaterializeVariantAllele": {
+        "input": "demo", "allele": "reference"
+    }}))
+    .expect("legacy operation");
+    assert!(
+        serde_json::to_value(&legacy).unwrap()["MaterializeVariantAllele"]
+            .get("alternate_allele")
+            .is_none()
+    );
+    engine
+        .apply(legacy)
+        .expect("reference does not need an alternate choice");
+}
+
+#[test]
+fn materialize_variant_allele_sequence_supports_snv_and_explicit_multiallelic_alt() {
     let mut dna = DNAsequence::from_sequence("ACCGT").expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {
         kind: "variation".into(),
@@ -42954,6 +61279,7 @@ fn materialize_variant_allele_sequence_supports_snv_and_rejects_multiallelic_alt
             "variant_demo",
             Some("rsDemo"),
             VariantAlleleChoice::Reference,
+            None,
             Some("variant_demo_ref"),
         )
         .expect("reference allele");
@@ -42964,6 +61290,7 @@ fn materialize_variant_allele_sequence_supports_snv_and_rejects_multiallelic_alt
             "variant_demo",
             Some("rsDemo"),
             VariantAlleleChoice::Alternate,
+            None,
             Some("variant_demo_alt"),
         )
         .expect("alternate allele");
@@ -42986,15 +61313,38 @@ fn materialize_variant_allele_sequence_supports_snv_and_rejects_multiallelic_alt
         .sequences
         .insert("variant_multi".to_string(), multi);
     let multi_engine = GentleEngine::from_state(multi_state);
+    let (_multi_ref_id, multi_reference) = multi_engine
+        .materialize_variant_allele_sequence(
+            "variant_multi",
+            Some("rsDemo"),
+            VariantAlleleChoice::Reference,
+            None,
+            Some("variant_multi_ref"),
+        )
+        .expect("reference allele does not require an alternate selection");
+    assert_eq!(multi_reference.get_forward_string(), "ACCGT");
+
     let err = multi_engine
         .materialize_variant_allele_sequence(
             "variant_multi",
             Some("rsDemo"),
             VariantAlleleChoice::Alternate,
             None,
+            None,
         )
         .expect_err("multi-allelic alternate should fail");
-    assert!(err.message.contains("single alternate alleles"));
+    assert!(err.message.contains("choose one explicitly"));
+
+    let (_selected_id, selected) = multi_engine
+        .materialize_variant_allele_sequence(
+            "variant_multi",
+            Some("rsDemo"),
+            VariantAlleleChoice::Alternate,
+            Some("G"),
+            Some("variant_multi_g"),
+        )
+        .expect("explicit multiallelic alternate");
+    assert_eq!(selected.get_forward_string(), "ACGGT");
 }
 
 #[test]
@@ -44423,6 +62773,12 @@ fn refresh_construct_reasoning_graph_for_seq_id_reuses_graph_id_and_rebuilds_evi
     let original = engine
         .build_construct_reasoning_graph("refresh_demo", None, None)
         .expect("build graph");
+    assert_eq!(
+        engine
+            .construct_reasoning_graph_snapshot_status(&original)
+            .freshness,
+        ConstructReasoningGraphFreshness::Current
+    );
     assert!(!original.evidence.iter().any(|row| row.label == "SP1"));
 
     {
@@ -44439,6 +62795,18 @@ fn refresh_construct_reasoning_graph_for_seq_id_reuses_graph_id_and_rebuilds_evi
         sequence.update_computed_features();
     }
 
+    let stale_status = engine.construct_reasoning_graph_snapshot_status(&original);
+    assert_eq!(
+        stale_status.freshness,
+        ConstructReasoningGraphFreshness::Stale
+    );
+    assert!(
+        stale_status
+            .reasons
+            .iter()
+            .any(|reason| reason.contains("sequence or feature snapshot changed"))
+    );
+
     let refreshed = engine
         .refresh_construct_reasoning_graph_for_seq_id("refresh_demo")
         .expect("refresh graph");
@@ -44449,6 +62817,114 @@ fn refresh_construct_reasoning_graph_for_seq_id_reuses_graph_id_and_rebuilds_evi
             .iter()
             .any(|row| row.role == ConstructRole::Tfbs && row.label == "SP1")
     );
+    assert_eq!(
+        engine
+            .construct_reasoning_graph_snapshot_status(&refreshed)
+            .freshness,
+        ConstructReasoningGraphFreshness::Current
+    );
+    let summary = engine
+        .list_construct_reasoning_graph_summaries(Some("refresh_demo"))
+        .into_iter()
+        .find(|row| row.graph_id == refreshed.graph_id)
+        .expect("refreshed graph summary");
+    assert_eq!(summary.freshness, ConstructReasoningGraphFreshness::Current);
+    assert!(summary.stale_reasons.is_empty());
+}
+
+#[test]
+fn construct_reasoning_snapshot_detects_objective_changes_and_preserves_actions() {
+    let sequence = format!(
+        "{}{}{}{}{}",
+        "ACGT".repeat(12),
+        "AAAAAAAAAAAAAA",
+        "ATATATATATATATATATAT",
+        "GATTACAGATTACCCGGGGATTACAGATTA",
+        "GCGTACGCTATTTTTAGCGTACGC"
+    );
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "reasoning_snapshot_demo".to_string(),
+        DNAsequence::from_sequence(&sequence).expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let objective = engine
+        .upsert_construct_objective(ConstructObjective {
+            objective_id: "reasoning_snapshot_objective".to_string(),
+            title: "PCR construct review".to_string(),
+            goal: "Review PCR behavior".to_string(),
+            intended_tasks: Some(vec![ConstructReasoningRiskTask::Pcr]),
+            ..ConstructObjective::default()
+        })
+        .expect("objective");
+    let mut graph = engine
+        .build_construct_reasoning_graph(
+            "reasoning_snapshot_demo",
+            Some(&objective.objective_id),
+            Some("reasoning_snapshot_graph"),
+        )
+        .expect("graph");
+    assert_eq!(
+        engine
+            .construct_reasoning_graph_snapshot_status(&graph)
+            .freshness,
+        ConstructReasoningGraphFreshness::Current
+    );
+
+    let action = graph
+        .inspection_actions
+        .first_mut()
+        .expect("repeat reasoning should produce an inspection action");
+    action.action_id = "persisted_review_action".to_string();
+    action.rationale = "Human-reviewed snapshot rationale".to_string();
+    let stored = engine
+        .upsert_construct_reasoning_graph(graph)
+        .expect("persist reviewed graph");
+    let loaded = engine
+        .construct_reasoning_graph(&stored.graph_id)
+        .expect("reload graph");
+    assert!(loaded.inspection_actions.iter().any(|action| {
+        action.action_id == "persisted_review_action"
+            && action.rationale == "Human-reviewed snapshot rationale"
+    }));
+
+    engine
+        .upsert_construct_objective(ConstructObjective {
+            objective_id: objective.objective_id.clone(),
+            title: "Long-read construct review".to_string(),
+            goal: "Review nanopore behavior".to_string(),
+            intended_tasks: Some(vec![ConstructReasoningRiskTask::NanoporeSequencing]),
+            ..ConstructObjective::default()
+        })
+        .expect("update objective");
+    let stale_status = engine.construct_reasoning_graph_snapshot_status(&loaded);
+    assert_eq!(
+        stale_status.freshness,
+        ConstructReasoningGraphFreshness::Stale
+    );
+    assert!(
+        stale_status
+            .reasons
+            .iter()
+            .any(|reason| reason.contains("objective changed"))
+    );
+}
+
+#[test]
+fn construct_reasoning_fingerprint_canonical_json_ignores_map_insertion_order() {
+    let mut first = HashMap::new();
+    first.insert("alpha", 1usize);
+    first.insert("beta", 2usize);
+    let mut second = HashMap::new();
+    second.insert("beta", 2usize);
+    second.insert("alpha", 1usize);
+
+    let first = GentleEngine::construct_reasoning_canonical_json(&first, "test map")
+        .expect("first canonical map");
+    let second = GentleEngine::construct_reasoning_canonical_json(&second, "test map")
+        .expect("second canonical map");
+    assert_eq!(first, second);
+    assert_eq!(sha256_prefixed_str(&first), sha256_prefixed_str(&second));
 }
 
 #[test]
@@ -44516,6 +62992,1443 @@ fn test_find_restriction_sites_operation_supports_inline_sequence_targets() {
     );
     assert_eq!(report.rows[0].forward_cut_0based, Some(3));
     assert_eq!(report.rows[1].opening_start_0based, Some(10));
+}
+
+#[test]
+fn restriction_scan_reports_reverse_and_origin_crossing_sites_without_mutation() {
+    let mut engine = GentleEngine::default();
+    let before = serde_json::to_value(engine.state()).unwrap();
+    // Hand-crafted copies of the catalog motif, including its reverse and origin split.
+    for (sequence, topology, start, end, forward) in [
+        ("TTGAGACC", InlineSequenceTopology::Linear, 2, 8, false),
+        ("ACCAAGAG", InlineSequenceTopology::Circular, 5, 11, false),
+        ("CTCAAGGT", InlineSequenceTopology::Circular, 5, 11, true),
+    ] {
+        let result = engine
+            .apply(Operation::FindRestrictionSites {
+                target: SequenceScanTarget::InlineSequence {
+                    sequence_text: sequence.into(),
+                    topology,
+                    id_hint: None,
+                    span_start_0based: None,
+                    span_end_0based_exclusive: None,
+                },
+                enzymes: vec!["Eco31".into()],
+                max_sites_per_enzyme: None,
+                include_cut_geometry: true,
+                path: None,
+            })
+            .unwrap();
+        let report = result.restriction_site_scan.unwrap();
+        assert_eq!(report.matched_site_count, 1);
+        let row = &report.rows[0];
+        assert_eq!(
+            (
+                row.recognition_start_0based,
+                row.recognition_end_0based_exclusive,
+                row.forward_strand
+            ),
+            (start, end, forward)
+        );
+        assert_eq!(row.recognition_length_bp, 6);
+        assert_eq!(row.forward_cut_0based, Some(start + 1));
+        assert_eq!(row.reverse_cut_0based, Some(start + 5));
+        assert_eq!(
+            row.opening_end_0based_exclusive.unwrap() - row.opening_start_0based.unwrap(),
+            4
+        );
+    }
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+}
+
+#[test]
+fn restriction_guarded_digest_uses_reverse_geometry_and_skips_uncleavable_sites() {
+    let enzyme: RestrictionEnzyme = serde_json::from_value(serde_json::json!({
+        "name":"synthetic", "sequence":"AAGC", "cut":6, "overlap":2
+    }))
+    .unwrap();
+    let dna = DNAsequence::from_sequence("TTTTTTTTTTGCTTTTTT").unwrap();
+    let fragments = GentleEngine::digest_with_guard(&dna, vec![enzyme.clone()], 10).unwrap();
+    assert_eq!(
+        fragments
+            .iter()
+            .map(DNAsequence::get_forward_string)
+            .collect::<Vec<_>>(),
+        vec!["TTTTTT", "TTGCTTTTTT"]
+    );
+    let edge = DNAsequence::from_sequence("GCTT").unwrap();
+    let fragments = GentleEngine::digest_with_guard(&edge, vec![enzyme], 10).unwrap();
+    assert_eq!(fragments.len(), 1);
+    assert_eq!(fragments[0].get_forward_string(), "GCTT");
+}
+
+#[test]
+fn collection_restriction_scan_matches_direct_scans_defaults_and_circular_geometry() {
+    let mut linear = DNAsequence::from_sequence("AAGAATTCCCGG").expect("linear sequence");
+    linear.set_circular(false);
+    let mut circular = DNAsequence::from_sequence("TTCAAAAAAGAA").expect("circular sequence");
+    circular.set_circular(true);
+    let mut state = ProjectState::default();
+    state.sequences.insert("linear".to_string(), linear);
+    state.sequences.insert("circular".to_string(), circular);
+    state.display.preferred_restriction_enzymes = vec!["EcoRI".to_string()];
+    let mut engine = GentleEngine::from_state(state);
+
+    let direct_linear = engine
+        .find_restriction_sites(
+            SequenceScanTarget::SeqId {
+                seq_id: "linear".to_string(),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            },
+            &[],
+            None,
+            true,
+            None,
+            None,
+        )
+        .expect("direct default-enzyme scan");
+    let direct_circular = engine
+        .find_restriction_sites(
+            SequenceScanTarget::SeqId {
+                seq_id: "circular".to_string(),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            },
+            &["EcoRI".to_string()],
+            None,
+            true,
+            None,
+            None,
+        )
+        .expect("direct circular scan");
+    assert_eq!(
+        direct_circular.scan_topology,
+        InlineSequenceTopology::Circular
+    );
+
+    let result = engine
+        .apply(Operation::FindRestrictionSitesCollection {
+            collection_subject: CollectionSubjectRef::ProjectSequences {
+                seq_ids: vec!["linear".to_string(), "circular".to_string()],
+            },
+            member_bindings: vec![],
+            enzymes: vec![],
+            max_sites_per_enzyme: None,
+            include_cut_geometry: true,
+            path: None,
+        })
+        .expect("collection restriction scan");
+    let collection = result
+        .collection_restriction_site_scan
+        .expect("domain collection report");
+
+    assert_eq!(collection.effective_enzymes, ["EcoRI"]);
+    assert_eq!(
+        collection.collection_operation.lifting_mode,
+        CollectionLiftingMode::Map
+    );
+    assert_eq!(
+        collection
+            .collection_operation
+            .lift_policy
+            .context_requirement,
+        CollectionContextRequirement::ContextAgnostic
+    );
+    assert_eq!(collection.member_reports.len(), 2);
+    assert!(
+        collection
+            .collection_operation
+            .per_member_status
+            .iter()
+            .all(|row| {
+                row.outcome == CollectionMemberOutcome::Succeeded
+                    && row.produced_report_ids.is_empty()
+                    && row.error.is_none()
+            })
+    );
+    let mapped_linear = collection
+        .member_reports
+        .iter()
+        .find(|row| row.seq_id == "linear")
+        .expect("mapped linear report");
+    let mapped_circular = collection
+        .member_reports
+        .iter()
+        .find(|row| row.seq_id == "circular")
+        .expect("mapped circular report");
+    assert_eq!(
+        serde_json::to_value(&mapped_linear.report.rows).expect("mapped linear rows"),
+        serde_json::to_value(&direct_linear.rows).expect("direct linear rows")
+    );
+    assert_eq!(
+        mapped_linear.report.enzymes_scanned,
+        direct_linear.enzymes_scanned
+    );
+    assert_eq!(
+        serde_json::to_value(&mapped_circular.report.rows).expect("mapped circular rows"),
+        serde_json::to_value(&direct_circular.rows).expect("direct circular rows")
+    );
+    assert_eq!(
+        mapped_circular.report.scan_topology,
+        InlineSequenceTopology::Circular
+    );
+    assert_eq!(
+        collection.total_matched_site_count,
+        direct_linear.matched_site_count + direct_circular.matched_site_count
+    );
+    assert_eq!(
+        collection.matched_site_counts_by_enzyme.get("EcoRI"),
+        Some(&collection.total_matched_site_count)
+    );
+    let encoded = serde_json::to_value(&collection).expect("serialize collection scan report");
+    let decoded: CollectionRestrictionSiteScanReport =
+        serde_json::from_value(encoded.clone()).expect("deserialize collection scan report");
+    assert_eq!(
+        serde_json::to_value(decoded).expect("reserialize collection scan report"),
+        encoded
+    );
+
+    engine
+        .state_mut()
+        .display
+        .preferred_restriction_enzymes
+        .clear();
+    let direct_builtin_default = engine
+        .find_restriction_sites(
+            SequenceScanTarget::SeqId {
+                seq_id: "linear".to_string(),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            },
+            &[],
+            None,
+            true,
+            None,
+            None,
+        )
+        .expect("direct built-in default scan");
+    let collection_builtin_default = engine
+        .apply(Operation::FindRestrictionSitesCollection {
+            collection_subject: CollectionSubjectRef::ProjectSequences {
+                seq_ids: vec!["linear".to_string()],
+            },
+            member_bindings: vec![],
+            enzymes: vec![],
+            max_sites_per_enzyme: None,
+            include_cut_geometry: true,
+            path: None,
+        })
+        .expect("collection built-in default scan")
+        .collection_restriction_site_scan
+        .expect("collection built-in default report");
+    assert_eq!(
+        collection_builtin_default.effective_enzymes,
+        direct_builtin_default.enzymes_scanned
+    );
+    assert_eq!(
+        serde_json::to_value(&collection_builtin_default.member_reports[0].report.rows)
+            .expect("mapped built-in default rows"),
+        serde_json::to_value(&direct_builtin_default.rows).expect("direct built-in default rows")
+    );
+
+    let error = engine
+        .apply(Operation::FindRestrictionSitesCollection {
+            collection_subject: CollectionSubjectRef::ProjectSequences {
+                seq_ids: vec!["linear".to_string()],
+            },
+            member_bindings: vec![],
+            enzymes: vec!["DefinitelyNotAnEnzyme".to_string()],
+            max_sites_per_enzyme: None,
+            include_cut_geometry: true,
+            path: None,
+        })
+        .expect_err("unknown enzymes fail before collection mapping");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("Unknown restriction enzyme"));
+}
+
+#[test]
+fn collection_restriction_scan_keeps_missing_gene_set_bindings_as_member_failures() {
+    let mut engine = GentleEngine::new();
+    engine.state_mut().sequences.insert(
+        "seq_a".to_string(),
+        DNAsequence::from_sequence("AAGAATTCCCGG").expect("sequence"),
+    );
+    let resolution = GeneSetResolutionReport {
+        schema: GENE_SET_RESOLUTION_SCHEMA.to_string(),
+        generated_at_unix_ms: 1,
+        op_id: Some("restriction_binding_fixture".to_string()),
+        resolved_member_count: 2,
+        resolved_members: vec![
+            GeneSetResolvedMember {
+                dedup_key: "GENE_A".to_string(),
+                symbol: "GENE_A".to_string(),
+                ..GeneSetResolvedMember::default()
+            },
+            GeneSetResolvedMember {
+                dedup_key: "GENE_B".to_string(),
+                symbol: "GENE_B".to_string(),
+                ..GeneSetResolvedMember::default()
+            },
+        ],
+        ..GeneSetResolutionReport::default()
+    };
+    let report_id = GentleEngine::gene_set_resolution_artifact_id(&resolution);
+    engine
+        .upsert_gene_set_resolution_artifact(resolution)
+        .expect("persist gene-set resolution");
+
+    let report = engine
+        .apply(Operation::FindRestrictionSitesCollection {
+            collection_subject: CollectionSubjectRef::GeneSetResolution { report_id },
+            member_bindings: vec![RestrictionSiteScanCollectionMemberBinding {
+                stable_member_id: "GENE_A".to_string(),
+                seq_id: "seq_a".to_string(),
+            }],
+            enzymes: vec!["EcoRI".to_string()],
+            max_sites_per_enzyme: None,
+            include_cut_geometry: true,
+            path: None,
+        })
+        .expect("missing binding is a dynamic member failure")
+        .collection_restriction_site_scan
+        .expect("collection restriction report");
+    assert_eq!(report.member_reports.len(), 1);
+    assert_eq!(report.member_reports[0].stable_member_id, "GENE_A");
+    assert_eq!(report.collection_operation.per_member_status.len(), 2);
+    let failed = report
+        .collection_operation
+        .per_member_status
+        .iter()
+        .find(|row| row.member.stable_member_id == "GENE_B")
+        .expect("failed unbound member");
+    assert_eq!(failed.outcome, CollectionMemberOutcome::Failed);
+    assert!(failed.error.as_ref().is_some_and(|error| {
+        error
+            .message
+            .contains("requires an explicit member-to-sequence binding")
+    }));
+    assert_eq!(report.collection_operation.aggregate_warnings.len(), 1);
+
+    let error = engine
+        .apply(Operation::FindRestrictionSitesCollection {
+            collection_subject: report.collection_operation.collection_subject.clone(),
+            member_bindings: vec![RestrictionSiteScanCollectionMemberBinding {
+                stable_member_id: "UNKNOWN".to_string(),
+                seq_id: "seq_a".to_string(),
+            }],
+            enzymes: vec!["EcoRI".to_string()],
+            max_sites_per_enzyme: None,
+            include_cut_geometry: true,
+            path: None,
+        })
+        .expect_err("unknown binding is a request error");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("not in the collection"));
+
+    let duplicate = engine
+        .apply(Operation::FindRestrictionSitesCollection {
+            collection_subject: report.collection_operation.collection_subject,
+            member_bindings: vec![
+                RestrictionSiteScanCollectionMemberBinding {
+                    stable_member_id: "GENE_A".to_string(),
+                    seq_id: "seq_a".to_string(),
+                },
+                RestrictionSiteScanCollectionMemberBinding {
+                    stable_member_id: "GENE_A".to_string(),
+                    seq_id: "seq_a".to_string(),
+                },
+            ],
+            enzymes: vec!["EcoRI".to_string()],
+            max_sites_per_enzyme: None,
+            include_cut_geometry: true,
+            path: None,
+        })
+        .expect_err("duplicate member binding is a request error");
+    assert_eq!(duplicate.code, ErrorCode::InvalidInput);
+    assert!(duplicate.message.contains("more than one sequence binding"));
+}
+
+#[test]
+fn collection_construct_reasoning_inspection_maps_actions_and_keeps_failures_per_member() {
+    let repeat_sequence = format!(
+        "{}{}{}{}{}",
+        "ACGT".repeat(12),
+        "AAAAAAAAAAAAAA",
+        "ATATATATATATATATATAT",
+        "GATTACAGATTACCCGGGGATTACAGATTA",
+        "GCGTACGCTATTTTTAGCGTACGC"
+    );
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "repeat_risk".to_string(),
+        DNAsequence::from_sequence(&repeat_sequence).expect("repeat-risk sequence"),
+    );
+    state.sequences.insert(
+        "short_clean".to_string(),
+        DNAsequence::from_sequence("ACGT").expect("short sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    assert!(
+        !engine
+            .state()
+            .metadata
+            .contains_key(CONSTRUCT_REASONING_METADATA_KEY)
+    );
+
+    let report = engine
+        .apply(Operation::InspectConstructReasoningCollection {
+            collection_subject: CollectionSubjectRef::ProjectSequences {
+                seq_ids: vec![
+                    "repeat_risk".to_string(),
+                    "short_clean".to_string(),
+                    "missing_sequence".to_string(),
+                ],
+            },
+            member_bindings: vec![],
+            path: None,
+        })
+        .expect("inspect construct reasoning over project sequences")
+        .collection_construct_reasoning_inspection
+        .expect("collection construct-reasoning report");
+
+    assert_eq!(
+        report.schema,
+        COLLECTION_CONSTRUCT_REASONING_INSPECTION_REPORT_SCHEMA
+    );
+    assert_eq!(report.collection_operation.per_member_status.len(), 3);
+    assert_eq!(report.member_reports.len(), 2);
+    assert!(report.total_inspection_action_count > 0);
+    assert_eq!(report.member_count_with_actions, 1);
+    assert_eq!(report.member_ids_without_actions, ["short_clean"]);
+    assert!(report.member_reports.iter().all(|row| {
+        !row.graph_persisted && !row.graph_id.is_empty() && row.input_fingerprint.is_some()
+    }));
+    let failed = report
+        .collection_operation
+        .per_member_status
+        .iter()
+        .find(|row| row.member.stable_member_id == "missing_sequence")
+        .expect("missing sequence status");
+    assert_eq!(failed.outcome, CollectionMemberOutcome::Failed);
+    assert!(failed.error.is_some());
+    assert!(
+        report
+            .collection_operation
+            .per_member_status
+            .iter()
+            .all(|row| row.produced_report_ids.is_empty())
+    );
+    assert!(
+        !engine
+            .state()
+            .metadata
+            .contains_key(CONSTRUCT_REASONING_METADATA_KEY),
+        "collection inspection must not persist graphs into the live project"
+    );
+
+    let encoded = serde_json::to_value(&report).expect("serialize collection inspection");
+    let decoded: CollectionConstructReasoningInspectionReport =
+        serde_json::from_value(encoded.clone()).expect("deserialize collection inspection");
+    assert_eq!(
+        serde_json::to_value(decoded).expect("reserialize collection inspection"),
+        encoded
+    );
+}
+
+#[test]
+fn collection_tfbs_scan_matches_direct_scans_and_round_trips_complete_aggregates() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "promoter_a".to_string(),
+        DNAsequence::from_sequence("AAAAAACCCCCC").expect("promoter A"),
+    );
+    state.sequences.insert(
+        "promoter_b".to_string(),
+        DNAsequence::from_sequence("CCCAAATTTCCC").expect("promoter B"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let motifs = vec!["AAA".to_string(), "CCC".to_string()];
+    let direct_a = engine
+        .scan_tfbs_hits(
+            SequenceScanTarget::SeqId {
+                seq_id: "promoter_a".to_string(),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            },
+            &motifs,
+            None,
+            None,
+            &[],
+            None,
+            None,
+            None,
+        )
+        .expect("direct promoter A scan");
+    let direct_b = engine
+        .scan_tfbs_hits(
+            SequenceScanTarget::SeqId {
+                seq_id: "promoter_b".to_string(),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            },
+            &motifs,
+            None,
+            None,
+            &[],
+            None,
+            None,
+            None,
+        )
+        .expect("direct promoter B scan");
+
+    let collection = engine
+        .apply(Operation::ScanTfbsHitsCollection {
+            collection_subject: CollectionSubjectRef::ProjectSequences {
+                seq_ids: vec!["promoter_a".to_string(), "promoter_b".to_string()],
+            },
+            member_bindings: vec![],
+            motifs,
+            min_llr_bits: None,
+            min_llr_quantile: None,
+            per_tf_thresholds: vec![],
+            max_hits_per_member: None,
+            path: None,
+        })
+        .expect("collection TFBS scan")
+        .collection_tfbs_hit_scan
+        .expect("collection TFBS report");
+
+    assert_eq!(collection.schema, COLLECTION_TFBS_HIT_SCAN_REPORT_SCHEMA);
+    assert_eq!(collection.effective_motif_ids, ["AAA", "CCC"]);
+    assert_eq!(
+        collection.collection_operation.lifting_mode,
+        CollectionLiftingMode::Map
+    );
+    assert_eq!(
+        collection
+            .collection_operation
+            .lift_policy
+            .context_requirement,
+        CollectionContextRequirement::ContextAgnostic
+    );
+    assert!(collection.aggregate_counts_complete);
+    assert!(collection.incomplete_member_ids.is_empty());
+    assert_eq!(collection.truncated_member_count, 0);
+    assert_eq!(collection.member_reports.len(), 2);
+    for (seq_id, direct) in [("promoter_a", direct_a), ("promoter_b", direct_b)] {
+        let mapped = collection
+            .member_reports
+            .iter()
+            .find(|row| row.seq_id == seq_id)
+            .expect("mapped member report");
+        assert_eq!(
+            serde_json::to_value(&mapped.report.rows).expect("mapped rows"),
+            serde_json::to_value(&direct.rows).expect("direct rows")
+        );
+        assert_eq!(mapped.report.motifs_scanned, direct.motifs_scanned);
+    }
+    assert_eq!(
+        collection.total_retained_hit_count,
+        collection
+            .member_reports
+            .iter()
+            .map(|row| row.report.matched_hit_count)
+            .sum::<usize>()
+    );
+    assert_eq!(
+        collection
+            .retained_hit_counts_by_tf_id
+            .values()
+            .sum::<usize>(),
+        collection.total_retained_hit_count
+    );
+    let encoded = serde_json::to_value(&collection).expect("serialize collection report");
+    let decoded: CollectionTfbsHitScanReport =
+        serde_json::from_value(encoded.clone()).expect("deserialize collection report");
+    assert_eq!(
+        serde_json::to_value(decoded).expect("reserialize collection report"),
+        encoded
+    );
+}
+
+#[test]
+fn collection_tfbs_scan_marks_capped_or_unbound_members_incomplete() {
+    let mut engine = GentleEngine::new();
+    engine.state_mut().sequences.insert(
+        "promoter_a".to_string(),
+        DNAsequence::from_sequence("AAAAAAAAAAAA").expect("promoter A"),
+    );
+    let resolution = GeneSetResolutionReport {
+        schema: GENE_SET_RESOLUTION_SCHEMA.to_string(),
+        generated_at_unix_ms: 1,
+        op_id: Some("tfbs_binding_fixture".to_string()),
+        resolved_member_count: 2,
+        resolved_members: vec![
+            GeneSetResolvedMember {
+                dedup_key: "GENE_A".to_string(),
+                symbol: "GENE_A".to_string(),
+                ..GeneSetResolvedMember::default()
+            },
+            GeneSetResolvedMember {
+                dedup_key: "GENE_B".to_string(),
+                symbol: "GENE_B".to_string(),
+                ..GeneSetResolvedMember::default()
+            },
+        ],
+        ..GeneSetResolutionReport::default()
+    };
+    let report_id = GentleEngine::gene_set_resolution_artifact_id(&resolution);
+    engine
+        .upsert_gene_set_resolution_artifact(resolution)
+        .expect("persist gene set");
+
+    let collection = engine
+        .apply(Operation::ScanTfbsHitsCollection {
+            collection_subject: CollectionSubjectRef::GeneSetResolution { report_id },
+            member_bindings: vec![TfbsHitScanCollectionMemberBinding {
+                stable_member_id: "GENE_A".to_string(),
+                seq_id: "promoter_a".to_string(),
+            }],
+            motifs: vec!["AAA".to_string(), "CCC".to_string()],
+            min_llr_bits: None,
+            min_llr_quantile: None,
+            per_tf_thresholds: vec![],
+            max_hits_per_member: Some(1),
+            path: None,
+        })
+        .expect("partial collection TFBS scan")
+        .collection_tfbs_hit_scan
+        .expect("collection report");
+
+    assert!(!collection.aggregate_counts_complete);
+    assert_eq!(collection.total_retained_hit_count, 1);
+    assert_eq!(collection.truncated_member_count, 1);
+    assert_eq!(collection.incomplete_member_ids, ["GENE_A", "GENE_B"]);
+    assert_eq!(collection.member_reports[0].report.motifs_scanned, ["AAA"]);
+    assert!(collection.member_reports[0].report.truncated_at_max_hits);
+    let failed = collection
+        .collection_operation
+        .per_member_status
+        .iter()
+        .find(|row| row.member.stable_member_id == "GENE_B")
+        .expect("unbound member status");
+    assert_eq!(failed.outcome, CollectionMemberOutcome::Failed);
+    assert!(failed.error.as_ref().is_some_and(|error| {
+        error
+            .message
+            .contains("requires an explicit member-to-sequence binding")
+    }));
+    assert!(
+        collection
+            .collection_operation
+            .aggregate_warnings
+            .iter()
+            .any(|warning| {
+                warning.contains("retained TFBS hit counts are incomplete")
+                    && warning.contains("CCC")
+            })
+    );
+}
+
+#[test]
+fn collection_digest_preview_apply_matches_direct_digest_and_preserves_lineage() {
+    let mut linear = DNAsequence::from_sequence("AAGAATTCCCGG").expect("linear sequence");
+    linear.set_circular(false);
+    let mut circular = DNAsequence::from_sequence("TTCAAAAAAGAA").expect("circular sequence");
+    circular.set_circular(true);
+    let mut state = ProjectState::default();
+    state.sequences.insert("linear".to_string(), linear);
+    state.sequences.insert("circular".to_string(), circular);
+
+    let mut collection_engine = GentleEngine::from_state(state.clone());
+    let initial_sequence_count = collection_engine.state().sequences.len();
+    let initial_container_count = collection_engine.state().container_state.containers.len();
+    let initial_revision = collection_engine.mutation_revision();
+    let subject = CollectionSubjectRef::ProjectSequences {
+        seq_ids: vec!["linear".to_string(), "circular".to_string()],
+    };
+    let preview_result = collection_engine
+        .apply(Operation::DigestCollection {
+            collection_subject: subject.clone(),
+            member_bindings: vec![],
+            enzymes: vec!["EcoRI".to_string()],
+            output_prefix: Some("batch".to_string()),
+            dry_run: true,
+            expected_plan_fingerprint_sha256: None,
+            path: None,
+        })
+        .expect("preview collection digest");
+    assert!(preview_result.created_seq_ids.is_empty());
+    assert_eq!(
+        collection_engine.state().sequences.len(),
+        initial_sequence_count
+    );
+    assert_eq!(collection_engine.mutation_revision(), initial_revision);
+    let preview = preview_result
+        .collection_digest
+        .expect("collection digest preview report");
+    assert_eq!(preview.schema, COLLECTION_DIGEST_REPORT_SCHEMA);
+    assert_eq!(
+        preview.collection_operation.lifting_mode,
+        CollectionLiftingMode::Map
+    );
+    assert_eq!(
+        preview.collection_operation.lift_policy.context_requirement,
+        CollectionContextRequirement::ContextAgnostic
+    );
+    assert!(preview.collection_operation.dry_run);
+    assert!(!preview.collection_operation.applied);
+    assert_eq!(preview.effective_enzymes, ["EcoRI"]);
+    assert_eq!(preview.total_planned_fragment_count, 3);
+    assert_eq!(preview.total_created_fragment_count, 0);
+    assert!(preview.aggregate_counts_complete);
+    assert!(preview.incomplete_member_ids.is_empty());
+    assert!(
+        preview
+            .member_reports
+            .iter()
+            .flat_map(|member| &member.fragments)
+            .all(|fragment| !fragment.materialized)
+    );
+    let encoded = serde_json::to_value(&preview).expect("serialize collection digest report");
+    let decoded: CollectionDigestReport =
+        serde_json::from_value(encoded.clone()).expect("deserialize collection digest report");
+    assert_eq!(
+        serde_json::to_value(decoded).expect("reserialize collection digest report"),
+        encoded
+    );
+
+    let applied_result = collection_engine
+        .apply(Operation::DigestCollection {
+            collection_subject: subject,
+            member_bindings: vec![],
+            enzymes: vec!["EcoRI".to_string()],
+            output_prefix: Some("batch".to_string()),
+            dry_run: false,
+            expected_plan_fingerprint_sha256: Some(preview.plan_fingerprint_sha256.clone()),
+            path: None,
+        })
+        .expect("apply previewed collection digest");
+    let applied = applied_result
+        .collection_digest
+        .as_ref()
+        .expect("applied collection digest report");
+    assert!(applied.collection_operation.applied);
+    assert!(!applied.collection_operation.dry_run);
+    assert_eq!(
+        applied.plan_fingerprint_sha256,
+        preview.plan_fingerprint_sha256
+    );
+    assert_eq!(applied.total_created_fragment_count, 3);
+    assert_eq!(applied_result.created_seq_ids.len(), 3);
+    assert!(
+        applied
+            .member_reports
+            .iter()
+            .flat_map(|member| &member.fragments)
+            .all(|fragment| fragment.materialized)
+    );
+
+    let mut direct_engine = GentleEngine::from_state(state);
+    let mut direct_ids_by_source = BTreeMap::<String, Vec<String>>::new();
+    for source_seq_id in ["linear", "circular"] {
+        let direct = direct_engine
+            .apply(Operation::Digest {
+                input: source_seq_id.to_string(),
+                enzymes: vec!["EcoRI".to_string()],
+                output_prefix: Some(format!("batch__{source_seq_id}")),
+            })
+            .expect("direct member digest");
+        direct_ids_by_source.insert(source_seq_id.to_string(), direct.created_seq_ids);
+    }
+    for member in &applied.member_reports {
+        let direct_ids = direct_ids_by_source
+            .get(&member.source_seq_id)
+            .expect("direct ids for member");
+        assert_eq!(
+            member
+                .fragments
+                .iter()
+                .map(|fragment| fragment.seq_id.as_str())
+                .collect::<Vec<_>>(),
+            direct_ids.iter().map(String::as_str).collect::<Vec<_>>()
+        );
+        for fragment in &member.fragments {
+            assert_eq!(
+                serde_json::to_value(
+                    collection_engine
+                        .state()
+                        .sequences
+                        .get(&fragment.seq_id)
+                        .expect("collection fragment")
+                )
+                .expect("serialize collection fragment"),
+                serde_json::to_value(
+                    direct_engine
+                        .state()
+                        .sequences
+                        .get(&fragment.seq_id)
+                        .expect("direct fragment")
+                )
+                .expect("serialize direct fragment")
+            );
+            let source_node = collection_engine
+                .state()
+                .lineage
+                .seq_to_node
+                .get(&member.source_seq_id)
+                .expect("source lineage node");
+            let fragment_node = collection_engine
+                .state()
+                .lineage
+                .seq_to_node
+                .get(&fragment.seq_id)
+                .expect("fragment lineage node");
+            assert!(collection_engine.state().lineage.edges.iter().any(|edge| {
+                &edge.from_node_id == source_node
+                    && &edge.to_node_id == fragment_node
+                    && edge.op_id == applied_result.op_id
+            }));
+            assert!(!applied.member_reports.iter().any(|other_member| {
+                other_member.source_seq_id != member.source_seq_id
+                    && collection_engine.state().lineage.edges.iter().any(|edge| {
+                        collection_engine
+                            .state()
+                            .lineage
+                            .seq_to_node
+                            .get(&other_member.source_seq_id)
+                            .is_some_and(|other_source_node| {
+                                &edge.from_node_id == other_source_node
+                                    && &edge.to_node_id == fragment_node
+                                    && edge.op_id == applied_result.op_id
+                            })
+                    })
+            }));
+            assert!(
+                !collection_engine
+                    .state()
+                    .container_state
+                    .seq_to_latest_container
+                    .contains_key(&fragment.seq_id),
+                "logical collection products must not be pooled automatically"
+            );
+        }
+    }
+    assert_eq!(
+        collection_engine.state().container_state.containers.len(),
+        initial_container_count
+    );
+    assert_eq!(
+        collection_engine
+            .state()
+            .container_state
+            .containers
+            .values()
+            .filter(|container| {
+                container.created_by_op.as_deref() == Some(applied_result.op_id.as_str())
+            })
+            .count(),
+        0
+    );
+}
+
+#[test]
+fn collection_map_reports_accept_additive_fields_but_member_bindings_remain_strict() {
+    fn add_unknown_field(value: &mut serde_json::Value, key: &str) {
+        value
+            .as_object_mut()
+            .expect("test value is an object")
+            .insert(key.to_string(), serde_json::json!("future extension"));
+    }
+
+    fn assert_unknown_binding_field_rejected<T>(value: serde_json::Value)
+    where
+        T: serde::de::DeserializeOwned + std::fmt::Debug,
+    {
+        let error = serde_json::from_value::<T>(value)
+            .expect_err("collection member bindings reject unknown request fields");
+        assert!(error.to_string().contains("unknown field"));
+    }
+
+    let mut restriction = serde_json::to_value(CollectionRestrictionSiteScanReport {
+        member_reports: vec![CollectionRestrictionSiteScanMemberReport::default()],
+        ..CollectionRestrictionSiteScanReport::default()
+    })
+    .expect("serialize restriction collection report");
+    add_unknown_field(&mut restriction, "future_report_field");
+    add_unknown_field(&mut restriction["member_reports"][0], "future_member_field");
+    let restriction_decoded: CollectionRestrictionSiteScanReport =
+        serde_json::from_value(restriction).expect("A5 report accepts additive fields");
+    assert_eq!(restriction_decoded.member_reports.len(), 1);
+
+    let mut tfbs = serde_json::to_value(CollectionTfbsHitScanReport {
+        member_reports: vec![CollectionTfbsHitScanMemberReport::default()],
+        ..CollectionTfbsHitScanReport::default()
+    })
+    .expect("serialize TFBS collection report");
+    add_unknown_field(&mut tfbs, "future_report_field");
+    add_unknown_field(&mut tfbs["member_reports"][0], "future_member_field");
+    let tfbs_decoded: CollectionTfbsHitScanReport =
+        serde_json::from_value(tfbs).expect("A6 report accepts additive fields");
+    assert_eq!(tfbs_decoded.member_reports.len(), 1);
+
+    let mut digest = serde_json::to_value(CollectionDigestReport {
+        member_reports: vec![CollectionDigestMemberReport {
+            fragments: vec![CollectionDigestFragmentRow::default()],
+            ..CollectionDigestMemberReport::default()
+        }],
+        ..CollectionDigestReport::default()
+    })
+    .expect("serialize digest collection report");
+    add_unknown_field(&mut digest, "future_report_field");
+    add_unknown_field(&mut digest["member_reports"][0], "future_member_field");
+    add_unknown_field(
+        &mut digest["member_reports"][0]["fragments"][0],
+        "future_fragment_field",
+    );
+    let digest_decoded: CollectionDigestReport =
+        serde_json::from_value(digest).expect("A7 report accepts additive fields");
+    assert_eq!(digest_decoded.member_reports.len(), 1);
+    assert_eq!(digest_decoded.member_reports[0].fragments.len(), 1);
+
+    let mut gene_set_pool = serde_json::to_value(GeneSetPoolCreationReport {
+        member_reports: vec![GeneSetPoolMemberReport::default()],
+        ..GeneSetPoolCreationReport::default()
+    })
+    .expect("serialize gene-set pool creation report");
+    add_unknown_field(&mut gene_set_pool, "future_report_field");
+    add_unknown_field(
+        &mut gene_set_pool["member_reports"][0],
+        "future_member_field",
+    );
+    let gene_set_pool_decoded: GeneSetPoolCreationReport =
+        serde_json::from_value(gene_set_pool).expect("A9 report accepts additive fields");
+    assert_eq!(gene_set_pool_decoded.member_reports.len(), 1);
+
+    assert_unknown_binding_field_rejected::<RestrictionSiteScanCollectionMemberBinding>(
+        serde_json::json!({
+            "stable_member_id": "member",
+            "seq_id": "seq",
+            "future_request_field": true,
+        }),
+    );
+    assert_unknown_binding_field_rejected::<TfbsHitScanCollectionMemberBinding>(
+        serde_json::json!({
+            "stable_member_id": "member",
+            "seq_id": "seq",
+            "future_request_field": true,
+        }),
+    );
+    assert_unknown_binding_field_rejected::<DigestCollectionMemberBinding>(serde_json::json!({
+        "stable_member_id": "member",
+        "seq_id": "seq",
+        "future_request_field": true,
+    }));
+    assert_unknown_binding_field_rejected::<GeneSetPoolMemberBinding>(serde_json::json!({
+        "stable_member_id": "member",
+        "source_container_id": "container-1",
+        "future_request_field": true,
+    }));
+}
+
+#[test]
+fn collection_digest_dense_members_use_load_independent_shared_guards() {
+    let dense_sequence =
+        DNAsequence::from_sequence(&"ATGGATCCGC".repeat(128)).expect("dense BamHI sequence");
+    let source_ids = ["dense_a", "dense_b"];
+    let mut state = ProjectState::default();
+    for source_id in source_ids {
+        state
+            .sequences
+            .insert(source_id.to_string(), dense_sequence.clone());
+    }
+
+    let subject = CollectionSubjectRef::ProjectSequences {
+        seq_ids: source_ids.iter().map(|value| value.to_string()).collect(),
+    };
+    let mut collection_engine = GentleEngine::from_state(state.clone());
+    let preview = collection_engine
+        .apply(Operation::DigestCollection {
+            collection_subject: subject,
+            member_bindings: vec![],
+            enzymes: vec!["BamHI".to_string()],
+            output_prefix: Some("dense".to_string()),
+            dry_run: true,
+            expected_plan_fingerprint_sha256: None,
+            path: None,
+        })
+        .expect("preview dense collection digest")
+        .collection_digest
+        .expect("dense collection digest report");
+    assert!(preview.aggregate_counts_complete);
+    assert_eq!(preview.member_reports.len(), source_ids.len());
+
+    let mut direct_engine = GentleEngine::from_state(state);
+    for member in &preview.member_reports {
+        let direct = direct_engine
+            .apply(Operation::Digest {
+                input: member.source_seq_id.clone(),
+                enzymes: vec!["BamHI".to_string()],
+                output_prefix: Some(member.effective_output_prefix.clone()),
+            })
+            .expect("direct dense member digest");
+        let direct_lengths = direct
+            .created_seq_ids
+            .iter()
+            .map(|seq_id| {
+                direct_engine
+                    .state()
+                    .sequences
+                    .get(seq_id)
+                    .expect("direct dense fragment")
+                    .len()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            member
+                .fragments
+                .iter()
+                .map(|fragment| fragment.length_bp)
+                .collect::<Vec<_>>(),
+            direct_lengths
+        );
+    }
+}
+
+#[test]
+fn collection_digest_plan_lock_and_gene_set_failures_are_explicit() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "seq_a".to_string(),
+        DNAsequence::from_sequence("ATGGATCCGC").expect("sequence A"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let subject = CollectionSubjectRef::ProjectSequences {
+        seq_ids: vec!["seq_a".to_string()],
+    };
+    let preview = engine
+        .apply(Operation::DigestCollection {
+            collection_subject: subject.clone(),
+            member_bindings: vec![],
+            enzymes: vec!["BamHI".to_string()],
+            output_prefix: Some("locked".to_string()),
+            dry_run: true,
+            expected_plan_fingerprint_sha256: None,
+            path: None,
+        })
+        .expect("preview collection digest")
+        .collection_digest
+        .expect("preview report");
+    engine.state_mut().sequences.insert(
+        "seq_a".to_string(),
+        DNAsequence::from_sequence("ATGGATCCGCAT").expect("changed sequence A"),
+    );
+    let stale = engine
+        .apply(Operation::DigestCollection {
+            collection_subject: subject,
+            member_bindings: vec![],
+            enzymes: vec!["BamHI".to_string()],
+            output_prefix: Some("locked".to_string()),
+            dry_run: false,
+            expected_plan_fingerprint_sha256: Some(preview.plan_fingerprint_sha256),
+            path: None,
+        })
+        .expect_err("changed sequence invalidates collection digest plan");
+    assert_eq!(stale.code, ErrorCode::InvalidInput);
+    assert!(stale.message.contains("plan changed after preview"));
+    assert!(
+        !engine
+            .state()
+            .sequences
+            .keys()
+            .any(|id| id.starts_with("locked_"))
+    );
+
+    let resolution = GeneSetResolutionReport {
+        schema: GENE_SET_RESOLUTION_SCHEMA.to_string(),
+        generated_at_unix_ms: 1,
+        op_id: Some("digest_binding_fixture".to_string()),
+        resolved_member_count: 2,
+        resolved_members: vec![
+            GeneSetResolvedMember {
+                dedup_key: "GENE_A".to_string(),
+                symbol: "GENE_A".to_string(),
+                ..GeneSetResolvedMember::default()
+            },
+            GeneSetResolvedMember {
+                dedup_key: "GENE_B".to_string(),
+                symbol: "GENE_B".to_string(),
+                ..GeneSetResolvedMember::default()
+            },
+        ],
+        ..GeneSetResolutionReport::default()
+    };
+    let report_id = GentleEngine::gene_set_resolution_artifact_id(&resolution);
+    engine
+        .upsert_gene_set_resolution_artifact(resolution)
+        .expect("persist gene-set resolution");
+    let report = engine
+        .apply(Operation::DigestCollection {
+            collection_subject: CollectionSubjectRef::GeneSetResolution { report_id },
+            member_bindings: vec![DigestCollectionMemberBinding {
+                stable_member_id: "GENE_A".to_string(),
+                seq_id: "seq_a".to_string(),
+            }],
+            enzymes: vec!["BamHI".to_string()],
+            output_prefix: None,
+            dry_run: true,
+            expected_plan_fingerprint_sha256: None,
+            path: None,
+        })
+        .expect("preview partially bound gene-set digest")
+        .collection_digest
+        .expect("gene-set digest report");
+    assert!(!report.aggregate_counts_complete);
+    assert_eq!(report.incomplete_member_ids, ["GENE_B"]);
+    assert_eq!(report.member_reports.len(), 1);
+    let failed = report
+        .collection_operation
+        .per_member_status
+        .iter()
+        .find(|row| row.member.stable_member_id == "GENE_B")
+        .expect("unbound member failure");
+    assert_eq!(failed.outcome, CollectionMemberOutcome::Failed);
+    assert!(failed.error.as_ref().is_some_and(|error| {
+        error
+            .message
+            .contains("requires an explicit member-to-sequence binding")
+    }));
+
+    let container_id = engine
+        .state()
+        .container_state
+        .seq_to_latest_container
+        .get("seq_a")
+        .expect("source container")
+        .clone();
+    let rejected = engine
+        .apply(Operation::DigestCollection {
+            collection_subject: CollectionSubjectRef::Container { container_id },
+            member_bindings: vec![],
+            enzymes: vec!["BamHI".to_string()],
+            output_prefix: None,
+            dry_run: true,
+            expected_plan_fingerprint_sha256: None,
+            path: None,
+        })
+        .expect_err("physical container uses dedicated digest route");
+    assert_eq!(rejected.code, ErrorCode::InvalidInput);
+    assert!(
+        rejected
+            .cause_chain
+            .iter()
+            .any(|cause| cause.contains("unsupported_subject_kind"))
+    );
+    assert!(rejected.message.contains("DigestContainer"));
+}
+
+#[test]
+fn gene_set_pool_preview_apply_preserves_sources_lineage_and_exportability() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "source_a".to_string(),
+        DNAsequence::from_sequence("AAGAATTCCCGG").expect("source A"),
+    );
+    state.sequences.insert(
+        "source_b".to_string(),
+        DNAsequence::from_sequence("TTGGATCCAACC").expect("source B"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let source_container_a =
+        engine.state().container_state.seq_to_latest_container["source_a"].clone();
+    let source_container_b =
+        engine.state().container_state.seq_to_latest_container["source_b"].clone();
+    let resolution = GeneSetResolutionReport {
+        schema: GENE_SET_RESOLUTION_SCHEMA.to_string(),
+        generated_at_unix_ms: 1,
+        op_id: Some("gene_set_pool_fixture".to_string()),
+        resolved_member_count: 2,
+        resolved_members: vec![
+            GeneSetResolvedMember {
+                dedup_key: "GENE_A".to_string(),
+                symbol: "GENE_A".to_string(),
+                ..GeneSetResolvedMember::default()
+            },
+            GeneSetResolvedMember {
+                dedup_key: "GENE_B".to_string(),
+                symbol: "GENE_B".to_string(),
+                ..GeneSetResolvedMember::default()
+            },
+        ],
+        ..GeneSetResolutionReport::default()
+    };
+    let resolution_id = GentleEngine::gene_set_resolution_artifact_id(&resolution);
+    engine
+        .upsert_gene_set_resolution_artifact(resolution)
+        .expect("persist gene-set resolution");
+    let subject = CollectionSubjectRef::GeneSetResolution {
+        report_id: resolution_id.clone(),
+    };
+    let bindings = vec![
+        GeneSetPoolMemberBinding {
+            stable_member_id: "GENE_A".to_string(),
+            source_container_id: source_container_a.clone(),
+        },
+        GeneSetPoolMemberBinding {
+            stable_member_id: "GENE_B".to_string(),
+            source_container_id: source_container_b.clone(),
+        },
+    ];
+    let initial_sequence_count = engine.state().sequences.len();
+    let initial_container_count = engine.state().container_state.containers.len();
+    let initial_mutation_revision = engine.mutation_revision();
+
+    let preview = engine
+        .apply(Operation::CreateGeneSetPool {
+            collection_subject: subject.clone(),
+            member_bindings: bindings.clone(),
+            output_prefix: Some("cohort".to_string()),
+            container_name: Some("Cohort stock".to_string()),
+            dry_run: true,
+            expected_plan_fingerprint_sha256: None,
+            path: None,
+        })
+        .expect("preview gene-set pool")
+        .gene_set_pool_creation
+        .expect("gene-set pool preview report");
+    assert_eq!(preview.schema, GENE_SET_POOL_CREATION_REPORT_SCHEMA);
+    assert_eq!(
+        preview.collection_operation.lifting_mode,
+        CollectionLiftingMode::Combine
+    );
+    assert_eq!(
+        preview.collection_operation.lift_policy.context_requirement,
+        CollectionContextRequirement::ContextAgnostic
+    );
+    assert!(preview.collection_operation.dry_run);
+    assert!(!preview.collection_operation.applied);
+    assert_eq!(preview.source_gene_set_resolution_id, resolution_id);
+    assert_eq!(preview.planned_member_count, 2);
+    assert_eq!(preview.materialized_member_count, 0);
+    assert!(preview.created_container_id.is_none());
+    assert!(preview.source_containers_retained);
+    assert!(preview.member_reports.iter().all(|row| !row.materialized));
+    assert_eq!(engine.state().sequences.len(), initial_sequence_count);
+    assert_eq!(
+        engine.state().container_state.containers.len(),
+        initial_container_count
+    );
+    assert_eq!(engine.mutation_revision(), initial_mutation_revision);
+
+    let encoded = serde_json::to_value(&preview).expect("serialize pool preview");
+    let decoded: GeneSetPoolCreationReport =
+        serde_json::from_value(encoded.clone()).expect("deserialize pool preview");
+    assert_eq!(
+        serde_json::to_value(decoded).expect("reserialize pool preview"),
+        encoded
+    );
+
+    let applied_result = engine
+        .apply(Operation::CreateGeneSetPool {
+            collection_subject: subject,
+            member_bindings: bindings,
+            output_prefix: Some("cohort".to_string()),
+            container_name: Some("Cohort stock".to_string()),
+            dry_run: false,
+            expected_plan_fingerprint_sha256: Some(preview.plan_fingerprint_sha256.clone()),
+            path: None,
+        })
+        .expect("apply gene-set pool");
+    let applied = applied_result
+        .gene_set_pool_creation
+        .as_ref()
+        .expect("applied gene-set pool report");
+    assert_eq!(
+        applied.plan_fingerprint_sha256,
+        preview.plan_fingerprint_sha256
+    );
+    assert!(applied.collection_operation.applied);
+    assert_eq!(applied.materialized_member_count, 2);
+    assert!(applied.member_reports.iter().all(|row| row.materialized));
+    let created_container_id = applied
+        .created_container_id
+        .as_deref()
+        .expect("created pool container");
+    assert_eq!(created_container_id, applied.planned_container_id);
+    let created_container = &engine.state().container_state.containers[created_container_id];
+    assert!(matches!(&created_container.kind, ContainerKind::Pool));
+    assert!(created_container.declared_contents_exclusive);
+    assert_eq!(created_container.name.as_deref(), Some("Cohort stock"));
+    assert_eq!(created_container.members, applied_result.created_seq_ids);
+
+    for (member, expected_source_container) in applied
+        .member_reports
+        .iter()
+        .zip([&source_container_a, &source_container_b])
+    {
+        assert!(
+            engine
+                .state()
+                .container_state
+                .containers
+                .contains_key(expected_source_container),
+            "source container must be retained"
+        );
+        assert_eq!(
+            engine.state().container_state.seq_to_latest_container[&member.source_seq_id],
+            *expected_source_container
+        );
+        assert_eq!(
+            engine.state().container_state.seq_to_latest_container[&member.output_seq_id],
+            created_container_id
+        );
+        assert_eq!(
+            serde_json::to_value(&engine.state().sequences[&member.output_seq_id])
+                .expect("serialize output aliquot"),
+            serde_json::to_value(&engine.state().sequences[&member.source_seq_id])
+                .expect("serialize source aliquot")
+        );
+        let source_node = &engine.state().lineage.seq_to_node[&member.source_seq_id];
+        let output_node = &engine.state().lineage.seq_to_node[&member.output_seq_id];
+        assert!(engine.state().lineage.edges.iter().any(|edge| {
+            &edge.from_node_id == source_node
+                && &edge.to_node_id == output_node
+                && edge.op_id == applied_result.op_id
+        }));
+    }
+
+    let temp = tempfile::tempdir().expect("temporary export directory");
+    let export_path = temp.path().join("cohort.pool.json");
+    let export = engine
+        .apply(Operation::ExportPoolCollection {
+            collection_subject: CollectionSubjectRef::Container {
+                container_id: created_container_id.to_string(),
+            },
+            path: export_path.display().to_string(),
+            pool_id: None,
+            human_id: None,
+        })
+        .expect("export created physical pool")
+        .collection_pool_export
+        .expect("pool export report");
+    assert_eq!(export.member_count, 2);
+    assert!(export_path.exists());
+}
+
+#[test]
+fn gene_set_pool_requires_complete_resolution_and_rejects_stale_source_plan() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "source".to_string(),
+        DNAsequence::from_sequence("ACGTACGT").expect("source sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let source_container_id =
+        engine.state().container_state.seq_to_latest_container["source"].clone();
+    let incomplete_resolution = GeneSetResolutionReport {
+        schema: GENE_SET_RESOLUTION_SCHEMA.to_string(),
+        generated_at_unix_ms: 1,
+        op_id: Some("incomplete_pool_fixture".to_string()),
+        resolved_member_count: 1,
+        unresolved_member_count: 1,
+        resolved_members: vec![GeneSetResolvedMember {
+            dedup_key: "GENE_A".to_string(),
+            symbol: "GENE_A".to_string(),
+            ..GeneSetResolvedMember::default()
+        }],
+        ..GeneSetResolutionReport::default()
+    };
+    let incomplete_id = GentleEngine::gene_set_resolution_artifact_id(&incomplete_resolution);
+    engine
+        .upsert_gene_set_resolution_artifact(incomplete_resolution)
+        .expect("persist incomplete resolution");
+    let binding = GeneSetPoolMemberBinding {
+        stable_member_id: "GENE_A".to_string(),
+        source_container_id: source_container_id.clone(),
+    };
+    let incomplete = engine
+        .apply(Operation::CreateGeneSetPool {
+            collection_subject: CollectionSubjectRef::GeneSetResolution {
+                report_id: incomplete_id,
+            },
+            member_bindings: vec![binding.clone()],
+            output_prefix: None,
+            container_name: None,
+            dry_run: true,
+            expected_plan_fingerprint_sha256: None,
+            path: None,
+        })
+        .expect_err("unresolved gene set must not become a physical pool");
+    assert_eq!(incomplete.code, ErrorCode::InvalidInput);
+    assert!(
+        incomplete
+            .message
+            .contains("requires a complete resolution")
+    );
+
+    let complete_resolution = GeneSetResolutionReport {
+        schema: GENE_SET_RESOLUTION_SCHEMA.to_string(),
+        generated_at_unix_ms: 2,
+        op_id: Some("complete_pool_fixture".to_string()),
+        resolved_member_count: 1,
+        resolved_members: vec![GeneSetResolvedMember {
+            dedup_key: "GENE_A".to_string(),
+            symbol: "GENE_A".to_string(),
+            ..GeneSetResolvedMember::default()
+        }],
+        ..GeneSetResolutionReport::default()
+    };
+    let complete_id = GentleEngine::gene_set_resolution_artifact_id(&complete_resolution);
+    engine
+        .upsert_gene_set_resolution_artifact(complete_resolution)
+        .expect("persist complete resolution");
+    let subject = CollectionSubjectRef::GeneSetResolution {
+        report_id: complete_id,
+    };
+    let preview = engine
+        .apply(Operation::CreateGeneSetPool {
+            collection_subject: subject.clone(),
+            member_bindings: vec![binding.clone()],
+            output_prefix: Some("locked_pool".to_string()),
+            container_name: None,
+            dry_run: true,
+            expected_plan_fingerprint_sha256: None,
+            path: None,
+        })
+        .expect("preview complete gene-set pool")
+        .gene_set_pool_creation
+        .expect("preview report");
+    engine.state_mut().sequences.insert(
+        "source".to_string(),
+        DNAsequence::from_sequence("ACGTACGTAA").expect("changed source sequence"),
+    );
+    let container_count = engine.state().container_state.containers.len();
+    let stale = engine
+        .apply(Operation::CreateGeneSetPool {
+            collection_subject: subject,
+            member_bindings: vec![binding],
+            output_prefix: Some("locked_pool".to_string()),
+            container_name: None,
+            dry_run: false,
+            expected_plan_fingerprint_sha256: Some(preview.plan_fingerprint_sha256),
+            path: None,
+        })
+        .expect_err("source snapshot change invalidates pool plan");
+    assert_eq!(stale.code, ErrorCode::InvalidInput);
+    assert!(stale.message.contains("plan changed after preview"));
+    assert_eq!(
+        engine.state().container_state.containers.len(),
+        container_count
+    );
+    assert!(
+        !engine
+            .state()
+            .sequences
+            .keys()
+            .any(|seq_id| seq_id.starts_with("locked_pool__"))
+    );
 }
 
 #[test]
@@ -44896,6 +64809,163 @@ fn query_repeat_annotations_parses_ucsc_rmsk_and_filters_line_aliases() {
     assert_eq!(report.rows[0].normalized_alias, "LINE/L1");
 }
 
+#[test]
+fn repeat_cohort_local_project_shell_pipeline_keeps_distinct_loci() {
+    let root = tempdir().expect("temporary isolated cache and reports");
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let catalog_path = repo.join("assets/genomes.json");
+    let rmsk_path = repo.join("test_files/fixtures/repeat_cohort/local_project.rmsk.txt");
+    let cache = root.path().join("repeat cache 'with quote'");
+    let quoted = |path: &Path| crate::engine_shell::quote_shell_arg(&path.to_string_lossy());
+    let catalog =
+        crate::genomes::GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref())
+            .expect("committed LocalProject catalog");
+    catalog
+        .prepare_genome_once_with_cache("LocalProject", Some(cache.to_string_lossy().as_ref()))
+        .expect("prepare only local reference inputs");
+    let first = catalog
+        .get_sequence_region_with_cache(
+            "LocalProject",
+            "AB011549.2",
+            1844,
+            1849,
+            Some(cache.to_string_lossy().as_ref()),
+        )
+        .expect("first repeat DNA");
+    let second = catalog
+        .get_sequence_region_with_cache(
+            "LocalProject",
+            "AB011549.2",
+            3878,
+            3883,
+            Some(cache.to_string_lossy().as_ref()),
+        )
+        .expect("second repeat DNA");
+    assert_eq!(first.to_ascii_uppercase(), "AGCCAG");
+    assert_eq!(first.to_ascii_uppercase(), second.to_ascii_uppercase());
+
+    let mut engine = GentleEngine::default();
+    let query_line = format!(
+        "features repeat-query LocalProject --rmsk {} --alias LINE/L1",
+        quoted(&rmsk_path),
+    );
+    let query = execute_shell_command(
+        &mut engine,
+        &crate::engine_shell::parse_shell_line(&query_line).expect("parse lesson repeat preview"),
+    )
+    .expect("execute repeat preview");
+    assert!(!query.state_changed);
+    assert_eq!(query.output["report"]["parsed_row_count"], 3);
+    assert_eq!(query.output["report"]["matched_row_count"], 2);
+    assert_eq!(query.output["report"]["rows"].as_array().unwrap().len(), 2);
+    for mode in [
+        "repeat_midpoint",
+        "transcript_5utr_start",
+        "pol2_promoter_upstream",
+        "cds_stop_context",
+    ] {
+        let cohort_path = root.path().join(format!("{mode}.json"));
+        let line = format!(
+            "features repeat-cohort LocalProject --rmsk {} --alias LINE/L1 --geometry {mode} --upstream-bp 10 --downstream-bp 10 --catalog {} --cache {} --path {}",
+            quoted(&rmsk_path),
+            quoted(&catalog_path),
+            quoted(&cache),
+            quoted(&cohort_path),
+        );
+        let command = crate::engine_shell::parse_shell_line(&line).expect("parse lesson cohort");
+        let built = execute_shell_command(&mut engine, &command).expect("execute cohort");
+        assert!(!built.state_changed);
+        let cohort: RepeatEnvironmentCohortReport =
+            serde_json::from_slice(&fs::read(&cohort_path).expect("saved cohort"))
+                .expect("portable cohort JSON");
+        assert_eq!(cohort.parsed_repeat_count, 3);
+        assert_eq!(cohort.matched_repeat_count, 2);
+        assert_eq!(
+            cohort.rows.len(),
+            2,
+            "identical repeat DNA is not a locus identity"
+        );
+        assert_ne!(cohort.rows[0].row_id, cohort.rows[1].row_id);
+        assert_ne!(
+            cohort.rows[0].repeat.start_0based,
+            cohort.rows[1].repeat.start_0based
+        );
+        assert_eq!(cohort.rows[0].repeat.strand, "+");
+        assert_eq!(cohort.rows[1].repeat.strand, "-");
+        for row in &cohort.rows {
+            assert!(row.transcript_contexts.is_empty());
+            assert!(row.rna_rank_score.is_none());
+            assert!(row.rna_support_labels.is_empty());
+            for window in &row.geometry_windows {
+                if window.mode != RepeatEnvironmentGeometryMode::RepeatMidpoint {
+                    assert!(!window.available);
+                    assert!(window.reason.contains("no transcript projection available"));
+                    assert!(window.anchor_1based.is_none());
+                }
+            }
+        }
+        let summary_path = root.path().join(format!("{mode}.tfbs.json"));
+        let line = format!(
+            "features window-cohort-tfbs {} --motif AAC --score-kind llr_bits --allow-negative --catalog {} --cache {} --path {}",
+            quoted(&cohort_path),
+            quoted(&catalog_path),
+            quoted(&cache),
+            quoted(&summary_path),
+        );
+        let command = crate::engine_shell::parse_shell_line(&line).expect("parse lesson TFBS");
+        let summarized =
+            execute_shell_command(&mut engine, &command).expect("execute saved-cohort TFBS");
+        assert!(!summarized.state_changed);
+        let summary: WindowCohortTfbsReport =
+            serde_json::from_slice(&fs::read(&summary_path).expect("saved summary"))
+                .expect("portable window summary JSON");
+        if mode == "repeat_midpoint" {
+            assert_eq!(summary.returned_window_count, 2, "no silent empty success");
+            assert_eq!(summary.summary_rows.len(), 2);
+            for window in &summary.windows {
+                assert_eq!(window.tfbs_score_tracks.tracks.len(), 1);
+                assert!(window.tfbs_score_tracks.tracks[0].scored_window_count > 0);
+                assert!(!window.tfbs_score_tracks.tracks[0].forward_scores.is_empty());
+                assert_eq!(window.tfbs_score_tracks.tss_markers.len(), 1);
+                assert_eq!(
+                    window.tfbs_score_tracks.tss_markers[0].feature_kind,
+                    "repeat_environment_anchor",
+                    "a repeat midpoint is not an annotated transcript start",
+                );
+            }
+            for summarized in &summary.summary_rows {
+                let row = cohort
+                    .rows
+                    .iter()
+                    .find(|row| row.row_id == summarized.row_id)
+                    .unwrap();
+                let peak = summarized
+                    .peak_position_0based
+                    .expect("scored peak position");
+                let selected = &row.selected_window;
+                let expected = if row.repeat.strand == "-" {
+                    selected.end_1based.unwrap() - peak
+                } else {
+                    selected.start_1based.unwrap() + peak
+                };
+                assert_eq!(summarized.peak_genomic_position_1based, Some(expected));
+            }
+        } else {
+            assert_eq!(summary.returned_window_count, 0);
+            assert!(
+                summary
+                    .warnings
+                    .iter()
+                    .any(|warning| warning.contains("geometry is unavailable"))
+            );
+        }
+    }
+    assert!(
+        engine.state().sequences.is_empty(),
+        "analysis does not import project sequences"
+    );
+}
+
 fn write_ucsc_rmsk_interval_index_fixture(root: &Path) -> PathBuf {
     let text = include_str!("../../test_files/fixtures/resources/ucsc.rmsk.hg38.edge.txt");
     let resource_path = root.join("ucsc.rmsk.hg38.json");
@@ -45061,6 +65131,315 @@ fn materialize_repeat_features_creates_repeat_regions_on_reverse_anchor() {
     assert_eq!(second.qualifier_values("rmsk_clipped").next(), Some("true"));
 }
 
+fn write_encode_ccre_interval_index_fixture(root: &Path, source_id: &str) -> PathBuf {
+    let bed_path = root.join("screen.registry-v4.els.bed");
+    let source = crate::encode_ccre::source_descriptor(source_id).expect("SCREEN source");
+    let fixture = format!(
+        "chr1\t10400\t10468\t{}0000001\t{}0000001\tpELS\nchr1\t10468\t11020\t{}0000002\t{}0000002\tdELS\n",
+        source.dhs_accession_prefix,
+        source.ccre_accession_prefix,
+        source.dhs_accession_prefix,
+        source.ccre_accession_prefix,
+    );
+    fs::write(&bed_path, fixture).expect("write synthetic SCREEN BED");
+    let index_path = root.join("screen.registry-v4.els.interval-index.json");
+    crate::encode_ccre::prepare_interval_index(
+        bed_path.to_string_lossy().as_ref(),
+        index_path.to_string_lossy().as_ref(),
+        source,
+    )
+    .expect("prepare SCREEN interval index");
+    index_path
+}
+
+#[test]
+fn query_encode_ccre_overlaps_projects_content_bound_v4_evidence() {
+    let root = tempdir().expect("tempdir");
+    let index_path = write_encode_ccre_interval_index_fixture(
+        root.path(),
+        crate::encode_ccre::SCREEN_V4_GRCH38_ELS_SOURCE_ID,
+    );
+    let mut engine = engine_with_rmsk_anchored_sequence("anchored_plus", "+");
+
+    let result = engine
+        .apply(Operation::QueryEncodeCcreOverlaps {
+            seq_id: "anchored_plus".to_string(),
+            index_path: index_path.to_string_lossy().to_string(),
+            bed_path: None,
+            start_0based: Some(400),
+            end_0based_exclusive: Some(700),
+            classes: vec![],
+            limit: None,
+            path: None,
+        })
+        .expect("query SCREEN cCRE overlaps");
+
+    let report = result.encode_ccre_overlaps.expect("cCRE overlap report");
+    assert_eq!(report.schema, "gentle.encode_ccre_overlap.v1");
+    assert!(!report.report_id.is_empty());
+    assert!(report.op_id.is_some());
+    assert!(report.run_id.is_some());
+    assert_eq!(report.source.registry_version, "4");
+    assert_eq!(report.source.taxon_id, 9606);
+    assert_eq!(report.source.assembly_name, "GRCh38");
+    assert_eq!(report.matched_ccre_count, 2);
+    assert_eq!(report.rows[0].local_start_0based, 400);
+    assert_eq!(report.rows[0].local_end_0based_exclusive, 468);
+    assert_eq!(report.rows[0].interval.ccre_class, "pELS");
+    assert_eq!(report.rows[1].local_start_0based, 468);
+    assert_eq!(report.rows[1].local_end_0based_exclusive, 700);
+    assert_eq!(report.rows[1].interval.ccre_class, "dELS");
+    assert!(report.rows[1].clipped);
+    assert!(report.content_identity_verified);
+    assert_eq!(report.assembly_match_status, "assembly_and_species_matched");
+    assert!(
+        report
+            .non_claims
+            .iter()
+            .any(|value| value.contains("does not identify a regulated target gene"))
+    );
+}
+
+#[test]
+fn materialize_encode_ccres_keeps_elements_strandless_on_reverse_anchor() {
+    let root = tempdir().expect("tempdir");
+    let index_path = write_encode_ccre_interval_index_fixture(
+        root.path(),
+        crate::encode_ccre::SCREEN_V4_GRCH38_ELS_SOURCE_ID,
+    );
+    let mut engine = engine_with_rmsk_anchored_sequence("anchored_minus", "-");
+
+    let result = engine
+        .apply(Operation::MaterializeEncodeCcreFeatures {
+            seq_id: "anchored_minus".to_string(),
+            index_path: index_path.to_string_lossy().to_string(),
+            bed_path: None,
+            classes: vec!["pELS".to_string()],
+            max_features: Some(10),
+            clear_existing: Some(true),
+            path: None,
+        })
+        .expect("materialize SCREEN cCRE features");
+
+    let report = result
+        .encode_ccre_materialization
+        .expect("cCRE materialization report");
+    assert_eq!(report.schema, "gentle.encode_ccre_materialization.v1");
+    assert!(!report.report_id.is_empty());
+    assert!(report.op_id.is_some());
+    assert!(report.run_id.is_some());
+    assert_eq!(report.matched_ccre_count, 1);
+    assert_eq!(report.added_feature_count, 1);
+    assert_eq!(result.changed_seq_ids, ["anchored_minus"]);
+    let dna = engine
+        .state()
+        .sequences
+        .get("anchored_minus")
+        .expect("anchored sequence");
+    let feature = dna.features().first().expect("cCRE feature");
+    assert_eq!(feature.kind.to_string(), "regulatory_region");
+    assert!(!crate::feature_location::feature_is_reverse(feature));
+    assert_eq!(feature.location.find_bounds().expect("bounds"), (532, 600));
+    assert_eq!(
+        feature.qualifier_values("encode_ccre_class").next(),
+        Some("pELS")
+    );
+    assert_eq!(
+        feature.qualifier_values("gentle_generated").next(),
+        Some("encode_screen_ccre")
+    );
+}
+
+#[test]
+fn query_encode_ccre_overlaps_rejects_mouse_resource_for_human_anchor() {
+    let root = tempdir().expect("tempdir");
+    let index_path = write_encode_ccre_interval_index_fixture(
+        root.path(),
+        crate::encode_ccre::SCREEN_V4_MM10_ELS_SOURCE_ID,
+    );
+    let mut engine = engine_with_rmsk_anchored_sequence("anchored_human", "+");
+
+    let error = engine
+        .apply(Operation::QueryEncodeCcreOverlaps {
+            seq_id: "anchored_human".to_string(),
+            index_path: index_path.to_string_lossy().to_string(),
+            bed_path: None,
+            start_0based: None,
+            end_0based_exclusive: None,
+            classes: vec![],
+            limit: None,
+            path: None,
+        })
+        .expect_err("mouse resource must not be projected onto human anchor");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(
+        error
+            .message
+            .contains("human and mouse resources must not be mixed")
+    );
+}
+
+fn write_ensembl_regulation_index_fixture(root: &Path, source_id: &str) -> PathBuf {
+    let intervals_path = root.join("ensembl-regulation.intervals.tsv");
+    let source = crate::ensembl_regulation::source_descriptor(source_id).expect("Ensembl source");
+    let file = fs::File::create(&intervals_path).expect("interval fixture");
+    let mut writer = std::io::BufWriter::new(file);
+    crate::ensembl_regulation::write_intervals_header(&mut writer, &source)
+        .expect("interval header");
+    for row in [
+        EnsemblRegulationInterval {
+            chromosome: "1".to_string(),
+            start_0based: 10_400,
+            end_0based_exclusive: 10_468,
+            feature_id: "ENSR_TEST_PROMOTER".to_string(),
+            feature_type: "promoter".to_string(),
+            strand: None,
+            extended_start_0based: Some(10_350),
+            extended_end_0based_exclusive: Some(10_500),
+            associated_gene_ids: vec!["ENSG_TEST".to_string()],
+            associated_gene_names: vec!["GENE1".to_string()],
+            source_line_number: 0,
+        },
+        EnsemblRegulationInterval {
+            chromosome: "1".to_string(),
+            start_0based: 10_468,
+            end_0based_exclusive: 11_020,
+            feature_id: "ENSR_TEST_CTCF".to_string(),
+            feature_type: "ctcf".to_string(),
+            strand: Some('-'),
+            extended_start_0based: None,
+            extended_end_0based_exclusive: None,
+            associated_gene_ids: vec![],
+            associated_gene_names: vec![],
+            source_line_number: 0,
+        },
+    ] {
+        crate::ensembl_regulation::write_interval(&mut writer, &row).expect("interval row");
+    }
+    std::io::Write::flush(&mut writer).expect("flush intervals");
+    let index_path = root.join("ensembl-regulation.interval-index.json");
+    crate::ensembl_regulation::prepare_interval_index(
+        intervals_path.to_string_lossy().as_ref(),
+        index_path.to_string_lossy().as_ref(),
+        source,
+    )
+    .expect("prepare Ensembl Regulation index");
+    index_path
+}
+
+#[test]
+fn query_ensembl_regulation_projects_release_bound_annotation() {
+    let root = tempdir().expect("tempdir");
+    let index_path = write_ensembl_regulation_index_fixture(
+        root.path(),
+        crate::ensembl_regulation::ENSEMBL_REGULATION_2026_08_GRCH38_SOURCE_ID,
+    );
+    let mut engine = engine_with_rmsk_anchored_sequence("ensembl_plus", "+");
+    let result = engine
+        .apply(Operation::QueryEnsemblRegulationOverlaps {
+            seq_id: "ensembl_plus".to_string(),
+            index_path: index_path.to_string_lossy().to_string(),
+            intervals_path: None,
+            start_0based: Some(400),
+            end_0based_exclusive: Some(700),
+            feature_types: vec![],
+            limit: None,
+            path: None,
+        })
+        .expect("query Ensembl Regulation");
+    let report = result
+        .ensembl_regulation_overlaps
+        .expect("Ensembl overlap report");
+    assert_eq!(report.schema, "gentle.ensembl_regulation_overlap.v1");
+    assert_eq!(report.source.annotation_release, "2026-08");
+    assert_eq!(report.source.gene_annotation_release, "50");
+    assert_eq!(report.matched_feature_count, 2);
+    assert_eq!(report.rows[0].interval.feature_id, "ENSR_TEST_PROMOTER");
+    assert_eq!(report.rows[0].interval.associated_gene_names, ["GENE1"]);
+    assert!(report.content_identity_verified);
+    assert_eq!(
+        report.assembly_match_status,
+        "assembly_and_species_matched_source_release_pinned"
+    );
+    assert!(
+        report
+            .non_claims
+            .iter()
+            .any(|value| value.contains("quantitative signals were not evaluated"))
+    );
+}
+
+#[test]
+fn materialized_ensembl_strand_is_relative_to_reverse_anchor() {
+    let root = tempdir().expect("tempdir");
+    let index_path = write_ensembl_regulation_index_fixture(
+        root.path(),
+        crate::ensembl_regulation::ENSEMBL_REGULATION_2026_08_GRCH38_SOURCE_ID,
+    );
+    let mut engine = engine_with_rmsk_anchored_sequence("ensembl_minus", "-");
+    let result = engine
+        .apply(Operation::MaterializeEnsemblRegulationFeatures {
+            seq_id: "ensembl_minus".to_string(),
+            index_path: index_path.to_string_lossy().to_string(),
+            intervals_path: None,
+            feature_types: vec!["ctcf".to_string()],
+            max_features: Some(10),
+            clear_existing: Some(true),
+            path: None,
+        })
+        .expect("materialize Ensembl Regulation");
+    assert_eq!(
+        result
+            .ensembl_regulation_materialization
+            .as_ref()
+            .map(|report| report.added_feature_count),
+        Some(1)
+    );
+    let feature = engine.state().sequences["ensembl_minus"]
+        .features()
+        .first()
+        .expect("materialized Ensembl feature");
+    assert!(!crate::feature_location::feature_is_reverse(feature));
+    assert_eq!(
+        feature.qualifier_values("ensembl_genomic_strand").next(),
+        Some("-")
+    );
+    assert_eq!(
+        feature
+            .qualifier_values("ensembl_regulation_release")
+            .next(),
+        Some("2026-08")
+    );
+}
+
+#[test]
+fn query_ensembl_regulation_rejects_grcm39_for_grch38_anchor() {
+    let root = tempdir().expect("tempdir");
+    let index_path = write_ensembl_regulation_index_fixture(
+        root.path(),
+        crate::ensembl_regulation::ENSEMBL_REGULATION_2026_08_GRCM39_SOURCE_ID,
+    );
+    let mut engine = engine_with_rmsk_anchored_sequence("ensembl_human", "+");
+    let error = engine
+        .apply(Operation::QueryEnsemblRegulationOverlaps {
+            seq_id: "ensembl_human".to_string(),
+            index_path: index_path.to_string_lossy().to_string(),
+            intervals_path: None,
+            start_0based: None,
+            end_0based_exclusive: None,
+            feature_types: vec![],
+            limit: None,
+            path: None,
+        })
+        .expect_err("GRCm39 resource must not be projected onto GRCh38 anchor");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(
+        error
+            .message
+            .contains("species and assemblies must not be mixed")
+    );
+}
+
 #[test]
 fn set_display_visibility_controls_repeat_features() {
     let mut engine = GentleEngine::default();
@@ -45192,4 +65571,1933 @@ fn repeat_transcript_geometry_resolves_5utr_promoter_and_cds_stop_on_both_strand
     assert_eq!(stop.anchor_1based, Some(140));
     assert_eq!(stop.start_1based, Some(130));
     assert_eq!(stop.end_1based, Some(190));
+}
+
+fn feature_location_edit_engine() -> GentleEngine {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(100)).expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "gene".into(),
+        location: gb_io::seq::Location::simple_range(10, 30),
+        qualifiers: vec![("gene".into(), Some("TEST1".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(10, 50),
+        qualifiers: vec![("transcript_id".into(), Some("TEST1-201".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "CDS".into(),
+        location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::simple_range(
+            40, 60,
+        ))),
+        qualifiers: vec![],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("seq".to_string(), dna);
+    GentleEngine::from_state(state)
+}
+
+#[test]
+fn feature_record_curation_annotation_fingerprint_survives_project_round_trip() {
+    let engine = feature_location_edit_engine();
+    let dna = &engine.state().sequences["seq"];
+    let before = crate::feature_record_curation::annotation_state_fingerprint_sha256(
+        "seq",
+        dna.len(),
+        dna.is_circular(),
+        dna.features(),
+    )
+    .expect("fingerprint");
+    let encoded = serde_json::to_string(engine.state()).expect("project serializes");
+    let decoded: ProjectState = serde_json::from_str(&encoded).expect("project deserializes");
+    let dna = &decoded.sequences["seq"];
+    let after = crate::feature_record_curation::annotation_state_fingerprint_sha256(
+        "seq",
+        dna.len(),
+        dna.is_circular(),
+        dna.features(),
+    )
+    .expect("round-trip fingerprint");
+    assert_eq!(after, before);
+}
+
+#[test]
+fn feature_record_curation_create_preview_apply_and_undo_preserve_record() {
+    let mut engine = feature_location_edit_engine();
+    let initial_features = engine.state().sequences["seq"].features().clone();
+    let initial_undo = engine.undo_available();
+    let preview = engine
+        .apply(Operation::PreviewFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Create(FeatureRecordCreateRequest {
+                seq_id: "seq".to_string(),
+                feature_kind: "exon".to_string(),
+                start_0based: 15,
+                end_0based_exclusive: 25,
+                strand: FeatureLocationEditStrand::Reverse,
+                qualifiers: vec![
+                    FeatureRecordQualifier {
+                        key: "gene".to_string(),
+                        value: Some("TEST1".to_string()),
+                    },
+                    FeatureRecordQualifier {
+                        key: "pseudo".to_string(),
+                        value: None,
+                    },
+                    FeatureRecordQualifier {
+                        key: "note".to_string(),
+                        value: Some("first".to_string()),
+                    },
+                    FeatureRecordQualifier {
+                        key: "note".to_string(),
+                        value: Some("second".to_string()),
+                    },
+                ],
+                expected_annotation_state_fingerprint_sha256: None,
+            }),
+        })
+        .expect("create preview");
+    let report = preview
+        .feature_record_curation_report
+        .expect("curation report");
+    assert_eq!(report.schema, FEATURE_RECORD_CURATION_SCHEMA);
+    assert_eq!(report.operation_kind, FeatureRecordCurationKind::Create);
+    assert!(report.dry_run);
+    assert!(!report.applied);
+    assert_ne!(
+        report.before_annotation_state_fingerprint_sha256,
+        report.after_annotation_state_fingerprint_sha256
+    );
+    let FeatureRecordCurationOutcome::Create {
+        proposed_feature,
+        created_feature_index,
+    } = &report.outcome
+    else {
+        panic!("create outcome");
+    };
+    assert_eq!(*created_feature_index, None);
+    assert_eq!(proposed_feature.feature_kind, "exon");
+    assert_eq!(proposed_feature.qualifiers[1].value, None);
+    assert_eq!(proposed_feature.qualifiers[2].key, "note");
+    assert_eq!(proposed_feature.qualifiers[3].key, "note");
+    assert!(report.review_candidates.iter().any(|candidate| {
+        candidate.evidence.iter().any(|evidence| {
+            matches!(
+                evidence,
+                FeatureRecordReviewEvidence::SharedIdentifier {
+                    qualifier_key,
+                    qualifier_value,
+                    ..
+                } if qualifier_key == "gene" && qualifier_value == "TEST1"
+            )
+        })
+    }));
+    assert!(report.review_candidates.iter().any(|candidate| {
+        candidate
+            .evidence
+            .contains(&FeatureRecordReviewEvidence::OverlappingLocation)
+    }));
+    assert!(preview.warnings.is_empty());
+    assert_eq!(
+        engine.state().sequences["seq"].features(),
+        &initial_features
+    );
+    assert_eq!(engine.undo_available(), initial_undo);
+
+    let applied = engine
+        .apply(Operation::ApplyFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Create(FeatureRecordCreateRequest {
+                seq_id: "seq".to_string(),
+                feature_kind: "exon".to_string(),
+                start_0based: 15,
+                end_0based_exclusive: 25,
+                strand: FeatureLocationEditStrand::Reverse,
+                qualifiers: proposed_feature.qualifiers.clone(),
+                expected_annotation_state_fingerprint_sha256: Some(
+                    report.before_annotation_state_fingerprint_sha256.clone(),
+                ),
+            }),
+        })
+        .expect("create apply");
+    assert_eq!(applied.changed_seq_ids, vec!["seq"]);
+    let applied_report = applied
+        .feature_record_curation_report
+        .expect("applied report");
+    assert!(matches!(
+        applied_report.outcome,
+        FeatureRecordCurationOutcome::Create {
+            created_feature_index: Some(3),
+            ..
+        }
+    ));
+    let created = &engine.state().sequences["seq"].features()[3];
+    assert_eq!(
+        created.location,
+        gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::simple_range(15, 25)))
+    );
+    assert_eq!(
+        created.qualifiers,
+        vec![
+            ("gene".into(), Some("TEST1".to_string())),
+            ("pseudo".into(), None),
+            ("note".into(), Some("first".to_string())),
+            ("note".into(), Some("second".to_string())),
+        ]
+    );
+    let created_qualifiers = created.qualifiers.clone();
+    assert_eq!(engine.undo_available(), initial_undo + 1);
+    engine.undo_last_operation().expect("undo create");
+    assert_eq!(
+        engine.state().sequences["seq"].features(),
+        &initial_features
+    );
+    engine.redo_last_operation().expect("redo create");
+    assert_eq!(engine.state().sequences["seq"].features().len(), 4);
+    assert_eq!(
+        engine.state().sequences["seq"].features()[3].qualifiers,
+        created_qualifiers
+    );
+}
+
+#[test]
+fn feature_record_curation_rejects_missing_and_stale_annotation_lock() {
+    let mut engine = feature_location_edit_engine();
+    let request = FeatureRecordCreateRequest {
+        seq_id: "seq".to_string(),
+        feature_kind: "misc_feature".to_string(),
+        start_0based: 70,
+        end_0based_exclusive: 80,
+        strand: FeatureLocationEditStrand::Forward,
+        qualifiers: vec![],
+        expected_annotation_state_fingerprint_sha256: None,
+    };
+    let error = engine
+        .apply(Operation::ApplyFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Create(request.clone()),
+        })
+        .expect_err("missing annotation lock rejected");
+    assert!(error.message.contains("annotation-state fingerprint"));
+
+    let preview = engine
+        .apply(Operation::PreviewFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Create(request.clone()),
+        })
+        .expect("preview");
+    let report = preview.feature_record_curation_report.expect("report");
+    engine
+        .state
+        .sequences
+        .get_mut("seq")
+        .expect("seq")
+        .features_mut()
+        .push(gb_io::seq::Feature {
+            kind: "misc_feature".into(),
+            location: gb_io::seq::Location::simple_range(80, 90),
+            qualifiers: vec![],
+        });
+    let error = engine
+        .apply(Operation::ApplyFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Create(FeatureRecordCreateRequest {
+                expected_annotation_state_fingerprint_sha256: Some(
+                    report.before_annotation_state_fingerprint_sha256.clone(),
+                ),
+                ..request
+            }),
+        })
+        .expect_err("stale annotation lock rejected");
+    assert!(error.message.contains("annotations changed after preview"));
+}
+
+#[test]
+fn feature_record_curation_delete_accepts_complex_location_and_is_undoable() {
+    let mut engine = feature_location_edit_engine();
+    let complex_location =
+        gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::Range(
+                (10, gb_io::seq::Before(true)),
+                (20, gb_io::seq::After(false)),
+            ),
+            gb_io::seq::Location::Order(vec![
+                gb_io::seq::Location::simple_range(30, 40),
+                gb_io::seq::Location::simple_range(50, 60),
+            ]),
+        ])));
+    engine
+        .state
+        .sequences
+        .get_mut("seq")
+        .expect("seq")
+        .features_mut()[1]
+        .location = complex_location.clone();
+    let original_features = engine.state().sequences["seq"].features().clone();
+    let initial_undo = engine.undo_available();
+    let preview = engine
+        .apply(Operation::PreviewFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Delete(FeatureRecordDeleteRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 1,
+                expected_feature_fingerprint_sha256: None,
+                expected_annotation_state_fingerprint_sha256: None,
+            }),
+        })
+        .expect("delete preview");
+    let report = preview.feature_record_curation_report.expect("report");
+    let FeatureRecordCurationOutcome::Delete {
+        deleted_feature_index,
+        deleted_feature,
+        shifted_feature_count,
+    } = &report.outcome
+    else {
+        panic!("delete outcome");
+    };
+    assert_eq!(*deleted_feature_index, 1);
+    assert_eq!(*shifted_feature_count, 1);
+    assert_eq!(
+        deleted_feature.location_display,
+        complex_location.to_string()
+    );
+    assert_eq!(
+        engine.state().sequences["seq"].features(),
+        &original_features
+    );
+
+    let stale_feature_error = engine
+        .apply(Operation::ApplyFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Delete(FeatureRecordDeleteRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 1,
+                expected_feature_fingerprint_sha256: Some("sha256:stale".to_string()),
+                expected_annotation_state_fingerprint_sha256: Some(
+                    report.before_annotation_state_fingerprint_sha256.clone(),
+                ),
+            }),
+        })
+        .expect_err("stale feature lock rejected");
+    assert!(
+        stale_feature_error
+            .message
+            .contains("changed after preview")
+    );
+
+    let applied = engine
+        .apply(Operation::ApplyFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Delete(FeatureRecordDeleteRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 1,
+                expected_feature_fingerprint_sha256: Some(
+                    deleted_feature.feature_fingerprint_sha256.clone(),
+                ),
+                expected_annotation_state_fingerprint_sha256: Some(
+                    report.before_annotation_state_fingerprint_sha256.clone(),
+                ),
+            }),
+        })
+        .expect("delete apply");
+    assert_eq!(applied.changed_seq_ids, vec!["seq"]);
+    assert_eq!(engine.state().sequences["seq"].features().len(), 2);
+    assert_eq!(
+        engine.state().sequences["seq"].features()[1],
+        original_features[2]
+    );
+    assert_eq!(engine.undo_available(), initial_undo + 1);
+    engine.undo_last_operation().expect("undo delete");
+    assert_eq!(
+        engine.state().sequences["seq"].features(),
+        &original_features
+    );
+    engine.redo_last_operation().expect("redo delete");
+    assert_eq!(engine.state().sequences["seq"].features().len(), 2);
+    assert_eq!(
+        engine.state().sequences["seq"].features()[1],
+        original_features[2]
+    );
+}
+
+#[test]
+fn feature_record_curation_split_then_merge_is_preview_locked_and_undoable() {
+    let mut engine = feature_location_edit_engine();
+    let original_features = engine.state().sequences["seq"].features().clone();
+    let split_preview = engine
+        .apply(Operation::PreviewFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Split(FeatureRecordSplitRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 0,
+                split_at_0based: 20,
+                expected_feature_fingerprint_sha256: None,
+                expected_annotation_state_fingerprint_sha256: None,
+            }),
+        })
+        .expect("split preview");
+    let split_report = split_preview
+        .feature_record_curation_report
+        .expect("split report");
+    assert_eq!(split_report.schema, FEATURE_RECORD_CURATION_SCHEMA);
+    assert_eq!(
+        split_report.operation_kind,
+        FeatureRecordCurationKind::Split
+    );
+    let FeatureRecordCurationOutcome::Split {
+        original_feature,
+        genomic_left_feature,
+        genomic_right_feature,
+        resulting_feature_indices,
+        shifted_feature_count,
+        ..
+    } = &split_report.outcome
+    else {
+        panic!("split outcome");
+    };
+    assert_eq!(*resulting_feature_indices, [0, 1]);
+    assert_eq!(*shifted_feature_count, 2);
+    assert_eq!(genomic_left_feature.bounding_start_0based, Some(10));
+    assert_eq!(genomic_left_feature.bounding_end_0based_exclusive, Some(20));
+    assert_eq!(genomic_right_feature.bounding_start_0based, Some(20));
+    assert_eq!(
+        genomic_right_feature.bounding_end_0based_exclusive,
+        Some(30)
+    );
+    assert_eq!(genomic_left_feature.qualifiers, original_feature.qualifiers);
+    assert_eq!(
+        genomic_right_feature.qualifiers,
+        original_feature.qualifiers
+    );
+
+    let split_apply = engine
+        .apply(Operation::ApplyFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Split(FeatureRecordSplitRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 0,
+                split_at_0based: 20,
+                expected_feature_fingerprint_sha256: Some(
+                    original_feature.feature_fingerprint_sha256.clone(),
+                ),
+                expected_annotation_state_fingerprint_sha256: Some(
+                    split_report
+                        .before_annotation_state_fingerprint_sha256
+                        .clone(),
+                ),
+            }),
+        })
+        .expect("split apply");
+    assert_eq!(split_apply.changed_seq_ids, vec!["seq"]);
+    assert_eq!(engine.state().sequences["seq"].features().len(), 4);
+    assert_eq!(
+        engine.state().sequences["seq"].features()[0].location,
+        gb_io::seq::Location::simple_range(10, 20)
+    );
+    assert_eq!(
+        engine.state().sequences["seq"].features()[1].location,
+        gb_io::seq::Location::simple_range(20, 30)
+    );
+    engine.undo_last_operation().expect("undo split");
+    assert_eq!(
+        engine.state().sequences["seq"].features(),
+        &original_features
+    );
+    engine.redo_last_operation().expect("redo split");
+
+    let merge_preview = engine
+        .apply(Operation::PreviewFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Merge(FeatureRecordMergeRequest {
+                seq_id: "seq".to_string(),
+                first_feature_index: 0,
+                second_feature_index: 1,
+                expected_first_feature_fingerprint_sha256: None,
+                expected_second_feature_fingerprint_sha256: None,
+                expected_annotation_state_fingerprint_sha256: None,
+            }),
+        })
+        .expect("merge preview");
+    let merge_report = merge_preview
+        .feature_record_curation_report
+        .expect("merge report");
+    let FeatureRecordCurationOutcome::Merge {
+        source_feature_indices,
+        source_features,
+        merged_feature,
+        resulting_feature_index,
+        removed_feature_index,
+        shifted_feature_count,
+    } = &merge_report.outcome
+    else {
+        panic!("merge outcome");
+    };
+    assert_eq!(*source_feature_indices, [0, 1]);
+    assert_eq!(*resulting_feature_index, 0);
+    assert_eq!(*removed_feature_index, 1);
+    assert_eq!(*shifted_feature_count, 2);
+    assert_eq!(merged_feature.location_display, "11..30");
+
+    engine
+        .apply(Operation::ApplyFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Merge(FeatureRecordMergeRequest {
+                seq_id: "seq".to_string(),
+                first_feature_index: 0,
+                second_feature_index: 1,
+                expected_first_feature_fingerprint_sha256: Some(
+                    source_features[0].feature_fingerprint_sha256.clone(),
+                ),
+                expected_second_feature_fingerprint_sha256: Some(
+                    source_features[1].feature_fingerprint_sha256.clone(),
+                ),
+                expected_annotation_state_fingerprint_sha256: Some(
+                    merge_report
+                        .before_annotation_state_fingerprint_sha256
+                        .clone(),
+                ),
+            }),
+        })
+        .expect("merge apply");
+    assert_eq!(
+        engine.state().sequences["seq"].features(),
+        &original_features
+    );
+    engine.undo_last_operation().expect("undo merge");
+    assert_eq!(engine.state().sequences["seq"].features().len(), 4);
+    engine.redo_last_operation().expect("redo merge");
+    assert_eq!(
+        engine.state().sequences["seq"].features(),
+        &original_features
+    );
+}
+
+#[test]
+fn feature_record_curation_split_and_merge_reject_ambiguous_semantics() {
+    let mut engine = feature_location_edit_engine();
+    let edge_error = engine
+        .apply(Operation::PreviewFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Split(FeatureRecordSplitRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 0,
+                split_at_0based: 10,
+                expected_feature_fingerprint_sha256: None,
+                expected_annotation_state_fingerprint_sha256: None,
+            }),
+        })
+        .expect_err("edge split rejected");
+    assert!(edge_error.message.contains("strictly inside"));
+
+    let kind_error = engine
+        .apply(Operation::PreviewFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Merge(FeatureRecordMergeRequest {
+                seq_id: "seq".to_string(),
+                first_feature_index: 0,
+                second_feature_index: 1,
+                expected_first_feature_fingerprint_sha256: None,
+                expected_second_feature_fingerprint_sha256: None,
+                expected_annotation_state_fingerprint_sha256: None,
+            }),
+        })
+        .expect_err("kind mismatch rejected");
+    assert!(kind_error.message.contains("matching kinds"));
+
+    let missing_lock_error = engine
+        .apply(Operation::ApplyFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Split(FeatureRecordSplitRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 0,
+                split_at_0based: 20,
+                expected_feature_fingerprint_sha256: None,
+                expected_annotation_state_fingerprint_sha256: None,
+            }),
+        })
+        .expect_err("split without preview locks rejected");
+    assert!(missing_lock_error.message.contains("feature fingerprint"));
+
+    let same_index_error = engine
+        .apply(Operation::PreviewFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Merge(FeatureRecordMergeRequest {
+                seq_id: "seq".to_string(),
+                first_feature_index: 0,
+                second_feature_index: 0,
+                expected_first_feature_fingerprint_sha256: None,
+                expected_second_feature_fingerprint_sha256: None,
+                expected_annotation_state_fingerprint_sha256: None,
+            }),
+        })
+        .expect_err("same-index merge rejected");
+    assert!(same_index_error.message.contains("two distinct"));
+}
+
+#[test]
+fn feature_location_preview_is_read_only_and_apply_is_undoable() {
+    let mut engine = feature_location_edit_engine();
+    let initial_execution = engine.execution_revision();
+    let initial_mutation = engine.mutation_revision();
+    let initial_undo = engine.undo_available();
+    let preview = engine
+        .apply(Operation::PreviewFeatureLocationEdit {
+            request: FeatureLocationEditRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 0,
+                new_start_0based: 12,
+                new_end_0based_exclusive: 35,
+                expected_feature_fingerprint_sha256: None,
+                segment_index: None,
+            },
+        })
+        .expect("preview");
+    let report = preview.feature_location_edit_report.expect("report");
+    assert_eq!(report.schema, FEATURE_LOCATION_EDIT_SCHEMA);
+    let report_json = serde_json::to_value(report.as_ref()).expect("report serializes");
+    assert_eq!(
+        report_json
+            .as_object()
+            .expect("object")
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([
+            "after",
+            "after_feature_fingerprint_sha256",
+            "applied",
+            "before",
+            "before_feature_fingerprint_sha256",
+            "dry_run",
+            "feature_index",
+            "feature_kind",
+            "fingerprint_algorithm",
+            "related_features",
+            "schema",
+            "seq_id",
+        ])
+    );
+    assert!(report.dry_run);
+    assert!(!report.applied);
+    assert_eq!(report.before.start_1based, 11);
+    assert_eq!(report.after.end_1based_inclusive, 35);
+    assert_eq!(report.related_features.len(), 1);
+    assert_eq!(
+        report.related_features[0].match_reasons,
+        vec![RelatedFeatureBoundaryReason::SharesOldStartBoundary]
+    );
+    assert_eq!(engine.mutation_revision(), initial_mutation);
+    assert_eq!(engine.execution_revision(), initial_execution + 1);
+    assert_eq!(engine.undo_available(), initial_undo);
+    assert_eq!(
+        engine.state().sequences["seq"].features()[0].location,
+        gb_io::seq::Location::simple_range(10, 30)
+    );
+
+    let applied = engine
+        .apply(Operation::EditFeatureLocation {
+            request: FeatureLocationEditRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 0,
+                new_start_0based: 12,
+                new_end_0based_exclusive: 35,
+                expected_feature_fingerprint_sha256: Some(
+                    report.before_feature_fingerprint_sha256.clone(),
+                ),
+                segment_index: None,
+            },
+        })
+        .expect("apply");
+    assert_eq!(applied.changed_seq_ids, vec!["seq"]);
+    assert_eq!(
+        engine.state().sequences["seq"].features()[0].location,
+        gb_io::seq::Location::simple_range(12, 35)
+    );
+    assert_eq!(engine.undo_available(), initial_undo + 1);
+    engine.undo_last_operation().expect("undo");
+    assert_eq!(
+        engine.state().sequences["seq"].features()[0].location,
+        gb_io::seq::Location::simple_range(10, 30)
+    );
+    engine.redo_last_operation().expect("redo");
+    assert_eq!(
+        engine.state().sequences["seq"].features()[0].location,
+        gb_io::seq::Location::simple_range(12, 35)
+    );
+}
+
+#[test]
+fn feature_location_segment_edit_preserves_join_ast_and_is_undoable() {
+    let mut engine = feature_location_edit_engine();
+    let original_qualifiers = vec![
+        ("transcript_id".into(), Some("TEST1-201".to_string())),
+        ("note".into(), Some("preserve-order".to_string())),
+    ];
+    {
+        let feature = &mut engine
+            .state
+            .sequences
+            .get_mut("seq")
+            .expect("seq")
+            .features_mut()[1];
+        feature.location = gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(10, 20),
+            gb_io::seq::Location::simple_range(30, 40),
+            gb_io::seq::Location::simple_range(50, 60),
+        ]);
+        feature.qualifiers = original_qualifiers.clone();
+    }
+    let original_location = engine.state().sequences["seq"].features()[1]
+        .location
+        .clone();
+    let initial_undo = engine.undo_available();
+    let preview = engine
+        .apply(Operation::PreviewFeatureLocationEdit {
+            request: FeatureLocationEditRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 1,
+                new_start_0based: 32,
+                new_end_0based_exclusive: 42,
+                expected_feature_fingerprint_sha256: None,
+                segment_index: Some(1),
+            },
+        })
+        .expect("segment preview");
+    let report = preview.feature_location_edit_report.expect("report");
+    assert_eq!(report.schema, FEATURE_LOCATION_EDIT_SCHEMA_V2);
+    assert_eq!(
+        report.target_scope,
+        Some(FeatureLocationEditTargetScope::Segment)
+    );
+    assert_eq!(report.before.start_0based, 30);
+    assert_eq!(report.after.start_0based, 32);
+    let context = report.compound_context.as_ref().expect("compound context");
+    assert_eq!(context.container_kind, FeatureLocationCompoundKind::Join);
+    assert_eq!(context.segment_index, 1);
+    assert_eq!(context.biological_segment_number, 2);
+    assert_eq!(
+        engine.state().sequences["seq"].features()[1].location,
+        original_location
+    );
+    assert_eq!(engine.undo_available(), initial_undo);
+
+    engine
+        .apply(Operation::EditFeatureLocation {
+            request: FeatureLocationEditRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 1,
+                new_start_0based: 32,
+                new_end_0based_exclusive: 42,
+                expected_feature_fingerprint_sha256: Some(
+                    report.before_feature_fingerprint_sha256.clone(),
+                ),
+                segment_index: Some(1),
+            },
+        })
+        .expect("segment apply");
+    let feature = &engine.state().sequences["seq"].features()[1];
+    assert_eq!(
+        feature.location,
+        gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(10, 20),
+            gb_io::seq::Location::simple_range(32, 42),
+            gb_io::seq::Location::simple_range(50, 60),
+        ])
+    );
+    assert_eq!(feature.qualifiers, original_qualifiers);
+    assert_eq!(engine.undo_available(), initial_undo + 1);
+    engine.undo_last_operation().expect("undo");
+    assert_eq!(
+        engine.state().sequences["seq"].features()[1].location,
+        original_location
+    );
+}
+
+#[test]
+fn feature_location_reverse_order_segment_reports_biological_number_and_warnings() {
+    let mut engine = feature_location_edit_engine();
+    {
+        let feature = &mut engine
+            .state
+            .sequences
+            .get_mut("seq")
+            .expect("seq")
+            .features_mut()[2];
+        feature.location =
+            gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::Order(vec![
+                gb_io::seq::Location::simple_range(10, 20),
+                gb_io::seq::Location::simple_range(30, 40),
+                gb_io::seq::Location::simple_range(50, 60),
+            ])));
+        feature.qualifiers = vec![("codon_start".into(), Some("1".to_string()))];
+    }
+    let preview = engine
+        .apply(Operation::PreviewFeatureLocationEdit {
+            request: FeatureLocationEditRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 2,
+                new_start_0based: 5,
+                new_end_0based_exclusive: 19,
+                expected_feature_fingerprint_sha256: None,
+                segment_index: Some(1),
+            },
+        })
+        .expect("reverse order preview");
+    let report = preview.feature_location_edit_report.expect("report");
+    let context = report.compound_context.as_ref().expect("context");
+    assert_eq!(context.container_kind, FeatureLocationCompoundKind::Order);
+    assert_eq!(context.biological_segment_number, 2);
+    assert_eq!(report.before.five_prime_position_1based, 40);
+    assert_eq!(report.before.three_prime_position_1based, 31);
+    assert!(report.compound_validation_warnings.contains(
+        &FeatureLocationCompoundWarning::OverlappingSegments {
+            edited_segment_index: 1,
+            overlapping_segment_index: 0,
+        }
+    ));
+    assert!(report.compound_validation_warnings.contains(
+        &FeatureLocationCompoundWarning::CdsCodingLengthDeltaNotDivisibleByThree {
+            signed_length_delta_nt: 4,
+        }
+    ));
+    assert!(
+        preview
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("/codon_start was preserved"))
+    );
+}
+
+#[test]
+fn feature_location_fingerprint_survives_project_json_round_trip() {
+    let engine = feature_location_edit_engine();
+    let before = crate::feature_location::feature_fingerprint_sha256(
+        &engine.state().sequences["seq"].features()[0],
+    )
+    .expect("fingerprint");
+    let encoded = serde_json::to_string(engine.state()).expect("project serializes");
+    let decoded: ProjectState = serde_json::from_str(&encoded).expect("project deserializes");
+    let after = crate::feature_location::feature_fingerprint_sha256(
+        &decoded.sequences["seq"].features()[0],
+    )
+    .expect("fingerprint");
+    assert_eq!(after, before);
+}
+
+#[test]
+fn feature_location_edit_preserves_reverse_strand_and_rejects_stale_preview() {
+    let mut engine = feature_location_edit_engine();
+    let preview = engine
+        .apply(Operation::PreviewFeatureLocationEdit {
+            request: FeatureLocationEditRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 2,
+                new_start_0based: 42,
+                new_end_0based_exclusive: 65,
+                expected_feature_fingerprint_sha256: None,
+                segment_index: None,
+            },
+        })
+        .expect("preview");
+    let report = preview.feature_location_edit_report.expect("report");
+    assert_eq!(report.before.strand, FeatureLocationEditStrand::Reverse);
+    assert_eq!(report.after.five_prime_position_1based, 65);
+    assert_eq!(report.after.three_prime_position_1based, 43);
+    let error = engine
+        .apply(Operation::EditFeatureLocation {
+            request: FeatureLocationEditRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 2,
+                new_start_0based: 42,
+                new_end_0based_exclusive: 65,
+                expected_feature_fingerprint_sha256: Some("sha256:stale".to_string()),
+                segment_index: None,
+            },
+        })
+        .expect_err("stale preview rejected");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("changed after preview"));
+
+    engine
+        .apply(Operation::EditFeatureLocation {
+            request: FeatureLocationEditRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 2,
+                new_start_0based: 42,
+                new_end_0based_exclusive: 65,
+                expected_feature_fingerprint_sha256: Some(
+                    report.before_feature_fingerprint_sha256.clone(),
+                ),
+                segment_index: None,
+            },
+        })
+        .expect("apply");
+    assert_eq!(
+        engine.state().sequences["seq"].features()[2].location,
+        gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::simple_range(42, 65)))
+    );
+}
+
+#[test]
+fn feature_location_edit_rejects_compound_and_fuzzy_locations() {
+    let mut engine = feature_location_edit_engine();
+    engine
+        .state
+        .sequences
+        .get_mut("seq")
+        .expect("seq")
+        .features_mut()[0]
+        .location = gb_io::seq::Location::Join(vec![
+        gb_io::seq::Location::simple_range(10, 20),
+        gb_io::seq::Location::simple_range(25, 30),
+    ]);
+    let error = engine
+        .apply(Operation::PreviewFeatureLocationEdit {
+            request: FeatureLocationEditRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 0,
+                new_start_0based: 12,
+                new_end_0based_exclusive: 35,
+                expected_feature_fingerprint_sha256: None,
+                segment_index: None,
+            },
+        })
+        .expect_err("compound location rejected");
+    assert_eq!(error.code, ErrorCode::Unsupported);
+
+    engine
+        .state
+        .sequences
+        .get_mut("seq")
+        .expect("seq")
+        .features_mut()[0]
+        .location = gb_io::seq::Location::Range(
+        (10, gb_io::seq::Before(true)),
+        (30, gb_io::seq::After(false)),
+    );
+    let error = engine
+        .apply(Operation::PreviewFeatureLocationEdit {
+            request: FeatureLocationEditRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 0,
+                new_start_0based: 12,
+                new_end_0based_exclusive: 35,
+                expected_feature_fingerprint_sha256: None,
+                segment_index: None,
+            },
+        })
+        .expect_err("fuzzy location rejected");
+    assert_eq!(error.code, ErrorCode::Unsupported);
+}
+
+#[test]
+fn feature_location_segment_edit_rejects_invalid_index_and_nested_compound() {
+    let mut engine = feature_location_edit_engine();
+    engine
+        .state
+        .sequences
+        .get_mut("seq")
+        .expect("seq")
+        .features_mut()[0]
+        .location = gb_io::seq::Location::Join(vec![
+        gb_io::seq::Location::simple_range(10, 20),
+        gb_io::seq::Location::simple_range(25, 30),
+    ]);
+    let error = engine
+        .apply(Operation::PreviewFeatureLocationEdit {
+            request: FeatureLocationEditRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 0,
+                new_start_0based: 12,
+                new_end_0based_exclusive: 18,
+                expected_feature_fingerprint_sha256: None,
+                segment_index: Some(2),
+            },
+        })
+        .expect_err("invalid segment rejected");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("out of range"));
+
+    engine
+        .state
+        .sequences
+        .get_mut("seq")
+        .expect("seq")
+        .features_mut()[0]
+        .location = gb_io::seq::Location::Join(vec![
+        gb_io::seq::Location::simple_range(10, 20),
+        gb_io::seq::Location::Order(vec![
+            gb_io::seq::Location::simple_range(25, 30),
+            gb_io::seq::Location::simple_range(35, 40),
+        ]),
+    ]);
+    let error = engine
+        .apply(Operation::PreviewFeatureLocationEdit {
+            request: FeatureLocationEditRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 0,
+                new_start_0based: 12,
+                new_end_0based_exclusive: 18,
+                expected_feature_fingerprint_sha256: None,
+                segment_index: Some(0),
+            },
+        })
+        .expect_err("nested compound rejected");
+    assert_eq!(error.code, ErrorCode::Unsupported);
+}
+
+#[test]
+fn feature_location_edit_rejects_invalid_and_out_of_bounds_ranges() {
+    let cases = [
+        (-1, 10, "must not be negative"),
+        (10, 10, "start_0based < end_0based_exclusive"),
+        (20, 10, "start_0based < end_0based_exclusive"),
+        (0, 101, "exceeds sequence"),
+    ];
+    for (new_start_0based, new_end_0based_exclusive, expected_message) in cases {
+        let mut engine = feature_location_edit_engine();
+        let error = engine
+            .apply(Operation::PreviewFeatureLocationEdit {
+                request: FeatureLocationEditRequest {
+                    seq_id: "seq".to_string(),
+                    feature_index: 0,
+                    new_start_0based,
+                    new_end_0based_exclusive,
+                    expected_feature_fingerprint_sha256: None,
+                    segment_index: None,
+                },
+            })
+            .expect_err("invalid range rejected");
+        assert_eq!(error.code, ErrorCode::InvalidInput);
+        assert!(
+            error.message.contains(expected_message),
+            "unexpected error for {new_start_0based}..{new_end_0based_exclusive}: {}",
+            error.message
+        );
+    }
+}
+
+#[test]
+fn gene_isoform_assay_study_planner_normalizes_inputs_and_emits_exact_operation_batch() {
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let view = engine
+        .inspect_feature_expert(
+            "panel_src",
+            &FeatureExpertTarget::SplicingFeature {
+                feature_id: 0,
+                scope: SplicingScopePreset::TargetGroupTargetStrand,
+            },
+        )
+        .expect("synthetic splicing view");
+    let FeatureExpertView::Splicing(splicing) = view else {
+        panic!("expected splicing view")
+    };
+    let all_transcript_count = splicing.transcript_count;
+    let responsive = GeneIsoformEvidenceComponent {
+        status: IsoformEvidenceAssessmentStatus::Observed,
+        measurements: vec![GeneIsoformEvidenceMeasurement {
+            evidence_id: "array_psr_1_ta".to_string(),
+            status: IsoformEvidenceAssessmentStatus::Observed,
+            classification: "regional_probe_activity".to_string(),
+            condition: Some("TAp73alpha-GFP".to_string()),
+            value: Some(-0.8),
+            unit: Some("raw_probe_set_effect".to_string()),
+            explanation: "Synthetic raw regional effect; not formal differential expression."
+                .to_string(),
+        }],
+        ..GeneIsoformEvidenceComponent::default()
+    };
+    let report = GeneIsoformEvidenceReport {
+        schema: GENE_ISOFORM_EVIDENCE_SCHEMA.to_string(),
+        seq_id: "panel_src".to_string(),
+        gene_symbol: "PANEL1".to_string(),
+        panel_id: "panel1_isoforms".to_string(),
+        annotation_release: Some("synthetic-1".to_string()),
+        splicing: Some(splicing),
+        exon_families: vec![
+            GeneIsoformExonFamilyRow {
+                exon_family_id: "EXF:synthetic:1".to_string(),
+                annotation_model_count: 1,
+                transcript_ids: vec!["TX1".to_string()],
+                components: GeneIsoformEvidenceComponents {
+                    abundance: GeneIsoformEvidenceComponent {
+                        status: IsoformEvidenceAssessmentStatus::Observed,
+                        value: Some(10.0),
+                        unit: Some("raw_intensity".to_string()),
+                        ..GeneIsoformEvidenceComponent::default()
+                    },
+                    responsiveness: responsive.clone(),
+                    assayability: GeneIsoformEvidenceComponent {
+                        status: IsoformEvidenceAssessmentStatus::ConstraintOnly,
+                        classification: "candidate_region".to_string(),
+                        ..GeneIsoformEvidenceComponent::default()
+                    },
+                    ..GeneIsoformEvidenceComponents::default()
+                },
+                ..GeneIsoformExonFamilyRow::default()
+            },
+            GeneIsoformExonFamilyRow {
+                exon_family_id: "EXF:synthetic:common".to_string(),
+                annotation_model_count: all_transcript_count,
+                components: GeneIsoformEvidenceComponents {
+                    responsiveness: responsive,
+                    ..GeneIsoformEvidenceComponents::default()
+                },
+                ..GeneIsoformExonFamilyRow::default()
+            },
+        ],
+        evidence_items: vec![GeneIsoformEvidenceItem {
+            evidence_id: "array_psr_1".to_string(),
+            source_kind: IsoformEvidenceSourceKind::ArrayProbe,
+            source_id: "PSR_SYNTHETIC_1".to_string(),
+            status: IsoformEvidenceAssessmentStatus::Observed,
+            target_ids: vec!["EXF:synthetic:1".to_string()],
+            method: "synthetic fixture".to_string(),
+            ..GeneIsoformEvidenceItem::default()
+        }],
+        ..GeneIsoformEvidenceReport::default()
+    };
+    let temp = tempdir().expect("temp dir");
+    let evidence_path = temp.path().join("isoform_evidence.json");
+    fs::write(
+        &evidence_path,
+        serde_json::to_vec_pretty(&report).expect("serialize evidence"),
+    )
+    .expect("write evidence");
+    let plan_path = temp.path().join("plan.json");
+    let workflow_path = temp.path().join("approved_operations.workflow.json");
+    let request = GeneIsoformAssayStudyPlanRequest {
+        label: "Synthetic PANEL1 study".to_string(),
+        isoform_evidence_path: evidence_path.to_string_lossy().to_string(),
+        contrasts: vec![GeneIsoformAssayStudyContrast {
+            contrast_id: "TA".to_string(),
+            condition_labels: vec!["TAp73alpha-GFP".to_string()],
+        }],
+        policy: GeneIsoformAssayStudyPolicy {
+            min_equivalence_groups_for_comprehensive: 2,
+            min_responsive_regions_for_comprehensive: 1,
+            ..GeneIsoformAssayStudyPolicy::default()
+        },
+        junction_evidence: vec![GeneIsoformAssayStudyInputRef {
+            input_kind: "probe_region_evidence_interpretation".to_string(),
+            path: "test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json"
+                .to_string(),
+            ..Default::default()
+        }],
+        coverage_universe: TranscriptAssayCoverageUniverse {
+            kind: TranscriptAssayCoverageUniverseKind::ExplicitTranscripts,
+            required_transcript_ids: vec!["TX1".to_string(), "TX2".to_string()],
+            required_uniprot_isoforms: vec![],
+            sources: vec![],
+        },
+        observations: vec![GeneIsoformAssayStudyObservation {
+            observation_id: "wetlab_1".to_string(),
+            statement: "A preliminary band was seen.".to_string(),
+            source: "user notebook".to_string(),
+            validation_status: "confirmed".to_string(),
+            ..GeneIsoformAssayStudyObservation::default()
+        }],
+        ..GeneIsoformAssayStudyPlanRequest::default()
+    };
+    let initial_request = request.clone();
+    let normalized = engine
+        .normalize_gene_isoform_assay_study_request(request.clone())
+        .expect("normalize study request");
+    assert!(
+        normalized
+            .expected_isoform_evidence_sha256
+            .as_deref()
+            .is_some_and(|value| value.starts_with("sha256:"))
+    );
+    assert_eq!(
+        normalized.isoform_evidence_report_id.as_deref(),
+        Some("panel1_isoforms")
+    );
+    assert_eq!(
+        normalized.isoform_evidence_schema.as_deref(),
+        Some(GENE_ISOFORM_EVIDENCE_SCHEMA)
+    );
+    assert!(
+        normalized
+            .policy_sha256
+            .as_deref()
+            .is_some_and(|value| value.starts_with("sha256:"))
+    );
+    assert_eq!(
+        normalized.observations[0].validation_status,
+        "user_supplied_unvalidated"
+    );
+    let result = engine
+        .apply(Operation::PlanGeneIsoformAssayStudy {
+            request,
+            path: Some(plan_path.to_string_lossy().to_string()),
+            workflow_path: Some(workflow_path.to_string_lossy().to_string()),
+        })
+        .expect("plan synthetic gene study");
+    let plan = result
+        .gene_isoform_assay_study_plan
+        .expect("study plan report");
+    assert_eq!(
+        plan.recommended_profile,
+        GeneIsoformAssayStudyProfile::ComprehensiveIsoformDossier
+    );
+    assert_eq!(plan.selected_profile, plan.recommended_profile);
+    assert!(plan.decision_factors.iter().any(|factor| {
+        factor.rule_id == "junction_interpretation_incomplete_provenance" && factor.triggered
+    }));
+    assert!(
+        plan.evidence_summary
+            .missing_evidence
+            .iter()
+            .any(|item| { item.starts_with("junction_interpretation_threshold_provenance:") })
+    );
+    assert_eq!(
+        plan.evidence_summary.responsive_region_ids,
+        vec!["EXF:synthetic:1".to_string()]
+    );
+    assert_eq!(
+        plan.policy_sha256,
+        plan.normalized_request
+            .policy_sha256
+            .clone()
+            .expect("normalized policy digest")
+    );
+    assert_eq!(
+        plan.normalized_request
+            .isoform_evidence_report_id
+            .as_deref(),
+        Some("panel1_isoforms")
+    );
+    assert_eq!(plan.planned_operations.len(), 3);
+    assert_eq!(
+        plan.coverage_resolution.included_transcript_ids,
+        vec!["TX1".to_string(), "TX2".to_string()]
+    );
+    assert!(plan.operation_batch_sha256.starts_with("sha256:"));
+    assert_eq!(
+        plan.normalized_request.observations[0].validation_status,
+        "user_supplied_unvalidated"
+    );
+    assert!(plan.planned_operations.iter().all(|step| {
+        step.operation_sha256.starts_with("sha256:")
+            && step
+                .operation
+                .get("DesignTranscriptAssayPanel")
+                .and_then(|operation| operation.get("coverage_universe"))
+                .and_then(|universe| universe.get("kind"))
+                == Some(&serde_json::json!("explicit_transcripts"))
+    }));
+    let endpoint_step = plan
+        .planned_operations
+        .iter()
+        .find(|step| step.purpose == TranscriptAssayUseTier::LongRangeStructureDiscovery.as_str())
+        .expect("comprehensive plan contains endpoint step");
+    let endpoint_feasibility = endpoint_step
+        .feasibility
+        .as_ref()
+        .expect("planner embeds endpoint geometry feasibility");
+    let endpoint_operation: Operation = serde_json::from_value(endpoint_step.operation.clone())
+        .expect("parse planned endpoint operation");
+    let independently_inspected = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&endpoint_operation)
+        .expect("inspect planned endpoint feasibility");
+    assert_eq!(
+        endpoint_feasibility.operation_sha256,
+        independently_inspected.operation_sha256
+    );
+    assert_ne!(
+        endpoint_feasibility.operation_sha256, endpoint_step.operation_sha256,
+        "feasibility excludes the output path while approval binds the exact operation"
+    );
+    let mut relocated_endpoint_operation = endpoint_operation.clone();
+    let Operation::DesignTranscriptAssayPanel { path, .. } = &mut relocated_endpoint_operation
+    else {
+        panic!("planned endpoint operation has the expected variant");
+    };
+    *path = Some("another/export/location.json".to_string());
+    let relocated_feasibility = engine
+        .inspect_transcript_assay_panel_feasibility_operation(&relocated_endpoint_operation)
+        .expect("inspect relocated endpoint feasibility");
+    assert_eq!(
+        relocated_feasibility.operation_sha256, endpoint_feasibility.operation_sha256,
+        "an export-only path change must not alter computational feasibility provenance"
+    );
+    assert_eq!(
+        endpoint_feasibility.primer3_candidate_pair_limit_per_reaction,
+        4
+    );
+    assert_eq!(
+        endpoint_feasibility.coverage_policy,
+        TranscriptAssayCoveragePolicy::RequireAll
+    );
+    let workflow_bytes = fs::read(&workflow_path).expect("read emitted workflow");
+    let workflow: Workflow =
+        serde_json::from_slice(&workflow_bytes).expect("parse emitted workflow");
+    assert_eq!(workflow.ops.len(), plan.planned_operations.len());
+    assert_eq!(
+        sha256_prefixed_bytes(&workflow_bytes),
+        plan.approved_workflow_sha256
+    );
+    assert_eq!(
+        sha256_prefixed_bytes(&serde_json::to_vec(&workflow.ops).expect("serialize ops")),
+        plan.operation_batch_sha256
+    );
+    assert!(engine.list_transcript_assay_panel_reports().is_empty());
+
+    let mut fallback_request = initial_request.clone();
+    fallback_request.plan_id = Some("panel1_preapproved_fallback".to_string());
+    fallback_request.fallback_submission = TranscriptAssayFallbackSubmissionPolicy {
+        mode: TranscriptAssayFallbackSubmissionMode::PreapprovedInformativePartial,
+        fallback_report_id: String::new(),
+        informative_selection: TranscriptAssayInformativeSelectionPolicy {
+            max_assays: 2,
+            minimum_resolvable_size_difference_bp: 20,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let fallback_plan = engine
+        .apply(Operation::PlanGeneIsoformAssayStudy {
+            request: fallback_request.clone(),
+            path: None,
+            workflow_path: None,
+        })
+        .expect("plan with a pre-approved informative fallback")
+        .gene_isoform_assay_study_plan
+        .expect("fallback-bound study plan");
+    let fallback_operations = fallback_plan
+        .planned_operations
+        .iter()
+        .map(|step| {
+            serde_json::from_value::<Operation>(step.operation.clone())
+                .expect("deserialize fallback-bound planned operation")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        sha256_prefixed_bytes(
+            &serde_json::to_vec(&fallback_operations).expect("serialize fallback operation batch")
+        ),
+        fallback_plan.operation_batch_sha256
+    );
+    let wrapped = fallback_operations
+        .iter()
+        .find_map(|operation| match operation {
+            Operation::DesignTranscriptAssayPanelWithFallback {
+                strict_operation,
+                fallback_submission,
+                ..
+            } => Some((strict_operation.as_ref(), fallback_submission)),
+            _ => None,
+        })
+        .expect("comprehensive plan wraps its strict discrimination panel");
+    assert!(matches!(
+        wrapped.0,
+        Operation::DesignTranscriptAssayPanel {
+            objective: TranscriptAssayPanelObjective::OnePerClass,
+            coverage_policy: TranscriptAssayCoveragePolicy::RequireAll,
+            ..
+        }
+    ));
+    assert_eq!(wrapped.1.informative_selection.max_assays, 2);
+    assert_eq!(
+        wrapped.1.mode,
+        TranscriptAssayFallbackSubmissionMode::PreapprovedInformativePartial
+    );
+    assert!(
+        wrapped
+            .1
+            .fallback_report_id
+            .ends_with("_informative_partial")
+    );
+    assert_eq!(
+        fallback_plan.request_sha256,
+        sha256_prefixed_bytes(
+            &serde_json::to_vec(&fallback_plan.normalized_request)
+                .expect("serialize normalized fallback request")
+        )
+    );
+
+    fallback_request
+        .fallback_submission
+        .informative_selection
+        .max_assays = 3;
+    let different_budget_plan = engine
+        .apply(Operation::PlanGeneIsoformAssayStudy {
+            request: fallback_request,
+            path: None,
+            workflow_path: None,
+        })
+        .expect("plan with a different approved fallback budget")
+        .gene_isoform_assay_study_plan
+        .expect("different-budget study plan");
+    assert_ne!(
+        fallback_plan.request_sha256, different_budget_plan.request_sha256,
+        "the normalized approval identity must bind the fallback budget"
+    );
+    assert_ne!(
+        fallback_plan.operation_batch_sha256, different_budget_plan.operation_batch_sha256,
+        "the exact operation batch must bind the fallback budget"
+    );
+
+    let first_plan_bytes = fs::read(&plan_path).expect("read first plan");
+    let first_plan_sha256 = sha256_prefixed_bytes(&first_plan_bytes);
+    let first_plan_id = plan.plan_id.clone();
+    let first_request_sha256 = plan.request_sha256.clone();
+    let mut next_request = initial_request;
+    next_request.plan_id = Some("panel1_iteration_2".to_string());
+    next_request.prior_plan = Some(GeneIsoformAssayPriorPlanRef {
+        path: plan_path.to_string_lossy().to_string(),
+        expected_sha256: Some(first_plan_sha256.clone()),
+        plan_id: None,
+    });
+    next_request.profile_override = Some(GeneIsoformAssayStudyOverride {
+        selected_profile: GeneIsoformAssayStudyProfile::RoutineCommonRegionScreen,
+        reason: "Retain a compact control-only follow-up after the first experiment.".to_string(),
+        requested_by: Some("synthetic reviewer".to_string()),
+    });
+    next_request
+        .observations
+        .push(GeneIsoformAssayStudyObservation {
+            observation_id: "wetlab_2".to_string(),
+            statement: "The first synthetic assay was technically clean.".to_string(),
+            source: "user notebook follow-up".to_string(),
+            validation_status: "confirmed".to_string(),
+            related_assay_ids: vec!["assay_1".to_string()],
+        });
+    next_request.retained_assay_ids = vec!["assay_1".to_string()];
+    let next_plan_path = temp.path().join("plan-iteration-2.json");
+    let next = engine
+        .apply(Operation::PlanGeneIsoformAssayStudy {
+            request: next_request,
+            path: Some(next_plan_path.to_string_lossy().to_string()),
+            workflow_path: None,
+        })
+        .expect("plan second study iteration")
+        .gene_isoform_assay_study_plan
+        .expect("second study plan report");
+    assert_eq!(next.iteration, 2);
+    assert_eq!(next.prior_plan_id.as_deref(), Some(first_plan_id.as_str()));
+    assert_eq!(
+        next.prior_plan_sha256.as_deref(),
+        Some(first_plan_sha256.as_str())
+    );
+    assert_eq!(
+        next.recommended_profile,
+        GeneIsoformAssayStudyProfile::ComprehensiveIsoformDossier
+    );
+    assert_eq!(
+        next.selected_profile,
+        GeneIsoformAssayStudyProfile::RoutineCommonRegionScreen
+    );
+    assert_eq!(
+        next.profile_override
+            .as_ref()
+            .map(|value| value.reason.as_str()),
+        Some("Retain a compact control-only follow-up after the first experiment.")
+    );
+    assert_eq!(next.observations.len(), 2);
+    assert!(
+        next.observations
+            .iter()
+            .all(|observation| observation.validation_status == "user_supplied_unvalidated")
+    );
+    assert_eq!(next.retained_assay_ids, vec!["assay_1".to_string()]);
+    assert_ne!(next.request_sha256, first_request_sha256);
+    assert_eq!(next.planned_operations.len(), 1);
+    assert!(
+        next.warnings
+            .iter()
+            .any(|warning| warning.contains("do not change the automatic recommendation"))
+    );
+}
+
+#[test]
+fn experimental_handoff_order_form_requires_approved_digest_and_order_ready_rows() {
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let panel = engine
+        .apply(transcript_assay_panel_operation(
+            TranscriptAssayCoveragePolicy::BestEffort,
+            transcript_assay_panel_relaxed_side(),
+            1,
+            "handoff_order_bridge_panel",
+        ))
+        .expect("design source panel")
+        .transcript_assay_panel
+        .expect("source panel");
+    assert!(!panel.selected_assays.is_empty());
+    let policy = ExperimentalAssayReadinessPolicy {
+        require_critical_qc_pass: false,
+        require_specificity_pass: false,
+        require_genomic_carryover_pass: false,
+        require_transcriptome_specificity_pass: false,
+        require_annotation_provenance: false,
+        require_assay_test: false,
+        require_variant_evaluation: false,
+        require_duplicate_review: false,
+        require_resolved_gel_bands: false,
+        ..ExperimentalAssayReadinessPolicy::default()
+    };
+    let temp = tempdir().expect("temp dir");
+    let handoff_path = temp.path().join("handoff.json");
+    let handoff = engine
+        .apply(Operation::BuildExperimentalAssayHandoff {
+            panel_report_id: panel.report_id.clone(),
+            policy,
+            variant_evidence_paths: vec![],
+            order_form_id: None,
+            path: Some(handoff_path.to_string_lossy().to_string()),
+            order_table_path: None,
+            virtual_gel_svg_path: None,
+            virtual_gel_ladders: vec![],
+            virtual_gel_render_options: Default::default(),
+        })
+        .expect("build order-ready handoff")
+        .experimental_assay_handoff
+        .expect("handoff report");
+    let coverage = handoff
+        .coverage_summary
+        .as_ref()
+        .expect("coverage denominator summary");
+    assert!(!coverage.uniprot_coverage_available);
+    assert_eq!(
+        coverage.distinct_annotated_mature_cdna_count,
+        panel.equivalence_group_count
+    );
+    assert!(
+        coverage
+            .summary_lines
+            .iter()
+            .any(|line| line.contains("UniProt-linked target coverage is not available"))
+    );
+    let qa = handoff
+        .qa_aggregate_summary
+        .as_ref()
+        .expect("engine-owned QA aggregates");
+    assert_eq!(qa.assay_total, handoff.cards.len());
+    assert_eq!(qa.order_ready, handoff.cards.len());
+    assert_eq!(qa.not_order_ready, 0);
+    assert!(qa.gate_aggregates.iter().any(|gate| {
+        gate.gate == "transcriptome_specificity"
+            && gate.total == handoff.cards.len()
+            && gate.not_evaluated == handoff.cards.len()
+            && gate.passed == 0
+    }));
+    assert!(
+        handoff
+            .order_readiness_table
+            .iter()
+            .all(|row| row.order_ready)
+    );
+    let bytes = fs::read(&handoff_path).expect("read handoff");
+    let digest = sha256_prefixed_bytes(&bytes);
+    let missing_digest = engine
+        .create_oligo_order_form_from_experimental_handoff(
+            handoff_path.to_str().expect("handoff path"),
+            None,
+            Some("must_fail"),
+            None,
+            None,
+            &[],
+        )
+        .expect_err("approved digest is mandatory");
+    assert!(missing_digest.message.contains("--expected-sha256"));
+    let form = engine
+        .create_oligo_order_form_from_experimental_handoff(
+            handoff_path.to_str().expect("handoff path"),
+            Some(&digest),
+            Some("approved_handoff_order"),
+            None,
+            None,
+            &[],
+        )
+        .expect("create handoff-bound order form");
+    assert!(!form.line_items.is_empty());
+    assert!(form.line_items.iter().all(|line| {
+        line.provenance.source_kind == "experimental_assay_handoff"
+            && line.provenance.report_sha256.as_deref() == Some(digest.as_str())
+            && line.provenance.readiness_policy_id.as_deref() == Some(handoff.policy_id.as_str())
+            && line.provenance.readiness_policy_sha256.is_some()
+            && line.provenance.assay_id.is_some()
+            && line.provenance.pair_id.is_some()
+            && line.provenance.oligo_id.is_some()
+            && line
+                .provenance
+                .readiness_row
+                .as_ref()
+                .is_some_and(|row| row.order_ready)
+    }));
+
+    let mut candidate_handoff = handoff;
+    for row in &mut candidate_handoff.order_readiness_table {
+        row.order_ready = false;
+        row.readiness_state = ExperimentalAssayReadinessState::Candidate;
+    }
+    for card in &mut candidate_handoff.cards {
+        card.readiness_state = ExperimentalAssayReadinessState::Candidate;
+    }
+    let candidate_path = temp.path().join("candidate_handoff.json");
+    fs::write(
+        &candidate_path,
+        serde_json::to_vec_pretty(&candidate_handoff).expect("serialize candidate handoff"),
+    )
+    .expect("write candidate handoff");
+    let candidate_digest =
+        sha256_prefixed_bytes(&fs::read(&candidate_path).expect("read candidate handoff"));
+    let error = engine
+        .create_oligo_order_form_from_experimental_handoff(
+            candidate_path.to_str().expect("candidate path"),
+            Some(&candidate_digest),
+            Some("candidate_must_not_order"),
+            None,
+            None,
+            &[],
+        )
+        .expect_err("candidate handoff must not create order lines");
+    assert!(error.message.contains("no rows"));
+}
+
+#[test]
+fn experimental_handoff_coverage_summary_uses_each_inventory_record_cdna_group() {
+    let local_transcript_ids = ["ENST00000443914", "ENST00000699071", "ENST00000907730"];
+    let inventory_transcript_ids = [
+        "ENST00000443914.8",
+        "ENST00000999999.1",
+        "ENST00000699071.2",
+        "ENST00000907730.1",
+    ];
+    let group_ids = ["cdna_1", "cdna_2", "cdna_3"];
+    let cdna_digests = [
+        "sha256:irf9_cdna_1",
+        "sha256:irf9_cdna_2",
+        "sha256:irf9_cdna_3",
+    ];
+    let panel = TranscriptAssayPanelReport {
+        coverage_universe: TranscriptAssayCoverageUniverse {
+            kind: TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms,
+            sources: vec![TranscriptAssayCoverageSourceRef {
+                expected_sha256: Some("sha256:coverage".to_string()),
+                report_id: Some("uniprot_audit_1".to_string()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        },
+        coverage_resolution: TranscriptAssayCoverageResolution {
+            annotated_transcript_count: 3,
+            annotated_equivalence_group_count: Some(3),
+            linked_transcript_inventory_authoritative: true,
+            linked_transcript_inventory_ids: vec!["uniprot_inventory_1".to_string()],
+            linked_transcript_resolutions: vec![
+                TranscriptAssayLinkedTranscriptResolution {
+                    inventory_id: "uniprot_inventory_1".to_string(),
+                    target_id: "uniprot_target_1".to_string(),
+                    entry_id: "Q00978".to_string(),
+                    isoform_id: "Q00978-1".to_string(),
+                    transcript_id: inventory_transcript_ids[0].to_string(),
+                    mature_cdna_sha256: cdna_digests[0].to_string(),
+                    matched_local_transcript_ids: vec![local_transcript_ids[0].to_string()],
+                    equivalence_group_id: Some(group_ids[0].to_string()),
+                },
+                TranscriptAssayLinkedTranscriptResolution {
+                    inventory_id: "uniprot_inventory_1".to_string(),
+                    target_id: "uniprot_target_1".to_string(),
+                    entry_id: "Q00978".to_string(),
+                    isoform_id: "Q00978-1".to_string(),
+                    transcript_id: inventory_transcript_ids[1].to_string(),
+                    mature_cdna_sha256: cdna_digests[0].to_string(),
+                    matched_local_transcript_ids: vec![local_transcript_ids[0].to_string()],
+                    equivalence_group_id: Some(group_ids[0].to_string()),
+                },
+                TranscriptAssayLinkedTranscriptResolution {
+                    inventory_id: "uniprot_inventory_1".to_string(),
+                    target_id: "uniprot_target_1".to_string(),
+                    entry_id: "Q00978".to_string(),
+                    isoform_id: "Q00978-1".to_string(),
+                    transcript_id: inventory_transcript_ids[2].to_string(),
+                    mature_cdna_sha256: cdna_digests[1].to_string(),
+                    matched_local_transcript_ids: vec![local_transcript_ids[1].to_string()],
+                    equivalence_group_id: Some(group_ids[1].to_string()),
+                },
+                TranscriptAssayLinkedTranscriptResolution {
+                    inventory_id: "uniprot_inventory_1".to_string(),
+                    target_id: "uniprot_target_1".to_string(),
+                    entry_id: "Q00978".to_string(),
+                    isoform_id: "Q00978-1".to_string(),
+                    transcript_id: inventory_transcript_ids[3].to_string(),
+                    mature_cdna_sha256: cdna_digests[2].to_string(),
+                    matched_local_transcript_ids: vec![local_transcript_ids[2].to_string()],
+                    equivalence_group_id: Some(group_ids[2].to_string()),
+                },
+            ],
+            included_transcript_ids: local_transcript_ids.map(str::to_string).to_vec(),
+            included_equivalence_group_ids: group_ids.map(str::to_string).to_vec(),
+            targets: vec![TranscriptAssayCoverageTarget {
+                target_id: "uniprot_target_1".to_string(),
+                uniprot_entry_ids: vec!["Q00978".to_string()],
+                mapped_transcript_ids: inventory_transcript_ids.map(str::to_string).to_vec(),
+                cdna_digest_matched_transcript_ids: inventory_transcript_ids
+                    .map(str::to_string)
+                    .to_vec(),
+                genomic_specificity_unassessed_transcript_ids: vec![
+                    inventory_transcript_ids[1].to_string(),
+                ],
+                equivalence_group_ids: group_ids.map(str::to_string).to_vec(),
+                coverage_status: TranscriptAssayCoverageEvaluationStatus::Covered,
+                ..Default::default()
+            }],
+            ..Default::default()
+        },
+        equivalence_groups: group_ids
+            .iter()
+            .map(|id| TranscriptAssayEquivalenceGroup {
+                equivalence_group_id: (*id).to_string(),
+                ..Default::default()
+            })
+            .collect(),
+        selected_assays: vec![TranscriptAssayPanelAssay {
+            single_product_equivalence_group_ids: vec![group_ids[0].to_string()],
+            ..Default::default()
+        }],
+        transcript_rows: local_transcript_ids
+            .iter()
+            .enumerate()
+            .map(|(index, id)| TranscriptAssayPanelTranscriptRow {
+                transcript_id: (*id).to_string(),
+                equivalence_group_id: group_ids[index].to_string(),
+                covering_assay_ids: (index == 0)
+                    .then(|| vec!["assay_1".to_string()])
+                    .unwrap_or_default(),
+                ..Default::default()
+            })
+            .collect(),
+        provenance: TranscriptAssayPanelProvenance {
+            annotation_release: Some("Ensembl 116".to_string()),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let summary = GentleEngine::experimental_assay_coverage_summary(&panel);
+
+    assert!(summary.uniprot_coverage_available);
+    assert_eq!(summary.uniprot_entry_count, 1);
+    assert_eq!(summary.uniprot_protein_target_count, 1);
+    assert_eq!(summary.covered_uniprot_protein_target_count, 1);
+    assert_eq!(summary.uniprot_linked_transcript_record_count, 4);
+    assert_eq!(summary.distinct_uniprot_linked_mature_cdna_count, 3);
+    assert_eq!(summary.covered_uniprot_linked_transcript_record_count, 2);
+    assert_eq!(summary.covered_distinct_uniprot_linked_mature_cdna_count, 1);
+    assert_eq!(summary.annotated_transcript_record_count, 3);
+    assert!(summary.broader_annotation_denominator_available);
+    assert_eq!(summary.assessed_annotated_transcript_record_count, Some(3));
+    assert_eq!(summary.distinct_annotated_mature_cdna_count, 3);
+    assert_eq!(
+        summary.assessed_distinct_annotated_mature_cdna_count,
+        Some(3)
+    );
+    assert_eq!(
+        summary.uncovered_uniprot_linked_transcript_ids,
+        vec!["ENST00000699071.2", "ENST00000907730.1"]
+    );
+    assert_eq!(
+        summary.uncovered_distinct_uniprot_linked_mature_cdna_ids,
+        vec!["sha256:irf9_cdna_2", "sha256:irf9_cdna_3"]
+    );
+    assert!(summary.summary_lines.iter().any(|line| {
+        line.contains("1/3 distinct UniProt-linked mature transcript sequence(s)")
+            && line.contains("2/4 UniProt-linked transcript record(s)")
+    }));
+    assert_eq!(
+        summary.genomic_specificity_unassessed_uniprot_linked_transcript_ids,
+        vec!["ENST00000999999.1"]
+    );
+    assert_eq!(summary.coverage_source_report_ids, vec!["uniprot_audit_1"]);
+    assert_eq!(summary.coverage_source_sha256s, vec!["sha256:coverage"]);
+}
+
+#[test]
+fn experimental_handoff_legacy_inventory_join_does_not_claim_linked_coverage() {
+    let panel = TranscriptAssayPanelReport {
+        coverage_universe: TranscriptAssayCoverageUniverse {
+            kind: TranscriptAssayCoverageUniverseKind::UniprotSupportedIsoforms,
+            ..Default::default()
+        },
+        coverage_resolution: TranscriptAssayCoverageResolution {
+            linked_transcript_inventory_authoritative: true,
+            targets: vec![TranscriptAssayCoverageTarget {
+                target_id: "legacy_target".to_string(),
+                mapped_transcript_ids: vec!["ENST00000443914.8".to_string()],
+                cdna_digest_matched_transcript_ids: vec!["ENST00000443914.8".to_string()],
+                equivalence_group_ids: vec!["cdna_1".to_string()],
+                coverage_status: TranscriptAssayCoverageEvaluationStatus::Covered,
+                ..Default::default()
+            }],
+            ..Default::default()
+        },
+        selected_assays: vec![TranscriptAssayPanelAssay {
+            single_product_equivalence_group_ids: vec!["cdna_1".to_string()],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    let summary = GentleEngine::experimental_assay_coverage_summary(&panel);
+
+    assert!(!summary.uniprot_coverage_available);
+    assert_eq!(summary.uniprot_linked_transcript_record_count, 1);
+    assert_eq!(summary.covered_uniprot_linked_transcript_record_count, 0);
+    assert!(summary.uncovered_uniprot_linked_transcript_ids.is_empty());
+    assert!(
+        summary
+            .summary_lines
+            .iter()
+            .any(|line| { line.contains("UniProt-linked target coverage is not available") })
+    );
+}
+
+#[test]
+fn experimental_handoff_coverage_summary_keeps_legacy_broader_denominator_unavailable() {
+    let panel = TranscriptAssayPanelReport {
+        transcript_rows: vec![TranscriptAssayPanelTranscriptRow {
+            transcript_id: "TX_LEGACY".to_string(),
+            covering_assay_ids: vec!["assay_1".to_string()],
+            ..Default::default()
+        }],
+        equivalence_groups: vec![TranscriptAssayEquivalenceGroup {
+            equivalence_group_id: "cdna_legacy".to_string(),
+            ..Default::default()
+        }],
+        selected_assays: vec![TranscriptAssayPanelAssay {
+            single_product_equivalence_group_ids: vec!["cdna_legacy".to_string()],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    let summary = GentleEngine::experimental_assay_coverage_summary(&panel);
+
+    assert!(!summary.broader_annotation_denominator_available);
+    assert_eq!(summary.assessed_annotated_transcript_record_count, None);
+    assert_eq!(summary.assessed_distinct_annotated_mature_cdna_count, None);
+    assert!(summary.summary_lines.iter().any(|line| {
+        line.contains("complete pre-narrowing annotation denominator is not available")
+    }));
+}
+
+#[cfg(unix)]
+/// Install a Primer3 stand-in that advertises a chosen capability/version.
+fn install_primer3_candidate(
+    directory: &Path,
+    name: &str,
+    supports_progress: bool,
+    version: &str,
+) -> PathBuf {
+    let script_path = directory.join(name);
+    let usage = if supports_progress {
+        "USAGE: primer3_core [--progress] [input_file]"
+    } else {
+        "USAGE: primer3_core [--format_output] [input_file]"
+    };
+    let script = format!(
+        r#"#!/bin/sh
+if [ "$1" = "--help" ]; then
+  echo "{usage}"
+  exit 0
+fi
+if [ "$1" = "--about" ]; then
+  echo "libprimer3 release {version}"
+  exit 0
+fi
+if [ "$1" = "--version" ]; then
+  echo "libprimer3 release {version}"
+  exit 0
+fi
+exit 2
+"#
+    );
+    std::fs::write(&script_path, script).expect("write primer3 candidate");
+    let mut perms = std::fs::metadata(&script_path)
+        .expect("metadata primer3 candidate")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script_path, perms).expect("chmod primer3 candidate");
+    script_path
+}
+
+#[test]
+#[cfg(unix)]
+fn primer3_selection_prefers_progress_capable_build_over_newer_version() {
+    let temp = tempdir().expect("tempdir");
+    // The legacy build is both newer and higher-versioned; --progress still wins
+    // because GENtle's bounded reporting and SIGUSR1 status depend on it.
+    let progress_capable = install_primer3_candidate(temp.path(), "with_progress", true, "2.4.0");
+    let newer_legacy = install_primer3_candidate(temp.path(), "no_progress", false, "9.9.9");
+
+    let selected = GentleEngine::select_primer3_from_candidates(
+        &[progress_capable.clone(), newer_legacy],
+        "primer3_core",
+    );
+    assert_eq!(selected, progress_capable.display().to_string());
+}
+
+#[test]
+fn primer3_path_lookup_adds_windows_pathext_spellings_without_duplicates() {
+    assert_eq!(
+        GentleEngine::primer3_executable_names_for_path_lookup(
+            "primer3_core",
+            Some(".EXE;CMD;.exe;.BAT"),
+        ),
+        vec![
+            "primer3_core".to_string(),
+            "primer3_core.EXE".to_string(),
+            "primer3_core.CMD".to_string(),
+            "primer3_core.BAT".to_string(),
+        ]
+    );
+    assert_eq!(
+        GentleEngine::primer3_executable_names_for_path_lookup(
+            "primer3_core.exe",
+            Some(".EXE;.CMD"),
+        ),
+        vec!["primer3_core.exe".to_string()]
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn primer3_selection_prefers_highest_version_among_progress_capable_builds() {
+    let temp = tempdir().expect("tempdir");
+    let older = install_primer3_candidate(temp.path(), "older", true, "2.6.1");
+    let newer = install_primer3_candidate(temp.path(), "newer", true, "2.10.0");
+
+    // 2.10.0 beats 2.6.1 only under component-wise comparison; a string compare
+    // would order "2.10.0" before "2.6.1".
+    let selected =
+        GentleEngine::select_primer3_from_candidates(&[older, newer.clone()], "primer3_core");
+    assert_eq!(selected, newer.display().to_string());
+}
+
+#[test]
+#[cfg(unix)]
+fn primer3_selection_prefers_latest_creation_time_when_versions_match() {
+    let temp = tempdir().expect("tempdir");
+    let first = install_primer3_candidate(temp.path(), "first", true, "2.6.1");
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    let second = install_primer3_candidate(temp.path(), "second", true, "2.6.1");
+
+    let selected =
+        GentleEngine::select_primer3_from_candidates(&[first, second.clone()], "primer3_core");
+    assert_eq!(
+        selected,
+        second.display().to_string(),
+        "equal capability and version must fall through to the newest file"
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn primer3_configured_path_is_used_without_candidate_selection() {
+    let temp = tempdir().expect("tempdir");
+    let pinned = install_primer3_candidate(temp.path(), "pinned", false, "1.0.0");
+    let pinned = pinned.display().to_string();
+
+    // An operator pin names a path, so discovery must not override it even
+    // though this build advertises no --progress.
+    assert_eq!(GentleEngine::resolve_primer3_executable(&pinned), pinned);
+}
+
+#[test]
+fn primer3_version_sort_key_orders_components_numerically() {
+    assert!(
+        GentleEngine::primer3_version_sort_key(Some("libprimer3 release 2.10.0"))
+            > GentleEngine::primer3_version_sort_key(Some("libprimer3 release 2.6.1"))
+    );
+    assert!(
+        GentleEngine::primer3_version_sort_key(Some("libprimer3 release 2.6.1"))
+            > GentleEngine::primer3_version_sort_key(None),
+        "an unparsed version must sort below every parsed one"
+    );
 }

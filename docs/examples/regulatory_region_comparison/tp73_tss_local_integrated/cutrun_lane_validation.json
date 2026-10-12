@@ -1,0 +1,423 @@
+{
+  "assembly_id": "GRCh38",
+  "genes": [
+    {
+      "anchor_end_1based": 35233402,
+      "anchor_start_1based": 35133721,
+      "chromosome": "11",
+      "gene": "CD44",
+      "lane_count": 12,
+      "lanes": [
+        {
+          "rendered_interval_count": 110,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "11",
+          "source_id": "E-MTAB-15709:tp73:saos2:GFP:R1",
+          "source_overlapping_interval_count": 110,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/tp73_saos2_GFP_R1.bigWig",
+          "source_sha256": "sha256:a8b58631e9cadc8388cddd77414633eac8f4ce342a0493b1e2f7b0297de04af3",
+          "track_name": "SAOS-2 TP73 GFP"
+        },
+        {
+          "rendered_interval_count": 68,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "11",
+          "source_id": "E-MTAB-15709:tp73:saos2:TA:R1",
+          "source_overlapping_interval_count": 68,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/tp73_saos2_TA_R1.bigWig",
+          "source_sha256": "sha256:27844db1716bc2adb378572dbb3f0c8d0abdba35259d64f6b69249cf34ae0d9e",
+          "track_name": "SAOS-2 TP73 TAp73alpha"
+        },
+        {
+          "rendered_interval_count": 14,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "11",
+          "source_id": "E-MTAB-15709:tp73:saos2:DN:R1",
+          "source_overlapping_interval_count": 14,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/tp73_saos2_DN_R1.bigWig",
+          "source_sha256": "sha256:882e283dbab11d089c012f5ad4f3104cc12b0e23adfd6a83f78b0007e2073d96",
+          "track_name": "SAOS-2 TP73 DNp73beta"
+        },
+        {
+          "rendered_interval_count": 45,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "11",
+          "source_id": "E-MTAB-15709:tp73:skmel29-2:GFP:R1",
+          "source_overlapping_interval_count": 45,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/tp73_skmel29_2_GFP_R1.bigWig",
+          "source_sha256": "sha256:a96d22bef00409c09c233088afdc6421d7168cb2246b4c1de12ac2e360e30152",
+          "track_name": "SK-MEL-29-2 TP73 GFP"
+        },
+        {
+          "rendered_interval_count": 355,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "11",
+          "source_id": "E-MTAB-15709:tp73:skmel29-2:TA:R1",
+          "source_overlapping_interval_count": 355,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/tp73_skmel29_2_TA_R1.bigWig",
+          "source_sha256": "sha256:5f02641cf33b23ac6de3705e9acc8bf33f67a886346833fa2b98da3a4455454d",
+          "track_name": "SK-MEL-29-2 TP73 TAp73alpha"
+        },
+        {
+          "rendered_interval_count": 567,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "11",
+          "source_id": "E-MTAB-15709:tp73:skmel29-2:DN:R1",
+          "source_overlapping_interval_count": 567,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/tp73_skmel29_2_DN_R1.bigWig",
+          "source_sha256": "sha256:181a9a2fc0de6ce4eb6b2fb12b48854083ff1804fe5cf19f1a51172b77a31759",
+          "track_name": "SK-MEL-29-2 TP73 DNp73beta"
+        },
+        {
+          "rendered_interval_count": 50,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "11",
+          "source_id": "E-MTAB-15709:h3k4me3:saos2:GFP:R1",
+          "source_overlapping_interval_count": 50,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/pos_saos2_GFP_R1.bigWig",
+          "source_sha256": "sha256:71d0b99bb6b51047a0337b72b6475b080eb3ed7c7cac278140bd4ddc32caebcd",
+          "track_name": "SAOS-2 H3K4me3 GFP"
+        },
+        {
+          "rendered_interval_count": 30,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "11",
+          "source_id": "E-MTAB-15709:h3k4me3:saos2:TA:R1",
+          "source_overlapping_interval_count": 30,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/pos_saos2_TA_R1.bigWig",
+          "source_sha256": "sha256:4dcf486dad368e3a319b48942707b37e8a1921fc15bd46bcd027e543aca4141d",
+          "track_name": "SAOS-2 H3K4me3 TAp73alpha"
+        },
+        {
+          "rendered_interval_count": 32,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "11",
+          "source_id": "E-MTAB-15709:h3k4me3:saos2:DN:R1",
+          "source_overlapping_interval_count": 32,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/pos_saos2_DN_R1.bigWig",
+          "source_sha256": "sha256:9f2b084b7731c4689f08ff20eb6f9e7dfd8625d481af25eec43cd8a56b052aba",
+          "track_name": "SAOS-2 H3K4me3 DNp73beta"
+        },
+        {
+          "rendered_interval_count": 993,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "11",
+          "source_id": "E-MTAB-15709:h3k4me3:skmel29-2:GFP:R1",
+          "source_overlapping_interval_count": 993,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/pos_skmel29_2_GFP_R1.bigWig",
+          "source_sha256": "sha256:7967ee95dad1eeeacb3d5efafdda2c04d8b887ef55ddbfd95b7a8732515db7c4",
+          "track_name": "SK-MEL-29-2 H3K4me3 GFP"
+        },
+        {
+          "rendered_interval_count": 953,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "11",
+          "source_id": "E-MTAB-15709:h3k4me3:skmel29-2:TA:R1",
+          "source_overlapping_interval_count": 953,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/pos_skmel29_2_TA_R1.bigWig",
+          "source_sha256": "sha256:dcf34c0a50f26864d1384d0abd144316f97519b3ebe957e3befac58bc62dec2e",
+          "track_name": "SK-MEL-29-2 H3K4me3 TAp73alpha"
+        },
+        {
+          "rendered_interval_count": 1137,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "11",
+          "source_id": "E-MTAB-15709:h3k4me3:skmel29-2:DN:R1",
+          "source_overlapping_interval_count": 1137,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/pos_skmel29_2_DN_R1.bigWig",
+          "source_sha256": "sha256:a4c126c960f16978405906801e9a068566858ef5fc5216f265f945ed4a7042bc",
+          "track_name": "SK-MEL-29-2 H3K4me3 DNp73beta"
+        }
+      ],
+      "rendered_interval_count": 4354,
+      "report_path": "/home/clawbio/GENtle-private/tss-regulatory-integrated-ff44ebde-replacement/locus-reexport/outputs/CD44_luciferase_planning_EnsemblReg_15TF.report.json",
+      "report_sha256": "sha256:abe3ec89167b2b76cdd427f7d6aa3119f9d6a21aaf2dbf0fe3dfd5bb19a0f8f9",
+      "request_path": "/home/clawbio/GENtle-private/tss-regulatory-integrated-ff44ebde-replacement/locus-reexport/requests/CD44.json",
+      "request_sha256": "sha256:9b524599bda03081a435d2c4c91002e1c7e18474b94ea1ffbbbf1ff3c4ece9f0",
+      "strand": "+"
+    },
+    {
+      "anchor_end_1based": 101140263,
+      "anchor_start_1based": 101117158,
+      "chromosome": "7",
+      "gene": "SERPINE1",
+      "lane_count": 12,
+      "lanes": [
+        {
+          "rendered_interval_count": 32,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "7",
+          "source_id": "E-MTAB-15709:tp73:saos2:GFP:R1",
+          "source_overlapping_interval_count": 32,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/tp73_saos2_GFP_R1.bigWig",
+          "source_sha256": "sha256:a8b58631e9cadc8388cddd77414633eac8f4ce342a0493b1e2f7b0297de04af3",
+          "track_name": "SAOS-2 TP73 GFP"
+        },
+        {
+          "rendered_interval_count": 33,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "7",
+          "source_id": "E-MTAB-15709:tp73:saos2:TA:R1",
+          "source_overlapping_interval_count": 33,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/tp73_saos2_TA_R1.bigWig",
+          "source_sha256": "sha256:27844db1716bc2adb378572dbb3f0c8d0abdba35259d64f6b69249cf34ae0d9e",
+          "track_name": "SAOS-2 TP73 TAp73alpha"
+        },
+        {
+          "rendered_interval_count": 10,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "7",
+          "source_id": "E-MTAB-15709:tp73:saos2:DN:R1",
+          "source_overlapping_interval_count": 10,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/tp73_saos2_DN_R1.bigWig",
+          "source_sha256": "sha256:882e283dbab11d089c012f5ad4f3104cc12b0e23adfd6a83f78b0007e2073d96",
+          "track_name": "SAOS-2 TP73 DNp73beta"
+        },
+        {
+          "rendered_interval_count": 14,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "7",
+          "source_id": "E-MTAB-15709:tp73:skmel29-2:GFP:R1",
+          "source_overlapping_interval_count": 14,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/tp73_skmel29_2_GFP_R1.bigWig",
+          "source_sha256": "sha256:a96d22bef00409c09c233088afdc6421d7168cb2246b4c1de12ac2e360e30152",
+          "track_name": "SK-MEL-29-2 TP73 GFP"
+        },
+        {
+          "rendered_interval_count": 333,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "7",
+          "source_id": "E-MTAB-15709:tp73:skmel29-2:TA:R1",
+          "source_overlapping_interval_count": 333,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/tp73_skmel29_2_TA_R1.bigWig",
+          "source_sha256": "sha256:5f02641cf33b23ac6de3705e9acc8bf33f67a886346833fa2b98da3a4455454d",
+          "track_name": "SK-MEL-29-2 TP73 TAp73alpha"
+        },
+        {
+          "rendered_interval_count": 332,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "7",
+          "source_id": "E-MTAB-15709:tp73:skmel29-2:DN:R1",
+          "source_overlapping_interval_count": 332,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/tp73_skmel29_2_DN_R1.bigWig",
+          "source_sha256": "sha256:181a9a2fc0de6ce4eb6b2fb12b48854083ff1804fe5cf19f1a51172b77a31759",
+          "track_name": "SK-MEL-29-2 TP73 DNp73beta"
+        },
+        {
+          "rendered_interval_count": 28,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "7",
+          "source_id": "E-MTAB-15709:h3k4me3:saos2:GFP:R1",
+          "source_overlapping_interval_count": 28,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/pos_saos2_GFP_R1.bigWig",
+          "source_sha256": "sha256:71d0b99bb6b51047a0337b72b6475b080eb3ed7c7cac278140bd4ddc32caebcd",
+          "track_name": "SAOS-2 H3K4me3 GFP"
+        },
+        {
+          "rendered_interval_count": 45,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "7",
+          "source_id": "E-MTAB-15709:h3k4me3:saos2:TA:R1",
+          "source_overlapping_interval_count": 45,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/pos_saos2_TA_R1.bigWig",
+          "source_sha256": "sha256:4dcf486dad368e3a319b48942707b37e8a1921fc15bd46bcd027e543aca4141d",
+          "track_name": "SAOS-2 H3K4me3 TAp73alpha"
+        },
+        {
+          "rendered_interval_count": 25,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "7",
+          "source_id": "E-MTAB-15709:h3k4me3:saos2:DN:R1",
+          "source_overlapping_interval_count": 25,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/pos_saos2_DN_R1.bigWig",
+          "source_sha256": "sha256:9f2b084b7731c4689f08ff20eb6f9e7dfd8625d481af25eec43cd8a56b052aba",
+          "track_name": "SAOS-2 H3K4me3 DNp73beta"
+        },
+        {
+          "rendered_interval_count": 142,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "7",
+          "source_id": "E-MTAB-15709:h3k4me3:skmel29-2:GFP:R1",
+          "source_overlapping_interval_count": 142,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/pos_skmel29_2_GFP_R1.bigWig",
+          "source_sha256": "sha256:7967ee95dad1eeeacb3d5efafdda2c04d8b887ef55ddbfd95b7a8732515db7c4",
+          "track_name": "SK-MEL-29-2 H3K4me3 GFP"
+        },
+        {
+          "rendered_interval_count": 137,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "7",
+          "source_id": "E-MTAB-15709:h3k4me3:skmel29-2:TA:R1",
+          "source_overlapping_interval_count": 137,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/pos_skmel29_2_TA_R1.bigWig",
+          "source_sha256": "sha256:dcf34c0a50f26864d1384d0abd144316f97519b3ebe957e3befac58bc62dec2e",
+          "track_name": "SK-MEL-29-2 H3K4me3 TAp73alpha"
+        },
+        {
+          "rendered_interval_count": 176,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "7",
+          "source_id": "E-MTAB-15709:h3k4me3:skmel29-2:DN:R1",
+          "source_overlapping_interval_count": 176,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/pos_skmel29_2_DN_R1.bigWig",
+          "source_sha256": "sha256:a4c126c960f16978405906801e9a068566858ef5fc5216f265f945ed4a7042bc",
+          "track_name": "SK-MEL-29-2 H3K4me3 DNp73beta"
+        }
+      ],
+      "rendered_interval_count": 1307,
+      "report_path": "/home/clawbio/GENtle-private/tss-regulatory-integrated-ff44ebde-replacement/locus-reexport/outputs/SERPINE1_luciferase_planning_EnsemblReg_15TF.report.json",
+      "report_sha256": "sha256:92ab879c99b226377ee8eb2b7e3260d410e3311f6c775bda3f017f15d69bca89",
+      "request_path": "/home/clawbio/GENtle-private/tss-regulatory-integrated-ff44ebde-replacement/locus-reexport/requests/SERPINE1.json",
+      "request_sha256": "sha256:80753a7e1fda63e7c55f1686dd5a1ef4471ca32761a8d361ce3a14cb65af8bcf",
+      "strand": "+"
+    },
+    {
+      "anchor_end_1based": 41358961,
+      "anchor_start_1based": 41287203,
+      "chromosome": "19",
+      "gene": "TGFB1",
+      "lane_count": 12,
+      "lanes": [
+        {
+          "rendered_interval_count": 95,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "19",
+          "source_id": "E-MTAB-15709:tp73:saos2:GFP:R1",
+          "source_overlapping_interval_count": 95,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/tp73_saos2_GFP_R1.bigWig",
+          "source_sha256": "sha256:a8b58631e9cadc8388cddd77414633eac8f4ce342a0493b1e2f7b0297de04af3",
+          "track_name": "SAOS-2 TP73 GFP"
+        },
+        {
+          "rendered_interval_count": 391,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "19",
+          "source_id": "E-MTAB-15709:tp73:saos2:TA:R1",
+          "source_overlapping_interval_count": 391,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/tp73_saos2_TA_R1.bigWig",
+          "source_sha256": "sha256:27844db1716bc2adb378572dbb3f0c8d0abdba35259d64f6b69249cf34ae0d9e",
+          "track_name": "SAOS-2 TP73 TAp73alpha"
+        },
+        {
+          "rendered_interval_count": 91,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "19",
+          "source_id": "E-MTAB-15709:tp73:saos2:DN:R1",
+          "source_overlapping_interval_count": 91,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/tp73_saos2_DN_R1.bigWig",
+          "source_sha256": "sha256:882e283dbab11d089c012f5ad4f3104cc12b0e23adfd6a83f78b0007e2073d96",
+          "track_name": "SAOS-2 TP73 DNp73beta"
+        },
+        {
+          "rendered_interval_count": 15,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "19",
+          "source_id": "E-MTAB-15709:tp73:skmel29-2:GFP:R1",
+          "source_overlapping_interval_count": 15,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/tp73_skmel29_2_GFP_R1.bigWig",
+          "source_sha256": "sha256:a96d22bef00409c09c233088afdc6421d7168cb2246b4c1de12ac2e360e30152",
+          "track_name": "SK-MEL-29-2 TP73 GFP"
+        },
+        {
+          "rendered_interval_count": 515,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "19",
+          "source_id": "E-MTAB-15709:tp73:skmel29-2:TA:R1",
+          "source_overlapping_interval_count": 515,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/tp73_skmel29_2_TA_R1.bigWig",
+          "source_sha256": "sha256:5f02641cf33b23ac6de3705e9acc8bf33f67a886346833fa2b98da3a4455454d",
+          "track_name": "SK-MEL-29-2 TP73 TAp73alpha"
+        },
+        {
+          "rendered_interval_count": 642,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "19",
+          "source_id": "E-MTAB-15709:tp73:skmel29-2:DN:R1",
+          "source_overlapping_interval_count": 642,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/tp73_skmel29_2_DN_R1.bigWig",
+          "source_sha256": "sha256:181a9a2fc0de6ce4eb6b2fb12b48854083ff1804fe5cf19f1a51172b77a31759",
+          "track_name": "SK-MEL-29-2 TP73 DNp73beta"
+        },
+        {
+          "rendered_interval_count": 652,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "19",
+          "source_id": "E-MTAB-15709:h3k4me3:saos2:GFP:R1",
+          "source_overlapping_interval_count": 652,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/pos_saos2_GFP_R1.bigWig",
+          "source_sha256": "sha256:71d0b99bb6b51047a0337b72b6475b080eb3ed7c7cac278140bd4ddc32caebcd",
+          "track_name": "SAOS-2 H3K4me3 GFP"
+        },
+        {
+          "rendered_interval_count": 564,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "19",
+          "source_id": "E-MTAB-15709:h3k4me3:saos2:TA:R1",
+          "source_overlapping_interval_count": 564,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/pos_saos2_TA_R1.bigWig",
+          "source_sha256": "sha256:4dcf486dad368e3a319b48942707b37e8a1921fc15bd46bcd027e543aca4141d",
+          "track_name": "SAOS-2 H3K4me3 TAp73alpha"
+        },
+        {
+          "rendered_interval_count": 619,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "19",
+          "source_id": "E-MTAB-15709:h3k4me3:saos2:DN:R1",
+          "source_overlapping_interval_count": 619,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/pos_saos2_DN_R1.bigWig",
+          "source_sha256": "sha256:9f2b084b7731c4689f08ff20eb6f9e7dfd8625d481af25eec43cd8a56b052aba",
+          "track_name": "SAOS-2 H3K4me3 DNp73beta"
+        },
+        {
+          "rendered_interval_count": 859,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "19",
+          "source_id": "E-MTAB-15709:h3k4me3:skmel29-2:GFP:R1",
+          "source_overlapping_interval_count": 859,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/pos_skmel29_2_GFP_R1.bigWig",
+          "source_sha256": "sha256:7967ee95dad1eeeacb3d5efafdda2c04d8b887ef55ddbfd95b7a8732515db7c4",
+          "track_name": "SK-MEL-29-2 H3K4me3 GFP"
+        },
+        {
+          "rendered_interval_count": 816,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "19",
+          "source_id": "E-MTAB-15709:h3k4me3:skmel29-2:TA:R1",
+          "source_overlapping_interval_count": 816,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/pos_skmel29_2_TA_R1.bigWig",
+          "source_sha256": "sha256:dcf34c0a50f26864d1384d0abd144316f97519b3ebe957e3befac58bc62dec2e",
+          "track_name": "SK-MEL-29-2 H3K4me3 TAp73alpha"
+        },
+        {
+          "rendered_interval_count": 877,
+          "source_assembly": "GRCh38",
+          "source_chromosome": "19",
+          "source_id": "E-MTAB-15709:h3k4me3:skmel29-2:DN:R1",
+          "source_overlapping_interval_count": 877,
+          "source_path": "/home/clawbio/GENtle/data/resources/cutandrun_20250602_noDuplicates/pos_skmel29_2_DN_R1.bigWig",
+          "source_sha256": "sha256:a4c126c960f16978405906801e9a068566858ef5fc5216f265f945ed4a7042bc",
+          "track_name": "SK-MEL-29-2 H3K4me3 DNp73beta"
+        }
+      ],
+      "rendered_interval_count": 6136,
+      "report_path": "/home/clawbio/GENtle-private/tss-regulatory-integrated-ff44ebde-replacement/locus-reexport/outputs/TGFB1_luciferase_planning_EnsemblReg_15TF.report.json",
+      "report_sha256": "sha256:2b9ee083a1b037f7b55dfddda3f73bb3fc54a1839a84953db6a4cec98e0525a9",
+      "request_path": "/home/clawbio/GENtle-private/tss-regulatory-integrated-ff44ebde-replacement/locus-reexport/requests/TGFB1.json",
+      "request_sha256": "sha256:5f89e005caa100da40bfd029f959dbe1292caa67f51caee14c6deb68fc85d875",
+      "strand": "-"
+    }
+  ],
+  "requirements": {
+    "expected_genes": [
+      "CD44",
+      "SERPINE1",
+      "TGFB1"
+    ],
+    "expected_lanes_per_gene": 12,
+    "missing_intervals_are_zero": false
+  },
+  "schema": "gentle.tp73_locus_cutrun_lane_validation.v1",
+  "source_revision": "ff44ebdec0ff46e3ea485cd3a36ef3d4c403b6f9",
+  "total_lane_count": 36,
+  "total_rendered_interval_count": 11797
+}

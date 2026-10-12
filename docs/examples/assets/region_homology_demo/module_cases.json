@@ -1,0 +1,29 @@
+{
+  "origin": "Hand-crafted synthetic evidence; no occupancy measurement or functional claim.",
+  "evidence_spans": {
+    "left": {
+      "evidence_id": "synthetic_left_motif", "evidence_kind": "motif_tuple",
+      "query_start_0based": 4, "query_end_0based_exclusive": 16,
+      "required": true, "source_id": "region_homology_demo_v2",
+      "evidence_statement": "Synthetic selected left-block motif span, not a biological observation."
+    },
+    "right": {
+      "evidence_id": "synthetic_right_occupancy", "evidence_kind": "occupancy_region",
+      "query_start_0based": 48, "query_end_0based_exclusive": 64,
+      "required": true, "source_id": "region_homology_demo_v2",
+      "evidence_statement": "Synthetic selected right-block occupancy span, not a measurement."
+    },
+    "gap": {
+      "evidence_id": "synthetic_gap", "evidence_kind": "reporter_candidate",
+      "query_start_0based": 32, "query_end_0based_exclusive": 40,
+      "required": true, "source_id": "region_homology_demo_v2",
+      "evidence_statement": "Synthetic evidence in the deliberately substituted interval."
+    }
+  },
+  "cases": [
+    {"id": "standalone", "spans": ["right"], "expected_hypothesis": "standalone_reporter_candidate"},
+    {"id": "paired", "spans": ["left", "right"], "expected_hypothesis": "paired_context_candidate"},
+    {"id": "gap", "spans": ["gap"], "expected_hypothesis": "insufficient_evidence"},
+    {"id": "strict_repetition", "spans": ["left", "right"], "max_same_genome_query_coverage_percent": 1.0, "expected_hypothesis": "repetitive_or_ambiguous"}
+  ]
+}

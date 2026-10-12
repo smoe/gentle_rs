@@ -5,6 +5,48 @@
 
 use super::*;
 
+const SEQUENCING_CONFIRMATION_TARGET_ORDER_CACHE_CAPACITY: usize = 2;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct SequencingConfirmationReportPresentationIdentity {
+    report_id: String,
+    generated_at_unix_ms: u128,
+    target_count: usize,
+    read_count: usize,
+}
+
+impl SequencingConfirmationReportPresentationIdentity {
+    fn from_report(report: &SequencingConfirmationReport) -> Self {
+        Self {
+            report_id: report.report_id.clone(),
+            generated_at_unix_ms: report.generated_at_unix_ms,
+            target_count: report.targets.len(),
+            read_count: report.reads.len(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct SequencingConfirmationTargetOrderKey {
+    report: SequencingConfirmationReportPresentationIdentity,
+    review_unresolved_first: bool,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct CachedSequencingConfirmationTargetOrder {
+    key: SequencingConfirmationTargetOrderKey,
+    indices: Arc<Vec<usize>>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(super) struct SequencingConfirmationTableSelectionTracker {
+    target_report: Option<SequencingConfirmationReportPresentationIdentity>,
+    read_report: Option<SequencingConfirmationReportPresentationIdentity>,
+    selected_target_id: String,
+    selected_evidence_id: String,
+    review_unresolved_first: bool,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub(super) struct SequencingConfirmationUiState {
@@ -25,6 +67,14 @@ pub(super) struct SequencingConfirmationUiState {
     pub(super) selected_gap_start_0based: Option<usize>,
     pub(super) selected_gap_end_0based_exclusive: Option<usize>,
     pub(super) review_unresolved_first: bool,
+    #[serde(skip)]
+    pub(super) cached_target_review_orders: Vec<CachedSequencingConfirmationTargetOrder>,
+    #[serde(skip)]
+    pub(super) target_review_order_cache_hits: u64,
+    #[serde(skip)]
+    pub(super) target_review_order_cache_misses: u64,
+    #[serde(skip)]
+    pub(super) table_selection_tracker: SequencingConfirmationTableSelectionTracker,
     pub(super) primer_seq_ids_text: String,
     pub(super) primer_min_3prime_anneal_bp: String,
     pub(super) primer_predicted_read_length_bp: String,
@@ -66,6 +116,10 @@ impl Default for SequencingConfirmationUiState {
             selected_gap_start_0based: None,
             selected_gap_end_0based_exclusive: None,
             review_unresolved_first: false,
+            cached_target_review_orders: Vec::new(),
+            target_review_order_cache_hits: 0,
+            target_review_order_cache_misses: 0,
+            table_selection_tracker: SequencingConfirmationTableSelectionTracker::default(),
             primer_seq_ids_text: String::new(),
             primer_min_3prime_anneal_bp: "18".to_string(),
             primer_predicted_read_length_bp: "800".to_string(),
@@ -1276,21 +1330,147 @@ impl MainAreaDna {
         }
     }
 
+    pub(super) fn sequencing_confirmation_target_review_indices(
+        report: &SequencingConfirmationReport,
+        review_unresolved_first: bool,
+    ) -> Vec<usize> {
+        let mut indices = (0..report.targets.len()).collect::<Vec<_>>();
+        if review_unresolved_first {
+            indices.sort_by(|left_index, right_index| {
+                let left = &report.targets[*left_index];
+                let right = &report.targets[*right_index];
+                Self::sequencing_confirmation_target_priority(left.status)
+                    .cmp(&Self::sequencing_confirmation_target_priority(right.status))
+                    .then(left.start_0based.cmp(&right.start_0based))
+                    .then(left.end_0based_exclusive.cmp(&right.end_0based_exclusive))
+                    .then(left.label.cmp(&right.label))
+            });
+        }
+        indices
+    }
+
     pub(super) fn sequencing_confirmation_target_review_rows(
         report: &SequencingConfirmationReport,
         review_unresolved_first: bool,
     ) -> Vec<&SequencingConfirmationTargetResult> {
-        let mut rows = report.targets.iter().collect::<Vec<_>>();
-        if review_unresolved_first {
-            rows.sort_by(|a, b| {
-                Self::sequencing_confirmation_target_priority(a.status)
-                    .cmp(&Self::sequencing_confirmation_target_priority(b.status))
-                    .then(a.start_0based.cmp(&b.start_0based))
-                    .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
-                    .then(a.label.cmp(&b.label))
-            });
+        Self::sequencing_confirmation_target_review_indices(report, review_unresolved_first)
+            .into_iter()
+            .map(|index| &report.targets[index])
+            .collect()
+    }
+
+    pub(super) fn sequencing_confirmation_cached_target_review_indices(
+        &mut self,
+        report: &SequencingConfirmationReport,
+        review_unresolved_first: bool,
+    ) -> Arc<Vec<usize>> {
+        let key = SequencingConfirmationTargetOrderKey {
+            report: SequencingConfirmationReportPresentationIdentity::from_report(report),
+            review_unresolved_first,
+        };
+        if let Some(cached) = self
+            .sequencing_confirmation_ui
+            .cached_target_review_orders
+            .iter()
+            .find(|cached| cached.key == key)
+        {
+            self.sequencing_confirmation_ui
+                .target_review_order_cache_hits = self
+                .sequencing_confirmation_ui
+                .target_review_order_cache_hits
+                .saturating_add(1);
+            return cached.indices.clone();
         }
-        rows
+
+        self.sequencing_confirmation_ui
+            .target_review_order_cache_misses = self
+            .sequencing_confirmation_ui
+            .target_review_order_cache_misses
+            .saturating_add(1);
+        let indices = Arc::new(Self::sequencing_confirmation_target_review_indices(
+            report,
+            review_unresolved_first,
+        ));
+        if self
+            .sequencing_confirmation_ui
+            .cached_target_review_orders
+            .len()
+            >= SEQUENCING_CONFIRMATION_TARGET_ORDER_CACHE_CAPACITY
+        {
+            self.sequencing_confirmation_ui
+                .cached_target_review_orders
+                .remove(0);
+        }
+        self.sequencing_confirmation_ui
+            .cached_target_review_orders
+            .push(CachedSequencingConfirmationTargetOrder {
+                key,
+                indices: indices.clone(),
+            });
+        indices
+    }
+
+    pub(super) fn sequencing_confirmation_target_scroll_request(
+        &mut self,
+        report: &SequencingConfirmationReport,
+        target_order: &[usize],
+    ) -> Option<usize> {
+        let report_identity = SequencingConfirmationReportPresentationIdentity::from_report(report);
+        let selected_target_id = self
+            .sequencing_confirmation_ui
+            .selected_target_id
+            .trim()
+            .to_string();
+        let review_unresolved_first = self.sequencing_confirmation_ui.review_unresolved_first;
+        let tracker = &mut self.sequencing_confirmation_ui.table_selection_tracker;
+        let changed = tracker.target_report.as_ref() != Some(&report_identity)
+            || !tracker
+                .selected_target_id
+                .eq_ignore_ascii_case(selected_target_id.as_str())
+            || tracker.review_unresolved_first != review_unresolved_first;
+        tracker.target_report = Some(report_identity);
+        tracker.selected_target_id = selected_target_id.clone();
+        tracker.review_unresolved_first = review_unresolved_first;
+        changed.then(|| {
+            target_order.iter().position(|target_index| {
+                report.targets[*target_index]
+                    .target_id
+                    .eq_ignore_ascii_case(selected_target_id.as_str())
+            })
+        })?
+    }
+
+    pub(super) fn sequencing_confirmation_read_scroll_request(
+        &mut self,
+        report: &SequencingConfirmationReport,
+    ) -> Option<usize> {
+        let report_identity = SequencingConfirmationReportPresentationIdentity::from_report(report);
+        let selected_evidence_id = self
+            .sequencing_confirmation_ui
+            .selected_evidence_id
+            .trim()
+            .to_string();
+        let tracker = &mut self.sequencing_confirmation_ui.table_selection_tracker;
+        let changed = tracker.read_report.as_ref() != Some(&report_identity)
+            || !tracker
+                .selected_evidence_id
+                .eq_ignore_ascii_case(selected_evidence_id.as_str());
+        tracker.read_report = Some(report_identity);
+        tracker.selected_evidence_id = selected_evidence_id.clone();
+        changed.then(|| {
+            report.reads.iter().position(|read| {
+                read.evidence_id
+                    .eq_ignore_ascii_case(selected_evidence_id.as_str())
+            })
+        })?
+    }
+
+    pub(super) fn sequencing_confirmation_virtual_table_height(
+        row_count: usize,
+        row_height: f32,
+        max_height: f32,
+    ) -> f32 {
+        (row_count.max(1) as f32 * row_height.max(1.0)).min(max_height.max(1.0))
     }
 
     pub(super) fn sequencing_confirmation_variant_review_rows(
@@ -1827,8 +2007,22 @@ impl MainAreaDna {
         report: &SequencingConfirmationReport,
         sequence_length: usize,
     ) -> Vec<SequencingConfirmationOverviewSelection> {
-        let mut queue = Self::sequencing_confirmation_target_review_rows(report, true)
-            .into_iter()
+        let target_order = Self::sequencing_confirmation_target_review_indices(report, true);
+        Self::sequencing_confirmation_unresolved_review_queue_with_target_order(
+            report,
+            sequence_length,
+            &target_order,
+        )
+    }
+
+    pub(super) fn sequencing_confirmation_unresolved_review_queue_with_target_order(
+        report: &SequencingConfirmationReport,
+        sequence_length: usize,
+        target_order: &[usize],
+    ) -> Vec<SequencingConfirmationOverviewSelection> {
+        let mut queue = target_order
+            .iter()
+            .filter_map(|index| report.targets.get(*index))
             .filter(|row| row.status != SequencingConfirmationStatus::Confirmed)
             .map(|row| SequencingConfirmationOverviewSelection::Target(row.target_id.clone()))
             .collect::<Vec<_>>();
@@ -3941,6 +4135,19 @@ impl MainAreaDna {
                     if review_mode_changed {
                         self.save_engine_ops_state();
                     }
+                    let target_review_order = self
+                        .sequencing_confirmation_cached_target_review_indices(
+                            report,
+                            self.sequencing_confirmation_ui.review_unresolved_first,
+                        );
+                    let unresolved_target_review_order = if self
+                        .sequencing_confirmation_ui
+                        .review_unresolved_first
+                    {
+                        target_review_order.clone()
+                    } else {
+                        self.sequencing_confirmation_cached_target_review_indices(report, true)
+                    };
                     if let Some(selection) = Self::render_sequencing_confirmation_construct_overview(
                         &mut columns[1],
                         report,
@@ -3955,10 +4162,12 @@ impl MainAreaDna {
                         {
                             self.save_engine_ops_state();
                         }
-                    let unresolved_queue = Self::sequencing_confirmation_unresolved_review_queue(
-                        report,
-                        report_sequence_length,
-                    );
+                    let unresolved_queue =
+                        Self::sequencing_confirmation_unresolved_review_queue_with_target_order(
+                            report,
+                            report_sequence_length,
+                            unresolved_target_review_order.as_slice(),
+                        );
                     let current_unresolved_focus =
                         Self::sequencing_confirmation_current_unresolved_focus(
                             report,
@@ -4022,26 +4231,22 @@ impl MainAreaDna {
                             }
                         }
                     });
-                    let unresolved_targets = report
+                    let has_unresolved_targets = report
                         .targets
                         .iter()
-                        .filter(|row| row.status != SequencingConfirmationStatus::Confirmed)
-                        .collect::<Vec<_>>();
-                    let unresolved_variants = report
+                        .any(|row| row.status != SequencingConfirmationStatus::Confirmed);
+                    let has_unresolved_variants = report
                         .variants
                         .iter()
-                        .filter(|row| row.status != SequencingConfirmationStatus::Confirmed)
-                        .collect::<Vec<_>>();
-                    if !unresolved_targets.is_empty() || !unresolved_variants.is_empty() {
+                        .any(|row| row.status != SequencingConfirmationStatus::Confirmed);
+                    if has_unresolved_targets || has_unresolved_variants {
                         columns[1].collapsing("Review queue", |ui| {
-                            if !unresolved_targets.is_empty() {
+                            if has_unresolved_targets {
                                 ui.horizontal_wrapped(|ui| {
                                     ui.label("Targets");
-                                    for row in Self::sequencing_confirmation_target_review_rows(
-                                        report,
-                                        true,
-                                    )
-                                    .into_iter()
+                                    for row in unresolved_target_review_order
+                                    .iter()
+                                    .filter_map(|index| report.targets.get(*index))
                                     .filter(|row| row.status != SequencingConfirmationStatus::Confirmed)
                                     .take(8)
                                     {
@@ -4059,7 +4264,7 @@ impl MainAreaDna {
                                     }
                                 });
                             }
-                            if !unresolved_variants.is_empty() {
+                            if has_unresolved_variants {
                                 ui.horizontal_wrapped(|ui| {
                                     ui.label("Variants");
                                     for row in Self::sequencing_confirmation_variant_review_rows(
@@ -4464,62 +4669,109 @@ impl MainAreaDna {
                     }
                     columns[1].separator();
                     columns[1].label(egui::RichText::new("Targets").strong());
-                    egui::ScrollArea::vertical()
-                        .id_salt(("seq_confirm_targets_scroll", self.panel_scope_key()))
-                        .max_height(220.0)
-                        .show(&mut columns[1], |ui| {
-                        let target_rows = Self::sequencing_confirmation_target_review_rows(
+                    let target_scroll_to_row = self
+                        .sequencing_confirmation_target_scroll_request(
                             report,
-                            self.sequencing_confirmation_ui.review_unresolved_first,
+                            target_review_order.as_slice(),
                         );
-                        egui::Grid::new(("seq_confirm_targets_grid", self.panel_scope_key()))
-                            .num_columns(6)
+                    egui::ScrollArea::horizontal()
+                        .id_salt(("seq_confirm_targets_horizontal", self.panel_scope_key()))
+                        .show(&mut columns[1], |ui| {
+                        ui.set_min_width(900.0);
+                        let row_height = ui.spacing().interact_size.y.max(20.0);
+                        let table_height = Self::sequencing_confirmation_virtual_table_height(
+                            target_review_order.len(),
+                            row_height,
+                            220.0,
+                        );
+                        let mut table = egui_extras::TableBuilder::new(ui)
+                            .id_salt(("seq_confirm_targets_grid", self.panel_scope_key()))
                             .striped(true)
-                            .show(ui, |ui| {
-                                ui.strong("Target");
-                                ui.strong("Kind");
-                                ui.strong("Status");
-                                ui.strong("Span");
-                                ui.strong("Support");
-                                ui.strong("Reason");
-                                ui.end_row();
-                                for target in target_rows {
+                            .max_scroll_height(table_height)
+                            .min_scrolled_height(0.0)
+                            .auto_shrink([true, true])
+                            .column(egui_extras::Column::initial(160.0).clip(true))
+                            .column(egui_extras::Column::initial(76.0).clip(true))
+                            .column(egui_extras::Column::initial(118.0).clip(true))
+                            .column(egui_extras::Column::initial(160.0).clip(true))
+                            .column(egui_extras::Column::initial(90.0).clip(true))
+                            .column(egui_extras::Column::initial(296.0).clip(true));
+                        if let Some(row_index) = target_scroll_to_row {
+                            table = table.scroll_to_row(row_index, Some(egui::Align::Center));
+                        }
+                        table
+                            .header(row_height, |mut header| {
+                                for label in [
+                                    "Target",
+                                    "Kind",
+                                    "Status",
+                                    "Span",
+                                    "Support",
+                                    "Reason",
+                                ] {
+                                    header.col(|ui| {
+                                        ui.strong(label);
+                                    });
+                                }
+                            })
+                            .body(|body| {
+                                body.rows(row_height, target_review_order.len(), |mut table_row| {
+                                    let Some(target) = target_review_order
+                                        .get(table_row.index())
+                                        .and_then(|index| report.targets.get(*index))
+                                    else {
+                                        return;
+                                    };
                                     let selected = target.target_id.eq_ignore_ascii_case(
                                         self.sequencing_confirmation_ui.selected_target_id.trim(),
                                     );
-                                    if ui
-                                        .selectable_label(selected, &target.label)
-                                        .on_hover_text(
-                                            "Select this target as the current construct-review focus.",
-                                        )
-                                        .clicked()
-                                    {
-                                        self.sequencing_confirmation_sync_target_selection(
-                                            report,
-                                            &target.target_id,
+                                    table_row.col(|ui| {
+                                        if ui
+                                            .selectable_label(selected, &target.label)
+                                            .on_hover_text(
+                                                "Select this target as the current construct-review focus.",
+                                            )
+                                            .clicked()
+                                        {
+                                            self.sequencing_confirmation_sync_target_selection(
+                                                report,
+                                                &target.target_id,
+                                            );
+                                            self.save_engine_ops_state();
+                                        }
+                                    });
+                                    table_row.col(|ui| {
+                                        ui.small(target.kind.as_str());
+                                    });
+                                    table_row.col(|ui| {
+                                        ui.colored_label(
+                                            Self::sequencing_confirmation_status_color(
+                                                target.status,
+                                            ),
+                                            target.status.as_str(),
                                         );
-                                        self.save_engine_ops_state();
-                                    }
-                                    ui.small(target.kind.as_str());
-                                    ui.colored_label(
-                                        Self::sequencing_confirmation_status_color(target.status),
-                                        target.status.as_str(),
-                                    );
-                                    ui.small(format!(
-                                        "{}..{} ({}/{})",
-                                        target.start_0based,
-                                        target.end_0based_exclusive,
-                                        target.covered_bp,
-                                        target.target_length_bp
-                                    ));
-                                    ui.small(format!(
-                                        "+{} / -{}",
-                                        target.support_read_ids.len(),
-                                        target.contradicting_read_ids.len()
-                                    ));
-                                    ui.small(&target.reason);
-                                    ui.end_row();
-                                }
+                                    });
+                                    table_row.col(|ui| {
+                                        ui.small(format!(
+                                            "{}..{} ({}/{})",
+                                            target.start_0based,
+                                            target.end_0based_exclusive,
+                                            target.covered_bp,
+                                            target.target_length_bp
+                                        ));
+                                    });
+                                    table_row.col(|ui| {
+                                        ui.small(format!(
+                                            "+{} / -{}",
+                                            target.support_read_ids.len(),
+                                            target.contradicting_read_ids.len()
+                                        ));
+                                    });
+                                    table_row.col(|ui| {
+                                        ui.small(&target.reason)
+                                            .on_hover_text(&target.reason);
+                                    });
+                                });
                             });
                         });
                     columns[1].separator();
@@ -4603,70 +4855,67 @@ impl MainAreaDna {
                                 self.save_engine_ops_state();
                             }
                         });
-                        egui::ScrollArea::vertical()
-                            .id_salt(("seq_confirm_reads_scroll", self.panel_scope_key()))
-                            .max_height(280.0)
+                        let read_scroll_to_row =
+                            self.sequencing_confirmation_read_scroll_request(report);
+                        egui::ScrollArea::horizontal()
+                            .id_salt(("seq_confirm_reads_horizontal", self.panel_scope_key()))
                             .show(&mut columns[1], |ui| {
-                            egui::Grid::new(("seq_confirm_reads_grid", self.panel_scope_key()))
-                                .num_columns(10)
+                            ui.set_min_width(1_050.0);
+                            let row_height = ui.spacing().interact_size.y.max(20.0);
+                            let table_height = Self::sequencing_confirmation_virtual_table_height(
+                                report.reads.len(),
+                                row_height,
+                                280.0,
+                            );
+                            let mut table = egui_extras::TableBuilder::new(ui)
+                                .id_salt(("seq_confirm_reads_grid", self.panel_scope_key()))
                                 .striped(true)
-                                .show(ui, |ui| {
-                                    ui.strong("Evidence");
-                                    ui.strong("Kind");
-                                    ui.strong("Linked seq");
-                                    ui.strong("Orientation");
-                                    ui.strong("Usable");
-                                    ui.strong("Identity");
-                                    ui.strong("Coverage");
-                                    ui.strong("Targets");
-                                    ui.strong("Discrepancies");
-                                    ui.strong("Review");
-                                    ui.end_row();
-                                    for read in &report.reads {
+                                .max_scroll_height(table_height)
+                                .min_scrolled_height(0.0)
+                                .auto_shrink([true, true])
+                                .column(egui_extras::Column::initial(150.0).clip(true))
+                                .column(egui_extras::Column::initial(72.0).clip(true))
+                                .column(egui_extras::Column::initial(150.0).clip(true))
+                                .column(egui_extras::Column::initial(142.0).clip(true))
+                                .column(egui_extras::Column::initial(58.0).clip(true))
+                                .column(egui_extras::Column::initial(76.0).clip(true))
+                                .column(egui_extras::Column::initial(140.0).clip(true))
+                                .column(egui_extras::Column::initial(86.0).clip(true))
+                                .column(egui_extras::Column::initial(98.0).clip(true))
+                                .column(egui_extras::Column::initial(100.0).clip(true));
+                            if let Some(row_index) = read_scroll_to_row {
+                                table = table.scroll_to_row(row_index, Some(egui::Align::Center));
+                            }
+                            table
+                                .header(row_height, |mut header| {
+                                    for label in [
+                                        "Evidence",
+                                        "Kind",
+                                        "Linked seq",
+                                        "Orientation",
+                                        "Usable",
+                                        "Identity",
+                                        "Coverage",
+                                        "Targets",
+                                        "Discrepancies",
+                                        "Review",
+                                    ] {
+                                        header.col(|ui| {
+                                            ui.strong(label);
+                                        });
+                                    }
+                                })
+                                .body(|body| {
+                                    body.rows(row_height, report.reads.len(), |mut table_row| {
+                                        let read = &report.reads[table_row.index()];
                                         let is_selected = read.evidence_id.eq_ignore_ascii_case(
                                             self.sequencing_confirmation_ui.selected_evidence_id.trim(),
                                         );
-                                        if ui
-                                            .selectable_label(is_selected, &read.evidence_id)
-                                            .on_hover_text(
-                                                "Select this evidence row for the alignment snapshot below.",
-                                            )
-                                            .clicked()
-                                        {
-                                            self.sequencing_confirmation_sync_evidence_selection(
-                                                report,
-                                                &read.evidence_id,
-                                            );
-                                            self.save_engine_ops_state();
-                                        }
-                                        ui.small(read.evidence_kind.as_str());
-                                        ui.small(
-                                            read.linked_seq_id
-                                                .as_deref()
-                                                .unwrap_or(read.read_seq_id.as_str()),
-                                        );
-                                        ui.small(match read.orientation {
-                                            SequencingReadOrientation::Forward => "forward",
-                                            SequencingReadOrientation::ReverseComplement => "reverse_complement",
-                                        });
-                                        ui.small(if read.usable { "yes" } else { "no" });
-                                        ui.small(format!("{:.3}", read.best_alignment.identity_fraction));
-                                        ui.small(format!(
-                                            "q={:.3} / t={:.3}",
-                                            read.best_alignment.query_coverage_fraction,
-                                            read.best_alignment.target_coverage_fraction
-                                        ));
-                                        ui.small(format!(
-                                            "+{} / -{}",
-                                            read.confirmed_target_ids.len(),
-                                            read.contradicted_target_ids.len()
-                                        ));
-                                        ui.small(format!("{}", read.discrepancies.len()));
-                                        if let Some(trace_id) = read.trace_id.as_deref() {
+                                        table_row.col(|ui| {
                                             if ui
-                                                .small_button("Inspect trace")
+                                                .selectable_label(is_selected, &read.evidence_id)
                                                 .on_hover_text(
-                                                    "Load the imported trace record behind this evidence row into the trace review pane.",
+                                                    "Select this evidence row for the alignment snapshot below.",
                                                 )
                                                 .clicked()
                                             {
@@ -4674,15 +4923,75 @@ impl MainAreaDna {
                                                     report,
                                                     &read.evidence_id,
                                                 );
-                                                self.sequencing_confirmation_ui.selected_trace_id =
-                                                    trace_id.to_string();
                                                 self.save_engine_ops_state();
                                             }
-                                        } else {
-                                            ui.small("-");
-                                        }
-                                        ui.end_row();
-                                    }
+                                        });
+                                        table_row.col(|ui| {
+                                            ui.small(read.evidence_kind.as_str());
+                                        });
+                                        table_row.col(|ui| {
+                                            ui.small(
+                                                read.linked_seq_id
+                                                    .as_deref()
+                                                    .unwrap_or(read.read_seq_id.as_str()),
+                                            );
+                                        });
+                                        table_row.col(|ui| {
+                                            ui.small(match read.orientation {
+                                                SequencingReadOrientation::Forward => "forward",
+                                                SequencingReadOrientation::ReverseComplement => {
+                                                    "reverse_complement"
+                                                }
+                                            });
+                                        });
+                                        table_row.col(|ui| {
+                                            ui.small(if read.usable { "yes" } else { "no" });
+                                        });
+                                        table_row.col(|ui| {
+                                            ui.small(format!(
+                                                "{:.3}",
+                                                read.best_alignment.identity_fraction
+                                            ));
+                                        });
+                                        table_row.col(|ui| {
+                                            ui.small(format!(
+                                                "q={:.3} / t={:.3}",
+                                                read.best_alignment.query_coverage_fraction,
+                                                read.best_alignment.target_coverage_fraction
+                                            ));
+                                        });
+                                        table_row.col(|ui| {
+                                            ui.small(format!(
+                                                "+{} / -{}",
+                                                read.confirmed_target_ids.len(),
+                                                read.contradicted_target_ids.len()
+                                            ));
+                                        });
+                                        table_row.col(|ui| {
+                                            ui.small(read.discrepancies.len().to_string());
+                                        });
+                                        table_row.col(|ui| {
+                                            if let Some(trace_id) = read.trace_id.as_deref() {
+                                                if ui
+                                                    .small_button("Inspect trace")
+                                                    .on_hover_text(
+                                                        "Load the imported trace record behind this evidence row into the trace review pane.",
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    self.sequencing_confirmation_sync_evidence_selection(
+                                                        report,
+                                                        &read.evidence_id,
+                                                    );
+                                                    self.sequencing_confirmation_ui.selected_trace_id =
+                                                        trace_id.to_string();
+                                                    self.save_engine_ops_state();
+                                                }
+                                            } else {
+                                                ui.small("-");
+                                            }
+                                        });
+                                    });
                                 });
                             });
                     }

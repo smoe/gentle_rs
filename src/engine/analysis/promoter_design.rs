@@ -13,7 +13,7 @@ impl GentleEngine {
     pub(crate) const PROMOTER_COHORT_DIVERGENCE_SIMILARITY_THRESHOLD: f64 = 0.25;
     pub(crate) const PROMOTER_COHORT_CONCORDANCE_SIMILARITY_THRESHOLD: f64 = 0.75;
 
-    fn emit_tfbs_score_track_progress(
+    pub(super) fn emit_tfbs_score_track_progress(
         on_progress: &mut dyn FnMut(OperationProgress) -> bool,
         seq_id: &str,
         motif_id: &str,
@@ -62,11 +62,11 @@ impl GentleEngine {
         }))
     }
 
-    fn tfbs_background_tail_log10(tail_probability: f64, modeled_quantile: f64) -> f64 {
+    fn tfbs_background_tail_log10(tail_log10: f64, modeled_quantile: f64) -> f64 {
         if modeled_quantile < Self::TFBS_BACKGROUND_TAIL_SHOW_QUANTILE {
             return 0.0;
         }
-        -tail_probability.max(1e-300).log10()
+        tail_log10
     }
 
     fn tfbs_modeled_background_quantile(
@@ -79,22 +79,25 @@ impl GentleEngine {
             .unwrap_or_else(|| Self::empirical_quantile(empirical_background_sorted_scores, score))
     }
 
-    fn tfbs_modeled_background_tail_probability(
+    fn tfbs_modeled_background_tail_log10(
         score: f64,
         modeled_distribution: Option<&ModeledTfbsScoreDistribution>,
         empirical_background_sorted_scores: &[f64],
     ) -> f64 {
         modeled_distribution
-            .map(|distribution| distribution.modeled_tail_probability(score))
+            .map(|distribution| distribution.modeled_tail_log10(score))
             .unwrap_or_else(|| {
-                let quantile = Self::empirical_quantile(empirical_background_sorted_scores, score);
-                (1.0 - quantile)
-                    .max(1.0 / empirical_background_sorted_scores.len().max(1) as f64)
-                    .clamp(0.0, 1.0)
+                let below =
+                    empirical_background_sorted_scores.partition_point(|value| *value < score);
+                let tail = empirical_background_sorted_scores
+                    .len()
+                    .saturating_sub(below)
+                    .max(1);
+                -(tail as f64 / empirical_background_sorted_scores.len().max(1) as f64).log10()
             })
     }
 
-    fn tfbs_score_track_presented_value(
+    pub(super) fn tfbs_score_track_presented_value(
         llr_bits: f64,
         llr_quantile: f64,
         true_log_odds_bits: f64,
@@ -129,12 +132,12 @@ impl GentleEngine {
                     llr_modeled_distribution,
                     llr_background_sorted_scores,
                 );
-                let tail_probability = Self::tfbs_modeled_background_tail_probability(
+                let tail_log10 = Self::tfbs_modeled_background_tail_log10(
                     llr_bits,
                     llr_modeled_distribution,
                     llr_background_sorted_scores,
                 );
-                Self::tfbs_background_tail_log10(tail_probability, quantile)
+                Self::tfbs_background_tail_log10(tail_log10, quantile)
             }
             TfbsScoreTrackValueKind::TrueLogOddsBits => {
                 Self::promoter_design_clip_score(true_log_odds_bits, clip_negative)
@@ -158,12 +161,12 @@ impl GentleEngine {
                     true_log_odds_modeled_distribution,
                     true_log_odds_background_sorted_scores,
                 );
-                let tail_probability = Self::tfbs_modeled_background_tail_probability(
+                let tail_log10 = Self::tfbs_modeled_background_tail_log10(
                     true_log_odds_bits,
                     true_log_odds_modeled_distribution,
                     true_log_odds_background_sorted_scores,
                 );
-                Self::tfbs_background_tail_log10(tail_probability, quantile)
+                Self::tfbs_background_tail_log10(tail_log10, quantile)
             }
         }
     }
@@ -287,7 +290,7 @@ impl GentleEngine {
         markers
     }
 
-    fn summarize_tfbs_score_track_overlay_tracks(
+    pub(super) fn summarize_tfbs_score_track_overlay_tracks(
         &self,
         dna: &DNAsequence,
         start_0based: usize,
@@ -295,7 +298,9 @@ impl GentleEngine {
     ) -> Vec<TfbsScoreTrackOverlayTrack> {
         let mut grouped = std::collections::BTreeMap::<String, TfbsScoreTrackOverlayTrack>::new();
         for feature in dna.features() {
-            if !Self::is_generated_genome_bed_feature(feature) {
+            if !Self::is_generated_genome_bed_feature(feature)
+                && !Self::is_generated_genome_bigwig_feature(feature)
+            {
                 continue;
             }
             let source_kind = Self::feature_qualifier_text(feature, "gentle_track_source")
@@ -303,13 +308,13 @@ impl GentleEngine {
             let track_name =
                 Self::first_nonempty_feature_qualifier(feature, &["gentle_track_name", "name"])
                     .unwrap_or_else(|| "BED track".to_string());
-            let source_file_name = Self::feature_qualifier_text(feature, "gentle_track_file")
-                .and_then(|value| {
-                    std::path::Path::new(value.trim())
-                        .file_name()
-                        .and_then(|name| name.to_str())
-                        .map(|name| name.to_string())
-                });
+            let source_path = Self::feature_qualifier_text(feature, "gentle_track_file");
+            let source_file_name = source_path.as_deref().and_then(|value| {
+                std::path::Path::new(value.trim())
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .map(|name| name.to_string())
+            });
             let display_label = match source_file_name.as_deref() {
                 Some(file_name) if file_name != track_name => {
                     format!("{track_name} ({file_name})")
@@ -342,6 +347,7 @@ impl GentleEngine {
                         source_kind: source_kind.clone(),
                         track_name: track_name.clone(),
                         display_label: display_label.clone(),
+                        source_path: source_path.clone(),
                         source_file_name: source_file_name.clone(),
                         interval_count: 0,
                         max_score: None,
@@ -384,6 +390,9 @@ impl GentleEngine {
         track: &TfbsScoreTrackRow,
         signal_source: TfbsScoreTrackCorrelationSignalSource,
     ) -> Vec<f64> {
+        if !track.fully_evaluated() {
+            return vec![];
+        }
         match signal_source {
             TfbsScoreTrackCorrelationSignalSource::MaxStrands => track
                 .forward_scores
@@ -401,6 +410,9 @@ impl GentleEngine {
         track: &TfbsScoreTrackRow,
         strand: TfbsScoreTrackStrandComponent,
     ) -> &[f64] {
+        if !track.fully_evaluated() {
+            return &[];
+        }
         match strand {
             TfbsScoreTrackStrandComponent::Forward => &track.forward_scores,
             TfbsScoreTrackStrandComponent::Reverse => &track.reverse_scores,
@@ -419,6 +431,9 @@ impl GentleEngine {
     fn summarize_tfbs_track_directional_summary(
         track: &TfbsScoreTrackRow,
     ) -> Option<TfbsScoreTrackDirectionalSummary> {
+        if !track.fully_evaluated() {
+            return None;
+        }
         let overlap_window_count = track.forward_scores.len().min(track.reverse_scores.len());
         if overlap_window_count < 2 {
             return None;
@@ -474,7 +489,7 @@ impl GentleEngine {
         smoothed
     }
 
-    fn pearson_correlation(left: &[f64], right: &[f64]) -> f64 {
+    pub(super) fn pearson_correlation(left: &[f64], right: &[f64]) -> f64 {
         let len = left.len().min(right.len());
         if len < 2 {
             return 0.0;
@@ -523,7 +538,7 @@ impl GentleEngine {
         ranks
     }
 
-    fn spearman_correlation(left: &[f64], right: &[f64]) -> f64 {
+    pub(super) fn spearman_correlation(left: &[f64], right: &[f64]) -> f64 {
         let len = left.len().min(right.len());
         if len < 2 {
             return 0.0;
@@ -762,7 +777,7 @@ impl GentleEngine {
         })
     }
 
-    fn collect_tfbs_score_track_background_scores(
+    pub(super) fn collect_tfbs_score_track_background_scores(
         random_background: &[u8],
         llr_matrix: &[[f64; 4]],
         true_log_odds_matrix: &[[f64; 4]],
@@ -815,7 +830,7 @@ impl GentleEngine {
         ))
     }
 
-    fn summarize_tfbs_score_track_normalization_reference(
+    pub(super) fn summarize_tfbs_score_track_normalization_reference(
         underlying_background_scores: &[f64],
         observed_peak_underlying_score: f64,
         modeled_distribution: Option<&ModeledTfbsScoreDistribution>,
@@ -851,7 +866,7 @@ impl GentleEngine {
             .unwrap_or_else(|| distribution.max_score.max(observed_peak_underlying_score));
         Some(TfbsScoreTrackNormalizationReference {
             background_model: "uniform_random_dna".to_string(),
-            chance_model: "quantized_iid_uniform_window_dp".to_string(),
+            chance_model: Self::TFBS_MODELED_TAIL_METHOD.to_string(),
             random_sequence_length_bp: DEFAULT_TFBS_SCORE_TRACK_RANDOM_SEQUENCE_LENGTH_BP,
             random_seed: DEFAULT_TFBS_SCORE_TRACK_RANDOM_SEED,
             sample_count: distribution.sample_count,
@@ -889,12 +904,17 @@ impl GentleEngine {
         motif_length_bp: usize,
         forward_scores: &[f64],
         reverse_scores: &[f64],
+        validity: &TfbsScoreTrackValidity,
         displayed_background_scores: &[f64],
     ) -> Vec<TfbsScoreTrackPeak> {
-        fn is_local_peak(scores: &[f64], idx: usize) -> bool {
+        fn is_local_peak(scores: &[f64], valid: &[bool], idx: usize) -> bool {
             let score = scores[idx];
-            let left = idx.checked_sub(1).and_then(|i| scores.get(i)).copied();
-            let right = scores.get(idx + 1).copied();
+            let left = idx
+                .checked_sub(1)
+                .filter(|i| valid[*i])
+                .and_then(|i| scores.get(i))
+                .copied();
+            let right = scores.get(idx + 1).filter(|_| valid[idx + 1]).copied();
             left.is_none_or(|neighbor| score >= neighbor)
                 && right.is_none_or(|neighbor| score >= neighbor)
         }
@@ -915,9 +935,9 @@ impl GentleEngine {
         let displayed_distribution =
             Self::summarize_jaspar_score_distribution(displayed_background_scores);
         let displayed_p99 = displayed_distribution.p99_score;
-        let mut push_candidates = |scores: &[f64], is_reverse: bool| {
+        let mut push_candidates = |scores: &[f64], valid: &[bool], is_reverse: bool| {
             for (idx, score) in scores.iter().copied().enumerate() {
-                if !score.is_finite() || !is_local_peak(scores, idx) {
+                if !valid[idx] || !score.is_finite() || !is_local_peak(scores, valid, idx) {
                     continue;
                 }
                 let start_0based = track_start_0based + idx;
@@ -937,8 +957,8 @@ impl GentleEngine {
                 });
             }
         };
-        push_candidates(forward_scores, false);
-        push_candidates(reverse_scores, true);
+        push_candidates(forward_scores, &validity.forward, false);
+        push_candidates(reverse_scores, &validity.reverse, true);
 
         if candidates.is_empty() {
             return vec![];
@@ -985,7 +1005,7 @@ impl GentleEngine {
             .collect()
     }
 
-    fn summarize_tfbs_score_tracks_internal(
+    pub(super) fn summarize_tfbs_score_tracks_internal(
         &self,
         target: SequenceScanTarget,
         motifs: &[String],
@@ -1043,12 +1063,26 @@ impl GentleEngine {
         );
 
         let mut tracks = vec![];
+        let mut matrix_bindings = vec![];
         let mut global_max_score = 0.0_f64;
         let motif_count = effective_motifs.len();
         const SCORE_TRACK_STAGE_COUNT: usize = 2;
         for (motif_idx, motif) in effective_motifs.iter().enumerate() {
             let (tf_id, tf_name, _consensus, matrix_counts) =
                 Self::resolve_tf_motif_for_scoring(motif)?;
+            matrix_bindings.push(TfbsScoreTrackMatrixBinding {
+                matrix_id: tf_id.clone(),
+                matrix_name: tf_name.clone(),
+                matrix_sha256: crate::digest_utils::sha256_hex_bytes(
+                    &serde_json::to_vec(&(&tf_id, &tf_name, &matrix_counts)).map_err(|error| {
+                        EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("Cannot bind scoring matrix: {error}"),
+                            cause_chain: vec![],
+                        }
+                    })?,
+                ),
+            });
             let (llr_matrix, true_log_odds_matrix) = Self::prepare_scoring_matrices(&matrix_counts);
             let llr_modeled_distribution = Self::modeled_tfbs_score_distribution(&llr_matrix);
             let true_log_odds_modeled_distribution =
@@ -1064,6 +1098,10 @@ impl GentleEngine {
             };
             let mut forward_scores = Vec::with_capacity(scored_window_count);
             let mut reverse_scores = Vec::with_capacity(scored_window_count);
+            let mut score_validity = TfbsScoreTrackValidity {
+                forward: vec![false; scored_window_count],
+                reverse: vec![false; scored_window_count],
+            };
             let mut max_score = 0.0_f64;
             let mut max_underlying_score = f64::NEG_INFINITY;
             let mut max_position_0based = None;
@@ -1150,10 +1188,15 @@ impl GentleEngine {
                         &llr_background_sorted_scores,
                         &true_log_odds_background_sorted_scores,
                     );
+                    if !score.is_finite() {
+                        continue;
+                    }
                     if reverse {
                         reverse_scores[offset] = score;
+                        score_validity.reverse[offset] = true;
                     } else {
                         forward_scores[offset] = score;
+                        score_validity.forward[offset] = true;
                     }
                     if score > max_score {
                         max_score = score;
@@ -1190,23 +1233,25 @@ impl GentleEngine {
                     return Err(Self::tfbs_cancelled_error("target scan"));
                 }
             }
-            if !max_underlying_score.is_finite() {
-                max_underlying_score = 0.0;
-            }
-            let normalization_reference = Self::summarize_tfbs_score_track_normalization_reference(
-                &underlying_background_scores,
-                max_underlying_score,
-                if score_kind.uses_llr_background_bits() {
-                    llr_modeled_distribution.as_ref()
-                } else {
-                    true_log_odds_modeled_distribution.as_ref()
-                },
-            );
+            let normalization_reference = if max_underlying_score.is_finite() {
+                Self::summarize_tfbs_score_track_normalization_reference(
+                    &underlying_background_scores,
+                    max_underlying_score,
+                    if score_kind.uses_llr_background_bits() {
+                        llr_modeled_distribution.as_ref()
+                    } else {
+                        true_log_odds_modeled_distribution.as_ref()
+                    },
+                )
+            } else {
+                None
+            };
             let top_peaks = Self::summarize_tfbs_score_track_top_peaks(
                 scan_start_0based,
                 motif_length_bp,
                 &forward_scores,
                 &reverse_scores,
+                &score_validity,
                 &displayed_background_scores,
             );
             global_max_score = global_max_score.max(max_score);
@@ -1224,6 +1269,7 @@ impl GentleEngine {
                 top_peaks,
                 forward_scores,
                 reverse_scores,
+                score_validity: Some(score_validity),
             };
             track.directional_summary = Self::summarize_tfbs_track_directional_summary(&track);
             tracks.push(track);
@@ -1291,6 +1337,15 @@ impl GentleEngine {
             correlation_summaries,
             cross_strand_correlation_summary,
             tracks,
+            scoring_provenance: Some(TfbsScoreTrackProvenance {
+                scorer: "gentle.tfbs_score_tracks.scorer.v1".into(),
+                sequence_sha256: crate::digest_utils::sha256_hex_bytes(
+                    sequence.to_ascii_uppercase().as_bytes(),
+                ),
+                background_length_bp: DEFAULT_TFBS_SCORE_TRACK_RANDOM_SEQUENCE_LENGTH_BP,
+                background_seed: DEFAULT_TFBS_SCORE_TRACK_RANDOM_SEED,
+                matrices: matrix_bindings,
+            }),
         })
     }
 
@@ -1302,6 +1357,27 @@ impl GentleEngine {
         clip_negative: bool,
     ) -> Result<TfbsScoreTrackReport, EngineError> {
         self.summarize_tfbs_score_tracks_internal(target, motifs, score_kind, clip_negative, true)
+    }
+
+    /// Float-only downstream contracts cannot carry gaps without changing meaning.
+    pub(crate) fn require_evaluated_tfbs_tracks(
+        report: &TfbsScoreTrackReport,
+    ) -> Result<(), EngineError> {
+        if let Some(track) = report
+            .tracks
+            .iter()
+            .find(|t| !t.fully_evaluated() || t.scored_window_count == 0)
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "TFBS track '{}' has unavailable or unassessed motif windows; this analysis requires fully evaluated tracks. Inspect SummarizeTfbsScoreTracks for per-window validity; missing scores cannot be treated as zero.",
+                    track.tf_id
+                ),
+                cause_chain: vec![],
+            });
+        }
+        Ok(())
     }
 
     fn tfbs_track_similarity_metric_value(
@@ -1567,6 +1643,7 @@ impl GentleEngine {
             clip_negative,
             false,
         )?;
+        Self::require_evaluated_tfbs_tracks(&base_report)?;
         let anchor_track = base_report
             .tracks
             .iter()
@@ -2038,6 +2115,7 @@ impl GentleEngine {
                 score_kind,
                 clip_negative,
             )?;
+            Self::require_evaluated_tfbs_tracks(&tfbs_score_tracks)?;
             tfbs_score_tracks.tss_markers = vec![TfbsScoreTrackTssMarker {
                 feature_id: usize::MAX,
                 feature_kind: "genome_promoter_slice".to_string(),

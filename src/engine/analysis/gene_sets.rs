@@ -7,10 +7,13 @@
 use super::*;
 use crate::gene_groups::LoadedGeneGroupRecord;
 use gentle_protocol::{
-    GENE_SET_CO_REGULATED_CACHE_SCHEMA, GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
+    COLLECTION_MEMBERSHIP_FINGERPRINT_ALGORITHM, COLLECTION_OPERATION_REPORT_SCHEMA,
+    CollectionLiftSupport, CollectionLiftingMode, CollectionMemberOutcome, CollectionMemberRef,
+    CollectionMemberStatusRow, CollectionOperationReport, CollectionSubjectKind,
+    CollectionSubjectRef, GENE_SET_CO_REGULATED_CACHE_SCHEMA, GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
     GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA, GeneGroupMember, GeneSetCoRegulatedProducerMetadata,
     GeneSetProducerFilter, GeneSetProducerKind, GeneSetProducerProvenance,
-    GeneSetProducerQueryMetadata,
+    GeneSetProducerQueryMetadata, canonical_collection_membership_json, collection_lift_policy,
 };
 use serde_json::Value;
 use std::{collections::BTreeSet, path::Path};
@@ -317,6 +320,7 @@ impl GentleEngine {
             dedup_key: row.dedup_key.clone(),
             symbol: row.symbol.clone(),
             gene_id: row.record.gene_id.clone(),
+            context_id: None,
             aliases: vec![],
             chromosome: Some(row.record.chromosome.clone()),
             start_1based: Some(row.record.start_1based),
@@ -2584,6 +2588,9 @@ impl GentleEngine {
         report.organism = selection.metadata.organism.clone();
         report.taxon_id = selection.metadata.taxon_id.clone();
         report.symbol_namespace = selection.metadata.symbol_namespace.clone();
+        report
+            .ensure_default_biological_context()
+            .map_err(|error| EngineError::invalid_input(error.to_string()))?;
         let cache_id = selection
             .metadata
             .cache_id
@@ -2745,6 +2752,9 @@ impl GentleEngine {
         report.organism = selection.metadata.organism.clone();
         report.taxon_id = selection.metadata.taxon_id.clone();
         report.symbol_namespace = selection.metadata.symbol_namespace.clone();
+        report
+            .ensure_default_biological_context()
+            .map_err(|error| EngineError::invalid_input(error.to_string()))?;
         let cache_id =
             selection.metadata.cache_id.clone().unwrap_or_else(|| {
                 Self::gene_set_ontology_assignment_fallback_cache_id(cache_path)
@@ -2952,6 +2962,9 @@ impl GentleEngine {
         report.organism = selection.metadata.organism.clone();
         report.taxon_id = selection.metadata.taxon_id.clone();
         report.symbol_namespace = selection.metadata.symbol_namespace.clone();
+        report
+            .ensure_default_biological_context()
+            .map_err(|error| EngineError::invalid_input(error.to_string()))?;
         let cache_id = selection
             .metadata
             .cache_id
@@ -3231,7 +3244,7 @@ impl GentleEngine {
         };
 
         Self::gene_set_sort_members(&mut resolved_members);
-        Ok(GeneSetResolutionReport {
+        let mut report = GeneSetResolutionReport {
             schema: GENE_SET_RESOLUTION_SCHEMA.to_string(),
             generated_at_unix_ms: Self::now_unix_ms(),
             op_id: None,
@@ -3256,7 +3269,12 @@ impl GentleEngine {
             unresolved_members,
             warnings,
             provenance,
-        })
+            ..GeneSetResolutionReport::default()
+        };
+        report
+            .ensure_default_biological_context()
+            .map_err(|error| EngineError::invalid_input(error.to_string()))?;
+        Ok(report)
     }
 
     pub(crate) fn build_gene_set_promoter_cohort(
@@ -3269,6 +3287,65 @@ impl GentleEngine {
         genome_catalog_path: Option<&str>,
         cache_dir: Option<&str>,
     ) -> Result<GeneSetPromoterCohortReport, EngineError> {
+        self.build_gene_set_promoter_cohort_with_transcript_ids(
+            genome_id,
+            resolution,
+            relationship,
+            upstream_bp,
+            downstream_bp,
+            genome_catalog_path,
+            cache_dir,
+            &BTreeMap::new(),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn build_gene_set_promoter_cohort_with_transcript_ids(
+        &self,
+        genome_id: &str,
+        mut resolution: GeneSetResolutionReport,
+        relationship: GeneSetCohortRelationship,
+        upstream_bp: usize,
+        downstream_bp: usize,
+        genome_catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+        transcript_ids_by_member: &BTreeMap<String, String>,
+    ) -> Result<GeneSetPromoterCohortReport, EngineError> {
+        resolution
+            .ensure_default_biological_context()
+            .map_err(|error| EngineError::invalid_input(error.to_string()))?;
+        let lift_policy = collection_lift_policy(
+            CapabilitySource::EngineOperation,
+            "BuildGeneSetPromoterCohort",
+            CollectionSubjectKind::GeneSetResolution,
+        )
+        .ok_or_else(|| {
+            EngineError::internal(
+                "BuildGeneSetPromoterCohort has no gene-set collection lift policy",
+            )
+        })?;
+        if lift_policy.context_requirement != CollectionContextRequirement::Homogeneous {
+            return Err(EngineError::internal(
+                "BuildGeneSetPromoterCohort must declare a homogeneous biological-context requirement",
+            ));
+        }
+        let context_members = resolution
+            .resolved_members
+            .iter()
+            .map(|member| CollectionMemberRef {
+                stable_member_id: member.dedup_key.clone(),
+                context_id: member.context_id.clone(),
+                ..CollectionMemberRef::default()
+            })
+            .collect::<Vec<_>>();
+        let biological_context = homogeneous_collection_biological_context(
+            &resolution.biological_contexts,
+            &context_members,
+        )
+        .map_err(EngineError::from)?;
+        validate_collection_context_target_genome(&biological_context, genome_id)
+            .map_err(EngineError::from)?;
+
         let effective_catalog_path =
             genome_catalog_path.unwrap_or(crate::genomes::default_catalog_discovery_token(false));
         let (catalog, _) = Self::open_reference_genome_catalog(Some(effective_catalog_path))?;
@@ -3286,6 +3363,9 @@ impl GentleEngine {
         let mut unresolved_members = resolution.unresolved_members.clone();
         let mut windows = vec![];
         for member in &resolution.resolved_members {
+            let requested_transcript_id = transcript_ids_by_member
+                .get(&member.dedup_key)
+                .map(String::as_str);
             let gene_query = member
                 .gene_id
                 .as_deref()
@@ -3296,7 +3376,7 @@ impl GentleEngine {
                 genome_id,
                 gene_query,
                 None,
-                None,
+                requested_transcript_id,
                 upstream_bp,
                 downstream_bp,
                 cache_dir,
@@ -3337,7 +3417,7 @@ impl GentleEngine {
                     .or(resolved.selected_gene.gene_id.clone()),
                 gene_query: resolved.query.clone(),
                 occurrence: resolved.occurrence,
-                transcript_id_requested: None,
+                transcript_id_requested: requested_transcript_id.map(str::to_string),
                 transcript_id: resolved.selected_transcript.transcript_id.clone(),
                 display_label,
                 chromosome: resolved.selected_transcript.chromosome.clone(),
@@ -3366,6 +3446,157 @@ impl GentleEngine {
             relationship_flags: vec![],
             unresolved_members,
             warnings,
+            collection_operation: None,
+        })
+    }
+
+    pub(crate) fn build_gene_set_promoter_collection_operation_report(
+        report: &GeneSetPromoterCohortReport,
+        promoter_cohort_report_id: &str,
+        op_id: &str,
+        run_id: &str,
+    ) -> Result<CollectionOperationReport, EngineError> {
+        let source_report_id = Self::gene_set_resolution_artifact_id(&report.gene_set_resolution);
+        let source_members = report
+            .gene_set_resolution
+            .resolved_members
+            .iter()
+            .map(|member| CollectionMemberRef {
+                stable_member_id: member.dedup_key.clone(),
+                gene_symbol: Some(member.symbol.clone()),
+                gene_id: member.gene_id.clone(),
+                context_id: member.context_id.clone(),
+                source_provenance: member.provenance.clone(),
+                ..CollectionMemberRef::default()
+            })
+            .collect::<Vec<_>>();
+        let canonical_membership = canonical_collection_membership_json(
+            CollectionSubjectKind::GeneSetResolution,
+            &source_members,
+        );
+        let fingerprint = crate::digest_utils::sha256_prefixed_str(&canonical_membership);
+        let lift_policy = collection_lift_policy(
+            CapabilitySource::EngineOperation,
+            "BuildGeneSetPromoterCohort",
+            CollectionSubjectKind::GeneSetResolution,
+        )
+        .cloned()
+        .ok_or_else(|| EngineError {
+            code: ErrorCode::Internal,
+            message: "BuildGeneSetPromoterCohort has no gene-set collection lift policy"
+                .to_string(),
+            cause_chain: vec![],
+        })?;
+        if !matches!(
+            &lift_policy.support,
+            CollectionLiftSupport::Supported {
+                mode: CollectionLiftingMode::Derive,
+                ..
+            }
+        ) {
+            return Err(EngineError {
+                code: ErrorCode::Internal,
+                message:
+                    "BuildGeneSetPromoterCohort collection lift policy must declare derive support"
+                        .to_string(),
+                cause_chain: vec![],
+            });
+        }
+
+        let mut per_member_status = Vec::new();
+        for (source_index, (source_member, resolved_member)) in source_members
+            .iter()
+            .zip(&report.gene_set_resolution.resolved_members)
+            .enumerate()
+        {
+            let derived_windows = report
+                .windows
+                .iter()
+                .filter(|window| window.member_dedup_key == source_member.stable_member_id)
+                .collect::<Vec<_>>();
+            let error = if derived_windows.is_empty() {
+                let detail = report
+                    .unresolved_members
+                    .iter()
+                    .find(|unresolved| {
+                        unresolved.source_id.as_deref()
+                            == Some(source_member.stable_member_id.as_str())
+                    })
+                    .map(|unresolved| unresolved.reason.clone())
+                    .unwrap_or_else(|| {
+                        "No promoter window was derived for this member".to_string()
+                    });
+                Some(EngineError {
+                    code: ErrorCode::NotFound,
+                    message: detail,
+                    cause_chain: vec![],
+                })
+            } else {
+                None
+            };
+            per_member_status.push(CollectionMemberStatusRow {
+                member: CollectionMemberRef {
+                    ordering_index: Some(source_index),
+                    ..source_member.clone()
+                },
+                outcome: if error.is_some() {
+                    CollectionMemberOutcome::Failed
+                } else {
+                    CollectionMemberOutcome::Succeeded
+                },
+                error,
+                produced_report_ids: (!derived_windows.is_empty())
+                    .then(|| vec![promoter_cohort_report_id.to_string()])
+                    .unwrap_or_default(),
+            });
+
+            for window in derived_windows {
+                let stable_member_id = format!(
+                    "promoter_window:{}:{}:{}:{}-{}",
+                    source_member.stable_member_id,
+                    window.transcript_id,
+                    window.occurrence,
+                    window.promoter_start_1based,
+                    window.promoter_end_1based
+                );
+                per_member_status.push(CollectionMemberStatusRow {
+                    member: CollectionMemberRef {
+                        stable_member_id,
+                        gene_symbol: Some(resolved_member.symbol.clone()),
+                        gene_id: window.gene_id.clone(),
+                        context_id: source_member.context_id.clone(),
+                        parent_member_id: Some(source_member.stable_member_id.clone()),
+                        source_provenance: resolved_member.provenance.clone(),
+                        ..CollectionMemberRef::default()
+                    },
+                    outcome: CollectionMemberOutcome::Succeeded,
+                    error: None,
+                    produced_report_ids: vec![promoter_cohort_report_id.to_string()],
+                });
+            }
+        }
+
+        Ok(CollectionOperationReport {
+            schema: COLLECTION_OPERATION_REPORT_SCHEMA.to_string(),
+            report_id: format!("collection_operation:{promoter_cohort_report_id}"),
+            op_id: Some(op_id.to_string()),
+            run_id: Some(run_id.to_string()),
+            generated_at_unix_ms: report.generated_at_unix_ms,
+            capability_source: CapabilitySource::EngineOperation,
+            capability_name: "BuildGeneSetPromoterCohort".to_string(),
+            collection_subject: CollectionSubjectRef::GeneSetResolution {
+                report_id: source_report_id,
+            },
+            lifting_mode: CollectionLiftingMode::Derive,
+            lift_policy,
+            fingerprint_algorithm: COLLECTION_MEMBERSHIP_FINGERPRINT_ALGORITHM.to_string(),
+            collection_membership_fingerprint_sha256: fingerprint,
+            biological_contexts: report.gene_set_resolution.biological_contexts.clone(),
+            dry_run: false,
+            applied: true,
+            per_member_status,
+            aggregate_warnings: report.warnings.clone(),
+            provenance: report.gene_set_resolution.provenance.clone(),
         })
     }
 
@@ -3464,13 +3695,60 @@ impl GentleEngine {
 
     pub(crate) fn upsert_gene_set_resolution_artifact(
         &mut self,
-        report: GeneSetResolutionReport,
+        mut report: GeneSetResolutionReport,
     ) -> Result<(), EngineError> {
+        report
+            .ensure_default_biological_context()
+            .map_err(|error| EngineError::invalid_input(error.to_string()))?;
         let mut store = self.read_gene_set_artifact_store();
         store
             .resolutions
             .insert(Self::gene_set_resolution_artifact_id(&report), report);
         self.write_gene_set_artifact_store(store)
+    }
+
+    pub(crate) fn get_gene_set_resolution_artifact(
+        &self,
+        report_id: &str,
+    ) -> Result<GeneSetResolutionReport, EngineError> {
+        let requested = report_id.trim();
+        if requested.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Gene-set resolution report id must not be empty".to_string(),
+                cause_chain: vec![],
+            });
+        }
+        let store = self.read_gene_set_artifact_store();
+        let prefixed =
+            (!requested.starts_with("resolution:")).then(|| format!("resolution:{requested}"));
+        let mut report = store
+            .resolutions
+            .get(requested)
+            .or_else(|| {
+                prefixed
+                    .as_deref()
+                    .and_then(|candidate| store.resolutions.get(candidate))
+            })
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Gene-set resolution report '{}' not found; available ids: {}",
+                    requested,
+                    store
+                        .resolutions
+                        .keys()
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+                cause_chain: vec![],
+            })?;
+        report
+            .ensure_default_biological_context()
+            .map_err(|error| EngineError::invalid_input(error.to_string()))?;
+        Ok(report)
     }
 
     pub(crate) fn upsert_gene_set_promoter_cohort_artifact(
@@ -3503,6 +3781,10 @@ impl GentleEngine {
         )
         .resolutions
         .into_values()
+        .map(|mut report| {
+            let _ = report.ensure_default_biological_context();
+            report
+        })
         .collect()
     }
 

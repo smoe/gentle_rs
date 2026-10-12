@@ -415,7 +415,7 @@ mod tests {
             shell_topic_help_json(&topic, Some("cli-shell")).expect("render capability help");
         assert_eq!(
             help["doc"]["usage"].as_str(),
-            Some("introspect capabilities [--kind KIND]")
+            Some("introspect capabilities [--kind operation|view_intent|host_config]")
         );
         assert_eq!(
             help["doc"]["capability"]["source"].as_str(),
@@ -431,7 +431,7 @@ mod tests {
         );
         assert_eq!(
             help["doc"]["capability"]["usage"].as_str(),
-            Some("introspect capabilities [--kind KIND]")
+            Some("introspect capabilities [--kind operation|view_intent|host_config]")
         );
         assert!(
             help["doc"]["capability"]["interfaces"]
@@ -454,7 +454,7 @@ mod tests {
             .expect("introspect capabilities command");
         assert_eq!(
             command["capability"]["input_schema"]["properties"]["usage"]["const"].as_str(),
-            Some("introspect capabilities [--kind KIND]")
+            Some("introspect capabilities [--kind operation|view_intent|host_config]")
         );
     }
 

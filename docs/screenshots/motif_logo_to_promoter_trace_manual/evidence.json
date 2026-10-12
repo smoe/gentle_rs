@@ -1,0 +1,42 @@
+{
+  "schema": "gentle.manual_gui_tutorial_evidence.v1",
+  "status": "manual_hybrid_pass",
+  "automated_gui_acceptance": false,
+  "inner_agent_invoked": false,
+  "input_policy": "publication_safe_synthetic_only",
+  "producer": {
+    "revision": "bfb38a622d7a91326b24fbdb9ae0956ba498877a",
+    "gentle_gui_sha256": "47b58a2c3ccfa76b66f5c79734a0c779e76e66031909a7face916bab2646eb5f"
+  },
+  "inputs": {
+    "manifest": {
+      "path": "test_files/fixtures/tss_profiles/manifest.json",
+      "sha256": "4224a9f99a6a5e77125f30a8f3f43fc692e6bcfde35eabe74ae68e4ac92d38e8"
+    },
+    "plus_fasta_sha256": "77e2afd6eee8098023d147314cb0802d0e6410a68b47d2622b9cdd90da5c9063",
+    "minus_fasta_sha256": "399f2a101b7c8d403ab3aabddd4654c66eedac935e16f421e9a2f60e16ad92ba",
+    "panel": {
+      "path": "docs/tutorial/reproducibility/motif_logo_to_promoter_trace/shared_across_tss_panel.json",
+      "sha256": "4c42f474dfaf00ed0280d8297086443f7ba2ed8b4551c819bcdd031820603991"
+    },
+    "selection": {
+      "path": "test_files/fixtures/tss_profiles/selection.json",
+      "sha256": "11c3e57cf6a8e9b5c2611e847fae151b3667437b16c0d7a6d20d77b3c7511e52"
+    }
+  },
+  "result": {
+    "window_count": 2,
+    "strands": ["+", "-"],
+    "matrix_accession": "MA0004.1",
+    "scale_mode": "shared_across_tss",
+    "ambiguous_windows": "null_not_zero",
+    "output_receipt_sha256": "dc415f87874959fe5ca069b7fa0a28ca5f86a31c90c6debe3ff0d953f4d37afa"
+  },
+  "capture": {
+    "raw_png": "gui-shell-result.raw.png",
+    "raw_png_sha256": "f5372af6ab072b3aa43c5a48d3e99894a0cfffb56d5f99f00d0fb42332119566",
+    "semantic_snapshot": "gui-shell-result.snapshot.json",
+    "semantic_snapshot_sha256": "d2dc4ee693369fa5deeb9d5af5deb333c5cd26af88e3d9c43243b0d8f4462a24"
+  },
+  "interpretation": "The screenshot demonstrates a successful manual GUI Shell invocation of the shared engine. It is not a typed or automated GUI acceptance contract."
+}

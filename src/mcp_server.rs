@@ -12,13 +12,16 @@ use crate::{
         DEFAULT_HOST_PROFILE_CATALOG_PATH, Engine, GentleEngine, Operation, ProjectState, Workflow,
     },
     engine_shell::{
-        ShellExecutionOptions, UiIntentAction, UiIntentTarget, execute_shell_command_with_options,
-        parse_shell_tokens,
+        ShellExecutionOptions, UiConfigurationSection, UiIntentAction, UiIntentTarget,
+        execute_shell_command_with_options, parse_shell_tokens,
+        runtime_status_payload_with_observed_activities,
     },
+    gene_set_publication::generate_gene_isoform_assay_publication,
     genomes::{
         default_catalog_discovery_label, default_catalog_discovery_token,
         default_helper_semantics_vocabulary_discovery_label,
     },
+    runtime_status::RuntimeStatusTrigger,
     shell_docs::{
         shell_help_json, shell_help_markdown, shell_help_text, shell_topic_help_json,
         shell_topic_help_markdown, shell_topic_help_text,
@@ -27,13 +30,19 @@ use crate::{
 use gentle_protocol::{CapabilitySource, EngineError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
-use std::io::{self, BufRead, BufReader, BufWriter, Write};
+use std::{
+    io::{self, BufRead, BufReader, BufWriter, Write},
+    path::Path,
+};
 
 const MCP_PROTOCOL_VERSION: &str = "2025-06-18";
 const SERVER_NAME: &str = "gentle_mcp";
 const SERVER_TITLE: &str = "GENtle MCP";
 const MAX_MCP_CONTENT_LENGTH_BYTES: usize = 8 * 1024 * 1024;
 const MAX_MCP_JSON_DEPTH: usize = 96;
+const MCP_STDIO_STACK_SIZE: usize = 16 * 1024 * 1024;
+
+mod primer_tools;
 
 pub const DEFAULT_MCP_STATE_PATH: &str = ".gentle_state.json";
 
@@ -52,7 +61,23 @@ struct ToolCallParams {
     arguments: Value,
 }
 
+/// Serve stdio synchronously on an explicitly sized stack, including typed
+/// request decoding and engine dispatch. `RUST_MIN_STACK` does not resize the
+/// process main thread used by an installed MCP binary.
 pub fn run_stdio_server(state_path: &str) -> Result<(), String> {
+    let state_path = state_path.to_owned();
+    let worker = std::thread::Builder::new()
+        .name("gentle-mcp-stdio".to_string())
+        .stack_size(MCP_STDIO_STACK_SIZE)
+        .spawn(move || run_stdio_server_on_worker(&state_path))
+        .map_err(|error| format!("Could not start MCP stdio worker: {error}"))?;
+    match worker.join() {
+        Ok(result) => result,
+        Err(payload) => std::panic::resume_unwind(payload),
+    }
+}
+
+fn run_stdio_server_on_worker(state_path: &str) -> Result<(), String> {
     let stdin = io::stdin();
     let stdout = io::stdout();
     let mut reader = BufReader::new(stdin.lock());
@@ -184,6 +209,10 @@ fn tool_list() -> Value {
         UiIntentAction::Focus.as_str(),
         UiIntentAction::Close.as_str(),
     ];
+    let ui_configuration_section_enum = UiConfigurationSection::all()
+        .iter()
+        .map(|section| section.as_str())
+        .collect::<Vec<_>>();
     let mut tools = json!([
         {
             "name": "capabilities",
@@ -638,7 +667,21 @@ fn tool_list() -> Value {
                     },
                     "seq_id": {
                         "type": "string",
-                        "description": "Loaded sequence id, required when target is sequence-window."
+                        "description": "Loaded sequence id, required for sequence-window and splicing-expert."
+                    },
+                    "feature_id": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Zero-based feature id from features query, required for splicing-expert."
+                    },
+                    "item_id": {
+                        "type": "string",
+                        "description": "Opaque recent-project id, tutorial chapter id, or tutorial catalog id, required for those GUI-host targets."
+                    },
+                    "section": {
+                        "type": "string",
+                        "enum": ui_configuration_section_enum,
+                        "description": "Optional Configuration section when target is configuration."
                     },
                     "genome_id": {
                         "type": "string"
@@ -829,6 +872,21 @@ fn tool_list() -> Value {
     ]);
     if let Some(items) = tools.as_array_mut() {
         items.push(json!({
+            "name": "runtime_status",
+            "title": "Runtime Status",
+            "description": "Return runtime status for this GENtle MCP process plus observable persisted/project activity records from the selected state.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "state_path": {
+                        "type": "string",
+                        "description": "Optional project state path used to inspect project-backed async registries such as BLAST."
+                    }
+                },
+                "additionalProperties": false
+            }
+        }));
+        items.push(json!({
             "name": "construct_reasoning_inspection_actions",
             "title": "Construct Reasoning Inspection Actions",
             "description": "Return recommended inspection actions from one stored construct-reasoning graph through the shared `construct-reasoning list-inspection-actions` shell contract.",
@@ -909,6 +967,115 @@ fn tool_list() -> Value {
                     }
                 },
                 "required": ["graph_id", "action_id"],
+                "additionalProperties": false
+            }
+        }));
+        items.push(json!({
+            "name": "transcript_assay_feasibility",
+            "title": "Transcript Assay Feasibility",
+            "description": "Inspect deterministic endpoint isoform-matrix geometry for an exact DesignTranscriptAssayPanel operation without running Primer3.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "state_path": {
+                        "type": "string",
+                        "description": "Optional project state path. Defaults to server startup state path."
+                    },
+                    "operation": {
+                        "description": "Exact externally tagged DesignTranscriptAssayPanel operation object or JSON string.",
+                        "oneOf": [
+                            { "type": "object" },
+                            { "type": "string" }
+                        ]
+                    }
+                },
+                "required": ["operation"],
+                "additionalProperties": false
+            }
+        }));
+        items.push(json!({
+            "name": "promoter_reporter_panel_plan",
+            "title": "Promoter Reporter Panel Plan",
+            "description": "Build a read-only, content-addressed promoter-reporter panel proposal through the shared `promoters panel-plan` shell contract.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "state_path": {
+                        "type": "string",
+                        "description": "Optional project state path. Defaults to server startup state path."
+                    },
+                    "request": {
+                        "description": "Exact gentle.promoter_reporter_panel_request.v1 object or JSON string.",
+                        "oneOf": [
+                            { "type": "object" },
+                            { "type": "string" }
+                        ]
+                    }
+                },
+                "required": ["request"],
+                "additionalProperties": false
+            }
+        }));
+        items.push(json!({
+            "name": "promoter_reporter_panel_readiness",
+            "title": "Promoter Reporter Panel Readiness",
+            "description": "Recompute context-bound promoter-reporter planning, proposal-currency, and exact-approval readiness through the shared `promoters panel-readiness` shell contract.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "state_path": {
+                        "type": "string",
+                        "description": "Optional project state path. Defaults to server startup state path."
+                    },
+                    "input_kind": {
+                        "type": "string",
+                        "enum": ["request", "proposal"],
+                        "description": "Whether input is a gentle.promoter_reporter_panel_request.v1 request or gentle.promoter_reporter_panel_proposal.v1 proposal."
+                    },
+                    "input": {
+                        "description": "Exact request/proposal object or JSON string selected by input_kind.",
+                        "oneOf": [
+                            { "type": "object" },
+                            { "type": "string" }
+                        ]
+                    },
+                    "approval_digest": {
+                        "type": "string",
+                        "description": "Optional exact proposal_digest to test for materialization readiness; valid only with input_kind=proposal."
+                    }
+                },
+                "required": ["input_kind", "input"],
+                "additionalProperties": false
+            }
+        }));
+        items.push(json!({
+            "name": "promoter_reporter_panel_materialize",
+            "title": "Promoter Reporter Panel Materialize",
+            "description": "Materialize an unchanged promoter-reporter panel proposal through the shared `promoters panel-materialize` shell contract after exact digest approval.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "confirm": {
+                        "type": "boolean",
+                        "description": "Must be true because this tool creates sequences and writes the proposal's approved artifacts."
+                    },
+                    "state_path": {
+                        "type": "string",
+                        "description": "Optional project state path. Defaults to server startup state path."
+                    },
+                    "proposal": {
+                        "description": "Exact unchanged gentle.promoter_reporter_panel_proposal.v1 object or JSON string.",
+                        "oneOf": [
+                            { "type": "object" },
+                            { "type": "string" }
+                        ]
+                    },
+                    "approval_digest": {
+                        "type": "string",
+                        "description": "Exact proposal_digest presented for human approval."
+                    }
+                },
+                "required": ["confirm", "proposal", "approval_digest"],
                 "additionalProperties": false
             }
         }));
@@ -1074,6 +1241,36 @@ fn tool_list() -> Value {
             }),
         );
     }
+    if let Some(items) = tools.as_array_mut() {
+        items.push(json!({
+            "name": "gene_isoform_assay_publication",
+            "title": "Gene Isoform Assay Publication",
+            "description": "Project immutable assay reports into GENtle-declared publication artifacts.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "confirm": {
+                        "type": "boolean",
+                        "description": "Must be true because the projection writes external artifacts. This is a file-write confirmation, not a scientific approval."
+                    },
+                    "request_path": { "type": "string" },
+                    "output_directory": { "type": "string" },
+                    "profile": { "type": "string" },
+                    "blocks": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Optional ordered subset of GENtle-declared content block ids."
+                    },
+                    "pdf": { "type": "boolean" }
+                },
+                "required": ["confirm", "request_path", "output_directory"],
+                "additionalProperties": false
+            }
+        }));
+    }
+    if let Some(items) = tools.as_array_mut() {
+        items.extend(primer_tools::descriptors());
+    }
     project_mcp_tools_from_registry(&mut tools);
     if let Some(items) = tools.as_array_mut() {
         annotate_tool_descriptors(items);
@@ -1187,24 +1384,107 @@ fn tool_mutating_descriptor(name: &str) -> Value {
         | "workflow"
         | "exon_skip_plan"
         | "exon_skip_materialize"
+        | "promoter_reporter_panel_materialize"
         | "construct_reasoning_run_inspection_action"
         | "construct_reasoning_set_annotation_status"
-        | "construct_reasoning_write_annotation" => Value::Bool(true),
+        | "construct_reasoning_write_annotation"
+        | "transcript_assay_specificity_finalize"
+        | "primer_specificity_multi_import" => Value::Bool(true),
+        "gene_isoform_assay_publication"
+        | "primer_reports"
+        | "transcript_assay_specificity_plan"
+        | "primer_specificity_multi_handoff" => Value::String("external".to_string()),
         _ => Value::Bool(false),
     }
 }
 
 fn tool_command_paths(name: &str) -> &'static [&'static str] {
+    if let Some(paths) = primer_tools::command_paths(name) {
+        return paths;
+    }
     match name {
         "capabilities" => &["capabilities"],
         "state_summary" => &["state-summary"],
+        "runtime_status" => &["introspect runtime"],
         "agent_systems" => &["agents list"],
         "agent_preflight" => &["agents preflight"],
         "agent_models" => &["agents discover-models"],
         "agent_plan" => &["agents plan"],
         "agent_execute_plan" => &["agents execute-plan"],
-        "op" => &["op"],
+        "op" => &[
+            "op",
+            "sequence-design plan",
+            "sequence-design apply",
+            "primers design-transcript-capture-pool",
+            "gene-locus prepare",
+            "gel-image import",
+            "gel-image save-draft",
+            "gel-image analyze",
+            "gel-image inspect",
+            "gel-image export",
+            "features tss-tfbs-profiles",
+            "features tss-tfbs-profiles-export",
+            "regions create",
+            "regions capture",
+            "regions preview-feature",
+            "regions materialize-feature",
+            "regions list",
+            "regions inspect",
+            "regions update",
+            "regions derive",
+            "regions import",
+            "regions export",
+            "regions homology-screen",
+            "regions render-homology-svg",
+            "features edit-location",
+            "features create",
+            "features delete",
+            "features split",
+            "features merge",
+            "primers specificity",
+            "collections run primer-specificity",
+            "collections run restriction-scan",
+            "collections run construct-reasoning-inspection",
+            "collections run tfbs-scan",
+            "features encode-ccre-overlaps",
+            "features materialize-encode-ccres",
+            "features ensembl-regulation-overlaps",
+            "features materialize-ensembl-regulation",
+            "features genomic-motif-evidence",
+            "features promoter-cofactors",
+            "collections run digest",
+            "primers specificity-plan",
+            "primers specificity-import",
+            "primers specificity-alignment-html",
+            "primers build-transcript-assay-cdna-similarity-map",
+            "primers design-group-target",
+            "primers transcript-assay-specificity-redesign",
+            "primers compose-gene-assay-routine",
+            "primers plan-gene-isoform-study",
+            "splicing cryptic-screen",
+            "splicing cryptic-render",
+            "splicing cryptic-export",
+            "splicing cryptic-overlay",
+            "splicing cryptic-protein",
+            "promoters compose-study",
+            "promoters assess-conserved-modules",
+            "promoters tata-screen",
+            "promoters tata-materialize",
+            "promoters tss-inventory",
+            "promoters tss-materialize",
+            "promoters tss-list",
+            "promoters tss-collection",
+            "promoters tss-forget",
+            "promoters compare-architectures",
+            "promoters regulatory-panel-plan",
+            "promoters fragment-candidates",
+            "promoters regulatory-panel-render",
+            "promoters regulatory-products-plan",
+            "promoters regulatory-products-materialize",
+            "uniprot build-linked-transcript-inventory",
+        ],
         "workflow" => &["workflow"],
+        "gene_isoform_assay_publication" => &["primers publish-gene-isoform-study"],
         "help" => &["help"],
         "reference_catalog_entries" => &["genomes list"],
         "helper_catalog_entries" => &["helpers list"],
@@ -1233,6 +1513,10 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
         "blast_async_list" => &["genomes blast-list", "helpers blast-list"],
         "exon_skip_plan" => &["transcripts exon-skip-plan"],
         "exon_skip_materialize" => &["transcripts exon-skip-materialize"],
+        "transcript_assay_feasibility" => &["primers inspect-transcript-assay-feasibility"],
+        "promoter_reporter_panel_plan" => &["promoters panel-plan"],
+        "promoter_reporter_panel_readiness" => &["promoters panel-readiness"],
+        "promoter_reporter_panel_materialize" => &["promoters panel-materialize"],
         _ => &[],
     }
 }
@@ -2225,6 +2509,169 @@ fn exon_skip_materialize_tool_result(default_state_path: &str, arguments: &Value
     }
 }
 
+fn transcript_assay_feasibility_tool_result(default_state_path: &str, arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let operation = match optional_json_string_arg(&args, "operation") {
+        Ok(Some(value)) => value,
+        Ok(None) => {
+            return tool_result_text(
+                "MCP argument 'operation' is required and must be an exact DesignTranscriptAssayPanel object or JSON string"
+                    .to_string(),
+                "text",
+                true,
+            );
+        }
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    match run_non_mutating_shell_tool(
+        default_state_path,
+        &args,
+        vec![
+            "primers".to_string(),
+            "inspect-transcript-assay-feasibility".to_string(),
+            operation,
+        ],
+        "transcript_assay_feasibility",
+    ) {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn promoter_reporter_panel_plan_tool_result(default_state_path: &str, arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let request = match optional_json_string_arg(&args, "request") {
+        Ok(Some(value)) => value,
+        Ok(None) => {
+            return tool_result_text(
+                "MCP argument 'request' is required and must be an exact gentle.promoter_reporter_panel_request.v1 object or JSON string"
+                    .to_string(),
+                "text",
+                true,
+            );
+        }
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    match run_non_mutating_shell_tool(
+        default_state_path,
+        &args,
+        vec!["promoters".to_string(), "panel-plan".to_string(), request],
+        "promoter_reporter_panel_plan",
+    ) {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn promoter_reporter_panel_readiness_tool_result(
+    default_state_path: &str,
+    arguments: &Value,
+) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let input_kind = match required_string_arg(&args, "input_kind") {
+        Ok(value) if value == "request" || value == "proposal" => value,
+        Ok(value) => {
+            return tool_result_text(
+                format!("MCP argument 'input_kind' must be 'request' or 'proposal', got '{value}'"),
+                "text",
+                true,
+            );
+        }
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let input = match optional_json_string_arg(&args, "input") {
+        Ok(Some(value)) => value,
+        Ok(None) => {
+            return tool_result_text(
+                "MCP argument 'input' is required and must be an exact promoter-reporter panel request/proposal object or JSON string"
+                    .to_string(),
+                "text",
+                true,
+            );
+        }
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let approval_digest = match args.get("approval_digest") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(value)) => Some(value.trim().to_string()),
+        Some(_) => {
+            return tool_result_text(
+                "MCP argument 'approval_digest' must be a string".to_string(),
+                "text",
+                true,
+            );
+        }
+    };
+    if input_kind == "request" && approval_digest.is_some() {
+        return tool_result_text(
+            "MCP argument 'approval_digest' is valid only with input_kind='proposal'".to_string(),
+            "text",
+            true,
+        );
+    }
+
+    let mut tokens = vec![
+        "promoters".to_string(),
+        "panel-readiness".to_string(),
+        input_kind,
+        input,
+    ];
+    if let Some(approval_digest) = approval_digest {
+        tokens.push("--approve".to_string());
+        tokens.push(approval_digest);
+    }
+    match run_non_mutating_shell_tool(
+        default_state_path,
+        &args,
+        tokens,
+        "promoter_reporter_panel_readiness",
+    ) {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn promoter_reporter_panel_materialize_tool_result(
+    default_state_path: &str,
+    arguments: &Value,
+) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    if let Err(err) = require_confirm_true(&args, "promoter_reporter_panel_materialize") {
+        return tool_result_text(err, "text", true);
+    }
+    let proposal = match optional_json_string_arg(&args, "proposal") {
+        Ok(Some(value)) => value,
+        Ok(None) => {
+            return tool_result_text(
+                "MCP argument 'proposal' is required and must be an exact unchanged gentle.promoter_reporter_panel_proposal.v1 object or JSON string"
+                    .to_string(),
+                "text",
+                true,
+            );
+        }
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let approval_digest = match required_string_arg(&args, "approval_digest") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    match run_shell_tool_with_optional_persist(
+        default_state_path,
+        &args,
+        vec![
+            "promoters".to_string(),
+            "panel-materialize".to_string(),
+            proposal,
+            "--approve".to_string(),
+            approval_digest,
+        ],
+        "promoter_reporter_panel_materialize",
+    ) {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
 fn restriction_site_detail_tool_result(default_state_path: &str, arguments: &Value) -> Value {
     let args = arguments.as_object().cloned().unwrap_or_default();
     let seq_id = match required_string_arg(&args, "seq_id") {
@@ -2934,12 +3381,61 @@ fn ui_intent_tool_result(default_state_path: &str, arguments: &Value) -> Value {
         Ok(value) => value,
         Err(err) => return tool_result_text(err, "text", true),
     };
+    if UiIntentTarget::parse(&target) == Some(UiIntentTarget::SplicingExpert) {
+        let seq_id = match required_string_arg(&args, "seq_id") {
+            Ok(value) => value,
+            Err(err) => return tool_result_text(err, "text", true),
+        };
+        let feature_id = match required_usize_arg(&args, "feature_id") {
+            Ok(value) => value,
+            Err(err) => return tool_result_text(err, "text", true),
+        };
+        let tokens = vec![
+            "ui".into(),
+            action,
+            "splicing-expert".into(),
+            seq_id,
+            feature_id.to_string(),
+        ];
+        return match run_non_mutating_shell_tool(default_state_path, &args, tokens, "ui_intent") {
+            Ok(output) => tool_result_json(output, false),
+            Err(err) => tool_result_text(err, "text", true),
+        };
+    }
     if target == "sequence-window" {
         let seq_id = match required_string_arg(&args, "seq_id") {
             Ok(value) => value,
             Err(err) => return tool_result_text(err, "text", true),
         };
         let tokens = vec!["ui".to_string(), action, target, seq_id];
+        return match run_non_mutating_shell_tool(default_state_path, &args, tokens, "ui_intent") {
+            Ok(output) => tool_result_json(output, false),
+            Err(err) => tool_result_text(err, "text", true),
+        };
+    }
+    if matches!(
+        target.as_str(),
+        "recent-project" | "tutorial-project" | "tutorial-guide"
+    ) {
+        let item_id = match required_string_arg(&args, "item_id") {
+            Ok(value) => value,
+            Err(err) => return tool_result_text(err, "text", true),
+        };
+        let tokens = vec!["ui".to_string(), action, target, item_id];
+        return match run_non_mutating_shell_tool(default_state_path, &args, tokens, "ui_intent") {
+            Ok(output) => tool_result_json(output, false),
+            Err(err) => tool_result_text(err, "text", true),
+        };
+    }
+    if target == "configuration" {
+        let section = match optional_string_arg(&args, "section") {
+            Ok(value) => value,
+            Err(err) => return tool_result_text(err, "text", true),
+        };
+        let mut tokens = vec!["ui".to_string(), action, target];
+        if let Some(section) = section {
+            tokens.push(section);
+        }
         return match run_non_mutating_shell_tool(default_state_path, &args, tokens, "ui_intent") {
             Ok(output) => tool_result_json(output, false),
             Err(err) => tool_result_text(err, "text", true),
@@ -2989,6 +3485,59 @@ fn ui_intent_tool_result(default_state_path: &str, arguments: &Value) -> Value {
     match run_non_mutating_shell_tool(default_state_path, &args, tokens, "ui_intent") {
         Ok(output) => tool_result_json(output, false),
         Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn gene_isoform_assay_publication_tool_result(arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let confirm = match optional_bool_arg(&args, "confirm") {
+        Ok(value) => value.unwrap_or(false),
+        Err(error) => return tool_result_text(error, "text", true),
+    };
+    if !confirm {
+        return tool_result_text(
+            "gene_isoform_assay_publication requires confirm=true before writing publication artifacts"
+                .to_string(),
+            "text",
+            true,
+        );
+    }
+    let request_path = match required_string_arg(&args, "request_path") {
+        Ok(value) => value,
+        Err(error) => return tool_result_text(error, "text", true),
+    };
+    let output_directory = match required_string_arg(&args, "output_directory") {
+        Ok(value) => value,
+        Err(error) => return tool_result_text(error, "text", true),
+    };
+    let profile = match optional_string_arg(&args, "profile") {
+        Ok(value) => value,
+        Err(error) => return tool_result_text(error, "text", true),
+    };
+    let block_ids = match optional_string_array_arg(&args, "blocks") {
+        Ok(value) => value,
+        Err(error) => return tool_result_text(error, "text", true),
+    };
+    let generate_pdf = match optional_bool_arg(&args, "pdf") {
+        Ok(value) => value.unwrap_or(false),
+        Err(error) => return tool_result_text(error, "text", true),
+    };
+    match generate_gene_isoform_assay_publication(
+        Path::new(&request_path),
+        Path::new(&output_directory),
+        profile.as_deref(),
+        &block_ids,
+        generate_pdf,
+    ) {
+        Ok(report) => match serde_json::to_value(report) {
+            Ok(value) => tool_result_json(value, false),
+            Err(error) => tool_result_text(
+                format!("Could not serialize publication projection receipt: {error}"),
+                "text",
+                true,
+            ),
+        },
+        Err(error) => tool_result_text(error, "text", true),
     }
 }
 
@@ -3101,6 +3650,15 @@ fn workflow_tool_result(default_state_path: &str, arguments: &Value) -> Value {
 
 fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
     match params.name.trim() {
+        "primer_reports"
+        | "transcript_assay_specificity_plan"
+        | "transcript_assay_specificity_finalize"
+        | "primer_specificity_multi_handoff"
+        | "primer_specificity_multi_import"
+        | "primer_specificity_multi_show"
+        | "primer_specificity_multi_list" => {
+            primer_tools::call(default_state_path, params.name.trim(), &params.arguments)
+        }
         "capabilities" => tool_result_json(json!(GentleEngine::capabilities()), false),
         "state_summary" => {
             let args = params.arguments.as_object().cloned().unwrap_or_default();
@@ -3117,12 +3675,67 @@ fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
                 ),
             }
         }
+        "runtime_status" => {
+            let args = params.arguments.as_object().cloned().unwrap_or_default();
+            if args.keys().any(|key| key != "state_path") {
+                tool_result_text(
+                    "runtime_status accepts only state_path".to_string(),
+                    "text",
+                    true,
+                )
+            } else {
+                let state_path = state_path_from_args(default_state_path, &args);
+                match load_state(&state_path) {
+                    Ok(state) => {
+                        let mut engine = GentleEngine::from_state(state);
+                        match runtime_status_payload_with_observed_activities(
+                            &mut engine,
+                            RuntimeStatusTrigger::Mcp,
+                        ) {
+                            Ok((output, state_changed)) => {
+                                if state_changed {
+                                    if let Err(err) = engine.state().save_to_path(&state_path) {
+                                        return tool_result_json(
+                                            json!({ "state_path": state_path, "error": err }),
+                                            true,
+                                        );
+                                    }
+                                }
+                                tool_result_json(output, false)
+                            }
+                            Err(err) => tool_result_text(
+                                format!("Could not inspect runtime status: {err}"),
+                                "text",
+                                true,
+                            ),
+                        }
+                    }
+                    Err(err) => tool_result_text(
+                        format!("Could not load state from '{state_path}': {err}"),
+                        "text",
+                        true,
+                    ),
+                }
+            }
+        }
         "restriction_site_detail" => {
             restriction_site_detail_tool_result(default_state_path, &params.arguments)
         }
         "exon_skip_plan" => exon_skip_plan_tool_result(default_state_path, &params.arguments),
         "exon_skip_materialize" => {
             exon_skip_materialize_tool_result(default_state_path, &params.arguments)
+        }
+        "transcript_assay_feasibility" => {
+            transcript_assay_feasibility_tool_result(default_state_path, &params.arguments)
+        }
+        "promoter_reporter_panel_plan" => {
+            promoter_reporter_panel_plan_tool_result(default_state_path, &params.arguments)
+        }
+        "promoter_reporter_panel_readiness" => {
+            promoter_reporter_panel_readiness_tool_result(default_state_path, &params.arguments)
+        }
+        "promoter_reporter_panel_materialize" => {
+            promoter_reporter_panel_materialize_tool_result(default_state_path, &params.arguments)
         }
         "agent_systems" => agent_systems_tool_result(default_state_path, &params.arguments),
         "agent_preflight" => agent_preflight_tool_result(default_state_path, &params.arguments),
@@ -3166,6 +3779,9 @@ fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
             construct_reasoning_write_annotation_tool_result(default_state_path, &params.arguments)
         }
         "helper_interpretation" => helper_interpretation_tool_result(&params.arguments),
+        "gene_isoform_assay_publication" => {
+            gene_isoform_assay_publication_tool_result(&params.arguments)
+        }
         "op" => op_tool_result(default_state_path, &params.arguments),
         "workflow" => workflow_tool_result(default_state_path, &params.arguments),
         "help" => help_tool_result(&params.arguments),
@@ -3325,10 +3941,15 @@ mod tests {
         dna_sequence::DNAsequence,
         engine::{
             AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan,
-            ConstructObjective, construct_reasoning_action_dotplot_request,
+            ConstructObjective, UniprotLinkedTranscriptInventory,
+            UniprotLinkedTranscriptInventoryLink, UniprotLinkedTranscriptInventoryRequest,
+            construct_reasoning_action_dotplot_request,
         },
         engine_shell::{execute_shell_command, parse_shell_tokens},
         genomes::GenomeCatalog,
+        test_support::{
+            primer_specificity_import_adapter_fixture, transcript_assay_panel_adapter_fixture,
+        },
     };
     use std::{fs, io::Cursor, path::Path, thread, time::Duration};
     use tempfile::tempdir;
@@ -3428,22 +4049,22 @@ mod tests {
             format!(
                 r#"{{
   "Human GRCh38 Demo": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
+    "sequence_local": {},
+    "annotations_local": {},
     "species": "Homo sapiens",
     "summary": "Human demonstration genome"
   }},
   "Yeast R64 Demo": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
+    "sequence_local": {},
+    "annotations_local": {},
     "species": "Saccharomyces cerevisiae",
     "summary": "Yeast demonstration genome"
   }}
 }}"#,
-                human_fasta.display(),
-                human_gtf.display(),
-                yeast_fasta.display(),
-                yeast_gtf.display()
+                serde_json::json!(human_fasta),
+                serde_json::json!(human_gtf),
+                serde_json::json!(yeast_fasta),
+                serde_json::json!(yeast_gtf)
             ),
         )
         .expect("write reference catalog");
@@ -3571,6 +4192,39 @@ mod tests {
         state_path
     }
 
+    fn write_transcript_assay_feasibility_mcp_state(path: &Path) -> String {
+        let first = "ATGCCGTAGCTTACGAT";
+        let middle = "GATCGTACCGATGCTAGCTAGGATCCGATCGTACGATCCGTTACGATGCTAGC";
+        let terminal = "GCTAACGATCCGATGCTAACGTCGATCGTAGCTAACCGATGCTAGCTTACCG";
+        let spacer = "N".repeat(20);
+        let middle_start = first.len() + spacer.len();
+        let middle_end = middle_start + middle.len();
+        let terminal_start = middle_end + spacer.len();
+        let terminal_end = terminal_start + terminal.len();
+        let mut dna =
+            DNAsequence::from_sequence(&format!("{first}{spacer}{middle}{spacer}{terminal}"))
+                .expect("valid endpoint DNA");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::Join(vec![
+                gb_io::seq::Location::simple_range(0, first.len() as i64),
+                gb_io::seq::Location::simple_range(middle_start as i64, middle_end as i64),
+                gb_io::seq::Location::simple_range(terminal_start as i64, terminal_end as i64),
+            ]),
+            qualifiers: vec![
+                ("gene".into(), Some("MCPEND".to_string())),
+                ("transcript_id".into(), Some("TX_MCP_END".to_string())),
+            ],
+        });
+        let mut state = ProjectState::default();
+        state.sequences.insert("mcp_endpoint".to_string(), dna);
+        let state_path = path.to_string_lossy().to_string();
+        state
+            .save_to_path(&state_path)
+            .expect("save endpoint feasibility state");
+        state_path
+    }
+
     #[test]
     fn read_framed_json_rejects_oversized_content_length() {
         let oversized = MAX_MCP_CONTENT_LENGTH_BYTES + 1;
@@ -3643,6 +4297,75 @@ mod tests {
     }
 
     #[test]
+    fn promoter_reporter_panel_tools_expose_shared_routes_and_exact_approval_gate() {
+        let tools = tool_list();
+        let tools = tools.as_array().expect("tools array");
+        let plan = tools
+            .iter()
+            .find(|tool| tool["name"].as_str() == Some("promoter_reporter_panel_plan"))
+            .expect("promoter panel plan tool");
+        assert_eq!(plan["mutating"].as_bool(), Some(false));
+        assert_eq!(plan["commandPaths"], json!(["promoters panel-plan"]));
+        let readiness = tools
+            .iter()
+            .find(|tool| tool["name"].as_str() == Some("promoter_reporter_panel_readiness"))
+            .expect("promoter panel readiness tool");
+        assert_eq!(readiness["mutating"].as_bool(), Some(false));
+        assert_eq!(
+            readiness["commandPaths"],
+            json!(["promoters panel-readiness"])
+        );
+        let invalid_readiness_approval = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "promoter_reporter_panel_readiness",
+            json!({
+                "input_kind": "request",
+                "input": {},
+                "approval_digest": " "
+            }),
+        );
+        assert_eq!(
+            invalid_readiness_approval["result"]["isError"].as_bool(),
+            Some(true)
+        );
+        assert!(
+            invalid_readiness_approval["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("valid only with input_kind='proposal'")
+        );
+        let materialize = tools
+            .iter()
+            .find(|tool| tool["name"].as_str() == Some("promoter_reporter_panel_materialize"))
+            .expect("promoter panel materialize tool");
+        assert_eq!(materialize["mutating"].as_bool(), Some(true));
+        assert_eq!(
+            materialize["commandPaths"],
+            json!(["promoters panel-materialize"])
+        );
+
+        let denied = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "promoter_reporter_panel_materialize",
+            json!({
+                "proposal": {},
+                "approval_digest": "sha256:not-approved"
+            }),
+        );
+        assert_eq!(
+            denied["result"]["isError"].as_bool(),
+            Some(true),
+            "materialization must require explicit confirmation: {denied}"
+        );
+        assert!(
+            denied["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("confirm=true")
+        );
+    }
+
+    #[test]
     fn tools_list_ui_intent_schema_matches_shared_target_catalog() {
         let tools = tool_list();
         let ui_intent = tools
@@ -3670,6 +4393,30 @@ mod tests {
             .map(|value| value.as_str().expect("enum string").to_string())
             .collect::<Vec<_>>();
         assert_eq!(actual_actions, vec!["open", "focus", "close"]);
+        assert_eq!(
+            ui_intent["inputSchema"]["properties"]["item_id"]["type"].as_str(),
+            Some("string")
+        );
+        let sections = ui_intent["inputSchema"]["properties"]["section"]["enum"]
+            .as_array()
+            .expect("Configuration section enum");
+        assert_eq!(sections.len(), UiConfigurationSection::all().len());
+    }
+
+    #[test]
+    fn mcp_runtime_status_returns_process_local_snapshot() {
+        let response = run_tool(DEFAULT_MCP_STATE_PATH, "runtime_status", json!({}));
+        let structured = &response["result"]["structuredContent"];
+
+        assert_eq!(
+            structured["schema"].as_str(),
+            Some(crate::runtime_status::RUNTIME_STATUS_SCHEMA)
+        );
+        assert_eq!(structured["trigger"].as_str(), Some("mcp"));
+        assert!(structured["frames"].as_array().is_some());
+        assert!(structured["activities"].as_array().is_some());
+        assert!(structured["observability_notes"].as_array().is_some());
+        assert!(structured["summary_lines"].as_array().is_some());
     }
 
     #[test]
@@ -3739,6 +4486,47 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(required.contains(&"confirm"));
         assert!(required.contains(&"plan_id"));
+    }
+
+    #[test]
+    fn mcp_transcript_assay_feasibility_uses_shared_non_mutating_route() {
+        let temp = tempdir().expect("tempdir");
+        let state_path = write_transcript_assay_feasibility_mcp_state(
+            &temp.path().join("transcript-feasibility-state.json"),
+        );
+        let response = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "transcript_assay_feasibility",
+            json!({
+                "state_path": state_path,
+                "operation": {
+                    "DesignTranscriptAssayPanel": {
+                        "seq_id": "mcp_endpoint",
+                        "source_feature_id": 0,
+                        "assay_kind": "endpoint_rt_pcr",
+                        "objective": "isoform_end_matrix",
+                        "coverage_policy": "require_all",
+                        "min_amplicon_bp": 40,
+                        "max_amplicon_bp": 10000
+                    }
+                }
+            }),
+        );
+        let structured = &response["result"]["structuredContent"];
+        assert_eq!(
+            structured["report"]["schema"],
+            "gentle.transcript_assay_panel_feasibility.v1"
+        );
+        assert_eq!(
+            structured["report"]["execution_recommendation"],
+            "reject_before_primer_search"
+        );
+        assert_eq!(
+            structured["report"]["structurally_impossible_reaction_ids"]
+                .as_array()
+                .map(Vec::len),
+            Some(1)
+        );
     }
 
     #[test]
@@ -3941,7 +4729,23 @@ mod tests {
                 "plan": plan
             }),
         );
-        assert_eq!(response["result"]["structuredContent"], expected);
+        let mut actual = response["result"]["structuredContent"].clone();
+        let mut expected = expected;
+        // These are separate executions; occurrence identities differ, evidence must not.
+        for field in ["receipt_id", "session_id"] {
+            for result in [&actual, &expected] {
+                assert!(crate::agent_feedback::agent_context_id_is_valid(
+                    result["feedback"][field]
+                        .as_str()
+                        .expect("receipt identity")
+                ));
+            }
+            assert_ne!(actual["feedback"][field], expected["feedback"][field]);
+            actual["feedback"].as_object_mut().unwrap().remove(field);
+            expected["feedback"].as_object_mut().unwrap().remove(field);
+        }
+        assert_eq!(actual["feedback"]["status"], "completed");
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -4168,6 +4972,218 @@ mod tests {
     }
 
     #[test]
+    fn sequence_design_mcp_confirmation_preview_and_exact_apply_parity() {
+        assert_sequence_design_mcp_parity(false, false, false);
+    }
+
+    #[test]
+    fn sequence_design_conflict_mcp_confirmation_preview_and_exact_apply_parity() {
+        assert_sequence_design_mcp_parity(true, false, false);
+    }
+
+    #[test]
+    fn sequence_design_gc_mcp_confirmation_preview_and_exact_apply_parity() {
+        for conflict in [false, true] {
+            assert_sequence_design_mcp_parity(conflict, true, false);
+        }
+    }
+
+    #[test]
+    fn sequence_design_window_gc_mcp_confirmation_preview_and_exact_apply_parity() {
+        for conflict in [false, true] {
+            for global in [false, true] {
+                assert_sequence_design_mcp_parity(conflict, global, true);
+            }
+        }
+    }
+
+    fn assert_sequence_design_mcp_parity(conflict_directed: bool, gc: bool, window: bool) {
+        // Hand-crafted 12-bp synthetic MEF insert, recreated from this literal.
+        let temp = tempdir().unwrap();
+        let state_path = temp.path().join("design project.json");
+        let preview_path = temp.path().join("design preview.json");
+        let mut design_request = json!({
+            "schema":"gentle.dna_sequence_design_request.v1",
+            "target":{"kind":"inline_sequence", "sequence":"ATGGAATTCTAA"},
+            "purpose":"synthetic_coding_insert",
+            "cds":{"start_0based":0, "end_0based_exclusive":12},
+            "protein_sequence":"MEF", "genetic_code":1,
+            "avoid_motifs":[{"pattern":"GAATTC", "strand":"both"}],
+            "max_evaluations":4096, "output_seq_id":"synthetic_without_ecori"
+        });
+        if conflict_directed {
+            design_request["search_strategy"] = "conflict_directed".into();
+        }
+        if gc {
+            design_request["gc_content"] =
+                json!({"min_basis_points": 2500, "max_basis_points": 2500});
+        }
+        if window {
+            design_request["gc_window"] =
+                json!({"window_bp": 6, "min_basis_points": 0, "max_basis_points": 5000});
+        }
+        let mut request = json!({
+            "jsonrpc":"2.0", "id":1, "method":"tools/call",
+            "params":{"name":"op", "arguments":{
+                "state_path":state_path.to_string_lossy(),
+                "operation":{"PlanDnaSequenceDesign":{
+                    "request":design_request, "path":preview_path.to_string_lossy()
+                }}
+            }}
+        });
+        let denied = run_single(DEFAULT_MCP_STATE_PATH, request.clone());
+        assert_eq!(
+            denied.pointer("/result/isError").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert!(!state_path.exists() && !preview_path.exists());
+        request["params"]["arguments"]["confirm"] = true.into();
+        let allowed = run_single(DEFAULT_MCP_STATE_PATH, request.clone());
+        assert_ne!(
+            allowed.pointer("/result/isError").and_then(Value::as_bool),
+            Some(true),
+            "{allowed}"
+        );
+        let preview: gentle_protocol::sequence_design::DnaSequenceDesignReport =
+            serde_json::from_slice(&std::fs::read(&preview_path).unwrap()).unwrap();
+        assert_eq!(
+            preview.algorithm,
+            match (conflict_directed, gc, window) {
+                (true, _, true) => "synonymous_conflict_search_window_gc_v1",
+                (false, _, true) => "synonymous_full_enumeration_window_gc_v1",
+                (true, true, false) => "synonymous_conflict_search_gc_v1",
+                (false, true, false) => "synonymous_full_enumeration_gc_v1",
+                (true, false, false) => "synonymous_conflict_search_v1",
+                (false, false, false) => "synonymous_full_enumeration_v1",
+            }
+        );
+        if window {
+            let facts = preview.gc_window.as_ref().unwrap();
+            assert_eq!(facts.window_count, 7);
+            assert!(
+                facts
+                    .output
+                    .as_ref()
+                    .unwrap()
+                    .iter()
+                    .all(|r| r.satisfies_bounds)
+            );
+        }
+        let mut direct = GentleEngine::new();
+        let direct_result = direct
+            .apply(
+                serde_json::from_value(request["params"]["arguments"]["operation"].clone())
+                    .unwrap(),
+            )
+            .unwrap();
+        assert_eq!(direct_result.dna_sequence_design.as_deref(), Some(&preview));
+        let before = std::fs::read(&state_path).unwrap();
+        request["params"]["arguments"]["operation"] = json!({"ApplyDnaSequenceDesign":{
+            "proposal":preview, "approval_digest":preview.approval_digest
+        }});
+        request["params"]["arguments"]["confirm"] = false.into();
+        let denied = run_single(DEFAULT_MCP_STATE_PATH, request.clone());
+        assert_eq!(
+            denied.pointer("/result/isError").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(std::fs::read(&state_path).unwrap(), before);
+        request["params"]["arguments"]["confirm"] = true.into();
+        let allowed = run_single(DEFAULT_MCP_STATE_PATH, request);
+        assert_ne!(
+            allowed.pointer("/result/isError").and_then(Value::as_bool),
+            Some(true),
+            "{allowed}"
+        );
+        let state = ProjectState::load_from_path(state_path.to_str().unwrap()).unwrap();
+        assert_eq!(
+            state.sequences["synthetic_without_ecori"].get_forward_string(),
+            if gc { "ATGGAGTTTTAA" } else { "ATGGAATTTTAA" }
+        );
+        for path in ["sequence-design plan", "sequence-design apply"] {
+            assert!(tool_command_paths("op").contains(&path));
+        }
+    }
+
+    #[test]
+    fn tss_profiles_mcp_requires_consent_and_fails_without_writes() {
+        let temp = tempdir().unwrap();
+        let state = temp.path().join("project.json");
+        let output = temp.path().join("profiles");
+        let mut request = json!({
+            "jsonrpc":"2.0", "id":1, "method":"tools/call",
+            "params":{"name":"op", "arguments":{
+                "state_path":state.to_string_lossy(),
+                "operation":{"ComputeTssTfbsProfiles":{
+                    "request":{
+                        "manifest":temp.path().join("missing-manifest.json").to_string_lossy(),
+                        "panel":temp.path().join("missing-panel.json").to_string_lossy(),
+                        "expected_genome_id":"synthetic"
+                    },
+                    "export":{"output_dir":output.to_string_lossy()}
+                }}
+            }}
+        });
+        let denied = run_single(DEFAULT_MCP_STATE_PATH, request.clone());
+        assert_eq!(
+            denied.pointer("/result/isError").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert!(denied.to_string().contains("confirm=true"));
+        assert!(!state.exists());
+        assert!(!output.exists());
+        request["params"]["arguments"]["confirm"] = true.into();
+        let failed = run_single(DEFAULT_MCP_STATE_PATH, request);
+        assert_eq!(
+            failed.pointer("/result/isError").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert!(!state.exists());
+        assert!(!output.exists());
+        for path in [
+            "features tss-tfbs-profiles",
+            "features tss-tfbs-profiles-export",
+        ] {
+            assert!(tool_command_paths("op").contains(&path));
+        }
+    }
+
+    #[test]
+    fn gel_image_mcp_import_requires_consent_and_preserves_original() {
+        // Synthetic in-memory 4x4 image; no private photograph or network access.
+        let temp = tempdir().unwrap();
+        let image_path = temp.path().join("gel.png");
+        let state_path = temp.path().join("gel-project.json");
+        image::GrayImage::new(4, 4).save(&image_path).unwrap();
+        let mut request = json!({
+            "jsonrpc":"2.0", "id":1, "method":"tools/call",
+            "params": {"name":"op", "arguments": {
+                "state_path":state_path.to_string_lossy(),
+                "operation":{"ImportGelImage":{"request":{
+                    "image_id":"gel", "path":image_path.to_string_lossy()
+                }}}
+            }}
+        });
+        let denied = run_single(DEFAULT_MCP_STATE_PATH, request.clone());
+        assert_eq!(
+            denied.pointer("/result/isError").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert!(!state_path.exists());
+        request["params"]["arguments"]["confirm"] = true.into();
+        let allowed = run_single(DEFAULT_MCP_STATE_PATH, request);
+        assert_ne!(
+            allowed.pointer("/result/isError").and_then(Value::as_bool),
+            Some(true)
+        );
+        let persisted = ProjectState::load_from_path(state_path.to_str().unwrap()).unwrap();
+        crate::gel_image::validate_gel_image_record(&persisted.gel_images.images["gel"]).unwrap();
+        for action in ["import", "analyze", "inspect", "export"] {
+            assert!(tool_command_paths("op").contains(&format!("gel-image {action}").as_str()));
+        }
+    }
+
+    #[test]
     fn op_tool_with_confirm_applies_operation_and_persists_state() {
         let temp = tempdir().expect("tempdir");
         let state_path = temp.path().join("mcp_op_state.gentle.json");
@@ -4199,6 +5215,373 @@ mod tests {
         let persisted = ProjectState::load_from_path(&state_path.to_string_lossy())
             .expect("load persisted state");
         assert_eq!(persisted.parameters.max_fragments_per_container, 123);
+    }
+
+    #[test]
+    fn mcp_op_builds_uniprot_linked_transcript_inventory_through_shared_contract() {
+        let temp = tempdir().expect("tempdir");
+        let state_path = temp.path().join("mcp_inventory_state.gentle.json");
+        let transcript_path = temp.path().join("transcripts.fa");
+        let output_path = temp.path().join("inventory.json");
+        ProjectState::default()
+            .save_to_path(&state_path.to_string_lossy())
+            .expect("save inventory state");
+        fs::write(
+            &transcript_path,
+            ">TX_A.1 gene=GENE_X transcript=TX_A.1\nATGCCCTAA\n",
+        )
+        .expect("write transcript FASTA");
+        let inventory_request = UniprotLinkedTranscriptInventoryRequest {
+            inventory_id: "mcp_inventory".to_string(),
+            assembly: "synthetic_assembly".to_string(),
+            annotation_release: "synthetic_release".to_string(),
+            source_resource_id: "synthetic_transcripts".to_string(),
+            transcript_fasta_paths: vec![transcript_path.to_string_lossy().to_string()],
+            links: vec![UniprotLinkedTranscriptInventoryLink {
+                entry_id: "ENTRY_X".to_string(),
+                isoform_id: "ENTRY_X-1".to_string(),
+                transcript_id: "TX_A.1".to_string(),
+                locus_reference_accession: Some("LOCUS_TX_A".to_string()),
+            }],
+            output_path: output_path.to_string_lossy().to_string(),
+        };
+        let operation = Operation::BuildUniprotLinkedTranscriptInventory {
+            request: inventory_request.clone(),
+        };
+
+        let denied = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({
+                "state_path": state_path.to_string_lossy(),
+                "operation": serde_json::to_value(&operation).expect("serialize operation")
+            }),
+        );
+        assert_eq!(denied["result"]["isError"], Value::Bool(true));
+        assert!(
+            !output_path.exists(),
+            "unconfirmed op must not write output"
+        );
+
+        let expected = GentleEngine::build_uniprot_linked_transcript_inventory(&inventory_request)
+            .expect("build inventory directly");
+        let response = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({
+                "confirm": true,
+                "state_path": state_path.to_string_lossy(),
+                "operation": serde_json::to_value(operation).expect("serialize operation")
+            }),
+        );
+        assert_eq!(
+            response["result"]["isError"],
+            Value::Bool(false),
+            "{response:#}"
+        );
+        let returned: UniprotLinkedTranscriptInventory = serde_json::from_value(
+            response["result"]["structuredContent"]["result"]
+                ["uniprot_linked_transcript_inventory"]
+                .clone(),
+        )
+        .expect("typed inventory result");
+        assert_eq!(returned, expected);
+        let exported: UniprotLinkedTranscriptInventory =
+            serde_json::from_slice(&fs::read(&output_path).expect("read inventory output"))
+                .expect("parse inventory output");
+        assert_eq!(exported, expected);
+        ProjectState::load_from_path(&state_path.to_string_lossy())
+            .expect("MCP op persists a readable project state");
+
+        let missing_request = UniprotLinkedTranscriptInventoryRequest {
+            transcript_fasta_paths: vec![
+                temp.path().join("missing.fa").to_string_lossy().to_string(),
+            ],
+            output_path: temp
+                .path()
+                .join("missing-output.json")
+                .to_string_lossy()
+                .to_string(),
+            ..inventory_request
+        };
+        let failed = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({
+                "confirm": true,
+                "state_path": state_path.to_string_lossy(),
+                "operation": serde_json::to_value(
+                    Operation::BuildUniprotLinkedTranscriptInventory {
+                        request: missing_request
+                    }
+                )
+                .expect("serialize failing operation")
+            }),
+        );
+        assert_eq!(failed["result"]["isError"], Value::Bool(true));
+        assert!(
+            failed["result"]["structuredContent"]["error"]["code"]
+                .as_str()
+                .is_some_and(|code| !code.is_empty()),
+            "typed engine error must survive the MCP boundary: {failed:#}"
+        );
+    }
+
+    #[test]
+    fn mcp_op_inspects_and_renders_cryptic_splicing_with_confirmation() {
+        let temp = tempdir().expect("tempdir");
+        let state_path = temp.path().join("mcp_cryptic_state.gentle.json");
+        let svg_path = temp.path().join("cryptic.svg");
+        let sequence = "AAAGTCCCCCTACTAACCCCCCCCCCCCCCCCCCCAGAAA";
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "cassette".to_string(),
+            DNAsequence::from_sequence(sequence).expect("cryptic-splicing sequence"),
+        );
+        state
+            .save_to_path(&state_path.to_string_lossy())
+            .expect("save cryptic-splicing state");
+        let screen_request = gentle_protocol::CrypticSplicingScreenRequest {
+            seq_id: "cassette".to_string(),
+            start_1based: 1,
+            end_1based: sequence.len(),
+            min_pseudo_intron_bp: 20,
+            max_pseudo_intron_bp: 200,
+            max_candidate_pairs: 10,
+            ..gentle_protocol::CrypticSplicingScreenRequest::default()
+        };
+
+        let screen = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({
+                "confirm": true,
+                "state_path": state_path.to_string_lossy(),
+                "operation": serde_json::to_value(Operation::InspectCrypticSplicingScreen {
+                    request: screen_request.clone(),
+                    path: None
+                })
+                .expect("serialize screen operation")
+            }),
+        );
+        assert_eq!(
+            screen["result"]["isError"],
+            Value::Bool(false),
+            "{screen:#}"
+        );
+        assert_eq!(
+            screen["result"]["structuredContent"]["result"]["cryptic_splicing_screen"]["schema"],
+            gentle_protocol::CRYPTIC_SPLICING_SCREEN_SCHEMA
+        );
+
+        let render_operation = Operation::RenderCrypticSplicingScreenSvg {
+            request: screen_request.clone(),
+            path: svg_path.to_string_lossy().to_string(),
+        };
+        let denied = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({
+                "state_path": state_path.to_string_lossy(),
+                "operation": serde_json::to_value(&render_operation)
+                    .expect("serialize render operation")
+            }),
+        );
+        assert_eq!(denied["result"]["isError"], Value::Bool(true));
+        assert!(!svg_path.exists(), "unconfirmed render must not write SVG");
+
+        let rendered = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({
+                "confirm": true,
+                "state_path": state_path.to_string_lossy(),
+                "operation": serde_json::to_value(render_operation)
+                    .expect("serialize render operation")
+            }),
+        );
+        assert_eq!(
+            rendered["result"]["isError"],
+            Value::Bool(false),
+            "{rendered:#}"
+        );
+        assert!(
+            fs::metadata(&svg_path)
+                .expect("rendered SVG metadata")
+                .len()
+                > 0
+        );
+        assert_eq!(
+            rendered["result"]["structuredContent"]["result"]["cryptic_splicing_screen"]["effective_input_sha256"],
+            screen["result"]["structuredContent"]["result"]["cryptic_splicing_screen"]["effective_input_sha256"]
+        );
+
+        let failed = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({
+                "confirm": true,
+                "state_path": state_path.to_string_lossy(),
+                "operation": serde_json::to_value(Operation::InspectCrypticSplicingScreen {
+                    request: gentle_protocol::CrypticSplicingScreenRequest {
+                        seq_id: "missing".to_string(),
+                        ..screen_request
+                    },
+                    path: None
+                })
+                .expect("serialize failing screen operation")
+            }),
+        );
+        assert_eq!(failed["result"]["isError"], Value::Bool(true));
+        assert!(
+            failed["result"]["structuredContent"]["error"]["code"]
+                .as_str()
+                .is_some_and(|code| !code.is_empty()),
+            "typed engine error must survive the MCP boundary: {failed:#}"
+        );
+    }
+
+    #[test]
+    fn tata_mcp_routes_preserve_report_and_confirmation_gate() {
+        let _lock = crate::tf_motifs::test_registry_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        crate::tf_motifs::reload_builtin_for_test();
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("tata.json");
+        let mut state = ProjectState::default();
+        // Synthetic DNA, no imported biological sequence.
+        state.sequences.insert(
+            "toy".into(),
+            DNAsequence::from_sequence("CCCCTATAAAACCCC").unwrap(),
+        );
+        state.save_to_path(&path.to_string_lossy()).unwrap();
+        let request = gentle_protocol::tata_boxes::TataBoxScreenRequest {
+            seq_id: "toy".into(),
+            scan_without_tss: true,
+            ..Default::default()
+        };
+        let output = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({"confirm":true,"state_path":path,"operation":Operation::ScreenTataBoxes {request:request.clone(), path:None}}),
+        );
+        assert_eq!(output["result"]["isError"], false, "{output}");
+        let report: gentle_protocol::tata_boxes::TataBoxScreenReport = serde_json::from_value(
+            output["result"]["structuredContent"]["result"]["tata_box_screen"].clone(),
+        )
+        .unwrap();
+        assert_eq!(
+            report.schema,
+            gentle_protocol::tata_boxes::TATA_BOX_SCREEN_SCHEMA
+        );
+        let before = std::fs::read(&path).unwrap();
+        let operation = Operation::MaterializeTataBoxFeatures {
+            request: gentle_protocol::tata_boxes::TataBoxMaterializeRequest {
+                screen: request,
+                expected_report_sha256: report.content_sha256,
+                row_ids: vec![report.rows[0].row_id.clone()],
+            },
+        };
+        let denied = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({"state_path":path,"operation":operation}),
+        );
+        assert_eq!(denied["result"]["isError"], true);
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        let added = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({"confirm":true,"state_path":path,"operation":operation}),
+        );
+        assert_eq!(added["result"]["isError"], false, "{added}");
+    }
+
+    #[test]
+    fn mcp_op_runs_full_transcript_assay_panel_contract() {
+        let temp = tempdir().expect("tempdir");
+        let state_path = temp.path().join("mcp_transcript_assay_state.gentle.json");
+        let (state, operation) = transcript_assay_panel_adapter_fixture();
+        state
+            .save_to_path(&state_path.to_string_lossy())
+            .expect("save transcript assay state");
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 91,
+            "method": "tools/call",
+            "params": {
+                "name": "op",
+                "arguments": {
+                    "confirm": true,
+                    "state_path": state_path.to_string_lossy(),
+                    "operation": serde_json::to_value(operation)
+                        .expect("serialize transcript assay operation")
+                }
+            }
+        });
+        let response = run_single(DEFAULT_MCP_STATE_PATH, request);
+        assert_eq!(
+            response.pointer("/result/isError").and_then(Value::as_bool),
+            Some(false)
+        );
+        let persisted = ProjectState::load_from_path(&state_path.to_string_lossy())
+            .expect("load persisted transcript assay state");
+        let engine = GentleEngine::from_state(persisted);
+        let report = engine
+            .get_transcript_assay_panel_report("patz1_endpoint_end_matrix")
+            .expect("persisted transcript assay report");
+        assert_eq!(report.schema, "gentle.transcript_assay_panel.v2");
+        assert_eq!(report.assay_kind.as_str(), "endpoint_rt_pcr");
+        assert_eq!(report.objective.as_str(), "isoform_end_matrix");
+    }
+
+    #[test]
+    fn mcp_op_imports_primer_specificity_handoff() {
+        let temp = tempdir().expect("tempdir");
+        let state_path = temp.path().join("mcp_specificity_import_state.gentle.json");
+        ProjectState::default()
+            .save_to_path(&state_path.to_string_lossy())
+            .expect("save specificity import state");
+        let operation = primer_specificity_import_adapter_fixture(temp.path());
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 92,
+            "method": "tools/call",
+            "params": {
+                "name": "op",
+                "arguments": {
+                    "confirm": true,
+                    "state_path": state_path.to_string_lossy(),
+                    "operation": serde_json::to_value(operation)
+                        .expect("serialize specificity import operation")
+                }
+            }
+        });
+        let response = run_single(DEFAULT_MCP_STATE_PATH, request);
+        assert_eq!(
+            response.pointer("/result/isError").and_then(Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            response
+                .pointer("/result/structuredContent/result/primer_specificity_report/schema")
+                .and_then(Value::as_str),
+            Some("gentle.primer_specificity_report.v4")
+        );
+        let report_id = response
+            .pointer("/result/structuredContent/result/primer_specificity_report/report_id")
+            .and_then(Value::as_str)
+            .expect("MCP specificity import should return the persisted report id");
+        assert!(report_id.starts_with("primer_specificity_"));
+        let persisted = ProjectState::load_from_path(&state_path.to_string_lossy())
+            .expect("load persisted specificity state");
+        assert!(
+            GentleEngine::from_state(persisted)
+                .get_primer_specificity_report(report_id)
+                .is_ok(),
+            "MCP specificity import should persist the same report exposed to CLI and GUI"
+        );
     }
 
     #[test]
@@ -4276,22 +5659,22 @@ mod tests {
         let catalog_json = format!(
             r#"{{
   "Human GRCh38 Ensembl 113": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }},
   "Human GRCh38 Ensembl 116": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta_113.display(),
-            ann_113.display(),
-            cache_dir.display(),
-            fasta_116.display(),
-            ann_116.display(),
-            cache_dir.display()
+            serde_json::json!(fasta_113),
+            serde_json::json!(ann_113),
+            serde_json::json!(cache_dir),
+            serde_json::json!(fasta_116),
+            serde_json::json!(ann_116),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).expect("write catalog");
         let catalog = GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref())
@@ -4444,6 +5827,91 @@ mod tests {
             mcp_sequence_intent["result"]["structuredContent"],
             expected_sequence_intent
         );
+
+        for action in ["open", "focus", "close"] {
+            let result = run_tool(
+                DEFAULT_MCP_STATE_PATH,
+                "ui_intent",
+                json!({
+                    "action": action, "target": "splicing-expert", "seq_id": "locus", "feature_id": 2
+                }),
+            );
+            let expected = run_shared_ui_command(vec![
+                "ui".into(),
+                action.into(),
+                "splicing-expert".into(),
+                "locus".into(),
+                "2".into(),
+            ]);
+            assert_eq!(result["result"]["isError"], false);
+            assert_eq!(result["result"]["structuredContent"], expected);
+        }
+        let missing_feature = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "ui_intent",
+            json!({
+                "action": "open", "target": "splicing-expert", "seq_id": "locus"
+            }),
+        );
+        assert_eq!(missing_feature["result"]["isError"], true);
+
+        for (target, item_id) in [
+            ("recent-project", "recent-deadbeef"),
+            ("tutorial-project", "simple_pcr_selection_gui"),
+            ("tutorial-guide", "agent_interfaces"),
+        ] {
+            let mcp_host_item_intent = run_tool(
+                DEFAULT_MCP_STATE_PATH,
+                "ui_intent",
+                json!({
+                    "action": "open",
+                    "target": target,
+                    "item_id": item_id
+                }),
+            );
+            assert_eq!(
+                mcp_host_item_intent
+                    .pointer("/result/isError")
+                    .and_then(Value::as_bool),
+                Some(false)
+            );
+            let expected = run_shared_ui_command(vec![
+                "ui".to_string(),
+                "open".to_string(),
+                target.to_string(),
+                item_id.to_string(),
+            ]);
+            assert_eq!(
+                mcp_host_item_intent["result"]["structuredContent"],
+                expected
+            );
+        }
+
+        let mcp_configuration_intent = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "ui_intent",
+            json!({
+                "action": "open",
+                "target": "configuration",
+                "section": "microarrays"
+            }),
+        );
+        assert_eq!(
+            mcp_configuration_intent
+                .pointer("/result/isError")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        let expected_configuration_intent = run_shared_ui_command(vec![
+            "ui".to_string(),
+            "open".to_string(),
+            "configuration".to_string(),
+            "microarrays".to_string(),
+        ]);
+        assert_eq!(
+            mcp_configuration_intent["result"]["structuredContent"],
+            expected_configuration_intent
+        );
     }
 
     #[test]
@@ -4476,9 +5944,21 @@ mod tests {
         let _guard = crate::engine_shell::BLAST_ASYNC_TEST_MUTEX
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let td = tempdir().expect("isolated MCP state directory");
+        let state_path = td.path().join("state.json");
+        let state_path = state_path.to_str().unwrap();
+        // Synthetic missing tools: deferred preflight must not depend on host BLAST.
+        let _blastn = crate::tool_overrides::ScopedToolOverrideGuard::set(
+            "GENTLE_BLASTN_BIN",
+            "__gentle_mcp_async_missing_blastn__",
+        );
+        let _makeblastdb = crate::tool_overrides::ScopedToolOverrideGuard::set(
+            "GENTLE_MAKEBLASTDB_BIN",
+            "__gentle_mcp_async_missing_makeblastdb__",
+        );
         crate::engine_shell::clear_blast_async_jobs_for_test();
         let started = run_tool(
-            DEFAULT_MCP_STATE_PATH,
+            state_path,
             "blast_async_start",
             json!({
                 "helpers": true,
@@ -4490,6 +5970,14 @@ mod tests {
             started.pointer("/result/isError").and_then(Value::as_bool),
             Some(false)
         );
+        assert_eq!(
+            started["result"]["structuredContent"]["schema"],
+            "gentle.blast_async_start.v2"
+        );
+        assert_eq!(
+            started["result"]["structuredContent"]["binary_preflight_status"],
+            "pending"
+        );
         let job_id = started
             .pointer("/result/structuredContent/job/job_id")
             .and_then(Value::as_str)
@@ -4499,8 +5987,8 @@ mod tests {
 
         // Wait until the async job reaches a terminal state to avoid racey
         // running->failed transitions between MCP and shared-shell snapshots.
-        let mut expected_status: Option<Value> = None;
-        for _ in 0..50 {
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        let expected_status = loop {
             let status = run_shared_shell_command(vec![
                 "helpers".to_string(),
                 "blast-status".to_string(),
@@ -4510,23 +5998,28 @@ mod tests {
                 .pointer("/job/state")
                 .and_then(Value::as_str)
                 .unwrap_or("unknown");
-            if state != "running" {
-                expected_status = Some(status);
-                break;
+            if matches!(state, "completed" | "failed" | "cancelled") {
+                break status;
             }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "missing-tool preflight did not terminate; last status: {status}"
+            );
             thread::sleep(Duration::from_millis(10));
-        }
+        };
 
-        let expected_status = expected_status.unwrap_or_else(|| {
-            run_shared_shell_command(vec![
-                "helpers".to_string(),
-                "blast-status".to_string(),
-                job_id.clone(),
-            ])
-        });
+        assert_eq!(expected_status["job"]["state"], "failed");
+        assert_eq!(
+            expected_status["job"]["binary_preflight"]["blastn"]["executable"],
+            "__gentle_mcp_async_missing_blastn__"
+        );
+        assert_eq!(
+            expected_status["job"]["binary_preflight"]["makeblastdb"]["executable"],
+            "__gentle_mcp_async_missing_makeblastdb__"
+        );
 
         let mcp_status = run_tool(
-            DEFAULT_MCP_STATE_PATH,
+            state_path,
             "blast_async_status",
             json!({
                 "helpers": true,

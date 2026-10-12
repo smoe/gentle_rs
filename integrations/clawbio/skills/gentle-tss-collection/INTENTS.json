@@ -1,0 +1,255 @@
+{
+  "schema": "clawbio.skill_intents.v1",
+  "skill": "gentle-tss-collection",
+  "aliases": [
+    "gentle tss",
+    "tss collection",
+    "transcription start collection"
+  ],
+  "routes": [
+    {
+      "intent_id": "preview_annotated_starts",
+      "description": "Preview exact annotated transcript starts on one loaded anchored locus without changing project state.",
+      "trigger_terms": [
+        "preview annotated starts",
+        "inspect transcript starts",
+        "inspect tss candidates",
+        "preview tss windows"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "tss_collection",
+            "delegation": {
+              "schema": "gentle.clawbio_skill_delegation.v1",
+              "source_skill": "gentle-tss-collection",
+              "source_skill_version": "0.1.0",
+              "intent_id": "preview_annotated_starts",
+              "plan_step_index": 0
+            },
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "promoters tss-inventory @{request_path}",
+            "timeout_secs": 180
+          },
+          "slots": {
+            "request_path": {
+              "required": true,
+              "description": "Path to a reviewed TSS inventory request JSON",
+              "pattern": "(?:request(?:[_ -]?path)?)[=: ]+([A-Za-z0-9_./-]+\\.json)",
+              "ignore_case": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "materialize_reviewed_starts",
+      "description": "Create the explicitly selected TSS windows from a preview-bound request after exact proposal approval.",
+      "trigger_terms": [
+        "materialize tss windows",
+        "create selected tss windows",
+        "approve tss collection",
+        "create reviewed tss collection"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "requires_confirmation": true,
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "tss_collection",
+            "delegation": {
+              "schema": "gentle.clawbio_skill_delegation.v1",
+              "source_skill": "gentle-tss-collection",
+              "source_skill_version": "0.1.0",
+              "intent_id": "materialize_reviewed_starts",
+              "plan_step_index": 0
+            },
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "promoters tss-materialize @{request_path}",
+            "timeout_secs": 180
+          },
+          "slots": {
+            "request_path": {
+              "required": true,
+              "description": "Path to a reviewed preview-bound TSS materialization request JSON",
+              "pattern": "(?:request(?:[_ -]?path)?)[=: ]+([A-Za-z0-9_./-]+\\.json)",
+              "ignore_case": true
+            }
+          },
+          "confirmation": {
+            "required": true,
+            "reason": "Materialization derives project sequences and persists a named collection from explicit preview-bound TSS identities."
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "list_stored_collections",
+      "description": "List stored TSS registry metadata without validating collection members.",
+      "trigger_terms": [
+        "list tss collections",
+        "show stored tss collections",
+        "tss collection registry"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "tss_collection",
+            "delegation": {
+              "schema": "gentle.clawbio_skill_delegation.v1",
+              "source_skill": "gentle-tss-collection",
+              "source_skill_version": "0.1.0",
+              "intent_id": "list_stored_collections",
+              "plan_step_index": 0
+            },
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "promoters tss-list",
+            "timeout_secs": 180
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "validate_stored_collection",
+      "description": "Validate every persisted member of one named TSS collection before reuse.",
+      "trigger_terms": [
+        "inspect tss collection",
+        "validate tss collection",
+        "show tss collection members"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "tss_collection",
+            "delegation": {
+              "schema": "gentle.clawbio_skill_delegation.v1",
+              "source_skill": "gentle-tss-collection",
+              "source_skill_version": "0.1.0",
+              "intent_id": "validate_stored_collection",
+              "plan_step_index": 0
+            },
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "promoters tss-collection {collection_id}",
+            "timeout_secs": 180
+          },
+          "slots": {
+            "collection_id": {
+              "required": true,
+              "description": "Exact stored TSS collection identifier",
+              "pattern": "(?:collection[_ -]?id[=: ]+|collection[=:]+)([A-Za-z0-9_.:-]+)",
+              "ignore_case": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "open_collection_windows",
+      "description": "Prepare a GUI-hosted handoff that opens the validated members of one named TSS collection.",
+      "trigger_terms": [
+        "open tss collection",
+        "open tss windows",
+        "show tss collection in gui"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "tss_collection",
+            "delegation": {
+              "schema": "gentle.clawbio_skill_delegation.v1",
+              "source_skill": "gentle-tss-collection",
+              "source_skill_version": "0.1.0",
+              "intent_id": "open_collection_windows",
+              "plan_step_index": 0
+            },
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "ui open tss-view --collection {collection_id}",
+            "timeout_secs": 180
+          },
+          "slots": {
+            "collection_id": {
+              "required": true,
+              "description": "Exact stored TSS collection identifier",
+              "pattern": "(?:collection[_ -]?id[=: ]+|collection[=:]+)([A-Za-z0-9_.:-]+)",
+              "ignore_case": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "forget_collection_registry_entry",
+      "description": "Remove only one named TSS registry entry after explicit confirmation, retaining member sequences and lineage.",
+      "trigger_terms": [
+        "forget tss collection",
+        "remove tss registry entry",
+        "delete tss collection metadata"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "requires_confirmation": true,
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "claim_attribution_mode": "strict",
+            "presentation_profile": "tss_collection",
+            "delegation": {
+              "schema": "gentle.clawbio_skill_delegation.v1",
+              "source_skill": "gentle-tss-collection",
+              "source_skill_version": "0.1.0",
+              "intent_id": "forget_collection_registry_entry",
+              "plan_step_index": 0
+            },
+            "mode": "shell",
+            "state_path": ".gentle_state.json",
+            "shell_line": "promoters tss-forget {collection_id}",
+            "timeout_secs": 180
+          },
+          "slots": {
+            "collection_id": {
+              "required": true,
+              "description": "Exact stored TSS collection identifier",
+              "pattern": "(?:collection[_ -]?id[=: ]+|collection[=:]+)([A-Za-z0-9_.:-]+)",
+              "ignore_case": true
+            }
+          },
+          "confirmation": {
+            "required": true,
+            "reason": "Forgetting mutates the project registry even though member sequences and lineage are retained."
+          }
+        }
+      ]
+    }
+  ]
+}

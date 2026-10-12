@@ -1,0 +1,1606 @@
+{
+  "schema": "gentle.primer_design_report.v1",
+  "report_id": "tp73_as2_promoter_batch_r01",
+  "template": "tp73_locus",
+  "generated_at_unix_ms": 0,
+  "op_id": "op-5",
+  "run_id": "example_pcr_selection_batch_primer_pairs_offline",
+  "roi_start_0based": 61820,
+  "roi_end_0based": 61920,
+  "forward": {
+    "min_length": 18,
+    "max_length": 24,
+    "location_0based": null,
+    "start_0based": 61720,
+    "end_0based": 61745,
+    "min_tm_c": 55.0,
+    "max_tm_c": 78.0,
+    "min_gc_fraction": 0.3,
+    "max_gc_fraction": 0.8,
+    "max_anneal_hits": 1,
+    "non_annealing_5prime_tail": null,
+    "fixed_5prime": null,
+    "fixed_3prime": null,
+    "required_motifs": [],
+    "forbidden_motifs": [],
+    "locked_positions": []
+  },
+  "reverse": {
+    "min_length": 18,
+    "max_length": 24,
+    "location_0based": null,
+    "start_0based": 62000,
+    "end_0based": 62040,
+    "min_tm_c": 55.0,
+    "max_tm_c": 78.0,
+    "min_gc_fraction": 0.3,
+    "max_gc_fraction": 0.8,
+    "max_anneal_hits": 1,
+    "non_annealing_5prime_tail": null,
+    "fixed_5prime": null,
+    "fixed_3prime": null,
+    "required_motifs": [],
+    "forbidden_motifs": [],
+    "locked_positions": []
+  },
+  "pair_constraints": {
+    "require_roi_flanking": true,
+    "required_amplicon_motifs": [],
+    "forbidden_amplicon_motifs": [],
+    "fixed_amplicon_start_0based": null,
+    "fixed_amplicon_end_0based_exclusive": null
+  },
+  "min_amplicon_bp": 90,
+  "max_amplicon_bp": 350,
+  "max_tm_delta_c": 5.0,
+  "max_pairs": 5,
+  "pair_count": 5,
+  "pairs": [
+    {
+      "rank": 1,
+      "score": 1006.96341302,
+      "score_terms": [
+        {
+          "term": "baseline",
+          "raw_value": 1.0,
+          "weight": 1000.0,
+          "contribution": 1000.0,
+          "detail": "Fixed baseline for the GENtle primer-pair ranking model."
+        },
+        {
+          "term": "tm_delta",
+          "raw_value": 0.001829349,
+          "weight": -20.0,
+          "contribution": -0.036586980000000005,
+          "detail": "Absolute forward/reverse melting-temperature difference in degrees Celsius."
+        },
+        {
+          "term": "amplicon_length_fit",
+          "raw_value": 90.0,
+          "weight": -0.1,
+          "contribution": -9.0,
+          "detail": "Absolute distance from the configured midpoint target of 220 bp."
+        },
+        {
+          "term": "extra_anneal_hits",
+          "raw_value": 0.0,
+          "weight": -10.0,
+          "contribution": -0.0,
+          "detail": "Template-local annealing hits beyond one per primer."
+        },
+        {
+          "term": "primer_length_preference",
+          "raw_value": 0.0,
+          "weight": -6.0,
+          "contribution": -0.0,
+          "detail": "Length-preference points outside 20..=30 annealing bases."
+        },
+        {
+          "term": "homopolymer_excess",
+          "raw_value": 0.0,
+          "weight": -10.0,
+          "contribution": -0.0,
+          "detail": "Combined homopolymer-run excess above 4 bp."
+        },
+        {
+          "term": "self_complementarity_excess",
+          "raw_value": 0.0,
+          "weight": -12.0,
+          "contribution": -0.0,
+          "detail": "Combined self-complementary-run excess above 6 bp."
+        },
+        {
+          "term": "pair_complementarity_excess",
+          "raw_value": 0.0,
+          "weight": -20.0,
+          "contribution": -0.0,
+          "detail": "Pair-complementary-run excess above 6 bp."
+        },
+        {
+          "term": "pair_three_prime_complementarity_excess",
+          "raw_value": 0.0,
+          "weight": -35.0,
+          "contribution": -0.0,
+          "detail": "Pair 3-prime complementary-run excess above 3 bp."
+        },
+        {
+          "term": "three_prime_gc_clamp_balance",
+          "raw_value": 1.0,
+          "weight": 16.0,
+          "contribution": 16.0,
+          "detail": "Balance around one 3-prime GC clamp across the two primers."
+        }
+      ],
+      "forward": {
+        "sequence": "CTCCGCTGTCTCCGGCCACCTC",
+        "start_0based": 61723,
+        "end_0based_exclusive": 61745,
+        "length_bp": 22,
+        "anneal_length_bp": 22,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 73.465870368,
+        "gc_fraction": 0.7272727272727273,
+        "anneal_hits": 1,
+        "three_prime_base": "C",
+        "three_prime_gc_clamp": true,
+        "longest_homopolymer_run_bp": 2,
+        "self_complementary_run_bp": 4
+      },
+      "reverse": {
+        "sequence": "CCCAGCAGGCTGGCAACAGGC",
+        "start_0based": 62012,
+        "end_0based_exclusive": 62033,
+        "length_bp": 21,
+        "anneal_length_bp": 21,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 73.467699717,
+        "gc_fraction": 0.7142857142857143,
+        "anneal_hits": 1,
+        "three_prime_base": "C",
+        "three_prime_gc_clamp": true,
+        "longest_homopolymer_run_bp": 3,
+        "self_complementary_run_bp": 5
+      },
+      "amplicon_start_0based": 61723,
+      "amplicon_end_0based_exclusive": 62033,
+      "amplicon_length_bp": 310,
+      "tm_delta_c": 0.001829349,
+      "primer_pair_complementary_run_bp": 4,
+      "primer_pair_3prime_complementary_run_bp": 3,
+      "rule_flags": {
+        "roi_covered": true,
+        "amplicon_size_in_range": true,
+        "tm_delta_in_range": true,
+        "forward_secondary_structure_ok": true,
+        "reverse_secondary_structure_ok": true,
+        "primer_pair_dimer_risk_low": true,
+        "forward_three_prime_gc_clamp": true,
+        "reverse_three_prime_gc_clamp": true
+      }
+    },
+    {
+      "rank": 2,
+      "score": 1006.86341302,
+      "score_terms": [
+        {
+          "term": "baseline",
+          "raw_value": 1.0,
+          "weight": 1000.0,
+          "contribution": 1000.0,
+          "detail": "Fixed baseline for the GENtle primer-pair ranking model."
+        },
+        {
+          "term": "tm_delta",
+          "raw_value": 0.001829349,
+          "weight": -20.0,
+          "contribution": -0.036586980000000005,
+          "detail": "Absolute forward/reverse melting-temperature difference in degrees Celsius."
+        },
+        {
+          "term": "amplicon_length_fit",
+          "raw_value": 91.0,
+          "weight": -0.1,
+          "contribution": -9.1,
+          "detail": "Absolute distance from the configured midpoint target of 220 bp."
+        },
+        {
+          "term": "extra_anneal_hits",
+          "raw_value": 0.0,
+          "weight": -10.0,
+          "contribution": -0.0,
+          "detail": "Template-local annealing hits beyond one per primer."
+        },
+        {
+          "term": "primer_length_preference",
+          "raw_value": 0.0,
+          "weight": -6.0,
+          "contribution": -0.0,
+          "detail": "Length-preference points outside 20..=30 annealing bases."
+        },
+        {
+          "term": "homopolymer_excess",
+          "raw_value": 0.0,
+          "weight": -10.0,
+          "contribution": -0.0,
+          "detail": "Combined homopolymer-run excess above 4 bp."
+        },
+        {
+          "term": "self_complementarity_excess",
+          "raw_value": 0.0,
+          "weight": -12.0,
+          "contribution": -0.0,
+          "detail": "Combined self-complementary-run excess above 6 bp."
+        },
+        {
+          "term": "pair_complementarity_excess",
+          "raw_value": 0.0,
+          "weight": -20.0,
+          "contribution": -0.0,
+          "detail": "Pair-complementary-run excess above 6 bp."
+        },
+        {
+          "term": "pair_three_prime_complementarity_excess",
+          "raw_value": 0.0,
+          "weight": -35.0,
+          "contribution": -0.0,
+          "detail": "Pair 3-prime complementary-run excess above 3 bp."
+        },
+        {
+          "term": "three_prime_gc_clamp_balance",
+          "raw_value": 1.0,
+          "weight": 16.0,
+          "contribution": 16.0,
+          "detail": "Balance around one 3-prime GC clamp across the two primers."
+        }
+      ],
+      "forward": {
+        "sequence": "CTCCGCTGTCTCCGGCCACCTC",
+        "start_0based": 61723,
+        "end_0based_exclusive": 61745,
+        "length_bp": 22,
+        "anneal_length_bp": 22,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 73.465870368,
+        "gc_fraction": 0.7272727272727273,
+        "anneal_hits": 1,
+        "three_prime_base": "C",
+        "three_prime_gc_clamp": true,
+        "longest_homopolymer_run_bp": 2,
+        "self_complementary_run_bp": 4
+      },
+      "reverse": {
+        "sequence": "GCCCAGCAGGCTGGCAACAGG",
+        "start_0based": 62013,
+        "end_0based_exclusive": 62034,
+        "length_bp": 21,
+        "anneal_length_bp": 21,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 73.467699717,
+        "gc_fraction": 0.7142857142857143,
+        "anneal_hits": 1,
+        "three_prime_base": "G",
+        "three_prime_gc_clamp": true,
+        "longest_homopolymer_run_bp": 3,
+        "self_complementary_run_bp": 5
+      },
+      "amplicon_start_0based": 61723,
+      "amplicon_end_0based_exclusive": 62034,
+      "amplicon_length_bp": 311,
+      "tm_delta_c": 0.001829349,
+      "primer_pair_complementary_run_bp": 4,
+      "primer_pair_3prime_complementary_run_bp": 3,
+      "rule_flags": {
+        "roi_covered": true,
+        "amplicon_size_in_range": true,
+        "tm_delta_in_range": true,
+        "forward_secondary_structure_ok": true,
+        "reverse_secondary_structure_ok": true,
+        "primer_pair_dimer_risk_low": true,
+        "forward_three_prime_gc_clamp": true,
+        "reverse_three_prime_gc_clamp": true
+      }
+    },
+    {
+      "rank": 3,
+      "score": 1006.14676754,
+      "score_terms": [
+        {
+          "term": "baseline",
+          "raw_value": 1.0,
+          "weight": 1000.0,
+          "contribution": 1000.0,
+          "detail": "Fixed baseline for the GENtle primer-pair ranking model."
+        },
+        {
+          "term": "tm_delta",
+          "raw_value": 0.007661623,
+          "weight": -20.0,
+          "contribution": -0.15323246000000001,
+          "detail": "Absolute forward/reverse melting-temperature difference in degrees Celsius."
+        },
+        {
+          "term": "amplicon_length_fit",
+          "raw_value": 97.0,
+          "weight": -0.1,
+          "contribution": -9.700000000000001,
+          "detail": "Absolute distance from the configured midpoint target of 220 bp."
+        },
+        {
+          "term": "extra_anneal_hits",
+          "raw_value": 0.0,
+          "weight": -10.0,
+          "contribution": -0.0,
+          "detail": "Template-local annealing hits beyond one per primer."
+        },
+        {
+          "term": "primer_length_preference",
+          "raw_value": 0.0,
+          "weight": -6.0,
+          "contribution": -0.0,
+          "detail": "Length-preference points outside 20..=30 annealing bases."
+        },
+        {
+          "term": "homopolymer_excess",
+          "raw_value": 0.0,
+          "weight": -10.0,
+          "contribution": -0.0,
+          "detail": "Combined homopolymer-run excess above 4 bp."
+        },
+        {
+          "term": "self_complementarity_excess",
+          "raw_value": 0.0,
+          "weight": -12.0,
+          "contribution": -0.0,
+          "detail": "Combined self-complementary-run excess above 6 bp."
+        },
+        {
+          "term": "pair_complementarity_excess",
+          "raw_value": 0.0,
+          "weight": -20.0,
+          "contribution": -0.0,
+          "detail": "Pair-complementary-run excess above 6 bp."
+        },
+        {
+          "term": "pair_three_prime_complementarity_excess",
+          "raw_value": 0.0,
+          "weight": -35.0,
+          "contribution": -0.0,
+          "detail": "Pair 3-prime complementary-run excess above 3 bp."
+        },
+        {
+          "term": "three_prime_gc_clamp_balance",
+          "raw_value": 1.0,
+          "weight": 16.0,
+          "contribution": 16.0,
+          "detail": "Balance around one 3-prime GC clamp across the two primers."
+        }
+      ],
+      "forward": {
+        "sequence": "CCCTCCGCTGTCTCCGGCCACCTC",
+        "start_0based": 61721,
+        "end_0based_exclusive": 61745,
+        "length_bp": 24,
+        "anneal_length_bp": 24,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 76.715725462,
+        "gc_fraction": 0.75,
+        "anneal_hits": 1,
+        "three_prime_base": "C",
+        "three_prime_gc_clamp": true,
+        "longest_homopolymer_run_bp": 3,
+        "self_complementary_run_bp": 4
+      },
+      "reverse": {
+        "sequence": "AGGGGCCCAGCAGGCTGGCAAC",
+        "start_0based": 62016,
+        "end_0based_exclusive": 62038,
+        "length_bp": 22,
+        "anneal_length_bp": 22,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 76.708063839,
+        "gc_fraction": 0.7272727272727273,
+        "anneal_hits": 1,
+        "three_prime_base": "C",
+        "three_prime_gc_clamp": true,
+        "longest_homopolymer_run_bp": 4,
+        "self_complementary_run_bp": 6
+      },
+      "amplicon_start_0based": 61721,
+      "amplicon_end_0based_exclusive": 62038,
+      "amplicon_length_bp": 317,
+      "tm_delta_c": 0.007661623,
+      "primer_pair_complementary_run_bp": 4,
+      "primer_pair_3prime_complementary_run_bp": 2,
+      "rule_flags": {
+        "roi_covered": true,
+        "amplicon_size_in_range": true,
+        "tm_delta_in_range": true,
+        "forward_secondary_structure_ok": true,
+        "reverse_secondary_structure_ok": true,
+        "primer_pair_dimer_risk_low": true,
+        "forward_three_prime_gc_clamp": true,
+        "reverse_three_prime_gc_clamp": true
+      }
+    },
+    {
+      "rank": 4,
+      "score": 1006.14483208,
+      "score_terms": [
+        {
+          "term": "baseline",
+          "raw_value": 1.0,
+          "weight": 1000.0,
+          "contribution": 1000.0,
+          "detail": "Fixed baseline for the GENtle primer-pair ranking model."
+        },
+        {
+          "term": "tm_delta",
+          "raw_value": 0.002758396,
+          "weight": -20.0,
+          "contribution": -0.05516792,
+          "detail": "Absolute forward/reverse melting-temperature difference in degrees Celsius."
+        },
+        {
+          "term": "amplicon_length_fit",
+          "raw_value": 98.0,
+          "weight": -0.1,
+          "contribution": -9.8,
+          "detail": "Absolute distance from the configured midpoint target of 220 bp."
+        },
+        {
+          "term": "extra_anneal_hits",
+          "raw_value": 0.0,
+          "weight": -10.0,
+          "contribution": -0.0,
+          "detail": "Template-local annealing hits beyond one per primer."
+        },
+        {
+          "term": "primer_length_preference",
+          "raw_value": 0.0,
+          "weight": -6.0,
+          "contribution": -0.0,
+          "detail": "Length-preference points outside 20..=30 annealing bases."
+        },
+        {
+          "term": "homopolymer_excess",
+          "raw_value": 0.0,
+          "weight": -10.0,
+          "contribution": -0.0,
+          "detail": "Combined homopolymer-run excess above 4 bp."
+        },
+        {
+          "term": "self_complementarity_excess",
+          "raw_value": 0.0,
+          "weight": -12.0,
+          "contribution": -0.0,
+          "detail": "Combined self-complementary-run excess above 6 bp."
+        },
+        {
+          "term": "pair_complementarity_excess",
+          "raw_value": 0.0,
+          "weight": -20.0,
+          "contribution": -0.0,
+          "detail": "Pair-complementary-run excess above 6 bp."
+        },
+        {
+          "term": "pair_three_prime_complementarity_excess",
+          "raw_value": 0.0,
+          "weight": -35.0,
+          "contribution": -0.0,
+          "detail": "Pair 3-prime complementary-run excess above 3 bp."
+        },
+        {
+          "term": "three_prime_gc_clamp_balance",
+          "raw_value": 1.0,
+          "weight": 16.0,
+          "contribution": 16.0,
+          "detail": "Balance around one 3-prime GC clamp across the two primers."
+        }
+      ],
+      "forward": {
+        "sequence": "TCCCTCCGCTGTCTCCGGCCACC",
+        "start_0based": 61720,
+        "end_0based_exclusive": 61743,
+        "length_bp": 23,
+        "anneal_length_bp": 23,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 76.705305443,
+        "gc_fraction": 0.7391304347826086,
+        "anneal_hits": 1,
+        "three_prime_base": "C",
+        "three_prime_gc_clamp": true,
+        "longest_homopolymer_run_bp": 3,
+        "self_complementary_run_bp": 4
+      },
+      "reverse": {
+        "sequence": "AGGGGCCCAGCAGGCTGGCAAC",
+        "start_0based": 62016,
+        "end_0based_exclusive": 62038,
+        "length_bp": 22,
+        "anneal_length_bp": 22,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 76.708063839,
+        "gc_fraction": 0.7272727272727273,
+        "anneal_hits": 1,
+        "three_prime_base": "C",
+        "three_prime_gc_clamp": true,
+        "longest_homopolymer_run_bp": 4,
+        "self_complementary_run_bp": 6
+      },
+      "amplicon_start_0based": 61720,
+      "amplicon_end_0based_exclusive": 62038,
+      "amplicon_length_bp": 318,
+      "tm_delta_c": 0.002758396,
+      "primer_pair_complementary_run_bp": 4,
+      "primer_pair_3prime_complementary_run_bp": 2,
+      "rule_flags": {
+        "roi_covered": true,
+        "amplicon_size_in_range": true,
+        "tm_delta_in_range": true,
+        "forward_secondary_structure_ok": true,
+        "reverse_secondary_structure_ok": true,
+        "primer_pair_dimer_risk_low": true,
+        "forward_three_prime_gc_clamp": true,
+        "reverse_three_prime_gc_clamp": true
+      }
+    },
+    {
+      "rank": 5,
+      "score": 1005.28590054,
+      "score_terms": [
+        {
+          "term": "baseline",
+          "raw_value": 1.0,
+          "weight": 1000.0,
+          "contribution": 1000.0,
+          "detail": "Fixed baseline for the GENtle primer-pair ranking model."
+        },
+        {
+          "term": "tm_delta",
+          "raw_value": 0.040704973,
+          "weight": -20.0,
+          "contribution": -0.81409946,
+          "detail": "Absolute forward/reverse melting-temperature difference in degrees Celsius."
+        },
+        {
+          "term": "amplicon_length_fit",
+          "raw_value": 99.0,
+          "weight": -0.1,
+          "contribution": -9.9,
+          "detail": "Absolute distance from the configured midpoint target of 220 bp."
+        },
+        {
+          "term": "extra_anneal_hits",
+          "raw_value": 0.0,
+          "weight": -10.0,
+          "contribution": -0.0,
+          "detail": "Template-local annealing hits beyond one per primer."
+        },
+        {
+          "term": "primer_length_preference",
+          "raw_value": 0.0,
+          "weight": -6.0,
+          "contribution": -0.0,
+          "detail": "Length-preference points outside 20..=30 annealing bases."
+        },
+        {
+          "term": "homopolymer_excess",
+          "raw_value": 0.0,
+          "weight": -10.0,
+          "contribution": -0.0,
+          "detail": "Combined homopolymer-run excess above 4 bp."
+        },
+        {
+          "term": "self_complementarity_excess",
+          "raw_value": 0.0,
+          "weight": -12.0,
+          "contribution": -0.0,
+          "detail": "Combined self-complementary-run excess above 6 bp."
+        },
+        {
+          "term": "pair_complementarity_excess",
+          "raw_value": 0.0,
+          "weight": -20.0,
+          "contribution": -0.0,
+          "detail": "Pair-complementary-run excess above 6 bp."
+        },
+        {
+          "term": "pair_three_prime_complementarity_excess",
+          "raw_value": 0.0,
+          "weight": -35.0,
+          "contribution": -0.0,
+          "detail": "Pair 3-prime complementary-run excess above 3 bp."
+        },
+        {
+          "term": "three_prime_gc_clamp_balance",
+          "raw_value": 1.0,
+          "weight": 16.0,
+          "contribution": 16.0,
+          "detail": "Balance around one 3-prime GC clamp across the two primers."
+        }
+      ],
+      "forward": {
+        "sequence": "TCCCTCCGCTGTCTCCGGCCACC",
+        "start_0based": 61720,
+        "end_0based_exclusive": 61743,
+        "length_bp": 23,
+        "anneal_length_bp": 23,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 76.705305443,
+        "gc_fraction": 0.7391304347826086,
+        "anneal_hits": 1,
+        "three_prime_base": "C",
+        "three_prime_gc_clamp": true,
+        "longest_homopolymer_run_bp": 3,
+        "self_complementary_run_bp": 4
+      },
+      "reverse": {
+        "sequence": "GAGGGGCCCAGCAGGCTGGCAAC",
+        "start_0based": 62016,
+        "end_0based_exclusive": 62039,
+        "length_bp": 23,
+        "anneal_length_bp": 23,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 76.66460047,
+        "gc_fraction": 0.7391304347826086,
+        "anneal_hits": 1,
+        "three_prime_base": "C",
+        "three_prime_gc_clamp": true,
+        "longest_homopolymer_run_bp": 4,
+        "self_complementary_run_bp": 6
+      },
+      "amplicon_start_0based": 61720,
+      "amplicon_end_0based_exclusive": 62039,
+      "amplicon_length_bp": 319,
+      "tm_delta_c": 0.040704973,
+      "primer_pair_complementary_run_bp": 5,
+      "primer_pair_3prime_complementary_run_bp": 2,
+      "rule_flags": {
+        "roi_covered": true,
+        "amplicon_size_in_range": true,
+        "tm_delta_in_range": true,
+        "forward_secondary_structure_ok": true,
+        "reverse_secondary_structure_ok": true,
+        "primer_pair_dimer_risk_low": true,
+        "forward_three_prime_gc_clamp": true,
+        "reverse_three_prime_gc_clamp": true
+      }
+    }
+  ],
+  "rejection_summary": {
+    "out_of_window": 305109,
+    "gc_or_tm_out_of_bounds": 9,
+    "non_unique_anneal": 0,
+    "amplicon_or_roi_failure": 1080,
+    "primer_constraint_failure": 0,
+    "pair_constraint_failure": 0,
+    "pair_evaluation_limit_skipped": 0
+  },
+  "score_decomposition_status": "pass",
+  "score_decomposition_reason": "Every retained pair uses GENtle's shared additive ranking model; Primer3 candidate generation does not change score meaning.",
+  "score_model": "gentle_primer_pair_rank_v1",
+  "score_direction": "higher_is_better",
+  "rejected_near_misses": [
+    {
+      "forward": {
+        "sequence": "TCCCTCCGCTGTCTCCGGCC",
+        "start_0based": 61720,
+        "end_0based_exclusive": 61740,
+        "length_bp": 20,
+        "anneal_length_bp": 20,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 73.335229157,
+        "gc_fraction": 0.75,
+        "anneal_hits": 1,
+        "three_prime_base": "C",
+        "three_prime_gc_clamp": true,
+        "longest_homopolymer_run_bp": 3,
+        "self_complementary_run_bp": 4
+      },
+      "reverse": {
+        "sequence": "ACAGGCCTGCTCTGCTCA",
+        "start_0based": 62000,
+        "end_0based_exclusive": 62018,
+        "length_bp": 18,
+        "anneal_length_bp": 18,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 66.553450462,
+        "gc_fraction": 0.6111111111111112,
+        "anneal_hits": 1,
+        "three_prime_base": "A",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 2,
+        "self_complementary_run_bp": 8
+      },
+      "amplicon_start_0based": 61720,
+      "amplicon_end_0based_exclusive": 62018,
+      "score": null,
+      "reasons": [
+        "amplicon_or_roi_failure"
+      ],
+      "failed_checks": [
+        "tm_delta_above_max:observed=6.781779:max=5.000000"
+      ],
+      "detail": "Evaluated pair failed geometry or ROI requirements: tm_delta_above_max:observed=6.781779:max=5.000000."
+    },
+    {
+      "forward": {
+        "sequence": "TCCCTCCGCTGTCTCCGGCCA",
+        "start_0based": 61720,
+        "end_0based_exclusive": 61741,
+        "length_bp": 21,
+        "anneal_length_bp": 21,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 74.739209744,
+        "gc_fraction": 0.7142857142857143,
+        "anneal_hits": 1,
+        "three_prime_base": "A",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 3,
+        "self_complementary_run_bp": 4
+      },
+      "reverse": {
+        "sequence": "ACAGGCCTGCTCTGCTCA",
+        "start_0based": 62000,
+        "end_0based_exclusive": 62018,
+        "length_bp": 18,
+        "anneal_length_bp": 18,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 66.553450462,
+        "gc_fraction": 0.6111111111111112,
+        "anneal_hits": 1,
+        "three_prime_base": "A",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 2,
+        "self_complementary_run_bp": 8
+      },
+      "amplicon_start_0based": 61720,
+      "amplicon_end_0based_exclusive": 62018,
+      "score": null,
+      "reasons": [
+        "amplicon_or_roi_failure"
+      ],
+      "failed_checks": [
+        "tm_delta_above_max:observed=8.185759:max=5.000000"
+      ],
+      "detail": "Evaluated pair failed geometry or ROI requirements: tm_delta_above_max:observed=8.185759:max=5.000000."
+    },
+    {
+      "forward": {
+        "sequence": "TCCCTCCGCTGTCTCCGGCCAC",
+        "start_0based": 61720,
+        "end_0based_exclusive": 61742,
+        "length_bp": 22,
+        "anneal_length_bp": 22,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 75.053691413,
+        "gc_fraction": 0.7272727272727273,
+        "anneal_hits": 1,
+        "three_prime_base": "C",
+        "three_prime_gc_clamp": true,
+        "longest_homopolymer_run_bp": 3,
+        "self_complementary_run_bp": 4
+      },
+      "reverse": {
+        "sequence": "ACAGGCCTGCTCTGCTCA",
+        "start_0based": 62000,
+        "end_0based_exclusive": 62018,
+        "length_bp": 18,
+        "anneal_length_bp": 18,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 66.553450462,
+        "gc_fraction": 0.6111111111111112,
+        "anneal_hits": 1,
+        "three_prime_base": "A",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 2,
+        "self_complementary_run_bp": 8
+      },
+      "amplicon_start_0based": 61720,
+      "amplicon_end_0based_exclusive": 62018,
+      "score": null,
+      "reasons": [
+        "amplicon_or_roi_failure"
+      ],
+      "failed_checks": [
+        "tm_delta_above_max:observed=8.500241:max=5.000000"
+      ],
+      "detail": "Evaluated pair failed geometry or ROI requirements: tm_delta_above_max:observed=8.500241:max=5.000000."
+    },
+    {
+      "forward": {
+        "sequence": "TCCCTCCGCTGTCTCCGGCCACC",
+        "start_0based": 61720,
+        "end_0based_exclusive": 61743,
+        "length_bp": 23,
+        "anneal_length_bp": 23,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 76.705305443,
+        "gc_fraction": 0.7391304347826086,
+        "anneal_hits": 1,
+        "three_prime_base": "C",
+        "three_prime_gc_clamp": true,
+        "longest_homopolymer_run_bp": 3,
+        "self_complementary_run_bp": 4
+      },
+      "reverse": {
+        "sequence": "ACAGGCCTGCTCTGCTCA",
+        "start_0based": 62000,
+        "end_0based_exclusive": 62018,
+        "length_bp": 18,
+        "anneal_length_bp": 18,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 66.553450462,
+        "gc_fraction": 0.6111111111111112,
+        "anneal_hits": 1,
+        "three_prime_base": "A",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 2,
+        "self_complementary_run_bp": 8
+      },
+      "amplicon_start_0based": 61720,
+      "amplicon_end_0based_exclusive": 62018,
+      "score": null,
+      "reasons": [
+        "amplicon_or_roi_failure"
+      ],
+      "failed_checks": [
+        "tm_delta_above_max:observed=10.151855:max=5.000000"
+      ],
+      "detail": "Evaluated pair failed geometry or ROI requirements: tm_delta_above_max:observed=10.151855:max=5.000000."
+    },
+    {
+      "forward": {
+        "sequence": "TCCCTCCGCTGTCTCCGGCCACCT",
+        "start_0based": 61720,
+        "end_0based_exclusive": 61744,
+        "length_bp": 24,
+        "anneal_length_bp": 24,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 77.679149306,
+        "gc_fraction": 0.7083333333333334,
+        "anneal_hits": 1,
+        "three_prime_base": "T",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 3,
+        "self_complementary_run_bp": 4
+      },
+      "reverse": {
+        "sequence": "ACAGGCCTGCTCTGCTCA",
+        "start_0based": 62000,
+        "end_0based_exclusive": 62018,
+        "length_bp": 18,
+        "anneal_length_bp": 18,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 66.553450462,
+        "gc_fraction": 0.6111111111111112,
+        "anneal_hits": 1,
+        "three_prime_base": "A",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 2,
+        "self_complementary_run_bp": 8
+      },
+      "amplicon_start_0based": 61720,
+      "amplicon_end_0based_exclusive": 62018,
+      "score": null,
+      "reasons": [
+        "amplicon_or_roi_failure"
+      ],
+      "failed_checks": [
+        "tm_delta_above_max:observed=11.125699:max=5.000000"
+      ],
+      "detail": "Evaluated pair failed geometry or ROI requirements: tm_delta_above_max:observed=11.125699:max=5.000000."
+    },
+    {
+      "forward": {
+        "sequence": "TCCCTCCGCTGTCTCCGGCC",
+        "start_0based": 61720,
+        "end_0based_exclusive": 61740,
+        "length_bp": 20,
+        "anneal_length_bp": 20,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 73.335229157,
+        "gc_fraction": 0.75,
+        "anneal_hits": 1,
+        "three_prime_base": "C",
+        "three_prime_gc_clamp": true,
+        "longest_homopolymer_run_bp": 3,
+        "self_complementary_run_bp": 4
+      },
+      "reverse": {
+        "sequence": "AACAGGCCTGCTCTGCTCA",
+        "start_0based": 62000,
+        "end_0based_exclusive": 62019,
+        "length_bp": 19,
+        "anneal_length_bp": 19,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 66.972345782,
+        "gc_fraction": 0.5789473684210527,
+        "anneal_hits": 1,
+        "three_prime_base": "A",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 2,
+        "self_complementary_run_bp": 8
+      },
+      "amplicon_start_0based": 61720,
+      "amplicon_end_0based_exclusive": 62019,
+      "score": null,
+      "reasons": [
+        "amplicon_or_roi_failure"
+      ],
+      "failed_checks": [
+        "tm_delta_above_max:observed=6.362883:max=5.000000"
+      ],
+      "detail": "Evaluated pair failed geometry or ROI requirements: tm_delta_above_max:observed=6.362883:max=5.000000."
+    },
+    {
+      "forward": {
+        "sequence": "TCCCTCCGCTGTCTCCGGCCA",
+        "start_0based": 61720,
+        "end_0based_exclusive": 61741,
+        "length_bp": 21,
+        "anneal_length_bp": 21,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 74.739209744,
+        "gc_fraction": 0.7142857142857143,
+        "anneal_hits": 1,
+        "three_prime_base": "A",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 3,
+        "self_complementary_run_bp": 4
+      },
+      "reverse": {
+        "sequence": "AACAGGCCTGCTCTGCTCA",
+        "start_0based": 62000,
+        "end_0based_exclusive": 62019,
+        "length_bp": 19,
+        "anneal_length_bp": 19,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 66.972345782,
+        "gc_fraction": 0.5789473684210527,
+        "anneal_hits": 1,
+        "three_prime_base": "A",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 2,
+        "self_complementary_run_bp": 8
+      },
+      "amplicon_start_0based": 61720,
+      "amplicon_end_0based_exclusive": 62019,
+      "score": null,
+      "reasons": [
+        "amplicon_or_roi_failure"
+      ],
+      "failed_checks": [
+        "tm_delta_above_max:observed=7.766864:max=5.000000"
+      ],
+      "detail": "Evaluated pair failed geometry or ROI requirements: tm_delta_above_max:observed=7.766864:max=5.000000."
+    },
+    {
+      "forward": {
+        "sequence": "TCCCTCCGCTGTCTCCGGCCAC",
+        "start_0based": 61720,
+        "end_0based_exclusive": 61742,
+        "length_bp": 22,
+        "anneal_length_bp": 22,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 75.053691413,
+        "gc_fraction": 0.7272727272727273,
+        "anneal_hits": 1,
+        "three_prime_base": "C",
+        "three_prime_gc_clamp": true,
+        "longest_homopolymer_run_bp": 3,
+        "self_complementary_run_bp": 4
+      },
+      "reverse": {
+        "sequence": "AACAGGCCTGCTCTGCTCA",
+        "start_0based": 62000,
+        "end_0based_exclusive": 62019,
+        "length_bp": 19,
+        "anneal_length_bp": 19,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 66.972345782,
+        "gc_fraction": 0.5789473684210527,
+        "anneal_hits": 1,
+        "three_prime_base": "A",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 2,
+        "self_complementary_run_bp": 8
+      },
+      "amplicon_start_0based": 61720,
+      "amplicon_end_0based_exclusive": 62019,
+      "score": null,
+      "reasons": [
+        "amplicon_or_roi_failure"
+      ],
+      "failed_checks": [
+        "tm_delta_above_max:observed=8.081346:max=5.000000"
+      ],
+      "detail": "Evaluated pair failed geometry or ROI requirements: tm_delta_above_max:observed=8.081346:max=5.000000."
+    },
+    {
+      "forward": {
+        "sequence": "TCCCTCCGCTGTCTCCGGCCACC",
+        "start_0based": 61720,
+        "end_0based_exclusive": 61743,
+        "length_bp": 23,
+        "anneal_length_bp": 23,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 76.705305443,
+        "gc_fraction": 0.7391304347826086,
+        "anneal_hits": 1,
+        "three_prime_base": "C",
+        "three_prime_gc_clamp": true,
+        "longest_homopolymer_run_bp": 3,
+        "self_complementary_run_bp": 4
+      },
+      "reverse": {
+        "sequence": "AACAGGCCTGCTCTGCTCA",
+        "start_0based": 62000,
+        "end_0based_exclusive": 62019,
+        "length_bp": 19,
+        "anneal_length_bp": 19,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 66.972345782,
+        "gc_fraction": 0.5789473684210527,
+        "anneal_hits": 1,
+        "three_prime_base": "A",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 2,
+        "self_complementary_run_bp": 8
+      },
+      "amplicon_start_0based": 61720,
+      "amplicon_end_0based_exclusive": 62019,
+      "score": null,
+      "reasons": [
+        "amplicon_or_roi_failure"
+      ],
+      "failed_checks": [
+        "tm_delta_above_max:observed=9.732960:max=5.000000"
+      ],
+      "detail": "Evaluated pair failed geometry or ROI requirements: tm_delta_above_max:observed=9.732960:max=5.000000."
+    },
+    {
+      "forward": {
+        "sequence": "TCCCTCCGCTGTCTCCGGCCACCT",
+        "start_0based": 61720,
+        "end_0based_exclusive": 61744,
+        "length_bp": 24,
+        "anneal_length_bp": 24,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 77.679149306,
+        "gc_fraction": 0.7083333333333334,
+        "anneal_hits": 1,
+        "three_prime_base": "T",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 3,
+        "self_complementary_run_bp": 4
+      },
+      "reverse": {
+        "sequence": "AACAGGCCTGCTCTGCTCA",
+        "start_0based": 62000,
+        "end_0based_exclusive": 62019,
+        "length_bp": 19,
+        "anneal_length_bp": 19,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 66.972345782,
+        "gc_fraction": 0.5789473684210527,
+        "anneal_hits": 1,
+        "three_prime_base": "A",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 2,
+        "self_complementary_run_bp": 8
+      },
+      "amplicon_start_0based": 61720,
+      "amplicon_end_0based_exclusive": 62019,
+      "score": null,
+      "reasons": [
+        "amplicon_or_roi_failure"
+      ],
+      "failed_checks": [
+        "tm_delta_above_max:observed=10.706804:max=5.000000"
+      ],
+      "detail": "Evaluated pair failed geometry or ROI requirements: tm_delta_above_max:observed=10.706804:max=5.000000."
+    },
+    {
+      "forward": {
+        "sequence": "TCCCTCCGCTGTCTCCGGCC",
+        "start_0based": 61720,
+        "end_0based_exclusive": 61740,
+        "length_bp": 20,
+        "anneal_length_bp": 20,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 73.335229157,
+        "gc_fraction": 0.75,
+        "anneal_hits": 1,
+        "three_prime_base": "C",
+        "three_prime_gc_clamp": true,
+        "longest_homopolymer_run_bp": 3,
+        "self_complementary_run_bp": 4
+      },
+      "reverse": {
+        "sequence": "CAACAGGCCTGCTCTGCTCA",
+        "start_0based": 62000,
+        "end_0based_exclusive": 62020,
+        "length_bp": 20,
+        "anneal_length_bp": 20,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 67.813375317,
+        "gc_fraction": 0.6,
+        "anneal_hits": 1,
+        "three_prime_base": "A",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 2,
+        "self_complementary_run_bp": 8
+      },
+      "amplicon_start_0based": 61720,
+      "amplicon_end_0based_exclusive": 62020,
+      "score": null,
+      "reasons": [
+        "amplicon_or_roi_failure"
+      ],
+      "failed_checks": [
+        "tm_delta_above_max:observed=5.521854:max=5.000000"
+      ],
+      "detail": "Evaluated pair failed geometry or ROI requirements: tm_delta_above_max:observed=5.521854:max=5.000000."
+    },
+    {
+      "forward": {
+        "sequence": "TCCCTCCGCTGTCTCCGGCCA",
+        "start_0based": 61720,
+        "end_0based_exclusive": 61741,
+        "length_bp": 21,
+        "anneal_length_bp": 21,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 74.739209744,
+        "gc_fraction": 0.7142857142857143,
+        "anneal_hits": 1,
+        "three_prime_base": "A",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 3,
+        "self_complementary_run_bp": 4
+      },
+      "reverse": {
+        "sequence": "CAACAGGCCTGCTCTGCTCA",
+        "start_0based": 62000,
+        "end_0based_exclusive": 62020,
+        "length_bp": 20,
+        "anneal_length_bp": 20,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 67.813375317,
+        "gc_fraction": 0.6,
+        "anneal_hits": 1,
+        "three_prime_base": "A",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 2,
+        "self_complementary_run_bp": 8
+      },
+      "amplicon_start_0based": 61720,
+      "amplicon_end_0based_exclusive": 62020,
+      "score": null,
+      "reasons": [
+        "amplicon_or_roi_failure"
+      ],
+      "failed_checks": [
+        "tm_delta_above_max:observed=6.925834:max=5.000000"
+      ],
+      "detail": "Evaluated pair failed geometry or ROI requirements: tm_delta_above_max:observed=6.925834:max=5.000000."
+    },
+    {
+      "forward": {
+        "sequence": "TCCCTCCGCTGTCTCCGGCCAC",
+        "start_0based": 61720,
+        "end_0based_exclusive": 61742,
+        "length_bp": 22,
+        "anneal_length_bp": 22,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 75.053691413,
+        "gc_fraction": 0.7272727272727273,
+        "anneal_hits": 1,
+        "three_prime_base": "C",
+        "three_prime_gc_clamp": true,
+        "longest_homopolymer_run_bp": 3,
+        "self_complementary_run_bp": 4
+      },
+      "reverse": {
+        "sequence": "CAACAGGCCTGCTCTGCTCA",
+        "start_0based": 62000,
+        "end_0based_exclusive": 62020,
+        "length_bp": 20,
+        "anneal_length_bp": 20,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 67.813375317,
+        "gc_fraction": 0.6,
+        "anneal_hits": 1,
+        "three_prime_base": "A",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 2,
+        "self_complementary_run_bp": 8
+      },
+      "amplicon_start_0based": 61720,
+      "amplicon_end_0based_exclusive": 62020,
+      "score": null,
+      "reasons": [
+        "amplicon_or_roi_failure"
+      ],
+      "failed_checks": [
+        "tm_delta_above_max:observed=7.240316:max=5.000000"
+      ],
+      "detail": "Evaluated pair failed geometry or ROI requirements: tm_delta_above_max:observed=7.240316:max=5.000000."
+    },
+    {
+      "forward": {
+        "sequence": "TCCCTCCGCTGTCTCCGGCCACC",
+        "start_0based": 61720,
+        "end_0based_exclusive": 61743,
+        "length_bp": 23,
+        "anneal_length_bp": 23,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 76.705305443,
+        "gc_fraction": 0.7391304347826086,
+        "anneal_hits": 1,
+        "three_prime_base": "C",
+        "three_prime_gc_clamp": true,
+        "longest_homopolymer_run_bp": 3,
+        "self_complementary_run_bp": 4
+      },
+      "reverse": {
+        "sequence": "CAACAGGCCTGCTCTGCTCA",
+        "start_0based": 62000,
+        "end_0based_exclusive": 62020,
+        "length_bp": 20,
+        "anneal_length_bp": 20,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 67.813375317,
+        "gc_fraction": 0.6,
+        "anneal_hits": 1,
+        "three_prime_base": "A",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 2,
+        "self_complementary_run_bp": 8
+      },
+      "amplicon_start_0based": 61720,
+      "amplicon_end_0based_exclusive": 62020,
+      "score": null,
+      "reasons": [
+        "amplicon_or_roi_failure"
+      ],
+      "failed_checks": [
+        "tm_delta_above_max:observed=8.891930:max=5.000000"
+      ],
+      "detail": "Evaluated pair failed geometry or ROI requirements: tm_delta_above_max:observed=8.891930:max=5.000000."
+    },
+    {
+      "forward": {
+        "sequence": "TCCCTCCGCTGTCTCCGGCCACCT",
+        "start_0based": 61720,
+        "end_0based_exclusive": 61744,
+        "length_bp": 24,
+        "anneal_length_bp": 24,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 77.679149306,
+        "gc_fraction": 0.7083333333333334,
+        "anneal_hits": 1,
+        "three_prime_base": "T",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 3,
+        "self_complementary_run_bp": 4
+      },
+      "reverse": {
+        "sequence": "CAACAGGCCTGCTCTGCTCA",
+        "start_0based": 62000,
+        "end_0based_exclusive": 62020,
+        "length_bp": 20,
+        "anneal_length_bp": 20,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 67.813375317,
+        "gc_fraction": 0.6,
+        "anneal_hits": 1,
+        "three_prime_base": "A",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 2,
+        "self_complementary_run_bp": 8
+      },
+      "amplicon_start_0based": 61720,
+      "amplicon_end_0based_exclusive": 62020,
+      "score": null,
+      "reasons": [
+        "amplicon_or_roi_failure"
+      ],
+      "failed_checks": [
+        "tm_delta_above_max:observed=9.865774:max=5.000000"
+      ],
+      "detail": "Evaluated pair failed geometry or ROI requirements: tm_delta_above_max:observed=9.865774:max=5.000000."
+    },
+    {
+      "forward": {
+        "sequence": "TCCCTCCGCTGTCTCCGGCCACC",
+        "start_0based": 61720,
+        "end_0based_exclusive": 61743,
+        "length_bp": 23,
+        "anneal_length_bp": 23,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 76.705305443,
+        "gc_fraction": 0.7391304347826086,
+        "anneal_hits": 1,
+        "three_prime_base": "C",
+        "three_prime_gc_clamp": true,
+        "longest_homopolymer_run_bp": 3,
+        "self_complementary_run_bp": 4
+      },
+      "reverse": {
+        "sequence": "GCAACAGGCCTGCTCTGCTCA",
+        "start_0based": 62000,
+        "end_0based_exclusive": 62021,
+        "length_bp": 21,
+        "anneal_length_bp": 21,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 70.361161436,
+        "gc_fraction": 0.6190476190476191,
+        "anneal_hits": 1,
+        "three_prime_base": "A",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 2,
+        "self_complementary_run_bp": 8
+      },
+      "amplicon_start_0based": 61720,
+      "amplicon_end_0based_exclusive": 62021,
+      "score": null,
+      "reasons": [
+        "amplicon_or_roi_failure"
+      ],
+      "failed_checks": [
+        "tm_delta_above_max:observed=6.344144:max=5.000000"
+      ],
+      "detail": "Evaluated pair failed geometry or ROI requirements: tm_delta_above_max:observed=6.344144:max=5.000000."
+    },
+    {
+      "forward": {
+        "sequence": "TCCCTCCGCTGTCTCCGGCCACCT",
+        "start_0based": 61720,
+        "end_0based_exclusive": 61744,
+        "length_bp": 24,
+        "anneal_length_bp": 24,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 77.679149306,
+        "gc_fraction": 0.7083333333333334,
+        "anneal_hits": 1,
+        "three_prime_base": "T",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 3,
+        "self_complementary_run_bp": 4
+      },
+      "reverse": {
+        "sequence": "GCAACAGGCCTGCTCTGCTCA",
+        "start_0based": 62000,
+        "end_0based_exclusive": 62021,
+        "length_bp": 21,
+        "anneal_length_bp": 21,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 70.361161436,
+        "gc_fraction": 0.6190476190476191,
+        "anneal_hits": 1,
+        "three_prime_base": "A",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 2,
+        "self_complementary_run_bp": 8
+      },
+      "amplicon_start_0based": 61720,
+      "amplicon_end_0based_exclusive": 62021,
+      "score": null,
+      "reasons": [
+        "amplicon_or_roi_failure"
+      ],
+      "failed_checks": [
+        "tm_delta_above_max:observed=7.317988:max=5.000000"
+      ],
+      "detail": "Evaluated pair failed geometry or ROI requirements: tm_delta_above_max:observed=7.317988:max=5.000000."
+    },
+    {
+      "forward": {
+        "sequence": "TCCCTCCGCTGTCTCCGGCCACCT",
+        "start_0based": 61720,
+        "end_0based_exclusive": 61744,
+        "length_bp": 24,
+        "anneal_length_bp": 24,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 77.679149306,
+        "gc_fraction": 0.7083333333333334,
+        "anneal_hits": 1,
+        "three_prime_base": "T",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 3,
+        "self_complementary_run_bp": 4
+      },
+      "reverse": {
+        "sequence": "GGCAACAGGCCTGCTCTGCTCA",
+        "start_0based": 62000,
+        "end_0based_exclusive": 62022,
+        "length_bp": 22,
+        "anneal_length_bp": 22,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 72.267111135,
+        "gc_fraction": 0.6363636363636364,
+        "anneal_hits": 1,
+        "three_prime_base": "A",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 2,
+        "self_complementary_run_bp": 8
+      },
+      "amplicon_start_0based": 61720,
+      "amplicon_end_0based_exclusive": 62022,
+      "score": null,
+      "reasons": [
+        "amplicon_or_roi_failure"
+      ],
+      "failed_checks": [
+        "tm_delta_above_max:observed=5.412038:max=5.000000"
+      ],
+      "detail": "Evaluated pair failed geometry or ROI requirements: tm_delta_above_max:observed=5.412038:max=5.000000."
+    },
+    {
+      "forward": {
+        "sequence": "TCCCTCCGCTGTCTCCGG",
+        "start_0based": 61720,
+        "end_0based_exclusive": 61738,
+        "length_bp": 18,
+        "anneal_length_bp": 18,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 68.500625853,
+        "gc_fraction": 0.7222222222222222,
+        "anneal_hits": 1,
+        "three_prime_base": "G",
+        "three_prime_gc_clamp": true,
+        "longest_homopolymer_run_bp": 3,
+        "self_complementary_run_bp": 4
+      },
+      "reverse": {
+        "sequence": "TGGCAACAGGCCTGCTCTGCTCA",
+        "start_0based": 62000,
+        "end_0based_exclusive": 62023,
+        "length_bp": 23,
+        "anneal_length_bp": 23,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 73.57963489,
+        "gc_fraction": 0.6086956521739131,
+        "anneal_hits": 1,
+        "three_prime_base": "A",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 2,
+        "self_complementary_run_bp": 8
+      },
+      "amplicon_start_0based": 61720,
+      "amplicon_end_0based_exclusive": 62023,
+      "score": null,
+      "reasons": [
+        "amplicon_or_roi_failure"
+      ],
+      "failed_checks": [
+        "tm_delta_above_max:observed=5.079009:max=5.000000"
+      ],
+      "detail": "Evaluated pair failed geometry or ROI requirements: tm_delta_above_max:observed=5.079009:max=5.000000."
+    },
+    {
+      "forward": {
+        "sequence": "TCCCTCCGCTGTCTCCGG",
+        "start_0based": 61720,
+        "end_0based_exclusive": 61738,
+        "length_bp": 18,
+        "anneal_length_bp": 18,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 68.500625853,
+        "gc_fraction": 0.7222222222222222,
+        "anneal_hits": 1,
+        "three_prime_base": "G",
+        "three_prime_gc_clamp": true,
+        "longest_homopolymer_run_bp": 3,
+        "self_complementary_run_bp": 4
+      },
+      "reverse": {
+        "sequence": "CTGGCAACAGGCCTGCTCTGCTCA",
+        "start_0based": 62000,
+        "end_0based_exclusive": 62024,
+        "length_bp": 24,
+        "anneal_length_bp": 24,
+        "non_annealing_5prime_tail_bp": 0,
+        "tm_c": 73.751987056,
+        "gc_fraction": 0.625,
+        "anneal_hits": 1,
+        "three_prime_base": "A",
+        "three_prime_gc_clamp": false,
+        "longest_homopolymer_run_bp": 2,
+        "self_complementary_run_bp": 8
+      },
+      "amplicon_start_0based": 61720,
+      "amplicon_end_0based_exclusive": 62024,
+      "score": null,
+      "reasons": [
+        "amplicon_or_roi_failure"
+      ],
+      "failed_checks": [
+        "tm_delta_above_max:observed=5.251361:max=5.000000"
+      ],
+      "detail": "Evaluated pair failed geometry or ROI requirements: tm_delta_above_max:observed=5.251361:max=5.000000."
+    }
+  ],
+  "near_miss_capture": {
+    "status": "pass",
+    "scope": "evaluated_pair_candidates",
+    "reason": "Retained a bounded deterministic subset of evaluated pair-level rejections; single-primer rejection classes remain aggregate-only.",
+    "requested_limit": 20,
+    "effective_limit": 20,
+    "eligible_candidate_count": 1080,
+    "retained_candidate_count": 20,
+    "omitted_candidate_count": 1060,
+    "candidate_comparison_count": 21200
+  },
+  "excluded_region_analysis_status": "not_run",
+  "excluded_region_analysis_reason": "This selector did not consult region-level repeat, common-variant, low-complexity, or paralogue evidence; no excluded-region intervals were inferred.",
+  "backend": {
+    "requested": "internal",
+    "used": "internal",
+    "fallback_reason": null,
+    "primer3_executable": null,
+    "primer3_version": null,
+    "primer3_explain": null,
+    "primer3_request_boulder_io": null
+  },
+  "construct_reasoning_graph_id": "primer_design_reasoning_tp73_as2_promoter_batch_r01",
+  "pareto_frontier": {
+    "status": "complete_non_dominated_accepted_candidates",
+    "objective_directions": [
+      "existing_candidate_score:maximize",
+      "tm_delta_c:minimize",
+      "primer_pair_complementary_run_bp:minimize",
+      "primer_pair_3prime_complementary_run_bp:minimize"
+    ],
+    "accepted_candidate_count": 5,
+    "evaluated_candidate_count": 5,
+    "non_dominated_candidate_count": 3,
+    "retained_candidate_count": 3,
+    "truncated": false,
+    "alternatives": [
+      {
+        "pair_id": "primer_pair_3d6a25ff334e4feb",
+        "source_candidate_id": "primer_pair_3d6a25ff334e4feb",
+        "design_template_id": "tp73_locus",
+        "selected": true,
+        "metrics": {
+          "existing_candidate_score": 1006.96341302,
+          "tm_delta_c": 0.001829349,
+          "primer_pair_complementary_run_bp": 4,
+          "primer_pair_3prime_complementary_run_bp": 3,
+          "amplicon_length_bp": 310
+        },
+        "tradeoff_summary": "score=1006.963; delta_tm=0.002 C; pair_complementarity=4/3 bp"
+      },
+      {
+        "pair_id": "primer_pair_f3506f55cb52bc0c",
+        "source_candidate_id": "primer_pair_f3506f55cb52bc0c",
+        "design_template_id": "tp73_locus",
+        "selected": false,
+        "metrics": {
+          "existing_candidate_score": 1006.14676754,
+          "tm_delta_c": 0.007661623,
+          "primer_pair_complementary_run_bp": 4,
+          "primer_pair_3prime_complementary_run_bp": 2,
+          "amplicon_length_bp": 317
+        },
+        "tradeoff_summary": "score=1006.147; delta_tm=0.008 C; pair_complementarity=4/2 bp"
+      },
+      {
+        "pair_id": "primer_pair_a80ab82c67aed0a5",
+        "source_candidate_id": "primer_pair_a80ab82c67aed0a5",
+        "design_template_id": "tp73_locus",
+        "selected": false,
+        "metrics": {
+          "existing_candidate_score": 1006.14483208,
+          "tm_delta_c": 0.002758396,
+          "primer_pair_complementary_run_bp": 4,
+          "primer_pair_3prime_complementary_run_bp": 2,
+          "amplicon_length_bp": 318
+        },
+        "tradeoff_summary": "score=1006.145; delta_tm=0.003 C; pair_complementarity=4/2 bp"
+      }
+    ]
+  }
+}

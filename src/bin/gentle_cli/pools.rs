@@ -7,7 +7,10 @@
 
 use gentle::{
     dna_sequence::DNAsequence,
-    engine::{GelBufferModel, GelRunConditions, GelTopologyForm, GentleEngine, Operation},
+    engine::{
+        GelBandLabelLayout, GelBufferModel, GelIsoformMarkerMode, GelLaneLabelLayout,
+        GelRunConditions, GelTopologyForm, GentleEngine, Operation, PoolGelRenderOptions,
+    },
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -88,7 +91,7 @@ fn handle_render_pool_gel_svg(
     if args.len() <= cmd_idx + 2 {
         usage();
         return Err(format!(
-            "{cmd_name} requires: IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID] [--agarose-pct FLOAT] [--buffer tae|tbe] [--topology-aware true|false]"
+            "{cmd_name} requires: IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID] [--agarose-pct FLOAT] [--buffer tae|tbe] [--topology-aware true|false] [--lane-label-layout auto|horizontal|wrapped|staggered|angled] [--band-label-layout auto|inline|panel] [--isoform-markers auto|off]"
         ));
     }
     let ids = match args[cmd_idx + 1].trim() {
@@ -100,6 +103,7 @@ fn handle_render_pool_gel_svg(
     let mut container_ids: Option<Vec<String>> = None;
     let mut arrangement_id: Option<String> = None;
     let mut conditions = GelRunConditions::default();
+    let mut render_options = PoolGelRenderOptions::default();
     let mut idx = cmd_idx + 3;
     while idx < args.len() {
         match args[idx].as_str() {
@@ -170,9 +174,48 @@ fn handle_render_pool_gel_svg(
                 })?;
                 idx += 2;
             }
+            "--lane-label-layout" => {
+                if idx + 1 >= args.len() {
+                    return Err("Missing value after --lane-label-layout".to_string());
+                }
+                render_options.lane_label_layout = GelLaneLabelLayout::from_hint(&args[idx + 1])
+                    .ok_or_else(|| {
+                        format!(
+                            "Unknown lane-label layout '{}' (expected auto|horizontal|wrapped|staggered|angled)",
+                            args[idx + 1]
+                        )
+                    })?;
+                idx += 2;
+            }
+            "--band-label-layout" => {
+                if idx + 1 >= args.len() {
+                    return Err("Missing value after --band-label-layout".to_string());
+                }
+                render_options.band_label_layout = GelBandLabelLayout::from_hint(&args[idx + 1])
+                    .ok_or_else(|| {
+                        format!(
+                            "Unknown band-label layout '{}' (expected auto|inline|panel)",
+                            args[idx + 1]
+                        )
+                    })?;
+                idx += 2;
+            }
+            "--isoform-markers" => {
+                if idx + 1 >= args.len() {
+                    return Err("Missing value after --isoform-markers".to_string());
+                }
+                render_options.isoform_marker_mode =
+                    GelIsoformMarkerMode::from_hint(&args[idx + 1]).ok_or_else(|| {
+                        format!(
+                            "Unknown isoform-marker mode '{}' (expected auto|off)",
+                            args[idx + 1]
+                        )
+                    })?;
+                idx += 2;
+            }
             other => {
                 return Err(format!(
-                    "Unknown argument '{other}' for {cmd_name} (expected --ladders/--containers/--arrangement/--agarose-pct/--buffer/--topology-aware)"
+                    "Unknown argument '{other}' for {cmd_name} (expected --ladders/--containers/--arrangement/--agarose-pct/--buffer/--topology-aware/--lane-label-layout/--band-label-layout/--isoform-markers)"
                 ));
             }
         }
@@ -194,6 +237,7 @@ fn handle_render_pool_gel_svg(
             container_ids,
             arrangement_id,
             conditions: Some(conditions.normalized()),
+            render_options: Some(render_options),
         })
         .map_err(|e| e.to_string())?;
     save_state_and_print_first_message(&engine, state_path, &result.messages)
@@ -544,7 +588,7 @@ mod tests {
             .expect_err("missing args should fail");
         assert_eq!(
             err,
-            "render-pool-gel-svg requires: IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID] [--agarose-pct FLOAT] [--buffer tae|tbe] [--topology-aware true|false]"
+            "render-pool-gel-svg requires: IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID] [--agarose-pct FLOAT] [--buffer tae|tbe] [--topology-aware true|false] [--lane-label-layout auto|horizontal|wrapped|staggered|angled] [--band-label-layout auto|inline|panel] [--isoform-markers auto|off]"
         );
     }
 

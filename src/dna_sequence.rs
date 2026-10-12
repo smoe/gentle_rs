@@ -243,6 +243,10 @@ pub struct DNAsequence {
     methylation_sites: MethylationSites,
     methylation_mode: MethylationMode,
     gc_content: GcContents,
+    #[serde(default, skip)]
+    feature_generation: u64,
+    #[serde(default, skip)]
+    restriction_enzyme_group_generation: u64,
 }
 
 impl DNAsequence {
@@ -262,7 +266,10 @@ impl DNAsequence {
     pub fn from_genbank_file(filename: &str) -> Result<Vec<DNAsequence>> {
         Ok(gb_io::reader::parse_file(filename)?
             .into_iter()
-            .map(DNAsequence::from_genbank_seq)
+            .map(|mut seq| {
+                restore_wrapped_dbsnp_spdi(&mut seq);
+                DNAsequence::from_genbank_seq(seq)
+            })
             .collect())
     }
 
@@ -307,12 +314,11 @@ impl DNAsequence {
                 )
             })?;
         }
-        gb_io::writer::write(&mut buffer, &seq)?;
+        buffer.extend_from_slice(&crate::annotated_sequence_io::genbank_bytes(&seq)?);
         Ok(String::from_utf8(buffer)?)
     }
 
     pub fn write_genbank_file(&self, filename: &str) -> Result<()> {
-        let file = File::create(filename)?;
         let mut seq = self.seq.clone();
         for feature in &mut seq.features {
             let location_text = feature.location.to_gb_format();
@@ -322,7 +328,20 @@ impl DNAsequence {
                 )
             })?;
         }
-        gb_io::writer::write(file, &seq)?;
+        std::fs::write(filename, crate::annotated_sequence_io::genbank_bytes(&seq)?)?;
+        Ok(())
+    }
+
+    /// Export the same annotated record as EMBL, without projecting away features.
+    pub fn to_embl_string(&self) -> Result<String> {
+        Ok(String::from_utf8(
+            crate::annotated_sequence_io::embl_bytes(&self.seq)?,
+        )?)
+    }
+
+    /// Serialize before opening the destination so invalid data cannot truncate it.
+    pub fn write_embl_file(&self, filename: &str) -> Result<()> {
+        std::fs::write(filename, self.to_embl_string()?)?;
         Ok(())
     }
 
@@ -418,8 +437,37 @@ impl DNAsequence {
             let rotated = self.seq.set_origin(start as i64);
             rotated.extract_range(0, extracted_len as i64)
         } else {
-            self.seq
-                .extract_range(from as i64, from.saturating_add(extracted_len) as i64)
+            let end = from.saturating_add(extracted_len);
+            let mut source = self.seq.clone();
+            // gb_io clips exact ends and drops exons without marking partiality.
+            // Record loss of the original transcript start before that information disappears.
+            for feature in &mut source.features {
+                if !matches!(
+                    feature.kind.to_ascii_uppercase().as_str(),
+                    "MRNA" | "TRANSCRIPT" | "NCRNA" | "RRNA" | "TRNA"
+                ) {
+                    continue;
+                }
+                if let Ok((s, e)) = feature.location.find_bounds() {
+                    let start_removed =
+                        crate::feature_location::transcript_five_prime_endpoint(feature)
+                            .map(|endpoint| endpoint.position < from || endpoint.position >= end)
+                            // Do not turn clipped unsupported geometry into an exact start.
+                            .unwrap_or(s < from as i64 || e > end as i64);
+                    if start_removed
+                        && !feature
+                            .qualifiers
+                            .iter()
+                            .any(|(k, _)| k.as_ref() == "gentle_transcript_5prime_truncated")
+                    {
+                        feature.qualifiers.push((
+                            "gentle_transcript_5prime_truncated".into(),
+                            Some("true".into()),
+                        ));
+                    }
+                }
+            }
+            source.extract_range(from as i64, end as i64)
         };
         seq.topology = Topology::Linear;
 
@@ -434,6 +482,8 @@ impl DNAsequence {
             methylation_sites: MethylationSites::default(),
             methylation_mode: self.methylation_mode.clone(),
             gc_content: GcContents::default(),
+            feature_generation: 0,
+            restriction_enzyme_group_generation: 0,
         })
     }
 
@@ -467,6 +517,8 @@ impl DNAsequence {
             methylation_sites: MethylationSites::default(),
             methylation_mode: MethylationMode::default(),
             gc_content: GcContents::default(),
+            feature_generation: 0,
+            restriction_enzyme_group_generation: 0,
         }
     }
 
@@ -640,6 +692,8 @@ impl DNAsequence {
             methylation_sites: MethylationSites::default(),
             methylation_mode: MethylationMode::default(), // TODO default?
             gc_content: GcContents::default(),
+            feature_generation: 0,
+            restriction_enzyme_group_generation: 0,
         }
     }
 
@@ -701,19 +755,34 @@ impl DNAsequence {
     }
 
     pub fn update_computed_features(&mut self) {
+        crate::gentle_gui_profile_scope!("DNAsequence::update_computed_features");
+        self.bump_feature_generation();
         if self.is_protein_sequence() {
             self.restriction_enzyme_sites.clear();
             self.restriction_enzyme_groups.clear();
+            self.bump_restriction_enzyme_group_generation();
             self.open_reading_frames.clear();
             self.methylation_sites = MethylationSites::default();
             self.gc_content = GcContents::default();
             return;
         }
-        self.update_restriction_enyzme_sites();
-        self.update_restriction_enzyme_groups();
-        self.update_open_reading_frames();
-        self.update_methylation_sites();
-        self.update_gc_content();
+        {
+            crate::gentle_gui_profile_scope!("DNAsequence::restriction_sites_and_groups");
+            self.update_restriction_enyzme_sites();
+            self.update_restriction_enzyme_groups();
+        }
+        {
+            crate::gentle_gui_profile_scope!("DNAsequence::open_reading_frames");
+            self.update_open_reading_frames();
+        }
+        {
+            crate::gentle_gui_profile_scope!("DNAsequence::methylation_sites");
+            self.update_methylation_sites();
+        }
+        {
+            crate::gentle_gui_profile_scope!("DNAsequence::gc_content");
+            self.update_gc_content();
+        }
         // TODO amino acids
         // TODO protease sites
     }
@@ -723,7 +792,25 @@ impl DNAsequence {
     }
 
     pub fn features_mut(&mut self) -> &mut Vec<Feature> {
+        self.bump_feature_generation();
         &mut self.seq.features
+    }
+
+    pub fn feature_generation(&self) -> u64 {
+        self.feature_generation
+    }
+
+    fn bump_feature_generation(&mut self) {
+        self.feature_generation = self.feature_generation.wrapping_add(1);
+    }
+
+    pub fn restriction_enzyme_group_generation(&self) -> u64 {
+        self.restriction_enzyme_group_generation
+    }
+
+    fn bump_restriction_enzyme_group_generation(&mut self) {
+        self.restriction_enzyme_group_generation =
+            self.restriction_enzyme_group_generation.wrapping_add(1);
     }
 
     pub(crate) fn clone_seq_record(&self) -> Seq {
@@ -879,24 +966,16 @@ impl DNAsequence {
         let mut name2cut_count = HashMap::new();
         self.restriction_enzyme_groups = HashMap::new();
 
-        for re_site in self
-            .restriction_enzyme_sites
-            .iter()
-            .filter(|site| site.forward_strand)
-        {
+        for re_site in &self.restriction_enzyme_sites {
             name2cut_count
                 .entry(&re_site.enzyme.name)
                 .and_modify(|c| *c += 1)
                 .or_insert(1);
         }
-        for re_site in self
-            .restriction_enzyme_sites
-            .iter()
-            .filter(|site| site.forward_strand)
-        {
-            let (pos, mate_pos) = re_site.enzyme.strand_cut_offsets();
-            let pos = re_site.offset + pos;
-            let mate_pos = re_site.offset + mate_pos;
+        for re_site in &self.restriction_enzyme_sites {
+            let Some((pos, mate_pos)) = re_site.strand_cut_positions_unwrapped() else {
+                continue;
+            };
             let cut_size = re_site.enzyme.cut;
             let number_of_cuts = name2cut_count.get(&re_site.enzyme.name).unwrap();
             let from = re_site.offset;
@@ -907,13 +986,17 @@ impl DNAsequence {
                 .or_default()
                 .push(re_site.enzyme.name.to_owned());
         }
+        for names in self.restriction_enzyme_groups.values_mut() {
+            names.sort();
+        }
+        self.bump_restriction_enzyme_group_generation();
     }
 
     fn split_at_restriction_enzyme_site_circular(&self, site: &RestrictionEnzymeSite) -> Self {
-        let pos1 = site.offset;
-        let pos2 = site.offset + site.enzyme.overlap;
-        let pos2 = pos2 % self.len() as isize;
-        let right = pos1.max(pos2) + 1;
+        let Some((forward_cut, reverse_cut)) = site.strand_cut_positions_unwrapped() else {
+            return self.clone();
+        };
+        let right = forward_cut.max(reverse_cut).rem_euclid(self.len() as isize);
 
         // Rotate so that position 0 is now the sequence after the cut
         let seq = self.seq.set_origin(right as i64);
@@ -923,7 +1006,7 @@ impl DNAsequence {
         let overhang = seq.seq[new_size as usize..self.len()].to_owned();
         let overhang_rc: Vec<u8> = overhang
             .iter()
-            .map(|c| IupacCode::letter_complement(*c))
+            .map(|c| IupacCode::from_letter(*c).complement().to_letter())
             .collect();
         let mut seq = seq.extract_range(0, new_size);
 
@@ -946,16 +1029,22 @@ impl DNAsequence {
     }
 
     fn split_at_restriction_enzyme_site_linear(&self, site: &RestrictionEnzymeSite) -> Vec<Self> {
-        let pos1 = site.offset + 1;
-        let pos2 = site.offset + site.enzyme.overlap;
-        let pos2 = pos2 % self.len() as isize;
-        let left = pos1;
-        let right = pos1.max(pos2) + 1;
+        let Some((strand_cut_1, strand_cut_2)) = site.strand_cut_positions_unwrapped() else {
+            return vec![self.clone()];
+        };
+        let left = usize::try_from(strand_cut_1.min(strand_cut_2))
+            .expect("restriction cut must start within the linear sequence");
+        let right = usize::try_from(strand_cut_1.max(strand_cut_2))
+            .expect("restriction cut must end within the linear sequence");
+        assert!(
+            right <= self.len(),
+            "restriction cut exceeds linear sequence"
+        );
 
-        let overhang = self.seq.seq[pos1 as usize..(pos2 + 1) as usize].to_owned();
+        let overhang = self.seq.seq[left..right].to_owned();
         let overhang_rc: Vec<u8> = overhang
             .iter()
-            .map(|c| IupacCode::letter_complement(*c))
+            .map(|c| IupacCode::from_letter(*c).complement().to_letter())
             .collect();
 
         let mut seq1 = Self::from_u8(self.forward());
@@ -973,7 +1062,6 @@ impl DNAsequence {
             seq2.overhang.forward_5 = overhang;
             seq2.overhang.reverse_3 = vec![];
         } else {
-            // TODO test this
             seq1.overhang.forward_3 = overhang;
             seq1.overhang.reverse_5 = vec![];
             seq2.overhang.forward_5 = vec![];
@@ -984,6 +1072,9 @@ impl DNAsequence {
     }
 
     pub fn split_at_restriction_enzyme_site(&self, site: &RestrictionEnzymeSite) -> Vec<Self> {
+        if !site.can_cleave(self.len(), self.is_circular()) {
+            return vec![self.clone()];
+        }
         if self.is_circular() {
             vec![self.split_at_restriction_enzyme_site_circular(site)]
         } else {
@@ -998,7 +1089,11 @@ impl DNAsequence {
                 let mut found_one = false;
                 let mut new_ret = vec![];
                 for seq in ret.drain(..) {
-                    if let Some(site) = enzyme.get_sites(&seq, None).first() {
+                    if let Some(site) = enzyme
+                        .get_sites(&seq, None)
+                        .iter()
+                        .find(|site| site.can_cleave(seq.len(), seq.is_circular()))
+                    {
                         let tmp = seq.split_at_restriction_enzyme_site(site);
                         new_ret.extend(tmp);
                         found_one = true;
@@ -1016,7 +1111,7 @@ impl DNAsequence {
     }
 }
 
-fn parse_embl_records(text: &str) -> Result<Vec<Seq>> {
+pub(crate) fn parse_embl_records(text: &str) -> Result<Vec<Seq>> {
     let mut records: Vec<Seq> = vec![];
     let mut current_lines: Vec<String> = vec![];
     for line in text.lines() {
@@ -1027,7 +1122,9 @@ fn parse_embl_records(text: &str) -> Result<Vec<Seq>> {
             }
             continue;
         }
-        current_lines.push(line.to_string());
+        if !current_lines.is_empty() || !line.trim().is_empty() {
+            current_lines.push(line.to_string());
+        }
     }
     if !current_lines.is_empty() {
         records.push(parse_embl_record(&current_lines)?);
@@ -1051,7 +1148,14 @@ fn parse_embl_record(lines: &[String]) -> Result<Seq> {
 
     impl PendingEmblFeature {
         fn push_qualifier_line(&mut self, trimmed: &str) {
-            if let Some(raw_qualifier) = trimmed.strip_prefix('/') {
+            let quoted_continuation = self
+                .last_qualifier_index
+                .and_then(|i| self.qualifiers[i].1.as_ref())
+                .is_some_and(|v| {
+                    v.starts_with('"') && v.bytes().filter(|b| *b == b'"').count() % 2 == 1
+                });
+            if let Some(raw_qualifier) = trimmed.strip_prefix('/').filter(|_| !quoted_continuation)
+            {
                 let (qk, qv) = if let Some((key, value)) = raw_qualifier.split_once('=') {
                     (key.trim(), Some(value.trim().to_string()))
                 } else {
@@ -1198,9 +1302,12 @@ fn parse_embl_record(lines: &[String]) -> Result<Seq> {
         seq.features.push(feature.into_feature()?);
     }
     for feature in &mut seq.features {
-        for (_, value) in &mut feature.qualifiers {
+        for (key, value) in &mut feature.qualifiers {
             if let Some(raw) = value.as_mut() {
                 *raw = normalize_embl_qualifier_value(raw);
+                if key == "translation" {
+                    raw.retain(|c| !c.is_ascii_whitespace());
+                }
             }
         }
     }
@@ -1216,6 +1323,7 @@ fn parse_embl_record(lines: &[String]) -> Result<Seq> {
         _ => None,
     };
     seq.len = Some(seq.seq.len());
+    crate::annotated_sequence_io::read_embl_metadata(lines, &mut seq)?;
     if seq.seq.is_empty() {
         return Err(anyhow::anyhow!(
             "Could not parse EMBL record '{}': missing sequence data",
@@ -1228,6 +1336,41 @@ fn parse_embl_record(lines: &[String]) -> Result<Seq> {
 fn canonicalize_location(location: gb_io::seq::Location) -> Result<gb_io::seq::Location> {
     let value = serde_json::to_value(&location)?;
     Ok(serde_json::from_value(value)?)
+}
+
+fn restore_wrapped_dbsnp_spdi(seq: &mut Seq) {
+    for feature in &mut seq.features {
+        for (key, value) in &mut feature.qualifiers {
+            if key != "dbsnp_spdi" {
+                continue;
+            }
+            let Some(raw) = value else { continue };
+            if !raw.contains(['\r', '\n']) || serde_json::from_str::<serde_json::Value>(raw).is_ok()
+            {
+                continue;
+            }
+            // gb-io retains hard wraps as newlines even inside JSON tokens.
+            // Remove only physical folds, never JSON escapes or ordinary notes.
+            let unfolded = raw.replace(['\r', '\n'], "");
+            let Ok(spdi) = serde_json::from_str::<serde_json::Value>(&unfolded) else {
+                continue;
+            };
+            if ["seq_id", "deleted_sequence", "inserted_sequence"]
+                .iter()
+                .all(|field| {
+                    spdi.get(*field)
+                        .and_then(serde_json::Value::as_str)
+                        .is_some()
+                })
+                && spdi
+                    .get("position")
+                    .and_then(serde_json::Value::as_u64)
+                    .is_some()
+            {
+                *raw = unfolded;
+            }
+        }
+    }
 }
 
 fn normalize_embl_qualifier_value(raw: &str) -> String {
@@ -1256,6 +1399,117 @@ mod tests {
     use crate::enzymes::Enzymes;
     use std::{fs, io::Write};
     use tempfile::Builder;
+
+    #[test]
+    fn restriction_reverse_site_is_drawn_and_digested_in_reference_orientation() {
+        // Synthetic nonpalindromic motif with deliberately asymmetric within-motif cuts.
+        let enzyme: RestrictionEnzyme = serde_json::from_value(serde_json::json!({
+            "name": "synthetic", "sequence": "AAGC", "cut": 1, "overlap": 1
+        }))
+        .unwrap();
+        let mut dna = DNAsequence::from_sequence("TTGCTTAA").unwrap();
+        dna.restriction_enzymes = vec![enzyme.clone()];
+        dna.update_computed_features();
+        assert_eq!(dna.restriction_enzyme_sites.len(), 1);
+        assert!(!dna.restriction_enzyme_sites[0].forward_strand);
+        let key = dna
+            .restriction_enzyme_groups
+            .keys()
+            .next()
+            .expect("reverse site in map");
+        assert_eq!((key.pos(), key.mate_pos(), key.number_of_cuts()), (4, 5, 1));
+        let fragments = dna.restriction_enzymes_full_digest(vec![enzyme.clone()]);
+        assert_eq!(
+            fragments
+                .iter()
+                .map(DNAsequence::get_forward_string)
+                .collect::<Vec<_>>(),
+            vec!["TTGC", "TAA"]
+        );
+        assert_eq!(fragments[0].overhang.reverse_5, b"A");
+        assert_eq!(fragments[1].overhang.forward_5, b"T");
+        dna.set_circular(true);
+        let fragments = dna.restriction_enzymes_full_digest(vec![enzyme]);
+        assert_eq!(fragments.len(), 1);
+        assert_eq!(fragments[0].get_forward_string(), "TAATTGC");
+        assert_eq!(fragments[0].overhang.forward_5, b"T");
+        assert_eq!(fragments[0].overhang.reverse_5, b"A");
+    }
+
+    #[test]
+    fn restriction_digest_skips_recognition_when_external_cuts_do_not_fit() {
+        // Synthetic Type-IIS-like geometry: recognition can survive while a cut falls off an end.
+        let enzyme: RestrictionEnzyme = serde_json::from_value(serde_json::json!({
+            "name": "synthetic", "sequence": "AAGC", "cut": 6, "overlap": 2
+        }))
+        .unwrap();
+        for sequence in ["AAGC", "GCTT"] {
+            let dna = DNAsequence::from_sequence(sequence).unwrap();
+            assert_eq!(enzyme.get_sites(&dna, None).len(), 1);
+            let fragments = dna.restriction_enzymes_full_digest(vec![enzyme.clone()]);
+            assert_eq!(fragments.len(), 1);
+            assert_eq!(fragments[0].get_forward_string(), sequence);
+        }
+        let dna = DNAsequence::from_sequence("TTAAGCCCCCCC").unwrap();
+        let fragments = dna.restriction_enzymes_full_digest(vec![enzyme]);
+        assert_eq!(
+            fragments
+                .iter()
+                .map(DNAsequence::get_forward_string)
+                .collect::<Vec<_>>(),
+            vec!["TTAAGCCC", "CC"]
+        );
+    }
+
+    #[test]
+    fn restriction_uniqueness_counts_forward_and_reverse_sites() {
+        let enzyme: RestrictionEnzyme = serde_json::from_value(serde_json::json!({
+            "name": "synthetic", "sequence": "AAGC", "cut": 1, "overlap": 1
+        }))
+        .unwrap();
+        let mut dna = DNAsequence::from_sequence("TTAAGCCCCCGCTTAA").unwrap();
+        dna.restriction_enzymes = vec![enzyme];
+        dna.update_computed_features();
+        assert_eq!(dna.restriction_enzyme_sites.len(), 2);
+        assert_eq!(dna.restriction_enzyme_groups.len(), 2);
+        assert!(
+            dna.restriction_enzyme_groups
+                .keys()
+                .all(|key| key.number_of_cuts() == 2)
+        );
+    }
+
+    #[test]
+    fn restriction_enzyme_group_aliases_are_sorted() {
+        let mut sequence = DNAsequence::from_sequence("GATATC").unwrap();
+        let template = Enzymes::default()
+            .restriction_enzymes()
+            .iter()
+            .find(|enzyme| enzyme.name == "EcoRV")
+            .expect("EcoRV in built-in catalog")
+            .clone();
+        sequence.restriction_enzyme_sites = ["Zeta", "Alpha"]
+            .into_iter()
+            .map(|name| {
+                let mut enzyme = template.clone();
+                enzyme.name = name.to_string();
+                RestrictionEnzymeSite {
+                    offset: 0,
+                    enzyme,
+                    forward_strand: true,
+                }
+            })
+            .collect();
+
+        sequence.update_restriction_enzyme_groups();
+
+        let names = sequence
+            .restriction_enzyme_groups()
+            .values()
+            .next()
+            .expect("one shared restriction group");
+        assert_eq!(names, &["Alpha".to_string(), "Zeta".to_string()]);
+    }
 
     #[test]
     fn test_get_forward_string_handles_non_utf8_bases_lossy() {
@@ -1316,6 +1570,27 @@ mod tests {
     }
 
     #[test]
+    fn test_split_at_restriction_enzyme_site_circular_with_three_prime_overhang() {
+        let mut orig_seq = DNAsequence::from_sequence("ATGGTACCGC").unwrap();
+        orig_seq.seq.topology = Topology::Circular;
+        let kpn_i = Enzymes::default()
+            .restriction_enzymes()
+            .iter()
+            .find(|enzyme| enzyme.name == "KpnI")
+            .unwrap()
+            .to_owned();
+        let sites = kpn_i.get_sites(&orig_seq, None);
+        assert_eq!(sites.len(), 1);
+
+        let seq = orig_seq.split_at_restriction_enzyme_site_circular(&sites[0]);
+        assert_eq!(seq.get_forward_string(), "CGCATG");
+        assert_eq!(seq.overhang.forward_3, "GTAC".as_bytes());
+        assert_eq!(seq.overhang.reverse_3, "CATG".as_bytes());
+        assert!(seq.overhang.forward_5.is_empty());
+        assert!(seq.overhang.reverse_5.is_empty());
+    }
+
+    #[test]
     fn test_split_at_restriction_enzyme_site_linear() {
         // Create circular test sequence
         let mut orig_seq = DNAsequence::from_sequence("ATGGATCCGC").unwrap();
@@ -1342,6 +1617,50 @@ mod tests {
         assert_eq!(seqs[0].overhang.reverse_5, "CTAG".as_bytes());
         assert_eq!(seqs[1].overhang.forward_5, "GATC".as_bytes());
         assert_eq!(seqs[1].overhang.reverse_3, "".as_bytes());
+    }
+
+    #[test]
+    fn test_split_at_restriction_enzyme_site_linear_with_three_prime_overhang() {
+        let mut orig_seq = DNAsequence::from_sequence("ATGGTACCGC").unwrap();
+        orig_seq.seq.topology = Topology::Linear;
+        let kpn_i = Enzymes::default()
+            .restriction_enzymes()
+            .iter()
+            .find(|enzyme| enzyme.name == "KpnI")
+            .unwrap()
+            .to_owned();
+        let sites = kpn_i.get_sites(&orig_seq, None);
+        assert_eq!(sites.len(), 1);
+
+        let seqs = orig_seq.split_at_restriction_enzyme_site_linear(&sites[0]);
+        assert_eq!(seqs[0].get_forward_string(), "ATG");
+        assert_eq!(seqs[1].get_forward_string(), "CGC");
+        assert_eq!(seqs[0].overhang.forward_3, "GTAC".as_bytes());
+        assert_eq!(seqs[0].overhang.reverse_5, "".as_bytes());
+        assert_eq!(seqs[1].overhang.forward_5, "".as_bytes());
+        assert_eq!(seqs[1].overhang.reverse_3, "CATG".as_bytes());
+    }
+
+    #[test]
+    fn test_split_at_restriction_enzyme_site_linear_with_blunt_cut() {
+        let mut orig_seq = DNAsequence::from_sequence("ATGGATATCGC").unwrap();
+        orig_seq.seq.topology = Topology::Linear;
+        let eco_rv = Enzymes::default()
+            .restriction_enzymes()
+            .iter()
+            .find(|enzyme| enzyme.name == "EcoRV")
+            .unwrap()
+            .to_owned();
+        let sites = eco_rv.get_sites(&orig_seq, None);
+        assert_eq!(sites.len(), 1);
+
+        let seqs = orig_seq.split_at_restriction_enzyme_site_linear(&sites[0]);
+        assert_eq!(seqs[0].get_forward_string(), "ATGGAT");
+        assert_eq!(seqs[1].get_forward_string(), "ATCGC");
+        assert!(seqs[0].overhang.forward_3.is_empty());
+        assert!(seqs[0].overhang.reverse_5.is_empty());
+        assert!(seqs[1].overhang.forward_5.is_empty());
+        assert!(seqs[1].overhang.reverse_3.is_empty());
     }
 
     #[test]
@@ -1870,6 +2189,133 @@ SQ   Sequence 40 BP; 10 A; 10 C; 10 G; 10 T; 0 other;\n\
             exported.contains("join(1..5,10..15)") || exported.contains("10..15)"),
             "single-feature wrapped join should survive export: {exported}"
         );
+    }
+
+    #[test]
+    fn dbsnp_spdi_genbank_round_trip_preserves_wrapped_json() {
+        // Hand-crafted interchange record, recreated inline; not a real variant.
+        let alleles = [
+            ("A".to_string(), "T".to_string()),
+            ("ACGT".repeat(24), String::new()),
+            (String::new(), "TGCA".repeat(24)),
+            ("ACGT".repeat(24), "TGCA".repeat(24)),
+        ]
+        .map(|(deleted, inserted)| {
+            serde_json::json!({
+                "seq_id": "SYNTHETIC_ACCESSION.1", "position": 12,
+                "deleted_sequence": deleted, "inserted_sequence": inserted,
+            })
+        });
+        let mut seq = Seq::empty();
+        seq.name = Some("SYNTHETIC_DBSNP".into());
+        seq.seq = b"ACGT".repeat(64);
+        let mut qualifiers = vec![
+            ("label".into(), Some("rsSynthetic".into())),
+            ("dbsnp_variant_class".into(), Some("non_snv".into())),
+            ("dbsnp_reference_check".into(), Some("unavailable".into())),
+            ("dbsnp_assembly_check".into(), Some("unavailable".into())),
+        ];
+        qualifiers.extend(
+            alleles
+                .iter()
+                .map(|allele| ("dbsnp_spdi".into(), Some(allele.to_string()))),
+        );
+        seq.features.push(Feature {
+            kind: "variation".into(),
+            location: gb_io::seq::Location::simple_range(12, 13),
+            qualifiers,
+        });
+        let dna = DNAsequence::from_genbank_seq(seq);
+        let output = tempfile::tempdir().expect("temporary interchange directory");
+        let path = output.path().join("quoted ' dbSNP marker.gb");
+        dna.write_genbank_file(path.to_str().expect("UTF-8 temporary path"))
+            .expect("export annotated GenBank");
+        let exported = fs::read_to_string(&path).expect("read exported GenBank");
+        assert!(exported.contains("\"\""), "JSON quotes must be escaped");
+
+        // Confirm the actual writer/reader boundary, not just a helper input.
+        let raw = gb_io::reader::parse_file(path.to_str().unwrap()).expect("raw GenBank parse");
+        assert!(
+            raw[0].features[0]
+                .qualifier_values("dbsnp_spdi")
+                .any(|value| {
+                    value.contains('\n')
+                        && serde_json::from_str::<serde_json::Value>(value).is_err()
+                }),
+            "the fixture must exercise a hard wrap inside JSON"
+        );
+
+        for (ending, bytes) in [
+            ("lf", exported.clone()),
+            ("crlf", exported.replace('\n', "\r\n")),
+        ] {
+            let path = output.path().join(format!("{ending} dbSNP marker.gb"));
+            fs::write(&path, bytes).expect("write checkout-style line endings");
+            let imported = load_from_file(path.to_str().expect("UTF-8 temporary path"))
+                .expect("re-import annotated GenBank through the shared loader");
+            assert_eq!(
+                imported.forward_bytes().to_ascii_uppercase(),
+                dna.forward_bytes()
+            );
+            assert_eq!(imported.features().len(), 1);
+            let marker = &imported.features()[0];
+            assert_eq!(marker.location.to_gb_format(), "13");
+            assert_eq!(marker.qualifier_values("label").next(), Some("rsSynthetic"));
+            let retained = marker
+                .qualifier_values("dbsnp_spdi")
+                .map(|value| {
+                    serde_json::from_str::<serde_json::Value>(value).expect("restored SPDI JSON")
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                retained, alleles,
+                "{ending}: keep allele order, bases and empty strings"
+            );
+            for key in ["dbsnp_reference_check", "dbsnp_assembly_check"] {
+                assert_eq!(marker.qualifier_values(key).next(), Some("unavailable"));
+            }
+            assert_eq!(
+                marker.qualifier_values("dbsnp_variant_class").next(),
+                Some("non_snv")
+            );
+            assert!(marker.qualifier_values("vcf_ref").next().is_none());
+            assert!(marker.qualifier_values("vcf_alt").next().is_none());
+        }
+    }
+
+    #[test]
+    fn dbsnp_spdi_unfolding_preserves_valid_json_invalid_data_and_other_qualifiers() {
+        // Synthetic controls: no fetched record, biological claim or external file.
+        let valid = serde_json::json!({
+            "seq_id": "SYNTHETIC\\nESCAPE.1", "position": 12,
+            "deleted_sequence": "", "inserted_sequence": "AC",
+        });
+        let mut seq = Seq::empty();
+        seq.features.push(Feature {
+            kind: "variation".into(),
+            location: gb_io::seq::Location::simple_range(12, 13),
+            qualifiers: vec![
+                (
+                    "dbsnp_spdi".into(),
+                    Some(serde_json::to_string_pretty(&valid).unwrap()),
+                ),
+                ("dbsnp_spdi".into(), Some("broken\nJSON".into())),
+                ("dbsnp_spdi".into(), Some("{\"unre\rlated\":true}".into())),
+                (
+                    "dbsnp_spdi".into(),
+                    Some(
+                        valid
+                            .to_string()
+                            .replace("12", "-1")
+                            .replace("position", "posi\ntion"),
+                    ),
+                ),
+                ("note".into(), Some("ordinary\nwrapped text".into())),
+            ],
+        });
+        let before = seq.features.clone();
+        restore_wrapped_dbsnp_spdi(&mut seq);
+        assert_eq!(seq.features, before);
     }
 
     #[test]

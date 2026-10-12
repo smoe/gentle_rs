@@ -1,0 +1,14 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "branch_gui_oracle",
+  "title": "Branch tutorial oracle using ordinary GUI product IDs",
+  "summary": "Independent deterministic oracle; never used as the interactive starter.",
+  "test_mode": "always",
+  "required_files": ["test_files/pGEX_3X.fa"],
+  "tags": ["offline", "gui-acceptance", "oracle"],
+  "workflow": {"run_id": "branch_gui_oracle", "ops": [
+    {"LoadFile": {"path": "test_files/pGEX_3X.fa", "as_id": "pgex_fasta"}},
+    {"Branch": {"input": "pgex_fasta", "output_id": "pgex_fasta_branch"}},
+    {"ReverseComplement": {"input": "pgex_fasta_branch", "output_id": "pgex_fasta_branch_revcomp"}}
+  ]}
+}

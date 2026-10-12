@@ -1,7 +1,10 @@
 use gentle::{app::gui_prominent_glossary_entries, engine::GentleEngine};
 use gentle_protocol::{
     AdapterSurfacing, CapabilityAdapter, CapabilityDescriptor, CapabilityMutation,
-    CapabilitySource, capability_parity_adapters, capability_registry, shell_alias_registry,
+    CapabilitySource, CollectionContextRequirement, CollectionLiftRejectionReason,
+    CollectionLiftSupport, CollectionLiftingMode, CollectionSubjectKind,
+    capability_parity_adapters, capability_registry, collection_lift_policy,
+    collection_lift_policy_registry, shell_alias_registry,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -258,6 +261,192 @@ fn command_descriptor<'a>(
         })
 }
 
+#[test]
+fn collection_lift_policies_attach_only_to_existing_capabilities() {
+    let registry = capability_registry();
+    for entry in collection_lift_policy_registry() {
+        let descriptor = registry
+            .iter()
+            .find(|descriptor| descriptor.source == entry.source && descriptor.name == entry.name)
+            .unwrap_or_else(|| {
+                panic!(
+                    "collection lift policy references missing {:?} capability `{}`",
+                    entry.source, entry.name
+                )
+            });
+        assert_eq!(
+            descriptor.collection_lift_policies, entry.subjects,
+            "capability descriptor must expose its collection policies"
+        );
+    }
+
+    for (source, name) in [
+        (
+            CapabilitySource::EngineOperation,
+            "AssessPrimerPairSpecificity",
+        ),
+        (CapabilitySource::GlossaryCommand, "primers specificity"),
+        (
+            CapabilitySource::GlossaryCommand,
+            "collections run primer-specificity",
+        ),
+    ] {
+        for subject_kind in [
+            CollectionSubjectKind::GeneSetResolution,
+            CollectionSubjectKind::ProjectSequences,
+        ] {
+            let policy = collection_lift_policy(source, name, subject_kind).unwrap_or_else(|| {
+                panic!("missing collection specificity policy for {source:?} `{name}`")
+            });
+            assert!(matches!(
+                policy.support,
+                CollectionLiftSupport::Supported {
+                    mode: CollectionLiftingMode::Map,
+                    ..
+                }
+            ));
+            assert_eq!(
+                policy.context_requirement,
+                if subject_kind == CollectionSubjectKind::GeneSetResolution {
+                    CollectionContextRequirement::Homogeneous
+                } else {
+                    CollectionContextRequirement::ContextAgnostic
+                }
+            );
+        }
+    }
+
+    for (source, name) in [
+        (
+            CapabilitySource::EngineOperation,
+            "BuildGeneSetPromoterCohort",
+        ),
+        (
+            CapabilitySource::GlossaryCommand,
+            "gene-sets promoter-cohort",
+        ),
+    ] {
+        let policy = collection_lift_policy(source, name, CollectionSubjectKind::GeneSetResolution)
+            .unwrap_or_else(|| {
+                panic!("missing promoter collection policy for {source:?} `{name}`")
+            });
+        assert_eq!(
+            policy.context_requirement,
+            CollectionContextRequirement::Homogeneous
+        );
+    }
+
+    for (source, name) in [
+        (CapabilitySource::EngineOperation, "CreateGeneSetPool"),
+        (CapabilitySource::GlossaryCommand, "gene-sets create-pool"),
+    ] {
+        let policy = collection_lift_policy(source, name, CollectionSubjectKind::GeneSetResolution)
+            .unwrap_or_else(|| panic!("missing gene-set pool policy for {source:?} `{name}`"));
+        assert!(matches!(
+            policy.support,
+            CollectionLiftSupport::Supported {
+                mode: CollectionLiftingMode::Combine,
+                ref result_payload_kind,
+            } if result_payload_kind == "gentle.gene_set_pool_creation.v1"
+        ));
+        assert_eq!(
+            policy.context_requirement,
+            CollectionContextRequirement::ContextAgnostic
+        );
+    }
+}
+
+#[test]
+fn logical_gene_set_is_not_silently_treated_as_a_physical_pool() {
+    for capability_name in ["ExportPool", "ExportPoolCollection", "RenderPoolGelSvg"] {
+        let policy = collection_lift_policy(
+            CapabilitySource::EngineOperation,
+            capability_name,
+            CollectionSubjectKind::GeneSetResolution,
+        )
+        .unwrap_or_else(|| panic!("missing gene-set rejection for {capability_name}"));
+        assert!(matches!(
+            &policy.support,
+            CollectionLiftSupport::Rejected {
+                reason: CollectionLiftRejectionReason::RequiresPhysicalPool,
+                ..
+            }
+        ));
+    }
+}
+
+#[test]
+fn physical_container_pool_actions_are_declared_as_context_agnostic_combines() {
+    for (source, name) in [
+        (CapabilitySource::EngineOperation, "ExportPoolCollection"),
+        (
+            CapabilitySource::GlossaryCommand,
+            "collections run export-pool",
+        ),
+        (CapabilitySource::EngineOperation, "RenderPoolGelSvg"),
+        (CapabilitySource::GlossaryCommand, "render-pool-gel-svg"),
+    ] {
+        let policy = collection_lift_policy(source, name, CollectionSubjectKind::Container)
+            .unwrap_or_else(|| panic!("missing container combine policy for {source:?} `{name}`"));
+        assert!(matches!(
+            policy.support,
+            CollectionLiftSupport::Supported {
+                mode: CollectionLiftingMode::Combine,
+                ..
+            }
+        ));
+        assert_eq!(
+            policy.context_requirement,
+            CollectionContextRequirement::ContextAgnostic
+        );
+    }
+}
+
+#[test]
+fn serial_arrangement_gel_actions_are_declared_as_context_agnostic_arranges() {
+    for (source, name) in [
+        (CapabilitySource::EngineOperation, "RenderPoolGelSvg"),
+        (CapabilitySource::GlossaryCommand, "render-pool-gel-svg"),
+    ] {
+        let arrangement = collection_lift_policy(source, name, CollectionSubjectKind::Arrangement)
+            .unwrap_or_else(|| panic!("missing arrangement gel policy for {source:?} `{name}`"));
+        assert!(matches!(
+            arrangement.support,
+            CollectionLiftSupport::Supported {
+                mode: CollectionLiftingMode::Arrange,
+                ref result_payload_kind,
+            } if result_payload_kind == "gentle.pool_gel_svg.v1"
+        ));
+        assert_eq!(
+            arrangement.context_requirement,
+            CollectionContextRequirement::ContextAgnostic
+        );
+
+        let project = collection_lift_policy(source, name, CollectionSubjectKind::ProjectSequences)
+            .unwrap_or_else(|| {
+                panic!("missing project-sequence gel policy for {source:?} `{name}`")
+            });
+        assert!(matches!(
+            &project.support,
+            CollectionLiftSupport::Rejected {
+                reason: CollectionLiftRejectionReason::RequiresPhysicalPool,
+                detail,
+            } if detail.contains("co-migrating member of one lane")
+        ));
+
+        let gene_set =
+            collection_lift_policy(source, name, CollectionSubjectKind::GeneSetResolution)
+                .unwrap_or_else(|| panic!("missing gene-set gel policy for {source:?} `{name}`"));
+        assert!(matches!(
+            gene_set.support,
+            CollectionLiftSupport::Rejected {
+                reason: CollectionLiftRejectionReason::RequiresPhysicalPool,
+                ..
+            }
+        ));
+    }
+}
+
 fn mcp_tool_names() -> BTreeSet<String> {
     gentle::mcp_server::mcp_tool_list_for_capability_surface_tests()
         .as_array()
@@ -348,6 +537,108 @@ fn registry_surfacing_covers_all_parity_adapters() {
                     );
                 }
             }
+        }
+    }
+
+    for (source, name) in [
+        (CapabilitySource::EngineOperation, "FindRestrictionSites"),
+        (
+            CapabilitySource::GlossaryCommand,
+            "features restriction-scan",
+        ),
+        (
+            CapabilitySource::GlossaryCommand,
+            "collections run restriction-scan",
+        ),
+    ] {
+        for subject_kind in [
+            CollectionSubjectKind::GeneSetResolution,
+            CollectionSubjectKind::ProjectSequences,
+        ] {
+            let policy = collection_lift_policy(source, name, subject_kind).unwrap_or_else(|| {
+                panic!("missing collection restriction-scan policy for {source:?} `{name}`")
+            });
+            assert!(matches!(
+                policy.support,
+                CollectionLiftSupport::Supported {
+                    mode: CollectionLiftingMode::Map,
+                    ..
+                }
+            ));
+            assert_eq!(
+                policy.context_requirement,
+                CollectionContextRequirement::ContextAgnostic
+            );
+        }
+    }
+
+    for (source, name) in [
+        (CapabilitySource::EngineOperation, "ScanTfbsHits"),
+        (CapabilitySource::GlossaryCommand, "features tfbs-scan"),
+        (
+            CapabilitySource::GlossaryCommand,
+            "collections run tfbs-scan",
+        ),
+    ] {
+        for subject_kind in [
+            CollectionSubjectKind::GeneSetResolution,
+            CollectionSubjectKind::ProjectSequences,
+        ] {
+            let policy = collection_lift_policy(source, name, subject_kind).unwrap_or_else(|| {
+                panic!("missing collection TFBS-scan policy for {source:?} `{name}`")
+            });
+            assert!(matches!(
+                policy.support,
+                CollectionLiftSupport::Supported {
+                    mode: CollectionLiftingMode::Map,
+                    ..
+                }
+            ));
+            assert_eq!(
+                policy.context_requirement,
+                CollectionContextRequirement::ContextAgnostic
+            );
+        }
+    }
+
+    for (source, name) in [
+        (CapabilitySource::EngineOperation, "Digest"),
+        (CapabilitySource::GlossaryCommand, "digest"),
+        (CapabilitySource::GlossaryCommand, "collections run digest"),
+    ] {
+        for subject_kind in [
+            CollectionSubjectKind::GeneSetResolution,
+            CollectionSubjectKind::ProjectSequences,
+        ] {
+            let policy = collection_lift_policy(source, name, subject_kind).unwrap_or_else(|| {
+                panic!("missing collection digest policy for {source:?} `{name}`")
+            });
+            assert!(matches!(
+                policy.support,
+                CollectionLiftSupport::Supported {
+                    mode: CollectionLiftingMode::Map,
+                    ..
+                }
+            ));
+            assert_eq!(
+                policy.context_requirement,
+                CollectionContextRequirement::ContextAgnostic
+            );
+        }
+        for subject_kind in [
+            CollectionSubjectKind::Container,
+            CollectionSubjectKind::Arrangement,
+        ] {
+            let policy = collection_lift_policy(source, name, subject_kind).unwrap_or_else(|| {
+                panic!("missing rejected collection digest policy for {source:?} `{name}`")
+            });
+            assert!(matches!(
+                policy.support,
+                CollectionLiftSupport::Rejected {
+                    reason: gentle_protocol::CollectionLiftRejectionReason::UnsupportedSubjectKind,
+                    ..
+                }
+            ));
         }
     }
 }
@@ -679,6 +970,92 @@ fn engine_operations_are_reachable_on_shell_route_adapters() {
 }
 
 #[test]
+fn transcript_assay_panel_reachability_is_locked_across_adapters() {
+    let command = capability_registry()
+        .iter()
+        .find(|descriptor| {
+            descriptor.source == CapabilitySource::GlossaryCommand
+                && descriptor.name == "primers design-transcript-assay-panel"
+        })
+        .expect("transcript assay panel glossary command");
+    assert_eq!(
+        command.engine_operations,
+        vec![
+            "DesignTranscriptAssayPanel".to_string(),
+            "DesignTranscriptAssayPanelWithFallback".to_string(),
+        ]
+    );
+    assert_eq!(
+        command.surfacing_for_adapter(CapabilityAdapter::Gui),
+        AdapterSurfacing::Prominent
+    );
+    assert_eq!(
+        command.surfacing_for_adapter(CapabilityAdapter::Cli),
+        AdapterSurfacing::Prominent
+    );
+    for adapter in [
+        CapabilityAdapter::Mcp,
+        CapabilityAdapter::Js,
+        CapabilityAdapter::Lua,
+    ] {
+        assert_eq!(
+            command.surfacing_for_adapter(adapter),
+            AdapterSurfacing::ShellPassthrough,
+            "transcript assay panel operation must remain reachable on {adapter:?}"
+        );
+    }
+
+    for operation_name in [
+        "DesignTranscriptAssayPanel",
+        "DesignTranscriptAssayPanelWithFallback",
+    ] {
+        let operation = capability_registry()
+            .iter()
+            .find(|descriptor| {
+                descriptor.source == CapabilitySource::EngineOperation
+                    && descriptor.name == operation_name
+            })
+            .unwrap_or_else(|| panic!("{operation_name} operation descriptor"));
+        for adapter in [
+            CapabilityAdapter::Cli,
+            CapabilityAdapter::Mcp,
+            CapabilityAdapter::Js,
+            CapabilityAdapter::Lua,
+        ] {
+            assert_eq!(
+                operation.surfacing_for_adapter(adapter),
+                AdapterSurfacing::ShellPassthrough,
+                "{operation_name} must remain reachable on {adapter:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn gene_set_resolve_gui_affordance_is_prominent() {
+    let command = capability_registry()
+        .iter()
+        .find(|descriptor| {
+            descriptor.source == CapabilitySource::GlossaryCommand
+                && descriptor.name == "gene-sets resolve"
+        })
+        .expect("gene-sets resolve glossary command");
+    assert_eq!(
+        command.engine_operations,
+        vec!["ResolveGeneSet".to_string()]
+    );
+    assert_eq!(
+        command.surfacing_for_adapter(CapabilityAdapter::Gui),
+        AdapterSurfacing::Prominent
+    );
+    assert!(gui_prominent_glossary_entries().iter().any(|entry| {
+        entry.glossary_path == "gene-sets resolve"
+            && entry.menu_path == "Genome > Gene Set Inspector..."
+            && entry.palette_title == "Gene Set Inspector"
+    }));
+}
+
+#[test]
 fn prominent_projections_match_user_facing_listings() {
     let mcp_tools = mcp_tool_names();
     let mcp_command_paths = mcp_tool_command_paths();
@@ -827,6 +1204,12 @@ fn shell_alias_registry_resolves_to_known_capabilities_and_parity_policy() {
         aliases.iter().any(|alias| alias.alias == "/fetch ensembl"),
         "alias registry should include agent-natural Ensembl fetch alias"
     );
+    for expected in ["/history", "/undo", "/redo"] {
+        assert!(
+            aliases.iter().any(|alias| alias.alias == expected),
+            "alias registry should include history alias `{expected}`"
+        );
+    }
     for alias in aliases {
         assert!(
             !alias.surface_form.trim().is_empty(),
@@ -902,7 +1285,13 @@ fn shell_alias_registry_mutation_tags_match_contract() {
         mutation_by_alias.get("/list"),
         Some(&CapabilityMutation::ReadOnly)
     );
+    assert_eq!(
+        mutation_by_alias.get("/history"),
+        Some(&CapabilityMutation::ReadOnly)
+    );
     for alias in [
+        "/undo",
+        "/redo",
         "/open",
         "/import",
         "/open file",

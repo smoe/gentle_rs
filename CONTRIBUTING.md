@@ -12,6 +12,7 @@ entry points:
 - `docs/architecture.md`
 - `docs/roadmap.md`
 - `docs/protocol.md`
+- `docs/biological_extension_guide.md` when adapting or adding biological behavior
 - `docs/gui.md`
 - `docs/cli.md`
 - `docs/testing.md`
@@ -50,6 +51,19 @@ Disk-usage note:
 
 It is perfectly fine to use agentic engineering to contribute to GENtle.
 
+Start with the short repository loop in
+[`docs/agent_dev_loop.md`](docs/agent_dev_loop.md). Claude-specific internal
+Agent Assistant and external checkout workflows are documented in
+[`docs/quickstart_claude.md`](docs/quickstart_claude.md). These guides explain
+which process runs where, how the agent discovers GENtle capabilities, and
+which deterministic checks should close the loop.
+
+When a prompt asks for a variation of an existing assay, sequence
+interpretation, or evidence workflow, use
+[`docs/biological_extension_guide.md`](docs/biological_extension_guide.md) to
+classify it as an existing parameter, a composition of engine services, or a
+missing biological primitive before editing code.
+
 Examples of acceptable tools include:
 
 - OpenAI Codex
@@ -62,6 +76,8 @@ Expectations:
 - You remain responsible for reviewing the generated changes.
 - Please run deterministic validation before opening a pull request.
 - Keep prompts and agent instructions focused on reproducible engineering work.
+- Prefer shared engine, shell, and protocol routes over adding behavior to one
+  frontend only.
 
 ## Pull Request Expectations
 

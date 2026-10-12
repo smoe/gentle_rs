@@ -1,13 +1,44 @@
 //! Main lineage workspace rendering helpers.
 //!
-//! This module is a move-only extraction from `app.rs`: it keeps the
-//! project overview strip, lineage graph/table workspace, and lineage modal
-//! helpers close to `GENtleApp` while reducing the top-level app monolith.
+//! Presents engine-owned sequence and analysis records in the project overview,
+//! lineage graph/table, and lineage dialogs. Context actions bind inspection and
+//! existing setup/viewer routes to the clicked item; they do not run new biology.
 
 use super::*;
 
+#[derive(Clone)]
+struct LineageContextSubject {
+    engine: std::sync::Weak<RwLock<GentleEngine>>,
+    node_id: Option<String>,
+}
+
 fn lineage_graph_canvas_width(base_width: f32, graph_zoom: f32, viewport_width: f32) -> f32 {
     (base_width * graph_zoom + 280.0 * graph_zoom).max(viewport_width.max(1.0))
+}
+
+#[cfg(any(test, feature = "gui-test-support"))]
+fn clipped_semantic_interaction_rect(
+    interaction_rect: egui::Rect,
+    clip_rect: egui::Rect,
+) -> Option<egui::Rect> {
+    let clipped = interaction_rect.intersect(clip_rect);
+    clipped.is_positive().then_some(clipped)
+}
+
+fn container_pool_export_readiness(
+    kind: &str,
+    member_count: usize,
+    declared_contents_exclusive: bool,
+) -> Result<(), &'static str> {
+    if kind == "Selection" {
+        Err("Pool export requires a physical singleton or pool, not an in-silico selection")
+    } else if !declared_contents_exclusive {
+        Err("Pool export requires declared exhaustive container contents")
+    } else if member_count == 0 {
+        Err("Pool export requires at least one container member")
+    } else {
+        Ok(())
+    }
 }
 
 impl GENtleApp {
@@ -210,6 +241,11 @@ impl GENtleApp {
         {
             return Some(LineageAnalysisKind::PrimerDesign);
         }
+        if row.node_id.starts_with("analysis:primer_specificity:")
+            || row.origin.eq_ignore_ascii_case("primerspecificity")
+        {
+            return Some(LineageAnalysisKind::PrimerSpecificity);
+        }
         if row.node_id.starts_with("analysis:qpcr:")
             || row.origin.eq_ignore_ascii_case("qpcrdesign")
         {
@@ -295,6 +331,12 @@ impl GENtleApp {
             }
         }
         if let Some(rest) = row.node_id.strip_prefix("analysis:primer:") {
+            let id = rest.trim();
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
+        if let Some(rest) = row.node_id.strip_prefix("analysis:primer_specificity:") {
             let id = rest.trim();
             if !id.is_empty() {
                 return Some(id.to_string());
@@ -391,6 +433,135 @@ impl GENtleApp {
         let kind = Self::infer_lineage_analysis_kind_from_row(row)?;
         let artifact_id = Self::infer_lineage_analysis_artifact_id_from_row(row)?;
         Some((kind, row.seq_id.clone(), artifact_id))
+    }
+
+    /// Retain the context-clicked node while the pointer moves into its popup.
+    /// Resolve it from current visible rows; a closed/replaced project never supplies a fallback.
+    pub(super) fn lineage_context_row(
+        &self,
+        response: &egui::Response,
+        rows: &[LineageRow],
+        clicked_row: Option<&LineageRow>,
+    ) -> Option<LineageRow> {
+        let id = response.id.with("lineage_context_subject");
+        if response.secondary_clicked() {
+            response.ctx.data_mut(|data| {
+                data.insert_temp(
+                    id,
+                    LineageContextSubject {
+                        engine: Arc::downgrade(&self.engine),
+                        node_id: clicked_row.map(|row| row.node_id.clone()),
+                    },
+                )
+            });
+        }
+        let subject = response
+            .ctx
+            .data(|data| data.get_temp::<LineageContextSubject>(id))?;
+        if !response.secondary_clicked() && !response.context_menu_opened() {
+            response
+                .ctx
+                .data_mut(|data| data.remove::<LineageContextSubject>(id));
+            return None;
+        }
+        if !subject.engine.ptr_eq(&Arc::downgrade(&self.engine)) {
+            return None;
+        }
+        let node_id = subject.node_id?;
+        rows.iter().find(|row| row.node_id == node_id).cloned()
+    }
+
+    /// Read only the clicked sequence's kind; unrelated selection is never a binding.
+    pub(super) fn lineage_context_pcr_readiness(&self, seq_id: &str) -> ActionReadiness {
+        match self.engine.try_read() {
+            Ok(engine) => match engine.sequence_kind(seq_id) {
+                Some("dna") => ActionReadiness::Ready,
+                Some(kind) => ActionReadiness::NeedsInput {
+                    detail: format!(
+                        "'{seq_id}' is {kind}; PCR Designer needs DNA, not an RNA or protein sequence."
+                    ),
+                },
+                None => ActionReadiness::Blocked {
+                    detail: format!(
+                        "Sequence '{seq_id}' is no longer in the project; refresh the project view."
+                    ),
+                },
+            },
+            Err(_) => ActionReadiness::Checking {
+                detail: "Project is busy; try again".into(),
+            },
+        }
+    }
+
+    /// Offer inspection and existing launchers for this exact lineage item.
+    pub(super) fn render_lineage_item_context_actions(&mut self, ui: &mut Ui, row: &LineageRow) {
+        ui.set_max_width(420.0);
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(format!(
+                    "{}: {}",
+                    Self::lineage_node_kind_label(row.kind),
+                    row.display_name,
+                ))
+                .strong(),
+            )
+            .wrap(),
+        );
+        ui.add(egui::Label::new(format!("ID: {}", Self::lineage_row_primary_id(row))).wrap());
+        if ui.button("Inspect node details")
+            .on_hover_text("Select this item to show its sequence/report details and provenance in the project view")
+            .clicked()
+        {
+            self.lineage_graph_selected_node_id = Some(row.node_id.clone());
+            ui.close();
+            return;
+        }
+        match row.kind {
+            LineageNodeKind::Sequence if row.pool_size > 1 => {
+                if ui.button("Open pool")
+                    .on_hover_text("Open the existing multi-molecule view for this pool; no members are combined or changed")
+                    .clicked()
+                {
+                    self.open_pool_window(&row.seq_id, row.pool_members.clone());
+                    ui.close();
+                    return;
+                }
+            }
+            LineageNodeKind::Sequence => {
+                if ui.button("Open sequence")
+                    .on_hover_text("Open or focus this sequence's viewer without running an analysis")
+                    .clicked()
+                {
+                    self.open_sequence_window(&row.seq_id);
+                    ui.close();
+                    return;
+                }
+                let readiness = self.lineage_context_pcr_readiness(&row.seq_id);
+                if readiness.button(ui, "PCR Designer...")
+                    .on_hover_text("Open primer-pair design setup for this DNA; review the target and constraints before running")
+                    .clicked()
+                {
+                    if let Err(reason) = self.open_pcr_design_dialog_for_seq_id(&row.seq_id) {
+                        self.app_status = format!("Cannot open PCR Designer: {reason}");
+                    }
+                    ui.close();
+                }
+                if let Some(detail) = readiness.detail() {
+                    ui.add(egui::Label::new(detail).wrap());
+                }
+            }
+            LineageNodeKind::Analysis => {
+                if let Some((kind, seq_id, artifact_id)) = Self::lineage_analysis_open_payload(row)
+                    && ui.button("Open saved analysis")
+                        .on_hover_text("Inspect this saved result in its existing specialist viewer; this does not rerun the analysis")
+                        .clicked()
+                {
+                    self.open_lineage_analysis_artifact(kind, &seq_id, &artifact_id);
+                    ui.close();
+                }
+            }
+            LineageNodeKind::Macro | LineageNodeKind::Arrangement => {}
+        }
     }
 
     pub(super) fn project_overview_metrics(
@@ -527,6 +698,7 @@ impl GENtleApp {
         let mut open_lineage_retrieval: Option<LineageRetrievalDescriptor> = None;
         let mut open_lane_containers: Option<Vec<String>> = None;
         let mut export_container_gel: Option<(String, Vec<String>)> = None;
+        let mut export_container_pool: Option<String> = None;
         let mut set_container_exclusivity: Option<(String, bool)> = None;
         let mut export_arrangement_gel: Option<(String, String)> = None;
         let mut open_arrangement_gel_preview: Option<String> = None;
@@ -558,101 +730,11 @@ impl GENtleApp {
         );
         let mut graph_compact_labels = self.lineage_graph_compact_labels;
         let mut persist_workspace_after_frame = false;
-        let mut graph_rows = self.lineage_rows.clone();
-        let mut graph_edges = self.lineage_edges.clone();
-        let mut graph_op_label_by_id = self.lineage_op_label_by_id.clone();
-        let seq_node_by_seq_id: HashMap<String, String> = self
+        let valid_lineage_node_ids: HashSet<String> = self
             .lineage_rows
             .iter()
-            .filter(|row| row.kind == LineageNodeKind::Sequence)
-            .map(|row| (row.seq_id.clone(), row.node_id.clone()))
+            .map(|row| row.node_id.clone())
             .collect();
-        let container_members_by_id: HashMap<String, Vec<String>> = self
-            .lineage_containers
-            .iter()
-            .map(|row| (row.container_id.clone(), row.members.clone()))
-            .collect();
-        for arrangement in &self.lineage_arrangements {
-            let arrangement_node_id = format!("arr:{}", arrangement.arrangement_id);
-            let arrangement_edge_op_id = format!(
-                "{}::arrangement:{}",
-                arrangement.created_by_op, arrangement.arrangement_id
-            );
-            let mut source_node_ids: Vec<String> = vec![];
-            let mut seen_sources: HashSet<String> = HashSet::new();
-            for container_id in &arrangement.lane_container_ids {
-                if let Some(members) = container_members_by_id.get(container_id) {
-                    for seq_id in members {
-                        if let Some(source_node_id) = seq_node_by_seq_id.get(seq_id).cloned()
-                            && seen_sources.insert(source_node_id.clone())
-                        {
-                            source_node_ids.push(source_node_id.clone());
-                            graph_edges.push((
-                                source_node_id,
-                                arrangement_node_id.clone(),
-                                arrangement_edge_op_id.clone(),
-                            ));
-                        }
-                    }
-                }
-            }
-            graph_op_label_by_id
-                .entry(arrangement_edge_op_id)
-                .or_insert_with(|| "Arrange serial lanes".to_string());
-            graph_rows.push(LineageRow {
-                kind: LineageNodeKind::Arrangement,
-                node_id: arrangement_node_id,
-                seq_id: arrangement.arrangement_id.clone(),
-                display_name: if arrangement.name.trim().is_empty() {
-                    arrangement.arrangement_id.clone()
-                } else {
-                    arrangement.name.clone()
-                },
-                origin: "Arrangement".to_string(),
-                created_by_op: arrangement.created_by_op.clone(),
-                created_at: arrangement.created_at,
-                parents: source_node_ids,
-                length: 0,
-                circular: false,
-                pool_size: 1,
-                pool_members: vec![],
-                arrangement_id: Some(arrangement.arrangement_id.clone()),
-                arrangement_mode: Some(arrangement.mode.clone()),
-                lane_container_ids: arrangement.lane_container_ids.clone(),
-                ladders: arrangement.ladders.clone(),
-                genome_anchor_summary: None,
-                genome_anchor_display: None,
-                is_full_genome_sequence: false,
-                retrieval_descriptor: None,
-                analysis_kind: None,
-                analysis_artifact_id: None,
-                analysis_reference_seq_id: None,
-                analysis_mode: None,
-                analysis_status: None,
-                analysis_point_count: None,
-                analysis_bin_count: None,
-                analysis_read_count: None,
-                analysis_trace_count: None,
-                analysis_target_count: None,
-                analysis_variant_count: None,
-                macro_instance_id: None,
-                macro_routine_id: None,
-                macro_template_name: None,
-                macro_status: None,
-                macro_status_message: None,
-                macro_op_ids: vec![],
-                macro_inputs: vec![],
-                macro_outputs: vec![],
-            });
-        }
-        graph_rows.sort_by(|a, b| {
-            a.created_at
-                .cmp(&b.created_at)
-                .then(a.node_id.cmp(&b.node_id))
-        });
-
-        let valid_lineage_node_ids: HashSet<String> =
-            graph_rows.iter().map(|row| row.node_id.clone()).collect();
         self.lineage_group_marked_nodes
             .retain(|node_id| valid_lineage_node_ids.contains(node_id));
         let mut sanitized_groups =
@@ -679,7 +761,7 @@ impl GENtleApp {
             .id_salt("lineage_main_scroll")
             .auto_shrink([false, false])
             .scroll_source(egui::containers::scroll_area::ScrollSource {
-                drag: false,
+                drag: egui::containers::scroll_area::DragScroll::Never,
                 ..Default::default()
             })
             .show(ui, |ui| {
@@ -854,25 +936,20 @@ impl GENtleApp {
                     persist_workspace_after_frame = true;
                 }
                 let lineage_groups = self.lineage_node_groups.clone();
+                let projection_cache = self.cached_lineage_graph_projection(&lineage_groups);
+                let graph_rows = &projection_cache.source_rows;
+                let graph_edges = &projection_cache.source_edges;
+                let graph_op_label_by_id = &projection_cache.source_op_label_by_id;
                 let (group_by_id, node_to_group_id) = Self::lineage_node_group_maps(&lineage_groups);
-                let (projected_graph_rows, projected_graph_edges) =
-                    Self::project_lineage_graph_by_groups(&graph_rows, &graph_edges, &lineage_groups);
                 let collapsed_group_badges = Self::lineage_collapsed_group_hidden_op_badges(
                     &graph_edges,
                     &lineage_groups,
                     &graph_op_label_by_id,
                 );
                 let table_entries = Self::build_lineage_table_entries(&graph_rows, &lineage_groups);
-                let (
-                    graph_view_rows,
-                    graph_view_edges,
-                    graph_view_op_label_by_id,
-                ) = Self::project_lineage_graph_operation_hubs(
-                    &projected_graph_rows,
-                    &projected_graph_edges,
-                    &graph_op_label_by_id,
-                    &self.lineage_reopenable_gibson_op_ids,
-                );
+                let graph_view_rows = projection_cache.rows.as_slice();
+                let graph_view_edges = projection_cache.edges.as_slice();
+                let graph_view_op_label_by_id = &projection_cache.op_label_by_id;
                 let leaf_node_ids = Self::lineage_leaf_node_ids(&graph_rows, &graph_edges);
                 let visible_node_ids: HashSet<String> = graph_view_rows
                     .iter()
@@ -1005,9 +1082,9 @@ impl GENtleApp {
                 ui.label(format!("{:.0}%", graph_zoom * 100.0));
             });
             ui.separator();
-            let rows = &graph_view_rows;
-            let lineage_edges = &graph_view_edges;
-            let op_label_by_id = &graph_view_op_label_by_id;
+            let rows = graph_view_rows;
+            let lineage_edges = graph_view_edges;
+            let op_label_by_id = graph_view_op_label_by_id;
             let graph_panel_width = ui.available_width().max(1.0);
             let graph_canvas_viewport_width = (graph_panel_width - 16.0).max(1.0);
             let graph_panel_height = graph_area_height.max(LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT);
@@ -1027,13 +1104,14 @@ impl GENtleApp {
                         .auto_shrink([false, false])
                         .scroll_offset(graph_scroll_offset)
                         .scroll_source(egui::containers::scroll_area::ScrollSource {
-                            drag: false,
+                            drag: egui::containers::scroll_area::DragScroll::Never,
                             ..Default::default()
                         })
                         .max_height(ui.available_height())
                         .show(ui, |ui| {
-                            let (layout_by_node, layer_count, max_nodes_in_layer) =
-                                Self::compute_lineage_dag_layout(rows, lineage_edges);
+                            let layout_by_node = &projection_cache.layout_by_node;
+                            let layer_count = projection_cache.layer_count;
+                            let max_nodes_in_layer = projection_cache.max_nodes_in_layer;
                             let base_width = (layer_count.max(1) as f32) * 220.0 + 220.0;
                             let base_height = (max_nodes_in_layer.max(1) as f32) * 110.0 + 300.0;
                             if request_fit_zoom {
@@ -1310,9 +1388,12 @@ impl GENtleApp {
                                                 let mode = row.analysis_mode.as_deref().unwrap_or("-");
                                                 match row.analysis_kind {
                                                     Some(LineageAnalysisKind::Dotplot) => format!(
-                                                        "{} | mode={} | points={}",
+                                                        "{} | mode={} | provenance={} | points={}",
                                                         artifact_id,
                                                         mode,
+                                                        row.analysis_status
+                                                            .as_deref()
+                                                            .unwrap_or("manual (no reasoning citation)"),
                                                         row.analysis_point_count.unwrap_or(0)
                                                     ),
                                                     Some(LineageAnalysisKind::FlexibilityTrack) => {
@@ -1342,6 +1423,20 @@ impl GENtleApp {
                                                             artifact_id,
                                                             mode,
                                                             row.analysis_target_count.unwrap_or(0)
+                                                        )
+                                                    }
+                                                    Some(LineageAnalysisKind::PrimerSpecificity) => {
+                                                        format!(
+                                                            "{} | target={} | status={} | products={} | failing_off_targets={}",
+                                                            artifact_id,
+                                                            row.analysis_reference_seq_id
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_status
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_point_count.unwrap_or(0),
+                                                            row.analysis_variant_count.unwrap_or(0)
                                                         )
                                                     }
                                                     Some(LineageAnalysisKind::QpcrDesign) => {
@@ -1671,6 +1766,33 @@ impl GENtleApp {
                                         egui::Color32::from_rgb(235, 196, 150),
                                     )
                                 };
+                                #[cfg(feature = "gui-test-support")]
+                                if row.kind == LineageNodeKind::Sequence && row.pool_size <= 1 {
+                                    let subject_scope =
+                                        crate::gui_test_support::pseudonymous_subject_scope(&[
+                                            &row.seq_id,
+                                        ]);
+                                    let interaction_rect = egui::Rect::from_center_size(
+                                        pos,
+                                        Vec2::splat(38.0 * graph_zoom),
+                                    );
+                                    let visible_rect = clipped_semantic_interaction_rect(
+                                        interaction_rect,
+                                        ui.clip_rect(),
+                                    );
+                                    crate::gui_test_support::register_rect(
+                                        ui.ctx().clone(),
+                                        crate::tutorial_gui_semantics::MAIN_PROJECT_SEQUENCE_OPEN,
+                                        crate::tutorial_gui_semantics::WINDOW_MAIN,
+                                        Some(&subject_scope),
+                                        crate::gui_test_support::GuiTestWidgetKind::Button,
+                                        visible_rect.unwrap_or(interaction_rect),
+                                        visible_rect.is_some(),
+                                        true,
+                                        false,
+                                        None,
+                                    );
+                                }
                                 match row.kind {
                                     LineageNodeKind::Arrangement => {
                                         let rect = egui::Rect::from_center_size(
@@ -1964,9 +2086,12 @@ impl GENtleApp {
                                                 let mode = row.analysis_mode.as_deref().unwrap_or("-");
                                                 match row.analysis_kind {
                                                     Some(LineageAnalysisKind::Dotplot) => format!(
-                                                        "dotplot={} | mode={} | points={}",
+                                                        "dotplot={} | mode={} | provenance={} | points={}",
                                                         artifact_id,
                                                         mode,
+                                                        row.analysis_status
+                                                            .as_deref()
+                                                            .unwrap_or("manual (no reasoning citation)"),
                                                         row.analysis_point_count.unwrap_or(0)
                                                     ),
                                                     Some(LineageAnalysisKind::FlexibilityTrack) => {
@@ -1996,6 +2121,20 @@ impl GENtleApp {
                                                             artifact_id,
                                                             mode,
                                                             row.analysis_target_count.unwrap_or(0)
+                                                        )
+                                                    }
+                                                    Some(LineageAnalysisKind::PrimerSpecificity) => {
+                                                        format!(
+                                                            "primer_specificity={} | target={} | status={} | products={} | failing_off_targets={}",
+                                                            artifact_id,
+                                                            row.analysis_reference_seq_id
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_status
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_point_count.unwrap_or(0),
+                                                            row.analysis_variant_count.unwrap_or(0)
                                                         )
                                                     }
                                                     Some(LineageAnalysisKind::QpcrDesign) => {
@@ -2227,11 +2366,14 @@ impl GENtleApp {
                                                 match row.analysis_kind {
                                                     Some(LineageAnalysisKind::Dotplot) => {
                                                         ui.small(format!(
-                                                            "query={} | reference={} | points={}",
+                                                            "query={} | reference={} | provenance={} | points={}",
                                                             row.seq_id,
                                                             row.analysis_reference_seq_id
                                                                 .as_deref()
                                                                 .unwrap_or(&row.seq_id),
+                                                            row.analysis_status
+                                                                .as_deref()
+                                                                .unwrap_or("manual (no reasoning citation)"),
                                                             row.analysis_point_count.unwrap_or(0)
                                                         ));
                                                     }
@@ -2266,6 +2408,23 @@ impl GENtleApp {
                                                                 .as_deref()
                                                                 .unwrap_or("-"),
                                                             row.analysis_target_count.unwrap_or(0)
+                                                        ));
+                                                    }
+                                                    Some(LineageAnalysisKind::PrimerSpecificity) => {
+                                                        ui.small(format!(
+                                                            "template={} | target={} | database_kind={} | status={} | products={} | failing_off_targets={}",
+                                                            row.seq_id,
+                                                            row.analysis_reference_seq_id
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_mode
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_status
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_point_count.unwrap_or(0),
+                                                            row.analysis_variant_count.unwrap_or(0)
                                                         ));
                                                     }
                                                     Some(LineageAnalysisKind::QpcrDesign) => {
@@ -2518,8 +2677,8 @@ impl GENtleApp {
                                     }
                                 });
                             }
-                            let context_node_id = hover_row.map(|row| row.node_id.clone());
-                            let context_row = hover_row.cloned();
+                            let context_row = self.lineage_context_row(&resp, &rows, hover_row);
+                            let context_node_id = context_row.as_ref().map(|row| row.node_id.clone());
                             resp.clone().context_menu(|ui| {
                                 if let Some(node_id) = context_node_id.as_ref() {
                                     self.render_lineage_group_context_menu(
@@ -2531,7 +2690,8 @@ impl GENtleApp {
                                         &mut persist_workspace_after_frame,
                                     );
                                 } else {
-                                    ui.label("No node under cursor");
+                                    ui.label("Graph workspace");
+                                    ui.add(egui::Label::new("Right-click a sequence or report to inspect it and see useful next steps. Add sequences with File > Open sequence; if an item changed, reopen its menu.").wrap());
                                 }
                                 ui.separator();
                                 if ui
@@ -2778,19 +2938,27 @@ impl GENtleApp {
                                             });
                                         },
                                     )
-                                    .response;
+                                    .response
+                                    .interact(egui::Sense::click());
                                 if node_display != row.node_id {
                                     node_response = node_response.on_hover_text(row.node_id.clone());
                                 }
+                                let context_row = self.lineage_context_row(
+                                    &node_response, std::slice::from_ref(row), Some(row),
+                                );
                                 node_response.context_menu(|ui| {
-                                    self.render_lineage_group_context_menu(
-                                        ui,
-                                        &row.node_id,
-                                        Some(row),
-                                        &leaf_node_ids,
-                                        &valid_lineage_node_ids,
-                                        &mut persist_workspace_after_frame,
-                                    );
+                                    if let Some(row) = context_row.as_ref() {
+                                        self.render_lineage_group_context_menu(
+                                            ui,
+                                            &row.node_id,
+                                            Some(row),
+                                            &leaf_node_ids,
+                                            &valid_lineage_node_ids,
+                                            &mut persist_workspace_after_frame,
+                                        );
+                                    } else {
+                                        ui.label("This item changed or is no longer visible; reopen its context menu.");
+                                    }
                                 });
                                 if node_response.clicked() {
                                     self.lineage_graph_selected_node_id = Some(row.node_id.clone());
@@ -2831,11 +2999,25 @@ impl GENtleApp {
                                         });
                                     }
                                     LineageNodeKind::Sequence => {
-                                        if ui
+                                        let open_response = ui
                                             .button(&row.seq_id)
-                                            .on_hover_text("Open this sequence in a dedicated window")
-                                            .clicked()
+                                            .on_hover_text("Open this sequence in a dedicated window");
+                                        #[cfg(feature = "gui-test-support")]
                                         {
+                                            let subject_scope =
+                                                crate::gui_test_support::pseudonymous_subject_scope(&[
+                                                    &row.seq_id,
+                                                ]);
+                                            crate::gui_test_support::register_response(
+                                                &open_response,
+                                                crate::tutorial_gui_semantics::MAIN_PROJECT_SEQUENCE_OPEN,
+                                                crate::tutorial_gui_semantics::WINDOW_MAIN,
+                                                Some(&subject_scope),
+                                                crate::gui_test_support::GuiTestWidgetKind::Button,
+                                                false,
+                                            );
+                                        }
+                                        if open_response.clicked() {
                                             open_seq = Some(row.seq_id.clone());
                                         }
                                     }
@@ -3035,6 +3217,10 @@ impl GENtleApp {
                                             Some(LineageAnalysisKind::PrimerDesign) => (
                                                 "Open Primer Report",
                                                 "Open the PCR Designer on this persisted primer-design report",
+                                            ),
+                                            Some(LineageAnalysisKind::PrimerSpecificity) => (
+                                                "Open Specificity Evidence",
+                                                "Open this persisted primer-specificity artifact in PCR Designer, together with its cited design report when available",
                                             ),
                                             Some(LineageAnalysisKind::QpcrDesign) => (
                                                 "Open qPCR Report",
@@ -3308,7 +3494,9 @@ impl GENtleApp {
                 } else if selected_row.kind == LineageNodeKind::Analysis {
                     ui.separator();
                     ui.heading("Selected Analysis Node");
-                    let kind = Self::infer_lineage_analysis_kind_from_row(&selected_row)
+                    let analysis_kind =
+                        Self::infer_lineage_analysis_kind_from_row(&selected_row);
+                    let kind = analysis_kind
                         .map(LineageAnalysisKind::as_str)
                         .unwrap_or("analysis");
                     ui.small(format!(
@@ -3325,6 +3513,7 @@ impl GENtleApp {
                         ) {
                             Some(LineageAnalysisKind::SequencingConfirmation) => "baseline sequence",
                             Some(LineageAnalysisKind::ReverseTranslation) => "product sequence",
+                            Some(LineageAnalysisKind::PrimerSpecificity) => "target genome/database",
                             _ => "reference sequence",
                         };
                         ui.small(format!("{reference_label}={reference_seq_id}"));
@@ -3336,6 +3525,7 @@ impl GENtleApp {
                             Some(LineageAnalysisKind::RnaReadInterpretation) => "profile",
                             Some(LineageAnalysisKind::PrimerDesign)
                             | Some(LineageAnalysisKind::QpcrDesign) => "backend",
+                            Some(LineageAnalysisKind::PrimerSpecificity) => "database_kind",
                             Some(LineageAnalysisKind::RestrictionCloningPcrHandoff) => {
                                 "handoff_mode"
                             }
@@ -3347,7 +3537,99 @@ impl GENtleApp {
                         };
                         ui.small(format!("{mode_label}={mode}"));
                     }
-                    if let Some(status) = selected_row.analysis_status.as_deref() {
+                    if analysis_kind == Some(LineageAnalysisKind::Dotplot) {
+                        let inspection_provenance =
+                            Self::infer_lineage_analysis_artifact_id_from_row(&selected_row)
+                                .and_then(|dotplot_id| {
+                                    let engine = self.engine.read().ok()?;
+                                    engine
+                                        .get_dotplot_view(&dotplot_id)
+                                        .ok()?
+                                        .inspection_provenance
+                                });
+                        if let Some(citation) = inspection_provenance {
+                            let (status_color, status_label) = match citation.status {
+                                DotplotInspectionProvenanceStatus::Pass => (
+                                    egui::Color32::from_rgb(35, 125, 78),
+                                    "PASS",
+                                ),
+                                DotplotInspectionProvenanceStatus::Fail => (
+                                    egui::Color32::from_rgb(180, 45, 45),
+                                    "FAIL",
+                                ),
+                                DotplotInspectionProvenanceStatus::Unknown => (
+                                    egui::Color32::from_rgb(166, 109, 20),
+                                    "UNKNOWN",
+                                ),
+                            };
+                            ui.horizontal_wrapped(|ui| {
+                                ui.small("inspection provenance");
+                                ui.colored_label(
+                                    status_color,
+                                    egui::RichText::new(status_label).strong(),
+                                );
+                                ui.monospace(format!(
+                                    "graph={} | action={}",
+                                    citation.graph_id, citation.action_id
+                                ));
+                            });
+                            if !citation.rationale.trim().is_empty() {
+                                ui.small("why this inspection");
+                                ui.label(citation.rationale.clone());
+                            }
+                            ui.small(format!(
+                                "driving evidence IDs: {}",
+                                if citation.driving_evidence_ids.is_empty() {
+                                    "-".to_string()
+                                } else {
+                                    citation.driving_evidence_ids.join(", ")
+                                }
+                            ));
+                            if !citation.verification_reasons.is_empty() {
+                                ui.colored_label(
+                                    status_color,
+                                    format!(
+                                        "verification: {}",
+                                        citation.verification_reasons.join(" | ")
+                                    ),
+                                );
+                            }
+                            let reasoning_node_id = format!(
+                                "analysis:construct_reasoning:{}",
+                                citation.graph_id
+                            );
+                            let graph_is_present =
+                                valid_lineage_node_ids.contains(&reasoning_node_id);
+                            if ui
+                                .add_enabled(
+                                    graph_is_present,
+                                    egui::Button::new("Select Recommending Graph"),
+                                )
+                                .on_hover_text(if graph_is_present {
+                                    "Select the construct-reasoning graph that recommended this inspection"
+                                } else {
+                                    "The cited construct-reasoning graph is not present in this project"
+                                })
+                                .clicked()
+                            {
+                                self.lineage_graph_selected_node_id = Some(reasoning_node_id);
+                            }
+                        } else {
+                            ui.colored_label(
+                                egui::Color32::from_rgb(105, 105, 105),
+                                egui::RichText::new(
+                                    "inspection provenance: MANUAL / NO REASONING CITATION",
+                                )
+                                .strong(),
+                            )
+                            .on_hover_text(
+                                "No construct-reasoning citation was recorded; this is distinct from a failed citation",
+                            );
+                        }
+                    }
+                    if analysis_kind != Some(LineageAnalysisKind::Dotplot)
+                        && let Some(status) = selected_row.analysis_status.as_deref()
+                    {
                         let status_label = match Self::infer_lineage_analysis_kind_from_row(
                             &selected_row,
                         ) {
@@ -3373,6 +3655,7 @@ impl GENtleApp {
                             }
                             Some(LineageAnalysisKind::ReverseTranslation) => "translation_table",
                             Some(LineageAnalysisKind::ConstructReasoning) => "evidence_count",
+                            Some(LineageAnalysisKind::PrimerSpecificity) => "product_count",
                             _ => "point_count",
                         };
                         ui.small(format!("{point_label}={points}"));
@@ -3394,6 +3677,7 @@ impl GENtleApp {
                                 "target_gene_count"
                             }
                             Some(LineageAnalysisKind::PrimerDesign) => "pair_count",
+                            Some(LineageAnalysisKind::PrimerSpecificity) => "assessed_pair_count",
                             Some(LineageAnalysisKind::QpcrDesign) => "assay_count",
                             Some(LineageAnalysisKind::RestrictionCloningPcrHandoff) => {
                                 "handoff_count"
@@ -3415,6 +3699,9 @@ impl GENtleApp {
                             }
                             Some(LineageAnalysisKind::ReverseTranslation) => "protein_aa",
                             Some(LineageAnalysisKind::ConstructReasoning) => "decision_count",
+                            Some(LineageAnalysisKind::PrimerSpecificity) => {
+                                "failing_off_target_count"
+                            }
                             _ => "variant_count",
                         };
                         ui.small(format!("{variant_label}={variant_count}"));
@@ -3438,6 +3725,9 @@ impl GENtleApp {
                                 "Open RNA-read Mapping"
                             }
                             Some(LineageAnalysisKind::PrimerDesign) => "Open Primer Report",
+                            Some(LineageAnalysisKind::PrimerSpecificity) => {
+                                "Open Specificity Evidence"
+                            }
                             Some(LineageAnalysisKind::QpcrDesign) => "Open qPCR Report",
                             Some(LineageAnalysisKind::RestrictionCloningPcrHandoff) => {
                                 "Open Cloning Handoff"
@@ -3711,6 +4001,27 @@ impl GENtleApp {
                                                 vec![c.container_id.clone()],
                                             ));
                                         }
+                                        let pool_export_readiness =
+                                            container_pool_export_readiness(
+                                                &c.kind,
+                                                c.member_count,
+                                                c.declared_contents_exclusive,
+                                            );
+                                        let pool_export = ui
+                                            .add_enabled(
+                                                pool_export_readiness.is_ok(),
+                                                egui::Button::new(
+                                                    self.tr("lineage.action.export_pool"),
+                                                ),
+                                            )
+                                            .on_hover_text(
+                                                pool_export_readiness.err().unwrap_or(
+                                                    "Export this physical container as one GENtle pool artifact",
+                                                ),
+                                            );
+                                        if pool_export.clicked() {
+                                            export_container_pool = Some(c.container_id.clone());
+                                        }
                                     });
                                     ui.end_row();
                                 }
@@ -3873,7 +4184,7 @@ impl GENtleApp {
                                     ui.end_row();
                                     for arrangement in &arrangement_rows {
                                         ui.monospace(&arrangement.arrangement_id);
-                                        ui.label(&arrangement.mode);
+                                        ui.label(format!("{:?}", arrangement.mode));
                                         ui.label(if arrangement.name.trim().is_empty() {
                                             "-".to_string()
                                         } else {
@@ -3897,23 +4208,43 @@ impl GENtleApp {
                                                 .unwrap_or_else(|| "draft on demand".to_string()),
                                         );
                                         ui.horizontal(|ui| {
-                                            if ui
-                                                .button(self.tr("lineage.action.preview_gel"))
-                                                .on_hover_text(
+                                            let gel_blocker = Self::arrangement_gel_readiness(
+                                                &arrangement.arrangement_id,
+                                                &arrangement.mode,
+                                            )
+                                            .err()
+                                            .map(|error| error.message);
+                                            let preview_response = ui.add_enabled(
+                                                gel_blocker.is_none(),
+                                                egui::Button::new(
+                                                    self.tr("lineage.action.preview_gel"),
+                                                ),
+                                            );
+                                            let preview_response = match &gel_blocker {
+                                                Some(detail) => preview_response
+                                                    .on_disabled_hover_text(detail),
+                                                None => preview_response.on_hover_text(
                                                     "Open an in-app gel preview where left/right ladder choices update the visual result together",
-                                                )
-                                                .clicked()
-                                            {
+                                                ),
+                                            };
+                                            if preview_response.clicked() {
                                                 open_arrangement_gel_preview =
                                                     Some(arrangement.arrangement_id.clone());
                                             }
-                                            if ui
-                                                .button(self.tr("lineage.action.export_gel"))
-                                                .on_hover_text(
+                                            let export_response = ui.add_enabled(
+                                                gel_blocker.is_none(),
+                                                egui::Button::new(
+                                                    self.tr("lineage.action.export_gel"),
+                                                ),
+                                            );
+                                            let export_response = match &gel_blocker {
+                                                Some(detail) => export_response
+                                                    .on_disabled_hover_text(detail),
+                                                None => export_response.on_hover_text(
                                                     "Export one serial gel using this arrangement",
-                                                )
-                                                .clicked()
-                                            {
+                                                ),
+                                            };
+                                            if export_response.clicked() {
                                                 let stem = if arrangement.name.trim().is_empty() {
                                                     arrangement.arrangement_id.clone()
                                                 } else {
@@ -3988,6 +4319,9 @@ impl GENtleApp {
 
         if let Some((stem, container_ids)) = export_container_gel.take() {
             self.prompt_export_serial_gel_svg(&stem, Some(container_ids), None, None, None);
+        }
+        if let Some(container_id) = export_container_pool.take() {
+            self.prompt_export_container_pool(&container_id);
         }
         if let Some((container_id, exclusive)) = set_container_exclusivity.take() {
             let update_result = {
@@ -4064,11 +4398,9 @@ impl GENtleApp {
         }
         if (self.lineage_graph_area_height - graph_area_height).abs() > 0.5 {
             self.lineage_graph_area_height = graph_area_height;
-            persist_workspace_after_frame = true;
         }
         if (self.lineage_container_area_height - container_area_height).abs() > 0.5 {
             self.lineage_container_area_height = container_area_height;
-            persist_workspace_after_frame = true;
         }
         if (self.lineage_container_arrangement_split_fraction
             - container_arrangement_split_fraction)
@@ -4077,7 +4409,6 @@ impl GENtleApp {
         {
             self.lineage_container_arrangement_split_fraction =
                 container_arrangement_split_fraction;
-            persist_workspace_after_frame = true;
         }
         let combined_panel_height =
             (graph_area_height.max(0.0) + container_area_height.max(0.0)).max(1.0);
@@ -4088,7 +4419,6 @@ impl GENtleApp {
             && (self.lineage_main_split_fraction - main_split_fraction).abs() > 0.0001
         {
             self.lineage_main_split_fraction = main_split_fraction;
-            persist_workspace_after_frame = true;
         }
         if self.lineage_graph_compact_labels != graph_compact_labels {
             self.lineage_graph_compact_labels = graph_compact_labels;
@@ -4176,7 +4506,42 @@ impl GENtleApp {
 
 #[cfg(test)]
 mod tests {
-    use super::lineage_graph_canvas_width;
+    use super::{
+        GENtleApp, LineageContextSubject, clipped_semantic_interaction_rect,
+        container_pool_export_readiness, lineage_graph_canvas_width,
+    };
+    use eframe::egui;
+
+    #[test]
+    fn closed_lineage_context_clears_only_its_stored_subject() {
+        // Synthetic popup state, recreated in memory without native windows or captures.
+        let app = GENtleApp::default();
+        let ctx = egui::Context::default();
+        ctx.run_ui(egui::RawInput::default(), |ui| {
+            let response = ui.allocate_response(egui::vec2(100.0, 50.0), egui::Sense::click());
+            let id = response.id.with("lineage_context_subject");
+            let unrelated_id = response.id.with("unrelated_popup_state");
+            response.ctx.data_mut(|data| {
+                data.insert_temp(unrelated_id, 7usize);
+            });
+            assert!(app.lineage_context_row(&response, &[], None).is_none());
+            response.ctx.data_mut(|data| {
+                data.insert_temp(
+                    id,
+                    LineageContextSubject {
+                        engine: std::sync::Arc::downgrade(&app.engine),
+                        node_id: Some("closed_node".into()),
+                    },
+                );
+            });
+            assert!(app.lineage_context_row(&response, &[], None).is_none());
+            response.ctx.data(|data| {
+                assert!(data.get_temp::<LineageContextSubject>(id).is_none());
+                assert_eq!(data.get_temp::<usize>(unrelated_id), Some(7));
+            });
+        })
+        .drop_without_applying_deltas();
+    }
 
     #[test]
     fn lineage_graph_canvas_width_uses_parent_viewport_snapshot() {
@@ -4193,5 +4558,40 @@ mod tests {
             lineage_graph_canvas_width(base_width, zoom, parent_viewport_width),
             inflated_child_available_width
         );
+    }
+
+    #[test]
+    fn pool_export_readiness_rejects_in_silico_selection_containers() {
+        assert!(container_pool_export_readiness("Pool", 2, true).is_ok());
+        assert!(container_pool_export_readiness("Singleton", 1, true).is_ok());
+        assert_eq!(
+            container_pool_export_readiness("Selection", 1, true),
+            Err("Pool export requires a physical singleton or pool, not an in-silico selection")
+        );
+    }
+
+    #[test]
+    fn semantic_lineage_node_rect_is_clipped_to_visible_viewport() {
+        let clip = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(100.0, 100.0));
+        let fully_visible =
+            egui::Rect::from_min_max(egui::pos2(20.0, 30.0), egui::pos2(40.0, 50.0));
+        assert_eq!(
+            clipped_semantic_interaction_rect(fully_visible, clip),
+            Some(fully_visible)
+        );
+
+        let partly_visible =
+            egui::Rect::from_min_max(egui::pos2(90.0, 40.0), egui::pos2(120.0, 70.0));
+        let clipped = clipped_semantic_interaction_rect(partly_visible, clip)
+            .expect("partially visible node should remain semantically visible");
+        assert_eq!(
+            clipped,
+            egui::Rect::from_min_max(egui::pos2(90.0, 40.0), egui::pos2(100.0, 70.0))
+        );
+        assert!(clip.contains(clipped.center()));
+        assert!(partly_visible.contains(clipped.center()));
+
+        let offscreen = egui::Rect::from_min_max(egui::pos2(120.0, 40.0), egui::pos2(150.0, 70.0));
+        assert_eq!(clipped_semantic_interaction_rect(offscreen, clip), None);
     }
 }

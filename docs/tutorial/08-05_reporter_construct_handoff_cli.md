@@ -90,6 +90,14 @@ candidate-set JSON and local reporter catalog, but it does not silently load
 the original sequence, materialize allele fragments, or load the reporter
 backbone into a persistent project.
 
+Inspect the alternate-materialization command's `note` as well. A fresh run
+without the source variant, an ambiguous alternate set, or failed source checks
+produces `Review required:` and no `alternate_allele`. With a valid loaded
+single-alternate marker, the planner writes the exact genomic-forward base into
+that command. It is revalidated at execution, not approved by candidate geometry
+or macro-port readiness. For the multiallelic VKORC1 example, review and add the
+explicit `T` choice described in tutorial 08.04 before materialization.
+
 ## Step 3: Use A Persistent State When You Want Readiness
 
 If you want the plan to distinguish `ready` from `derivable`, run it through

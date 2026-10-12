@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="520" viewBox="0 0 1120 520" role="img" aria-labelledby="title desc">
+  <title id="title">Three motif score paths</title>
+  <desc id="desc">Independent genomic scanner, GENtle dense local trace and reduced promoter-cofactor package remain distinct provenance paths.</desc>
+  <rect width="1120" height="520" fill="#ffffff"/>
+  <style>text{font-family:DejaVu Sans,Arial,sans-serif;fill:#202124}.h{font-size:24px;font-weight:700}.b{font-size:18px;font-weight:700}.s{font-size:13px}.box{stroke-width:2;rx:10}.arrow{stroke:#5f6368;stroke-width:2;marker-end:url(#a)}</style>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#5f6368"/></marker></defs>
+  <text x="35" y="40" class="h">Keep three score-producing paths separate</text>
+  <rect x="35" y="78" width="290" height="118" class="box" fill="#e8f0fe" stroke="#4285f4"/>
+  <text x="55" y="108" class="b">jaspar-mapping</text><text x="55" y="135" class="s">genome + exact PFM + scanner policy</text><text x="55" y="160" class="s">score, relative score, score mode</text><text x="55" y="183" class="s">sparse retained hits (float32)</text>
+  <line x1="330" y1="137" x2="388" y2="137" class="arrow"/>
+  <rect x="395" y="78" width="310" height="118" class="box" fill="#f3e8fd" stroke="#a142f4"/>
+  <text x="415" y="108" class="b">GENtle imported evidence</text><text x="415" y="135" class="s">validates identity, geometry, coverage</text><text x="415" y="160" class="s">passes producer-native values through</text><text x="415" y="183" class="s">does not rescore retained hits</text>
+  <rect x="35" y="228" width="290" height="118" class="box" fill="#e6f4ea" stroke="#34a853"/>
+  <text x="55" y="258" class="b">GENtle local scorer</text><text x="55" y="285" class="s">sequence + bundled exact PFM</text><text x="55" y="310" class="s">GENtle smoothing and score_kind</text><text x="55" y="333" class="s">dense forward/reverse arrays</text>
+  <line x1="330" y1="287" x2="388" y2="287" class="arrow"/>
+  <rect x="395" y="228" width="310" height="118" class="box" fill="#fef7e0" stroke="#f9ab00"/>
+  <text x="415" y="258" class="b">Promoter/TSS trace</text><text x="415" y="285" class="s">formatting, display gate and scale policy</text><text x="415" y="310" class="s">raw_score + displayed score retained</text><text x="415" y="333" class="s">fresh scoring, not hit interpolation</text>
+  <rect x="755" y="153" width="330" height="168" class="box" fill="#fce8e6" stroke="#ea4335"/>
+  <text x="775" y="183" class="b">Reduced cofactor package</text><text x="775" y="210" class="s">strongest match per anchor × band</text><text x="775" y="235" class="s">plus cohort OR, CI and BH q</text><text x="775" y="260" class="s">not dense; cannot reconstruct all sites</text><text x="775" y="285" class="s">zeros only in verified package scope</text>
+  <line x1="710" y1="257" x2="748" y2="237" class="arrow"/>
+  <rect x="35" y="389" width="1050" height="85" rx="10" fill="#f8f9fa" stroke="#9aa0a6"/>
+  <text x="55" y="420" class="b">Comparison rule</text>
+  <text x="55" y="448" class="s">Require the same accession/version, formula, background, smoothing, strand policy, filtering and units.</text>
+  <text x="55" y="470" class="s">A shared field name such as “score” is not enough.</text>
+</svg>

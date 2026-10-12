@@ -16,7 +16,7 @@
       "cloning_planning",
       "protein_workflows"
     ],
-    "notes": "Safe GeneArt cloned-gene and protein-expression quote-handoff rehearsal through the shared provider catalog, preflight, quote bundle, and return_spec contracts; no vendor submission.",
+    "notes": "Offline external-service tutorial for GeneArt cloned-gene synthesis and protein-expression handoff: Services -> External Services..., services providers doctor/list, project-preflight, project-quote and bundle exports. Prerequisites: bundled DEMO_DO_NOT_ORDER requests and an already-built CLI/GUI. return_spec requests are not guaranteed payload materialization; no codon optimization, vendor pricing, network or ordering. Open with ui open tutorial-guide geneart_external_service_handoff_gui_cli. codex source review 2026-09-11 against code 32875224 and this revised source: scoped workflow clarity, links and nonclaims reviewed for wet-lab biologists and inner agents; not live GUI acceptance, binary execution sign-off or human scientific approval. Structured review records remain in the separate review manifest.",
     "group": "09",
     "group_position": 2
   }

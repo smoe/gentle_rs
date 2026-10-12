@@ -31,6 +31,167 @@ def request_payload():
     }
 
 
+def test_resolve_codex_bin_finds_current_macos_chatgpt_app(monkeypatch):
+    bridge = load_bridge_module()
+    chatgpt_codex = "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT"
+    monkeypatch.delenv("CODEX_BIN", raising=False)
+    monkeypatch.setattr(bridge.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(bridge.os.path, "isfile", lambda path: path == chatgpt_codex)
+    monkeypatch.setattr(
+        bridge.os,
+        "access",
+        lambda path, mode: path == chatgpt_codex and mode == bridge.os.X_OK,
+    )
+
+    assert bridge.resolve_codex_bin() == chatgpt_codex
+
+
+def test_resolve_codex_bin_prefers_chatgpt_bundled_cli(monkeypatch):
+    bridge = load_bridge_module()
+    bundled_cli = "/Applications/ChatGPT.app/Contents/Resources/codex"
+    app_executable = "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT"
+    available = {bundled_cli, app_executable}
+    monkeypatch.delenv("CODEX_BIN", raising=False)
+    monkeypatch.setattr(bridge.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(bridge.os.path, "isfile", lambda path: path in available)
+    monkeypatch.setattr(
+        bridge.os,
+        "access",
+        lambda path, mode: path in available and mode == bridge.os.X_OK,
+    )
+
+    assert bridge.resolve_codex_bin() == bundled_cli
+
+
+def test_shared_model_override_is_forwarded_to_codex_cli(monkeypatch):
+    bridge = load_bridge_module()
+    monkeypatch.delenv("CODEX_AGENT_MODEL", raising=False)
+    monkeypatch.delenv("GENTLE_CODEX_MODEL", raising=False)
+    monkeypatch.setenv("GENTLE_AGENT_MODEL", "gpt-5.4")
+
+    command = bridge.codex_command("codex", "/tmp", "schema.json", "output.json")
+
+    model_flag = command.index("--model")
+    assert command[model_flag + 1] == "gpt-5.4"
+
+
+def test_image_attachment_is_forwarded_as_codex_image_flag(tmp_path):
+    bridge = load_bridge_module()
+    image_path = tmp_path / "problem.png"
+    image_path.write_bytes(b"synthetic png fixture")
+    request = request_payload()
+    request["x_attachments"] = [{"kind": "image", "path": str(image_path)}]
+
+    paths = bridge.attachment_paths(request)
+    command = bridge.codex_command(
+        "codex", "/tmp", "schema.json", "output.json", paths
+    )
+
+    image_flag = command.index("--image")
+    assert command[image_flag + 1] == str(image_path)
+    assert command[-1] == "-"
+    prompt = bridge.render_codex_prompt(request)
+    assert str(image_path) not in prompt
+    assert "<local attachment>" in prompt
+
+
+def test_rendered_prompt_treats_conversation_as_prior_context():
+    bridge = load_bridge_module()
+    request = request_payload()
+    request["prompt"] = "Please continue."
+    request["x_conversation"] = {
+        "schema": "gentle.agent_conversation.v1",
+        "turns": [
+            {
+                "user_message": "Use homo_sapiens.",
+                "response": {
+                    "schema": "gentle.agent_response.v1",
+                    "assistant_message": "Human selected.",
+                    "questions": [],
+                    "suggested_commands": [],
+                },
+                "system_id": "codex_local_stdio",
+                "system_label": "Codex Local",
+                "completed_at_unix_ms": 1,
+            }
+        ],
+    }
+
+    prompt = bridge.render_codex_prompt(request)
+
+    assert "x_conversation.turns as the earlier dialogue" in prompt
+    assert "do not ask for the same" in prompt
+    assert "Use homo_sapiens." in prompt
+    assert '"prompt": "Please continue."' in prompt
+
+
+def test_rendered_prompt_exposes_bounded_introspection_context():
+    bridge = load_bridge_module()
+    request = request_payload()
+    request["x_introspection"] = {
+        "schema": "gentle.agent_introspection_context.v1",
+        "fact_expression_schema": "gentle.fact_expression.v1",
+        "fact_graph_schema": "gentle.project_fact_graph.v1",
+        "total_fact_count": 2,
+        "included_fact_count": 1,
+        "omitted_fact_count": 1,
+        "truncated": True,
+        "fact_type_counts": {"sequence.exists": 2},
+        "facts": [{"fact": "sequence.exists"}],
+        "retrieval_routes": [],
+        "notes": [],
+    }
+
+    prompt = bridge.render_codex_prompt(request)
+
+    assert "x_introspection is a bounded deterministic projection" in prompt
+    assert "do not infer falsehood" in prompt
+    assert "gentle.agent_introspection_context.v1" in prompt
+    assert '"omitted_fact_count": 1' in prompt
+
+
+def test_execution_feedback_and_all_request_context_are_visible():
+    """Synthetic request; no provider invocation (see agent_feedback_README.md)."""
+    bridge = load_bridge_module()
+    request = request_payload()
+    request["x_execution_feedback"] = {
+        "schema": "gentle.agent_execution_feedback.v1",
+        "rows": [{"receipt": {"status": "running"}}],
+    }
+    prompt = bridge.render_codex_prompt(request)
+    instruction = prompt.split("GENtle agent request:")[0]
+    for key in ("x_introspection", "x_conversation", "x_local_references",
+                "x_helper_catalog", "x_gui_context", "x_local_documents",
+                "x_attachments", "x_web_access", "x_request_id", "x_execution_feedback"):
+        assert key in instruction
+    assert "Use only state_summary" not in instruction
+    assert "only completed means" in instruction
+    assert "no receipt grants approval" in instruction
+    assert '"status": "running"' in prompt
+
+
+def test_response_schema_is_compatible_with_strict_structured_outputs():
+    bridge = load_bridge_module()
+    schema = bridge.response_json_schema()
+
+    assert set(schema["required"]) == set(schema["properties"])
+    assert schema["properties"]["schema"] == {
+        "type": "string",
+        "const": "gentle.agent_response.v1",
+    }
+    for property_schema in schema["properties"].values():
+        assert "type" in property_schema
+
+    command_schema = schema["properties"]["suggested_commands"]["items"]
+    assert command_schema["additionalProperties"] is False
+    assert set(command_schema["required"]) == set(command_schema["properties"])
+    for property_schema in command_schema["properties"].values():
+        assert "type" in property_schema
+    assert command_schema["properties"]["execution"]["type"] == "string"
+    assert "preconditions" in command_schema["properties"]
+    assert "expected_outcomes" in command_schema["properties"]
+
+
 def test_extracts_json_from_fenced_codex_output():
     bridge = load_bridge_module()
     parsed = bridge.parse_codex_response(
@@ -55,6 +216,33 @@ def test_extracts_json_from_fenced_codex_output():
 
     assert parsed["assistant_message"] == "ready"
     assert parsed["suggested_commands"][0]["execution"] == "ask"
+
+
+def test_preserves_human_readable_command_preconditions_and_outcomes():
+    bridge = load_bridge_module()
+    parsed = bridge.parse_codex_response(
+        json.dumps(
+            {
+                "schema": "gentle.agent_response.v1",
+                "assistant_message": "ready",
+                "questions": [],
+                "suggested_commands": [
+                    {
+                        "title": "Inspect project",
+                        "preconditions": ["A GENtle project is open."],
+                        "expected_outcomes": ["The project summary is shown."],
+                        "rationale": "Establish current context.",
+                        "command": "state-summary",
+                        "execution": "ask",
+                    }
+                ],
+            }
+        )
+    )
+
+    command = parsed["suggested_commands"][0]
+    assert command["preconditions"] == ["A GENtle project is open."]
+    assert command["expected_outcomes"] == ["The project summary is shown."]
 
 
 def test_rejects_unknown_agent_response_fields():
@@ -165,3 +353,14 @@ def test_bridge_reports_login_failure_from_codex_stderr(tmp_path):
     error = json.loads(completed.stderr)
     assert error["schema"] == "gentle.codex_agent_bridge_error.v1"
     assert error["code"] == "codex_not_logged_in"
+
+
+def test_schema_failure_is_not_misclassified_as_network_failure():
+    bridge = load_bridge_module()
+    message = """OpenAI Codex
+provider: openai
+ERROR: {"error":{"code":"invalid_json_schema","message":"Invalid schema for response_format 'codex_output_schema'","param":"text.format.schema"}}
+network status: available
+"""
+
+    assert bridge.classify_codex_failure(message) == "codex_schema_error"

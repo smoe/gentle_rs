@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="738" height="258" viewBox="0 0 738 258">
+  <title>simple_pcr_selection_gui / open_selection_context — interaction context</title>
+  <image href="open_selection_context.raw.png" x="-61" y="-371" width="1600" height="1000"/>
+  <rect x="246" y="120" width="246" height="18" fill="none" stroke="#d62728" stroke-width="3"/>
+  <circle cx="258" cy="132" r="11" fill="#d62728"/>
+  <text x="258" y="137" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="bold" fill="white">1</text>
+</svg>

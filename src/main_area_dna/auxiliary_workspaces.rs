@@ -13,6 +13,224 @@ use super::*;
 use crate::engine::{
     DotplotOverlayQuerySpec, DotplotReferenceAnnotationInterval, DotplotReferenceAnnotationTrack,
 };
+use ring::digest::{Context as DigestContext, SHA256};
+
+const SPLICING_EXPERT_PRESENTATION_CACHE_CAPACITY: usize = 4;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum LocusEvidenceResourceReadiness {
+    Ready,
+    Missing,
+    EngineValidated,
+}
+
+impl LocusEvidenceResourceReadiness {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::Missing => "missing",
+            Self::EngineValidated => "checked on inspect",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct LocusEvidenceResourceRow {
+    pub(super) kind: String,
+    pub(super) reference: String,
+    pub(super) readiness: LocusEvidenceResourceReadiness,
+    pub(super) detail: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct SplicingExpertPresentationKey {
+    content_sha256: [u8; 32],
+}
+
+impl SplicingExpertPresentationKey {
+    fn parse_engine_fingerprint(value: &str) -> Option<[u8; 32]> {
+        let hex = value.strip_prefix("sha256:")?;
+        if hex.len() != 64 {
+            return None;
+        }
+        let mut digest = [0u8; 32];
+        for (index, byte) in digest.iter_mut().enumerate() {
+            *byte = u8::from_str_radix(&hex[index * 2..index * 2 + 2], 16).ok()?;
+        }
+        Some(digest)
+    }
+
+    fn digest_usize(context: &mut DigestContext, value: usize) {
+        context.update(&(value as u64).to_le_bytes());
+    }
+
+    fn digest_bool(context: &mut DigestContext, value: bool) {
+        context.update(&[u8::from(value)]);
+    }
+
+    fn digest_str(context: &mut DigestContext, value: &str) {
+        Self::digest_usize(context, value.len());
+        context.update(value.as_bytes());
+    }
+
+    pub(super) fn from_view(view: &SplicingExpertView) -> Self {
+        if let Some(content_sha256) =
+            Self::parse_engine_fingerprint(&view.presentation_fingerprint_sha256)
+        {
+            return Self { content_sha256 };
+        }
+
+        let mut context = DigestContext::new(&SHA256);
+        context.update(b"gentle.splicing_expert_presentation_cache.v1\0");
+        Self::digest_str(&mut context, &view.seq_id);
+        Self::digest_usize(&mut context, view.target_feature_id);
+        Self::digest_usize(&mut context, view.transcript_count);
+
+        Self::digest_usize(&mut context, view.unique_exons.len());
+        for exon in &view.unique_exons {
+            Self::digest_usize(&mut context, exon.start_1based);
+            Self::digest_usize(&mut context, exon.end_1based);
+            Self::digest_usize(&mut context, exon.support_transcript_count);
+            Self::digest_bool(&mut context, exon.constitutive);
+        }
+
+        Self::digest_usize(&mut context, view.transcripts.len());
+        for transcript in &view.transcripts {
+            Self::digest_usize(&mut context, transcript.transcript_feature_id);
+            Self::digest_str(&mut context, &transcript.transcript_id);
+            Self::digest_bool(&mut context, transcript.has_target_feature);
+            Self::digest_str(&mut context, &transcript.strand);
+            Self::digest_usize(&mut context, transcript.exons.len());
+            for exon in &transcript.exons {
+                Self::digest_usize(&mut context, exon.start_1based);
+                Self::digest_usize(&mut context, exon.end_1based);
+            }
+        }
+
+        Self::digest_usize(&mut context, view.matrix_rows.len());
+        for row in &view.matrix_rows {
+            Self::digest_usize(&mut context, row.transcript_feature_id);
+            Self::digest_str(&mut context, &row.transcript_id);
+            Self::digest_str(
+                &mut context,
+                &row.uniprot_reference.summary_lines().join("\n"),
+            );
+            Self::digest_usize(&mut context, row.exon_presence.len());
+            for present in &row.exon_presence {
+                Self::digest_bool(&mut context, *present);
+            }
+        }
+
+        Self::digest_usize(&mut context, view.junctions.len());
+        for junction in &view.junctions {
+            Self::digest_usize(&mut context, junction.donor_1based);
+            Self::digest_usize(&mut context, junction.acceptor_1based);
+            Self::digest_usize(&mut context, junction.support_transcript_count);
+            Self::digest_usize(&mut context, junction.transcript_feature_ids.len());
+            for feature_id in &junction.transcript_feature_ids {
+                Self::digest_usize(&mut context, *feature_id);
+            }
+        }
+
+        Self::digest_usize(&mut context, view.boundaries.len());
+        for boundary in &view.boundaries {
+            Self::digest_usize(&mut context, boundary.transcript_feature_id);
+            Self::digest_str(&mut context, &boundary.transcript_id);
+            Self::digest_str(&mut context, &boundary.side);
+            Self::digest_usize(&mut context, boundary.position_1based);
+            Self::digest_str(&mut context, &boundary.motif_2bp);
+            Self::digest_bool(&mut context, boundary.canonical);
+            Self::digest_bool(&mut context, boundary.canonical_pair);
+            Self::digest_usize(&mut context, boundary.partner_position_1based);
+            Self::digest_str(&mut context, &boundary.paired_motif_signature);
+            Self::digest_str(&mut context, &boundary.motif_class);
+            Self::digest_str(&mut context, &boundary.annotation);
+        }
+
+        let digest = context.finish();
+        let mut content_sha256 = [0u8; 32];
+        content_sha256.copy_from_slice(digest.as_ref());
+        Self { content_sha256 }
+    }
+}
+
+impl MainAreaDna {
+    pub(super) fn cache_ready_splicing_expert_view(
+        view: &SplicingExpertView,
+    ) -> Arc<SplicingExpertView> {
+        let mut normalized = view.clone();
+        if GentleEngine::normalize_splicing_expert_view_fingerprint(&mut normalized).is_err() {
+            normalized.presentation_fingerprint_sha256.clear();
+        }
+        Arc::new(normalized)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct SplicingExpertExonPresentation {
+    pub(super) coordinate_label: String,
+    pub(super) transition_label: String,
+    pub(super) length_mod3: usize,
+    pub(super) coordinate_tooltip: String,
+    pub(super) transition_tooltip: String,
+    pub(super) constitutive: bool,
+    pub(super) support_ratio: f32,
+    pub(super) support_label: String,
+    pub(super) support_tooltip: String,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct SplicingExpertTranscriptPresentationRow {
+    pub(super) label: String,
+    pub(super) exon_presence: Vec<bool>,
+    pub(super) uniprot_tooltip: String,
+    pub(super) is_header: bool,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct SplicingExpertTransitionPresentationCell {
+    pub(super) to_exon_index: usize,
+    pub(super) marker: String,
+    pub(super) support_count: usize,
+    pub(super) support_ratio: f32,
+    pub(super) transcript_feature_ids: Vec<usize>,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct SplicingExpertTransitionPresentationRow {
+    pub(super) label: String,
+    pub(super) length_mod3: usize,
+    pub(super) length_tooltip: String,
+    pub(super) cells: Vec<SplicingExpertTransitionPresentationCell>,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct SplicingExpertJunctionPresentationRow {
+    pub(super) donor_label: String,
+    pub(super) acceptor_label: String,
+    pub(super) span_label: String,
+    pub(super) support_label: String,
+    pub(super) transcript_labels: String,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct SplicingExpertPresentation {
+    pub(super) layout: gentle_protocol::splicing_presentation::SplicingPresentationLayout,
+    pub(super) exons: Vec<SplicingExpertExonPresentation>,
+    pub(super) transcript_rows: Vec<SplicingExpertTranscriptPresentationRow>,
+    pub(super) transition_rows: Vec<SplicingExpertTransitionPresentationRow>,
+    pub(super) junction_rows: Vec<SplicingExpertJunctionPresentationRow>,
+    pub(super) boundary_rows:
+        Vec<gentle_protocol::splicing_presentation::SplicingBoundaryPresentationRow>,
+    pub(super) boundary_motif_rows: Vec<SplicingBoundaryMotifRow>,
+    pub(super) boundary_motif_class_counts: std::collections::BTreeMap<String, usize>,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct CachedSplicingExpertPresentation {
+    key: SplicingExpertPresentationKey,
+    model: Arc<SplicingExpertPresentation>,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
@@ -65,6 +283,841 @@ impl Default for DotplotOpsUiState {
             flex_smoothing_bp: "75".to_string(),
             flex_track_id: "flex_primary".to_string(),
         }
+    }
+}
+
+impl MainAreaDna {
+    fn cryptic_splicing_parse_usize(label: &str, value: &str) -> Result<usize, String> {
+        value
+            .trim()
+            .parse::<usize>()
+            .map_err(|_| format!("{label} must be a non-negative integer"))
+    }
+
+    pub(super) fn cryptic_splicing_request_from_controls(
+        &self,
+    ) -> Result<CrypticSplicingScreenRequest, String> {
+        let seq_id = self
+            .seq_id
+            .clone()
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| "No active sequence is available".to_string())?;
+        let start_1based =
+            Self::cryptic_splicing_parse_usize("Scan start", &self.cryptic_splicing_start_1based)?;
+        let end_1based =
+            Self::cryptic_splicing_parse_usize("Scan end", &self.cryptic_splicing_end_1based)?;
+        let min_pseudo_intron_bp = Self::cryptic_splicing_parse_usize(
+            "Minimum pseudo-intron length",
+            &self.cryptic_splicing_min_intron_bp,
+        )?;
+        let max_pseudo_intron_bp = Self::cryptic_splicing_parse_usize(
+            "Maximum pseudo-intron length",
+            &self.cryptic_splicing_max_intron_bp,
+        )?;
+        let max_candidate_pairs = Self::cryptic_splicing_parse_usize(
+            "Candidate budget",
+            &self.cryptic_splicing_max_candidates,
+        )?;
+        let insert_start = self.cryptic_splicing_insert_start_1based.trim();
+        let insert_end = self.cryptic_splicing_insert_end_1based.trim();
+        let insert_span = match (insert_start.is_empty(), insert_end.is_empty()) {
+            (true, true) => None,
+            (false, false) => Some(CrypticSplicingSpan {
+                start_1based: Self::cryptic_splicing_parse_usize("Insert start", insert_start)?,
+                end_1based: Self::cryptic_splicing_parse_usize("Insert end", insert_end)?,
+            }),
+            _ => {
+                return Err(
+                    "Provide both insert boundaries or leave both insert fields blank".to_string(),
+                );
+            }
+        };
+        let cds_feature_id = if self.cryptic_splicing_cds_feature_id.trim().is_empty() {
+            None
+        } else {
+            Some(Self::cryptic_splicing_parse_usize(
+                "CDS feature id",
+                &self.cryptic_splicing_cds_feature_id,
+            )?)
+        };
+        Ok(CrypticSplicingScreenRequest {
+            seq_id,
+            start_1based,
+            end_1based,
+            strand: if self.cryptic_splicing_reverse {
+                CrypticSplicingStrand::Reverse
+            } else {
+                CrypticSplicingStrand::Forward
+            },
+            insert_span,
+            cds_feature_id,
+            model_policy: if self.cryptic_splicing_use_maxent {
+                CrypticSplicingModelPolicy::UseActiveMaxent
+            } else {
+                CrypticSplicingModelPolicy::StructuralOnly
+            },
+            expected_model_fingerprint_sha256: self
+                .cryptic_splicing_use_maxent
+                .then(|| {
+                    self.cryptic_splicing_expected_model_fingerprint
+                        .trim()
+                        .to_string()
+                })
+                .filter(|value| !value.is_empty()),
+            min_pseudo_intron_bp,
+            max_pseudo_intron_bp,
+            max_candidate_pairs,
+        })
+    }
+
+    fn start_cryptic_splicing_operation(&mut self, operation: Operation, label: &str) {
+        if self.cryptic_splicing_task.is_some() {
+            self.cryptic_splicing_status = "A cryptic-splicing operation is already running".into();
+            return;
+        }
+        let Some(engine) = self.engine.clone() else {
+            self.cryptic_splicing_status = "No engine is attached".to_string();
+            return;
+        };
+        let (sender, receiver) = mpsc::channel();
+        self.cryptic_splicing_status = format!("{label} on an immutable project snapshot...");
+        self.cryptic_splicing_task = Some(CrypticSplicingTask {
+            started: Instant::now(),
+            label: label.to_string(),
+            receiver: Arc::new(Mutex::new(receiver)),
+        });
+        std::thread::spawn(move || {
+            let result = crate::background_engine::execute_read_only_operation_on_engine_snapshot(
+                &engine, operation,
+            )
+            .and_then(|mut result| {
+                if let Some(report) = result.cryptic_splicing_screen.take() {
+                    Ok(CrypticSplicingTaskCompletion::Screen(*report))
+                } else if let Some(report) = result.cryptic_splicing_evidence_overlay.take() {
+                    Ok(CrypticSplicingTaskCompletion::EvidenceOverlay(*report))
+                } else if let Some(report) = result.cryptic_splicing_protein_projection.take() {
+                    Ok(CrypticSplicingTaskCompletion::ProteinProjection(*report))
+                } else {
+                    Err(EngineError {
+                        code: ErrorCode::Internal,
+                        message: "Cryptic-splicing operation returned no typed report".to_string(),
+                        cause_chain: vec![],
+                    })
+                }
+            });
+            let _ = sender.send(result);
+        });
+    }
+
+    pub(super) fn start_cryptic_splicing_screen(&mut self) {
+        let request = match self.cryptic_splicing_request_from_controls() {
+            Ok(request) => request,
+            Err(error) => {
+                self.cryptic_splicing_status = error;
+                return;
+            }
+        };
+        let label = format!(
+            "Screening {}:{}..{} ({})",
+            request.seq_id,
+            request.start_1based,
+            request.end_1based,
+            request.strand.as_str()
+        );
+        self.start_cryptic_splicing_operation(
+            Operation::InspectCrypticSplicingScreen {
+                request,
+                path: None,
+            },
+            &label,
+        );
+    }
+
+    fn start_cryptic_splicing_rna_overlay(&mut self) {
+        let Some(screen) = self.cryptic_splicing_report.as_ref() else {
+            self.cryptic_splicing_status =
+                "Run the structural screen before joining evidence".into();
+            return;
+        };
+        let screen_request = screen.request.clone();
+        let rna_read_report_ids = self
+            .cryptic_splicing_rna_report_ids
+            .split([',', ';', '\n'])
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        if rna_read_report_ids.is_empty() {
+            self.cryptic_splicing_status = "Provide at least one RNA-read report id".into();
+            return;
+        }
+        let nearby_tolerance_bp = match Self::cryptic_splicing_parse_usize(
+            "RNA nearby tolerance",
+            &self.cryptic_splicing_rna_nearby_tolerance_bp,
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                self.cryptic_splicing_status = error;
+                return;
+            }
+        };
+        self.start_cryptic_splicing_operation(
+            Operation::InspectCrypticSplicingEvidenceOverlay {
+                request: CrypticSplicingEvidenceOverlayRequest {
+                    screen_request,
+                    rna_read_report_ids,
+                    nearby_tolerance_bp,
+                },
+                path: None,
+            },
+            "Joining RNA-read junction evidence",
+        );
+    }
+
+    fn start_cryptic_splicing_protein_projection(&mut self) {
+        let Some(screen) = self.cryptic_splicing_report.as_ref() else {
+            self.cryptic_splicing_status =
+                "Run the structural screen before projecting evidence".into();
+            return;
+        };
+        let screen_request = screen.request.clone();
+        let uniprot_projection_id = self
+            .cryptic_splicing_uniprot_projection_id
+            .trim()
+            .to_string();
+        if uniprot_projection_id.is_empty() {
+            self.cryptic_splicing_status = "Provide a UniProt projection id".into();
+            return;
+        }
+        self.start_cryptic_splicing_operation(
+            Operation::InspectCrypticSplicingProteinProjection {
+                request: CrypticSplicingProteinProjectionRequest {
+                    screen_request,
+                    uniprot_projection_id,
+                },
+                path: None,
+            },
+            "Projecting bound UniProt feature evidence",
+        );
+    }
+
+    pub(super) fn poll_cryptic_splicing_task(&mut self, ctx: &egui::Context) {
+        let Some(task) = self.cryptic_splicing_task.as_ref() else {
+            return;
+        };
+        let started = task.started;
+        let label = task.label.clone();
+        let receiver = Arc::clone(&task.receiver);
+        let outcome = match receiver.lock() {
+            Ok(receiver) => match receiver.try_recv() {
+                Ok(result) => Some(result),
+                Err(TryRecvError::Empty) => None,
+                Err(TryRecvError::Disconnected) => Some(Err(EngineError {
+                    code: ErrorCode::Internal,
+                    message: "Cryptic-splicing worker disconnected unexpectedly".to_string(),
+                    cause_chain: vec![],
+                })),
+            },
+            Err(_) => Some(Err(EngineError {
+                code: ErrorCode::Internal,
+                message: "Cryptic-splicing result channel lock is poisoned".to_string(),
+                cause_chain: vec![],
+            })),
+        };
+        let Some(outcome) = outcome else {
+            self.cryptic_splicing_status =
+                format!("{label}... {:.1}s elapsed", started.elapsed().as_secs_f32());
+            ctx.request_repaint_after(Duration::from_millis(100));
+            return;
+        };
+
+        self.cryptic_splicing_task = None;
+        match outcome {
+            Ok(CrypticSplicingTaskCompletion::Screen(report)) => {
+                self.cryptic_splicing_cache_key = Some(CrypticSplicingCacheKey {
+                    effective_input_sha256: report.effective_input_sha256.clone(),
+                });
+                self.cryptic_splicing_evidence_overlay = None;
+                self.cryptic_splicing_protein_projection = None;
+                self.cryptic_splicing_status = format!(
+                    "Screened {} candidate pair(s) in {:.1}s{}",
+                    report.candidates.len(),
+                    started.elapsed().as_secs_f32(),
+                    if report.budget.truncated && report.budget.ranking_complete {
+                        "; reported the complete model-ranked top set at the configured output budget"
+                    } else if report.budget.truncated {
+                        "; reported ranking is incomplete at the configured budget"
+                    } else {
+                        ""
+                    }
+                );
+                self.cryptic_splicing_report = Some(Arc::new(report));
+            }
+            Ok(CrypticSplicingTaskCompletion::EvidenceOverlay(report)) => {
+                self.cryptic_splicing_cache_key = Some(CrypticSplicingCacheKey {
+                    effective_input_sha256: report.screen_effective_input_sha256.clone(),
+                });
+                self.cryptic_splicing_report = Some(Arc::new(report.screen.clone()));
+                self.cryptic_splicing_status = format!(
+                    "Joined {} RNA report binding(s) in {:.1}s",
+                    report.rna_report_bindings.len(),
+                    started.elapsed().as_secs_f32()
+                );
+                self.cryptic_splicing_evidence_overlay = Some(Arc::new(report));
+            }
+            Ok(CrypticSplicingTaskCompletion::ProteinProjection(report)) => {
+                self.cryptic_splicing_cache_key = Some(CrypticSplicingCacheKey {
+                    effective_input_sha256: report.screen_effective_input_sha256.clone(),
+                });
+                self.cryptic_splicing_report = Some(Arc::new(report.screen.clone()));
+                self.cryptic_splicing_status = format!(
+                    "Projected UniProt feature evidence for {} candidate(s) in {:.1}s",
+                    report.candidates.len(),
+                    started.elapsed().as_secs_f32()
+                );
+                self.cryptic_splicing_protein_projection = Some(Arc::new(report));
+            }
+            Err(error) => {
+                self.cryptic_splicing_report = None;
+                self.cryptic_splicing_evidence_overlay = None;
+                self.cryptic_splicing_protein_projection = None;
+                self.cryptic_splicing_cache_key = None;
+                self.cryptic_splicing_status = format!(
+                    "Cryptic-splicing screen failed after {:.1}s: {}",
+                    started.elapsed().as_secs_f32(),
+                    error.message
+                );
+            }
+        }
+        ctx.request_repaint();
+    }
+
+    fn export_cryptic_splicing_json_dialog(&mut self) {
+        let Some(report) = self.cryptic_splicing_report.as_ref() else {
+            self.cryptic_splicing_status = "Run the structural screen before exporting".into();
+            return;
+        };
+        let default_name = format!(
+            "{}-cryptic-splicing-screen.json",
+            report.request.seq_id.replace(['/', '\\'], "_")
+        );
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .add_filter("JSON", &["json"])
+            .save_file()
+        else {
+            return;
+        };
+        self.start_cryptic_splicing_operation(
+            Operation::InspectCrypticSplicingScreen {
+                request: report.request.clone(),
+                path: Some(path.display().to_string()),
+            },
+            "Exporting cryptic-splicing JSON",
+        );
+    }
+
+    fn export_cryptic_splicing_svg(&mut self) {
+        let Some(report) = self.cryptic_splicing_report.as_ref() else {
+            self.cryptic_splicing_status = "Run the structural screen before exporting".into();
+            return;
+        };
+        let path = self.cryptic_splicing_svg_path.trim();
+        if path.is_empty() {
+            self.cryptic_splicing_status = "Provide an SVG output path".into();
+            return;
+        }
+        self.start_cryptic_splicing_operation(
+            Operation::RenderCrypticSplicingScreenSvg {
+                request: report.request.clone(),
+                path: path.to_string(),
+            },
+            "Rendering cryptic-splicing SVG",
+        );
+    }
+
+    fn cryptic_splicing_signal_label(status: CrypticSplicingSignalStatus) -> &'static str {
+        match status {
+            CrypticSplicingSignalStatus::Detected => "detected",
+            CrypticSplicingSignalStatus::NotDetected => "not detected",
+            CrypticSplicingSignalStatus::NotEvaluable => "not evaluable",
+        }
+    }
+
+    fn cryptic_splicing_model_label(status: CrypticSplicingModelStatus) -> &'static str {
+        match status {
+            CrypticSplicingModelStatus::Absent => "model absent",
+            CrypticSplicingModelStatus::Present => "model present",
+            CrypticSplicingModelStatus::Failed => "model failed",
+        }
+    }
+
+    fn cryptic_splicing_rna_evidence_label(
+        status: CrypticSplicingRnaEvidenceStatus,
+    ) -> &'static str {
+        match status {
+            CrypticSplicingRnaEvidenceStatus::ExactObservedJunction => "exact observed",
+            CrypticSplicingRnaEvidenceStatus::NearbyObservedJunction => "nearby observed",
+            CrypticSplicingRnaEvidenceStatus::NoRetainedJunctionSupport => "none retained",
+            CrypticSplicingRnaEvidenceStatus::NotAssessable => "not assessable",
+        }
+    }
+
+    fn cryptic_splicing_protein_projection_label(
+        status: CrypticSplicingProteinProjectionStatus,
+    ) -> &'static str {
+        match status {
+            CrypticSplicingProteinProjectionStatus::OverlapsProjectedFeature => "feature overlap",
+            CrypticSplicingProteinProjectionStatus::NoProjectedFeatureOverlap => "no overlap",
+            CrypticSplicingProteinProjectionStatus::NotAssessable => "not assessable",
+        }
+    }
+
+    fn cryptic_splicing_report_model_is_stale(&self) -> bool {
+        let Some(report) = self.cryptic_splicing_report.as_ref() else {
+            return false;
+        };
+        if report.request.model_policy != CrypticSplicingModelPolicy::UseActiveMaxent
+            || report.model.status != CrypticSplicingModelStatus::Present
+        {
+            return false;
+        }
+        let active = crate::maxent_splicing::active_model_status();
+        let active_fingerprint = active
+            .model
+            .as_ref()
+            .map(|model| model.snapshot().model_fingerprint_sha256.as_str());
+        report.model.resource_sha256.as_deref() != active_fingerprint
+    }
+
+    pub(super) fn render_cryptic_splicing_screen_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        suggested_span_1based: Option<(usize, usize)>,
+        id_namespace: &str,
+    ) {
+        ui.heading("Cryptic-splicing structural screen");
+        ui.label(
+            egui::RichText::new(
+                "Find bounded GT...AG sequence configurations that could merit experimental follow-up. Candidates are hypotheses, not observed splicing events.",
+            )
+            .color(egui::Color32::from_rgb(71, 85, 105)),
+        );
+        let active_maxent = crate::maxent_splicing::active_model_status();
+        let active_maxent_fingerprint = active_maxent
+            .model
+            .as_ref()
+            .map(|model| model.snapshot().model_fingerprint_sha256.clone());
+        let report_model_is_stale = self.cryptic_splicing_report_model_is_stale();
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("Use full sequence").clicked() {
+                self.cryptic_splicing_start_1based = "1".to_string();
+                self.cryptic_splicing_end_1based = self
+                    .dna
+                    .read()
+                    .map(|dna| dna.len().to_string())
+                    .unwrap_or_else(|_| "0".to_string());
+            }
+            if let Some((start, end)) = suggested_span_1based
+                && ui.button("Use splicing-group span").clicked()
+            {
+                self.cryptic_splicing_start_1based = start.to_string();
+                self.cryptic_splicing_end_1based = end.to_string();
+            }
+        });
+        egui::Grid::new(("cryptic_splicing_inputs", id_namespace))
+            .num_columns(4)
+            .spacing([10.0, 5.0])
+            .show(ui, |ui| {
+                ui.label("Scan span");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.cryptic_splicing_start_1based)
+                        .desired_width(80.0),
+                );
+                ui.label("through");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.cryptic_splicing_end_1based)
+                        .desired_width(80.0),
+                );
+                ui.end_row();
+
+                ui.label("Orientation");
+                ui.checkbox(&mut self.cryptic_splicing_reverse, "reverse complement");
+                ui.label("Coordinates");
+                ui.label("1-based inclusive");
+                ui.end_row();
+
+                ui.label("Pseudo-intron bp");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.cryptic_splicing_min_intron_bp)
+                        .desired_width(80.0),
+                );
+                ui.label("through");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.cryptic_splicing_max_intron_bp)
+                        .desired_width(80.0),
+                );
+                ui.end_row();
+
+                ui.label("Candidate budget");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.cryptic_splicing_max_candidates)
+                        .desired_width(80.0),
+                );
+                ui.label("CDS feature id");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.cryptic_splicing_cds_feature_id)
+                        .desired_width(80.0),
+                )
+                .on_hover_text("Optional zero-based feature index used for CDS consequences");
+                ui.end_row();
+
+                ui.label("Splice-site model");
+                ui.checkbox(
+                    &mut self.cryptic_splicing_use_maxent,
+                    "use active MaxEnt snapshot",
+                )
+                .on_hover_text(
+                    "Optional user-supplied model scores and ranks structural candidates; it does not establish observed splicing.",
+                );
+                ui.label("Resource");
+                match (
+                    active_maxent_fingerprint.as_deref(),
+                    active_maxent.error.as_deref(),
+                ) {
+                    (Some(fingerprint), _) => {
+                        ui.label(format!("ready ({fingerprint})"))
+                            .on_hover_text(&active_maxent.path);
+                    }
+                    (None, Some(error)) => {
+                        ui.colored_label(egui::Color32::from_rgb(180, 83, 9), "invalid")
+                            .on_hover_text(format!("{}\n{}", active_maxent.path, error));
+                    }
+                    (None, None) => {
+                        ui.label("not installed")
+                            .on_hover_text(&active_maxent.path);
+                    }
+                }
+                ui.end_row();
+
+                if self.cryptic_splicing_use_maxent {
+                    ui.label("Expected fingerprint");
+                    ui.add(
+                        egui::TextEdit::singleline(
+                            &mut self.cryptic_splicing_expected_model_fingerprint,
+                        )
+                        .desired_width(300.0)
+                        .hint_text("optional sha256 content lock"),
+                    );
+                    ui.label("Binding");
+                    ui.label("fail scores closed on mismatch");
+                    ui.end_row();
+                }
+
+                ui.label("Insert span (optional)");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.cryptic_splicing_insert_start_1based)
+                        .desired_width(80.0),
+                );
+                ui.label("through");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.cryptic_splicing_insert_end_1based)
+                        .desired_width(80.0),
+                );
+                ui.end_row();
+            });
+
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .add_enabled(
+                    self.cryptic_splicing_task.is_none(),
+                    egui::Button::new("Run structural screen"),
+                )
+                .clicked()
+            {
+                self.start_cryptic_splicing_screen();
+            }
+            if ui
+                .add_enabled(
+                    self.cryptic_splicing_report.is_some(),
+                    egui::Button::new("Copy report JSON"),
+                )
+                .clicked()
+                && let Some(report) = self.cryptic_splicing_report.as_ref()
+                && let Ok(json) = serde_json::to_string_pretty(report.as_ref())
+            {
+                ui.ctx().copy_text(json);
+                self.cryptic_splicing_status = "Copied report JSON".to_string();
+            }
+            if ui
+                .add_enabled(
+                    self.cryptic_splicing_report.is_some() && !report_model_is_stale,
+                    egui::Button::new("Save JSON..."),
+                )
+                .clicked()
+            {
+                self.export_cryptic_splicing_json_dialog();
+            }
+        });
+        egui::CollapsingHeader::new("Evidence overlays")
+            .default_open(false)
+            .show(ui, |ui| {
+                ui.label(
+                    "These joins remain separate evidence layers. They do not convert a structural candidate into an observed event.",
+                );
+                egui::Grid::new(("cryptic_splicing_evidence_inputs", id_namespace))
+                    .num_columns(4)
+                    .spacing([10.0, 5.0])
+                    .show(ui, |ui| {
+                        ui.label("RNA report ids");
+                        ui.add(
+                            egui::TextEdit::singleline(
+                                &mut self.cryptic_splicing_rna_report_ids,
+                            )
+                            .desired_width(300.0)
+                            .hint_text("comma-separated report ids"),
+                        );
+                        ui.label("Nearby bp");
+                        ui.add(
+                            egui::TextEdit::singleline(
+                                &mut self.cryptic_splicing_rna_nearby_tolerance_bp,
+                            )
+                            .desired_width(60.0),
+                        );
+                        ui.end_row();
+
+                        ui.label("UniProt projection id");
+                        ui.add(
+                            egui::TextEdit::singleline(
+                                &mut self.cryptic_splicing_uniprot_projection_id,
+                            )
+                            .desired_width(300.0),
+                        );
+                        ui.label("");
+                        ui.label("");
+                        ui.end_row();
+                    });
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .add_enabled(
+                            self.cryptic_splicing_task.is_none()
+                                && self.cryptic_splicing_report.is_some()
+                                && !report_model_is_stale,
+                            egui::Button::new("Join RNA evidence"),
+                        )
+                        .clicked()
+                    {
+                        self.start_cryptic_splicing_rna_overlay();
+                    }
+                    if ui
+                        .add_enabled(
+                            self.cryptic_splicing_task.is_none()
+                                && self.cryptic_splicing_report.is_some()
+                                && !report_model_is_stale,
+                            egui::Button::new("Project UniProt features"),
+                        )
+                        .clicked()
+                    {
+                        self.start_cryptic_splicing_protein_projection();
+                    }
+                });
+            });
+        ui.horizontal_wrapped(|ui| {
+            ui.label("SVG path");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.cryptic_splicing_svg_path)
+                    .desired_width(300.0),
+            );
+            if ui
+                .add_enabled(
+                    self.cryptic_splicing_report.is_some() && !report_model_is_stale,
+                    egui::Button::new("Render SVG"),
+                )
+                .clicked()
+            {
+                self.export_cryptic_splicing_svg();
+            }
+        });
+        if !self.cryptic_splicing_status.is_empty() {
+            ui.label(
+                egui::RichText::new(&self.cryptic_splicing_status)
+                    .monospace()
+                    .color(egui::Color32::from_rgb(51, 65, 85)),
+            );
+        }
+        ui.separator();
+
+        let Some(report) = self.cryptic_splicing_report.clone() else {
+            ui.label(
+                egui::RichText::new("No cryptic-splicing report is cached for this window.")
+                    .italics()
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            return;
+        };
+        ui.horizontal_wrapped(|ui| {
+            ui.strong(format!("{} candidate(s)", report.candidates.len()));
+            ui.label(format!(
+                "{} donor(s), {} acceptor(s), {} admissible pair(s)",
+                report.budget.donor_site_count,
+                report.budget.acceptor_site_count,
+                report.budget.admissible_pair_count
+            ));
+            let model_color = if report.model.status == CrypticSplicingModelStatus::Present {
+                egui::Color32::from_rgb(22, 101, 52)
+            } else {
+                egui::Color32::from_rgb(180, 83, 9)
+            };
+            ui.colored_label(
+                model_color,
+                Self::cryptic_splicing_model_label(report.model.status),
+            )
+            .on_hover_text(&report.model.note);
+            if report.budget.truncated {
+                ui.colored_label(egui::Color32::from_rgb(180, 83, 9), "truncated");
+            }
+        });
+        ui.small(format!(
+            "Evaluated {} / admissible {} pair(s); reported {}; ranking {}",
+            report.budget.evaluated_pair_count,
+            report.budget.admissible_pair_count,
+            report.budget.reported_pair_count,
+            if report.budget.ranking_complete {
+                "complete"
+            } else {
+                "incomplete"
+            }
+        ));
+        ui.small(format!(
+            "Request {} | effective input {} | source {}",
+            report.request_sha256, report.effective_input_sha256, report.source_digest
+        ));
+        if report.request.model_policy == CrypticSplicingModelPolicy::UseActiveMaxent
+            && report.model.status == CrypticSplicingModelStatus::Present
+            && report.model.resource_sha256.as_deref() != active_maxent_fingerprint.as_deref()
+        {
+            ui.colored_label(
+                egui::Color32::from_rgb(180, 83, 9),
+                "The active model changed after this report was computed; rerun before exporting or joining evidence.",
+            );
+        }
+        if let Some(overlay) = self.cryptic_splicing_evidence_overlay.as_ref() {
+            ui.small(format!(
+                "RNA overlay {} binds {} report(s) to screen {}",
+                overlay.report_id,
+                overlay.rna_report_bindings.len(),
+                overlay.screen_effective_input_sha256
+            ));
+        }
+        if let Some(projection) = self.cryptic_splicing_protein_projection.as_ref() {
+            ui.small(format!(
+                "UniProt projection {}: {}",
+                projection.uniprot_projection_id, projection.binding_note
+            ));
+        }
+        if !report.warnings.is_empty() {
+            egui::CollapsingHeader::new(format!("Warnings ({})", report.warnings.len()))
+                .default_open(true)
+                .show(ui, |ui| {
+                    for warning in &report.warnings {
+                        ui.label(format!("- {warning}"));
+                    }
+                });
+        }
+
+        let mut rna_status_by_candidate = HashMap::new();
+        if let Some(overlay) = self.cryptic_splicing_evidence_overlay.as_ref()
+            && overlay.screen_effective_input_sha256 == report.effective_input_sha256
+        {
+            for candidate in &overlay.candidates {
+                rna_status_by_candidate.insert(candidate.candidate_id.as_str(), candidate.status);
+            }
+        }
+        let mut protein_status_by_candidate = HashMap::new();
+        if let Some(projection) = self.cryptic_splicing_protein_projection.as_ref()
+            && projection.screen_effective_input_sha256 == report.effective_input_sha256
+        {
+            for candidate in &projection.candidates {
+                protein_status_by_candidate
+                    .insert(candidate.candidate_id.as_str(), candidate.status);
+            }
+        }
+
+        let row_height = 26.0;
+        let available_height = (ui.available_height() - 20.0).clamp(160.0, 420.0);
+        egui::ScrollArea::both()
+            .id_salt(("cryptic_splicing_candidates", id_namespace))
+            .max_height(available_height)
+            .auto_shrink([false, false])
+            .show_rows(ui, row_height, report.candidates.len() + 1, |ui, rows| {
+                egui::Grid::new(("cryptic_splicing_candidate_grid", id_namespace))
+                    .num_columns(10)
+                    .striped(true)
+                    .spacing([10.0, 4.0])
+                    .show(ui, |ui| {
+                        for row_index in rows {
+                            if row_index == 0 {
+                                ui.strong("candidate");
+                                ui.strong("donor");
+                                ui.strong("acceptor");
+                                ui.strong("removed bp");
+                                ui.strong("branchpoint");
+                                ui.strong("PPT");
+                                ui.strong("MaxEnt donor / acceptor");
+                                ui.strong("RNA evidence");
+                                ui.strong("protein feature");
+                                ui.strong("CDS consequence");
+                                ui.end_row();
+                                continue;
+                            }
+                            let Some(candidate) = report.candidates.get(row_index - 1) else {
+                                continue;
+                            };
+                            ui.label(&candidate.candidate_id);
+                            ui.label(candidate.donor_source_position_1based.to_string());
+                            ui.label(candidate.acceptor_source_position_1based.to_string());
+                            ui.label(candidate.pseudo_intron_length_bp.to_string());
+                            ui.label(Self::cryptic_splicing_signal_label(
+                                candidate.branchpoint.status,
+                            ));
+                            ui.label(Self::cryptic_splicing_signal_label(
+                                candidate.polypyrimidine_tract.status,
+                            ));
+                            ui.label(
+                                candidate
+                                    .donor_maxent_score
+                                    .zip(candidate.acceptor_maxent_score)
+                                    .map(|(donor, acceptor)| format!("{donor:.2} / {acceptor:.2}"))
+                                    .unwrap_or_else(|| {
+                                        Self::cryptic_splicing_model_label(candidate.model_status)
+                                            .to_string()
+                                    }),
+                            );
+                            ui.label(
+                                rna_status_by_candidate
+                                    .get(candidate.candidate_id.as_str())
+                                    .copied()
+                                    .map(Self::cryptic_splicing_rna_evidence_label)
+                                    .unwrap_or("not joined"),
+                            );
+                            ui.label(
+                                protein_status_by_candidate
+                                    .get(candidate.candidate_id.as_str())
+                                    .copied()
+                                    .map(Self::cryptic_splicing_protein_projection_label)
+                                    .unwrap_or("not projected"),
+                            );
+                            ui.label(
+                                candidate
+                                    .cds_consequence
+                                    .as_ref()
+                                    .map(|value| value.interpretation.as_str())
+                                    .unwrap_or("not requested"),
+                            );
+                            ui.end_row();
+                        }
+                    });
+            });
     }
 }
 
@@ -1474,6 +2527,13 @@ impl MainAreaDna {
     }
 
     pub(super) fn compute_primary_dotplot(&mut self) {
+        self.compute_primary_dotplot_with_inspection_context(None);
+    }
+
+    pub(super) fn compute_primary_dotplot_with_inspection_context(
+        &mut self,
+        inspection_context: Option<ConstructReasoningDotplotProvenanceContext>,
+    ) {
         let requires_reference = Self::dotplot_mode_requires_reference(self.dotplot_ui.mode);
         let overlay_enabled = self.dotplot_ui.overlay_enabled && requires_reference;
         let word_size = match Self::parse_positive_usize_text(
@@ -1715,6 +2775,29 @@ impl MainAreaDna {
         } else {
             self.dotplot_last_compute_status.clear();
         }
+        let inspection_provenance = inspection_context.as_ref().map(|context| {
+            construct_reasoning_dotplot_inspection_provenance(
+                &context.graph,
+                &context.action,
+                &context.snapshot_status,
+                &context.resolved_request,
+                DotplotInspectionRequestSnapshot {
+                    dotplot_id: store_as.clone(),
+                    seq_id: seq_id.clone(),
+                    reference_seq_id: reference_seq_id.clone(),
+                    span_start_0based,
+                    span_end_0based,
+                    reference_span_start_0based: reference_span_start_0based
+                        .unwrap_or(span_start_0based),
+                    reference_span_end_0based: reference_span_end_0based.unwrap_or(span_end_0based),
+                    mode: self.dotplot_ui.mode,
+                    word_size,
+                    step_bp,
+                    max_mismatches,
+                    tile_bp,
+                },
+            )
+        });
         self.apply_operation_with_feedback(Operation::ComputeDotplot {
             seq_id: seq_id.clone(),
             reference_seq_id: reference_seq_id.clone(),
@@ -1728,6 +2811,7 @@ impl MainAreaDna {
             max_mismatches,
             tile_bp,
             store_as: Some(store_as.clone()),
+            inspection_provenance: inspection_provenance.clone().map(Box::new),
         });
         self.invalidate_dotplot_cache();
         self.ensure_dotplot_cache_current();
@@ -1754,6 +2838,7 @@ impl MainAreaDna {
                 max_mismatches,
                 tile_bp,
                 store_as: Some(store_as),
+                inspection_provenance: inspection_provenance.map(Box::new),
             });
             self.invalidate_dotplot_cache();
             self.ensure_dotplot_cache_current();
@@ -4113,6 +5198,15 @@ impl MainAreaDna {
     }
 
     pub(super) fn render_dotplot_workspace_ui(&mut self, ui: &mut egui::Ui) {
+        crate::agent_help::render_agent_help_button(
+            ui,
+            format!(
+                "Dotplot workspace - {}",
+                self.seq_id.as_deref().unwrap_or("sequence")
+            ),
+            "window.dotplot_workspace",
+        );
+        ui.separator();
         let panel_width = ui.available_width().max(600.0);
         self.last_linear_map_width_px = panel_width;
         self.ensure_dotplot_cache_current();
@@ -5075,12 +6169,229 @@ impl MainAreaDna {
             });
     }
 
+    pub(super) fn invalidate_splicing_expert_presentation_cache(&mut self) {
+        self.cached_splicing_expert_presentations.clear();
+    }
+
+    fn build_splicing_expert_presentation(view: &SplicingExpertView) -> SplicingExpertPresentation {
+        let transcript_total = view.transcript_count.max(1);
+        let exons = view
+            .unique_exons
+            .iter()
+            .enumerate()
+            .map(|(index, exon)| {
+                let length_bp = Self::splicing_exon_length_bp(exon);
+                let length_mod3 = length_bp % 3;
+                let support_ratio =
+                    Self::support_ratio_percent(exon.support_transcript_count, transcript_total)
+                        as f32
+                        / 100.0;
+                let support_fraction =
+                    Self::format_support_fraction(exon.support_transcript_count, transcript_total);
+                SplicingExpertExonPresentation {
+                    coordinate_label: format!("{}..{}", exon.start_1based, exon.end_1based),
+                    transition_label: format!("E{}", index + 1),
+                    length_mod3,
+                    coordinate_tooltip: format!(
+                        "len={} bp, len%3={length_mod3} (heuristic frame cue)",
+                        length_bp
+                    ),
+                    transition_tooltip: format!(
+                        "{}..{} (len={} bp, len%3={length_mod3})",
+                        exon.start_1based, exon.end_1based, length_bp
+                    ),
+                    constitutive: exon.constitutive,
+                    support_ratio,
+                    support_label: if exon.constitutive {
+                        format!("{support_fraction} const")
+                    } else {
+                        support_fraction.clone()
+                    },
+                    support_tooltip: format!("Support {support_fraction}"),
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let layout = view.uniprot_presentation_layout();
+        let transcript_rows = layout
+            .matrix_display_rows()
+            .into_iter()
+            .map(|display_row| {
+                use gentle_protocol::splicing_presentation::SplicingMatrixDisplayRow;
+                match display_row {
+                    SplicingMatrixDisplayRow::Header(label) => {
+                        SplicingExpertTranscriptPresentationRow {
+                            label,
+                            exon_presence: Vec::new(),
+                            uniprot_tooltip: String::new(),
+                            is_header: true,
+                        }
+                    }
+                    SplicingMatrixDisplayRow::Transcript {
+                        lane_index,
+                        matrix_row_index,
+                    } => {
+                        let row = matrix_row_index.map(|index| &view.matrix_rows[index]);
+                        let lane = lane_index.map(|index| &view.transcripts[index]);
+                        let (id, transcript_id) = lane
+                            .map(|lane| (lane.transcript_feature_id, lane.transcript_id.as_str()))
+                            .or_else(|| {
+                                row.map(|row| {
+                                    (row.transcript_feature_id, row.transcript_id.as_str())
+                                })
+                            })
+                            .expect("display row retains a record");
+                        SplicingExpertTranscriptPresentationRow {
+                            label: format!("n-{id} {transcript_id}"),
+                            exon_presence: row
+                                .map(|row| row.exon_presence.clone())
+                                .unwrap_or_default(),
+                            uniprot_tooltip: row
+                                .filter(|_| lane.is_some())
+                                .map(|row| row.uniprot_reference.summary_lines().join("\n"))
+                                .unwrap_or_else(|| {
+                                    "UniProt status not evaluated: no unambiguous lane/matrix join"
+                                        .to_string()
+                                }),
+                            is_header: false,
+                        }
+                    }
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let mut transition_cells_by_from = (0..exons.len())
+            .map(|_| Vec::new())
+            .collect::<Vec<Vec<SplicingExpertTransitionPresentationCell>>>();
+        for transition in compute_supported_splicing_exon_transitions(view) {
+            let support_ratio =
+                Self::support_ratio_percent(transition.support_count, transcript_total) as f32
+                    / 100.0;
+            transition_cells_by_from[transition.from_exon_index].push(
+                SplicingExpertTransitionPresentationCell {
+                    to_exon_index: transition.to_exon_index,
+                    marker: transition.support_count.to_string(),
+                    support_count: transition.support_count,
+                    support_ratio,
+                    transcript_feature_ids: transition.transcript_feature_ids,
+                },
+            );
+        }
+        let transition_rows = exons
+            .iter()
+            .enumerate()
+            .map(|(from_idx, exon)| SplicingExpertTransitionPresentationRow {
+                label: exon.transition_label.clone(),
+                length_mod3: exon.length_mod3,
+                length_tooltip: exon.transition_tooltip.clone(),
+                cells: std::mem::take(&mut transition_cells_by_from[from_idx]),
+            })
+            .collect::<Vec<_>>();
+
+        let mut junctions = view.junctions.iter().collect::<Vec<_>>();
+        junctions.sort_by(|left, right| {
+            right
+                .support_transcript_count
+                .cmp(&left.support_transcript_count)
+                .then_with(|| left.donor_1based.cmp(&right.donor_1based))
+                .then_with(|| left.acceptor_1based.cmp(&right.acceptor_1based))
+        });
+        let junction_rows = junctions
+            .into_iter()
+            .map(|junction| {
+                let span_bp = junction
+                    .acceptor_1based
+                    .max(junction.donor_1based)
+                    .saturating_sub(junction.acceptor_1based.min(junction.donor_1based));
+                let mut transcript_labels = junction
+                    .transcript_feature_ids
+                    .iter()
+                    .map(|feature_id| format!("n-{feature_id}"))
+                    .collect::<Vec<_>>();
+                if transcript_labels.len() > 10 {
+                    let hidden = transcript_labels.len() - 10;
+                    transcript_labels.truncate(10);
+                    transcript_labels.push(format!("+{hidden} more"));
+                }
+                SplicingExpertJunctionPresentationRow {
+                    donor_label: junction.donor_1based.to_string(),
+                    acceptor_label: junction.acceptor_1based.to_string(),
+                    span_label: span_bp.to_string(),
+                    support_label: Self::format_support_fraction(
+                        junction.support_transcript_count,
+                        transcript_total,
+                    ),
+                    transcript_labels: transcript_labels.join(", "),
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let boundary_rows =
+            gentle_protocol::splicing_presentation::boundary_presentation_rows(view);
+        let boundary_motif_rows = Self::splicing_boundary_motif_rows(view);
+        let mut boundary_motif_class_counts = std::collections::BTreeMap::new();
+        for row in &boundary_motif_rows {
+            *boundary_motif_class_counts
+                .entry(row.motif_class.clone())
+                .or_default() += 1;
+        }
+
+        SplicingExpertPresentation {
+            layout,
+            exons,
+            transcript_rows,
+            transition_rows,
+            junction_rows,
+            boundary_rows,
+            boundary_motif_rows,
+            boundary_motif_class_counts,
+        }
+    }
+
+    pub(super) fn splicing_expert_presentation_for_view(
+        &mut self,
+        view: &SplicingExpertView,
+    ) -> Arc<SplicingExpertPresentation> {
+        let key = SplicingExpertPresentationKey::from_view(view);
+        if let Some(cached) = self
+            .cached_splicing_expert_presentations
+            .iter()
+            .find(|cached| cached.key == key)
+        {
+            self.splicing_expert_presentation_cache_hits = self
+                .splicing_expert_presentation_cache_hits
+                .saturating_add(1);
+            return cached.model.clone();
+        }
+
+        self.splicing_expert_presentation_cache_misses = self
+            .splicing_expert_presentation_cache_misses
+            .saturating_add(1);
+        let model = Arc::new(Self::build_splicing_expert_presentation(view));
+        if self.cached_splicing_expert_presentations.len()
+            >= SPLICING_EXPERT_PRESENTATION_CACHE_CAPACITY
+        {
+            self.cached_splicing_expert_presentations.remove(0);
+        }
+        self.cached_splicing_expert_presentations
+            .push(CachedSplicingExpertPresentation {
+                key,
+                model: model.clone(),
+            });
+        model
+    }
+
+    fn splicing_expert_virtual_table_height(row_count: usize, row_height: f32) -> f32 {
+        ((row_count.max(1) as f32 * row_height) + 2.0).min(360.0)
+    }
+
     pub(super) fn render_splicing_expert_view_ui(
         &mut self,
         ui: &mut egui::Ui,
         view: &SplicingExpertView,
         id_namespace: &str,
     ) {
+        let presentation = self.splicing_expert_presentation_for_view(view);
         ui.push_id(
             (
                 "splicing_expert_view",
@@ -5104,6 +6415,12 @@ impl MainAreaDna {
             .size(self.feature_details_font_size()),
         );
         ui.add_space(2.0);
+        for diagnostic in &presentation.layout.diagnostics {
+            ui.small(diagnostic);
+        }
+        if presentation.layout.lanes.iter().any(|lane| lane.badge.is_some()) {
+            ui.small(gentle_protocol::splicing_presentation::REFERENCE_BADGE_LEGEND);
+        }
         let _ =
             self.render_splicing_lane_canvas_ui(
                 ui,
@@ -5141,11 +6458,7 @@ impl MainAreaDna {
         });
         self.render_splicing_array_probe_geometry_section(ui, view, id_namespace);
         if !view.boundaries.is_empty() {
-            let motif_rows = Self::splicing_boundary_motif_rows(view);
-            let mut motif_class_counts = std::collections::BTreeMap::<String, usize>::new();
-            for row in &motif_rows {
-                *motif_class_counts.entry(row.motif_class.clone()).or_default() += 1;
-            }
+            let motif_rows = &presentation.boundary_motif_rows;
             ui.separator();
             ui.label(
                 egui::RichText::new("Splice-site motifs")
@@ -5160,7 +6473,7 @@ impl MainAreaDna {
                     .size(9.0)
                     .color(egui::Color32::from_rgb(71, 85, 105)),
                 );
-                for (class, count) in motif_class_counts {
+                for (class, count) in &presentation.boundary_motif_class_counts {
                     let color = Self::splicing_boundary_motif_class_color(class.as_str());
                     ui.label(
                         egui::RichText::new(format!(
@@ -5173,6 +6486,12 @@ impl MainAreaDna {
                     );
                 }
             });
+            for row in &presentation.boundary_rows {
+                ui.label(egui::RichText::new(row.label.as_str())
+                    .monospace().size(9.0).color(if row.exceptional { egui::Color32::from_rgb(190, 18, 60) } else { egui::Color32::from_gray(60) }))
+                    .on_hover_text(row.hover_text.as_str());
+            }
+            ui.collapsing("Per-transcript boundary details (all source records)", |ui| {
             egui::Grid::new("splicing_boundary_motif_grid")
                 .striped(true)
                 .show(ui, |ui| {
@@ -5183,7 +6502,7 @@ impl MainAreaDna {
                     ui.label(egui::RichText::new("class").monospace().strong());
                     ui.label(egui::RichText::new("note").strong());
                     ui.end_row();
-                    for row in &motif_rows {
+                    for row in motif_rows {
                         let class_color =
                             Self::splicing_boundary_motif_class_color(row.motif_class.as_str());
                         ui.label(
@@ -5233,6 +6552,7 @@ impl MainAreaDna {
                         ui.end_row();
                     }
                 });
+            });
         }
         if !view.intron_signals.is_empty() {
             let signal_rows = Self::splicing_intron_signal_rows(view);
@@ -5495,9 +6815,9 @@ impl MainAreaDna {
             self.splicing_expert_selected_intron_signal_key = selected_signal_key.clone();
         }
 
-        if !view.matrix_rows.is_empty() && !view.unique_exons.is_empty() {
-            let row_count = view.matrix_rows.len();
-            let exon_count = view.unique_exons.len();
+        if !presentation.transcript_rows.is_empty() && !presentation.exons.is_empty() {
+            let row_count = presentation.transcript_rows.len();
+            let exon_count = presentation.exons.len();
             let matrix_cell_count = row_count.saturating_mul(exon_count);
             let matrix_heavy = Self::splicing_matrix_should_default_collapsed(row_count, exon_count);
             ui.separator();
@@ -5526,141 +6846,158 @@ impl MainAreaDna {
             ))
             .default_open(!matrix_heavy)
             .show(ui, |ui| {
-                let transcript_total = view.transcript_count.max(1);
+                let row_height = ui.spacing().interact_size.y.max(20.0);
+                let body_row_count = presentation.transcript_rows.len().saturating_add(2);
+                let table_height =
+                    Self::splicing_expert_virtual_table_height(body_row_count, row_height);
+                let table_width = 180.0 + presentation.exons.len() as f32 * 96.0;
                 egui::ScrollArea::horizontal().show(ui, |ui| {
                     scroll_input_policy::apply_scrollarea_keyboard_navigation(
                         ui,
                         scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                     );
-                    egui::Grid::new("splicing_expert_matrix")
+                    ui.set_min_width(table_width);
+                    egui_extras::TableBuilder::new(ui)
+                        .id_salt((
+                            "splicing_expert_matrix",
+                            id_namespace,
+                            view.seq_id.as_str(),
+                            view.target_feature_id,
+                        ))
                         .striped(true)
-                        .show(ui, |ui| {
-                            ui.label(egui::RichText::new("transcript").monospace().strong());
-                            for exon in &view.unique_exons {
-                                let mod3 = Self::splicing_exon_length_mod3(exon);
-                                let (bg, fg) = Self::splicing_exon_mod3_colors(mod3);
+                        .max_scroll_height(table_height)
+                        .min_scrolled_height(0.0)
+                        .auto_shrink([true, true])
+                        .column(egui_extras::Column::initial(180.0))
+                        .columns(egui_extras::Column::initial(96.0), exon_count)
+                        .header(row_height, |mut header| {
+                            header.col(|ui| {
                                 ui.label(
-                                    egui::RichText::new(format!(
-                                        "{}..{}",
-                                        exon.start_1based, exon.end_1based
-                                    ))
-                                    .monospace()
-                                    .size(9.0)
-                                    .background_color(bg)
-                                    .color(fg),
-                                )
-                                .on_hover_text(format!(
-                                    "len={} bp, len%3={mod3} (heuristic frame cue)",
-                                    Self::splicing_exon_length_bp(exon)
-                                ));
-                            }
-                            ui.end_row();
-                            ui.label(egui::RichText::new("len%3").monospace().size(8.5).strong())
-                                .on_hover_text(
-                                    "Genomic exon length modulo 3 (heuristic reading-frame cue)",
+                                    egui::RichText::new("transcript").monospace().strong(),
                                 );
-                            for exon in &view.unique_exons {
-                                let mod3 = Self::splicing_exon_length_mod3(exon);
-                                let (bg, fg) = Self::splicing_exon_mod3_colors(mod3);
-                                ui.label(
-                                    egui::RichText::new(format!("{mod3}"))
-                                        .monospace()
-                                        .size(8.5)
-                                        .background_color(bg)
-                                        .color(fg),
-                                )
-                                .on_hover_text(format!(
-                                    "len={} bp, len%3={mod3} (heuristic frame cue)",
-                                    Self::splicing_exon_length_bp(exon)
-                                ));
-                            }
-                            ui.end_row();
-                            ui.label(
-                                egui::RichText::new("support")
-                                    .monospace()
-                                    .size(9.0)
-                                    .strong(),
-                            );
-                            for exon in &view.unique_exons {
-                                let support_ratio = Self::support_ratio_percent(
-                                    exon.support_transcript_count,
-                                    transcript_total,
-                                ) as f32
-                                    / 100.0;
-                                let support_label = Self::format_support_fraction(
-                                    exon.support_transcript_count,
-                                    transcript_total,
-                                );
-                                let label = if exon.constitutive {
-                                    format!("{support_label} const")
-                                } else {
-                                    support_label
-                                };
-                                ui.label(egui::RichText::new(label).monospace().size(8.5).color(
-                                    if exon.constitutive {
-                                        let rgb = Self::mix_rgb(
-                                            [59, 130, 246],
-                                            [30, 64, 175],
-                                            support_ratio,
-                                        );
-                                        egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2])
-                                    } else {
-                                        let rgb = Self::mix_rgb(
-                                            [107, 114, 128],
-                                            [30, 64, 175],
-                                            support_ratio,
-                                        );
-                                        egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2])
-                                    },
-                                ));
-                            }
-                            ui.end_row();
-                            for row in &view.matrix_rows {
-                                ui.label(
-                                    egui::RichText::new(format!(
-                                        "n-{} {}",
-                                        row.transcript_feature_id, row.transcript_id
-                                    ))
-                                    .monospace()
-                                    .size(9.0),
-                                );
-                                for (col_idx, present) in row.exon_presence.iter().enumerate() {
-                                    let support_count = view
-                                        .unique_exons
-                                        .get(col_idx)
-                                        .map(|exon| exon.support_transcript_count)
-                                        .unwrap_or(0);
-                                    let support_ratio =
-                                        Self::support_ratio_percent(support_count, transcript_total)
-                                            as f32
-                                            / 100.0;
+                            });
+                            for exon in &presentation.exons {
+                                header.col(|ui| {
                                     let (bg, fg) =
-                                        Self::splicing_matrix_cell_colors(*present, support_ratio);
-                                    let marker = if *present { "X" } else { "·" };
+                                        Self::splicing_exon_mod3_colors(exon.length_mod3);
                                     ui.label(
-                                        egui::RichText::new(marker)
+                                        egui::RichText::new(exon.coordinate_label.as_str())
                                             .monospace()
                                             .size(9.0)
-                                            .color(fg)
-                                            .background_color(bg),
+                                            .background_color(bg)
+                                            .color(fg),
                                     )
-                                    .on_hover_text(format!(
-                                        "Support {}",
-                                        Self::format_support_fraction(
-                                            support_count,
-                                            transcript_total
-                                        )
-                                    ));
-                                }
-                                ui.end_row();
+                                    .on_hover_text(exon.coordinate_tooltip.as_str());
+                                });
                             }
+                        })
+                        .body(|body| {
+                            body.rows(row_height, body_row_count, |mut table_row| {
+                                let row_index = table_row.index();
+                                if row_index == 0 {
+                                    table_row.col(|ui| {
+                                        ui.label(
+                                            egui::RichText::new("len%3")
+                                                .monospace()
+                                                .size(8.5)
+                                                .strong(),
+                                        )
+                                        .on_hover_text(
+                                            "Genomic exon length modulo 3 (heuristic reading-frame cue)",
+                                        );
+                                    });
+                                    for exon in &presentation.exons {
+                                        table_row.col(|ui| {
+                                            let (bg, fg) =
+                                                Self::splicing_exon_mod3_colors(exon.length_mod3);
+                                            ui.label(
+                                                egui::RichText::new(exon.length_mod3.to_string())
+                                                    .monospace()
+                                                    .size(8.5)
+                                                    .background_color(bg)
+                                                    .color(fg),
+                                            )
+                                            .on_hover_text(exon.coordinate_tooltip.as_str());
+                                        });
+                                    }
+                                } else if row_index == 1 {
+                                    table_row.col(|ui| {
+                                        ui.label(
+                                            egui::RichText::new("support")
+                                                .monospace()
+                                                .size(9.0)
+                                                .strong(),
+                                        );
+                                    });
+                                    for exon in &presentation.exons {
+                                        table_row.col(|ui| {
+                                            let rgb = if exon.constitutive {
+                                                Self::mix_rgb(
+                                                    [59, 130, 246],
+                                                    [30, 64, 175],
+                                                    exon.support_ratio,
+                                                )
+                                            } else {
+                                                Self::mix_rgb(
+                                                    [107, 114, 128],
+                                                    [30, 64, 175],
+                                                    exon.support_ratio,
+                                                )
+                                            };
+                                            ui.label(
+                                                egui::RichText::new(exon.support_label.as_str())
+                                                    .monospace()
+                                                    .size(8.5)
+                                                    .color(egui::Color32::from_rgb(
+                                                        rgb[0], rgb[1], rgb[2],
+                                                    )),
+                                            );
+                                        });
+                                    }
+                                } else {
+                                    let row = &presentation.transcript_rows[row_index - 2];
+                                    table_row.col(|ui| {
+                                        let label = egui::RichText::new(row.label.as_str())
+                                            .monospace().size(9.0);
+                                        ui.label(if row.is_header { label.strong() } else { label })
+                                            .on_hover_text(row.uniprot_tooltip.as_str());
+                                    });
+                                    for (column_index, exon) in
+                                        presentation.exons.iter().enumerate()
+                                    {
+                                        let present = row
+                                            .exon_presence
+                                            .get(column_index)
+                                            .copied();
+                                        table_row.col(|ui| {
+                                            if row.is_header { return; }
+                                            let Some(present) = present else {
+                                                ui.label("n/a").on_hover_text("Saved matrix cell not evaluated; not an absent exon");
+                                                return;
+                                            };
+                                            let (bg, fg) = Self::splicing_matrix_cell_colors(
+                                                present,
+                                                exon.support_ratio,
+                                            );
+                                            ui.label(
+                                                egui::RichText::new(if present { "X" } else { "·" })
+                                                    .monospace()
+                                                    .size(9.0)
+                                                    .color(fg)
+                                                    .background_color(bg),
+                                            )
+                                            .on_hover_text(exon.support_tooltip.as_str());
+                                        });
+                                    }
+                                }
+                            });
                         });
                 });
             });
         }
 
-        if view.unique_exons.len() >= 2 {
-            let exon_count = view.unique_exons.len();
+        if presentation.exons.len() >= 2 {
+            let exon_count = presentation.exons.len();
             let transition_cell_count = exon_count.saturating_mul(exon_count);
             let transition_heavy = Self::splicing_transition_should_default_collapsed(exon_count);
             ui.separator();
@@ -5689,8 +7026,6 @@ impl MainAreaDna {
             ))
             .default_open(!transition_heavy)
             .show(ui, |ui| {
-                let transitions = compute_splicing_exon_transition_matrix(view);
-                let transcript_total = view.transcript_count.max(1);
                 ui.label(
                     egui::RichText::new(
                         "Cell color encodes transition support frequency; exon header color encodes exon genomic length %3 (heuristic frame cue).",
@@ -5703,188 +7038,206 @@ impl MainAreaDna {
                         ui,
                         scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                     );
-                    egui::Grid::new("splicing_exon_transition_grid")
+                    let row_height = ui.spacing().interact_size.y.max(20.0);
+                    let table_height = Self::splicing_expert_virtual_table_height(
+                        presentation.transition_rows.len(),
+                        row_height,
+                    );
+                    ui.set_min_width(72.0 + presentation.exons.len() as f32 * 48.0);
+                    egui_extras::TableBuilder::new(ui)
+                        .id_salt((
+                            "splicing_exon_transition_grid",
+                            id_namespace,
+                            view.seq_id.as_str(),
+                            view.target_feature_id,
+                        ))
                         .striped(true)
-                        .show(ui, |ui| {
-                            ui.label(
-                                egui::RichText::new("from \\ to")
-                                    .monospace()
-                                    .size(9.0)
-                                    .strong(),
-                            );
-                            for (to_idx, exon) in view.unique_exons.iter().enumerate() {
-                                let mod3 = Self::splicing_exon_length_mod3(exon);
-                                let (bg, fg) = Self::splicing_exon_mod3_colors(mod3);
+                        .max_scroll_height(table_height)
+                        .min_scrolled_height(0.0)
+                        .auto_shrink([true, true])
+                        .column(egui_extras::Column::initial(72.0))
+                        .columns(egui_extras::Column::initial(48.0), exon_count)
+                        .header(row_height, |mut header| {
+                            header.col(|ui| {
                                 ui.label(
-                                    egui::RichText::new(format!("E{}", to_idx + 1))
+                                    egui::RichText::new("from \\ to")
                                         .monospace()
                                         .size(9.0)
-                                        .background_color(bg)
-                                        .color(fg),
-                                )
-                                .on_hover_text(format!(
-                                    "{}..{} (len={} bp, len%3={mod3})",
-                                    exon.start_1based,
-                                    exon.end_1based,
-                                    Self::splicing_exon_length_bp(exon),
-                                ));
-                            }
-                            ui.end_row();
-                            for (from_idx, from_exon) in view.unique_exons.iter().enumerate() {
-                                let mod3 = Self::splicing_exon_length_mod3(from_exon);
-                                let (bg, fg) = Self::splicing_exon_mod3_colors(mod3);
-                                ui.label(
-                                    egui::RichText::new(format!("E{}", from_idx + 1))
-                                        .monospace()
-                                        .size(9.0)
-                                        .background_color(bg)
-                                        .color(fg),
-                                )
-                                .on_hover_text(format!(
-                                    "{}..{} (len={} bp, len%3={mod3})",
-                                    from_exon.start_1based,
-                                    from_exon.end_1based,
-                                    Self::splicing_exon_length_bp(from_exon),
-                                ));
-                                for to_idx in 0..view.unique_exons.len() {
-                                    let support_count = transitions
-                                        .counts
-                                        .get(from_idx)
-                                        .and_then(|row| row.get(to_idx))
-                                        .copied()
-                                        .unwrap_or(0);
-                                    let support_ratio =
-                                        Self::support_ratio_percent(support_count, transcript_total)
-                                            as f32
-                                            / 100.0;
+                                        .strong(),
+                                );
+                            });
+                            for exon in &presentation.exons {
+                                header.col(|ui| {
                                     let (bg, fg) =
-                                        Self::splicing_transition_cell_colors(support_ratio);
-                                    let marker = if support_count > 0 {
-                                        support_count.to_string()
-                                    } else {
-                                        "·".to_string()
-                                    };
-                                    let participants = transitions
-                                        .transcript_feature_ids
-                                        .get(from_idx)
-                                        .and_then(|row| row.get(to_idx))
-                                        .cloned()
-                                        .unwrap_or_default();
-                                    let mut labels = participants
-                                        .iter()
-                                        .map(|feature_id| format!("n-{feature_id}"))
-                                        .collect::<Vec<_>>();
-                                    if labels.len() > 12 {
-                                        let hidden = labels.len() - 12;
-                                        labels.truncate(12);
-                                        labels.push(format!("+{hidden} more"));
-                                    }
+                                        Self::splicing_exon_mod3_colors(exon.length_mod3);
                                     ui.label(
-                                        egui::RichText::new(marker)
+                                        egui::RichText::new(exon.transition_label.as_str())
                                             .monospace()
                                             .size(9.0)
                                             .background_color(bg)
                                             .color(fg),
                                     )
-                                    .on_hover_text(format!(
-                                        "E{} -> E{} support {}{}",
-                                        from_idx + 1,
-                                        to_idx + 1,
-                                        Self::format_support_fraction(
-                                            support_count,
-                                            transcript_total
-                                        ),
-                                        if labels.is_empty() {
-                                            "".to_string()
-                                        } else {
-                                            format!("\nTranscripts: {}", labels.join(", "))
-                                        }
-                                    ));
-                                }
-                                ui.end_row();
+                                    .on_hover_text(exon.transition_tooltip.as_str());
+                                });
                             }
+                        })
+                        .body(|body| {
+                            body.rows(
+                                row_height,
+                                presentation.transition_rows.len(),
+                                |mut table_row| {
+                                    let row_index = table_row.index();
+                                    let row = &presentation.transition_rows[row_index];
+                                    table_row.col(|ui| {
+                                        let (bg, fg) = Self::splicing_exon_mod3_colors(
+                                            row.length_mod3,
+                                        );
+                                        ui.label(
+                                            egui::RichText::new(row.label.as_str())
+                                                .monospace()
+                                                .size(9.0)
+                                                .background_color(bg)
+                                                .color(fg),
+                                        )
+                                        .on_hover_text(row.length_tooltip.as_str());
+                                    });
+                                    let mut supported_cell_index = 0usize;
+                                    for to_exon_index in 0..exon_count {
+                                        let cell = row
+                                            .cells
+                                            .get(supported_cell_index)
+                                            .filter(|cell| {
+                                                cell.to_exon_index == to_exon_index
+                                            });
+                                        if cell.is_some() {
+                                            supported_cell_index += 1;
+                                        }
+                                        table_row.col(|ui| {
+                                            let (bg, fg) =
+                                                Self::splicing_transition_cell_colors(
+                                                    cell.map_or(0.0, |cell| {
+                                                        cell.support_ratio
+                                                    }),
+                                                );
+                                            let response = ui.label(
+                                                egui::RichText::new(
+                                                    cell.map_or("·", |cell| {
+                                                        cell.marker.as_str()
+                                                    }),
+                                                )
+                                                    .monospace()
+                                                    .size(9.0)
+                                                    .background_color(bg)
+                                                    .color(fg),
+                                            );
+                                            response.on_hover_ui(|ui| {
+                                                let support_count =
+                                                    cell.map_or(0, |cell| cell.support_count);
+                                                ui.label(format!(
+                                                    "E{} -> E{} support {}",
+                                                    row_index + 1,
+                                                    to_exon_index + 1,
+                                                    Self::format_support_fraction(
+                                                        support_count,
+                                                        view.transcript_count.max(1),
+                                                    )
+                                                ));
+                                                let Some(cell) = cell else {
+                                                    return;
+                                                };
+                                                if cell.transcript_feature_ids.is_empty() {
+                                                    return;
+                                                }
+                                                let mut labels = cell
+                                                    .transcript_feature_ids
+                                                    .iter()
+                                                    .take(12)
+                                                    .map(|feature_id| {
+                                                        format!("n-{feature_id}")
+                                                    })
+                                                    .collect::<Vec<_>>();
+                                                if cell.transcript_feature_ids.len() > 12 {
+                                                    labels.push(format!(
+                                                        "+{} more",
+                                                        cell.transcript_feature_ids.len() - 12
+                                                    ));
+                                                }
+                                                ui.label(format!(
+                                                    "Transcripts: {}",
+                                                    labels.join(", ")
+                                                ));
+                                            });
+                                        });
+                                    }
+                                },
+                            );
                         });
                 });
             });
         }
 
-        if !view.junctions.is_empty() {
+        if !presentation.junction_rows.is_empty() {
             ui.separator();
             ui.label(
                 egui::RichText::new("Junction transition support")
                     .monospace()
                     .size(self.feature_details_font_size()),
             );
-            let transcript_total = view.transcript_count.max(1);
-            let mut junctions = view.junctions.clone();
-            junctions.sort_by(|left, right| {
-                right
-                    .support_transcript_count
-                    .cmp(&left.support_transcript_count)
-                    .then_with(|| left.donor_1based.cmp(&right.donor_1based))
-                    .then_with(|| left.acceptor_1based.cmp(&right.acceptor_1based))
-            });
             egui::ScrollArea::horizontal().show(ui, |ui| {
                 scroll_input_policy::apply_scrollarea_keyboard_navigation(
                     ui,
                     scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                 );
-                egui::Grid::new("splicing_junction_support_grid")
+                let row_height = ui.spacing().interact_size.y.max(20.0);
+                let table_height = Self::splicing_expert_virtual_table_height(
+                    presentation.junction_rows.len(),
+                    row_height,
+                );
+                ui.set_min_width(560.0);
+                egui_extras::TableBuilder::new(ui)
+                    .id_salt((
+                        "splicing_junction_support_grid",
+                        id_namespace,
+                        view.seq_id.as_str(),
+                        view.target_feature_id,
+                    ))
                     .striped(true)
-                    .show(ui, |ui| {
-                        ui.label(egui::RichText::new("donor").monospace().strong());
-                        ui.label(egui::RichText::new("acceptor").monospace().strong());
-                        ui.label(egui::RichText::new("span").monospace().strong());
-                        ui.label(egui::RichText::new("support").monospace().strong());
-                        ui.label(egui::RichText::new("transcripts").monospace().strong());
-                        ui.end_row();
-                        for junction in &junctions {
-                            ui.label(
-                                egui::RichText::new(junction.donor_1based.to_string())
-                                    .monospace()
-                                    .size(9.0),
-                            );
-                            ui.label(
-                                egui::RichText::new(junction.acceptor_1based.to_string())
-                                    .monospace()
-                                    .size(9.0),
-                            );
-                            let span_bp = junction
-                                .acceptor_1based
-                                .max(junction.donor_1based)
-                                .saturating_sub(
-                                    junction.acceptor_1based.min(junction.donor_1based),
-                                );
-                            ui.label(
-                                egui::RichText::new(span_bp.to_string())
-                                    .monospace()
-                                    .size(9.0),
-                            );
-                            ui.label(
-                                egui::RichText::new(Self::format_support_fraction(
-                                    junction.support_transcript_count,
-                                    transcript_total,
-                                ))
-                                .monospace()
-                                .size(9.0),
-                            );
-                            let mut transcript_labels = junction
-                                .transcript_feature_ids
-                                .iter()
-                                .map(|feature_id| format!("n-{feature_id}"))
-                                .collect::<Vec<_>>();
-                            if transcript_labels.len() > 10 {
-                                let hidden = transcript_labels.len() - 10;
-                                transcript_labels.truncate(10);
-                                transcript_labels.push(format!("+{hidden} more"));
-                            }
-                            ui.label(
-                                egui::RichText::new(transcript_labels.join(", "))
-                                    .monospace()
-                                    .size(9.0),
-                            );
-                            ui.end_row();
+                    .max_scroll_height(table_height)
+                    .min_scrolled_height(0.0)
+                    .auto_shrink([true, true])
+                    .column(egui_extras::Column::initial(80.0))
+                    .column(egui_extras::Column::initial(80.0))
+                    .column(egui_extras::Column::initial(72.0))
+                    .column(egui_extras::Column::initial(140.0))
+                    .column(egui_extras::Column::initial(188.0))
+                    .header(row_height, |mut header| {
+                        for label in ["donor", "acceptor", "span", "support", "transcripts"] {
+                            header.col(|ui| {
+                                ui.label(egui::RichText::new(label).monospace().strong());
+                            });
                         }
+                    })
+                    .body(|body| {
+                        body.rows(
+                            row_height,
+                            presentation.junction_rows.len(),
+                            |mut table_row| {
+                                let row = &presentation.junction_rows[table_row.index()];
+                                for value in [
+                                    row.donor_label.as_str(),
+                                    row.acceptor_label.as_str(),
+                                    row.span_label.as_str(),
+                                    row.support_label.as_str(),
+                                    row.transcript_labels.as_str(),
+                                ] {
+                                    table_row.col(|ui| {
+                                        ui.label(
+                                            egui::RichText::new(value).monospace().size(9.0),
+                                        );
+                                    });
+                                }
+                            },
+                        );
                     });
             });
         }
@@ -5958,10 +7311,117 @@ impl MainAreaDna {
                 report.array_feature_count,
                 report.level
             ));
+            ui.small(Self::array_probe_geometry_summary_text(&rows));
             if let Some(gene) = report.gene_label.as_deref() {
                 ui.small(format!("gene {gene}"));
             }
         });
+        let junction_rows = rows
+            .iter()
+            .filter(|row| !row.junction_labels.is_empty())
+            .collect::<Vec<_>>();
+        if !junction_rows.is_empty() {
+            ui.add_space(3.0);
+            ui.label(
+                egui::RichText::new("Junction-targeting array probes")
+                    .strong()
+                    .size(self.feature_details_font_size()),
+            );
+            ui.small(
+                egui::RichText::new(
+                    "These rows span annotated exon-exon boundaries in the probe-region report. Treat them as array design/alignment evidence, not as observed splice-junction reads.",
+                )
+                .color(egui::Color32::from_rgb(71, 85, 105)),
+            );
+            egui::Grid::new((
+                "splicing_array_probe_geometry_junction_grid",
+                id_namespace,
+                view.seq_id.as_str(),
+                view.target_feature_id,
+            ))
+            .striped(true)
+            .show(ui, |ui| {
+                ui.label(egui::RichText::new("transcript").monospace().strong());
+                ui.label(egui::RichText::new("probe").monospace().strong());
+                ui.label(egui::RichText::new("parent").monospace().strong());
+                ui.label(egui::RichText::new("junction").strong());
+                ui.label(egui::RichText::new("logFC").strong());
+                ui.label(egui::RichText::new("status").strong());
+                ui.end_row();
+                for row in junction_rows.iter().take(12) {
+                    ui.label(
+                        egui::RichText::new(row.transcript_id.as_str())
+                            .monospace()
+                            .size(9.0),
+                    )
+                    .on_hover_text(row.tooltip.as_str());
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "{} {}",
+                            row.feature_id,
+                            if row.intensity_source == "probe_level_input" {
+                                "PM"
+                            } else {
+                                "summary"
+                            }
+                        ))
+                        .monospace()
+                        .size(9.0),
+                    )
+                    .on_hover_text(row.tooltip.as_str());
+                    ui.label(
+                        egui::RichText::new(row.parent_feature_id.as_str())
+                            .monospace()
+                            .size(9.0)
+                            .color(if row.parent_mixes_transcript_features {
+                                egui::Color32::from_rgb(146, 64, 14)
+                            } else {
+                                egui::Color32::from_rgb(71, 85, 105)
+                            }),
+                    )
+                    .on_hover_text(row.tooltip.as_str());
+                    ui.label(
+                        egui::RichText::new(row.junction_labels.join(", "))
+                            .size(9.0)
+                            .color(egui::Color32::from_rgb(124, 58, 237)),
+                    )
+                    .on_hover_text(row.tooltip.as_str());
+                    ui.label(
+                        egui::RichText::new(
+                            row.logfc
+                                .filter(|value| value.is_finite())
+                                .map(|value| format!("{value:.3}"))
+                                .unwrap_or_else(|| "-".to_string()),
+                        )
+                        .monospace()
+                        .size(9.0),
+                    )
+                    .on_hover_text(row.tooltip.as_str());
+                    ui.label(
+                        egui::RichText::new(row.mapping_status.as_str())
+                            .size(9.0)
+                            .color(
+                                if row.unresolved_tags.is_empty()
+                                    && row.mapping_status != "unmapped"
+                                {
+                                    egui::Color32::from_rgb(22, 101, 52)
+                                } else {
+                                    egui::Color32::from_rgb(180, 83, 9)
+                                },
+                            ),
+                    )
+                    .on_hover_text(row.tooltip.as_str());
+                    ui.end_row();
+                }
+            });
+            if junction_rows.len() > 12 {
+                ui.small(format!(
+                    "{} additional junction-spanning array probe row(s) hidden in this preview",
+                    junction_rows.len() - 12
+                ));
+            }
+            ui.add_space(4.0);
+        }
         egui::ScrollArea::horizontal()
             .id_salt((
                 "splicing_array_probe_geometry_scroll",
@@ -5980,6 +7440,7 @@ impl MainAreaDna {
                 .show(ui, |ui| {
                     ui.label(egui::RichText::new("transcript").monospace().strong());
                     ui.label(egui::RichText::new("probe").monospace().strong());
+                    ui.label(egui::RichText::new("kind").strong());
                     ui.label(egui::RichText::new("parent").monospace().strong());
                     ui.label(egui::RichText::new("interval").monospace().strong());
                     ui.label(egui::RichText::new("geometry").strong());
@@ -6019,6 +7480,16 @@ impl MainAreaDna {
                                     egui::Color32::from_rgb(71, 85, 105)
                                 },
                             ),
+                        )
+                        .on_hover_text(row.tooltip.as_str());
+                        ui.label(
+                            egui::RichText::new(row.evidence_kind.as_str())
+                                .size(9.0)
+                                .color(if row.junction_labels.is_empty() {
+                                    egui::Color32::from_rgb(71, 85, 105)
+                                } else {
+                                    egui::Color32::from_rgb(124, 58, 237)
+                                }),
                         )
                         .on_hover_text(row.tooltip.as_str());
                         ui.label(
@@ -6104,6 +7575,12 @@ impl MainAreaDna {
         ui: &mut egui::Ui,
         view: &IsoformArchitectureExpertView,
     ) {
+        crate::agent_help::render_agent_help_button(
+            ui,
+            format!("Isoform Expert - {}", view.gene_symbol),
+            "window.isoform_expert",
+        );
+        ui.separator();
         let font_size = self.feature_details_font_size();
         ui.label(
             egui::RichText::new(format!(
@@ -6385,6 +7862,2167 @@ impl MainAreaDna {
             });
     }
 
+    fn isoform_evidence_list(text: &str) -> Vec<String> {
+        let mut values = text
+            .split([',', '\n'])
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        values.sort();
+        values.dedup();
+        values
+    }
+
+    fn isoform_evidence_ordered_list(text: &str) -> Vec<String> {
+        let mut values = Vec::new();
+        for value in text
+            .split([',', '\n'])
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            if !values
+                .iter()
+                .any(|existing: &String| existing.eq_ignore_ascii_case(value))
+            {
+                values.push(value.to_string());
+            }
+        }
+        values
+    }
+
+    pub(super) fn splicing_compatible_isoform_panel_ids(&self) -> Vec<String> {
+        let Some(engine) = self.engine.as_ref() else {
+            return Vec::new();
+        };
+        let Some(seq_id) = self.seq_id.as_deref() else {
+            return Vec::new();
+        };
+        engine
+            .read()
+            .ok()
+            .map(|engine| engine.isoform_panel_ids_for_sequence(seq_id))
+            .unwrap_or_default()
+    }
+
+    pub(super) fn seed_splicing_isoform_panel_from_current_sequence(&mut self) {
+        if !self.splicing_isoform_evidence_panel_id.trim().is_empty() {
+            return;
+        }
+        let Some(engine) = self.engine.as_ref() else {
+            return;
+        };
+        let Some(seq_id) = self.seq_id.as_deref() else {
+            return;
+        };
+        let Ok(engine) = engine.read() else {
+            return;
+        };
+        if let Some(panel_id) = engine.splicing_locus_panel_selection(seq_id) {
+            self.splicing_isoform_evidence_panel_id = panel_id;
+            return;
+        }
+        let panel_ids = engine.isoform_panel_ids_for_sequence(seq_id);
+        if let [panel_id] = panel_ids.as_slice() {
+            self.splicing_isoform_evidence_panel_id = panel_id.clone();
+        }
+    }
+
+    pub(super) fn select_splicing_isoform_panel(&mut self, panel_id: &str) -> Result<bool, String> {
+        let panel_id = panel_id.trim();
+        if panel_id.is_empty() {
+            return Err("Select a non-empty imported isoform panel id".to_string());
+        }
+        let engine = self
+            .engine
+            .as_ref()
+            .ok_or_else(|| "No project engine is available for panel selection".to_string())?;
+        let seq_id = self
+            .seq_id
+            .as_deref()
+            .ok_or_else(|| "No active sequence id is available for panel selection".to_string())?;
+        let changed = engine
+            .write()
+            .map_err(|_| "Could not lock the project for panel selection".to_string())?
+            .set_splicing_locus_panel_selection(seq_id, Some(panel_id))
+            .map_err(|error| error.to_string())?;
+        self.splicing_isoform_evidence_panel_id = panel_id.to_string();
+        Ok(changed)
+    }
+
+    fn remember_typed_splicing_isoform_panel_if_compatible(&mut self) {
+        let panel_id = self.splicing_isoform_evidence_panel_id.trim().to_string();
+        if self
+            .splicing_compatible_isoform_panel_ids()
+            .iter()
+            .any(|candidate| candidate == &panel_id)
+            && let Err(error) = self.select_splicing_isoform_panel(&panel_id)
+        {
+            self.splicing_isoform_evidence_status = error.clone();
+            self.splicing_locus_status = error;
+        }
+    }
+
+    fn render_splicing_isoform_panel_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        semantic_scope: Option<&str>,
+    ) {
+        self.seed_splicing_isoform_panel_from_current_sequence();
+        let panel_ids = self.splicing_compatible_isoform_panel_ids();
+        let current = self.splicing_isoform_evidence_panel_id.trim().to_string();
+        let mut chosen_panel = None;
+
+        if panel_ids.is_empty() {
+            let _picker = ui
+                .add_enabled(false, egui::Button::new("No imported panels"))
+                .on_hover_text(
+                    "Import an isoform panel for the active sequence before composing evidence.",
+                );
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &_picker,
+                "splicing.locus.use_panel_control",
+                "window.splicing_expert",
+                semantic_scope,
+                crate::gui_test_support::GuiTestWidgetKind::Button,
+                false,
+            );
+        } else if let [panel_id] = panel_ids.as_slice() {
+            let picker = ui
+                .add_enabled(
+                    current != *panel_id,
+                    egui::Button::new("Use imported panel"),
+                )
+                .on_hover_text(format!(
+                    "Use the only panel imported for this sequence: {panel_id}"
+                ));
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &picker,
+                "splicing.locus.use_panel_control",
+                "window.splicing_expert",
+                semantic_scope,
+                crate::gui_test_support::GuiTestWidgetKind::Button,
+                false,
+            );
+            if picker.clicked() {
+                chosen_panel = Some(panel_id.clone());
+            }
+        } else {
+            let label = if panel_ids.iter().any(|panel_id| panel_id == &current) {
+                format!("Imported: {current}")
+            } else {
+                "Choose imported panel...".to_string()
+            };
+            let _picker = ui.menu_button(label, |ui| {
+                for panel_id in &panel_ids {
+                    if ui
+                        .selectable_label(panel_id == &current, panel_id)
+                        .clicked()
+                    {
+                        chosen_panel = Some(panel_id.clone());
+                        ui.close();
+                    }
+                }
+            });
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &_picker.response,
+                "splicing.locus.use_panel_control",
+                "window.splicing_expert",
+                semantic_scope,
+                crate::gui_test_support::GuiTestWidgetKind::Button,
+                false,
+            );
+        }
+
+        if let Some(panel_id) = chosen_panel
+            && let Err(error) = self.select_splicing_isoform_panel(&panel_id)
+        {
+            self.splicing_isoform_evidence_status = error.clone();
+            self.splicing_locus_status = error;
+        }
+
+        let use_editor = ui
+            .button("Use panel editor ID")
+            .on_hover_text("Advanced: copy the id from the separate Isoform Architecture panel editor; compatibility with this sequence is still checked before composition.");
+        #[cfg(feature = "gui-test-support")]
+        crate::gui_test_support::register_response(
+            &use_editor,
+            "splicing.locus.use_panel_editor_id",
+            "window.splicing_expert",
+            semantic_scope,
+            crate::gui_test_support::GuiTestWidgetKind::Button,
+            false,
+        );
+        if use_editor.clicked() {
+            let panel_id = self.isoform_panel_id.trim().to_string();
+            self.splicing_isoform_evidence_panel_id = panel_id.clone();
+            if panel_ids.iter().any(|candidate| candidate == &panel_id)
+                && let Err(error) = self.select_splicing_isoform_panel(&panel_id)
+            {
+                self.splicing_isoform_evidence_status = error.clone();
+                self.splicing_locus_status = error;
+            }
+        }
+
+        #[cfg(not(feature = "gui-test-support"))]
+        let _ = semantic_scope;
+    }
+
+    pub(super) fn splicing_isoform_evidence_request(
+        &self,
+    ) -> Result<GeneIsoformEvidenceRequest, String> {
+        let panel_id = self.splicing_isoform_evidence_panel_id.trim();
+        if panel_id.is_empty() {
+            return Err("Select an imported isoform panel before inspecting evidence".to_string());
+        }
+        Ok(GeneIsoformEvidenceRequest {
+            panel_id: panel_id.to_string(),
+            annotation_release: (!self
+                .splicing_isoform_evidence_annotation_release
+                .trim()
+                .is_empty())
+            .then(|| {
+                self.splicing_isoform_evidence_annotation_release
+                    .trim()
+                    .to_string()
+            }),
+            rna_read_report_ids: Self::isoform_evidence_list(
+                &self.splicing_isoform_evidence_rna_report_ids,
+            ),
+            qpcr_report_ids: Self::isoform_evidence_list(
+                &self.splicing_isoform_evidence_qpcr_report_ids,
+            ),
+            probe_evidence_paths: Self::isoform_evidence_list(
+                &self.splicing_isoform_evidence_probe_paths,
+            ),
+            cdna_est_resource_paths: Self::isoform_evidence_list(
+                &self.splicing_isoform_evidence_cdna_est_paths,
+            ),
+            expression_tsv_path: (!self
+                .splicing_isoform_evidence_expression_path
+                .trim()
+                .is_empty())
+            .then(|| {
+                self.splicing_isoform_evidence_expression_path
+                    .trim()
+                    .to_string()
+            }),
+            occupancy_track_names: Self::isoform_evidence_ordered_list(
+                &self.splicing_isoform_evidence_occupancy_tracks,
+            ),
+        })
+    }
+
+    fn parse_locus_usize(value: &str, label: &str) -> Result<usize, String> {
+        value
+            .trim()
+            .parse::<usize>()
+            .map_err(|error| format!("Invalid {label} '{}': {error}", value.trim()))
+    }
+
+    fn parse_locus_optional_f64(value: &str, label: &str) -> Result<Option<f64>, String> {
+        let value = value.trim();
+        if value.is_empty() {
+            return Ok(None);
+        }
+        let parsed = value
+            .parse::<f64>()
+            .map_err(|error| format!("Invalid {label} '{value}': {error}"))?;
+        if !parsed.is_finite() {
+            return Err(format!("Invalid {label} '{value}': value must be finite"));
+        }
+        Ok(Some(parsed))
+    }
+
+    fn load_locus_occupancy_layout(&self) -> Result<GeneLocusOccupancyLayout, String> {
+        let path = self.splicing_locus_occupancy_layout_path.trim();
+        if path.is_empty() {
+            return Ok(GeneLocusOccupancyLayout::default());
+        }
+        let bytes = std::fs::read(path)
+            .map_err(|error| format!("Could not read occupancy layout '{path}': {error}"))?;
+        serde_json::from_slice(&bytes)
+            .map_err(|error| format!("Could not parse occupancy layout '{path}': {error}"))
+    }
+
+    fn load_locus_regulatory_score_tracks(
+        &self,
+    ) -> Result<Vec<GeneLocusRegulatoryScoreTrackRequest>, String> {
+        let path = self.splicing_locus_regulatory_tracks_path.trim();
+        if path.is_empty() {
+            return Ok(vec![]);
+        }
+        let bytes = std::fs::read(path)
+            .map_err(|error| format!("Could not read regulatory-score tracks '{path}': {error}"))?;
+        if let Ok(tracks) =
+            serde_json::from_slice::<Vec<GeneLocusRegulatoryScoreTrackRequest>>(&bytes)
+        {
+            return Ok(tracks);
+        }
+        let value = serde_json::from_slice::<serde_json::Value>(&bytes).map_err(|error| {
+            format!("Could not parse regulatory-score tracks '{path}': {error}")
+        })?;
+        serde_json::from_value(value.get("tracks").cloned().ok_or_else(|| {
+            format!("Regulatory-score file '{path}' must be an array or contain a 'tracks' array")
+        })?)
+        .map_err(|error| format!("Could not parse regulatory-score tracks '{path}': {error}"))
+    }
+
+    pub(super) fn splicing_locus_evidence_request(
+        &self,
+    ) -> Result<GeneLocusEvidenceDisplayRequest, String> {
+        let mut isoform_evidence = self.splicing_isoform_evidence_request()?;
+        let occupancy_layout = self.load_locus_occupancy_layout()?;
+        let regulatory_score_tracks = self.load_locus_regulatory_score_tracks()?;
+        if !occupancy_layout.groups.is_empty() {
+            isoform_evidence.occupancy_track_names.clear();
+        }
+        let probe_effect_table_paths =
+            Self::isoform_evidence_list(&self.splicing_locus_probe_effect_paths);
+        let probe_effect_coordinate_system = (!self
+            .splicing_locus_probe_effect_coordinate_system
+            .trim()
+            .is_empty())
+        .then(|| {
+            self.splicing_locus_probe_effect_coordinate_system
+                .trim()
+                .to_string()
+        });
+        if !probe_effect_table_paths.is_empty() && probe_effect_coordinate_system.is_none() {
+            return Err(
+                "Probe-effect tables require an explicit coordinate system matching the sequence anchor"
+                    .to_string(),
+            );
+        }
+        let scale_bar_mode = match self.splicing_locus_scale_bar_mode.trim() {
+            "hidden" => GeneLocusScaleBarMode::Hidden,
+            "auto" => GeneLocusScaleBarMode::Auto,
+            "fixed" => GeneLocusScaleBarMode::Fixed,
+            other => {
+                return Err(format!(
+                    "Invalid scale-bar mode '{other}': expected hidden, auto, or fixed"
+                ));
+            }
+        };
+        let scale_bar = GeneLocusScaleBarPolicy {
+            mode: scale_bar_mode,
+            length_bp: if scale_bar_mode == GeneLocusScaleBarMode::Fixed {
+                Some(Self::parse_locus_usize(
+                    &self.splicing_locus_scale_bar_bp,
+                    "fixed scale-bar length",
+                )?)
+            } else {
+                None
+            },
+        };
+        Ok(GeneLocusEvidenceDisplayRequest {
+            transcript_annotation_sources: crate::transcript_presentation::read_source_list(
+                &self.splicing_locus_annotation_sources_path,
+            )?,
+            isoform_evidence,
+            upstream_bp: Self::parse_locus_usize(
+                &self.splicing_locus_upstream_bp,
+                "upstream flank",
+            )?,
+            downstream_bp: Self::parse_locus_usize(
+                &self.splicing_locus_downstream_bp,
+                "downstream flank",
+            )?,
+            probe_effect_table_paths,
+            probe_effect_contrasts: Self::isoform_evidence_ordered_list(
+                &self.splicing_locus_probe_effect_contrasts,
+            ),
+            probe_effect_coordinate_system,
+            occupancy_layout,
+            motifs: Self::isoform_evidence_ordered_list(&self.splicing_locus_motifs),
+            motif_score_kind: self.splicing_locus_motif_score_kind.trim().to_string(),
+            motif_clip_negative: self.splicing_locus_motif_clip_negative,
+            motif_display_threshold: Self::parse_locus_optional_f64(
+                &self.splicing_locus_motif_threshold,
+                "motif display threshold",
+            )?,
+            motif_top_hit_count: Self::parse_locus_usize(
+                &self.splicing_locus_motif_top_hits,
+                "motif top-hit count",
+            )?,
+            regulatory_score_tracks,
+            scale_bar,
+            region_set_ids: Self::isoform_evidence_ordered_list(
+                &self.splicing_locus_region_set_ids,
+            ),
+            homology_report_paths: Self::isoform_evidence_list(
+                &self.splicing_locus_homology_report_paths,
+            ),
+            include_local_source_paths: false,
+        })
+    }
+
+    fn locus_file_resource_rows(
+        rows: &mut Vec<LocusEvidenceResourceRow>,
+        kind: &str,
+        paths: impl IntoIterator<Item = String>,
+    ) {
+        for path in paths {
+            let ready = std::path::Path::new(&path).is_file();
+            rows.push(LocusEvidenceResourceRow {
+                kind: kind.to_string(),
+                reference: path.clone(),
+                readiness: if ready {
+                    LocusEvidenceResourceReadiness::Ready
+                } else {
+                    LocusEvidenceResourceReadiness::Missing
+                },
+                detail: if ready {
+                    "Readable local file; format and provenance are validated by the shared engine when inspected."
+                        .to_string()
+                } else {
+                    "File is not available at this path. Browse to its relocated copy before inspection."
+                        .to_string()
+                },
+            });
+        }
+    }
+
+    pub(super) fn splicing_locus_resource_rows(&self) -> Vec<LocusEvidenceResourceRow> {
+        let mut rows = Vec::new();
+        let anchor = self.engine.as_ref().and_then(|engine| {
+            let seq_id = self.seq_id.as_deref()?;
+            engine
+                .read()
+                .ok()?
+                .sequence_genome_anchor_summary(seq_id)
+                .ok()
+        });
+        rows.push(LocusEvidenceResourceRow {
+            kind: "genome anchor".to_string(),
+            reference: anchor
+                .as_ref()
+                .map(|anchor| {
+                    format!(
+                        "{} {}:{}..{}",
+                        anchor.genome_id, anchor.chromosome, anchor.start_1based, anchor.end_1based
+                    )
+                })
+                .unwrap_or_else(|| self.seq_id.clone().unwrap_or_default()),
+            readiness: if anchor.is_some() {
+                LocusEvidenceResourceReadiness::Ready
+            } else {
+                LocusEvidenceResourceReadiness::Missing
+            },
+            detail: if anchor.is_some() {
+                "Genome build and coordinates are available for strict effect-table projection."
+                    .to_string()
+            } else {
+                "No genome anchor is available; probe effects cannot be projected safely."
+                    .to_string()
+            },
+        });
+        let panel_id = self.splicing_isoform_evidence_panel_id.trim();
+        let panel_available = self.engine.as_ref().is_some_and(|engine| {
+            let Some(seq_id) = self.seq_id.as_deref() else {
+                return false;
+            };
+            engine
+                .read()
+                .ok()
+                .is_some_and(|engine| engine.isoform_panel_is_available(seq_id, panel_id))
+        });
+        rows.push(LocusEvidenceResourceRow {
+            kind: "isoform panel".to_string(),
+            reference: panel_id.to_string(),
+            readiness: if panel_available {
+                LocusEvidenceResourceReadiness::EngineValidated
+            } else {
+                LocusEvidenceResourceReadiness::Missing
+            },
+            detail: if panel_available {
+                "Imported panel id is present for the active sequence; full geometry validation remains part of composition."
+            } else {
+                "This panel id is not imported for the active sequence. Import the panel before composition."
+            }
+            .to_string(),
+        });
+        Self::locus_file_resource_rows(
+            &mut rows,
+            "probe interpretation",
+            Self::isoform_evidence_list(&self.splicing_isoform_evidence_probe_paths),
+        );
+        Self::locus_file_resource_rows(
+            &mut rows,
+            "cDNA/EST evidence",
+            Self::isoform_evidence_list(&self.splicing_isoform_evidence_cdna_est_paths),
+        );
+        if !self
+            .splicing_isoform_evidence_expression_path
+            .trim()
+            .is_empty()
+        {
+            Self::locus_file_resource_rows(
+                &mut rows,
+                "expression matrix",
+                [self
+                    .splicing_isoform_evidence_expression_path
+                    .trim()
+                    .to_string()],
+            );
+        }
+        Self::locus_file_resource_rows(
+            &mut rows,
+            "probe-effect table",
+            Self::isoform_evidence_list(&self.splicing_locus_probe_effect_paths),
+        );
+        Self::locus_file_resource_rows(
+            &mut rows,
+            "homology report",
+            Self::isoform_evidence_list(&self.splicing_locus_homology_report_paths),
+        );
+        if !self.splicing_locus_occupancy_layout_path.trim().is_empty() {
+            Self::locus_file_resource_rows(
+                &mut rows,
+                "occupancy layout",
+                [self.splicing_locus_occupancy_layout_path.trim().to_string()],
+            );
+        }
+        let mut requested_tracks =
+            Self::isoform_evidence_ordered_list(&self.splicing_isoform_evidence_occupancy_tracks);
+        if let Ok(layout) = self.load_locus_occupancy_layout() {
+            for track_name in layout
+                .groups
+                .iter()
+                .flat_map(|group| group.lanes.iter())
+                .map(|lane| lane.track_name.trim())
+                .filter(|track_name| !track_name.is_empty())
+            {
+                if !requested_tracks
+                    .iter()
+                    .any(|value| value.eq_ignore_ascii_case(track_name))
+                {
+                    requested_tracks.push(track_name.to_string());
+                }
+            }
+        }
+        let available_tracks = self
+            .dna
+            .read()
+            .ok()
+            .map(|dna| {
+                dna.features()
+                    .iter()
+                    .flat_map(|feature| feature.qualifier_values("gentle_track_name"))
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        for track_name in requested_tracks {
+            let ready = track_name == "*"
+                || available_tracks
+                    .iter()
+                    .any(|value| value.eq_ignore_ascii_case(&track_name));
+            rows.push(LocusEvidenceResourceRow {
+                kind: "occupancy track".to_string(),
+                reference: track_name,
+                readiness: if ready {
+                    LocusEvidenceResourceReadiness::Ready
+                } else {
+                    LocusEvidenceResourceReadiness::Missing
+                },
+                detail: if ready {
+                    "Projected track is available on the active sequence."
+                } else {
+                    "No projected track with this exact name is present on the active sequence."
+                }
+                .to_string(),
+            });
+        }
+        rows
+    }
+
+    fn inspect_splicing_isoform_evidence(&mut self) {
+        let request = match self.splicing_isoform_evidence_request() {
+            Ok(request) => request,
+            Err(err) => {
+                self.splicing_isoform_evidence_status = err;
+                return;
+            }
+        };
+        let target = FeatureExpertTarget::IsoformEvidence { request };
+        match self.inspect_feature_expert_target(&target) {
+            Ok(FeatureExpertView::IsoformEvidence(report)) => {
+                self.splicing_isoform_evidence_status = format!(
+                    "Inspected {} transcript model(s), {} exon family/families, and {} junction(s)",
+                    report.transcripts.len(),
+                    report.exon_families.len(),
+                    report.junctions.len()
+                );
+                self.splicing_isoform_evidence_report = Some(Arc::new(report));
+            }
+            Ok(other) => {
+                self.splicing_isoform_evidence_report = None;
+                self.splicing_isoform_evidence_status =
+                    format!("Expected isoform evidence, received {other:?}");
+            }
+            Err(err) => {
+                self.splicing_isoform_evidence_report = None;
+                self.splicing_isoform_evidence_status = err;
+            }
+        }
+    }
+
+    pub(super) fn cache_splicing_locus_preview(
+        &mut self,
+        report: &GeneLocusEvidenceDisplayReport,
+    ) -> Result<(), String> {
+        let svg = self.splicing_locus_svg(report);
+        let rendered = crate::svg_png::render_svg_to_png_bytes(
+            &svg,
+            crate::svg_png::SvgPngRenderOptions {
+                scale: 0.75,
+                drop_dotplot_metadata: false,
+            },
+        )?;
+        self.splicing_locus_preview_generation =
+            self.splicing_locus_preview_generation.wrapping_add(1);
+        self.splicing_locus_preview_png = Some(rendered.bytes.into());
+        Ok(())
+    }
+
+    pub(super) fn reset_splicing_locus_inspector(
+        &mut self,
+        report: &GeneLocusEvidenceDisplayReport,
+    ) {
+        self.splicing_locus_inspector_start_1based = report.locus_local_start_1based;
+        self.splicing_locus_inspector_end_1based = report.locus_local_end_1based;
+        self.splicing_locus_inspector_selection = None;
+        self.splicing_locus_inspector_drag_anchor = None;
+        self.splicing_locus_inspector_hidden_scores.clear();
+        self.splicing_locus_inspector_hidden_ensembl.clear();
+        self.splicing_locus_source_filter = locus_inspector::AnnotationFilter::All;
+        self.source_annotation_selected_structure = None;
+        self.splicing_locus_binding_cache = None;
+        self.splicing_locus_presentation =
+            Arc::new(locus_inspector::LocusPresentation::from_report(
+                report,
+                self.splicing_locus_imported_document
+                    .as_ref()
+                    .and_then(|document| document.reporter_overlay()),
+            ));
+    }
+
+    pub(super) fn load_splicing_locus_report_json_dialog(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("GENtle locus report", &["json"])
+            .pick_file()
+        else {
+            return;
+        };
+        self.splicing_locus_status = crate::locus_report::read_document(&path)
+            .and_then(|document| self.load_splicing_locus_document(document))
+            .map(|()| format!("Loaded portable locus report '{}'", path.display()))
+            .unwrap_or_else(|error| error);
+    }
+
+    pub(super) fn inspect_splicing_locus_evidence(&mut self) {
+        crate::gentle_gui_profile_scope!("MainAreaDna::inspect_splicing_locus_evidence");
+        self.splicing_locus_imported_document = None;
+        let request = match self.splicing_locus_evidence_request() {
+            Ok(request) => request,
+            Err(error) => {
+                self.splicing_locus_report = None;
+                self.splicing_locus_preview_png = None;
+                self.splicing_locus_status = error;
+                return;
+            }
+        };
+        match self
+            .inspect_feature_expert_target(&FeatureExpertTarget::GeneLocusEvidence { request })
+        {
+            Ok(FeatureExpertView::GeneLocusEvidence(report)) => {
+                let preview_status = self.cache_splicing_locus_preview(&report);
+                self.reset_splicing_locus_inspector(&report);
+                self.splicing_locus_status = format!(
+                    "Composed {} transcript(s), {} occupancy group(s), {} motif track(s), {} probe-effect row(s), and {} assay marker(s)",
+                    report.transcript_metrics.len(),
+                    report.occupancy_groups.len(),
+                    report.motif_tracks.len(),
+                    report.probe_effect_overlays.len(),
+                    report.assay_overlays.len()
+                );
+                if let Err(error) = preview_status {
+                    self.splicing_locus_status.push_str(&format!(
+                        "; report is available, but the in-window preview could not be rasterized: {error}"
+                    ));
+                }
+                self.splicing_locus_report = Some(Arc::new(report));
+            }
+            Ok(other) => {
+                self.splicing_locus_report = None;
+                self.splicing_locus_preview_png = None;
+                self.splicing_locus_status =
+                    format!("Expected gene-locus evidence, received {other:?}");
+            }
+            Err(error) => {
+                self.splicing_locus_report = None;
+                self.splicing_locus_preview_png = None;
+                self.splicing_locus_status = error;
+            }
+        }
+    }
+
+    fn render_splicing_locus_svg_to_path(&mut self, path: &str) -> Result<(), String> {
+        let path = path.trim();
+        if path.is_empty() {
+            return Err("Provide an SVG output path".to_string());
+        }
+        if let Some(document) = self.splicing_locus_imported_document.as_ref() {
+            std::fs::write(path, document.render_svg()).map_err(|error| error.to_string())?;
+            self.splicing_locus_status = format!("Exported inspected report to {path}");
+            return Ok(());
+        }
+        let request = self.splicing_locus_evidence_request()?;
+        let seq_id = self
+            .seq_id
+            .clone()
+            .ok_or_else(|| "Sequence id is unavailable for locus SVG export".to_string())?;
+        let engine = self
+            .engine
+            .clone()
+            .ok_or_else(|| "Engine is unavailable for locus SVG export".to_string())?;
+        let result = engine
+            .write()
+            .map_err(|_| "Engine lock poisoned while exporting locus SVG".to_string())?
+            .apply(Operation::RenderFeatureExpertSvg {
+                seq_id,
+                target: FeatureExpertTarget::GeneLocusEvidence { request },
+                path: path.to_string(),
+            })
+            .map_err(|error| error.message)?;
+        self.splicing_locus_status = if result.messages.is_empty() {
+            format!("Wrote {path}")
+        } else {
+            result.messages.join(" ")
+        };
+        Ok(())
+    }
+
+    fn export_splicing_locus_report_json_dialog(&mut self) {
+        let Some(report) = self.splicing_locus_report.as_ref() else {
+            self.splicing_locus_status = "Compose the locus report before exporting JSON".into();
+            return;
+        };
+        let default_name = format!("{}-locus-evidence.json", report.gene_symbol.to_lowercase());
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .add_filter("JSON", &["json"])
+            .save_file()
+        else {
+            return;
+        };
+        self.splicing_locus_status = match self.splicing_locus_json(report).and_then(|bytes| {
+            std::fs::write(&path, bytes).map_err(|error| {
+                format!("Could not write locus report '{}': {error}", path.display())
+            })
+        }) {
+            Ok(()) => format!("Wrote {}", path.display()),
+            Err(error) => error,
+        };
+    }
+
+    fn export_splicing_locus_pdf_dialog(&mut self) {
+        let Some(report) = self.splicing_locus_report.as_ref() else {
+            self.splicing_locus_status = "Compose the locus report before exporting PDF".into();
+            return;
+        };
+        let default_name = format!("{}-locus-evidence.pdf", report.gene_symbol.to_lowercase());
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .add_filter("PDF", &["pdf"])
+            .save_file()
+        else {
+            return;
+        };
+        let svg = self.splicing_locus_svg(report);
+        let temp_svg = std::env::temp_dir().join(format!(
+            "gentle_locus_{}_{}_{}.svg",
+            std::process::id(),
+            self.splicing_expert_window_feature_id.unwrap_or_default(),
+            self.splicing_locus_preview_generation
+        ));
+        let result = std::fs::write(&temp_svg, svg)
+            .map_err(|error| format!("Could not write temporary locus SVG: {error}"))
+            .and_then(|()| {
+                crate::svg_pdf::render_svg_file_to_pdf(
+                    &temp_svg,
+                    &path,
+                    crate::svg_png::SvgPngRenderOptions::default(),
+                )
+                .map(|_| ())
+            });
+        let _ = std::fs::remove_file(&temp_svg);
+        self.splicing_locus_status = match result {
+            Ok(()) => format!("Wrote {}", path.display()),
+            Err(error) => error,
+        };
+    }
+
+    fn render_splicing_isoform_evidence_svg(&mut self) {
+        let request = match self.splicing_isoform_evidence_request() {
+            Ok(request) => request,
+            Err(err) => {
+                self.splicing_isoform_evidence_status = err;
+                return;
+            }
+        };
+        let Some(seq_id) = self.seq_id.clone() else {
+            self.splicing_isoform_evidence_status =
+                "Sequence id is unavailable for SVG export".to_string();
+            return;
+        };
+        let path = self.splicing_isoform_evidence_svg_path.trim().to_string();
+        if path.is_empty() {
+            self.splicing_isoform_evidence_status = "Provide an SVG output path".to_string();
+            return;
+        }
+        let Some(engine) = self.engine.clone() else {
+            self.splicing_isoform_evidence_status = "Engine is unavailable for SVG export".into();
+            return;
+        };
+        let result = engine
+            .write()
+            .map_err(|_| "Engine lock poisoned while exporting SVG".to_string())
+            .and_then(|mut engine| {
+                engine
+                    .apply(Operation::RenderFeatureExpertSvg {
+                        seq_id,
+                        target: FeatureExpertTarget::IsoformEvidence { request },
+                        path: path.clone(),
+                    })
+                    .map_err(|err| err.message)
+            });
+        self.splicing_isoform_evidence_status = match result {
+            Ok(result) if result.messages.is_empty() => format!("Wrote {path}"),
+            Ok(result) => result.messages.join(" "),
+            Err(err) => err,
+        };
+    }
+
+    fn isoform_evidence_status_label(status: IsoformEvidenceAssessmentStatus) -> &'static str {
+        status.display_label()
+    }
+
+    fn isoform_evidence_status_color(status: IsoformEvidenceAssessmentStatus) -> egui::Color32 {
+        match status {
+            IsoformEvidenceAssessmentStatus::Observed => egui::Color32::from_rgb(22, 101, 52),
+            IsoformEvidenceAssessmentStatus::Candidate => egui::Color32::from_rgb(29, 78, 216),
+            IsoformEvidenceAssessmentStatus::ConstraintOnly => {
+                egui::Color32::from_rgb(124, 58, 237)
+            }
+            IsoformEvidenceAssessmentStatus::NotEvaluated => egui::Color32::from_rgb(100, 116, 139),
+            IsoformEvidenceAssessmentStatus::Unknown => egui::Color32::from_rgb(180, 83, 9),
+        }
+    }
+
+    fn render_isoform_evidence_status_legend(ui: &mut egui::Ui) {
+        ui.horizontal_wrapped(|ui| {
+            ui.small("Evidence vocabulary:");
+            for status in [
+                IsoformEvidenceAssessmentStatus::Observed,
+                IsoformEvidenceAssessmentStatus::Candidate,
+                IsoformEvidenceAssessmentStatus::ConstraintOnly,
+                IsoformEvidenceAssessmentStatus::NotEvaluated,
+                IsoformEvidenceAssessmentStatus::Unknown,
+            ] {
+                ui.colored_label(
+                    Self::isoform_evidence_status_color(status),
+                    status.display_label(),
+                )
+                .on_hover_text(status.interpretation());
+            }
+        });
+    }
+
+    pub(super) fn render_isoform_evidence_view_ui(
+        ui: &mut egui::Ui,
+        report: &GeneIsoformEvidenceReport,
+    ) {
+        ui.heading(format!("{} isoform evidence", report.gene_symbol));
+        ui.horizontal_wrapped(|ui| {
+            ui.label(format!("Panel: {}", report.panel_id));
+            ui.separator();
+            ui.label(format!(
+                "{} {} strand {}",
+                report.assembly,
+                report.chromosome.as_deref().unwrap_or("unplaced"),
+                report.gene_strand
+            ));
+            ui.separator();
+            ui.label(format!(
+                "{} transcript(s), {} junction(s)",
+                report.transcripts.len(),
+                report.junctions.len()
+            ));
+        });
+        ui.label(
+            egui::RichText::new(&report.instruction)
+                .size(10.0)
+                .color(egui::Color32::from_rgb(71, 85, 105)),
+        );
+        for warning in &report.warnings {
+            ui.colored_label(egui::Color32::from_rgb(180, 83, 9), warning);
+        }
+
+        egui::CollapsingHeader::new(format!("Transcript models ({})", report.transcripts.len()))
+            .default_open(true)
+            .show(ui, |ui| {
+                egui::Grid::new(("isoform_evidence_transcripts", report.panel_id.as_str()))
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.strong("Transcript");
+                        ui.strong("Family");
+                        ui.strong("5' -> 3' exon families");
+                        ui.strong("Genomic ascending");
+                        ui.end_row();
+                        for transcript in &report.transcripts {
+                            ui.monospace(&transcript.transcript_id);
+                            ui.label(transcript.family_ids.join(", "));
+                            ui.monospace(transcript.exon_family_ids_5_to_3.join(" -> "));
+                            ui.monospace(transcript.exon_family_ids_genomic_ascending.join(" | "));
+                            ui.end_row();
+                        }
+                    });
+            });
+
+        egui::CollapsingHeader::new(format!(
+            "Occupancy tracks ({})",
+            report.occupancy_lanes.len()
+        ))
+        .default_open(!report.occupancy_lanes.is_empty())
+        .show(ui, |ui| {
+            ui.label(
+                egui::RichText::new(
+                    "Projected locus-level BED/BigWig evidence; alignment with an exon or transcript does not identify a regulated isoform.",
+                )
+                .size(9.0)
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            egui::Grid::new(("isoform_evidence_occupancy", report.panel_id.as_str()))
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.strong("Track");
+                    ui.strong("Source");
+                    ui.strong("Intervals");
+                    ui.strong("Score range");
+                    ui.end_row();
+                    for lane in &report.occupancy_lanes {
+                        ui.label(&lane.display_label);
+                        ui.monospace(&lane.source_kind);
+                        ui.label(lane.interval_count.to_string());
+                        ui.monospace(match (lane.min_score, lane.max_score) {
+                            (Some(min), Some(max)) => format!("{min:.3} .. {max:.3}"),
+                            _ => "peaks / unscored".to_string(),
+                        });
+                        ui.end_row();
+                    }
+                });
+        });
+
+        egui::CollapsingHeader::new(format!("Junction evidence ({})", report.junctions.len()))
+            .default_open(true)
+            .show(ui, |ui| {
+                egui::Grid::new(("isoform_evidence_junctions", report.panel_id.as_str()))
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.strong("Junction");
+                        ui.strong("Donor -> acceptor");
+                        ui.strong("Families");
+                        ui.strong("Specificity");
+                        ui.strong("Abundance");
+                        ui.strong("Responsiveness");
+                        ui.strong("Assayability");
+                        ui.end_row();
+                        for junction in &report.junctions {
+                            ui.monospace(&junction.junction_id);
+                            ui.monospace(format!(
+                                "{} -> {}",
+                                junction.transcript_donor_1based,
+                                junction.transcript_acceptor_1based
+                            ));
+                            ui.label(junction.family_ids.join(", "));
+                            ui.label(&junction.components.specificity.classification);
+                            ui.label(Self::isoform_evidence_status_label(
+                                junction.components.abundance.status,
+                            ));
+                            ui.label(Self::isoform_evidence_status_label(
+                                junction.components.responsiveness.status,
+                            ));
+                            ui.label(Self::isoform_evidence_status_label(
+                                junction.components.assayability.status,
+                            ));
+                            ui.end_row();
+                        }
+                    });
+            });
+
+        egui::CollapsingHeader::new(format!("Evidence ledger ({})", report.evidence_items.len()))
+            .show(ui, |ui| {
+                for item in &report.evidence_items {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.monospace(&item.evidence_id);
+                        ui.label(format!("{:?}", item.source_kind));
+                        ui.label(Self::isoform_evidence_status_label(item.status));
+                        if !item.target_ids.is_empty() {
+                            ui.monospace(item.target_ids.join(", "));
+                        }
+                    });
+                    ui.label(
+                        egui::RichText::new(&item.method)
+                            .size(9.0)
+                            .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                }
+            });
+
+        egui::CollapsingHeader::new(format!(
+            "Existing qPCR candidates ({})",
+            report.assay_candidates.len()
+        ))
+        .show(ui, |ui| {
+            for candidate in &report.assay_candidates {
+                ui.horizontal_wrapped(|ui| {
+                    ui.monospace(format!(
+                        "{} rank {}",
+                        candidate.qpcr_report_id, candidate.assay_rank
+                    ));
+                    ui.label(&candidate.assay_class_label);
+                    ui.label(format!("{} bp", candidate.amplicon_length_bp));
+                    ui.label(format!("score {:.2}", candidate.score));
+                });
+                ui.label(
+                    egui::RichText::new(&candidate.explanation)
+                        .size(9.0)
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+            }
+        });
+
+        egui::CollapsingHeader::new(format!("Provenance ({})", report.provenance.len())).show(
+            ui,
+            |ui| {
+                for source in &report.provenance {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.monospace(&source.source_kind);
+                        ui.label(&source.source_id);
+                        if let Some(path) = source.path.as_deref() {
+                            ui.monospace(path);
+                        }
+                    });
+                }
+            },
+        );
+    }
+
+    pub(super) fn render_splicing_isoform_evidence_tab(
+        &mut self,
+        ui: &mut egui::Ui,
+        _view: &SplicingExpertView,
+    ) {
+        ui.label(
+            egui::RichText::new(
+                "Compose existing annotation, RNA-read, sequence, array, expression, projected occupancy, and qPCR evidence without treating any one layer as validation.",
+            )
+            .size(10.0)
+            .color(egui::Color32::from_rgb(71, 85, 105)),
+        );
+        egui::Grid::new("splicing_isoform_evidence_inputs")
+            .num_columns(2)
+            .spacing([12.0, 5.0])
+            .show(ui, |ui| {
+                ui.label("Isoform panel");
+                ui.horizontal(|ui| {
+                    let panel_id =
+                        ui.text_edit_singleline(&mut self.splicing_isoform_evidence_panel_id);
+                    if panel_id.changed() {
+                        self.remember_typed_splicing_isoform_panel_if_compatible();
+                    }
+                    self.render_splicing_isoform_panel_controls(ui, None);
+                });
+                ui.end_row();
+                ui.label("Annotation release");
+                ui.text_edit_singleline(
+                    &mut self.splicing_isoform_evidence_annotation_release,
+                );
+                ui.end_row();
+                ui.label("RNA-read report ids");
+                ui.text_edit_singleline(&mut self.splicing_isoform_evidence_rna_report_ids);
+                ui.end_row();
+                ui.label("qPCR report ids");
+                ui.text_edit_singleline(&mut self.splicing_isoform_evidence_qpcr_report_ids);
+                ui.end_row();
+                ui.label("Probe evidence JSON paths");
+                ui.text_edit_singleline(&mut self.splicing_isoform_evidence_probe_paths);
+                ui.end_row();
+                ui.label("cDNA/EST resource paths");
+                ui.text_edit_singleline(&mut self.splicing_isoform_evidence_cdna_est_paths);
+                ui.end_row();
+                ui.label("Expression TSV path");
+                ui.text_edit_singleline(&mut self.splicing_isoform_evidence_expression_path);
+                ui.end_row();
+                ui.label("Occupancy track names");
+                ui.text_edit_singleline(&mut self.splicing_isoform_evidence_occupancy_tracks)
+                    .on_hover_text(
+                        "Comma/newline-separated projected BED/BigWig track names; use * for all projected tracks in the gene span",
+                    );
+                ui.end_row();
+            });
+
+        let mut inspect = false;
+        let mut render_svg = false;
+        ui.horizontal_wrapped(|ui| {
+            inspect = ui.button("Inspect evidence").clicked();
+            if ui
+                .add_enabled(
+                    self.splicing_isoform_evidence_report.is_some(),
+                    egui::Button::new("Copy report JSON"),
+                )
+                .clicked()
+                && let Some(report) = self.splicing_isoform_evidence_report.as_ref()
+                && let Ok(json) = serde_json::to_string_pretty(report.as_ref())
+            {
+                ui.ctx().copy_text(json);
+                self.splicing_isoform_evidence_status = "Copied report JSON".to_string();
+            }
+            ui.label("SVG path");
+            ui.text_edit_singleline(&mut self.splicing_isoform_evidence_svg_path);
+            render_svg = ui.button("Render SVG").clicked();
+        });
+        if inspect {
+            self.inspect_splicing_isoform_evidence();
+        }
+        if render_svg {
+            self.render_splicing_isoform_evidence_svg();
+        }
+        if !self.splicing_isoform_evidence_status.is_empty() {
+            ui.label(
+                egui::RichText::new(&self.splicing_isoform_evidence_status)
+                    .size(10.0)
+                    .color(egui::Color32::from_rgb(51, 65, 85)),
+            );
+        }
+        ui.separator();
+        if let Some(report) = self.splicing_isoform_evidence_report.clone() {
+            Self::render_isoform_evidence_view_ui(ui, report.as_ref());
+        } else {
+            ui.label(
+                egui::RichText::new(
+                    "No evidence report cached. Import an isoform panel, provide any available evidence references, then inspect.",
+                )
+                .italics()
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+        }
+    }
+
+    fn append_locus_resource_path(field: &mut String, path: &std::path::Path) {
+        let path = path.to_string_lossy();
+        let mut values = Self::isoform_evidence_ordered_list(field);
+        if !values
+            .iter()
+            .any(|value| value.eq_ignore_ascii_case(path.as_ref()))
+        {
+            values.push(path.into_owned());
+        }
+        *field = values.join("\n");
+    }
+
+    fn pick_locus_resource_file(title: &str, extensions: &[&str]) -> Option<std::path::PathBuf> {
+        rfd::FileDialog::new()
+            .set_title(title)
+            .add_filter(title, extensions)
+            .pick_file()
+    }
+
+    fn render_locus_resource_readiness(&self, ui: &mut egui::Ui) {
+        let rows = self.splicing_locus_resource_rows();
+        let missing = rows
+            .iter()
+            .filter(|row| row.readiness == LocusEvidenceResourceReadiness::Missing)
+            .count();
+        egui::CollapsingHeader::new(format!(
+            "Resource readiness ({} ready/pending, {} missing)",
+            rows.len().saturating_sub(missing),
+            missing
+        ))
+        .default_open(missing > 0)
+        .show(ui, |ui| {
+            egui::Grid::new("splicing_locus_resource_readiness")
+                .num_columns(3)
+                .striped(true)
+                .spacing([12.0, 5.0])
+                .show(ui, |ui| {
+                    ui.strong("resource");
+                    ui.strong("status");
+                    ui.strong("reference");
+                    ui.end_row();
+                    for row in rows {
+                        ui.label(&row.kind).on_hover_text(&row.detail);
+                        let color = match row.readiness {
+                            LocusEvidenceResourceReadiness::Ready => {
+                                egui::Color32::from_rgb(22, 101, 52)
+                            }
+                            LocusEvidenceResourceReadiness::Missing => {
+                                egui::Color32::from_rgb(185, 28, 28)
+                            }
+                            LocusEvidenceResourceReadiness::EngineValidated => {
+                                egui::Color32::from_rgb(71, 85, 105)
+                            }
+                        };
+                        ui.colored_label(color, row.readiness.label())
+                            .on_hover_text(&row.detail);
+                        ui.monospace(if row.reference.is_empty() {
+                            "-"
+                        } else {
+                            row.reference.as_str()
+                        })
+                        .on_hover_text(&row.detail);
+                        ui.end_row();
+                    }
+                });
+        });
+    }
+
+    fn seed_qpcr_from_isoform_junction(
+        &mut self,
+        view: &SplicingExpertView,
+        junction: &GeneIsoformJunctionRow,
+    ) -> Result<(), String> {
+        let selected = if junction.transcript_ids.len() == 1 {
+            let transcript_id = &junction.transcript_ids[0];
+            view.transcripts
+                .iter()
+                .find(|row| row.transcript_id.eq_ignore_ascii_case(transcript_id))
+                .map(|row| row.transcript_feature_id)
+        } else {
+            None
+        };
+        self.splicing_expert_selected_transcript_feature_id = selected;
+        self.qpcr_design_ui
+            .transcript_targeting
+            .specificity_evidence = QpcrTranscriptSpecificityEvidence::JunctionOnly;
+        let intent = if selected.is_some() {
+            QpcrTranscriptIntentUiMode::SpecificTranscript
+        } else {
+            QpcrTranscriptIntentUiMode::SharedAcrossTranscripts
+        };
+        self.seed_qpcr_from_splicing_view(view, intent)?;
+        self.op_status = format!(
+            "Seeded qPCR design from junction '{}' with junction-only specificity requested. The designer ranks compatible assays; this handoff does not guarantee that a primer or probe crosses this exact junction.",
+            junction.junction_id
+        );
+        Ok(())
+    }
+
+    fn create_locus_assay_order_form(&mut self, candidate: &GeneIsoformAssayCandidate) {
+        let form_id = format!(
+            "{}_assay_{}_oligo_order",
+            candidate.qpcr_report_id, candidate.assay_rank
+        );
+        let Some(engine) = self.engine.clone() else {
+            self.splicing_locus_status = "Engine is unavailable for oligo-order creation".into();
+            return;
+        };
+        let result = engine
+            .write()
+            .map_err(|_| "Engine lock poisoned while creating oligo order form".to_string())
+            .and_then(|mut engine| {
+                engine
+                    .create_oligo_order_form_from_qpcr_report(
+                        &candidate.qpcr_report_id,
+                        &[candidate.assay_rank],
+                        true,
+                        Some(&form_id),
+                        None,
+                        None,
+                        &[],
+                    )
+                    .map_err(|error| error.message)
+            });
+        self.splicing_locus_status = match result {
+            Ok(form) => format!(
+                "Created reviewed-order draft '{}' with {} separate line item(s); this does not submit an order",
+                form.form_id,
+                form.line_items.len()
+            ),
+            Err(error) => error,
+        };
+    }
+
+    fn render_splicing_locus_report_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        view: &SplicingExpertView,
+        report: &GeneLocusEvidenceDisplayReport,
+    ) {
+        crate::gentle_gui_profile_scope!("MainAreaDna::render_splicing_locus_report_ui");
+        ui.heading(format!("{} locus evidence", report.gene_symbol));
+        ui.label(&report.instruction);
+        Self::render_isoform_evidence_status_legend(ui);
+        ui.monospace(format!(
+            "{}:{}..{} | genomic strand {} | local axis {} | genomic labels {} -> {}",
+            report.isoform_evidence.chromosome.as_deref().unwrap_or("?"),
+            report.locus_genomic_start_1based,
+            report.locus_genomic_end_1based,
+            report.gene_strand,
+            report.local_axis_direction.as_str(),
+            report.axis_left_genomic_1based,
+            report.axis_right_genomic_1based
+        ));
+        if let Some(bytes) = self.splicing_locus_preview_png.clone() {
+            ui.add(
+                egui::Image::from_bytes(
+                    format!(
+                        "bytes://gentle-locus-preview-{}-{}.png",
+                        view.target_feature_id, self.splicing_locus_preview_generation
+                    ),
+                    bytes,
+                )
+                .max_width(ui.available_width())
+                .max_height(620.0)
+                .shrink_to_fit(),
+            );
+        } else {
+            ui.small("The machine-readable report is available, but no raster preview is cached.");
+        }
+        self.render_splicing_locus_interactive_inspector(ui, report);
+
+        if !report.warnings.is_empty() {
+            egui::CollapsingHeader::new(format!("Warnings ({})", report.warnings.len()))
+                .default_open(true)
+                .show(ui, |ui| {
+                    for warning in &report.warnings {
+                        ui.colored_label(egui::Color32::from_rgb(180, 83, 9), warning);
+                    }
+                });
+        }
+
+        egui::CollapsingHeader::new(format!(
+            "Transcript metrics ({})",
+            report.transcript_metrics.len()
+        ))
+        .show(ui, |ui| {
+            egui::Grid::new("splicing_locus_transcript_metrics")
+                .num_columns(5)
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.strong("transcript");
+                    ui.strong("spliced bp");
+                    ui.strong("CDS bp");
+                    ui.strong("peptide aa");
+                    ui.strong("flags");
+                    ui.end_row();
+                    for row in &report.transcript_metrics {
+                        ui.monospace(&row.transcript_id);
+                        ui.label(row.spliced_exon_length_bp.to_string());
+                        ui.label(row.cds_length_bp.to_string());
+                        ui.label(
+                            row.expected_peptide_length_aa
+                                .map(|value| value.to_string())
+                                .unwrap_or_else(|| "-".to_string()),
+                        );
+                        ui.small(if row.flags.is_empty() {
+                            "-".to_string()
+                        } else {
+                            row.flags.join(", ")
+                        });
+                        ui.end_row();
+                    }
+                });
+        });
+
+        egui::CollapsingHeader::new(format!(
+            "Probe effects ({} geometry row(s), {} contrast(s))",
+            report.probe_effect_overlays.len(),
+            report.probe_effect_contrasts.len()
+        ))
+        .default_open(!report.probe_effect_overlays.is_empty())
+        .show(ui, |ui| {
+            egui::ScrollArea::vertical()
+                .max_height(300.0)
+                .show(ui, |ui| {
+                    egui::Grid::new("splicing_locus_probe_effects")
+                        .num_columns(5)
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.strong("feature");
+                            ui.strong("class");
+                            ui.strong("genomic span");
+                            ui.strong("effects");
+                            ui.strong("mapping");
+                            ui.end_row();
+                            for row in &report.probe_effect_overlays {
+                                ui.monospace(&row.feature_id);
+                                ui.label(format!("{:?}", row.probe_class).to_ascii_uppercase());
+                                ui.monospace(format!(
+                                    "{}:{}..{} ({})",
+                                    row.chromosome,
+                                    row.genomic_start_1based,
+                                    row.genomic_end_1based,
+                                    row.strand
+                                ));
+                                ui.small(
+                                    row.effects
+                                        .iter()
+                                        .map(|effect| {
+                                            format!(
+                                                "{} {:+.3}",
+                                                effect.display_label, effect.value
+                                            )
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join(" | "),
+                                )
+                                .on_hover_text(
+                                    "Raw probe-set activity differences are visualization evidence, not formal differential-expression significance.",
+                                );
+                                ui.small(&row.mapping_status);
+                                ui.end_row();
+                            }
+                        });
+                });
+        });
+
+        egui::CollapsingHeader::new(format!(
+            "Occupancy and motifs ({} group(s), {} motif track(s))",
+            report.occupancy_groups.len(),
+            report.motif_tracks.len()
+        ))
+        .show(ui, |ui| {
+            for group in &report.occupancy_groups {
+                ui.horizontal_wrapped(|ui| {
+                    ui.strong(&group.label);
+                    ui.small(format!(
+                        "{:?}; |score| max {:.3}; {} lane(s)",
+                        group.scale_mode,
+                        group.group_abs_max_score,
+                        group.lanes.len()
+                    ));
+                });
+            }
+            for track in &report.motif_tracks {
+                ui.horizontal_wrapped(|ui| {
+                    ui.monospace(&track.motif_id);
+                    if let Some(name) = track.motif_name.as_deref() {
+                        ui.label(name);
+                    }
+                    ui.small(format!(
+                        "{} | max {:.3} | {} labeled hit(s)",
+                        track.score_kind,
+                        track.max_score,
+                        track.top_hits.len()
+                    ));
+                });
+            }
+        });
+
+        let mut capture_ensembl_row = None;
+        if let Some(ensembl) = report.ensembl_regulation.as_ref() {
+            egui::CollapsingHeader::new(format!(
+                "Ensembl Regulation ({} region(s))",
+                ensembl.rows.len()
+            ))
+            .default_open(!ensembl.rows.is_empty())
+            .show(ui, |ui| {
+                ui.small(&ensembl.evidence_statement);
+                for non_claim in &ensembl.non_claims {
+                    ui.small(egui::RichText::new(non_claim).italics());
+                }
+                egui::Grid::new("splicing_locus_ensembl_regions")
+                    .num_columns(5)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.strong("feature");
+                        ui.strong("type");
+                        ui.strong("genomic core");
+                        ui.strong("provider associations");
+                        ui.strong("save");
+                        ui.end_row();
+                        for row in &ensembl.rows {
+                            ui.monospace(&row.feature_id);
+                            ui.label(&row.feature_type);
+                            ui.monospace(format!(
+                                "{}-{} (1-based)",
+                                row.core_genomic_start_1based, row.core_genomic_end_1based
+                            ));
+                            ui.small(if row.associated_gene_names.is_empty() {
+                                "-".to_string()
+                            } else {
+                                row.associated_gene_names.join(", ")
+                            });
+                            let save = ui
+                                .small_button("Save region")
+                                .on_hover_text(
+                                    "Save the provider's exact core interval and source binding without materializing a generic sequence feature",
+                                );
+                            #[cfg(feature = "gui-test-support")]
+                            crate::gui_test_support::register_response(
+                                &save,
+                                crate::tutorial_gui_semantics::GENOMIC_REGION_CAPTURE_ENSEMBL,
+                                crate::tutorial_gui_semantics::WINDOW_SPLICING_EXPERT,
+                                Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                                    &report.seq_id,
+                                    &row.feature_id,
+                                ])),
+                                crate::gui_test_support::GuiTestWidgetKind::Button,
+                                false,
+                            );
+                            if save.clicked() {
+                                capture_ensembl_row = Some(row.clone());
+                            }
+                            ui.end_row();
+                        }
+                    });
+            });
+        }
+        if let Some(row) = capture_ensembl_row {
+            self.capture_gene_locus_ensembl_region(report, row);
+        }
+
+        let mut open_saved_region_conservation = None;
+        egui::CollapsingHeader::new(format!(
+            "Saved genomic regions ({})",
+            report.saved_region_overlays.len()
+        ))
+        .default_open(!report.saved_region_overlays.is_empty())
+        .show(ui, |ui| {
+            if report.saved_region_overlays.is_empty() {
+                ui.small(
+                    "No saved region set was requested for this composition. Choose sets in the Saved genomic regions window and compose again.",
+                );
+            } else {
+                egui::Grid::new("splicing_locus_saved_regions")
+                    .num_columns(6)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.strong("set / region");
+                        ui.strong("local");
+                        ui.strong("genomic");
+                        ui.strong("purpose");
+                        ui.strong("evidence");
+                        ui.strong("analyse");
+                        ui.end_row();
+                        for row in &report.saved_region_overlays {
+                            ui.monospace(format!("{} / {}", row.set_id, row.region_id));
+                            ui.monospace(format!(
+                                "{}-{}",
+                                row.local_start_1based, row.local_end_1based
+                            ));
+                            ui.monospace(format!(
+                                "{}-{}",
+                                row.genomic_start_0based.saturating_add(1),
+                                row.genomic_end_0based_exclusive
+                            ));
+                            ui.label(row.purpose.as_str());
+                            ui.label(row.evidence_availability.as_str());
+                            if ui
+                                .small_button("Conservation...")
+                                .on_hover_text(
+                                    "Open the local genomic homology workspace for this saved region",
+                                )
+                                .clicked()
+                            {
+                                open_saved_region_conservation =
+                                    Some((row.set_id.clone(), row.region_id.clone()));
+                            }
+                            ui.end_row();
+                        }
+                    });
+            }
+        });
+        if let Some((set_id, region_id)) = open_saved_region_conservation {
+            self.open_genomic_region_conservation_by_id(&set_id, &region_id);
+        }
+
+        egui::CollapsingHeader::new(format!(
+            "Conservation support ({} block(s))",
+            report.conservation_blocks.len()
+        ))
+        .default_open(!report.conservation_blocks.is_empty())
+        .show(ui, |ui| {
+            if report.conservation_blocks.is_empty() {
+                ui.small("No content-bound homology report was composed into this locus figure.");
+            } else {
+                egui::Grid::new("splicing_locus_conservation_blocks")
+                    .num_columns(4)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.strong("class");
+                        ui.strong("local span");
+                        ui.strong("support");
+                        ui.strong("report");
+                        ui.end_row();
+                        for block in &report.conservation_blocks {
+                            ui.label(block.support_class.as_str());
+                            ui.monospace(format!(
+                                "{}-{}",
+                                block.local_start_1based, block.local_end_1based
+                            ));
+                            ui.label(format!(
+                                "{}/{} ({:.1}%)",
+                                block.supporting_genome_ids.len(),
+                                block.available_genome_ids.len(),
+                                block.support_fraction * 100.0
+                            ));
+                            ui.monospace(&block.report_content_sha256);
+                            ui.end_row();
+                        }
+                    });
+            }
+        });
+
+        let mut open_report: Option<String> = None;
+        let mut order_candidate: Option<GeneIsoformAssayCandidate> = None;
+        let mut design_junction: Option<GeneIsoformJunctionRow> = None;
+        egui::CollapsingHeader::new(format!(
+            "Validation assays ({} existing candidate(s), {} junction(s))",
+            report.isoform_evidence.assay_candidates.len(),
+            report.isoform_evidence.junctions.len()
+        ))
+        .default_open(true)
+        .show(ui, |ui| {
+            ui.small(
+                "Existing assays retain report provenance. New junction handoffs request junction-only specificity but remain candidates until reviewed experimentally.",
+            );
+            for candidate in &report.isoform_evidence.assay_candidates {
+                ui.horizontal_wrapped(|ui| {
+                    ui.monospace(format!(
+                        "{} rank {}",
+                        candidate.qpcr_report_id, candidate.assay_rank
+                    ));
+                    ui.label(&candidate.assay_class_label);
+                    if ui.button("Open report").clicked() {
+                        open_report = Some(candidate.qpcr_report_id.clone());
+                    }
+                    if ui
+                        .button("Create oligo order form")
+                        .on_hover_text(
+                            "Create a persisted review draft with forward, reverse, and probe lines; no vendor submission occurs",
+                        )
+                        .clicked()
+                    {
+                        order_candidate = Some(candidate.clone());
+                    }
+                });
+            }
+            egui::ScrollArea::vertical()
+                .max_height(240.0)
+                .show(ui, |ui| {
+                    for junction in &report.isoform_evidence.junctions {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.monospace(&junction.junction_id);
+                            ui.small(format!(
+                                "{} transcript model(s) | {}",
+                                junction.annotation_model_count, junction.specificity_class
+                            ));
+                            let design_response = ui
+                                .button("Design junction assay")
+                                .on_hover_text(
+                                    "Open the shared qPCR designer with junction-only specificity requested for this splicing context",
+                                );
+                            #[cfg(feature = "gui-test-support")]
+                            {
+                                let subject_scope =
+                                    crate::gui_test_support::pseudonymous_subject_scope(&[
+                                        &report.seq_id,
+                                        &report.panel_id,
+                                        &junction.junction_id,
+                                    ]);
+                                crate::gui_test_support::register_response(
+                                    &design_response,
+                                    "splicing.locus.assay_continuation",
+                                    "window.splicing_expert",
+                                    Some(&subject_scope),
+                                    crate::gui_test_support::GuiTestWidgetKind::Button,
+                                    false,
+                                );
+                            }
+                            if design_response.clicked() {
+                                design_junction = Some(junction.clone());
+                            }
+                        });
+                    }
+                });
+        });
+        if let Some(report_id) = open_report {
+            self.show_qpcr_design_report(&report_id);
+        }
+        if let Some(candidate) = order_candidate.as_ref() {
+            self.create_locus_assay_order_form(candidate);
+        }
+        if let Some(junction) = design_junction.as_ref()
+            && let Err(error) = self.seed_qpcr_from_isoform_junction(view, junction)
+        {
+            self.splicing_locus_status = error;
+        }
+
+        egui::CollapsingHeader::new(format!("Provenance ({})", report.provenance.len())).show(
+            ui,
+            |ui| {
+                for source in &report.provenance {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.monospace(&source.source_kind);
+                        ui.label(&source.source_id);
+                        if let Some(path) = source.path.as_deref() {
+                            ui.monospace(path);
+                        }
+                    });
+                }
+            },
+        );
+    }
+
+    pub(super) fn render_splicing_locus_evidence_tab(
+        &mut self,
+        ui: &mut egui::Ui,
+        view: &SplicingExpertView,
+    ) {
+        crate::gentle_gui_profile_scope!("MainAreaDna::render_splicing_locus_evidence_tab");
+        #[cfg(feature = "gui-test-support")]
+        let semantic_scope = crate::gui_test_support::pseudonymous_subject_scope(&[
+            &view.seq_id,
+            &view.target_feature_id.to_string(),
+        ]);
+        ui.label(
+            egui::RichText::new(
+                "Compose transcript architecture, occupancy, motif scores, probe effects, and validation assays through the shared gene-locus evidence contract.",
+            )
+            .size(10.0)
+            .color(egui::Color32::from_rgb(71, 85, 105)),
+        );
+        egui::CollapsingHeader::new("Composition inputs")
+            .default_open(true)
+            .show(ui, |ui| {
+                egui::Grid::new("splicing_locus_evidence_inputs")
+                    .num_columns(3)
+                    .spacing([12.0, 5.0])
+                    .show(ui, |ui| {
+                        ui.label("Isoform panel");
+                        let panel_id =
+                            ui.text_edit_singleline(&mut self.splicing_isoform_evidence_panel_id);
+                        #[cfg(feature = "gui-test-support")]
+                        crate::gui_test_support::register_response(
+                            &panel_id,
+                            "splicing.locus.panel_id",
+                            "window.splicing_expert",
+                            Some(&semantic_scope),
+                            crate::gui_test_support::GuiTestWidgetKind::TextInput,
+                            false,
+                        );
+                        if panel_id.changed() {
+                            self.remember_typed_splicing_isoform_panel_if_compatible();
+                        }
+                        #[cfg(feature = "gui-test-support")]
+                        self.render_splicing_isoform_panel_controls(ui, Some(&semantic_scope));
+                        #[cfg(not(feature = "gui-test-support"))]
+                        self.render_splicing_isoform_panel_controls(ui, None);
+                        ui.end_row();
+                        ui.label("Annotation release");
+                        ui.text_edit_singleline(
+                            &mut self.splicing_isoform_evidence_annotation_release,
+                        );
+                        ui.label("");
+                        ui.end_row();
+                        ui.label("Ensembl / RefSeq source list").on_hover_text(
+                            "Optional JSON array of hash-bound TranscriptAnnotationSource records. Use the same assembly and locus sequence hash. Relative annotation paths resolve beside the list. No download or consensus is inferred.",
+                        );
+                        ui.text_edit_singleline(&mut self.splicing_locus_annotation_sources_path);
+                        if ui.button("Annotation sources...").clicked()
+                            && let Some(path) = Self::pick_locus_resource_file("Annotation source list", &["json"])
+                        {
+                            self.splicing_locus_annotation_sources_path = path.to_string_lossy().to_string();
+                        }
+                        ui.end_row();
+                        ui.label("Probe interpretation JSON");
+                        ui.text_edit_singleline(&mut self.splicing_isoform_evidence_probe_paths);
+                        if ui.button("Browse / relocate...").clicked()
+                            && let Some(path) =
+                                Self::pick_locus_resource_file("Probe evidence JSON", &["json"])
+                        {
+                            Self::append_locus_resource_path(
+                                &mut self.splicing_isoform_evidence_probe_paths,
+                                &path,
+                            );
+                        }
+                        ui.end_row();
+                        ui.label("cDNA/EST resource JSON");
+                        ui.text_edit_singleline(&mut self.splicing_isoform_evidence_cdna_est_paths);
+                        if ui.button("Browse / relocate...").clicked()
+                            && let Some(path) = Self::pick_locus_resource_file(
+                                "cDNA or EST evidence JSON",
+                                &["json"],
+                            )
+                        {
+                            Self::append_locus_resource_path(
+                                &mut self.splicing_isoform_evidence_cdna_est_paths,
+                                &path,
+                            );
+                        }
+                        ui.end_row();
+                        ui.label("Expression TSV");
+                        ui.text_edit_singleline(
+                            &mut self.splicing_isoform_evidence_expression_path,
+                        );
+                        if ui.button("Browse / relocate...").clicked()
+                            && let Some(path) = Self::pick_locus_resource_file(
+                                "Isoform expression TSV",
+                                &["tsv", "txt"],
+                            )
+                        {
+                            self.splicing_isoform_evidence_expression_path =
+                                path.to_string_lossy().to_string();
+                        }
+                        ui.end_row();
+                        ui.label("qPCR report ids");
+                        ui.text_edit_singleline(
+                            &mut self.splicing_isoform_evidence_qpcr_report_ids,
+                        );
+                        ui.label("");
+                        ui.end_row();
+                        ui.label("Occupancy track names");
+                        ui.text_edit_singleline(
+                            &mut self.splicing_isoform_evidence_occupancy_tracks,
+                        );
+                        ui.small("Exact projected names, or use a layout below");
+                        ui.end_row();
+                        ui.label("Occupancy layout JSON");
+                        ui.text_edit_singleline(&mut self.splicing_locus_occupancy_layout_path);
+                        if ui.button("Browse / relocate...").clicked()
+                            && let Some(path) =
+                                Self::pick_locus_resource_file("Occupancy layout JSON", &["json"])
+                        {
+                            self.splicing_locus_occupancy_layout_path =
+                                path.to_string_lossy().to_string();
+                        }
+                        ui.end_row();
+                        ui.label("Saved region-set ids");
+                        ui.text_edit_singleline(&mut self.splicing_locus_region_set_ids);
+                        ui.small("Comma/newline separated; projected by exact genome anchor");
+                        ui.end_row();
+                        ui.label("Homology report JSON");
+                        ui.text_edit_singleline(&mut self.splicing_locus_homology_report_paths);
+                        if ui.button("Browse / relocate...").clicked()
+                            && let Some(path) = Self::pick_locus_resource_file(
+                                "Genomic-region homology report",
+                                &["json"],
+                            )
+                        {
+                            Self::append_locus_resource_path(
+                                &mut self.splicing_locus_homology_report_paths,
+                                &path,
+                            );
+                        }
+                        ui.end_row();
+                        ui.label("Probe-effect TSV");
+                        ui.text_edit_singleline(&mut self.splicing_locus_probe_effect_paths);
+                        if ui.button("Browse / relocate...").clicked()
+                            && let Some(path) =
+                                Self::pick_locus_resource_file("Probe-effect TSV", &["tsv", "txt"])
+                        {
+                            Self::append_locus_resource_path(
+                                &mut self.splicing_locus_probe_effect_paths,
+                                &path,
+                            );
+                        }
+                        ui.end_row();
+                        ui.label("Probe-effect contrasts");
+                        ui.text_edit_singleline(&mut self.splicing_locus_probe_effect_contrasts);
+                        ui.small("Comma/newline separated");
+                        ui.end_row();
+                        ui.label("Probe coordinate system");
+                        ui.text_edit_singleline(
+                            &mut self.splicing_locus_probe_effect_coordinate_system,
+                        );
+                        if ui.button("Use sequence anchor").clicked()
+                            && let Some(engine) = self.engine.as_ref()
+                            && let Some(seq_id) = self.seq_id.as_deref()
+                            && let Ok(engine) = engine.read()
+                            && let Ok(anchor) = engine.sequence_genome_anchor_summary(seq_id)
+                        {
+                            self.splicing_locus_probe_effect_coordinate_system = anchor.genome_id;
+                        }
+                        ui.end_row();
+                        ui.label("Flanks (upstream / downstream)");
+                        ui.horizontal(|ui| {
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.splicing_locus_upstream_bp)
+                                    .desired_width(80.0),
+                            );
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.splicing_locus_downstream_bp)
+                                    .desired_width(80.0),
+                            );
+                        });
+                        ui.small("bp, transcript-direction aware");
+                        ui.end_row();
+                        ui.label("Motifs");
+                        let motifs =
+                            Self::isoform_evidence_ordered_list(&self.splicing_locus_motifs);
+                        let mut remove_motif = None;
+                        ui.horizontal_wrapped(|ui| {
+                            for motif in &motifs {
+                                ui.group(|ui| {
+                                    ui.monospace(motif);
+                                    if ui
+                                        .small_button("×")
+                                        .on_hover_text("Remove TF score from the next composition")
+                                        .clicked()
+                                    {
+                                        remove_motif = Some(motif.clone());
+                                    }
+                                });
+                            }
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.splicing_locus_motif_add)
+                                    .hint_text("TF or JASPAR matrix")
+                                    .desired_width(150.0),
+                            );
+                            if ui.small_button("Add").clicked() {
+                                let candidate = self.splicing_locus_motif_add.trim();
+                                if !candidate.is_empty() {
+                                    let mut updated = motifs.clone();
+                                    if !updated
+                                        .iter()
+                                        .any(|value| value.eq_ignore_ascii_case(candidate))
+                                    {
+                                        updated.push(candidate.to_string());
+                                    }
+                                    self.splicing_locus_motifs = updated.join(", ");
+                                    self.splicing_locus_motif_add.clear();
+                                }
+                            }
+                        });
+                        if let Some(remove) = remove_motif {
+                            self.splicing_locus_motifs = motifs
+                                .into_iter()
+                                .filter(|value| value != &remove)
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                        }
+                        ui.small("Changes take effect after Compose and preview");
+                        ui.end_row();
+                        ui.label("Motif score kind");
+                        ui.text_edit_singleline(&mut self.splicing_locus_motif_score_kind);
+                        ui.checkbox(
+                            &mut self.splicing_locus_motif_clip_negative,
+                            "clip negative",
+                        );
+                        ui.end_row();
+                        ui.label("Motif threshold / top hits");
+                        ui.horizontal(|ui| {
+                            ui.add(
+                                egui::TextEdit::singleline(
+                                    &mut self.splicing_locus_motif_threshold,
+                                )
+                                .desired_width(80.0),
+                            );
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.splicing_locus_motif_top_hits)
+                                    .desired_width(60.0),
+                            );
+                        });
+                        ui.small("blank threshold keeps all scores");
+                        ui.end_row();
+                        ui.label("Regulatory score tracks");
+                        ui.horizontal(|ui| {
+                            ui.add(
+                                egui::TextEdit::singleline(
+                                    &mut self.splicing_locus_regulatory_tracks_path,
+                                )
+                                .hint_text("typed track request JSON")
+                                .desired_width(280.0),
+                            );
+                            if ui.button("Choose...").clicked()
+                                && let Some(path) = rfd::FileDialog::new()
+                                    .add_filter("JSON", &["json"])
+                                    .pick_file()
+                            {
+                                self.splicing_locus_regulatory_tracks_path =
+                                    path.to_string_lossy().to_string();
+                            }
+                        });
+                        ui.small("Array or {\"tracks\": [...]} with explicit providers");
+                        ui.end_row();
+                        ui.label("Genomic scale bar");
+                        ui.horizontal(|ui| {
+                            egui::ComboBox::from_id_salt("splicing_locus_scale_bar_mode")
+                                .selected_text(self.splicing_locus_scale_bar_mode.as_str())
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut self.splicing_locus_scale_bar_mode,
+                                        "hidden".to_string(),
+                                        "hidden",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.splicing_locus_scale_bar_mode,
+                                        "auto".to_string(),
+                                        "auto (1/2/5)",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.splicing_locus_scale_bar_mode,
+                                        "fixed".to_string(),
+                                        "fixed",
+                                    );
+                                });
+                            ui.add_enabled(
+                                self.splicing_locus_scale_bar_mode == "fixed",
+                                egui::TextEdit::singleline(&mut self.splicing_locus_scale_bar_bp)
+                                    .desired_width(80.0),
+                            );
+                            ui.small("bp");
+                        });
+                        ui.small(
+                            "Hidden preserves legacy figures; fixed must fit the displayed span",
+                        );
+                        ui.end_row();
+                    });
+            });
+
+        self.render_locus_resource_readiness(ui);
+        let mut compose = false;
+        let mut render_svg = false;
+        let mut export_json = false;
+        let mut export_pdf = false;
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .button("Load report JSON...")
+                .on_hover_text(
+                    "Inspect the exact portable locus report behind an existing document",
+                )
+                .clicked()
+            {
+                self.load_splicing_locus_report_json_dialog();
+            }
+            let compose_response = ui.button("Compose and preview");
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &compose_response,
+                "splicing.locus.compose",
+                "window.splicing_expert",
+                Some(&semantic_scope),
+                crate::gui_test_support::GuiTestWidgetKind::Button,
+                false,
+            );
+            compose = compose_response.clicked();
+            if ui
+                .add_enabled(
+                    self.splicing_locus_report.is_some(),
+                    egui::Button::new("Copy report JSON"),
+                )
+                .clicked()
+                && let Some(report) = self.splicing_locus_report.as_ref()
+                && let Ok(bytes) = self.splicing_locus_json(report)
+            {
+                ui.ctx()
+                    .copy_text(String::from_utf8_lossy(&bytes).into_owned());
+                self.splicing_locus_status = "Copied locus report JSON".to_string();
+            }
+            let export_json_response = ui.add_enabled(
+                self.splicing_locus_report.is_some(),
+                egui::Button::new("Save JSON..."),
+            );
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &export_json_response,
+                "splicing.locus.export_json",
+                "window.splicing_expert",
+                Some(&semantic_scope),
+                crate::gui_test_support::GuiTestWidgetKind::Button,
+                false,
+            );
+            export_json = export_json_response.clicked();
+            let export_pdf_response = ui.add_enabled(
+                self.splicing_locus_report.is_some(),
+                egui::Button::new("Save PDF..."),
+            );
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &export_pdf_response,
+                "splicing.locus.export_pdf",
+                "window.splicing_expert",
+                Some(&semantic_scope),
+                crate::gui_test_support::GuiTestWidgetKind::Button,
+                false,
+            );
+            export_pdf = export_pdf_response.clicked();
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.label("SVG path");
+            ui.text_edit_singleline(&mut self.splicing_locus_svg_path);
+            if ui.button("Choose...").clicked()
+                && let Some(path) = rfd::FileDialog::new()
+                    .set_file_name("gene-locus-evidence.svg")
+                    .add_filter("SVG", &["svg"])
+                    .save_file()
+            {
+                self.splicing_locus_svg_path = path.to_string_lossy().to_string();
+            }
+            let render_svg_response = ui.button("Render SVG");
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &render_svg_response,
+                "splicing.locus.export_svg",
+                "window.splicing_expert",
+                Some(&semantic_scope),
+                crate::gui_test_support::GuiTestWidgetKind::Button,
+                false,
+            );
+            render_svg = render_svg_response.clicked();
+        });
+        if compose {
+            self.inspect_splicing_locus_evidence();
+        }
+        if render_svg {
+            let path = self.splicing_locus_svg_path.clone();
+            if let Err(error) = self.render_splicing_locus_svg_to_path(&path) {
+                self.splicing_locus_status = error;
+            }
+        }
+        if export_json {
+            self.export_splicing_locus_report_json_dialog();
+        }
+        if export_pdf {
+            self.export_splicing_locus_pdf_dialog();
+        }
+        if !self.splicing_locus_status.is_empty() {
+            let _status_response = ui.label(
+                egui::RichText::new(&self.splicing_locus_status)
+                    .size(10.0)
+                    .color(egui::Color32::from_rgb(51, 65, 85)),
+            );
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &_status_response,
+                "splicing.locus.status",
+                "window.splicing_expert",
+                Some(&semantic_scope),
+                crate::gui_test_support::GuiTestWidgetKind::Status,
+                false,
+            );
+        }
+        ui.separator();
+        if let Some(report) = self.splicing_locus_report.clone() {
+            self.render_splicing_locus_report_ui(ui, view, report.as_ref());
+        } else {
+            ui.label(
+                egui::RichText::new(
+                    "No locus composition cached. Resolve the resources above, then compose the shared report.",
+                )
+                .italics()
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+        }
+    }
+
     pub(super) fn render_feature_expert_view_ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -6401,33 +10039,58 @@ impl MainAreaDna {
             FeatureExpertView::IsoformArchitecture(isoform) => {
                 self.render_isoform_architecture_expert_view_ui(ui, isoform)
             }
+            FeatureExpertView::IsoformEvidence(report) => {
+                Self::render_isoform_evidence_view_ui(ui, report)
+            }
+            FeatureExpertView::GeneLocusEvidence(report) => {
+                ui.heading(format!("{} locus evidence", report.gene_symbol));
+                ui.label(&report.instruction);
+                Self::render_isoform_evidence_status_legend(ui);
+                ui.monospace(format!(
+                    "{} transcripts | {} occupancy groups | {} motif tracks | {} junction assays",
+                    report.transcript_metrics.len(),
+                    report.occupancy_groups.len(),
+                    report.motif_tracks.len(),
+                    report.assay_overlays.len()
+                ));
+                ui.small(
+                    "Use the shared SVG export for the composed publication view; this summary contains no GUI-local biological interpretation.",
+                );
+            }
         }
     }
 
     pub(super) fn sync_splicing_expert_window_state(&mut self) {
-        if let Some(FeatureExpertView::Splicing(view)) = self.description_cache_expert_view.clone()
-        {
-            if !self.show_splicing_expert_window {
-                return;
-            }
-            let needs_refresh = self.splicing_expert_window_feature_id
-                != Some(view.target_feature_id)
-                || self
-                    .splicing_expert_window_view
-                    .as_ref()
-                    .map(|cached| {
-                        cached.seq_id != view.seq_id
-                            || cached.region_start_1based != view.region_start_1based
-                            || cached.region_end_1based != view.region_end_1based
-                            || cached.transcript_count != view.transcript_count
-                    })
-                    .unwrap_or(true);
-            if needs_refresh {
-                self.splicing_expert_window_feature_id = Some(view.target_feature_id);
-                self.splicing_expert_window_view = Some(Arc::new(view.clone()));
-                self.splicing_expert_window_pending_initial_render = true;
-                self.log_splicing_expert_status(&view, "window state refreshed", true);
-            }
+        if !self.show_splicing_expert_window {
+            return;
+        }
+        let Some(FeatureExpertView::Splicing(view)) = self.description_cache_expert_view.as_ref()
+        else {
+            return;
+        };
+        let needs_refresh = self.splicing_expert_window_feature_id != Some(view.target_feature_id)
+            || self
+                .splicing_expert_window_view
+                .as_ref()
+                .map(|cached| {
+                    cached.seq_id != view.seq_id
+                        || cached.region_start_1based != view.region_start_1based
+                        || cached.region_end_1based != view.region_end_1based
+                        || cached.transcript_count != view.transcript_count
+                })
+                .unwrap_or(true);
+        if needs_refresh {
+            let view = view.clone();
+            self.invalidate_splicing_expert_presentation_cache();
+            self.splicing_expert_window_feature_id = Some(view.target_feature_id);
+            self.splicing_expert_window_view = Some(Self::cache_ready_splicing_expert_view(&view));
+            self.splicing_isoform_evidence_report = None;
+            self.splicing_isoform_evidence_status.clear();
+            self.splicing_locus_report = None;
+            self.splicing_locus_preview_png = None;
+            self.splicing_locus_status.clear();
+            self.splicing_expert_window_pending_initial_render = true;
+            self.log_splicing_expert_status(&view, "window state refreshed", true);
         }
     }
 
@@ -6624,6 +10287,12 @@ impl MainAreaDna {
         view: &SplicingExpertView,
         pending_initial_render: bool,
     ) {
+        crate::agent_help::render_agent_help_button(
+            ui,
+            format!("RNA-read Mapping - {}", view.group_label),
+            "window.rna_read_mapping",
+        );
+        ui.separator();
         self.render_rna_read_mapping_window_intro(ui, view);
         if pending_initial_render {
             self.log_rna_read_mapping_status(view, "first frame deferred", true);
@@ -6676,7 +10345,7 @@ impl MainAreaDna {
             self.rna_read_mapping_window_pending_initial_render,
         );
         self.rna_read_mapping_window_feature_id = Some(view.target_feature_id);
-        self.rna_read_mapping_window_view = Some(Arc::new(view.clone()));
+        self.rna_read_mapping_window_view = Some(Self::cache_ready_splicing_expert_view(view));
         self.rna_read_mapping_window_pending_initial_render = true;
         self.rna_read_mapping_window_focus_requested = true;
         self.show_rna_read_mapping_window = true;

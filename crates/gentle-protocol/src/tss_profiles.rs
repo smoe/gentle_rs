@@ -1,0 +1,653 @@
+//! Portable, accession-pinned TSS profile inputs, computed reports and exports.
+//!
+//! Window coordinates are transcript-oriented base indices, never motif centers.
+//! Computed scores are retained before display clipping; unavailable windows are null.
+
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
+pub const PANEL_SCHEMA: &str = "gentle.jaspar_target_panel.v1";
+pub const BUNDLE_SCHEMA: &str = "gentle.tss_fasta_bundle.v1";
+pub const SELECTION_SCHEMA: &str = "gentle.tss_profile_selection.v1";
+pub const REPORT_SCHEMA: &str = "gentle.tss_tfbs_profiles.v1";
+pub const RECEIPT_SCHEMA: &str = "gentle.tss_tfbs_profile_receipt.v1";
+pub const CONTEXT_INPUT_SCHEMA: &str = "gentle.tss_detail_context_inputs.v1";
+pub const CONTEXT_SCHEMA: &str = "gentle.tss_detail_context.v1";
+pub const CONTEXT_NON_CLAIMS: &str = "Context is projected from explicitly bound locus and TATA reports. CUT&RUN/chromatin source scores are not TF-model scores; an interval gap is not a measured zero. Exons, CDSs and translation boundaries are annotation-derived, not demonstrated expression or translation. TATA annotations, TBP predictions and promoter classifications are distinct; missing evidence is not biological absence. Sequence agreement checks these inputs, not independent reference authenticity.";
+pub const NON_CLAIMS: &str = "JASPAR tracks are sequence-model predictions, not measured binding, affinity, occupancy, cofactor interaction, promoter activity or functional regulation. Cross-matrix magnitudes are not comparable without a documented calibration. Annotated transcript starts are TSS candidates, not experimentally established initiation sites. Correlation compares model outputs, not biological correctness or co-regulation. A factor also appearing as a target gene does not establish autoregulation.";
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TssStrand {
+    #[serde(rename = "+")]
+    Plus,
+    #[serde(rename = "-")]
+    Minus,
+}
+
+impl TssStrand {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Plus => "+",
+            Self::Minus => "-",
+        }
+    }
+    pub fn opposite(self) -> Self {
+        match self {
+            Self::Plus => Self::Minus,
+            Self::Minus => Self::Plus,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct TssReference {
+    pub genome_id: String,
+    pub assembly: String,
+    /// Only a separately declared release, never guessed from a genome label.
+    #[serde(default)]
+    pub annotation_release: Option<String>,
+}
+
+/// Exact input-manifest identity, distinct from the profile producer revision.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TssBundleSource {
+    pub schema: String,
+    pub manifest_sha256: String,
+    pub source_revision: Option<String>,
+    pub dataset_id: Option<String>,
+    pub producer_sha256: Option<String>,
+}
+
+/// A source-bound descriptive selection criterion, not a new activity inference.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TssSelectionEvidence {
+    pub label: String,
+    pub legend: String,
+    pub criterion: String,
+    pub factor: Option<String>,
+    /// Historical measurement geometry, never a display-window join key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection_window: Option<TssSelectionWindow>,
+}
+
+/// Geometry of the source selection calculation, not of the displayed insert.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TssSelectionWindow {
+    pub upstream_bp: usize,
+    pub downstream_bp: usize,
+    pub length_bp: usize,
+    pub sequence_sha256: String,
+}
+
+impl TssSelectionEvidence {
+    /// One shared wording for all human-facing projections.
+    pub fn selection_window_description(&self) -> String {
+        match &self.selection_window {
+            Some(window) => format!(
+                "Historical selection: -{}/+{} bp ({} bp); sequence SHA-256={}. Separate from the displayed window. No display-window reassessment is recorded here.",
+                window.upstream_bp, window.downstream_bp, window.length_bp, window.sequence_sha256
+            ),
+            None => "Historical selection window: unavailable; not assumed to equal the displayed window.".into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct TssGeometry {
+    pub chromosome: String,
+    pub strand: TssStrand,
+    pub tss_1based: u64,
+    pub start_1based: u64,
+    pub end_1based: u64,
+    pub upstream_bp: usize,
+    pub downstream_bp: usize,
+}
+
+impl TssGeometry {
+    /// Number of bases including the TSS base; None on arithmetic overflow.
+    pub fn length(&self) -> Option<usize> {
+        self.upstream_bp
+            .checked_add(1)?
+            .checked_add(self.downstream_bp)
+    }
+
+    /// Absolute coordinate of a transcript-oriented base index (not a motif end).
+    pub fn genomic_at(&self, index: usize) -> Option<u64> {
+        if index >= self.length()? {
+            return None;
+        }
+        let index = u64::try_from(index).ok()?;
+        match self.strand {
+            TssStrand::Plus => self.start_1based.checked_add(index),
+            TssStrand::Minus => self.end_1based.checked_sub(index),
+        }
+    }
+
+    pub fn relative_at(&self, index: usize) -> Option<i64> {
+        if index >= self.length()? {
+            return None;
+        }
+        i64::try_from(index)
+            .ok()?
+            .checked_sub(i64::try_from(self.upstream_bp).ok()?)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct TssRecord {
+    pub promoter_id: String,
+    pub gene_id: String,
+    pub gene_symbol: String,
+    pub geometry: TssGeometry,
+    pub transcripts: Vec<String>,
+    pub sequence_sha256: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TssBundleManifest {
+    pub schema: String,
+    pub reference: TssReference,
+    /// Relative FASTA filename -> SHA-256 of the exact file bytes.
+    pub fasta_files: BTreeMap<String, String>,
+    pub records: Vec<TssRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TssSelection {
+    pub schema: String,
+    pub reference: TssReference,
+    pub selected: Vec<TssSelectedRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TssSelectedRecord {
+    pub promoter_id: String,
+    pub gene_id: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TssScaleMode {
+    /// A separate matrix-specific range in each TSS window.
+    #[default]
+    Independent,
+    /// One range across matrices within each TSS; requires cross-source calibration.
+    Shared,
+    /// One range per exact accession across all report windows and both strands.
+    SharedAcrossTss,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TssCalibrationState {
+    MatrixSpecific,
+    CrossSourceCalibrated,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TssStrandPolicy {
+    #[default]
+    Both,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct JasparTargetPanel {
+    pub schema: String,
+    pub panel_id: String,
+    pub label: String,
+    /// Exact existing score-kind spelling; validated against the shared scorer.
+    pub score_kind: String,
+    pub clip_negative: bool,
+    #[serde(default)]
+    pub scale_mode: TssScaleMode,
+    #[serde(default)]
+    pub strand_policy: TssStrandPolicy,
+    pub calibration_state: TssCalibrationState,
+    pub calibration_statement: String,
+    #[serde(default)]
+    pub calibration_id: Option<String>,
+    #[serde(default)]
+    pub calibration_sha256: Option<String>,
+    pub top_hit_count: usize,
+    /// One entry per exact matrix, not one entry per factor name.
+    pub factors: Vec<JasparPanelTrack>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct JasparPanelTrack {
+    pub source_id: String,
+    pub factor_id: String,
+    pub label: String,
+    pub display_order: usize,
+    #[serde(default)]
+    pub color_hint: Option<String>,
+    /// Optional repeated policy must equal the panel's score kind in v1.
+    #[serde(default)]
+    pub score_kind: Option<String>,
+    /// Preserve original track identity and labels when normalizing tracks[].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub track_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub factor_label: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssInputBinding {
+    pub role: String,
+    /// Portable filename, never an absolute host path.
+    pub name: String,
+    pub sha256: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResolvedTssMatrix {
+    pub specification: JasparPanelTrack,
+    pub version: String,
+    pub consensus: String,
+    /// Actual A/C/G/T counts used; also permits report-only logo rendering.
+    pub matrix_counts: Vec<[f64; 4]>,
+    pub matrix_sha256: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssPanelResolution {
+    pub panel: JasparTargetPanel,
+    pub panel_sha256: String,
+    pub registry_sources: Vec<TssInputBinding>,
+    pub registry_source_url: Option<String>,
+    pub matrices: Vec<ResolvedTssMatrix>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssPeak {
+    pub local_start_0based: usize,
+    pub score: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssProfileTrack {
+    pub accession: String,
+    pub motif_length_bp: usize,
+    pub forward_scores: Vec<Option<f64>>,
+    pub reverse_scores: Vec<Option<f64>>,
+    pub forward_maximum: Option<TssPeak>,
+    pub reverse_maximum: Option<TssPeak>,
+    pub forward_peaks: Vec<TssPeak>,
+    pub reverse_peaks: Vec<TssPeak>,
+    /// Shared scorer normalization metadata; schema is unchanged from score tracks.
+    pub normalization_reference: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssMatrixComparison {
+    pub factor_id: String,
+    pub left_accession: String,
+    pub right_accession: String,
+    pub local_strand: TssStrand,
+    pub paired_window_count: usize,
+    pub excluded_window_count: usize,
+    pub pearson: Option<f64>,
+    pub spearman: Option<f64>,
+    pub undefined_reason: Option<String>,
+    pub method: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssProfileWindow {
+    pub record: TssRecord,
+    pub selected: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection_evidence: Option<TssSelectionEvidence>,
+    pub tracks: Vec<TssProfileTrack>,
+    pub comparisons: Vec<TssMatrixComparison>,
+    /// Optional, sequence-verified context on this exact transcript-oriented axis.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail_context: Option<TssDetailContext>,
+}
+
+/// Caller-reviewed file identity. Relative paths resolve beside the context manifest.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TssContextFile {
+    pub path: String,
+    pub sha256: String,
+}
+
+/// One full, locally oriented locus sequence and the reports produced from it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TssContextSource {
+    /// Optional sources for the same reusable locus/structure join.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transcript_annotation_sources:
+        Vec<crate::transcript_presentation::TranscriptAnnotationSource>,
+    pub gene_id: String,
+    pub locus_report: TssContextFile,
+    pub locus_fasta: TssContextFile,
+    #[serde(default)]
+    pub tata_report: Option<TssContextFile>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TssContextManifest {
+    pub schema: String,
+    pub reference: TssReference,
+    pub genes: Vec<TssContextSource>,
+}
+
+/// Original genomic interval plus its clipped projection; never stretched to fit.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssContextSpan {
+    pub genomic_start_1based: u64,
+    pub genomic_end_1based: u64,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub clipped: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssContextExon {
+    pub number_5prime_to_3prime: usize,
+    pub span: TssContextSpan,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssContextCodon {
+    pub kind: crate::isoform_evidence::GeneLocusCodonKind,
+    pub position_0based: usize,
+    pub genomic_position_1based: u64,
+    pub basis: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssContextTranscript {
+    pub transcript_id: String,
+    pub label: String,
+    pub genomic_strand: TssStrand,
+    pub exons: Vec<TssContextExon>,
+    pub cds: Vec<TssContextSpan>,
+    pub codons: Vec<TssContextCodon>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssContextSignal {
+    pub interval_id: String,
+    pub span: TssContextSpan,
+    pub score: Option<f64>,
+    pub label: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssContextOccupancyLane {
+    pub group_id: String,
+    pub group_label: String,
+    pub scale_mode: crate::isoform_evidence::GeneLocusOccupancyScaleMode,
+    pub lane_id: String,
+    pub label: String,
+    pub state: crate::isoform_evidence::GeneLocusOccupancyLaneState,
+    pub role: crate::isoform_evidence::GeneLocusOccupancyLaneRole,
+    pub source_id: String,
+    pub source_sha256: Option<String>,
+    pub source_kind: String,
+    pub condition: Option<String>,
+    pub cell_line: Option<String>,
+    pub assay: Option<String>,
+    pub mark: Option<String>,
+    pub factor: Option<String>,
+    /// Inherit the locus scale, never independently normalize a cropped window.
+    pub display_abs_max_score: f64,
+    pub intervals: Vec<TssContextSignal>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssContextTataRow {
+    /// Original source-local geometry and evidence class remain inspectable.
+    pub evidence: crate::tata_boxes::TataBoxEvidenceRow,
+    pub span: TssContextSpan,
+    pub genomic_strand: TssStrand,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssContextTata {
+    pub report_id: String,
+    pub report_sha256: String,
+    pub motif_id: Option<String>,
+    pub matrix_sha256: Option<String>,
+    pub score_policy: String,
+    pub epd_status: String,
+    pub rows: Vec<TssContextTataRow>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssDetailContext {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_presentation:
+        Option<crate::transcript_presentation::TranscriptStructurePresentation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_payload_coverage:
+        Option<crate::transcript_presentation::TranscriptPayloadCoverage>,
+    pub schema: String,
+    /// Exact transcript-oriented bases, verified against window_sequence_sha256.
+    /// Absent on legacy contexts; required for annotated sequence export.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_sequence: Option<String>,
+    pub promoter_id: String,
+    pub geometry: TssGeometry,
+    pub window_sequence_sha256: String,
+    pub locus_seq_id: String,
+    pub locus_sequence_sha256: String,
+    pub locus_report_sha256: String,
+    pub annotation_release: Option<String>,
+    pub bindings: Vec<TssInputBinding>,
+    pub transcripts: Vec<TssContextTranscript>,
+    pub occupancy: Vec<TssContextOccupancyLane>,
+    /// None means not supplied, never a negative TATA finding.
+    pub tata: Option<TssContextTata>,
+    pub warnings: Vec<String>,
+    pub non_claims: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssProfileReport {
+    pub schema: String,
+    pub reference: TssReference,
+    pub panel_resolution: TssPanelResolution,
+    pub inputs: Vec<TssInputBinding>,
+    /// Original sparse-package query reports, never merged into local score arrays.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub imported_motif_evidence: Vec<TssImportedMotifEvidence>,
+    pub windows: Vec<TssProfileWindow>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<TssBundleSource>,
+    pub producer_revision: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub producer_executable_sha256: Option<String>,
+    pub lockfile_sha256: String,
+    pub score_policy: BTreeMap<String, String>,
+    pub verification: String,
+    pub warnings: Vec<String>,
+    pub non_claims: String,
+}
+
+/// A saved DuckDB query result bound by both source-file and canonical report hashes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TssImportedMotifEvidence {
+    pub source: TssInputBinding,
+    pub report_sha256: String,
+    pub report: crate::genomic_motif_evidence::GenomicMotifEvidenceReport,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ComputeTssProfilesRequest {
+    pub manifest: String,
+    pub panel: String,
+    #[serde(default)]
+    pub fasta: Vec<String>,
+    #[serde(default)]
+    pub selection: Option<String>,
+    pub expected_genome_id: String,
+    #[serde(default)]
+    pub expected_assembly: Option<String>,
+    #[serde(default)]
+    pub expected_annotation_release: Option<String>,
+    #[serde(default)]
+    pub expected_dataset_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TssExportFormat {
+    Svg,
+    Png,
+    Pdf,
+    VectorPdf,
+    Genbank,
+    Embl,
+}
+
+fn one_panel() -> usize {
+    1
+}
+fn svg_format() -> Vec<TssExportFormat> {
+    vec![TssExportFormat::Svg]
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TssProfileRenderOptions {
+    #[serde(default)]
+    pub scale_mode: Option<TssScaleMode>,
+    #[serde(default = "one_panel")]
+    pub panels_per_page: usize,
+}
+
+impl Default for TssProfileRenderOptions {
+    fn default() -> Self {
+        Self {
+            scale_mode: None,
+            panels_per_page: 1,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExportTssProfilesRequest {
+    pub output_dir: String,
+    /// Optional input enrichment before rendering, without recomputing TF scores.
+    /// Shared engine operations resolve this path; exported replay requests omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_manifest: Option<String>,
+    /// Saved GenomicMotifEvidenceReport JSON files. No query or rescoring during export.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub genomic_motif_evidence: Vec<String>,
+    #[serde(default)]
+    pub rendering: TssProfileRenderOptions,
+    #[serde(default = "svg_format")]
+    pub formats: Vec<TssExportFormat>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssProfileReceipt {
+    pub schema: String,
+    pub report_sha256: String,
+    pub input_manifest_sha256: String,
+    pub source_revision: Option<String>,
+    pub producer_revision: String,
+    pub exporter_revision: String,
+    pub executable_sha256: String,
+    pub lockfile_sha256: String,
+    pub inputs: Vec<TssInputBinding>,
+    pub rendering: TssProfileRenderOptions,
+    pub renderer: String,
+    pub render_metadata: Vec<serde_json::Value>,
+    pub outputs: BTreeMap<String, String>,
+    pub tss_count: usize,
+    pub page_count: usize,
+    pub non_claims: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tss_profiles_json_preserves_score_bits_for_report_only_replay() {
+        let scores = vec![
+            Some(-109.91133953680091_f64),
+            None,
+            Some(0.0),
+            Some(f64::MIN_POSITIVE),
+        ];
+        let bytes = serde_json::to_vec(&scores).unwrap();
+        let restored: Vec<Option<f64>> = serde_json::from_slice(&bytes).unwrap();
+        let bits = |values: Vec<Option<f64>>| {
+            values
+                .into_iter()
+                .map(|v| v.map(f64::to_bits))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(bits(scores), bits(restored));
+    }
+
+    #[test]
+    fn tss_profiles_geometry_roundtrip_keeps_decreasing_genomic_axis() {
+        let geometry = TssGeometry {
+            chromosome: "synthetic".into(),
+            strand: TssStrand::Minus,
+            tss_1based: 1000,
+            start_1based: 800,
+            end_1based: 1500,
+            upstream_bp: 500,
+            downstream_bp: 200,
+        };
+        let restored: TssGeometry =
+            serde_json::from_value(serde_json::to_value(&geometry).unwrap()).unwrap();
+        assert_eq!(restored, geometry);
+        for (i, relative, genomic) in [(0, -500, 1500), (500, 0, 1000), (700, 200, 800)] {
+            assert_eq!(restored.relative_at(i), Some(relative));
+            assert_eq!(restored.genomic_at(i), Some(genomic));
+        }
+        assert_eq!(restored.genomic_at(701), None);
+    }
+
+    #[test]
+    fn tss_profiles_capabilities_classify_export_effects_conservatively() {
+        for name in ["ComputeTssTfbsProfiles", "ExportTssTfbsProfiles"] {
+            assert_eq!(
+                crate::infer_engine_operation_mutation(name),
+                crate::CapabilityMutation::External
+            );
+        }
+    }
+
+    #[test]
+    fn tss_profiles_requests_fail_on_unknown_settings() {
+        let value = serde_json::json!({"manifest":"m.json","panel":"p.json","expected_genome_id":"g","ignore_errors":true});
+        assert!(serde_json::from_value::<ComputeTssProfilesRequest>(value).is_err());
+        assert!(
+            serde_json::from_str::<ExportTssProfilesRequest>(
+                r#"{"output_dir":"out","overwrite":true}"#
+            )
+            .is_err()
+        );
+    }
+}

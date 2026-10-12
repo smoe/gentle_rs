@@ -1,0 +1,33 @@
+LOCUS       PATZ1ASSAY               240 bp    DNA     linear   SYN 01-JAN-2000
+DEFINITION  Synthetic GRCh38.p14-like PATZ1 minus-strand locus for transcript assay-panel tests.
+ACCESSION   PATZ1ASSAY region: 31325800..31326039
+VERSION     PATZ1ASSAY.1
+KEYWORDS    synthetic fixture.
+SOURCE      synthetic construct
+  ORGANISM  synthetic construct
+FEATURES             Location/Qualifiers
+     source          1..240
+                     /organism="synthetic construct"
+                     /mol_type="genomic DNA"
+                     /chromosome="22"
+     gene            complement(21..220)
+                     /gene="PATZ1"
+                     /label="PATZ1"
+     mRNA            complement(join(21..60,101..140,181..220))
+                     /gene="PATZ1"
+                     /transcript_id="PATZ1-201"
+                     /label="PATZ1 synthetic three-exon transcript"
+     mRNA            complement(join(21..60,181..220))
+                     /gene="PATZ1"
+                     /transcript_id="PATZ1-202"
+                     /label="PATZ1 synthetic skipped-middle transcript"
+     mRNA            complement(join(21..60,121..140,181..220))
+                     /gene="PATZ1"
+                     /transcript_id="PATZ1-203"
+                     /label="PATZ1 synthetic alternative-middle transcript"
+ORIGIN
+        1 acgtgcaatg ctacgttagc atgccgtagc ttacgatccg ttagcgtacc tgatcggatc
+       61 gataccgtta acggtctagc ctgatgcact tagcgatacg gctaacgatc cgatgctaac
+      121 gtcgatcgta gctaaccgat ttcgacgatg ctaggtacca agcttacggt acgattcgga
+      181 ccgatgctag cttaccgatg ctaggctacg atcggatccg tgcatcgatg ctagcatgca
+//

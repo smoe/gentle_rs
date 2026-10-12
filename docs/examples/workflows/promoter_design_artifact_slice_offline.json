@@ -178,7 +178,7 @@
             {
               "artifact_id": "alternative_promoters",
               "artifact_kind": "alternative_promoter_comparison",
-              "path": "artifacts/tp73_promoter_artifact_demo.alternative_promoters.json",
+              "path": "tp73_promoter_artifact_demo.alternative_promoters.json",
               "schema_hint": "gentle.alternative_promoter_comparison.v1",
               "label": "Alternative promoter grouping",
               "recommended_use": "Explain transcript-level TSS interpretations collapsed to DNA-level promoter candidates.",
@@ -187,7 +187,7 @@
             {
               "artifact_id": "evidence_matrix",
               "artifact_kind": "promoter_evidence_matrix",
-              "path": "artifacts/tp73_promoter_artifact_demo.evidence_matrix.json",
+              "path": "tp73_promoter_artifact_demo.evidence_matrix.json",
               "schema_hint": "gentle.promoter_evidence_matrix.v1",
               "label": "Promoter evidence matrix",
               "recommended_use": "Inspect transcript support, TFBS, variant, repeat, and CUT&RUN-style interval evidence per promoter candidate.",
@@ -196,7 +196,7 @@
             {
               "artifact_id": "isoform_promoter_comparison",
               "artifact_kind": "isoform_promoter_comparison",
-              "path": "artifacts/tp73_promoter_artifact_demo.isoform_promoter_comparison.json",
+              "path": "tp73_promoter_artifact_demo.isoform_promoter_comparison.json",
               "schema_hint": "gentle.isoform_promoter_comparison.v1",
               "label": "Isoform promoter comparison",
               "recommended_use": "Compare common and promoter-group-specific evidence between TP73 isoform starts.",
@@ -205,7 +205,7 @@
             {
               "artifact_id": "promoter_expression_evidence",
               "artifact_kind": "promoter_expression_evidence",
-              "path": "artifacts/tp73_promoter_artifact_demo.promoter_expression_evidence.json",
+              "path": "tp73_promoter_artifact_demo.promoter_expression_evidence.json",
               "schema_hint": "gentle.promoter_expression_evidence.v1",
               "label": "Promoter expression evidence",
               "recommended_use": "Connect promoter groups to downstream transcript/gene expression evidence without deciding the biological story.",
@@ -214,7 +214,7 @@
             {
               "artifact_id": "tfbs_score_tracks_svg",
               "artifact_kind": "tfbs_score_tracks_svg",
-              "path": "artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg",
+              "path": "tp73_promoter_artifact_demo.tfbs_score_tracks.svg",
               "schema_hint": "image/svg+xml",
               "label": "TFBS score-track SVG",
               "recommended_use": "Show promoter-region score traces and compact JASPAR logos.",
@@ -223,7 +223,7 @@
             {
               "artifact_id": "tfbs_similarity",
               "artifact_kind": "tfbs_track_similarity",
-              "path": "artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json",
+              "path": "tp73_promoter_artifact_demo.tfbs_similarity.json",
               "schema_hint": "gentle.tfbs_track_similarity.v1",
               "label": "TFBS similarity ranking",
               "recommended_use": "Rank TF score-trace similarity against the selected anchor motif.",

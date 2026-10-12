@@ -108,13 +108,12 @@ fn global_score_bounds(report: &MultiGenePromoterTfbsReport) -> (f64, f64) {
     let mut max_score = 0.0_f64;
     for gene in &report.genes {
         for track in &gene.tfbs_score_tracks.tracks {
-            for value in track
-                .forward_scores
-                .iter()
-                .chain(track.reverse_scores.iter())
+            for value in (0..track.scored_window_count)
+                .flat_map(|i| [track.score_at(i, false), track.score_at(i, true)])
+                .flatten()
             {
-                min_score = min_score.min(*value);
-                max_score = max_score.max(*value);
+                min_score = min_score.min(value);
+                max_score = max_score.max(value);
             }
         }
     }
@@ -266,8 +265,8 @@ pub fn render_multi_gene_promoter_tfbs_svg(report: &MultiGenePromoterTfbsReport)
                 content_left + 12.0,
                 row_top + 33.0,
                 escape_svg_text(&format!(
-                    "max {:.2} | windows {} | motif {} bp",
-                    track.max_score, track.scored_window_count, track.motif_length_bp
+                    "max {} | windows {} | motif {} bp",
+                    if track.evaluated_strand_windows() > 0 { format!("{:.2}", track.max_score) } else { "unavailable".into() }, track.scored_window_count, track.motif_length_bp
                 ))
             ));
             svg.push_str(&format!(
@@ -301,9 +300,9 @@ pub fn render_multi_gene_promoter_tfbs_svg(report: &MultiGenePromoterTfbsReport)
                     ""
                 }
             ));
-            if track.scored_window_count == 0 {
+            if track.scored_window_count == 0 || !track.fully_evaluated() {
                 svg.push_str(&format!(
-                    "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"11\" fill=\"#64748b\">motif longer than selected promoter</text>\n",
+                    "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"11\" fill=\"#64748b\">Track unavailable: incomplete or unassessed windows (not zero)</text>\n",
                     (plot_left + plot_right) * 0.5,
                     (plot_top + plot_bottom) * 0.5
                 ));
@@ -451,6 +450,7 @@ mod tests {
                 sequence_orientation: "transcription_aligned".to_string(),
                 used_fuzzy_gene_match: false,
                 tfbs_score_tracks: TfbsScoreTrackReport {
+                    scoring_provenance: None,
                     schema: "gentle.tfbs_score_tracks.v1".to_string(),
                     target_kind: "inline_sequence".to_string(),
                     target_label: "TERT".to_string(),
@@ -492,6 +492,10 @@ mod tests {
                         top_peaks: vec![],
                         forward_scores: vec![0.0, 2.0, 4.0, 1.0],
                         reverse_scores: vec![0.0, 1.0, 0.5, 0.0],
+                        score_validity: Some(crate::engine::TfbsScoreTrackValidity {
+                            forward: vec![true; 4],
+                            reverse: vec![true; 4],
+                        }),
                     }],
                 },
             }],

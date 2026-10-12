@@ -24,12 +24,25 @@
     "relationship": "co_regulated"
   },
   "ortholog_resource_label": "Tutorial TP73 orthologs",
+  "contexts": [
+    {
+      "context_id": "ortholog_homosapiens_tutorialhumanpromotertoy",
+      "organism": "Homo sapiens",
+      "genome_id": "TutorialHumanPromoterToy"
+    },
+    {
+      "context_id": "ortholog_musmusculus_tutorialmousepromotertoy",
+      "organism": "Mus musculus",
+      "genome_id": "TutorialMousePromoterToy"
+    }
+  ],
   "resolved_promoter_count": 2,
   "unresolved_count": 0,
   "rows": [
     {
       "species": "Homo sapiens",
       "genome_id": "TutorialHumanPromoterToy",
+      "context_id": "ortholog_homosapiens_tutorialhumanpromotertoy",
       "role": "anchor",
       "gene_query": "TP73",
       "gene_symbol": "TP73",
@@ -52,6 +65,7 @@
     {
       "species": "Mus musculus",
       "genome_id": "TutorialMousePromoterToy",
+      "context_id": "ortholog_musmusculus_tutorialmousepromotertoy",
       "role": "target",
       "gene_query": "ENSMUSG_TUTORIAL_TRP73",
       "gene_symbol": "Trp73",
@@ -70,6 +84,8 @@
       "promoter_sequence": "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
       "orthology_type": "one_to_one",
       "confidence": "synthetic_high",
+      "orthology_source_context_id": "ortholog_homosapiens_tutorialhumanpromotertoy",
+      "orthology_target_context_id": "ortholog_musmusculus_tutorialmousepromotertoy",
       "orthology_source": "hand-crafted offline tutorial fixture",
       "orthology_evidence": [
         "synthetic_one_to_one_mapping"

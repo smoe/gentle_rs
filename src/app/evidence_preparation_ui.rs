@@ -930,6 +930,7 @@ impl GENtleApp {
             probeset_ids: vec![],
             platform: Some("Clariom_D_Human".to_string()),
             annotation_library_path: None,
+            r_library_paths: vec![],
             condition_column: None,
             sample_column: None,
             block_column: None,
@@ -1415,6 +1416,7 @@ mod tests {
                     probeset_ids,
                     platform,
                     annotation_library_path,
+                    r_library_paths,
                     condition_column,
                     sample_column,
                     block_column,
@@ -1435,6 +1437,7 @@ mod tests {
                     probeset_ids: expected_probeset_ids,
                     platform: expected_platform,
                     annotation_library_path: expected_annotation_library_path,
+                    r_library_paths: expected_r_library_paths,
                     condition_column: expected_condition_column,
                     sample_column: expected_sample_column,
                     block_column: expected_block_column,
@@ -1462,6 +1465,10 @@ mod tests {
                 assert_eq!(platform, expected_platform, "rendered line: {line}");
                 assert_eq!(
                     annotation_library_path, expected_annotation_library_path,
+                    "rendered line: {line}"
+                );
+                assert_eq!(
+                    r_library_paths, expected_r_library_paths,
                     "rendered line: {line}"
                 );
                 assert_eq!(

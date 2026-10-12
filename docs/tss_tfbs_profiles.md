@@ -1,0 +1,789 @@
+# Accession-Pinned TSS Profiles
+
+This development workflow plots predicted TF-binding scores over already
+transcript-oriented TSS windows. It does not infer TSSs or retrieve a genome.
+It leaves the older locus-evidence figures and their defaults unchanged.
+Native wizard support and exact-candidate release acceptance remain separate
+work; this is not a new `.10` scientific release requirement.
+
+## Offline Example
+
+From the checkout root, using a built `gentle_cli`:
+
+```sh
+gentle_cli features tss-tfbs-profiles \
+  --manifest test_files/fixtures/tss_profiles/manifest.json \
+  --panel test_files/fixtures/tss_profiles/panel.json \
+  --selection selection.json \
+  --expected-genome-id synthetic-genome-v1 \
+  --expected-assembly synthetic-assembly-v1 \
+  --expected-annotation-release synthetic-annotation-v1 \
+  --output-dir tss-example \
+  --formats svg,png,pdf,vector_pdf
+```
+
+The output parent must already exist; choose a fresh destination. This tiny
+plus/minus example tests software behavior, not promoter biology. Its 11-base
+windows deliberately include an ambiguous base and are not adequate biological
+promoter windows. The pinned Arnt matrix comes from the bundled JASPAR registry;
+the synthetic DNA does not come from an organism. See the fixture
+[provenance and header specification](../test_files/fixtures/tss_profiles/README.md).
+
+To change presentation without rescoring:
+
+```sh
+gentle_cli features tss-tfbs-profiles-export \
+  --report tss-example/report.json \
+  --output-dir tss-reexport \
+  --formats svg --panels-per-page 1
+```
+
+The same `features ...` commands work in the GUI Shell. JSON operation/workflow
+adapters use `ComputeTssTfbsProfiles` and `ExportTssTfbsProfiles`; MCP exposes
+these through `op` with explicit `confirm: true`. Neither operation changes
+source sequences. Both are conservatively classified as external effects,
+because they may publish files. Input availability and scientific compatibility
+are validated at execution, not inferred from an empty project's readiness.
+
+## Imported DuckDB Motif Hits
+
+Both TSS commands accept repeated `--genomic-motif-evidence FILE` arguments.
+Each file is a saved `gentle.genomic_motif_evidence.v1` query report from
+`features genomic-motif-evidence`, not a DuckDB database, dense score array or
+reduced cofactor-package summary. First query the optional jaspar-mapping
+package for the explicit genomic intervals and exact matrix accessions you want;
+then attach those reports when exporting. The export does **not** run DuckDB,
+rescore hits or modify GENtle's local PWM arrays/comparisons.
+
+For each TSS, take the report's `geometry.chromosome` unchanged and query the
+ascending BED interval `[start_1based - 1, end_1based)`, on **both** gene strands.
+Use the report's exact panel accessions and `reference.genome_id`, not factor
+names or a guessed assembly alias. The existing query route is documented in
+the [CLI manual](cli.md); `--path` writes the standalone report required here.
+Retain its limits/coverage diagnostics and narrow or repeat a truncated query
+before treating the retained hit list as complete under its declared policy.
+
+```sh
+gentle_cli features tss-tfbs-profiles-export \
+  --report /path/to/scored/report.json \
+  --genomic-motif-evidence /path/to/cd44.motif-evidence.json \
+  --genomic-motif-evidence /path/to/tgfb1.motif-evidence.json \
+  --output-dir /fresh/tss-with-imported-hits --formats svg,pdf
+```
+
+Each exact matrix gets a **separate imported-hit lane** below its local score
+trace. An upward triangle is a hit on the displayed sequence's forward strand;
+a downward triangle is reverse. On a minus-strand TSS window, genomic `+` thus
+points down. Labels retain **both** local and genomic direction. The triangle's
+base covers the hit's actual base interval. Dashed outlines mark clipping at
+the window edge; labels and TSV retain the full original genomic interval.
+Clipping preserves the original triangle geometry rather than recentering it;
+an off-window apex stays off-window. The apex is the full interval midpoint,
+not a newly inferred binding position.
+
+Height uses the source's **raw score**, on a separate range per source report
+and exact accession, shared across all its TSS windows and both strands. The
+range includes zero and the source report's minimum/maximum retained scores.
+Height maps that range linearly, with a labelled 2-pixel visibility floor for
+the minimum/zero score; a negative score does not reverse the strand triangle.
+These heights are **not** GENtle's background-tail scores, percentiles,
+occupancy, binding probability or cross-provider calibration. Numeric ranges
+and the source score mode are printed alongside the triangles.
+
+All triangles retain SVG hover details with bp span, raw score and direction.
+The first 12 input-order hits per lane also receive numbered printable labels;
+the explicit count prevents that subset from looking complete. Dense hits
+remain separate translucent triangles, never a connected plateau.
+`imported-motif-hits.tsv` lists every displayed hit, including original bp span,
+both strands, raw score/mode, query interval, clipped local span and source hash.
+The original report (including off-window/unselected-matrix hits, thresholds,
+coverage, source hashes and warnings) stays in `report.json`.
+
+Admission requires available query reports with exact genome ID and assembly
+name/accession, internally consistent regions/hits, and matching motif widths
+for the selected matrix versions. Chromosome names are matched exactly: no
+contig aliases, liftover or matrix aliases are inferred. Declared geometry is
+not independent sequence authentication. Partial query coverage, storage floors,
+density limits and row truncation remain conspicuous; no hit is **not** evidence
+of absence. An unqueried matrix/window is labelled, not filled with zero scores.
+
+The engine binds source-file and canonical report hashes. Enriched exports can
+be replayed without the original files by using their `report.json` and omitting
+the attachment options; changed evidence must be attached to the original
+score report and exported into a fresh directory. No old publication is edited.
+Limits are 64 reports, 100,000 total retained rows, 32 MiB per input file and
+64 MiB total new input. Oversized pages fail rather than shrinking labels or
+silently dropping evidence. This slice extends detailed TSS documents and the
+integrated PDFs that use them; it does not retrofit the full-locus overview or
+the interactive DNA viewer's existing strip overlay. GenBank/EMBL feature
+exports remain unchanged: imported hits are retained in the report/TSV and
+plots, not automatically materialized as sequence annotations.
+
+## CUT&RUN, Gene Structure And TATA Context
+
+The optional [source-coherent transcript layer](transcript_source_presentation.md)
+shares Ensembl/RefSeq exon/CDS structures and source-labelled TSS ticks without
+choosing a preferred start. The same guide covers ordered interactive SVG/HTML/ZIP
+pages alongside the receipt-bound PDF.
+
+Add `--context-manifest FILE` to either command above to put context on each
+matching gene's **detailed TSS pages**, immediately above its TF scores. This
+is optional: old reports and commands retain their score-only layout. A context
+entry applies to all the gene's TSS windows, including unselected ones; selected
+pages can still be assembled into the integrated per-gene PDF.
+
+The shared engine reads a hash-bound locus report, its full source-locus FASTA,
+and an optional TATA screen. It does not rerun TF scoring, call peaks, retrieve
+data or change the project. The details show:
+
+- CUT&RUN/chromatin lanes and their sample/control labels, retaining the source
+  locus's scale and raw interval scores. Cropping does not renormalize a signal.
+  Values beyond a fixed source scale are clipped visually but retained in JSON.
+  Gaps and missing controls are labelled, never filled with measured zeros.
+- Exons for the exact TSS transcript members, with biological exon ordinals,
+  thicker CDS intervals, and green translation-start / red translation-stop
+  markers when the source annotation supplies them. Other transcript models
+  remain in the full locus overview. Markers outside this window are not moved
+  into it; unknown CDS geometry is not reconstructed by finding an arbitrary ATG.
+  Source ranges classified as inferred ORFs or lacking a coding classification
+  are explicitly warned about, not displayed as annotated CDS.
+- TATA **source annotations**, **TBP predictions**, and **EPD classifications**
+  as separate evidence rows. An EPD classification marks its TSS, not an inferred
+  exact TATA interval. No supplied screen, or no reported row in this window,
+  does not establish TATA absence.
+
+All tracks use the same transcript-oriented 5'-to-3' axis as the TF scores,
+including decreasing genomic coordinates for negative-strand genes. The context
+and its provenance repeat on continuation pages. Large contexts fail the existing
+readable-page limits explicitly instead of silently dropping lanes.
+
+### Checking Apparently Repeated Tracks
+
+First compare the **Promoter**, annotated TSS and stored genomic interval at the
+top of each panel. Pages marked **continued TSS** show another subset of matrices
+for the same window; repeating its CUT&RUN context is intentional. Different
+TSS windows use independently cropped intervals from the same locus source.
+Overlapping windows can therefore show the same measured interval at different
+TSS-relative positions. A broad constant-valued source interval may fill both
+windows; this is not evidence for two independent measurements.
+
+For an exact check, use the receipt-bound `report.json`: compare
+`windows[].record.geometry` and `detail_context.occupancy[].intervals` by source
+and lane ID, including genomic spans, local cropped spans and raw `score`.
+Common lane labels or `display_abs_max_score` values do not mean common data.
+For local TFBS traces, compare the window's `sequence_sha256` and each exact
+track `accession`, `forward_scores` and `reverse_scores`. Shared-across-TSS
+scaling shares axis limits only. Identical input sequences and models can
+legitimately give identical traces at different loci. Imported motif triangles
+instead use the source query's genomic hits, cropped separately for each window.
+Do not diagnose duplication from matching logos, scale labels or heights alone.
+
+Offline regressions exercise distinct/overlapping/empty CUT&RUN windows, both
+genomic and loaded-sequence orientations, batch-versus-single-window scoring,
+and different matrix/strand traces across continuation pages. These checks do
+not certify a particular external PDF or its source evidence: retain that
+bundle's report, index, receipt and relevant pages for a file-specific audit.
+
+Dense JASPAR traces remain predicted sequence-model scores, not called occupancy
+peaks. The dotted TSS guide and its white backing are drawn **behind** both score
+curves, so a narrow peak exactly at 0 bp is not erased or mistaken for a solid
+full-height reference line. Stored maxima use a filled circle (local +) and open
+square (local -); missing maxima are not inferred, and clipped negative maxima
+are not marked as zero-valued peaks. Solid/dashed strand styles, numeric Y
+scales, null gaps, negative-display policy and raw stored scores are unchanged.
+Re-export into a fresh directory to obtain this rendering;
+historical receipt-bound images are not silently replaced.
+
+SVG hover details are retained. Each context row also has a printable summary
+on its right: visible exon/CDS ranges, translation positions, TATA positions or
+the outer extent and count of supplied signal intervals. Coordinates are
+1-based inclusive and follow the displayed strand-aware axis. Cropped exon
+limits are explicitly distinguished from the original feature ends. A signal
+extent can contain gaps and is not the start/end of an individual read; BigWig
+does not supply individual read alignments. Stored TF-score maxima also show
+their genomic motif-window start beside their TSS-relative position.
+
+## Annotated TSS Sequences
+
+Add `genbank`, `embl`, or both to `--formats` to export annotated `.gb`/`.embl`
+records per TSS, indexed by promoter ID in `index.json` and hash-bound in the
+normal receipt. Both formats serialize the same annotated record, not a renamed
+FASTA. GENtle can reopen either through its normal sequence-file import. The
+same options work in GUI Shell and typed `ExportTssTfbsProfiles` requests
+(`formats: ["svg", "genbank", "embl"]`). See [format parity and limits](sequence_format_parity.md).
+
+TSS exports use fixed GenBank `LOCUS` columns for linear DNA. The deterministic
+`01-JAN-1970` date is a missing-date placeholder, not an experiment or annotation
+date. Exports made before the LOCUS-column fix in `d37bd427` may trigger parser
+warnings; re-export from the same bound report into a fresh directory and
+regenerate dependent receipts. This changes file bytes and hashes, not sequence,
+annotations or stored scores, and requires no rescoring.
+
+```sh
+gentle_cli features tss-tfbs-profiles-export \
+  --report /path/to/original-score-only/report.json \
+  --context-manifest /path/to/all-genes.context.json \
+  --output-dir /fresh/tss-annotated --formats svg,genbank,embl
+```
+
+Every exported window requires context with exact, verified transcript-oriented
+bases. New contexts retain those bases, so subsequent report-only replay needs
+no source FASTA. Older contexts without bases remain readable but cannot export
+GenBank or EMBL; enrich the original score-only report, rather than replacing attached
+evidence. Missing or hash-mismatched DNA fails before publication.
+
+Records retain the TSS, annotated exon ordinals, genomic/source provenance,
+clipped feature limits (`<` / `>`), individual supplied signal intervals and
+their raw scores, TATA evidence classes, and already-stored motif peaks on both
+strands. No new peak calling, threshold selection or scoring occurs. CDS
+segments are labelled `misc_feature`, not asserted to be complete coding
+sequences: this context does not bind their coding phase. The exported sequence is
+the genomic TSS window, not spliced cDNA or a materialized reporter construct.
+Null signal values, missing lanes, and prediction non-claims remain explicit.
+
+Exons are exported per transcript. Two `exon` features with the same location
+but different `/transcript_id` values retain the separate transcript
+associations; they do not represent duplicated DNA. For example, two transcripts
+can share exon 1 and both export it as `501..>701`: bases 501 through 701 are
+present, while `>` marks an exon extending beyond the exported window. Its full
+source span remains in `/note`. Do not deduplicate by coordinates alone, which
+would discard transcript membership and potentially transcript-specific numbering.
+
+For the integrated report, use the compositor's `--output-genbank` and/or
+`--output-embl` options as
+described [here](integrated_locus_tss_profiles.md). Its selected records match
+the selected FASTA windows, not the full set of scored promoters.
+
+## Context Example
+
+For a fully offline demonstration, after the first example above:
+
+```sh
+gentle_cli features tss-tfbs-profiles-export \
+  --report tss-example/report.json \
+  --context-manifest test_files/fixtures/tss_profiles/context/manifest.json \
+  --output-dir tss-context-example --formats svg,png,pdf
+```
+
+Only the synthetic minus-strand gene gets context in this example. Its 11-base
+window, exon/CDS markers, signal and three TATA evidence types are software
+fixtures, not biological findings. See the [context fixture provenance](../test_files/fixtures/tss_profiles/context/README.md).
+
+For real data, prepare a manifest with this structure; replace every placeholder
+with the exact values from the existing TSS/locus reports and input-file hashes:
+
+```json
+{
+  "schema": "gentle.tss_detail_context_inputs.v1",
+  "reference": {
+    "genome_id": "EXACT_GENOME_ID",
+    "assembly": "EXACT_ASSEMBLY",
+    "annotation_release": null
+  },
+  "genes": [{
+    "gene_id": "EXACT_GENE_ID_FROM_TSS_REPORT",
+    "locus_report": {"path": "gene.locus.json", "sha256": "FILE_SHA256"},
+    "locus_fasta": {"path": "gene.locus.fa", "sha256": "FILE_SHA256"},
+    "tata_report": {"path": "gene.tata.json", "sha256": "FILE_SHA256"}
+  }]
+}
+```
+
+Paths resolve relative to the manifest (explicit absolute paths also work).
+Hash exact file bytes with `shasum -a 256` or Linux `sha256sum`. The full locus
+FASTA must contain one uppercase IUPAC DNA record in the **loaded sequence's**
+orientation, matching `sequence_binding` in the locus report. This is not the
+short TSS FASTA. Export it from the same loaded DNA sequence that produced the
+locus report; do not independently retrieve a potentially different version.
+The engine slices that sequence and compares the oriented bases with every
+matching TSS record's SHA-256 before attaching any context. It also checks gene
+symbol, explicit gene ID selection, chromosome, anchor strand, interval and
+reference labels. Exact versioned transcript IDs are used, without alias guessing.
+
+The manifest `reference` must equal the TSS report's reference, including a
+declared annotation release. If a release is declared, the locus must agree.
+If it is null, no release is invented from a genome ID. For compatibility with
+existing locus composers, `isoform_evidence.assembly` may equal either the exact
+TSS assembly or its exact genome ID. The full-locus anchor's `genome_id` has
+the same exact two alternatives, preserving the distinct catalog and assembly
+identifier layers used by locus preparation. Arbitrary catalog words,
+near-substrings and incompatible assemblies are rejected. Leading `chr` is the
+only chromosome-label normalization. Hash/geometry agreement is consistency
+evidence, not independent authentication of a reference or an experimental
+sample.
+
+Generate a TATA report using the existing [TATA screen](tata_box_evidence.md),
+on that same loaded sequence, for example in the shared Shell:
+
+```text
+op '{"SaveFile":{"seq_id":"EXACT_LOCUS_SEQ_ID","path":"gene.locus.fa","format":"Fasta"}}'
+promoters tata-screen '{"seq_id":"EXACT_LOCUS_SEQ_ID"}' --output gene.tata.json
+```
+
+Review the screen's TSS restrictions and thresholds; supply explicit TSSs or
+opt into an unrestricted scan only when intended. Omit `tata_report` when no
+screen is available. Do not replace that state with an empty synthetic report.
+The context resolver checks the TATA report's own content hash, sequence hash
+and complete genome anchor. Its source warnings and classification remain visible.
+
+The enriched `report.json` stores `windows[].detail_context`
+(`gentle.tss_detail_context.v1`), original genomic intervals, clipped local
+intervals, source metadata and file digests. The export receipt includes these
+context inputs. Subsequent export of that report needs **no context manifest or
+source files**; all original TF scores and comparisons are retained. To change
+context, enrich the original score-only report into a fresh directory. An
+already attached context is never silently replaced. No approval or checkpoint
+binding is weakened.
+
+For Glen's existing reports: use the same locus JSON that supplies the overview,
+including its CUT&RUN groups; attach it with the matching source FASTA and optional
+TATA report, then give the new report/index/receipt paths to the
+[integrated PDF composer](integrated_locus_tss_profiles.md). The composer rejects
+an enriched detail page whose locus-report hash differs from the overview's.
+This does not rescore the expensive TF tracks or rewrite the existing export.
+
+## CLI Output
+
+After a successful export, CLI stdout contains
+`tss_tfbs_profile_summary` with schema `gentle.tss_tfbs_profile_cli_summary.v1`,
+instead of `tss_tfbs_profiles` and the complete `tss_tfbs_profile_receipt`.
+The normal outer `result` wrapper (for shell routes), operation ID, messages and
+warnings are retained. The summary links `report.json`, `index.json` and
+`receipt.json`, with the report/index hashes, TSS/page/file counts, source and
+producer/exporter revisions, report warnings and verification limits. It does
+not contain score vectors, matrix PFMs or the per-page font audit.
+
+The **complete** scored report and receipt remain in the export directory.
+Existing scripts reading full JSON from stdout must opt in with the global flag:
+
+```sh
+gentle_cli --full-report features tss-tfbs-profiles-export \
+  --report tss-example/report.json --output-dir tss-full-output --formats svg
+```
+
+Place `--full-report` before `features`, `shell`, `op` or `workflow`, not inside
+a shared-shell command or JSON request. Default summaries apply to direct TSS
+commands, CLI `shell` TSS/`op` commands, and exported TSS operations in the CLI's
+direct JSON `op`/`workflow` entrypoints. Unexported compute results remain full:
+there is no saved copy to point to. GUI Shell, MCP and other adapters retain
+complete typed results; unrelated CLI results are unchanged.
+
+Computation summaries copy the report's `verification` verbatim, including
+`prepared_reference_not_assessed`. Report-only export summaries say
+`not_reassessed_report_only_export`; inspect the saved report for its original
+verification/reference/warnings. Neither mode upgrades source authenticity.
+
+## Exact Inputs
+
+The reader supports the existing `gentle.target_tss_fasta_export.v1` input
+format identified in Glen's pinned input revision
+`a106cbbd5223f8c4be55a7d846b8416bc4b3ae33`. That revision is not merged by this
+feature. Its manifest binds the exact `SHA256SUMS` bytes; both the manifest and
+checksum inventory must agree with each FASTA. The profile report/receipt bind
+the manifest's digest and its declared source revision separately from GENtle's
+profile-producer revision. Original FASTA files are not rewritten.
+
+For that format, callers must supply exact `--expected-genome-id`,
+`--expected-assembly` and `--expected-dataset-id` strings. For Glen's input these
+are `Human GRCh38 Ensembl 116`, `GRCh38`, and
+`human_grch38_ensembl116_promoterome_2000_200_v1`. Substrings such as `116` do not
+match. The manifest has no separately declared annotation-release field; that
+field remains null, rather than being guessed from the genome/dataset names.
+The geometry uses the manifest's extents, not gene-specific runtime defaults.
+
+With `BUNDLE`, `PANEL` and `SELECTION` set to absolute paths to that pinned input
+bundle directory, panel JSON and selection JSON respectively:
+
+```sh
+gentle_cli features tss-tfbs-profiles \
+  --manifest "$BUNDLE/manifest.json" --panel "$PANEL" \
+  --selection "$SELECTION" \
+  --expected-genome-id 'Human GRCh38 Ensembl 116' \
+  --expected-assembly GRCh38 \
+  --expected-dataset-id human_grch38_ensembl116_promoterome_2000_200_v1 \
+  --output-dir five-gene-tss-profiles --formats svg,png,pdf
+```
+
+Use a committed producer and a fresh output directory for an audit. This is an
+explicit input example, not a built-in gene or factor preset. Inspect the new
+receipt rather than reusing a successful receipt from another revision.
+
+The small synthetic example uses a second explicit development format:
+
+`gentle.tss_fasta_bundle.v1` contains `reference` (separate `genome_id`,
+`assembly`, optional `annotation_release`), `fasta_files` (relative name to SHA-256), and
+`records`. Each record has `promoter_id`, `gene_id`, `gene_symbol`, `geometry`,
+`transcripts`, and a normalized `sequence_sha256`. Geometry specifies chromosome,
+strand, inclusive genomic bounds/TSS, and upstream/downstream extents. The
+sequence length is upstream + 1 + downstream. No clipping at contig ends is
+silently performed. The fixture manifest is a complete concrete example.
+
+For this synthetic format, the manifest directory is the bundle root and
+`SHA256SUMS` binds exact manifest, FASTA and requested selection bytes.
+Repeated `--fasta` arguments, if supplied,
+must name exactly the manifest's FASTA set; selection and FASTA paths remain
+inside the bundle. Absolute contained paths work, but traversal and escaping
+symlinks fail. Headers must agree with the manifest. Only ASCII-whitespace
+removal and uppercasing A/C/G/T/N are allowed before sequence hashing. Missing
+fields, unknown settings, duplicate identifiers and contradictory checksums fail.
+
+The existing `gentle.regulatory_region_comparison_sequences.v1` selection
+format joins `regions[].promoterome_id` to the TSS manifest's `promoter_id`.
+The gene, chromosome, TSS and strand must match; selection transcript IDs must
+be a subset of the manifest's memberships. Evidence-window lengths, genomic
+extents and sequence hashes are deliberately not compared: a -2000/+200
+selection can refer to the same TSS as a -500/+200 display window. The explicitly
+supplied selection file is read-only and its exact bytes enter the receipt.
+Selected panels carry the recorded factor/criterion and a legend explaining
+that selection does not establish TSS usage, direct binding or promoter activity.
+When complete source geometry is available, `selection_evidence.selection_window`
+also records the historical upstream/downstream extents, length and sequence
+SHA-256. JSON, SVG/TSV legends, GenBank/EMBL comments and PDF composition bindings
+keep that provenance separate from the displayed sequence. It is not a join key
+and does not assert reassessment of the smaller window. Missing legacy geometry
+remains unavailable. New binaries read reports without the optional field;
+older strict parsers may reject reports containing it.
+
+For new insert boundaries, use the separate
+[evidence-guided reporter selector](reporter_fragment_selection.md), including
+explicit per-end adjustments and optional validated-MCS checks. That operation
+does not replace the selected TSSs or modify this export's scoring windows.
+
+For simple synthetic selection, `gentle.tss_profile_selection.v1` has the same `reference` and a `selected`
+array of exact `{promoter_id, gene_id}` records. Selection changes ordering,
+not which windows are scored. Without it, every record is unselected. Windows
+are grouped by gene ID, selected first, then chromosome, ascending interval
+start and promoter ID. Equal DNA at different positions remains distinct.
+Repeated physical TSSs currently fail rather than silently losing memberships;
+multi-gene ownership of one physical TSS needs an additive contract extension.
+
+The existing `gentle.jaspar_target_panel.v1` accepts `tracks[]`, each carrying
+its exact `source_ids`, factor identity and display/scoring policies. Its generic
+typed parser can represent mixed score kinds, but the TSS-profile gate requires
+one score kind and one clipping policy. Unsupported settings are rejected, not
+silently discarded. No factor or accession list is a production default.
+
+The synthetic shorthand of the same schema has `panel_id`, `label`, `score_kind`,
+`clip_negative`, `scale_mode`, `strand_policy`, `calibration_state`,
+`calibration_statement`, `top_hit_count` and `factors`. Each `factors` entry is
+one matrix, with exact versioned `source_id`, case-sensitive expected registry
+`factor_id`, presentation `label`, ascending unique `display_order`, and optional
+`color_hint` (`#RRGGBB`). Multiple accessions for one factor remain separate.
+Unknown accessions, aliases, duplicate accessions, incomplete PFMs, name/order
+conflicts and mixed score kinds fail. Names alone do not verify species.
+
+## Scores And Geometry
+
+Both motif orientations use the same transcript-oriented **window-start** axis.
+For index `i`, relative coordinate is `i - upstream`; genomic coordinate is
+`TSS + strand_sign * (i - upstream)`. A minus-strand input is already oriented:
+it is not reverse-complemented again. Its genomic labels decrease left to right.
+A reverse-motif hit's 5-prime end differs from that shared plotting coordinate;
+TSV includes ascending motif interval bounds, local/genomic strand and endpoints.
+
+Choose one existing score kind for the whole panel. `llr_bits` is the sum of
+log2(model base probability / background base probability). GENtle's separately
+named `true_log_odds_bits` uses per-base odds ratios. Quantile variants and
+`*_background_tail_log10` variants are not raw log-odds scores: tail scores use
+a negative log10 background-tail probability and the existing 0.95 quantile
+display threshold. The report retains background, pseudocount, quantization,
+random-seed and threshold metadata. Raw PWM scores and the pseudocount policy
+are unchanged by the September 11 tail-calculation correction below. Neither a
+tail probability nor a quantile is a biochemical binding probability.
+The existing quantile display gate still suppresses lower-ranked tail-track
+values to zero: such zeros do not mean `Ptail=1` or absence of binding. Exported
+`raw_score` means the selected `score_kind` before negative clipping, **not**
+necessarily LLR bits. Tail-only arrays are insufficient to recover original
+bit scores; recompute those from the bound sequence and PFM when needed.
+
+### Inclusive Background Tails
+
+`uniform_iid_quantized_conservative_survival_v2` models independent uniform
+A/C/G/T windows. Each column score is rounded to 0.001 bits for the dynamic
+program. Let `E` be the sum of the largest absolute rounding error in each
+column, plus a floating-point summation guard. For an observed **raw** sum `s`,
+the reported inclusive tail sums bins `q >= s - E`. Every sequence with raw
+score at least `s` is included. Near the threshold, additional sequences can be
+included: this is a conservative **upper bound on Ptail**, hence a lower bound
+on `-log10(Ptail)`, not an exact continuous-score distribution. The discretization
+part of `E` is at most `motif_length * 0.0005` bits. Midrank background quantiles
+use the same uncertainty interval; they are approximate ranks, not tail scores.
+
+Survival masses are accumulated from the high end in log space, never as
+`1 - CDF`. Motifs longer than 500 bases also use log-domain dynamic-program
+masses. The significance score has no artificial 300 cap. A separately exported
+linear probability can still underflow below the representable f64 range;
+its log score remains finite. Ordinary floating-point rounding remains, and
+the model is not a GC-matched genome, multiple-testing correction or affinity
+model. For any achievable length-L word, significance cannot exceed
+`L * log10(4)` (up to floating-point tolerance).
+
+Regression example, exact bundled TP73 **MA0861.2**:
+`ACATGTCTGGACATGT` retains raw LLR **19.543680326691 bits**. Its unique maximum
+has inclusive `Ptail = 4^-16 = 2.328306436539e-10`, scoring **9.632959861247**,
+instead of the old false zero tail and display score 300.
+
+Raw arrays are stored before optional negative clipping. A positive-only figure
+therefore does not redefine the inputs to correlations. Ambiguous-base windows
+are `null`, not zero. The last motif-length-minus-one bases have no complete
+window and are visibly unscored, never stretched across the axis.
+
+Rows default to independent numeric scales with labeled units and an upfront
+`SCALE` notice on every TSS/continuation. Equal heights across matrices or TSS
+pages do not establish equal scores. `--scale-mode shared_across_tss` gives each
+exact accession one numeric range across **all windows in the supplied report**,
+all genes, selected and unselected, and both strands. A peak of 2 then occupies
+1% of a 0..200 axis when that same accession reaches 200 elsewhere. Other
+matrices retain separate ranges; no cross-matrix calibration is implied.
+The effective choice is bound by `export-request.json`, `receipt.json` rendering
+options and SVG `data-scale-mode`; the panel default remains in `report.json`.
+For the same comparison on re-export, use the complete report, not a per-gene
+subset: changing the supplied window set can change the common range.
+
+The older `--scale-mode shared` shares a range across matrices **within each
+TSS only**, not across TSSs. Cross-matrix shared scales require
+`calibration_state: cross_source_calibrated`, a `calibration_id` and a lowercase
+`calibration_sha256`; prose alone is insufficient. This records the caller's
+explicit calibration declaration, not independently proven comparability.
+PFM-derived logos show information content, not a fabricated consensus.
+
+Compressed gene-locus overviews use one unconnected min/max whisker and mean
+mark per pixel bucket, separately for forward/reverse scores. For repeating
+`[0,0,0,5]` buckets the range is 0..5 and mean 1.25, not a connected plateau at
+5. Native-resolution samples remain connected, with gaps at missing values.
+Labels identify this aggregation. Means summarize displayed scores, not binding
+occupancy. Whiskers describe finite samples in a bucket,
+not confidence intervals or exact subpixel peak locations; missing samples are
+not measured zero. Original arrays remain available in JSON for zoom/reanalysis.
+
+Within-factor comparisons use common valid start coordinates, independently for
+forward/forward and reverse/reverse. Pearson and Spearman consume unclipped,
+unsmoothed scores; Spearman uses average ranks for ties. Reports include paired
+and excluded counts. Insufficient or constant signals have undefined values
+and reasons, not a misleading zero correlation. Maximum scores and separated
+ranked peaks are distinct; `top_hit_count` controls the latter.
+
+## Rescoring Existing Reports
+
+Re-export alone cannot correct stored background-derived values. Rescore original
+sequence/PFM inputs for `gentle.tss_tfbs_profiles.v1` with background-tail or
+background-quantile score kinds; regenerate maxima, ranked peaks and comparisons
+as well. New reports record `score_policy.modeled_tail_method`. Missing metadata
+is visibly warned about on re-export; existing scores are not repaired in place.
+
+The same shared calculation supplies `TfbsScoreTrackReport`
+(`gentle.tfbs_score_tracks.v1`), its normalization references,
+`gentle.window_cohort_tfbs.v1`, `gentle.promoter_cohort_comparison.v1`, and
+JASPAR-derived tracks embedded in `gentle.gene_locus_evidence_display.v1` and
+reporter-comparison reports. Regenerate
+these background-derived tracks and dependent decisions from their original
+requests and exact sequence/matrix bindings. Even raw-bit track reports need
+refreshed **normalization-reference statistics** if those statistics are used;
+their raw LLR/log-odds arrays do not change. Externally supplied scores are not
+rescored by GENtle and require their producer's policy audit. Reports with only
+raw-bit/empirical-quantile arrays and no affected background statistics need only
+a presentation re-export for the scale/bucket changes. CUT&RUN signal, geometry,
+FASTA, and PFM logos are not numerically changed by this fix.
+
+The committed synthetic tutorial outputs in
+`promoter_design_artifact_slice_offline`, `promoter_gene_set_ortholog_cohort_offline`
+and `gene_set_ortholog_promoter_cohorts_offline` were explicitly regenerated on
+2026-09-13 using their unchanged local workflow inputs and bundled matrices,
+after the tail correction in `8b7b6b47`. This refresh includes dependent
+comparisons, SVGs and artifact checksums; it is not a presentation-only repair.
+The same replay refreshed the locus SVGs in `patz1_gene_locus_evidence_offline`
+and `portable_genomic_regions_offline` for the corrected pixel-range/mean
+presentation and aggregation labels; their stored report values are unchanged.
+The pre-refresh artifacts remain in Git at `e489cfaf`. Reproduce and verify with
+`cargo run --locked --bin gentle_examples_docs -- tutorial-generate` and
+`cargo run --locked --bin gentle_examples_docs -- tutorial-check`.
+This synthetic replay does not validate or refresh private scientific reports.
+
+### Check Input Completeness Before Regeneration
+
+First inventory and hash the original manifest, **all** TSS FASTAs, exact panel,
+selection and reference identities. Match them to the original scoring request
+and receipt, including resolved PFM counts/digests, pseudocount and background
+settings. An accession alone does not establish byte-identical matrix input.
+Derived PDFs, selected-window FASTAs and annotated GenBank/EMBL files do **not**
+qualify as the full input set. Stop on missing or mismatched inputs; do not
+silently reduce the TSS universe, infer missing sequences or fetch newer PFMs.
+
+For the requested before/after comparison, also require the previous complete
+machine-readable `report.json` and its receipt. A figure cannot supply the old
+arrays, ranked peaks or comparisons. Record these as unavailable rather than
+presenting a fresh run as a verified regeneration of that prior analysis.
+Integrated overview/detail regeneration additionally needs the original locus
+requests, source report JSON and bound signal/context inputs. Retained SVGs or
+their hashes are not substitutes for those inputs.
+
+**Local inventory, 2026-09-15:** the documented historical Git commit
+`a106cbbd5223f8c4be55a7d846b8416bc4b3ae33` is locally available. Under
+`docs/examples/regulatory_region_comparison/` it contains:
+
+- `target_tss_fastas/bundle/`: manifest, checksum inventory and five FASTAs,
+  with CD44 31, TGFB1 6, SERPINE1 4, PATZ1 5 and TP73 12 TSS records.
+  All five FASTA file hashes, 58 sequence bindings, 701-bp lengths and
+  strand-aware TSS geometry were checked read-only against the manifest. This is bundle consistency,
+  not independent genome re-extraction.
+- `five_target_tss_integrated/jaspar_30_track_panel.json`: 30 exact-accession
+  background-tail tracks, with independent display scaling as the original
+  panel default; it does not itself contain the resolved PFMs.
+- `five_target_tss_integrated/selected_tss_candidate_regions.json`: 13 selected
+  promoter identities that join to the 58-window bundle. Its original
+  -2,000/+200 selection intervals are not the -500/+200 scoring windows;
+  preserve the checked promoter/TSS join, not equality of their DNA hashes.
+
+| Historical input | SHA-256 of Git blob bytes |
+| --- | --- |
+| TSS manifest | `0b49d16dcb7442b1a644b46422ec38f4bf5e9255159387124ba33767c9ad0728` |
+| 30-track panel | `8ba6888c35f4479f375117b7145eb80b555e92ef384bee699fc874cfe22a374e` |
+| Selection | `4fe2bf3f489da067fabe05a0a833ab1c9308151ea5e1c358aeb0def9ee957c6f` |
+
+This qualifies the earlier "inputs unavailable" note: the full sequence bundle
+is recoverable from Git, but the **complete original scored-run evidence** has
+not been located here. The inspected historical directories do not include the
+prior TSS `report.json`, its scoring receipt or the bound locus JSON (the
+overview receipts cite its digest only). Access to local Downloads was denied
+by macOS, so no independent inventory of that directory is claimed. No
+scientific report was regenerated or overwritten during this audit.
+
+Glen's next handoff should provide those missing machine-readable reports,
+receipts, original requests and exact matrix/source bindings, or perform the
+following conditional replay on the host retaining them. First check whether
+the prior report already carries the corrected method: an already-corrected
+report needs no second rescore solely to change presentation. Keep undeclared
+annotation-release metadata unknown rather than deriving it from a dataset name.
+
+### Conditional Replay And Acceptance
+
+Only after the completeness and identity checks pass, use a corrected binary:
+
+```sh
+gentle_cli features tss-tfbs-profiles \
+  --manifest /absolute/path/to/original/manifest.json \
+  --panel /absolute/path/to/original/panel.json \
+  --selection /absolute/path/to/original/selection.json \
+  --expected-genome-id 'EXACT_ORIGINAL_GENOME_ID' \
+  --expected-assembly 'EXACT_ORIGINAL_ASSEMBLY' \
+  --scale-mode shared_across_tss --formats svg,png,pdf \
+  --output-dir /absolute/path/to/new-rescored-bundle
+```
+
+Add the original annotation-release/dataset checks and FASTA overrides if the
+original request supplied them. Keep accession versions and PFM hashes fixed;
+do not substitute newly downloaded matrices. Regenerate affected locus TFBS
+tracks first, keeping their original source evidence; then supply the newly
+hash-bound `--context-manifest` and follow the
+[integrated report regeneration checklist](integrated_locus_tss_profiles.md#refreshing-the-september-10-bundle).
+Use a fresh destination; retain the old report/receipts for comparison. Verify
+the new bundle's stored `uniform_iid_quantized_conservative_survival_v2` method
+marker, unchanged matrix/sequence hashes, coordinates and ambiguity handling,
+and recomputed maxima, ranked peaks and comparisons against the old report.
+Compare raw LLR values only where exact inputs/settings match. Check both
+strands and one common range per exact matrix across the **full** supplied TSS
+set, with `shared_across_tss` visible and retained in export receipts. Inspect
+representative detailed pages and sparse overview peaks before publication.
+
+The TP73 maximizer regression above is an **engine smoke test**, not evidence
+that this bundle was regenerated. Deliverable acceptance requires inspecting
+the new report and receipts themselves, reporting changed scores/peak rankings
+and preserved inputs. If the old report is unavailable, no before/after
+scientific comparison can be claimed. Keep numerical rescoring, presentation
+re-export, and independent reference verification as separate verdicts.
+
+## Outputs And Limits
+
+`gentle.tss_tfbs_profiles.v1` retains matrix counts and digests, actual registry
+source bindings, input digests, reference geometry, raw arrays, maxima, peaks,
+comparisons, scoring policy, input source revision, profile-producer executable
+digest and lockfile digest. JSON preserves floating-point score bits on replay.
+Bundle checks
+establish internal consistency only: independent prepared-reference sequence
+verification is explicitly not assessed in this version.
+
+Exports include a complete `report.json`, per-gene data and pages, long-form
+TSV, comparisons, index, methods README and
+`gentle.tss_tfbs_profile_receipt.v1`. SVG is rendered from the report; optional
+PNG and single-page raster-backed PDF use the existing in-process renderer.
+PDF RGB streams use lossless FlateDecode/zlib compression: every pixel, page
+dimension, link annotation and raster resolution is retained, not JPEG-compressed
+or downsampled. The receipt records `pdf_image_encoding`. Older uncompressed PDFs
+remain valid historical artifacts; re-export changes PDF and receipt hashes,
+not scientific scores. Long-form TSV serialization is unchanged. For transfer,
+archive the **whole** directory (including the receipt) rather than replacing
+individual files inside a hash-bound export with compressed variants.
+Pages default to one TSS with full-size rows; `--panels-per-page` is bounded to
+1..32. Very tall exports may exceed raster limits rather than silently shrink.
+
+Publication uses a fresh staging directory and verifies output hashes before
+publishing. Failure or cancellation does not leave a success receipt. Receipts
+bind inputs, outputs, producer/exporter revision, executable, lockfile and
+rendering metadata, including fonts actually used for PNG/PDF glyphs. SVG text
+also depends on the viewer's fonts; cross-host byte identity is not promised.
+Receipts are integrity records, not digital signatures or
+proof of biological correctness. The receipt does not hash itself.
+
+Input and output sizes are bounded; computation allows at most 4096 TSS windows,
+256 matrices of up to 64 columns, and ten million strand/position scores per
+request. Larger jobs must be split explicitly; oversized matrices are rejected.
+Predictions are not measured binding, occupancy, affinity or promoter activity.
+Matrix correlation is not evidence of co-regulation or a preferred model.
+Glen reports a successful five-gene replay at
+`44b73e4ac3296a9ba10caa4136a65ae49d89f289`: 58 TSSs, 13 selected windows,
+30 exact matrices, 194/194 output hashes and 58 readable, visually checked PDFs.
+That audit exposed uncompressed PDF size and excessive CLI stdout, addressed
+by the presentation changes above. It does not certify this newer revision:
+Glen must repeat exact-candidate size, hash, pixel and stdout checks. Independent
+reference extraction, optional smoothing and a native wizard remain follow-ups.
+
+## Developer Verification
+
+Focused tests keep scientific values, malformed inputs, rendering and adapter
+consent separate:
+
+```sh
+cargo test --locked -p gentle-protocol --lib tss_profiles
+cargo test --locked -p gentle-engine --lib tss_profiles
+cargo test --locked -p gentle-render --lib tss_profiles
+cargo test --locked --no-default-features --lib tss_ -- --test-threads=1
+cargo test --locked --no-default-features --lib tfbs_track_panel::tests
+cargo test --locked --no-default-features --lib svg_png::tests
+cargo test --locked --no-default-features --lib svg_pdf::tests
+cargo test --locked --no-default-features --lib svg_vector_pdf::tests
+cargo test --locked --no-default-features --bin gentle_cli tss_
+cargo test --locked --no-default-features --bin gentle_cli test_parse_global_args
+```
+
+The real-bundle reader check is deliberately ignored by ordinary tests: it needs
+the original files rather than a download hidden inside a test. Materialize the
+three documented input paths from `a106cbbd5223f8c4be55a7d846b8416bc4b3ae33`
+under a separate directory, preserving `docs/examples/regulatory_region_comparison/`,
+then run:
+
+```sh
+GENTLE_TSS_REAL_INPUTS=/absolute/path/to/materialized-inputs \
+  cargo test --locked --no-default-features --lib \
+  target_real_58_tsss_and_13_selected_read_only_acceptance -- --ignored
+```
+
+This checks all 58 records, transcript memberships and 13 selection joins. It is
+not a substitute for generating and visually reviewing the five-gene outputs on
+the final producer revision. The full release and native GUI gates remain with
+the release auditor.
+
+`pdf` is the lossless raster-backed compatibility representation. `vector_pdf`
+is a separate static vector representation with selectable embedded text and
+receipt-bound backend/font provenance. It does not preserve SVG `<title>` hover
+portably; publish the SVG peer when interactive hit details are required.
+
+For Glen's next acceptance, use a fresh directory and retain the original
+`44b73e4a` bundle. First use the report-only export command above with
+`--formats svg,png,pdf`: `report.json` and all score/comparison TSV bytes must be
+unchanged. Decode old/new PDF image streams and compare RGB pixels/dimensions
+under the same recorded fonts; review representative plus/minus pages and the
+tallest page. Verify every new receipt hash and record PDF/TSV/bundle byte totals.
+Then rerun the original compute command at the exact new candidate, measure
+stdout bytes, confirm the summary's verification limits and artifact hashes,
+and compare saved score bits/comparisons against the retained report. Producer
+revision/executable changes are expected; changed scientific values are not.

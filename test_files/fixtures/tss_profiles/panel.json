@@ -1,0 +1,21 @@
+{
+  "schema": "gentle.jaspar_target_panel.v1",
+  "panel_id": "synthetic-window-arnt-smoke-v1",
+  "label": "Synthetic windows with one pinned Arnt matrix",
+  "score_kind": "llr_bits",
+  "clip_negative": true,
+  "scale_mode": "independent",
+  "strand_policy": "both",
+  "calibration_state": "matrix_specific",
+  "calibration_statement": "Sequence-model scores for a software fixture; not binding evidence or cross-matrix calibration.",
+  "top_hit_count": 4,
+  "factors": [
+    {
+      "source_id": "MA0004.1",
+      "factor_id": "Arnt",
+      "label": "Arnt software smoke, not a promoter prediction",
+      "display_order": 1,
+      "color_hint": "#0072B2"
+    }
+  ]
+}

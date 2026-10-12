@@ -1,0 +1,12 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "branch_gui_starter",
+  "title": "Branch tutorial starter, before derivation",
+  "summary": "Loads only the existing pGEX FASTA fixture; no GUI task is pre-completed.",
+  "test_mode": "always",
+  "required_files": ["test_files/pGEX_3X.fa"],
+  "tags": ["offline", "gui-acceptance", "starter"],
+  "workflow": {"run_id": "branch_gui_starter", "ops": [
+    {"LoadFile": {"path": "test_files/pGEX_3X.fa", "as_id": "pgex_fasta"}}
+  ]}
+}

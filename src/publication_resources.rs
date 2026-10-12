@@ -6,7 +6,6 @@
 
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
-use sha1::{Digest, Sha1};
 use std::{
     collections::BTreeSet,
     fs,
@@ -316,6 +315,17 @@ pub fn prepare_publication_dataset(
     let skipped_file_count = files.iter().filter(|row| row.skipped).count();
     let failed_file_count = files.iter().filter(|row| row.error.is_some()).count();
     let mut warnings = unresolved_dataset_warnings(&entry);
+    if download_files
+        && downloaded_file_count > 0
+        && files
+            .iter()
+            .any(|row| row.downloaded && row.checksum_sha1.is_none())
+        && let Some(warning) = crate::external_checksums::legacy_sha1_unverified_warning(
+            "downloaded publication-resource files",
+        )
+    {
+        warnings.push(warning);
+    }
     if !download_files && !planned_files.is_empty() {
         warnings.push(
             "No bytes were downloaded; rerun with --download-files or execute download.sh to fetch the declared files.".to_string(),
@@ -738,7 +748,6 @@ fn download_publication_file(
             destination.display()
         )
     })?;
-    let mut hasher = Sha1::new();
     let mut buffer = [0u8; 64 * 1024];
     let mut bytes = 0u64;
     loop {
@@ -754,7 +763,6 @@ fn download_publication_file(
                 destination.display()
             )
         })?;
-        hasher.update(&buffer[..read]);
         bytes = bytes.saturating_add(read as u64);
     }
     output.flush().map_err(|e| {
@@ -766,7 +774,17 @@ fn download_publication_file(
     row.exists = true;
     row.local_size_bytes = Some(bytes);
     row.size_matches = row.expected_size_bytes.map(|expected| expected == bytes);
-    row.checksum_sha1 = Some(format!("{:x}", hasher.finalize()));
+    row.checksum_sha1 =
+        match crate::external_checksums::compute_sha1_with_external_tool(&destination) {
+            Ok(digest) => Some(digest.value),
+            Err(error) if error.allows_unverified_fallback() => None,
+            Err(error) => {
+                return Err(format!(
+                    "Could not compute legacy SHA-1 for publication-resource file '{}': {error}",
+                    destination.display()
+                ));
+            }
+        };
     if let Some(expected) = row.expected_size_bytes
         && expected != bytes
     {

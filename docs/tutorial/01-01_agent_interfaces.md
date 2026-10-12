@@ -4,7 +4,7 @@
 > Status: `manual/reference`
 > Audience: users operating GENtle through the in-app Agent Assistant, CLI/shared shell, MCP, or external coding agents.
 
-Last updated: 2026-06-21
+Last updated: 2026-10-01
 
 This tutorial explains how to let an AI assistant help with GENtle without
 giving up reproducibility. The most important idea is simple:
@@ -15,12 +15,35 @@ giving up reproducibility. The most important idea is simple:
 
 You can open this page inside GENtle from:
 
-1. `Help -> Tutorials -> Agent Assistant and Agent Interfaces Tutorial`
-2. `File -> Open Tutorial Project... -> Guided walkthroughs -> GENtle Agent Assistant and Agent Interfaces Tutorial`
+1. `Help -> Tutorials -> Getting Started & Interfaces`, then select
+   `01.01 GENtle Agent Assistant and Agent Interfaces Tutorial`.
+2. `File -> Open Tutorial Project... -> Guided walkthroughs -> Getting Started & Interfaces`,
+   then select the same tutorial.
 3. `Help -> Agent Interface` for the shorter protocol overview
 
 Protocol-level details live in `docs/agent_interface.md` and
 `docs/protocol.md`. This page is the practical walk-through.
+
+For a complete offline MCP exercise without an AI provider, follow
+[Discover MCP Tools and Verify a Shared GENtle Result](./01-03_mcp_offline_roundtrip.md).
+It retains real MCP messages, demonstrates refusal without confirmation, and
+compares one scientific report with the CLI/shared-shell routes.
+
+## Inner agent, outer agent, or coding agent?
+
+These names describe **where the agent runs and which boundary it uses**. They
+do not imply three different biology implementations.
+
+| Route | Sees the unsaved GUI project? | Executes through | Best used for |
+|---|---|---|---|
+| **Inner agent** (Agent Assistant) | Yes, but only the state summary, bounded fact context and attachments you choose to disclose | reviewed shared-shell suggestions inside the running GENtle process | explaining the current project, proposing one next command, and opening a registered GENtle view |
+| **Outer agent** (MCP or ClawBio/OpenClaw) | No | typed MCP tools or the `gentle-cloning` wrapper against an explicit state/workflow | reproducible automation, artifact bundles, receipts and cross-tool orchestration |
+| **Coding agent** (Codex, Claude Code, similar) | No | repository files, tests and explicit CLI/MCP invocations | implementing a missing route or repairing documentation and tests |
+
+An outer agent can reproduce a saved workflow, but it must not claim to have
+seen an unsaved GUI selection or clicked a visible control. Conversely, the
+inner agent may arrange the live GUI through registered `ui ...` commands, but
+it is not a general operating-system agent and does not edit GENtle source.
 
 ## 1) The mental model
 
@@ -50,6 +73,10 @@ parser-validated convenience forms, not operating-system commands:
 
 - `/help` maps to shared-shell help.
 - `/list` maps to the current project state summary.
+- `/history` reports session-local undo/redo availability.
+- `/undo` and `/redo` apply explicit session-local history transitions. An
+  agent may suggest them, but GENtle will not auto-execute them; review the row
+  and click `Run`. The GUI also blocks them while background jobs are active.
 - `/open` and `/import` open the GUI file picker, just like
   `File -> Open Sequence...`.
 - `/open file PATH [--id ID]` and `/import file PATH [--id ID]` load an exact
@@ -202,6 +229,29 @@ Important: `suggested_commands[].command` contains GENtle shared-shell
 commands, not operating-system shell commands. GENtle runs them internally after
 you review them.
 
+![Agent Assistant holding a publication-safe synthetic TSS-view screenshot locally before any provider submission.](../screenshots/tss_regulatory_view_gui/agent-assistant-report-command.raw.png)
+
+*Figure: The selected Built-in Echo system does not support images, so GENtle
+keeps the attached synthetic screenshot local and disables submission. This
+retained Linux/X11 capture is bound to revision `8652ecf2`; it illustrates the
+consent boundary, not current-HEAD GUI acceptance or model quality. See the
+[evidence record](../screenshots/tss_regulatory_view_gui/evidence.json).*
+
+### Screenshots are a separate disclosure
+
+Use `Agent help` in the GENtle window whose visible state matters. GENtle first
+previews the captured viewport locally; it sends the image only after you choose
+an image-capable system and click `Ask Agent`. An image-capable inner agent may
+also request one screenshot with a reason, but that creates only a consent card:
+you select one registered GENtle content window and explicitly allow one
+capture. Auto-run cannot approve it, and the agent cannot name arbitrary desktop
+windows, paths or coordinates.
+
+Project context and screenshots answer different questions. Structured state is
+better for identities, coordinates and provenance; a screenshot is useful for
+layout, colour, direction and enabled/disabled controls. Review each disclosure
+independently and use only public or synthetic material for tutorial evidence.
+
 ### Starting from an empty project
 
 An empty project is a good first test because it removes project-state
@@ -209,15 +259,16 @@ ambiguity. The assistant should not pretend that sequences already exist.
 
 Use this order:
 
-1. Open `File -> Agent Assistant...`.
+1. Open `Configuration -> Agent Systems`.
 2. Select the agent system.
 3. For local OpenAI-compatible services such as Ollama, Jan, or Msty, set the
    base URL, click `Discover Models`, and choose a concrete model.
 4. Click `Test Setup`.
-5. Keep `Project summary` / `Include state summary` unchecked for the first
+5. Open `File -> Agent Assistant...`.
+6. Keep `Project summary` / `Include state summary` unchecked for the first
    request. There is no useful project context yet, and smaller local models
    tend to follow shorter prompts more reliably.
-6. Send a format probe:
+7. Send a format probe:
 
 ```text
 Introduce yourself briefly as GENtle's internal Agent Assistant.
@@ -238,6 +289,14 @@ the JSON. If GENtle parses the response but marks a suggested row as
 `Invalid GENtle command`, the model invented or misspelled a command; do not
 run it.
 
+Successful replies accumulate under `Conversation`. GENtle stores those turns
+with the current project and sends a bounded recent history with the next
+request. This is important for Codex Local and other adapters that may launch a
+fresh model process each time: an explicit answer such as `homo_sapiens` is
+still part of the next request and should not be asked again. Provider keys and
+session-only endpoint/model overrides are not stored with the conversation;
+prompt text is stored verbatim, so do not paste secrets into the prompt.
+
 Once the format probe passes, ask for the real empty-project task with explicit
 network confirmation:
 
@@ -257,10 +316,10 @@ created.
 
 This does not contact any provider.
 
-1. Open `File -> Agent Assistant...`.
+1. Open `Configuration -> Agent Systems`.
 2. Click `Use Demo Echo`.
 3. Click `Test Setup`.
-4. Enter a prompt such as:
+4. Open `File -> Agent Assistant...` and enter a prompt such as:
 
 ```text
 ask: features restriction-scan --sequence-text GAATTCGGGCCCGGGCCCGAGCTCGAATTC --enzyme EcoRI --enzyme SmaI
@@ -275,7 +334,9 @@ response and command-review loop without requiring an API key.
 
 ## 6) Provider quick starts
 
-The quick-start buttons configure the built-in native HTTP transports.
+The quick-start buttons in `Configuration -> Agent Systems` configure the
+built-in native HTTP transports. Return to `File -> Agent Assistant...` after
+`Test Setup` succeeds to start or continue the conversation.
 
 ### OpenAI
 
@@ -291,17 +352,23 @@ ChatGPT or Codex subscriptions are not OpenAI API keys.
 1. Sign in to the local Codex app/CLI outside GENtle.
 2. Choose `Codex Local (uses Codex CLI login)` from the system dropdown.
 3. If GENtle cannot find Codex, set `CODEX_BIN` to the Codex executable path.
-   On macOS app installs this is often
-   `/Applications/Codex.app/Contents/Resources/codex`.
-4. Click `Test Setup`.
+   Current macOS ChatGPT app installs normally expose the bundled CLI at
+   `/Applications/ChatGPT.app/Contents/Resources/codex`; GENtle also checks
+   `/Applications/ChatGPT.app/Contents/MacOS/ChatGPT`. Older standalone Codex
+   app installs may expose `/Applications/Codex.app/Contents/Resources/codex`.
+4. Use the model selector that appears immediately. Keep `Codex default`, or
+   select one of the visible model ids read from the local Codex model metadata
+   cache. `Discover Models` refreshes that list without sending a prompt.
+5. Click `Test Setup`.
 
 This route does not use `OPENAI_API_KEY`. It invokes Codex locally through
 `scripts/codex-agent-bridge`, so usage counts against the user's Codex/ChatGPT
 plan limits. The bridge runs Codex from an empty temporary directory and passes
 only the explicit Agent Assistant request/state summary. `Test Setup` verifies
-the bridge executable; the first actual `Ask Agent` request verifies Codex
-login/quota because external stdio transports do not have a non-generating
-model-list probe.
+the bridge executable and selected model setting. Local model discovery reads
+only non-secret model metadata; the first actual `Ask Agent` request verifies
+Codex login/quota. A selected model is forwarded as `codex --model MODEL`, while
+`Codex default` leaves model choice to the CLI.
 
 ### Claude
 
@@ -319,9 +386,15 @@ but the live model-list probe is the final check.
 1. Click `Use Mistral API`.
 2. Paste a Mistral La Plateforme API key into `Mistral API key`, or set
    `MISTRAL_API_KEY`.
-3. Click `Test Setup`.
+3. Use `Discover Models` when you want a model other than the catalog default,
+   then select the exact returned model id.
+4. Click `Test Setup`.
 
 Le Chat or Mistral account login tokens are not Mistral API keys.
+Do not assume that a separate product name such as Vibe is also a La Plateforme
+model id. If such an agent exposes an OpenAI-compatible endpoint, configure it
+through `Use Local Model`; if it operates as an external coding agent, give it
+GENtle's CLI or MCP interface instead.
 
 ### Local model
 
@@ -392,6 +465,234 @@ cargo run --quiet --bin gentle_cli -- shell 'features restriction-scan --sequenc
 That replay command is the audit trail. The model prompt is only how you got
 there.
 
+### What is deterministic here?
+
+It is accurate to call GENtle's **reviewed inner-agent execution boundary**
+deterministic. It is not accurate to promise that a generative provider will
+return byte-identical prose or choose the same command on every request.
+
+The boundary works as follows:
+
+- the provider response is parsed against `gentle.agent_response.v1`;
+- every suggested command must parse through GENtle's shared shell;
+- every current capability has a `fact_annotated` introspection descriptor;
+- bound readiness evaluates the declared preconditions against current facts;
+- the selected command runs through the same engine path as GUI Shell and CLI;
+- `introspect verify-effects` can check declared hard effects afterward.
+
+Thus, the model's suggestion is a proposal. Once the user selects one exact
+validated command, GENtle does not ask the model to reinterpret it during
+execution. External databases, network services, external binaries, timestamps,
+and provider sampling remain explicit sources of variability.
+
+### Exercise A: create and inspect a tiny restriction map
+
+This exercise is offline, quick, and covered end to end by introspection. Start
+with an empty project and ask the inner agent:
+
+```text
+Create one persistent linear DNA sequence named agent_toy from this exact
+sequence. Return one valid GENtle shared-shell command, use execution "ask",
+and do not use the network.
+
+ATGGAATTCAACCCGGGTTGAGCTCAAGGATCCTAA
+```
+
+The expected command path is `sequence create`. Before running the suggested
+row, its bound readiness can be checked in GUI Shell:
+
+```text
+introspect readiness sequence create --arg OUTPUT_ID=agent_toy
+```
+
+After review, run the suggestion. A conforming command is:
+
+```text
+sequence create --sequence-text ATGGAATTCAACCCGGGTTGAGCTCAAGGATCCTAA --output-id agent_toy --name "Agent toy restriction map" --topology linear
+```
+
+Verify the declared effect and the next operation's readiness:
+
+```text
+introspect verify-effects sequence create --arg OUTPUT_ID=agent_toy
+introspect readiness features restriction-scan --arg SEQ_ID=agent_toy
+```
+
+Now ask the agent:
+
+```text
+Inspect loaded sequence agent_toy for EcoRI and SmaI sites. Write the
+machine-readable scan to agent_toy.restriction_scan.json. Return one valid
+GENtle shared-shell command and use execution "ask".
+```
+
+A conforming suggestion is:
+
+```text
+features restriction-scan agent_toy --enzyme EcoRI --enzyme SmaI --path agent_toy.restriction_scan.json
+```
+
+The fixed sequence yields one EcoRI site and one blunt SmaI site. The report is
+also evidence that can satisfy the operation's declared `report.exists` effect:
+
+```text
+introspect verify-effects features restriction-scan --seq-id agent_toy --evidence agent_toy.restriction_scan.json
+```
+
+The important test is not whether the assistant uses identical wording. It is
+whether the proposed command parses, is ready for the bound sequence, produces
+the expected deterministic site rows, and verifies against its declared effect.
+
+### Readiness with alternative inputs
+
+Readiness answers a practical question: **does the current project satisfy this
+command's declared prerequisites?** It does not execute the command, grant
+approval, validate every runtime option or establish a biological conclusion.
+
+Some commands can use alternative inputs. A pool-gel figure, for example, can
+take loaded sequences, saved containers or a saved arrangement. Its prerequisite
+uses `any`: at least one of those input branches must be satisfied.
+
+Continue with `agent_toy` from Exercise A. Reserve `agent_demo_absent` as an ID
+that does not exist as a sequence, container or arrangement in this project.
+Run these four **read-only checks**, in order, in GUI Shell:
+
+```text
+introspect readiness render-pool-gel-svg --arg INPUTS=agent_toy
+introspect readiness render-pool-gel-svg --arg INPUTS=agent_demo_absent
+introspect readiness render-pool-gel-svg --arg INPUTS=agent_demo_absent --arg CONTAINER_IDS=agent_demo_absent
+introspect readiness render-pool-gel-svg --arg INPUTS=agent_demo_absent --arg CONTAINER_IDS=agent_demo_absent --arg ARRANGEMENT_ID=agent_demo_absent
+```
+
+In each reply, read the row in the `readiness` array:
+
+| Check | `truth` | `readiness` | Unbound arguments in `unknown_atoms` |
+| --- | --- | --- | --- |
+| 1: loaded sequence; other alternatives unspecified | `satisfied` | `ready` | 2 |
+| 2: absent sequence; other alternatives unspecified | `unknown` | `unknown` | 2 |
+| 3: absent sequence and container; arrangement unspecified | `unknown` | `unknown` | 1 |
+| 4: all three alternatives explicitly absent | `unsatisfied` | `blocked` | 0 |
+
+Check 1 is ready even though `unknown_atoms` lists two unbound alternatives:
+the loaded sequence already satisfies `any`. Check 2 is not blocked yet because
+the container and arrangement branches were not assessed. Check 4 is blocked
+because every alternative was assessed and failed. None of these checks renders
+a gel or writes a file.
+
+This distinction matters for agents: use `truth` and `readiness` as the verdict,
+not the number of diagnostic entries. `unknown_atoms` explains arguments that
+were not bound; `evaluation_unknown_atoms` explains bound facts whose evidence
+is unavailable. An absent loaded sequence is known to be absent from this
+project, but missing biological evidence does **not** prove biological absence.
+
+The same rules hold inside nested expressions. For `all`, one failed required
+condition blocks the operation, and every condition must be satisfied for it
+to be ready. Otherwise the result stays unknown. Negating unknown with `not`
+also stays unknown: "not yet established" cannot become proof of the opposite.
+
+Do not fill omitted arguments with invented IDs just to clear diagnostics.
+Bind the actual proposed inputs, recheck before execution, then request any
+required approval. A ready prerequisite is not an execution receipt or a
+laboratory validation. The [TP73 export walkthrough](08-17_tp73_dnp73_factor_curves.md#check-target-readiness-before-export)
+shows a different case: a command with mutually exclusive target selectors.
+
+### Exercise B: ask the agent to arrange the visible evidence
+
+This second exercise uses the same `agent_toy` record and stays inside the GUI.
+It checks that an agent can compose project facts with UI-host facts without
+inventing a new display mechanism:
+
+```text
+Open agent_toy in the DNA sequence viewer, show restriction-enzyme sites, and
+select the interval 3..17 using GENtle's 0-based, end-exclusive convention.
+Return the three GENtle commands in that order and mark each execution "ask".
+```
+
+The expected command paths are:
+
+```text
+ui open sequence-window agent_toy
+display show restriction-enzymes
+ui selection sequence-window agent_toy --range 3..17
+```
+
+Their readiness can be inspected before execution:
+
+```text
+introspect readiness ui open --arg TARGET=sequence-window --arg SEQ_ID=agent_toy --ui-host true
+introspect readiness display --arg TARGET=restriction-enzymes --arg VISIBLE=true --ui-host true
+introspect readiness ui selection --arg SEQ_ID=agent_toy --ui-host true
+```
+
+All three capabilities are `fact_annotated`. `ui open` and `ui selection`
+require an attached GUI host; `ui selection` additionally requires
+`sequence.exists(agent_toy)`. This makes a headless rejection just as
+explainable as a successful in-app run.
+
+### Exercise C: test open-world reasoning with Mistral or another provider
+
+This third exercise is deliberately modest but not trivial. It tests whether the
+model distinguishes a known project fact from an unsupported biological
+conclusion. It is suitable for Mistral as well as stronger reasoning models.
+
+1. Create one deterministic local sequence through the GUI Shell:
+
+```text
+/paste sequence --sequence-text GAATTCGCGGCCGCTTCTAGA --id fact_demo
+```
+
+2. Open `File -> Agent Assistant...` and enable `Include state summary`.
+   GENtle now sends both the compact state summary and a bounded
+   `x_introspection` projection from the same engine snapshot. The model also
+   receives the read-only commands through which it can ask for more fact
+   detail.
+3. Select and test your configured provider. To exercise the native Mistral
+   path, use `Mistral Large (native Mistral HTTP)` or another exact Mistral
+   model id returned by `Discover Models`.
+4. Ask:
+
+```text
+Use only the supplied GENtle state_summary and x_introspection context.
+
+1. Tell me whether sequence fact_demo currently exists and whether GENtle
+   identifies it as DNA.
+2. Tell me whether the current facts prove that fact_demo has no EcoRI site.
+   Do not infer absence from a missing fact.
+3. Suggest no more than two read-only GENtle shared-shell commands: one that
+   can show the current facts for fact_demo, and one that can establish EcoRI
+   site evidence.
+4. Use execution="ask". Include a machine-readable precondition_expr when
+   your response format supports it.
+```
+
+A reasonable response should:
+
+- recognize `sequence.exists(fact_demo)` and `sequence.kind(fact_demo) = dna`
+  from current engine context
+- say that EcoRI absence has not yet been proved; the sequence text itself is
+  intentionally not included in the compact state summary
+- suggest valid commands such as:
+
+```text
+introspect facts --seq-id fact_demo
+features restriction-scan fact_demo --enzyme EcoRI
+```
+
+- use `sequence.exists(fact_demo)` as a precondition when it emits
+  `precondition_expr`
+- avoid re-importing the sequence, inventing a fact, or claiming that a missing
+  `restriction_site.present` fact proves absence
+
+Run each suggestion only after checking it. The restriction scan will find the
+EcoRI motif at the start of this deliberately chosen sequence. That observed
+result is not needed to pass the reasoning test: the important step is that the
+agent requests complete evidence before making an open-world absence claim.
+
+If GENtle marks either suggestion as `Invalid GENtle command`, the provider did
+not pass the interface test. If the commands parse but the prose asserts EcoRI
+absence before the scan, the transport worked but the model did not pass the
+fact-reasoning test.
+
 ### Ask for cloning strategy or vector advice
 
 When the question is still at the planning stage, prefer a GENtle-owned
@@ -426,7 +727,51 @@ Prefer this policy while learning:
 GENtle blocks recursive agent execution. Suggested commands may not silently run
 `agents ask`, `agents plan`, or `agents execute-plan` again.
 
-## 10) The external path: Claude, Codex, or another coding agent
+## 10) The outer path: MCP, ClawBio/OpenClaw, or a coding agent
+
+An outer agent works against an explicit saved state, workflow or input bundle.
+It does not inherit the in-memory GUI project. Ask it to report the exact state
+path, workflow, written artifacts and reproducibility receipt rather than merely
+saying that the task was completed.
+
+### ClawBio/OpenClaw
+
+GENtle ships the generic `gentle-cloning` skill and narrower delegated skills.
+The generic wrapper can replay a structured workflow request directly. A
+conversationally selected delegated route that mutates state or writes artifacts
+must first return `approval_required`; a second invocation may execute only the
+exact digest the caller attests was approved.
+
+A useful outer-agent request is:
+
+```text
+Use GENtle's gentle-cloning skill with an explicit disposable state path.
+First show me the selected route, inputs, outputs and whether it is read-only or
+confirmation-gated. Do not infer anything from an unsaved GUI project. Return
+the structured result, produced artifacts and reproducibility receipt; do not
+execute a mutating delegated proposal until I approve its exact digest.
+```
+
+For a deterministic workflow already stored in the checkout, the corresponding
+structured request has this shape:
+
+```json
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "state_path": "/tmp/tutorial.state.json",
+  "workflow_path": "docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json",
+  "timeout_secs": 240
+}
+```
+
+Run that request through the copied `gentle-cloning` skill in a ClawBio
+checkout. The wrapper delegates scientific work to the same GENtle CLI and
+retains `result.json`, `report.md` and reproducibility metadata. The outer agent
+may summarize these records; it must not replace them with an untraceable prose
+claim.
+
+### Coding agents
 
 Use this when the assistant is outside GENtle and can run terminal commands or
 edit the checkout.
@@ -498,6 +843,10 @@ Codex Local cannot find Codex or says login is required:
 
 - Set `CODEX_BIN` to the Codex executable path, or add Codex to the GUI
   process `PATH`.
+- Current macOS ChatGPT app installs are discovered automatically through the
+  bundled `Contents/Resources/codex` CLI or the
+  `Contents/MacOS/ChatGPT` executable; the older standalone Codex app path
+  remains supported.
 - Run the Codex app/CLI login flow outside GENtle.
 - If GENtle was launched from Finder/Spotlight on macOS, try launching from a
   terminal so the process inherits the same PATH/keychain context.

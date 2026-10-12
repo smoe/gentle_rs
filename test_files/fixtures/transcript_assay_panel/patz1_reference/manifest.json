@@ -1,0 +1,20 @@
+{
+  "gene_symbol": "PATZ1",
+  "taxon_id": 9606,
+  "assembly": "GRCh38",
+  "chromosome_accession": "NC_000022.11",
+  "genomic_interval_1based_inclusive": [31325804, 31346605],
+  "genomic_strand": "-",
+  "retrieved": "2026-09-19",
+  "ensembl_release": 116,
+  "refseq_snapshot": "NC_000022.11 annotation snapshot retrieved 2026-09-19",
+  "ensembl_transcript_count": 13,
+  "refseq_transcript_count": 4,
+  "files": {
+    "ensembl.gff3": "5c4e23e8ccf6d3e85b07bccc034c6b5d2275cb3c58ea97e9984340aa98a9d40a",
+    "ensembl_entry.json": "f0b1e83e26579317e2bc2ed00778aaed49ccfe24ee88a6548577062df9a15a5b",
+    "refseq.gff3": "c497fbd41259261bdc0c52c26ab7f5dd96cd48eef7b53f1057a06a1fce0b3daa",
+    "refseq_genome.fasta": "6c53910a9ed1e47055f6d84188c146910b5656ee0f68c70cd423efdbc6f583db"
+  },
+  "original_ncbi_chromosome_gff3_sha256": "e3b5a3ca736b6fc00da181d3d0a36a14d23b339ab7fc82c36cf4c34f6113323b"
+}

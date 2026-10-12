@@ -7,6 +7,8 @@
 # chromosome-ordered intensity tables that GENtle can ingest or inspect later.
 # It never downloads or installs R/Bioconductor packages.
 
+analysis_method_version <- "probe_regions_oligo_rma_v1"
+
 usage <- function(status = 0) {
   cat(
     "Usage:\n",
@@ -14,6 +16,7 @@ usage <- function(status = 0) {
     "    (--gene SYMBOL | --locus CHR:START-END | --transcript-cluster-id ID | --probeset-id ID ...)\n",
     "    [--metadata samples.tsv] [--sample-column NAME] [--condition-column NAME] [--block-column NAME]\n",
     "    [--platform-package pd.clariom.d.human] [--normalization rma]\n",
+    "    [--r-library-path PATH ...]\n",
     "    [--coordinate-system hg38] [--genome-build GRCh38]\n",
     "    [--target probeset|transcript_cluster] [--contrast A-B] --output DIR [--cache-dir DIR]\n",
     "\n",
@@ -33,6 +36,7 @@ empty_args <- function() {
     block_column = "",
     platform_package = Sys.getenv("GENTLE_PROBE_REGION_PD_PACKAGE", "pd.clariom.d.human"),
     platform_name = Sys.getenv("GENTLE_PROBE_REGION_PLATFORM", "Clariom_D_Human"),
+    r_library_paths = character(),
     coordinate_system = Sys.getenv("GENTLE_PROBE_REGION_COORDINATE_SYSTEM", ""),
     genome_build = Sys.getenv("GENTLE_PROBE_REGION_GENOME_BUILD", ""),
     normalization = "rma",
@@ -92,6 +96,9 @@ parse_args <- function(argv) {
       i <- i + 2
     } else if (flag == "--platform-name") {
       out$platform_name <- take_value(argv, i, flag)
+      i <- i + 2
+    } else if (flag == "--r-library-path" || flag == "--r-lib") {
+      out$r_library_paths <- c(out$r_library_paths, take_value(argv, i, flag))
       i <- i + 2
     } else if (flag == "--coordinate-system") {
       out$coordinate_system <- take_value(argv, i, flag)
@@ -156,15 +163,26 @@ parse_args <- function(argv) {
   out$loci <- unique(out$loci[nzchar(out$loci)])
   out$transcript_cluster_ids <- unique(out$transcript_cluster_ids[nzchar(out$transcript_cluster_ids)])
   out$probeset_ids <- unique(out$probeset_ids[nzchar(out$probeset_ids)])
+  out$r_library_paths <- unique(out$r_library_paths[nzchar(out$r_library_paths)])
   out
 }
 
 args <- parse_args(commandArgs(trailingOnly = TRUE))
 
-workspace_r_lib <- file.path(getwd(), ".r-lib")
-if (dir.exists(workspace_r_lib)) {
-  .libPaths(c(normalizePath(workspace_r_lib), .libPaths()))
+if (length(args$r_library_paths) == 0) {
+  workspace_r_lib <- file.path(getwd(), ".r-lib")
+  if (dir.exists(workspace_r_lib)) {
+    args$r_library_paths <- normalizePath(workspace_r_lib, winslash = "/", mustWork = TRUE)
+  }
 }
+existing_r_library_paths <- args$r_library_paths[dir.exists(args$r_library_paths)]
+if (length(existing_r_library_paths) > 0) {
+  .libPaths(unique(c(
+    normalizePath(existing_r_library_paths, winslash = "/", mustWork = TRUE),
+    .libPaths()
+  )))
+}
+r_library_paths_checked <- .libPaths()
 
 required_packages <- c("oligo", "limma", "Biobase", "DBI", "RSQLite")
 missing_packages <- required_packages[!vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)]
@@ -175,8 +193,12 @@ if (length(missing_packages) > 0) {
   stop(
     "Missing R/Bioconductor package(s): ", paste(unique(missing_packages), collapse = ", "), "\n",
     "Install outside GENtle, for example: if (!requireNamespace('BiocManager', quietly=TRUE)) ",
-    "install.packages('BiocManager'); BiocManager::install(c('oligo','limma','",
-    args$platform_package, "'))",
+    "install.packages('BiocManager'); BiocManager::install(c('",
+    paste(unique(missing_packages), collapse = "','"), "'))\n",
+    "Requested R library paths: ",
+    if (length(args$r_library_paths) == 0) "(none)" else paste(args$r_library_paths, collapse = ", "),
+    "\nEffective R library paths checked: ", paste(r_library_paths_checked, collapse = ", "), "\n",
+    "Check --r-library-path PATH if this differs from the environment where the packages were installed.",
     call. = FALSE
   )
 }
@@ -232,6 +254,16 @@ json_array <- function(values) {
   paste0("[", paste(vapply(values, json_string, character(1)), collapse = ", "), "]")
 }
 
+json_named_string_object <- function(values) {
+  if (length(values) == 0) return("{}")
+  entries <- vapply(
+    seq_along(values),
+    function(i) paste0(json_string(names(values)[[i]]), ": ", json_string(values[[i]])),
+    character(1)
+  )
+  paste0("{", paste(entries, collapse = ", "), "}")
+}
+
 json_bool <- function(value) {
   if (isTRUE(value)) "true" else "false"
 }
@@ -247,6 +279,24 @@ file_info_json <- function(path) {
     "\"exists\":", json_bool(exists), ",",
     "\"size_bytes\":", size, ",",
     "\"modified_unix_seconds\":", mtime,
+    "}"
+  )
+}
+
+input_fingerprint_json <- function(path, role) {
+  exists <- file.exists(path)
+  info <- if (exists) file.info(path) else NULL
+  size <- if (exists) as.character(info$size) else "null"
+  mtime <- if (exists) as.character(as.integer(as.POSIXct(info$mtime))) else "null"
+  paste0(
+    "{",
+    "\"path\":", json_string(path), ",",
+    "\"role\":", json_string(role), ",",
+    "\"exists\":", json_bool(exists), ",",
+    "\"is_file\":", json_bool(exists && !isTRUE(info$isdir)), ",",
+    "\"size_bytes\":", size, ",",
+    "\"modified_unix_seconds\":", mtime, ",",
+    "\"sha256\":null",
     "}"
   )
 }
@@ -356,7 +406,55 @@ first_gene_symbol <- function(geneassignment) {
   }, character(1))
 }
 
-load_platform_annotations <- function(pd_package) {
+resolve_platform_sqlite <- function(pd_package, require_probeset = FALSE) {
+  extdata_path <- system.file("extdata", package = pd_package)
+  expected_name <- paste0(pd_package, ".sqlite")
+  expected_path <- if (nzchar(extdata_path)) file.path(extdata_path, expected_name) else ""
+  if (nzchar(expected_path) && file.exists(expected_path)) {
+    return(expected_path)
+  }
+
+  sqlite_candidates <- if (nzchar(extdata_path) && dir.exists(extdata_path)) {
+    sort(list.files(extdata_path, pattern = "\\.sqlite$", full.names = TRUE))
+  } else {
+    character()
+  }
+  if (length(sqlite_candidates) == 1) {
+    warning(
+      "Platform design package '", pd_package, "' did not contain expected database '",
+      expected_name, "'; using its sole SQLite database '",
+      basename(sqlite_candidates[[1]]), "'.",
+      call. = FALSE
+    )
+    return(sqlite_candidates[[1]])
+  }
+
+  reason <- if (!nzchar(extdata_path) || !dir.exists(extdata_path)) {
+    "its extdata directory could not be resolved"
+  } else if (length(sqlite_candidates) == 0) {
+    paste0("no SQLite database was found in '", extdata_path, "'")
+  } else {
+    paste0(
+      "expected database '", expected_name, "' was absent and multiple SQLite databases were found in '",
+      extdata_path, "': ", paste(basename(sqlite_candidates), collapse = ", ")
+    )
+  }
+  diagnostic <- paste0(
+    "Platform design package '", pd_package,
+    "' cannot provide probeset coordinate annotations because ", reason, "."
+  )
+  if (isTRUE(require_probeset)) {
+    stop(diagnostic, call. = FALSE)
+  }
+  warning(
+    diagnostic,
+    " Continuing because only transcript-cluster output was requested.",
+    call. = FALSE
+  )
+  ""
+}
+
+load_platform_annotations <- function(pd_package, require_probeset = FALSE) {
   annotations <- list(transcript = NULL, probeset = NULL)
   transcript_path <- system.file("extdata", "netaffxTranscript.rda", package = pd_package)
   if (nzchar(transcript_path) && file.exists(transcript_path)) {
@@ -371,7 +469,7 @@ load_platform_annotations <- function(pd_package) {
       annotations$transcript <- transcript[, c("feature_id", setdiff(names(transcript), "feature_id")), drop = FALSE]
     }
   }
-  sqlite_path <- system.file("extdata", "pd.clariom.d.human.sqlite", package = pd_package)
+  sqlite_path <- resolve_platform_sqlite(pd_package, require_probeset = require_probeset)
   if (nzchar(sqlite_path) && file.exists(sqlite_path)) {
     con <- DBI::dbConnect(RSQLite::SQLite(), sqlite_path)
     on.exit(DBI::dbDisconnect(con), add = TRUE)
@@ -572,11 +670,14 @@ if (length(args$contrasts) == 0) {
 
 cel_files <- sample_table$cel_path
 names(cel_files) <- sample_table$sample_id
+annotations <- load_platform_annotations(
+  args$platform_package,
+  require_probeset = "probeset" %in% args$targets
+)
 message("Reading ", length(cel_files), " CEL file(s) with platform package ", args$platform_package)
 raw <- oligo::read.celfiles(cel_files, pkgname = args$platform_package)
 Biobase::sampleNames(raw) <- sample_table$sample_id
 Biobase::pData(raw) <- sample_table[Biobase::sampleNames(raw), , drop = FALSE]
-annotations <- load_platform_annotations(args$platform_package)
 
 artifact_paths <- c(file.path(args$output, "sample_table.tsv"))
 region_written <- FALSE
@@ -607,6 +708,15 @@ for (target in args$targets) {
 session_path <- file.path(args$output, "sessionInfo.txt")
 capture.output(utils::sessionInfo(), file = session_path)
 artifact_paths <- c(artifact_paths, session_path)
+runtime_packages <- unique(c(required_packages, args$platform_package))
+package_versions <- setNames(
+  vapply(runtime_packages, function(package) as.character(utils::packageVersion(package)), character(1)),
+  runtime_packages
+)
+input_fingerprints <- c(
+  vapply(cel_files, input_fingerprint_json, character(1), role = "cel"),
+  if (nzchar(args$metadata)) input_fingerprint_json(args$metadata, "metadata") else character()
+)
 
 manifest_path <- file.path(args$output, "normalized_feature_matrix_manifest.json")
 manifest_lines <- c(
@@ -633,11 +743,17 @@ provenance_lines <- c(
   paste0("  \"schema\": ", json_string("gentle.probe_region_backend_provenance.v1"), ","),
   paste0("  \"backend\": ", json_string("r_oligo"), ","),
   paste0("  \"command\": ", json_string(paste(commandArgs(FALSE), collapse = " ")), ","),
+  paste0("  \"r_version\": ", json_string(R.version.string), ","),
+  paste0("  \"package_versions\": ", json_named_string_object(package_versions), ","),
+  paste0("  \"r_library_paths_requested\": ", json_array(args$r_library_paths), ","),
+  paste0("  \"r_library_paths_checked\": ", json_array(.libPaths()), ","),
+  paste0("  \"analysis_method_version\": ", json_string(analysis_method_version), ","),
   paste0("  \"platform_package\": ", json_string(args$platform_package), ","),
   paste0("  \"coordinate_system\": ", json_string(args$coordinate_system), ","),
   paste0("  \"genome_build\": ", json_string(args$genome_build), ","),
   paste0("  \"normalization\": ", json_string(args$normalization), ","),
   paste0("  \"output_dir\": ", json_string(args$output), ","),
+  paste0("  \"input_fingerprints\": [", paste(input_fingerprints, collapse = ", "), "],"),
   paste0("  \"artifacts\": ", json_array(artifact_paths)),
   "}"
 )

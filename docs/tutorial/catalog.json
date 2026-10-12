@@ -46,7 +46,22 @@
         "cloning_planning",
         "pharmacogenomics"
       ],
-      "notes": "Hand-written GUI-first tutorial for turning the VKORC1/rs9923231 pharmacogenomic alert into one mammalian promoter-reporter planning workflow with explicit engine and CLI mapping.",
+      "notes": "Hand-written GUI-first tutorial with shared-shell agent parity. A separate synthetic offline-core contract covers explicit C/T pair creation; it does not certify the online locus, live agent or full reporter handoff.",
+      "estimated_minutes": 45,
+      "difficulty": "advanced",
+      "network": "online dbSNP lookup and first genome preparation; local construct build",
+      "interfaces": [
+        "native GUI / Promoter design",
+        "CLI / shared shell and workflow",
+        "Agent Assistant (inner, review-first and multiallelic-safe)"
+      ],
+      "starting_state": "Prepared or preparable Human GRCh38 Ensembl 116 reference and network access to NCBI Variation",
+      "produces": [
+        "VKORC1 promoter-context report",
+        "explicit C/T promoter insert pair",
+        "paired mammalian luciferase reporter previews",
+        "reviewable promoter-design handoff bundle"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -68,16 +83,84 @@
         "sequence_analysis",
         "visual_learning"
       ],
-      "notes": "Screenshot-backed manual tutorial for cDNA-vs-genomic comparison.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "notes": "Nine-image manual tutorial for cDNA-vs-genomic comparison. The March 2026 images are useful orientation captures but predate provenance-bound GUI acceptance; the inner agent uses current GUI state, while outer replay requires explicit state, network and genome-cache paths.",
+      "estimated_minutes": 30,
+      "difficulty": "routine",
+      "network": "online setup; local analysis",
+      "interfaces": [
+        "native GUI",
+        "CLI / GUI Shell",
+        "Agent Assistant (inner, review-first)",
+        "MCP / ClawBio outer agent"
+      ],
+      "starting_state": "TP73 cDNA accession and a prepared GRCh38 Ensembl reference",
+      "produces": [
+        "pairwise dotplot analysis"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
       "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_cdna_genomic_01_main_start.png",
+          "caption": "Main GENtle lineage window before the TP73 cDNA/genomic comparison starts.",
+          "illustrates_step": 1,
+          "capture_date": "2026-03-20"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_cdna_genomic_02_fetch_cdna_dialog.png",
+          "caption": "GenBank accession dialog configured for NM_001126241.3 as tp73_cdna.",
+          "illustrates_step": 1,
+          "capture_date": "2026-03-20"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_cdna_genomic_03_prepare_genome_dialog.png",
+          "caption": "Reference-genome preparation dialog for Human GRCh38 Ensembl 116.",
+          "illustrates_step": 2,
+          "capture_date": "2026-03-20"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_cdna_genomic_04_retrieve_tp73_genomic_dialog.png",
+          "caption": "Genomic-sequence retrieval dialog configured for the first TP73 occurrence as tp73_genomic.",
+          "illustrates_step": 2,
+          "capture_date": "2026-03-20"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_cdna_genomic_05_sequences_loaded.png",
+          "caption": "Lineage view after tp73_cdna and tp73_genomic have both been loaded.",
+          "illustrates_step": 2,
+          "capture_date": "2026-03-20"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_cdna_genomic_06_cdna_sequence_window.png",
+          "caption": "tp73_cdna in the standard DNA viewer before switching to Dotplot map.",
+          "illustrates_step": 3,
+          "capture_date": "2026-03-20"
+        },
         {
           "kind": "screenshot",
           "path": "docs/screenshots/tutorial_cdna_genomic_07_dotplot_window.png",
           "caption": "Dotplot workspace after loading TP73 cDNA and genomic sequence.",
           "illustrates_step": 4,
+          "capture_date": "2026-03-20"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_cdna_genomic_08_pair_forward_result.png",
+          "caption": "Pair-forward result with separated exon-aligned blocks across genomic coordinates.",
+          "illustrates_step": 4,
+          "capture_date": "2026-03-20"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_cdna_genomic_09_dotplot_as_node.png",
+          "caption": "Computed dotplot retained as an analysis node in the main lineage graph.",
+          "illustrates_step": 5,
           "capture_date": "2026-03-20"
         }
       ]
@@ -99,10 +182,30 @@
         "cloning_planning",
         "contributors"
       ],
-      "notes": "Hands-on test script for the destination-first Gibson specialist with shared CLI parity.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Hands-on test script for the destination-first Gibson specialist with shared CLI parity, review-before-apply agent boundaries and one legacy lineage screenshot. Current exact-binary GUI acceptance remains pending.",
+      "interfaces": [
+        "native GUI",
+        "CLI / shared Gibson preview",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent (explicit saved project)"
+      ],
+      "prerequisites": [
+        "gibson_specialist_testing_baseline"
+      ],
+      "next_steps": [
+        "gibson_arrangements_baseline"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gibson_specialist_testing_08_lineage_graph.png",
+          "caption": "Historical native lineage view after Gibson apply: destination and insert feed one Gibson operation that produces two primer sequences and the assembled product. Useful orientation only; the 2026-03-23 capture predates the current hash-bound GUI-acceptance format.",
+          "illustrates_step": 8,
+          "capture_date": "2026-03-23"
+        }
+      ]
     },
     {
       "id": "gibson_arrangements_gui",
@@ -121,10 +224,30 @@
         "cloning_planning",
         "contributors"
       ],
-      "notes": "Hands-on walkthrough for Gibson-created arrangements, lane inspection, and arrangement-level gel export.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Hands-on walkthrough for Gibson-created arrangements, lane inspection and deterministic arrangement-level gel export, with explicit inner/outer-agent state and file-write boundaries.",
+      "interfaces": [
+        "native GUI",
+        "CLI / shared arrangement export",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent (explicit disposable state)"
+      ],
+      "prerequisites": [
+        "gibson_arrangements_baseline"
+      ],
+      "next_steps": [
+        "gibson_physical_rack_gui"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "generated",
+          "path": "docs/figures/gibson_single_insert_arrangement_gel.svg",
+          "caption": "Deterministic arrangement-level gel export with flanking DNA ladders and the vector, insert and assembled-product sample lanes in stored serial order.",
+          "illustrates_step": 5,
+          "regen_command": "Replay docs/examples/workflows/gibson_arrangements_baseline.json into a fresh state, then run render-pool-gel-svg with --arrangement arrangement-1 as shown in this tutorial."
+        }
+      ]
     },
     {
       "id": "gibson_physical_rack_gui",
@@ -143,10 +266,27 @@
         "cloning_planning",
         "contributors"
       ],
-      "notes": "Hands-on walkthrough for turning one arrangement-ready Gibson result into a linked physical rack, README-grade isometric SVG, carrier labels, and OpenSCAD export.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Hands-on walkthrough for turning one arrangement-ready Gibson result into a linked physical rack, deterministic isometric SVG, carrier labels and OpenSCAD export, with explicit agent state/file-write boundaries.",
+      "interfaces": [
+        "native GUI",
+        "CLI / shared rack exports",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent (explicit disposable state)"
+      ],
+      "prerequisites": [
+        "gibson_arrangements_gui"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "generated",
+          "path": "docs/figures/gibson_single_insert_rack_isometric.svg",
+          "caption": "Deterministic isometric export of rack-1 with the pipetting PCR tube rack template: five occupied positions preserve the linked Gibson arrangement and flanking ladder references.",
+          "illustrates_step": 5,
+          "regen_command": "Replay docs/examples/workflows/gibson_arrangements_baseline.json into a fresh state, then run racks isometric-svg for rack-1 with --template pipetting_pcr_tube_rack as shown in this tutorial."
+        }
+      ]
     },
     {
       "id": "sequencing_confirmation_trace_cli",
@@ -163,12 +303,13 @@
       "audiences": [
         "cli_first",
         "sequence_analysis",
+        "agent_users",
+        "clawbio",
         "contributors"
       ],
-      "notes": "Hands-on local walkthrough for seq-trace import, trace-aware seq-confirm run, and shared report export.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Offline Sanger sequencing trace tutorial: seq-trace import/list/show, seq-confirm run --trace-id, show-report and JSON/TSV exports using existing 3100.ab1, fake.ab1 and 48 bp construct fixtures with fresh state. ABI/AB1 and SCF import use magic bytes; SCF coverage is synthetic-only, not a bundled public SCF walkthrough. File-supplied confidence is not quality-weighted consensus or independent biological validation. Prerequisite: already-built gentle_cli. Open with ui open tutorial-guide sequencing_confirmation_trace_cli. codex source review 2026-09-11 against code 32875224 and this revised source: scoped workflow clarity, links and nonclaims reviewed for wet-lab biologists and inner agents; not binary execution sign-off, live GUI acceptance or human scientific approval. Structured review records remain in the separate review manifest.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-11"
     },
     {
       "id": "sequencing_confirmation_gui",
@@ -185,12 +326,13 @@
       "audiences": [
         "gui_first",
         "sequence_analysis",
+        "agent_users",
+        "clawbio",
         "contributors"
       ],
-      "notes": "GUI-first walkthrough for raw trace import, baseline-aware confirmation, chromatogram inspection, and lineage reopen.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Offline Sanger sequencing confirmation GUI tutorial: Patterns -> Sequencing Confirmation..., Raw Trace Import, ABI/AB1 evidence, baseline/reference intended-edit checkpoints, chromatogram curves, lineage reopen, Save Project and JSON/TSV export. Prerequisites: already-built GUI, bundled 3100.ab1 and construct/baseline FASTA pair. The matching base-24 call has confidence 9: expect low_confidence_or_ambiguous and overall insufficient_evidence, not an intended-edit confirmation. SCF import exists but public SCF fixture coverage is absent; no invented qualities, peak re-calling, automatic quality trimming or independent biological validation. No uncovered-gap or primer-overlay exercise. Open with ui open tutorial-guide sequencing_confirmation_gui. codex source review 2026-09-11 against code 32875224 and this revised source: scoped workflow clarity, UI labels, links and nonclaims reviewed for wet-lab biologists and inner agents; not live GUI acceptance, binary execution sign-off or human scientific approval. Structured review records remain in the separate review manifest.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-11"
     },
     {
       "id": "rna_read_batch_gene_support_cli",
@@ -209,10 +351,31 @@
         "sequence_analysis",
         "contributors"
       ],
-      "notes": "Hands-on batch workflow for interpreting many gzipped cDNA FASTA files, aligning saved reports, and exporting one target-gene cohort sample sheet.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Hands-on batch workflow for interpreting many gzipped cDNA FASTA files, aligning saved reports, and exporting one target-gene cohort sample sheet. Native acceptance on 2026-10-01 used two bounded TP53 samples and explicitly separates seed filtering, alignment assignment, molecule completeness, and direct-transition evidence.",
+      "interfaces": [
+        "native GUI",
+        "CLI / shared shell",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent (explicit state, file manifest, and approvals)"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/rna_read_batch_gene_support_cli/01-report-workspace.png",
+          "caption": "The native RNA-read Mapping workspace loads a persisted TP53 report and keeps phase-1 seed filtering separate from phase-2 alignment. In this bounded acceptance fixture all six retained reads align, while the seed-passed subset remains empty.",
+          "illustrates_step": 4,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/rna_read_batch_gene_support_cli/02-gene-support-cohorts.png",
+          "caption": "The native cohort view reports six target-assigned fragments but no full-length or direct-transition evidence. Target assignment therefore must not be reported as seed-filter acceptance, complete molecules, or junction support.",
+          "illustrates_step": 6,
+          "capture_date": "2026-10-01"
+        }
+      ]
     },
     {
       "id": "tutorial_landscape_overview",
@@ -252,10 +415,18 @@
         "mcp_users",
         "contributors"
       ],
-      "notes": "Practical guide for the in-app Agent Assistant, provider quick starts, reviewed shared-shell suggestions, CLI/shared shell, MCP, and external coding agents.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Practical guide that distinguishes the live-project inner Agent Assistant, explicit-state MCP/ClawBio outer agents and repository coding agents. Covers provider quick starts including Mistral, bounded fact context, screenshot consent, reviewed shared-shell suggestions, artifact/receipt expectations and delegated mutation approval.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tss_regulatory_view_gui/agent-assistant-report-command.raw.png",
+          "caption": "Agent Assistant keeps a publication-safe synthetic viewport local when the selected agent system cannot accept images; provider submission remains disabled.",
+          "illustrates_step": 4,
+          "capture_date": "2026-09-28"
+        }
+      ]
     },
     {
       "id": "metabion_external_service_handoff_gui_cli",
@@ -275,10 +446,9 @@
         "agent_users",
         "cloning_planning"
       ],
-      "notes": "Safe handoff rehearsal for Metabion oligo and m-block requests through the shared provider catalog, preflight, and quote bundle contracts; no vendor submission.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Offline external-service tutorial for Metabion DNA oligos, primers, probes and m-block fragments: Services -> External Services..., services providers doctor/list, project-preflight, project-quote, JSON/CSV/email/WOP handoff exports. Prerequisites: bundled DEMO_DO_NOT_ORDER requests and an already-built CLI/GUI. Local eligibility is not vendor acceptance, pricing or ordering; no network or submission. Open with ui open tutorial-guide metabion_external_service_handoff_gui_cli. codex source review 2026-09-11 against code 32875224 and this revised source: scoped workflow clarity, links and nonclaims reviewed for wet-lab biologists and inner agents; not live GUI acceptance, binary execution sign-off or human scientific approval. Structured review records remain in the separate review manifest.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-11"
     },
     {
       "id": "geneart_external_service_handoff_gui_cli",
@@ -300,10 +470,9 @@
         "cloning_planning",
         "protein_workflows"
       ],
-      "notes": "Safe GeneArt cloned-gene and protein-expression quote-handoff rehearsal through the shared provider catalog, preflight, quote bundle, and return_spec contracts; no vendor submission.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Offline external-service tutorial for GeneArt cloned-gene synthesis and protein-expression handoff: Services -> External Services..., services providers doctor/list, project-preflight, project-quote and bundle exports. Prerequisites: bundled DEMO_DO_NOT_ORDER requests and an already-built CLI/GUI. return_spec requests are not guaranteed payload materialization; no codon optimization, vendor pricing, network or ordering. Open with ui open tutorial-guide geneart_external_service_handoff_gui_cli. codex source review 2026-09-11 against code 32875224 and this revised source: scoped workflow clarity, links and nonclaims reviewed for wet-lab biologists and inner agents; not live GUI acceptance, binary execution sign-off or human scientific approval. Structured review records remain in the separate review manifest.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-11"
     },
     {
       "id": "protein_expression_handoff_cli",
@@ -347,10 +516,52 @@
         "new_users",
         "primer_design"
       ],
-      "notes": "Beginner-friendly selection-first PCR walkthrough centered on core ROI, maximum primer distance from the core, and maximum amplicon length.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Beginner-friendly selection-first PCR walkthrough centered on the must-cover core ROI, deterministic left/right primer-search windows, and a visibly verified saved report. The typed GUI path is acceptance-tested; the canonical outer-agent workflow prepares only the starter sequence and backend, not a primer-design result.",
+      "estimated_minutes": 20,
+      "difficulty": "beginner",
+      "network": "offline",
+      "interfaces": [
+        "GUI",
+        "CLI / GUI Shell",
+        "inner agent",
+        "ClawBio / outer agent (starter preparation only)"
+      ],
+      "starting_state": "Bundled TP73 tutorial project with an 800-base extract",
+      "produces": [
+        "primer-pair report"
+      ],
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
+      ],
+      "next_steps": [
+        "pcr_selection_batch_primer_pairs_offline",
+        "qpcr_exon_junctions_gui"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.context.svg",
+          "caption": "The selected core region's context menu. Choose Simple PCR from selection; the surrounding advanced map actions are unrelated to this walkthrough.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/seed_simple_pcr.context.svg",
+          "caption": "PCR Designer starter controls after seeding the selected core region.",
+          "illustrates_step": 4,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/inspect_primer_report.context.svg",
+          "caption": "The saved primer-report preview after design. The automated check requires at least one pair and verifies that the first pair flanks the core ROI.",
+          "illustrates_step": 5,
+          "capture_date": "2026-09-28"
+        }
+      ]
     },
     {
       "id": "protein_transcript_native_expert_gui",
@@ -369,10 +580,31 @@
         "sequence_analysis",
         "contributors"
       ],
-      "notes": "Local-first manual check for transcript-native Protein Expert opening, provenance visibility, and derived-only SVG export.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Local-first manual check for transcript-native Protein Expert opening, provenance visibility, filtering, and derived-only SVG export. Reviewed with 15 unfiltered rows and one 636-aa NM_005427.4 inferred-ORF row; shared-shell SVG export passed, while the native save dialog remained unaccepted in Xvfb.",
+      "interfaces": [
+        "native GUI",
+        "CLI / shared shell",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/protein_transcript_native_expert_gui/01-filter-ready.png",
+          "caption": "The native Protein Evidence controls bound to local project sequence tp73.ncbi and the reviewed NM_005427.4 transcript filter. The first pass uses the same controls with the transcript field empty.",
+          "illustrates_step": 2,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/protein_transcript_native_expert_gui/02-filtered-derived-expert.png",
+          "caption": "The actual filtered Protein Expert: TP73 title, one NM_005427.4 row, 636 aa, Standard translation table from standard_default, human speed hint from source organism, inferred_orf mode, derived-only status and the missing-CDS warning.",
+          "illustrates_step": 4,
+          "capture_date": "2026-10-01"
+        }
+      ]
     },
     {
       "id": "protein_reverse_translation_gui",
@@ -391,10 +623,31 @@
         "sequence_analysis",
         "contributors"
       ],
-      "notes": "GUI-first manual check for Ensembl protein import, reverse translation, provenance inspection, and lineage reopen.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "GUI-first manual check for Ensembl protein import, reverse translation, provenance inspection, and lineage reopen. Review-blocked on 2026-10-01: the corrected Ensembl action survived after a 16 MiB worker-stack fix but failed its provider request after 45.1 seconds; CLI provider calls were also unstable, so no successful downstream outcome is claimed.",
+      "interfaces": [
+        "native GUI",
+        "CLI / shared shell",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/protein_reverse_translation_gui/01-protein-evidence-before-fetch.png",
+          "caption": "The current native Protein Evidence window before online mutation, oriented at its upper evidence and coding-query controls. It is layout evidence only; the Ensembl route is lower in the same scrollable window.",
+          "illustrates_step": 2,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/protein_reverse_translation_gui/02-ensembl-fetch-provider-failure.png",
+          "caption": "The actual Ensembl protein subsection after the patched worker survived the request but the provider path failed after 45.1 seconds. No recent Ensembl entry or first-class protein was created, so downstream reverse translation remains unaccepted.",
+          "illustrates_step": 2,
+          "capture_date": "2026-10-01"
+        }
+      ]
     },
     {
       "id": "vkorc1_variant_followup_expert_gui",
@@ -436,10 +689,35 @@
         "agent_users",
         "contributors"
       ],
-      "notes": "CLI-first walkthrough for the integrated TP73 UniProt/Ensembl projection audit, the reusable low-level primitives, parity comparison, and the unsent maintainer-email draft.",
+      "notes": "CLI-first walkthrough validated with Ensembl-116 TP73, reviewed UniProt O15350 and full exon/CDS annotation. The 2026-10-01 review corrected a TP63 accession, a retired protein id and a transcript-local/genomic CDS accounting bug. Ensembl REST comparison evidence was unavailable (HTTP 500), so missing-evidence rows and the unsent-draft boundary remain explicit.",
+      "interfaces": [
+        "native GUI",
+        "CLI / shared shell",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent (explicit online opt-in and disposable state)"
+      ],
+      "prerequisites": [
+        "tp53_uniprot_projection_online"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp73_uniprot_projection_audit_online/01-audit-mismatch-vs-missing-evidence.png",
+          "caption": "The native Protein Evidence audit separates six protein-length mismatches from four rows whose remaining limitation is missing Ensembl evidence. Expanded rows show corrected genomic CDS accounting, and the text box is explicitly an unsent local draft.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp73_uniprot_projection_audit_online/02-direct-vs-composed-parity.png",
+          "caption": "The native parity summary reports zero divergent rows out of ten and confirms that the direct and composed paths selected the same transcript set for the local draft.",
+          "illustrates_step": 4,
+          "capture_date": "2026-10-01"
+        }
+      ]
     },
     {
       "id": "qpcr_exon_junctions_gui",
@@ -459,10 +737,18 @@
         "primer_design",
         "contributors"
       ],
-      "notes": "GUI-first walkthrough for seeding shared-transcript or transcript-specific qPCR from Splicing Expert, including junction-only transcript evidence and shared-shell parity commands.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "GUI-first walkthrough for seeding shared-transcript or transcript-specific qPCR from Splicing Expert, including a verified TP73 feature/transcript seed and shared-shell parity commands. Current acceptance is source/seed level; no typed GUI screenshot acceptance is claimed.",
+      "interfaces": [
+        "GUI",
+        "CLI / shared shell",
+        "inner agent",
+        "ClawBio / outer agent"
+      ],
+      "prerequisites": [
+        "simple_pcr_selection_gui"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01"
     },
     {
       "id": "load_branch_reverse_complement_pgex_fasta",
@@ -481,14 +767,44 @@
         "cli_first",
         "contributors"
       ],
-      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "notes": "Machine-checked generated chapter with typed GUI acceptance and retained Branch/ReverseComplement screenshots. Inner-agent prompts are review-first; the outer-agent replay uses explicit disposable state.",
+      "interfaces": [
+        "native GUI",
+        "CLI / shared shell",
+        "Agent Assistant (inner, review-first)",
+        "MCP / ClawBio outer agent"
+      ],
       "review_status": "human_reviewed",
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": "2026-05-18",
       "human_reviewer": "smoe",
       "review_stale": true,
       "review_stale_reason": "source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18",
       "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/branch.context.svg",
+          "caption": "Interaction context for creating a branch while preserving the original sequence.",
+          "illustrates_step": 2,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/reverse_complement.orientation.svg",
+          "caption": "Whole-screen orientation for the reverse-complement action in the DNA viewer.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/reverse_complement.context.svg",
+          "caption": "Focused reverse-complement control and nearby sequence context.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-08"
+        }
+      ]
     },
     {
       "id": "find_and_extend_genomic_target_local_catalog",
@@ -507,10 +823,18 @@
         "gui_first",
         "contributors"
       ],
-      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Machine-checked offline LocalProject fixture. The replay binds the gene-biotype `etpC` occurrence on `AB011549.2` and its strand-aware 5-prime extension; no typed GUI screenshot acceptance or broader organism annotation claim is made.",
+      "interfaces": [
+        "GUI",
+        "CLI / workflow",
+        "inner agent",
+        "ClawBio / outer agent"
+      ],
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01"
     },
     {
       "id": "load_and_digest_pgex",
@@ -529,14 +853,45 @@
         "cloning_planning",
         "contributors"
       ],
-      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Machine-checked generated chapter with typed GUI-acceptance views for Sequence Tools and Digest; listed in Tutorials for explicit human scientific confirmation.",
+      "interfaces": [
+        "native GUI (typed acceptance)",
+        "CLI / shared engine",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent"
+      ],
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/open_tools.orientation.svg",
+          "caption": "Whole-screen orientation after opening Sequence Tools from the DNA viewer.",
+          "illustrates_step": 2,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/set_prefix.context.svg",
+          "caption": "Digest controls with the enzyme list and output prefix in interaction context.",
+          "illustrates_step": 2,
+          "capture_date": "2026-09-08"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/load_and_digest_pgex/digest.orientation.svg",
+          "caption": "Whole-screen orientation after running the digest and publishing its fragment products.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-08"
+        }
+      ]
     },
     {
       "id": "gibson_two_fragment_overlap_preview",
-      "title": "Gibson two-fragment overlap planning baseline",
+      "title": "Gibson two-fragment overlap preflight and concatenation preview",
       "path": "docs/tutorial/generated/chapters/03-03_gibson_two_fragment_overlap_preview.md",
       "group": "03",
       "group_label": "Cloning & Assembly",
@@ -548,17 +903,27 @@
       "source": "generated_from_tutorial_sources",
       "audiences": [
         "cloning_planning",
-        "gui_first",
+        "cli_first",
         "contributors"
       ],
-      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Machine-checked preflight/reference chapter. The emitted 640 bp sequences are concatenation previews with the 20 bp overlap duplicated, not overlap-elided Gibson products; no typed GUI acceptance is claimed.",
+      "interfaces": [
+        "CLI / shared shell",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent (workflow preparation only)"
+      ],
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
+      ],
+      "next_steps": [
+        "gibson_specialist_testing_baseline"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01"
     },
     {
       "id": "guides_filter_and_generate_oligos",
-      "title": "Guide practical filtering and oligo generation",
+      "title": "Filter declared guides and format cloning oligos",
       "path": "docs/tutorial/generated/chapters/04-04_guides_filter_and_generate_oligos.md",
       "group": "04",
       "group_label": "Primers, PCR & qPCR",
@@ -573,10 +938,18 @@
         "cli_first",
         "contributors"
       ],
-      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Machine-checked registry demonstration with declared guide candidates. It verifies practical filter decisions and template formatting, not target identity, off-target safety, cloning success or order readiness; no typed GUI screenshot acceptance is claimed.",
+      "interfaces": [
+        "GUI",
+        "CLI / workflow",
+        "inner agent",
+        "ClawBio / outer agent"
+      ],
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01"
     },
     {
       "id": "digest_ligation_extract_region_minimal",
@@ -596,6 +969,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "prerequisites": [
+        "load_and_digest_pgex"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -616,10 +992,18 @@
         "cli_first",
         "contributors"
       ],
-      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Machine-checked export demonstration with retained CSV and protocol-text bytes. The files are review/handoff artifacts, not an ordering authorization, target-validation record or validated laboratory SOP; no typed GUI screenshot acceptance is claimed.",
+      "interfaces": [
+        "GUI",
+        "CLI / workflow",
+        "inner agent",
+        "ClawBio / outer agent"
+      ],
+      "prerequisites": [
+        "guides_filter_and_generate_oligos"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01"
     },
     {
       "id": "contribute_to_gentle_development",
@@ -637,6 +1021,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -658,10 +1045,15 @@
         "genome_catalog_targeting",
         "contributors"
       ],
-      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Online opt-in chapter. Offline generation checks the contract but does not download GRCh38; current review verified the status/catalog boundary only and claims no typed GUI screenshot or online execution acceptance.",
+      "interfaces": [
+        "GUI",
+        "CLI / workflow",
+        "inner agent",
+        "ClawBio / outer agent"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01"
     },
     {
       "id": "tp53_isoform_architecture_online",
@@ -680,10 +1072,41 @@
         "sequence_analysis",
         "contributors"
       ],
-      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Machine-checked generated chapter requiring explicit online setup for full prepare/extract execution. The retained Ensembl-116 TP53 source was independently checked offline: strict panel import mapped 7/7 transcript and protein lanes without warnings, native Expert opening passed, and the current deterministic SVG was regenerated; this does not accept the skipped online download.",
+      "interfaces": [
+        "native GUI",
+        "CLI / shared shell",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent (explicit disposable state)"
+      ],
+      "prerequisites": [
+        "prepare_reference_genome_online"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_isoform_architecture_online/01-isoform-panel-controls.png",
+          "caption": "The current native Sequence tools panel reopened on the retained Ensembl-116 TP53 source. Panel path and id are populated; the unchecked Strict control is the current GUI input state, not evidence about the earlier strict CLI import.",
+          "illustrates_step": 2,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_isoform_architecture_online/02-isoform-expert.png",
+          "caption": "The native Isoform Expert after strict local import: seven mapped TP53 transcript lanes and seven protein-domain rows from the shared expert payload.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "generated",
+          "path": "docs/figures/tp53_isoform_architecture.svg",
+          "caption": "Current deterministic 1200 by 1400 isoform architecture export from the retained Ensembl-116 source and strict seven-isoform panel. Exon-family colours connect coordinate-true transcript geometry with isoform-local protein products.",
+          "illustrates_step": 3,
+          "regen_command": "cargo run --bin gentle_cli -- --state /tmp/tp53-isoform-figure.state.json workflow docs/figures/tp53_isoform_architecture.workflow.json"
+        }
+      ]
     },
     {
       "id": "tp63_anchor_extension_online",
@@ -702,14 +1125,22 @@
         "genome_catalog_targeting",
         "contributors"
       ],
-      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Online opt-in chapter. Current review verified the catalog/status contract, the public TP63 anchor metadata and GENtle's strand-aware extension semantics, but did not prepare the large reference or claim typed GUI screenshot acceptance.",
+      "interfaces": [
+        "GUI",
+        "CLI / workflow",
+        "inner agent",
+        "ClawBio / outer agent"
+      ],
+      "prerequisites": [
+        "prepare_reference_genome_online"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01"
     },
     {
       "id": "tp53_multi_gene_sparse_mapping_online",
-      "title": "Map TP53 locus reads with multi-gene sparse indexing (online)",
+      "title": "Probe TP53-family sparse indexing from a TP53 locus (online)",
       "path": "docs/tutorial/generated/chapters/07-02_tp53_multi_gene_sparse_mapping_online.md",
       "group": "07",
       "group_label": "RNA Reads, Splicing & Expression",
@@ -724,14 +1155,38 @@
         "sequence_analysis",
         "contributors"
       ],
-      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Reviewed online boundary chapter. The Ensembl-116 TP53 extraction contains only TP53 annotations, so multi_gene_sparse matches TP53, reports TP63/TP73 missing, and adds no extra lanes; it is not a completed three-locus family comparison.",
+      "interfaces": [
+        "native GUI",
+        "CLI / shared shell",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent (online opt-in, explicit cache and disposable state)"
+      ],
+      "prerequisites": [
+        "prepare_reference_genome_online"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_multi_gene_sparse_mapping_online/01-project-graph.png",
+          "caption": "The native project graph retains the Ensembl-116 TP53 locus, its exon-concatenated derivative, and the 10,000-read sparse-origin report as separate provenance nodes. The report records 11 seed-passed reads and zero aligned reads because this workflow runs phase 1 only.",
+          "illustrates_step": 1,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_multi_gene_sparse_mapping_online/02-sparse-report-warnings.png",
+          "caption": "The native RNA-read Mapping workspace opens the report through TP53 mRNA feature 1 and shows that multi_gene_sparse added no local lanes beyond TP53. The structured report additionally records TP63 and TP73 as absent from the extracted sequence's local annotation.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        }
+      ]
     },
     {
       "id": "pcr_selection_batch_primer_pairs_offline",
-      "title": "Selection-first PCR batch primer design (offline)",
+      "title": "Determine and review PCR primer pairs (offline)",
       "path": "docs/tutorial/generated/chapters/04-02_pcr_selection_batch_primer_pairs_offline.md",
       "group": "04",
       "group_label": "Primers, PCR & qPCR",
@@ -746,10 +1201,21 @@
         "primer_design",
         "contributors"
       ],
-      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Machine-checked generated chapter with two retained full primer-design reports. The reports are the executable evidence; no current typed GUI screenshot acceptance is claimed.",
+      "interfaces": [
+        "GUI",
+        "CLI / workflow",
+        "inner agent",
+        "ClawBio / outer agent"
+      ],
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
+      ],
+      "next_steps": [
+        "patz1_transcript_assay_panels_cli"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01"
     },
     {
       "id": "tp73_cdna_genomic_dotplot_online",
@@ -769,9 +1235,11 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "prerequisites": [
+        "prepare_reference_genome_online"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01"
     },
     {
       "id": "gibson_specialist_testing_baseline",
@@ -791,6 +1259,12 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "prerequisites": [
+        "gibson_two_fragment_overlap_preview"
+      ],
+      "next_steps": [
+        "gibson_specialist_testing_gui"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -813,6 +1287,12 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "prerequisites": [
+        "gibson_specialist_testing_baseline"
+      ],
+      "next_steps": [
+        "gibson_arrangements_gui"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -834,10 +1314,34 @@
         "protein_workflows",
         "contributors"
       ],
-      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Machine-checked generated chapter requiring explicit online setup for the full Ensembl prepare/extract workflow. A bounded acceptance run used the retained Ensembl-116 geometry plus provenance-bound GRCh38 bases, fetched P04637 live, stored six transcript projections with 16 explicit missing-transcript warnings, opened the native Protein Expert and recovered one 60-base DNA-binding coding span. This does not accept the Ensembl preparation step, whose REST sequence endpoint returned HTTP 500 during review.",
+      "interfaces": [
+        "native GUI",
+        "CLI / shared shell",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent (explicit online opt-in and disposable state)"
+      ],
+      "prerequisites": [
+        "prepare_reference_genome_online"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_uniprot_projection_online/01-protein-expert.png",
+          "caption": "The native Protein Expert on the provenance-bound GRCh38/Ensembl-116 acceptance locus. Six UniProt-linked transcript projections are stored; the expert also keeps the broader transcript-native architecture and 16 missing UniProt transcript references explicit instead of hiding partial coverage.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_uniprot_projection_online/02-feature-coding-dna.png",
+          "caption": "The expanded native coding-DNA result for the P04637 DNA-binding match on ENST00000269305.9: amino acids 368-387, exon 11, 60 bases of exact genomic coding DNA and a separately labelled translation-speed-oriented alternative.",
+          "illustrates_step": 4,
+          "capture_date": "2026-10-01"
+        }
+      ]
     },
     {
       "id": "promoter_design_artifact_slice_offline",
@@ -856,8 +1360,20 @@
         "cloning_planning",
         "contributors"
       ],
-      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "notes": "Reviewed synthetic promoter-evidence chapter. Native grouping and evidence-matrix views pass after clearing an mRNA-seeded transcript filter; fresh direct workflows now report all six manifest artifacts present. Native TFBS score/similarity buttons remain blocked by a reproducible stack overflow, while their CLI-generated artifacts pass.",
+      "interfaces": [
+        "native GUI (promoter grouping and evidence matrix accepted; TFBS actions blocked)",
+        "CLI / shared shell",
+        "Agent Assistant (inner, review-first and live-project scoped)",
+        "ClawBio / outer agent (explicit disposable state, artifact bundle and receipt)"
+      ],
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta",
+        "guides_export_csv_and_protocol",
+        "contribute_to_gentle_development"
+      ],
       "review_status": "human_reviewed",
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": "2026-05-18",
       "human_reviewer": "smoe",
       "review_stale": true,
@@ -871,6 +1387,20 @@
           "caption": "TFBS score tracks across the synthetic TP73 promoter slice.",
           "illustrates_step": 8,
           "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/promoter_design_artifact_slice_offline/01-alternative-promoters.png",
+          "caption": "The native Promoter design window shows all three transcript interpretations collapsed into two DNA-level promoter windows after clearing the mRNA-seeded transcript filter.",
+          "illustrates_step": 4,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/promoter_design_artifact_slice_offline/02-evidence-matrix.png",
+          "caption": "The native evidence matrix contains the two collapsed promoter candidates and their promoter geometry, transcript, TFBS, repeat, variant and CUT&RUN-style evidence summaries.",
+          "illustrates_step": 5,
+          "capture_date": "2026-10-01"
         }
       ]
     },
@@ -915,10 +1445,31 @@
         "clawbio",
         "sequence_analysis"
       ],
-      "notes": "Parity walkthrough for direct restriction-site, TFBS hit, and TFBS score-track inspection from pasted or local DNA without first creating project state.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Parity walkthrough for direct restriction-site, TFBS hit, and TFBS score-track inspection from pasted or local DNA without first creating project state. RE/TFBS inspectors are captured; the whole-sequence GUI score-track action remains blocked by a reproducible native stack overflow on 2026-10-01.",
+      "interfaces": [
+        "native GUI",
+        "CLI / workflow",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/stateless_sequence_inspection_gui/01-tfbs-settings.raw.png",
+          "caption": "The publication-safe 46 bp fixture configured for SP1/TP73 hit scanning and unclipped background-tail score tracks in the native Sequence tools window.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/stateless_sequence_inspection_gui/02-direct-scan-inspectors.raw.png",
+          "caption": "The native Direct scan inspectors show EcoRI, SmaI and BamHI plus three retained SP1 hits from the shared reports; both SP1 and TP73 were scanned.",
+          "illustrates_step": 8,
+          "capture_date": "2026-10-01"
+        }
+      ]
     },
     {
       "id": "tfbs_similarity_ranking_gui",
@@ -938,10 +1489,38 @@
         "regulatory_analysis",
         "clawbio"
       ],
-      "notes": "GUI sign-off tutorial for ranking candidate transcription-factor motifs against one anchor motif over the same DNA span, with JSON export and workflow/ClawBio replay links.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Reviewed hybrid tutorial. Direct CLI and ClawBio wrapper produce semantically identical five-row reports, but the exact native GUI build stack-overflows when whole-sequence ranking starts. The 46 bp / 25 bp-smoothed values are software regression evidence, not biological TF similarity.",
+      "interfaces": [
+        "native GUI (configuration captured; ranking blocked by stack overflow)",
+        "CLI / shared shell",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent (explicit workflow, output bundle and receipt)"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tfbs_similarity_ranking_gui/01-motif-selection.png",
+          "caption": "The native TFBS panel contains the six reviewed local motif queries on the committed 46 bp sequence.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tfbs_similarity_ranking_gui/02-ranking-settings.png",
+          "caption": "The ranking panel binds SP1, Smoothed Spearman, five explicit candidates through the selected-motif fallback, no remote metadata and limit 10 before execution.",
+          "illustrates_step": 5,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tfbs_similarity_ranking_gui/03-whole-sequence-action.png",
+          "caption": "The whole-sequence action immediately before the exact reviewed GUI build terminates with a stack overflow; this is blocker evidence, not a successful result-table capture.",
+          "illustrates_step": 6,
+          "capture_date": "2026-10-01"
+        }
+      ]
     },
     {
       "id": "promoter_motif_control_comparison",
@@ -985,6 +1564,9 @@
         "contributors"
       ],
       "notes": "Machine-checked offline chapter for declared promoter-cohort relationships, unexpected-divergence flags, and local ortholog promoter cohorts.",
+      "prerequisites": [
+        "promoter_design_artifact_slice_offline"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -1007,8 +1589,893 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter for offline gene-set and ortholog promoter cohort relationship flags.",
+      "prerequisites": [
+        "promoter_design_artifact_slice_offline"
+      ],
       "review_status": "codex_reviewed",
       "codex_reviewed_at": "2026-06-25"
+    },
+    {
+      "id": "patz1_gene_locus_evidence_offline",
+      "title": "PATZ1 Gene-Locus Evidence Composition (Offline Synthetic Demo)",
+      "path": "docs/tutorial/generated/chapters/06-06_patz1_gene_locus_evidence_offline.md",
+      "group": "06",
+      "group_label": "Transcript, Protein & Projection",
+      "group_order": 6,
+      "group_position": 6,
+      "decimal_id": "06.06",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "isoform_analysis",
+        "contributors"
+      ],
+      "notes": "Machine-checked offline chapter for the shared Gene Locus Evidence composer. Native Evidence and Locus-figure captures were reviewed on 2026-10-01; all plotted values remain synthetic software fixtures rather than experimental PATZ1 evidence.",
+      "interfaces": [
+        "native GUI",
+        "CLI / shared shell",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent (canonical workflow in disposable state)"
+      ],
+      "prerequisites": [
+        "tp53_isoform_architecture_online",
+        "pcr_selection_batch_primer_pairs_offline"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/patz1_gene_locus_evidence_offline/01-evidence-ledger.png",
+          "caption": "The native Evidence tab keeps three negative-strand transcript models, four projected occupancy tracks, and four junction-evidence rows separate. The deliberately incompatible GRCh37 cDNA/EST row remains visibly rejected against the GRCh38.p14 anchor instead of being coerced into support.",
+          "illustrates_step": 2,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/patz1_gene_locus_evidence_offline/02-locus-composition.png",
+          "caption": "The native Locus figure tab composes three transcripts, two occupancy groups, one TP73 motif track, and two probe-effect rows. Warnings and explicit non-claims remain beside the preview; the synthetic layers are not presented as experimental PATZ1 regulation.",
+          "illustrates_step": 6,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "generated",
+          "path": "docs/tutorial/generated/artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg",
+          "caption": "A strand-aware synthetic PATZ1 locus composition with transcript models, distinct PSR/JUC effects, grouped occupancy lanes, and a TP73 motif score track. The aligned layers are evidence for inspection, not proof of isoform-specific regulation.",
+          "illustrates_step": 6,
+          "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        }
+      ]
+    },
+    {
+      "id": "patz1_transcript_assay_panels_cli",
+      "title": "Synthetic Transcript-Panel CLI Regression Walkthrough (Not PATZ1)",
+      "path": "docs/tutorial/generated/chapters/04-06_patz1_transcript_assay_panels_cli.md",
+      "group": "04",
+      "group_label": "Primers, PCR & qPCR",
+      "group_order": 4,
+      "group_position": 6,
+      "decimal_id": "04.06",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "cli_first",
+        "primer_design",
+        "transcript_analysis",
+        "contributors"
+      ],
+      "notes": "Historical synthetic CLI regression walkthrough, not human PATZ1 biology. Three retained panel reports provide executable evidence; no typed GUI screenshot acceptance is claimed. Use tutorial 04.08 for authentic Ensembl/RefSeq PATZ1 annotation and primer-pair design; legacy fixture identifiers remain for replay compatibility.",
+      "interfaces": [
+        "CLI / workflow",
+        "GUI Shell (compound routine only)",
+        "inner agent",
+        "ClawBio / outer agent"
+      ],
+      "prerequisites": [
+        "pcr_selection_batch_primer_pairs_offline"
+      ],
+      "next_steps": [
+        "transcript_assay_followup_gui_cli"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01"
+    },
+    {
+      "id": "cryptic_splicing_evidence_cli_gui",
+      "title": "Inspect Cryptic-Splicing Hypotheses Without Calling Them Events",
+      "path": "docs/tutorial/07-03_cryptic_splicing_evidence_cli_gui.md",
+      "group": "07",
+      "group_label": "RNA Reads, Splicing & Expression",
+      "group_order": 7,
+      "group_position": 3,
+      "decimal_id": "07.03",
+      "type": "cli_gui_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "cli_first",
+        "sequence_analysis",
+        "wet_lab_biologists",
+        "contributors"
+      ],
+      "notes": "Offline synthetic walkthrough for separating structural candidates, optional model ranking, observed RNA junction evidence, and projected protein-feature context.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-08-27"
+    },
+    {
+      "id": "promoter_reporter_panel_planning_offline",
+      "title": "Promoter-Reporter Panel Planning (Offline Approval-Gated Demo)",
+      "path": "docs/tutorial/generated/chapters/08-09_promoter_reporter_panel_planning_offline.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 9,
+      "decimal_id": "08.09",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "cli_first",
+        "cloning_planning",
+        "contributors"
+      ],
+      "notes": "Machine-checked offline planning chapter; exact digest approval remains a separate, explicit user action.",
+      "prerequisites": [
+        "promoter_design_artifact_slice_offline"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-08-29",
+      "graphics": [
+        {
+          "kind": "generated",
+          "path": "docs/tutorial/generated/artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.synthetic_vector.svg",
+          "caption": "Circular map of the explicitly synthetic MCS-layout vector used to exercise exact-vector validation; this is not pGL4.10.",
+          "illustrates_step": 3,
+          "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        },
+        {
+          "kind": "generated",
+          "path": "docs/tutorial/generated/artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.source.svg",
+          "caption": "Linear map of the 151 bp synthetic promoter-fragment input.",
+          "illustrates_step": 4,
+          "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        }
+      ]
+    },
+    {
+      "id": "portable_genomic_regions_offline",
+      "title": "Save and Share Genomic Regions (Offline SERPINE1 Example)",
+      "path": "docs/tutorial/generated/chapters/08-10_portable_genomic_regions_offline.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 10,
+      "decimal_id": "08.10",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "regulatory_analysis",
+        "contributors"
+      ],
+      "notes": "Machine-checked offline chapter. The locus sequence and transcript geometry are from the pinned public Ensembl-116 fixture; regulatory and CUT&RUN evidence are explicitly synthetic.",
+      "prerequisites": [
+        "promoter_reporter_panel_planning_offline",
+        "patz1_gene_locus_evidence_offline"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-04",
+      "graphics": [
+        {
+          "kind": "generated",
+          "path": "docs/tutorial/generated/artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.locus.svg",
+          "caption": "A pinned public Ensembl-116 SERPINE1 locus with three saved regions: a manual candidate, a synthetic Ensembl-regulatory annotation, and a synthetic CUT&RUN support window. Their shared position is for inspection and does not establish binding or causal regulation.",
+          "illustrates_step": 7,
+          "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        }
+      ]
+    },
+    {
+      "id": "regulatory_fragment_panel_planning_offline",
+      "title": "Plan Exact A/B Regulatory-Fragment Contrasts (Offline)",
+      "path": "docs/tutorial/generated/chapters/08-11_regulatory_fragment_panel_planning_offline.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 11,
+      "decimal_id": "08.11",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "cloning_planning",
+        "regulatory_analysis",
+        "contributors"
+      ],
+      "notes": "Machine-checked offline planning chapter. The locus is a pinned public sequence fixture; all A/B roles and comparison geometries are tutorial declarations rather than biological findings.",
+      "prerequisites": [
+        "promoter_reporter_panel_planning_offline",
+        "portable_genomic_regions_offline"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-08",
+      "graphics": [
+        {
+          "kind": "generated",
+          "path": "docs/tutorial/generated/artifacts/regulatory_fragment_panel_planning_offline/artifacts/regulatory_fragment_panel.locus.svg",
+          "caption": "The pinned Ensembl-116 SERPINE1 locus used as a coordinate substrate, with candidate A, caller-declared partner B, and the promoter-context control retained as exact genomic regions. The tutorial roles define comparisons; they do not establish regulatory activity or partnership.",
+          "illustrates_step": 2,
+          "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        }
+      ]
+    },
+    {
+      "id": "region_homology_promoter_modules_offline",
+      "title": "Conserved Blocks and Testable Promoter-Module Hypotheses",
+      "path": "docs/tutorial/generated/chapters/08-12_region_homology_promoter_modules_offline.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 12,
+      "decimal_id": "08.12",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "regulatory_analysis",
+        "contributors"
+      ],
+      "notes": "Offline synthetic tutorial for query-referenced local-BLAST similarity, explicit orthology evidence, conserved blocks, and reporter-module decision traces.",
+      "prerequisites": [
+        "portable_genomic_regions_offline"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-07",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/open_saved_regions.context.svg",
+          "caption": "The saved-region manager shows the assembly-bound candidate and keeps Conservation and Promoter similarity actions visible at the standard 800×600 DNA-window size.",
+          "illustrates_step": 2,
+          "capture_date": "2026-09-09"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/open_promoter_similarity.orientation.svg",
+          "caption": "Whole-screen orientation after Promoter similarity opens the content-bound Conservation workspace for the selected candidate.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-09"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/expand_search_request.context.svg",
+          "caption": "The expanded request exposes the query genome, catalog/cache, required target genome, and target role before any search starts.",
+          "illustrates_step": 4,
+          "capture_date": "2026-09-09"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/show_promoter_constraints.orientation.svg",
+          "caption": "Whole-screen orientation for the lower search-policy and transcript-promoter matrix controls.",
+          "illustrates_step": 5,
+          "capture_date": "2026-09-09"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/promoter_similarity_gui/region_homology_promoter_modules_offline/show_promoter_constraints.context.svg",
+          "caption": "Focused constraints include identity, E-value, aligned length, chain gap, retained-locus and HSP budgets, exact-block length, promoter-window dimensions, and displayed-row limit.",
+          "illustrates_step": 5,
+          "capture_date": "2026-09-09"
+        }
+      ]
+    },
+    {
+      "id": "motif_logo_to_promoter_trace",
+      "title": "Explain a PWM/PSSM score versus binding affinity: TP73 and TSS promoter traces",
+      "path": "docs/tutorial/08-13_motif_logo_to_promoter_trace.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 13,
+      "decimal_id": "08.13",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "regulatory_analysis",
+        "contributors"
+      ],
+      "notes": "Score-interpretation guide for PWM/PSSM matrices, PFM counts, motif logos, JASPAR TFBS match scores, pseudocounts, log odds, raw LLR bits, relative scores, quantiles and inclusive background tail probability. Distinguishes sequence preference from binding affinity, occupancy and reporter activity; explains why the TP73 MA0861.2 score 300 was wrong and the corrected tail score. Compare promoter/TSS traces with shared scales and interpret sparse peaks. Offline teaching guide: no loaded project required; replay needs a built GENtle CLI, with the independent scanner optional. Hands-on native TSS inspection is deliberately split into tutorial 08.16; TSS collection derivation remains 08.15.",
+      "next_steps": [
+        "tss_collection_gui"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-12"
+    },
+    {
+      "id": "mcp_offline_roundtrip",
+      "title": "Discover MCP Tools and Verify a Shared GENtle Result (Offline)",
+      "path": "docs/tutorial/01-03_mcp_offline_roundtrip.md",
+      "group": "01",
+      "group_label": "Getting Started & Interfaces",
+      "group_order": 1,
+      "group_position": 3,
+      "decimal_id": "01.03",
+      "type": "cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "mcp_users",
+        "cli_first",
+        "contributors"
+      ],
+      "notes": "Offline worked outer-agent/MCP discovery, explicit confirmation refusal, typed operation and CLI/shared-shell report comparison on synthetic DNA, with a bounded inner-agent reachability prompt. No model, API key or GUI acceptance claim; retained protocol evidence is more informative than a terminal screenshot.",
+      "interfaces": [
+        "MCP / outer agent",
+        "CLI / shared shell",
+        "Agent Assistant (review-only equivalent)"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01"
+    },
+    {
+      "id": "feature_editor_gui_cli",
+      "title": "Curate Annotations with Preview, Apply and Undo (Offline)",
+      "path": "docs/tutorial/02-05_feature_editor_gui_cli.md",
+      "group": "02",
+      "group_label": "Sequence Basics & Lineage",
+      "group_order": 2,
+      "group_position": 5,
+      "decimal_id": "02.05",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "sequence_analysis"
+      ],
+      "notes": "Synthetic Feature Editor exercise covering Location, Create, Split, Merge and Delete, review-only overlaps/shared identifiers, stale previews and unchanged DNA. Native Location/Create previews are retained; CLI regressions do not substitute for complete live GUI apply/undo/redo acceptance.",
+      "interfaces": [
+        "native GUI",
+        "CLI / shared shell",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/feature_editor_gui_cli/01-location-preview.raw.png",
+          "caption": "The native Feature Editor previews the exact 21..40 to 21..45 boundary change, keeps Apply tied to the current request and lists related annotations without modifying them.",
+          "illustrates_step": 2,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/feature_editor_gui_cli/02-create-overlap-preview.raw.png",
+          "caption": "The Create preview retains ordered label/gene qualifiers and identifies the overlapping gene and segment_A records as review-only candidates, explicitly not modifications.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        }
+      ]
+    },
+    {
+      "id": "transcript_assay_followup_gui_cli",
+      "title": "Follow Up Transcript Assays: RT Primer Pools, Differential Junctions and Specificity",
+      "path": "docs/tutorial/04-07_transcript_assay_followup_gui_cli.md",
+      "group": "04",
+      "group_label": "Primers, PCR & qPCR",
+      "group_order": 4,
+      "group_position": 7,
+      "decimal_id": "04.07",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "primer_design",
+        "transcript_analysis",
+        "wet_lab_biologists"
+      ],
+      "notes": "Offline synthetic PATZ1 follow-up after qPCR exon junctions and transcript panels: terminal-exon RT primer pool geometry, differential junction selection and missing threshold provenance, transcript-assay specificity planning/finalization, and gene-isoform study orchestration with two separate approval stages. GUI PCR Designer and shared Shell continuation; deterministic Python fixture checks and optional supplied-binary replay. External manifest-backed specificity is optional and not executed; no vendor submission, validated assay, or human scientific/GUI approval is claimed.",
+      "interfaces": [
+        "GUI / PCR Designer",
+        "CLI / shared shell",
+        "inner agent",
+        "ClawBio / outer agent"
+      ],
+      "prerequisites": [
+        "patz1_transcript_assay_panels_cli"
+      ],
+      "next_steps": [
+        "gene_assay_study_gui"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01"
+    },
+    {
+      "id": "promoter_cofactor_browser",
+      "title": "Explore promoter cofactors: from TA/DN associations to a saved motif region",
+      "path": "docs/tutorial/08-14_promoter_cofactor_browser.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 14,
+      "decimal_id": "08.14",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "agent_users",
+        "regulatory_analysis"
+      ],
+      "notes": "Offline synthetic promoter-cofactor package walkthrough, starting with an empty project and no genome installed. Inspect DuckDB/Parquet coverage; compare TA/DN adjusted odds ratios, uncertainty, BH q and positive/eligible anchor frequency in six distance bands. Inspect strongest TP73-associated motif hits, raw log2-relative-risk scores, strand, promoter ownership and separate sample/control summaries. Explain source floor -1 versus presence threshold 0, missing versus zero, overview-only motifs and unchanged cohort statistics. Save report-bound evidence through regions capture, inspect genomic regions, and preview/explicitly approve stranded motif features against exact locally prepared synthetic DNA. Keep unstranded evidence as regions; never reconstruct coverage or claim occupancy. Copy the displayed request through CLI/MCP without stale-form drift. Optional local IRF9 example found by GRCh38 coordinates, not anchor ID. Replay: scripts/promoter_cofactor_tutorial.py; ui open tutorial-guide promoter_cofactor_browser. codex source review 2026-09-16: wet-lab readability and reproducibility; native GUI and human scientific approval pending.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-16"
+    },
+    {
+      "id": "gene_assay_study_gui",
+      "title": "Find Primer-Pair Markers for PATZ1 Isoforms",
+      "path": "docs/tutorial/04-08_gene_assay_study_gui.md",
+      "group": "04",
+      "group_label": "Primers, PCR & qPCR",
+      "group_order": 4,
+      "group_position": 8,
+      "decimal_id": "04.08",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "agent_users",
+        "primer_design",
+        "transcript_analysis",
+        "wet_lab_biologists"
+      ],
+      "notes": "Find candidate PATZ1 isoform markers, not a unique assay for every transcript. G1-G3 compare pinned Ensembl 116/RefSeq annotations, review a SYBR minimal-discrimination request and interpret coverage versus unresolved cDNA-class pairs. RefSeq is comparison context; no five-pair budget, UniProt prioritization or expression/junction evidence is supplied. G4-G6 optionally inspect the separate unexecuted study, readiness blockers and pending dossier export. Retained G1-G6 Linux captures are bound to 3c1c32bc (2026-09-20), not current-candidate or live-agent acceptance. Codex source review 2026-09-30 covers readability, controls and command applicability; whole-reference specificity and human scientific approval remain pending.",
+      "difficulty": "intermediate",
+      "network": "offline after tool setup",
+      "interfaces": [
+        "GUI",
+        "CLI / GUI Shell",
+        "Agent Assistant (reviewed drafts)"
+      ],
+      "starting_state": "Checkout public PATZ1 fixtures, matching GUI/CLI binaries and Python 3; prepare the project once and configure Primer3 before design",
+      "produces": [
+        "saved exploratory primer panel and transcript-by-assay matrix",
+        "optional readiness handoff and pending study dossier"
+      ],
+      "prerequisites": [
+        "transcript_assay_followup_gui_cli"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-30",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/gene_assay_study_gui/G1-locus-and-source-comparison.context.svg",
+          "caption": "G1: compare 13 Ensembl design transcripts with four RefSeq records without silently merging their target sets.",
+          "illustrates_step": 1,
+          "capture_date": "2026-09-20"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/gene_assay_study_gui/G2-request-and-scope.context.svg",
+          "caption": "G2: review the all-annotated-cDNA, minimal-discrimination request and explicit best-effort policy before design.",
+          "illustrates_step": 2,
+          "capture_date": "2026-09-20"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/gene_assay_study_gui/G3-primer-matrix-and-sequences.context.svg",
+          "caption": "G3: seven selected pairs cover 13 cDNA classes but leave nine class pairs unresolved; inspect both oligos and the product matrix.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-20"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/gene_assay_study_gui/G4-study-plan.context.svg",
+          "caption": "G4: the separate study plan remains unexecuted and must not claim the exploratory panel as its result.",
+          "illustrates_step": 4,
+          "capture_date": "2026-09-20"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/gene_assay_study_gui/G5-specificity-gap.context.svg",
+          "caption": "G5: local cDNA products do not establish whole-reference specificity; the selected pair remains unassessed.",
+          "illustrates_step": 5,
+          "capture_date": "2026-09-20"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/gene_assay_study_gui/G6-pending-dossier.context.svg",
+          "caption": "G6: export controls await an explicit publication request and destination; this is not evidence of a completed dossier export.",
+          "illustrates_step": 6,
+          "capture_date": "2026-09-20"
+        }
+      ]
+    },
+    {
+      "id": "synthetic_sequence_design",
+      "title": "Redesign a synthetic coding insert: remove a motif and control GC",
+      "path": "docs/tutorial/06-07_synthetic_sequence_design.md",
+      "group": "06",
+      "group_label": "Transcript, Protein & Projection",
+      "group_order": 6,
+      "group_position": 7,
+      "decimal_id": "06.07",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "wet_lab_biologists",
+        "gui_first",
+        "cli_first",
+        "agent_users"
+      ],
+      "notes": "Offline, executable synthetic MFK example: synonymous motif removal with joint whole-CDS and sliding-window GC constraints. Preview exact edits/counts, separately approve the real digest, apply a new sequence, then undo/redo in the same GUI Shell session. CLI and inner-agent routes use the same contract; no dedicated editor, automatic approval, natural-gene recoding, expression claim or DNA Chisel compatibility. Independent Glen/native/scientific acceptance remains pending; outside the .12 gate.",
+      "estimated_minutes": 10,
+      "difficulty": "introductory",
+      "network": "offline",
+      "interfaces": [
+        "GUI Shell",
+        "CLI / shared shell",
+        "Agent Assistant (inner, review-first)"
+      ],
+      "starting_state": "Disposable empty project; no genome, motif database or inner agent required",
+      "produces": [
+        "reviewable synonymous-design preview",
+        "explicitly approved synthetic DNA and receipt"
+      ],
+      "prerequisites": [
+        "agent_interfaces"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-06"
+    },
+    {
+      "id": "reference_bound_primer_specificity",
+      "title": "Check One Primer Pair Against Explicit References",
+      "path": "docs/tutorial/04-09_reference_bound_primer_specificity.md",
+      "group": "04",
+      "group_label": "Primers, PCR & qPCR",
+      "group_order": 4,
+      "group_position": 9,
+      "decimal_id": "04.09",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "cli_first",
+        "agent_users",
+        "primer_design",
+        "transcript_analysis",
+        "wet_lab_biologists"
+      ],
+      "notes": "Explain the biological motivation for exact reference/assembly/release binding, caller mappings, annealing/tail boundaries, required/optional references, complete retained searches, independent genomic/transcriptome verdicts, immutable history and exact panel selection receipts. Prepare one pair's non-executing handoff, use a trusted external runner, approve import and inspect a standalone summary without automatic readiness attachment. Templates are not validated real biology. Codex source/readability review 2026-10-09; Rust execution, native GUI, real-reference specificity and human scientific approval remain pending.",
+      "estimated_minutes": 30,
+      "difficulty": "intermediate",
+      "network": "offline with already prepared local references",
+      "interfaces": [
+        "GUI Shell",
+        "CLI / shared shell",
+        "MCP / scripting",
+        "Agent Assistant (reviewed drafts)"
+      ],
+      "starting_state": "Saved primer pair, explicitly identified prepared genomic/cDNA references, trustworthy external BLAST runner and a disposable project copy",
+      "produces": [
+        "reference-bound external handoff",
+        "standalone immutable specificity summary"
+      ],
+      "prerequisites": [
+        "gene_assay_study_gui"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-09"
+    },
+    {
+      "id": "microarray_evidence_gui_cli",
+      "title": "Find Clariom D Evidence Along the TP73 Locus",
+      "path": "docs/tutorial/07-04_microarray_evidence_gui_cli.md",
+      "group": "07",
+      "group_label": "RNA Reads, Splicing & Expression",
+      "group_order": 7,
+      "group_position": 4,
+      "decimal_id": "07.04",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "agent_users",
+        "expression_analysis",
+        "wet_lab_biologists"
+      ],
+      "notes": "Offline Clariom D input roles, dedicated Microarrays configuration, TP73 manifest inspection/projection and nearest-feature navigation. Real vendor IDs/coordinates with explicitly synthetic effect statistics; no CEL analysis, hidden download or biological expression claim. Native and real-data acceptance remain pending.",
+      "estimated_minutes": 20,
+      "difficulty": "intermediate",
+      "network": "offline core; optional explicitly retrieved public CEL/vendor inputs",
+      "interfaces": [
+        "GUI",
+        "CLI / shared shell",
+        "Agent Assistant (reviewed drafts)"
+      ],
+      "starting_state": "Disposable project and committed TP73/vendor-subset inputs",
+      "produces": [
+        "projected Array features",
+        "interpretable coordinate/contrast provenance"
+      ],
+      "next_steps": [
+        "gene_assay_study_gui"
+      ],
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "tss_collection_gui",
+      "title": "From annotated transcript starts to reusable TSS windows (offline)",
+      "path": "docs/tutorial/generated/chapters/08-15_tss_collection_gui.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 15,
+      "decimal_id": "08.15",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "wet_lab_biologists",
+        "contributors"
+      ],
+      "notes": "Synthetic core-path GUI acceptance plus a separate contributor lifecycle checklist. Glen source and native Linux/X11 review 2026-09-29 at 1fcee6c0: preview, explicit approval, concise validation and bounded-cascade window opening; native Windows/macOS, human scientific approval and live TP73 sign-off remain pending.",
+      "prerequisites": [
+        "motif_logo_to_promoter_trace"
+      ],
+      "next_steps": [
+        "tss_regulatory_view_gui"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-29",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tss_collection_gui/preview.raw.png",
+          "caption": "The read-only preview groups plus_a and plus_b at one shared start while keeping the second plus-strand start and the minus-strand start separate; no window has been created yet.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-29"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tss_collection_gui/validate_collection.raw.png",
+          "caption": "After explicit approval, registry discovery still says not checked; Inspect stored collection produces a concise validated summary while keeping the full fingerprint, JSON and member table in collapsed technical details.",
+          "illustrates_step": 5,
+          "capture_date": "2026-09-29"
+        }
+      ]
+    },
+    {
+      "id": "tss_regulatory_view_gui",
+      "title": "Inspect TFBS scores and regulatory evidence at one annotated TSS",
+      "path": "docs/tutorial/08-16_tss_regulatory_view_gui.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 16,
+      "decimal_id": "08.16",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "agent_users",
+        "regulatory_analysis",
+        "wet_lab_biologists"
+      ],
+      "notes": "Offline synthetic native TSS-view walkthrough. Core steps attach a hash-bound score report without rescoring or database queries. An optional compatible DuckDB companion queries hand-crafted nonempty hits and separately binds full/partial reports without changing original curves or context; new query/export and native-hit acceptance pending. Headless and sequence-local shells retain an unapplied typed UI intent. No binding or biological TSS preference claim.",
+      "estimated_minutes": 10,
+      "difficulty": "intermediate",
+      "network": "offline",
+      "interfaces": [
+        "GUI",
+        "Agent Assistant / inner agent",
+        "CLI / shared Shell (optional queries); CLI intent receipt"
+      ],
+      "starting_state": "Empty project and the retained public synthetic-minus annotated TSS/report pair",
+      "produces": [
+        "interactive native TSS evidence view"
+      ],
+      "prerequisites": [
+        "tss_collection_gui"
+      ],
+      "next_steps": [
+        "tp73_dnp73_factor_curves"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-12",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tss_regulatory_view_gui/01-annotated-context.raw.png",
+          "caption": "Native TSS / Regulatory view before profile attachment: annotation, structure and signal remain distinct from a complete score trace.",
+          "illustrates_step": 2,
+          "capture_date": "2026-09-28"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tss_regulatory_view_gui/02-attached-profile.raw.png",
+          "caption": "The lower part of the same viewer after attaching its hash-bound profile report; the report-provided MA0004.1 lane is present without rescoring or a database query, and this tiny fixture's negative scores are explicitly clipped to a flat zero display trace.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-28"
+        }
+      ]
+    },
+    {
+      "id": "tp73_dnp73_factor_curves",
+      "title": "Compare E2F1, PATZ1 and TP73 motif curves at the human ΔNp73 TSS",
+      "path": "docs/tutorial/08-17_tp73_dnp73_factor_curves.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 17,
+      "decimal_id": "08.17",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "agent_users",
+        "regulatory_analysis",
+        "wet_lab_biologists"
+      ],
+      "notes": "Offline core walkthrough on the retained public TP73 RefSeq excerpt: recover the anchor, preview five annotated starts, retain P1 missing_flanks, approve the internal DeltaNp73 start and compute/export exact E2F1 MA0024.3, PATZ1 MA1961.2 and TP73 MA0861.2 curves. Inner Agent Assistant and explicit-state MCP/outer agents share derivation and export; GUI-hosted ui intents remain applied=false headless. Span-scoped scoring, top-three within-matrix raw positions, disclosed 128-title per-lane/strand hover cap and validated collection SVG/index/receipt export. Optional P1/P2 comparison requires an already prepared compatible reference, without implicit download or padding. Separate supplied lane scales, unavailable-not-zero bands, no occupancy or reporter claim. Retained Linux/X11 screenshots cover their recorded historical revision; new behavior, native Windows/macOS and human scientific approval remain pending.",
+      "estimated_minutes": 15,
+      "difficulty": "intermediate",
+      "network": "offline",
+      "interfaces": [
+        "GUI",
+        "Agent Assistant / inner agent",
+        "CLI headless export",
+        "MCP / outer agent"
+      ],
+      "starting_state": "Empty project and the retained public test_files/tp73.ncbi.gb RefSeq excerpt",
+      "produces": [
+        "interactive native TSS evidence view",
+        "deterministic native TSS view SVG",
+        "ordered collection SVG index and hash receipt"
+      ],
+      "prerequisites": [
+        "tss_regulatory_view_gui"
+      ],
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp73_dnp73_factor_curves/01-tss-inventory.raw.png",
+          "caption": "The TP73 annotated-start inventory retains all five starts and marks the P1/TAp73 row missing_flanks instead of silently padding or hiding it.",
+          "illustrates_step": 2,
+          "capture_date": "2026-09-28"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp73_dnp73_factor_curves/02-annotated-window.raw.png",
+          "caption": "The approved 701 bp DeltaNp73 window before scoring, with aligned local, genomic and TSS-relative rulers and transcript context but no local motif curves.",
+          "illustrates_step": 4,
+          "capture_date": "2026-09-28"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp73_dnp73_factor_curves/03-local-factor-curves.raw.png",
+          "caption": "Locally computed TP73, E2F1 and PATZ1 motif-score lanes; each lane retains its own scale and score kind, so curve heights are not cross-factor rankings.",
+          "illustrates_step": 5,
+          "capture_date": "2026-09-28"
+        }
+      ]
+    },
+    {
+      "id": "repeat_environment_cohorts",
+      "title": "Compare sequence environments of a repeat cohort",
+      "path": "docs/tutorial/08-18_repeat_environment_cohorts.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 18,
+      "decimal_id": "08.18",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "wet_lab_biologists",
+        "cli_first",
+        "agent_users",
+        "regulatory_analysis"
+      ],
+      "notes": "Offline shared-shell exercise on a bacterial reference with invented rmsk labels, plus optional prepared human resources. Distinct repeat loci, explicit missing transcript geometry and nonempty motif summaries; RNA ranking is unimplemented. Rust execution and native/resource acceptance pending.",
+      "estimated_minutes": 15,
+      "difficulty": "intermediate",
+      "network": "offline",
+      "interfaces": [
+        "CLI / shared Shell",
+        "Agent Assistant"
+      ],
+      "starting_state": "LocalProject FASTA/GenBank and hand-crafted rmsk in an isolated cache",
+      "produces": [
+        "repeat-locus cohort JSON",
+        "window motif summary JSON"
+      ],
+      "next_steps": [
+        "tss_regulatory_view_gui"
+      ],
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "measured_gel_sizing_gui_cli",
+      "title": "Estimate a PCR Band's Size from a Gel Image",
+      "path": "docs/tutorial/10-03_measured_gel_sizing_gui_cli.md",
+      "group": "10",
+      "group_label": "Sequencing Confirmation & QC",
+      "group_order": 10,
+      "group_position": 3,
+      "decimal_id": "10.03",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "agent_users",
+        "wet_lab_biologists"
+      ],
+      "notes": "Offline synthetic measured-image calibration, not virtual gel simulation. Confirm original pixel assignments, use log-size interpolation, retain out-of-range nulls and distinguish apparent kDa from identity or amount. Execution, native screenshots and real-image acceptance remain pending.",
+      "estimated_minutes": 15,
+      "difficulty": "beginner",
+      "network": "offline",
+      "interfaces": [
+        "GUI",
+        "CLI / shared shell",
+        "Agent Assistant (reviewed drafts)"
+      ],
+      "starting_state": "Empty disposable project and the committed drawn PNG/assignment requests",
+      "produces": [
+        "measured gel sizing report",
+        "SVG/TSV exports"
+      ],
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "graphics": [
+        {
+          "kind": "generated",
+          "path": "docs/tutorial/inputs/gel_sizing/gel_sizing_synthetic.png",
+          "caption": "Deterministically drawn calibration exercise, not a GUI screenshot or experimental gel: four ladder bands and two sample marks.",
+          "illustrates_step": 1
+        }
+      ]
     }
   ]
 }

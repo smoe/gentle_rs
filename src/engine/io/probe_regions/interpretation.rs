@@ -7,6 +7,8 @@ impl GentleEngine {
         gene_label: Option<&str>,
         level: Option<&str>,
         min_abs_logfc: Option<f64>,
+        threshold_source: Option<&str>,
+        policy_sha256: Option<&str>,
     ) -> Result<ProbeRegionEvidenceInterpretationReport, EngineError> {
         if let Some(threshold) = min_abs_logfc
             && (!threshold.is_finite() || threshold < 0.0)
@@ -150,6 +152,8 @@ impl GentleEngine {
                 evidence_id: item.evidence_id.clone(),
                 level: item.level.clone(),
                 feature_id: item.feature_id.clone(),
+                platform: item.platform.clone(),
+                contrast: item.contrast.clone(),
                 parent_feature_id: item.parent_feature_id.clone(),
                 intensity_source: item.intensity_source.clone(),
                 chromosome: item.chromosome.clone(),
@@ -216,6 +220,36 @@ impl GentleEngine {
             })
             .collect::<Vec<_>>();
 
+        let threshold_source = threshold_source
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let policy_sha256 = policy_sha256
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        if min_abs_logfc.is_none() && (threshold_source.is_some() || policy_sha256.is_some()) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Threshold provenance requires min_abs_logfc".to_string(),
+                cause_chain: vec![],
+            });
+        }
+        let interpretation_request_sha256 = sha256_prefixed_bytes(
+            &serde_json::to_vec(&serde_json::json!({
+                "seq_id": seq_id,
+                "gene_label": gene_label,
+                "level": level,
+                "absolute_effect_threshold": min_abs_logfc,
+                "threshold_source": threshold_source,
+                "policy_sha256": policy_sha256,
+            }))
+            .map_err(|error| EngineError {
+                code: ErrorCode::Internal,
+                message: format!("Could not bind probe interpretation request: {error}"),
+                cause_chain: vec![],
+            })?,
+        );
         Ok(ProbeRegionEvidenceInterpretationReport {
             schema: PROBE_REGION_EVIDENCE_INTERPRETATION_SCHEMA.to_string(),
             seq_id: seq_id.to_string(),
@@ -225,6 +259,9 @@ impl GentleEngine {
             coordinate_system,
             coordinate_chromosome,
             min_abs_logfc,
+            threshold_source,
+            policy_sha256,
+            interpretation_request_sha256,
             array_feature_count: evidence.len(),
             transcript_count: transcripts.len(),
             evidence_rows: rows,
@@ -345,6 +382,8 @@ impl GentleEngine {
                 evidence_id,
                 level: feature_level,
                 feature_id,
+                platform: Self::probe_region_first_qualifier(feature, &["gentle_array_platform"]),
+                contrast,
                 parent_feature_id: Self::probe_region_first_qualifier(
                     feature,
                     &["gentle_array_parent_feature_id"],

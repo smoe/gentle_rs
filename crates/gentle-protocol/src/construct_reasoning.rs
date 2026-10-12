@@ -20,6 +20,10 @@ pub const ANNOTATION_CANDIDATE_SUMMARY_SCHEMA: &str = "gentle.annotation_candida
 pub const ANNOTATION_CANDIDATE_WRITEBACK_SCHEMA: &str = "gentle.annotation_candidate_writeback.v1";
 pub const CONSTRUCT_REASONING_INSPECTION_ACTION_SCHEMA: &str =
     "gentle.construct_reasoning_inspection_action.v1";
+pub const CONSTRUCT_REASONING_INPUT_FINGERPRINT_SCHEMA: &str =
+    "gentle.construct_reasoning_input_fingerprint.v1";
+pub const DOTPLOT_INSPECTION_PROVENANCE_CITATION_SCHEMA: &str =
+    "gentle.dotplot_inspection_provenance_citation.v1";
 pub const CONSTRUCT_REASONING_GRAPH_SCHEMA: &str = "gentle.construct_reasoning_graph.v1";
 pub const CONSTRUCT_REASONING_STORE_SCHEMA: &str = "gentle.construct_reasoning_store.v1";
 pub const HOST_PROFILE_CATALOG_SCHEMA: &str = "gentle.host_profile_catalog.v1";
@@ -58,6 +62,14 @@ fn default_annotation_candidate_writeback_schema() -> String {
 
 fn default_construct_reasoning_inspection_action_schema() -> String {
     CONSTRUCT_REASONING_INSPECTION_ACTION_SCHEMA.to_string()
+}
+
+fn default_construct_reasoning_input_fingerprint_schema() -> String {
+    CONSTRUCT_REASONING_INPUT_FINGERPRINT_SCHEMA.to_string()
+}
+
+fn default_dotplot_inspection_provenance_citation_schema() -> String {
+    DOTPLOT_INSPECTION_PROVENANCE_CITATION_SCHEMA.to_string()
 }
 
 fn default_construct_reasoning_graph_schema() -> String {
@@ -246,6 +258,46 @@ pub enum ConstructReasoningRiskTask {
     ConstructMaintenance,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[serde(rename_all = "snake_case")]
+/// Whether the current construct objective actually performs one risk task.
+pub enum ConstructReasoningTaskApplicability {
+    #[default]
+    Unknown,
+    Applicable,
+    NotApplicable,
+}
+
+impl ConstructReasoningTaskApplicability {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::Applicable => "applicable",
+            Self::NotApplicable => "not_applicable",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[serde(rename_all = "snake_case")]
+/// Source used to decide task applicability for a reasoning row.
+pub enum ConstructReasoningTaskApplicabilityBasis {
+    #[default]
+    Unspecified,
+    ExplicitObjectiveTasks,
+    LegacyObjectiveInference,
+}
+
+impl ConstructReasoningTaskApplicabilityBasis {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unspecified => "unspecified",
+            Self::ExplicitObjectiveTasks => "explicit_objective_tasks",
+            Self::LegacyObjectiveInference => "legacy_objective_inference",
+        }
+    }
+}
+
 impl ConstructReasoningRiskTask {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -285,8 +337,17 @@ impl ConstructReasoningSeverity {
 /// Transparent task-specific severity attached to a construct-reasoning fact.
 pub struct ConstructReasoningTaskSeverity {
     pub task: ConstructReasoningRiskTask,
+    /// Objective applicability is distinct from the intrinsic evidence concern.
+    pub applicability: ConstructReasoningTaskApplicability,
+    pub applicability_basis: ConstructReasoningTaskApplicabilityBasis,
+    /// Severity implied by the evidence before objective applicability is applied.
+    pub base_severity: Option<ConstructReasoningSeverity>,
+    /// Transparent 0.0-1.0 intrinsic evidence score.
+    pub base_score: Option<f64>,
+    /// Signed adjustment applied to `base_score` for the current objective.
+    pub objective_adjustment: Option<f64>,
     pub severity: ConstructReasoningSeverity,
-    /// Optional transparent 0.0-1.0 score behind `severity`.
+    /// Optional transparent 0.0-1.0 effective priority behind `severity`.
     ///
     /// Engine-generated scores use fixed rule thresholds: `0.0` is `none`,
     /// `(0.0, 0.25)` is `low`, `[0.25, 0.60)` is `medium`, and `>= 0.60`
@@ -300,6 +361,11 @@ impl Default for ConstructReasoningTaskSeverity {
     fn default() -> Self {
         Self {
             task: ConstructReasoningRiskTask::Pcr,
+            applicability: ConstructReasoningTaskApplicability::Unknown,
+            applicability_basis: ConstructReasoningTaskApplicabilityBasis::Unspecified,
+            base_severity: None,
+            base_score: None,
+            objective_adjustment: None,
             severity: ConstructReasoningSeverity::None,
             score: None,
             rationale: String::new(),
@@ -517,6 +583,12 @@ pub struct ConstructObjective {
     pub required_roles: Vec<ConstructRole>,
     pub forbidden_roles: Vec<ConstructRole>,
     pub preferred_routine_families: Vec<String>,
+    /// Explicit workflow tasks for objective-aware risk interpretation.
+    ///
+    /// `None` means an older/unspecified objective and permits conservative
+    /// legacy inference. `Some([])` explicitly declares that none of the
+    /// current task vocabulary applies.
+    pub intended_tasks: Option<Vec<ConstructReasoningRiskTask>>,
     pub notes: Vec<String>,
 }
 
@@ -543,9 +615,24 @@ impl Default for ConstructObjective {
             required_roles: vec![],
             forbidden_roles: vec![],
             preferred_routine_families: vec![],
+            intended_tasks: None,
             notes: vec![],
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default, deny_unknown_fields)]
+/// Typed repeat-family annotation attached to one evidence row.
+pub struct ConstructReasoningRepeatAnnotation {
+    pub source_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeat_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeat_class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeat_family: Option<String>,
+    pub source_refs: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -575,6 +662,8 @@ pub struct DesignEvidence {
     pub context_tags: Vec<String>,
     pub provenance_kind: String,
     pub provenance_refs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeat_annotation: Option<ConstructReasoningRepeatAnnotation>,
     pub editable_status: EditableStatus,
     pub warnings: Vec<String>,
     pub notes: Vec<String>,
@@ -605,6 +694,7 @@ impl Default for DesignEvidence {
             context_tags: vec![],
             provenance_kind: String::new(),
             provenance_refs: vec![],
+            repeat_annotation: None,
             editable_status: EditableStatus::Draft,
             warnings: vec![],
             notes: vec![],
@@ -951,13 +1041,42 @@ impl ConstructReasoningInspectionActionKind {
 pub struct ConstructReasoningRepeatFamilyProvenance {
     pub source_kind: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeat_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeat_class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeat_family: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub family_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub family_name: Option<String>,
+    pub agreement: ConstructReasoningRepeatFamilyAgreement,
     pub source_refs: Vec<String>,
     pub evidence_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confidence: Option<f64>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[serde(rename_all = "snake_case")]
+/// Strength of repeat-family support represented by one provenance row.
+pub enum ConstructReasoningRepeatFamilyAgreement {
+    #[default]
+    ProvenanceOnly,
+    CuratedAnnotation,
+    Class,
+    Family,
+}
+
+impl ConstructReasoningRepeatFamilyAgreement {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ProvenanceOnly => "provenance_only",
+            Self::CuratedAnnotation => "curated_annotation",
+            Self::Class => "class",
+            Self::Family => "family",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -981,7 +1100,10 @@ pub struct ConstructReasoningInspectionAction {
     pub source_summary_ids: Vec<String>,
     pub context_tags: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Compatibility projection of the first repeat-family provenance row.
     pub repeat_family_provenance: Option<ConstructReasoningRepeatFamilyProvenance>,
+    /// Complete repeat-family provenance set for nested or overlapping repeats.
+    pub repeat_family_provenances: Vec<ConstructReasoningRepeatFamilyProvenance>,
 }
 
 impl Default for ConstructReasoningInspectionAction {
@@ -1003,6 +1125,181 @@ impl Default for ConstructReasoningInspectionAction {
             source_summary_ids: vec![],
             context_tags: vec![],
             repeat_family_provenance: None,
+            repeat_family_provenances: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Stable snapshot identity for the inputs and rules used to build a graph.
+pub struct ConstructReasoningInputFingerprint {
+    #[serde(default = "default_construct_reasoning_input_fingerprint_schema")]
+    pub schema: String,
+    pub sequence_snapshot_sha256: String,
+    pub objective_sha256: String,
+    pub rule_set_version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_artifact_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_artifact_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_artifact_sha256: Option<String>,
+}
+
+impl Default for ConstructReasoningInputFingerprint {
+    fn default() -> Self {
+        Self {
+            schema: default_construct_reasoning_input_fingerprint_schema(),
+            sequence_snapshot_sha256: String::new(),
+            objective_sha256: String::new(),
+            rule_set_version: String::new(),
+            source_artifact_kind: None,
+            source_artifact_id: None,
+            source_artifact_sha256: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Whether a stored graph still matches the current project inputs and rule set.
+pub enum ConstructReasoningGraphFreshness {
+    #[default]
+    Unknown,
+    Current,
+    Stale,
+}
+
+impl ConstructReasoningGraphFreshness {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::Current => "current",
+            Self::Stale => "stale",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default, deny_unknown_fields)]
+/// Live comparison of one graph snapshot against the current project state.
+pub struct ConstructReasoningGraphSnapshotStatus {
+    pub freshness: ConstructReasoningGraphFreshness,
+    pub reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Verification state for a dotplot citation back to a reasoning inspection.
+pub enum DotplotInspectionProvenanceStatus {
+    Pass,
+    Fail,
+    #[default]
+    Unknown,
+}
+
+impl DotplotInspectionProvenanceStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pass => "pass",
+            Self::Fail => "fail",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(default)]
+/// Resolved dotplot options bound into one inspection provenance citation.
+pub struct DotplotInspectionRequestSnapshot {
+    pub dotplot_id: String,
+    pub seq_id: SeqId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_seq_id: Option<SeqId>,
+    pub span_start_0based: usize,
+    pub span_end_0based: usize,
+    pub reference_span_start_0based: usize,
+    pub reference_span_end_0based: usize,
+    pub mode: DotplotMode,
+    pub word_size: usize,
+    pub step_bp: usize,
+    pub max_mismatches: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tile_bp: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+/// Durable citation from one stored dotplot to the reasoning action that
+/// requested it.
+pub struct DotplotInspectionProvenanceCitation {
+    #[serde(default = "default_dotplot_inspection_provenance_citation_schema")]
+    pub schema: String,
+    pub status: DotplotInspectionProvenanceStatus,
+    pub graph_id: String,
+    pub graph_schema: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graph_op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graph_run_id: Option<String>,
+    pub graph_generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graph_input_fingerprint: Option<ConstructReasoningInputFingerprint>,
+    pub graph_snapshot_freshness: ConstructReasoningGraphFreshness,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub graph_snapshot_reasons: Vec<String>,
+    pub action_id: String,
+    pub action_schema: String,
+    pub action_kind: ConstructReasoningInspectionActionKind,
+    pub dotplot_mode: DotplotMode,
+    pub action_focus_start_0based: usize,
+    pub action_focus_end_0based_exclusive: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_fact_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_annotation_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_candidate_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_summary_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub driving_evidence_ids: Vec<String>,
+    pub rationale: String,
+    pub request: DotplotInspectionRequestSnapshot,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub verification_reasons: Vec<String>,
+    pub summary: String,
+}
+
+impl Default for DotplotInspectionProvenanceCitation {
+    fn default() -> Self {
+        Self {
+            schema: default_dotplot_inspection_provenance_citation_schema(),
+            status: DotplotInspectionProvenanceStatus::Unknown,
+            graph_id: String::new(),
+            graph_schema: String::new(),
+            graph_op_id: None,
+            graph_run_id: None,
+            graph_generated_at_unix_ms: 0,
+            graph_input_fingerprint: None,
+            graph_snapshot_freshness: ConstructReasoningGraphFreshness::Unknown,
+            graph_snapshot_reasons: vec![],
+            action_id: String::new(),
+            action_schema: String::new(),
+            action_kind: ConstructReasoningInspectionActionKind::Dotplot,
+            dotplot_mode: DotplotMode::SelfForward,
+            action_focus_start_0based: 0,
+            action_focus_end_0based_exclusive: 0,
+            source_fact_ids: vec![],
+            source_annotation_ids: vec![],
+            source_candidate_ids: vec![],
+            source_summary_ids: vec![],
+            driving_evidence_ids: vec![],
+            rationale: String::new(),
+            request: DotplotInspectionRequestSnapshot::default(),
+            verification_reasons: vec![],
+            summary: String::new(),
         }
     }
 }
@@ -1021,6 +1318,8 @@ pub struct ConstructReasoningGraph {
     pub run_id: Option<String>,
     pub objective: ConstructObjective,
     pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_fingerprint: Option<ConstructReasoningInputFingerprint>,
     pub evidence: Vec<DesignEvidence>,
     pub facts: Vec<DesignFact>,
     pub decisions: Vec<DesignDecisionNode>,
@@ -1041,6 +1340,7 @@ impl Default for ConstructReasoningGraph {
             run_id: None,
             objective: ConstructObjective::default(),
             generated_at_unix_ms: 0,
+            input_fingerprint: None,
             evidence: vec![],
             facts: vec![],
             decisions: vec![],
@@ -1088,6 +1388,10 @@ mod tests {
         graph.seq_id = "seq1".to_string();
         graph.objective.objective_id = "obj1".to_string();
         graph.objective.goal = "demo".to_string();
+        graph.objective.intended_tasks = Some(vec![
+            ConstructReasoningRiskTask::Pcr,
+            ConstructReasoningRiskTask::CloningStability,
+        ]);
         graph.objective.propagation_host_profile_id = Some("ecoli_k12".to_string());
         graph.objective.host_route.push(HostRouteStep {
             step_id: "step1".to_string(),
@@ -1114,6 +1418,12 @@ mod tests {
             label: "Repeat context".to_string(),
             task_severities: vec![ConstructReasoningTaskSeverity {
                 task: ConstructReasoningRiskTask::CloningStability,
+                applicability: ConstructReasoningTaskApplicability::Applicable,
+                applicability_basis:
+                    ConstructReasoningTaskApplicabilityBasis::ExplicitObjectiveTasks,
+                base_severity: Some(ConstructReasoningSeverity::Medium),
+                base_score: Some(0.44),
+                objective_adjustment: Some(0.08),
                 severity: ConstructReasoningSeverity::Medium,
                 score: Some(0.52),
                 rationale: "Direct-repeat architecture may matter more for cloning stability."
@@ -1121,6 +1431,12 @@ mod tests {
                 supporting_evidence_ids: vec!["ev1".to_string()],
             }],
             ..DesignFact::default()
+        });
+        graph.input_fingerprint = Some(ConstructReasoningInputFingerprint {
+            sequence_snapshot_sha256: "sha256:sequence".to_string(),
+            objective_sha256: "sha256:objective".to_string(),
+            rule_set_version: "gentle.construct_reasoning.rules.test".to_string(),
+            ..ConstructReasoningInputFingerprint::default()
         });
         graph
             .inspection_actions
@@ -1138,11 +1454,26 @@ mod tests {
                 context_tags: vec!["direct_repeat".to_string()],
                 repeat_family_provenance: Some(ConstructReasoningRepeatFamilyProvenance {
                     source_kind: "repeatmasker".to_string(),
+                    repeat_name: Some("AluY".to_string()),
+                    repeat_class: Some("SINE".to_string()),
+                    repeat_family: Some("Alu".to_string()),
                     family_name: Some("Alu".to_string()),
+                    agreement: ConstructReasoningRepeatFamilyAgreement::Family,
                     evidence_ids: vec!["ev1".to_string()],
                     source_refs: vec!["rmsk".to_string()],
                     ..ConstructReasoningRepeatFamilyProvenance::default()
                 }),
+                repeat_family_provenances: vec![ConstructReasoningRepeatFamilyProvenance {
+                    source_kind: "repeatmasker".to_string(),
+                    repeat_name: Some("AluY".to_string()),
+                    repeat_class: Some("SINE".to_string()),
+                    repeat_family: Some("Alu".to_string()),
+                    family_name: Some("Alu".to_string()),
+                    agreement: ConstructReasoningRepeatFamilyAgreement::Family,
+                    evidence_ids: vec!["ev1".to_string()],
+                    source_refs: vec!["rmsk".to_string()],
+                    ..ConstructReasoningRepeatFamilyProvenance::default()
+                }],
                 ..ConstructReasoningInspectionAction::default()
             });
 
@@ -1162,14 +1493,48 @@ mod tests {
             ConstructReasoningRiskTask::CloningStability
         );
         assert_eq!(round_trip.facts[0].task_severities[0].score, Some(0.52));
+        assert_eq!(
+            round_trip.facts[0].task_severities[0].base_score,
+            Some(0.44)
+        );
+        assert_eq!(
+            round_trip.facts[0].task_severities[0].applicability,
+            ConstructReasoningTaskApplicability::Applicable
+        );
         let mut legacy_value = serde_json::to_value(&graph).expect("serialize legacy");
         legacy_value["facts"][0]["task_severities"][0]
             .as_object_mut()
             .expect("task severity object")
             .remove("score");
+        for field in [
+            "applicability",
+            "applicability_basis",
+            "base_severity",
+            "base_score",
+            "objective_adjustment",
+        ] {
+            legacy_value["facts"][0]["task_severities"][0]
+                .as_object_mut()
+                .expect("task severity object")
+                .remove(field);
+        }
+        legacy_value["objective"]
+            .as_object_mut()
+            .expect("objective object")
+            .remove("intended_tasks");
+        legacy_value
+            .as_object_mut()
+            .expect("graph object")
+            .remove("input_fingerprint");
         let legacy_round_trip: ConstructReasoningGraph =
             serde_json::from_value(legacy_value).expect("deserialize legacy without score");
         assert_eq!(legacy_round_trip.facts[0].task_severities[0].score, None);
+        assert_eq!(
+            legacy_round_trip.facts[0].task_severities[0].applicability,
+            ConstructReasoningTaskApplicability::Unknown
+        );
+        assert!(legacy_round_trip.objective.intended_tasks.is_none());
+        assert!(legacy_round_trip.input_fingerprint.is_none());
         assert_eq!(round_trip.objective.host_route.len(), 1);
         assert_eq!(round_trip.evidence[0].scope, EvidenceScope::HostTransition);
         assert_eq!(
@@ -1195,6 +1560,12 @@ mod tests {
                 .as_ref()
                 .and_then(|provenance| provenance.family_name.as_deref()),
             Some("Alu")
+        );
+        assert_eq!(
+            round_trip.inspection_actions[0]
+                .repeat_family_provenances
+                .len(),
+            1
         );
     }
 }

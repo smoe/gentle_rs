@@ -1,0 +1,4 @@
+fus_hap1_alt_v2 u
+fus_hap2_alt_v1 u
+fus_shared_region u
+fus_off_target u

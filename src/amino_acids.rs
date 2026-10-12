@@ -59,6 +59,13 @@ pub struct AminoAcids {
     pub codon_tables: HashMap<usize, CodonTable>,
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ProteinMolecularWeightEstimate {
+    pub molecular_weight_kda: Option<f64>,
+    pub residue_count: usize,
+    pub unknown_residues: Vec<char>,
+}
+
 impl AminoAcids {
     #[inline(always)]
     pub fn is_start_codon(codon: &[u8; 3]) -> bool {
@@ -195,6 +202,44 @@ impl AminoAcids {
             .filter(|codon| codon.len() == 3)
     }
 
+    /// Estimate unmodified protein molecular weight from known amino-acid residues.
+    ///
+    /// Ambiguous or unsupported residues make the estimate unavailable rather
+    /// than receiving a nominal average mass.
+    pub fn protein_molecular_weight_kda(&self, sequence: &str) -> ProteinMolecularWeightEstimate {
+        const WATER_MASS_DA: f64 = 18.015_28;
+        let mut residue_masses = Vec::new();
+        let mut unknown_residues = Vec::new();
+        let mut residue_count = 0usize;
+        for aa in sequence.trim().chars() {
+            let aa = aa.to_ascii_uppercase();
+            if aa == STOP_CODON || aa.is_ascii_whitespace() {
+                continue;
+            }
+            residue_count = residue_count.saturating_add(1);
+            if let Some(entry) = self.get(aa) {
+                residue_masses.push(f64::from(entry.mw));
+            } else {
+                unknown_residues.push(aa);
+            }
+        }
+        unknown_residues.sort_unstable();
+        unknown_residues.dedup();
+        let molecular_weight_kda = if residue_masses.is_empty() || !unknown_residues.is_empty() {
+            None
+        } else {
+            // The bundled table stores residue masses (the form incorporated
+            // into a peptide), so one terminal water completes the chain.
+            let total_da = residue_masses.iter().sum::<f64>() + WATER_MASS_DA;
+            Some((total_da / 1_000.0).max(0.0))
+        };
+        ProteinMolecularWeightEstimate {
+            molecular_weight_kda,
+            residue_count,
+            unknown_residues,
+        }
+    }
+
     /// Estimate a protein's isoelectric point from its amino-acid sequence.
     ///
     /// The estimate uses a deterministic Henderson-Hasselbalch charge balance
@@ -325,5 +370,24 @@ mod tests {
         assert!(basic > acidic);
         assert!(acidic < 5.0);
         assert!(basic > 9.0);
+    }
+
+    #[test]
+    fn protein_molecular_weight_uses_residue_masses_and_rejects_ambiguity() {
+        let aas = AminoAcids::default();
+        let alanine = aas.protein_molecular_weight_kda("A");
+        assert_eq!(alanine.residue_count, 1);
+        assert!(alanine.unknown_residues.is_empty());
+        let expected_kda = (71.0788_f64 + 18.015_28_f64) / 1_000.0;
+        assert!(
+            alanine
+                .molecular_weight_kda
+                .is_some_and(|value| (value - expected_kda).abs() < 1e-6)
+        );
+
+        let ambiguous = aas.protein_molecular_weight_kda("MAX");
+        assert_eq!(ambiguous.residue_count, 3);
+        assert_eq!(ambiguous.unknown_residues, vec!['X']);
+        assert_eq!(ambiguous.molecular_weight_kda, None);
     }
 }

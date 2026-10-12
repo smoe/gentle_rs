@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="468" height="255" viewBox="0 0 468 255">
+  <title>simple_pcr_selection_gui / seed_simple_pcr — interaction context</title>
+  <image href="seed_simple_pcr.raw.png" x="-840" y="-632" width="1600" height="1000"/>
+  <rect x="180" y="120" width="108" height="15" fill="none" stroke="#d62728" stroke-width="3"/>
+  <circle cx="192" cy="132" r="11" fill="#d62728"/>
+  <text x="192" y="137" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="bold" fill="white">1</text>
+</svg>

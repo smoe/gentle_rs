@@ -1,0 +1,43 @@
+{
+  "schema": "gentle.gene_locus_occupancy_layout.v1",
+  "groups": [
+    {
+      "group_id": "saos2",
+      "label": "Saos-2",
+      "scale_mode": "shared_group",
+      "lanes": [
+        {
+          "track_name": "SAOS-2 TP73 TAp73alpha",
+          "display_label": "TP73 TAp73alpha",
+          "condition_label": "TA",
+          "role": "experimental"
+        },
+        {
+          "track_name": "SAOS-2 TP73 DNp73beta",
+          "display_label": "TP73 DNp73beta",
+          "condition_label": "DN",
+          "role": "experimental"
+        }
+      ]
+    },
+    {
+      "group_id": "skmel29",
+      "label": "SK-MEL-29",
+      "scale_mode": "shared_group",
+      "lanes": [
+        {
+          "track_name": "SK-MEL-29 TP73 TAp73alpha",
+          "display_label": "TP73 TAp73alpha",
+          "condition_label": "TA",
+          "role": "experimental"
+        },
+        {
+          "track_name": "SK-MEL-29 TP73 DNp73beta",
+          "display_label": "TP73 DNp73beta",
+          "condition_label": "DN",
+          "role": "experimental"
+        }
+      ]
+    }
+  ]
+}

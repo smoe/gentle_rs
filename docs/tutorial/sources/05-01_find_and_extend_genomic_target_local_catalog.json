@@ -13,7 +13,13 @@
       "gui_first",
       "contributors"
     ],
-    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+    "notes": "Machine-checked offline LocalProject fixture. The replay binds the gene-biotype `etpC` occurrence on `AB011549.2` and its strand-aware 5-prime extension; no typed GUI screenshot acceptance or broader organism annotation claim is made.",
+    "interfaces": [
+      "GUI",
+      "CLI / workflow",
+      "inner agent",
+      "ClawBio / outer agent"
+    ],
     "group": "05",
     "group_position": 1
   },
@@ -38,10 +44,15 @@
       "cargo run --bin gentle_cli -- genomes genes LocalProject --catalog assets/genomes.json --cache-dir cache/localproject --filter '^etp' --limit 20\ncargo run --bin gentle_cli -- genomes extract-gene LocalProject etpC --occurrence 1 --output-id local_etpc --catalog assets/genomes.json --cache-dir cache/localproject",
       "cargo run --bin gentle_cli -- genomes extend-anchor local_etpc 5p 250 --output-id local_etpc_ext5 --catalog assets/genomes.json --cache-dir cache/localproject"
     ],
+    "agent_steps": [
+      "Inspect `assets/genomes.json` and propose `PrepareGenome` for exactly `LocalProject` with cache `cache/localproject`. State that this is the committed offline fixture and expose the cache/index writes; do not prepare or change a different catalog/cache until I approve.",
+      "Using the same prepared cache, list `^etp` candidates and distinguish the duplicate gene/CDS rows. Select the gene-biotype `etpC` occurrence 1 on `AB011549.2`, plus strand, 2589..3465 (1-based), then propose `ExtractGenomeGene` as `local_etpc`. Show genome, occurrence, coordinates and output id before mutation; do not substitute the CDS row or a prefix match.",
+      "Inspect the verified anchor on `local_etpc`, then propose `ExtendGenomeAnchor` on biological `five_prime` by 250 bp as `local_etpc_ext5`. Explain that plus-strand 5-prime extension changes 2589..3465 to 2339..3465, predicts length 1127 bp, and must create a lineage edge from the 877 bp parent; wait for approval before creating it."
+    ],
     "step_expectations": [
       "The offline `LocalProject` reference is prepared into `cache/localproject` without network access.",
-      "The gene listing narrows annotation candidates, and extraction creates the anchored sequence id `local_etpc`.",
-      "Anchor extension creates `local_etpc_ext5` with widened interval provenance rather than a disconnected sequence copy."
+      "The gene listing exposes separate gene/CDS rows; extraction binds gene-biotype `etpC` occurrence 1 on plus-strand `AB011549.2:2589..3465` to the 877 bp sequence `local_etpc`.",
+      "Anchor extension creates 1127 bp `local_etpc_ext5` at `AB011549.2:2339..3465` with a lineage edge from `local_etpc`, rather than a disconnected sequence copy."
     ],
     "prerequisites": [
       "load_branch_reverse_complement_pgex_fasta"
@@ -86,8 +97,8 @@
     "retain_outputs": [],
     "checkpoints": [
       "PrepareGenome succeeds for `LocalProject` without network access.",
-      "ExtractGenomeGene produces `local_etpc` from annotation-backed lookup.",
-      "ExtendGenomeAnchor produces `local_etpc_ext5` with widened genomic interval provenance."
+      "ExtractGenomeGene produces 877 bp `local_etpc` from the gene-biotype `etpC` occurrence at `AB011549.2:2589..3465` on the plus strand.",
+      "ExtendGenomeAnchor produces 1127 bp `local_etpc_ext5` at `AB011549.2:2339..3465` with widened genomic interval provenance and a parent-child lineage edge."
     ]
   }
 }

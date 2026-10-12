@@ -1,5 +1,8 @@
 name: Build and Test GENtle
 
+env:
+  RUST_MIN_STACK: "16777216"
+
 on:
   push:
     branches:
@@ -10,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       platform:
-        description: 'Platform to run, or sampled for commit-derived selection'
+        description: 'Additional platform (Windows always runs); sampled selects Linux or macOS, windows runs Windows only'
         required: false
         type: choice
         options:
@@ -19,8 +22,265 @@ on:
           - linux
           - windows
         default: sampled
+      audit_followups:
+        description: 'Run exact-SHA scroll CPU smoke and synthetic 08.04 native replay, without publishing'
+        required: false
+        type: boolean
+        default: false
+      audit_public_vkorc1:
+        description: 'Also prepare the complete public GRCh38 reference and retain 08.04 CLI/shared-shell inputs; no agent or publication'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
+  audit-agent-cli:
+    name: macOS CLI for local authenticated audit (no credentials in CI)
+    if: github.event_name == 'workflow_dispatch' && inputs.audit_followups
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    env:
+      CARGO_BUILD_JOBS: '1'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      RUST_MIN_STACK: '67108864'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-headless-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-headless-cargo-registry-
+            ${{ runner.os }}-cargo-registry-
+      - name: Build and retain exact-source headless CLI without invoking an agent
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/agent-audit-cli"
+          cargo build --locked --no-default-features --bin gentle_cli \
+            2> "$RUNNER_TEMP/agent-audit-cli/build.log"
+          git diff --exit-code -- Cargo.lock Cargo.toml
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, shutil, subprocess
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'agent-audit-cli'
+          binary = root / 'gentle_cli'
+          shutil.copy2('target/debug/gentle_cli', binary)
+          revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          assert revision == os.environ['GITHUB_SHA']
+          version = subprocess.check_output([str(binary), '--version'], text=True)
+          assert any(line.startswith('Source revision ') and line.endswith('+git.' + revision)
+                     for line in version.splitlines()), 'binary source differs from selected candidate'
+          def sha(path):
+              return hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()
+          receipt = {'schema': 'gentle.audit_agent_cli.v1', 'source_revision': revision,
+                     'profile': 'dev', 'default_features': False, 'platform': 'macOS',
+                     'architecture': subprocess.check_output(['uname', '-m'], text=True).strip(),
+                     'binary_sha256': sha(binary), 'cargo_lock_sha256': sha('Cargo.lock'),
+                     'binary_version': version, 'rustc': subprocess.check_output(['rustc', '-Vv'], text=True),
+                     'cargo': subprocess.check_output(['cargo', '-V'], text=True),
+                     'run_url': 'https://github.com/' + os.environ['GITHUB_REPOSITORY'] + '/actions/runs/' + os.environ['GITHUB_RUN_ID'],
+                     'live_agent_accepted': False, 'package_accepted': False,
+                     'artifacts': {path.name: sha(path) for path in sorted(root.iterdir()) if path.is_file()}}
+          (root / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
+          print(json.dumps(receipt, indent=2))
+          PY
+      - name: Preserve audit CLI and build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: agent-audit-cli-macos-${{ github.sha }}
+          path: ${{ runner.temp }}/agent-audit-cli/
+          if-no-files-found: error
+          retention-days: 30
+
+  vkorc1-gui-audit:
+    name: 08.04 synthetic GUI contracts (not online or scientific acceptance)
+    if: github.event_name == 'workflow_dispatch' && inputs.audit_followups
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      CARGO_BUILD_JOBS: '1'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      RUST_MIN_STACK: '67108864'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install native replay dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang cmake pkg-config perl libgtk-3-dev libfontconfig1-dev \
+            libfreetype6-dev libssl-dev libegl1-mesa-dev libgl1-mesa-dev libgbm-dev \
+            libwayland-dev libx11-dev libx11-xcb-dev libxcb1-dev libxcb-render0-dev \
+            libxcb-shape0-dev libxcb-xfixes0-dev libxcursor-dev libxinerama-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libxi-dev libxrandr-dev xvfb xauth openbox xdotool x11-utils scrot
+      - name: Build exact-candidate GUI test binaries and run focused Rust regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/vkorc1-gui-audit"
+          cargo build --locked --no-default-features --features desktop-gui,gui-test-support \
+            --bin gentle --bin gentle_cli --bin gentle_examples_docs \
+            2> "$RUNNER_TEMP/vkorc1-gui-audit/build.log"
+          for filter in promoter_pair_ variant_followup_allele_pair_ reporter_construct_handoff_ \
+            vkorc1_pair_gui_starter_and_oracle \
+            tutorial_gui_acceptance_feature_targets tutorial_gui_semantics::tests; do
+            cargo test --locked --no-default-features --features desktop-gui,gui-test-support \
+              --lib "$filter" -- --test-threads=1 \
+              > "$RUNNER_TEMP/vkorc1-gui-audit/${filter//:/_}.log" 2>&1
+          done
+          cargo check -q --locked --no-default-features --features desktop-gui,gui-test-support
+          rustc -Vv > "$RUNNER_TEMP/vkorc1-gui-audit/rustc.txt"
+          cargo -V > "$RUNNER_TEMP/vkorc1-gui-audit/cargo.txt"
+      - name: Generate disposable projections and replay ordinary native input
+        run: |
+          python3 scripts/ci_vkorc1_gui_audit.py --repo-root . --binary-dir target/debug \
+            --evidence-dir "$RUNNER_TEMP/vkorc1-gui-audit"
+      - name: Preserve candidate-bound evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: vkorc1-gui-audit-${{ github.sha }}
+          path: ${{ runner.temp }}/vkorc1-gui-audit/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
+      - name: Prepare fresh public 08.04 inputs and verify CLI/shared-shell parity
+        if: ${{ !cancelled() && inputs.audit_public_vkorc1 }}
+        run: |
+          python3 scripts/prepare_public_vkorc1_audit.py --repo-root . \
+            --gentle-cli target/debug/gentle_cli --evidence-dir "$RUNNER_TEMP/vkorc1-public-audit"
+      - name: Preserve public-data evidence without uploading the whole reference cache
+        if: always() && inputs.audit_public_vkorc1
+        uses: actions/upload-artifact@v6
+        with:
+          name: vkorc1-public-audit-${{ github.sha }}
+          path: ${{ runner.temp }}/vkorc1-public-audit/
+          if-no-files-found: error
+          retention-days: 30
+
+  gui-scroll-audit:
+    name: GUI scroll CPU smoke (not native latency)
+    if: github.event_name == 'workflow_dispatch' && inputs.audit_followups
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      CARGO_BUILD_JOBS: '1'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      RUST_MIN_STACK: '67108864'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install headless GUI build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang cmake pkg-config perl libgtk-3-dev \
+            libfontconfig1-dev libfreetype6-dev libssl-dev libegl1-mesa-dev \
+            libgl1-mesa-dev libgbm-dev libwayland-dev libx11-dev libx11-xcb-dev \
+            libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libxcursor-dev libxinerama-dev libxkbcommon-dev libxi-dev libxrandr-dev
+      - name: Build isolated development-profile smoke binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/gui-scroll-audit"
+          cargo test --locked -p gentle-benchmarks --bench gui_operations --no-run \
+            --message-format=json > "$RUNNER_TEMP/gui-scroll-audit/build.jsonl" \
+            2> "$RUNNER_TEMP/gui-scroll-audit/build.log"
+          cargo build --locked --no-default-features --features desktop-gui,benchmark-support \
+            --bin gentle_cli 2> "$RUNNER_TEMP/gui-scroll-audit/cli-build.log"
+          rustc -Vv > "$RUNNER_TEMP/gui-scroll-audit/rustc.txt"
+          cargo -V > "$RUNNER_TEMP/gui-scroll-audit/cargo.txt"
+      - name: Prepare fresh public PATZ1 project offline
+        run: |
+          python3 scripts/prepare_real_patz1_tutorial.py --gentle-cli target/debug/gentle_cli \
+            --output-dir "$RUNNER_TEMP/gui-scroll-audit/patz1"
+      - name: Verify real wheel-input smoke and retain exact candidate receipt
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, shutil, subprocess
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'gui-scroll-audit'
+          artifacts = [json.loads(line) for line in (root / 'build.jsonl').read_text().splitlines()]
+          executables = {item['executable'] for item in artifacts
+                         if item.get('reason') == 'compiler-artifact'
+                         and item.get('target', {}).get('name') == 'gui_operations'
+                         and item.get('executable')}
+          assert len(executables) == 1, executables
+          binary = pathlib.Path(executables.pop())
+          retained_binary = root / 'gui_operations'
+          shutil.copy2(binary, retained_binary)
+          env = dict(os.environ, GENTLE_GUI_BENCH_PATZ1_STATE=str(root / 'patz1/patz1.gentle.json'),
+                     GENTLE_GUI_BENCH_PATZ1_REPORT=str(root / 'patz1/locus.report.json'))
+          command = [str(retained_binary), '--test']
+          with (root / 'smoke.log').open('wb') as log:
+              run = subprocess.run(command, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=900)
+          observations = [json.loads(line.split('GUI_SCROLL_OBSERVATION ', 1)[1])
+                          for line in (root / 'smoke.log').read_text().splitlines()
+                          if 'GUI_SCROLL_OBSERVATION ' in line]
+          def sha(path):
+              return hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()
+          receipt = {'schema': 'gentle.gui_scroll_cpu_smoke.v1', 'source_revision': os.environ['GITHUB_SHA'],
+                     'run_url': 'https://github.com/' + os.environ['GITHUB_REPOSITORY'] + '/actions/runs/' + os.environ['GITHUB_RUN_ID'],
+                     'profile': 'dev', 'native_latency_measured': False, 'package_accepted': False,
+                     'binary_sha256': sha(retained_binary), 'cargo_lock_sha256': sha('Cargo.lock'),
+                     'smoke_command': command, 'exit_code': run.returncode, 'observations': observations,
+                     'rustc': (root / 'rustc.txt').read_text(), 'cargo': (root / 'cargo.txt').read_text(),
+                     'artifacts': {str(path.relative_to(root)): sha(path) for path in sorted(root.rglob('*')) if path.is_file()}}
+          (root / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
+          assert run.returncode == 0, 'inspect retained smoke.log'
+          assert len(observations) == 24, 'three fixtures, four sizes, two directions required'
+          assert len({(row['fixture'], row['screen'], row['delta_x_points']) for row in observations}) == 24
+          for row in observations:
+              assert row['source_revision'] == os.environ['GITHUB_SHA']
+              assert row['sequence_content_unchanged'] and not row['native_latency_measured']
+              assert row['before'][1:] == row['after'][1:]
+              assert (row['after'][0] > row['before'][0]) == (row['delta_x_points'] < 0)
+          print(json.dumps(receipt, indent=2))
+          PY
+      - name: Preserve smoke evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: gui-scroll-cpu-smoke-${{ github.sha }}
+          path: ${{ runner.temp }}/gui-scroll-audit/
+          if-no-files-found: error
+          retention-days: 30
+
+  release-policy:
+    name: Release candidate safety checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Tutorial discovery metadata regression
+        run: python3 -m unittest scripts.test_motif_score_tutorial.MotifScoreTutorialSourceTests.test_catalog_source_and_local_links -v
+      - run: python3 -m unittest scripts.test_release_candidate -v
+      - run: python3 -m unittest scripts.test_package_desktop -v
+      - run: python3 -m unittest scripts.test_release_build_monitor -v
+      - run: python3 -m unittest scripts.test_gui_startup_summary -v
+      - run: python3 -m unittest scripts.test_container -v
+      - run: python3 -m unittest scripts.test_tutorial_checkouts -v
+      - run: python3 -m unittest scripts.test_primer_specificity_multi_tutorial -v
+      - run: python3 -m unittest scripts.test_ci_vkorc1_gui_audit scripts.test_tutorial_gui_acceptance -v
+      - run: python3 -m unittest scripts.test_prepare_public_vkorc1_audit -v
+
   select-platform:
     name: Select CI platform
     runs-on: ubuntu-latest
@@ -37,15 +297,55 @@ jobs:
           set -euo pipefail
           platform="$REQUESTED_PLATFORM"
           if [[ -z "$platform" || "$platform" == "sampled" ]]; then
-            selector=$((16#${GITHUB_SHA:0:8} % 3))
+            selector=$((16#${GITHUB_SHA:0:8} % 2))
             case "$selector" in
               0) platform="macos" ;;
               1) platform="linux" ;;
-              2) platform="windows" ;;
             esac
           fi
           echo "Selected CI platform: $platform"
           echo "platform=$platform" >> "$GITHUB_OUTPUT"
+
+  headless-linux:
+    name: Linux / headless CLI and MCP
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-headless-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-headless-cargo-registry-
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Check headless binaries without desktop features
+        run: cargo check --locked --no-default-features --bin gentle_cli --bin gentle_mcp
+
+      - name: Guard headless dependency boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          tree_path="$RUNNER_TEMP/gentle-headless-dependencies.txt"
+          cargo tree --locked --no-default-features --edges normal --prefix none > "$tree_path"
+          for package in arboard eframe egui egui_commonmark egui_extras gentle-gui rfd winit; do
+            if grep -Eq "^${package} v" "$tree_path"; then
+              echo "Desktop dependency '${package}' leaked into the headless graph"
+              grep -E "^${package} v" "$tree_path"
+              exit 1
+            fi
+          done
 
   macos:
     name: macOS
@@ -55,7 +355,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+        with:
+          # Tutorial review badges use per-file Git history during drift checks.
+          fetch-depth: 0
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -63,7 +366,7 @@ jobs:
           toolchain: stable
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -74,6 +377,15 @@ jobs:
 
       - name: Cargo check
         run: cargo check -q
+
+      - name: Agent tutorial discovery regressions
+        run: cargo test -q --locked --lib -j1 app::tests::agent_gui_context_ -- --test-threads=1
+
+      - name: Primer multi-reference regressions
+        run: 'cargo test -q --locked --lib -j1 engine::primer_specificity_multi::tests:: -- --test-threads=1'
+
+      - name: Glossary command regressions
+        run: 'cargo test -q --locked --lib -j1 engine_shell::tests::glossary_ -- --test-threads=1'
 
       - name: Cargo check (JavaScript adapter feature)
         run: cargo check -q --features js-interface
@@ -101,7 +413,7 @@ jobs:
       - name: Examples and tutorial schema/drift checks
         run: |
           cargo run --bin gentle_examples_docs -- --check
-          cargo run --bin gentle_examples_docs -- tutorial-check
+          python3 scripts/check_tutorial_checkouts.py --binary target/debug/gentle_examples_docs
 
       - name: Install Python test dependencies
         run: |
@@ -118,7 +430,7 @@ jobs:
         run: cargo test -q workflow_examples -- --test-threads=1
 
       - name: Full test suite
-        run: cargo test -q
+        run: cargo test -q --locked --workspace
 
       - name: Tutorial core CLI runtime smoke
         run: |
@@ -193,7 +505,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+        with:
+          # Tutorial review badges use per-file Git history during drift checks.
+          fetch-depth: 0
 
       - name: Install Linux system dependencies
         run: |
@@ -233,7 +548,7 @@ jobs:
           toolchain: stable
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -244,6 +559,15 @@ jobs:
 
       - name: Cargo check
         run: cargo check -q
+
+      - name: Agent tutorial discovery regressions
+        run: cargo test -q --locked --lib -j1 app::tests::agent_gui_context_ -- --test-threads=1
+
+      - name: Primer multi-reference regressions
+        run: 'cargo test -q --locked --lib -j1 engine::primer_specificity_multi::tests:: -- --test-threads=1'
+
+      - name: Glossary command regressions
+        run: 'cargo test -q --locked --lib -j1 engine_shell::tests::glossary_ -- --test-threads=1'
 
       - name: Cargo check (JavaScript adapter feature)
         run: cargo check -q --features js-interface
@@ -271,7 +595,7 @@ jobs:
       - name: Examples and tutorial schema/drift checks
         run: |
           cargo run --bin gentle_examples_docs -- --check
-          cargo run --bin gentle_examples_docs -- tutorial-check
+          python3 scripts/check_tutorial_checkouts.py --binary target/debug/gentle_examples_docs
 
       - name: ClawBio skill parity checks
         run: |
@@ -282,7 +606,7 @@ jobs:
         run: cargo test -q workflow_examples -- --test-threads=1
 
       - name: Full test suite
-        run: cargo test -q
+        run: cargo test --locked --workspace -j1
 
       - name: Tutorial core CLI runtime smoke
         run: |
@@ -351,8 +675,6 @@ jobs:
 
   windows:
     name: Windows
-    needs: select-platform
-    if: needs.select-platform.outputs.platform == 'windows'
     runs-on: windows-latest
     defaults:
       run:
@@ -360,7 +682,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+        with:
+          # Tutorial review badges use per-file Git history during drift checks.
+          fetch-depth: 0
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -368,7 +693,7 @@ jobs:
           toolchain: stable
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -379,6 +704,15 @@ jobs:
 
       - name: Cargo check
         run: cargo check -q
+
+      - name: Agent tutorial discovery regressions
+        run: cargo test -q --locked --lib -j1 app::tests::agent_gui_context_ -- --test-threads=1
+
+      - name: Primer multi-reference regressions
+        run: 'cargo test -q --locked --lib -j1 engine::primer_specificity_multi::tests:: -- --test-threads=1'
+
+      - name: Glossary command regressions
+        run: 'cargo test -q --locked --lib -j1 engine_shell::tests::glossary_ -- --test-threads=1'
 
       - name: Cargo check (JavaScript adapter feature)
         run: cargo check -q --features js-interface
@@ -395,9 +729,13 @@ jobs:
       - name: Build Windows binaries
         run: cargo build --features script-interfaces --bins
 
+      - name: CLI and MCP process-boundary regressions
+        run: cargo test -q --locked --test adapter_error_contract --test reporter_construct_handoff_cli
+
       - name: DNA viewer repro binary smoke
         run: |
           $modes = cargo run -q --bin gentle_dna_viewer_repro -- --list-modes
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if ([string]::IsNullOrWhiteSpace(($modes -join "`n"))) {
             throw "gentle_dna_viewer_repro did not report any modes"
           }
@@ -406,12 +744,16 @@ jobs:
       - name: Script adapter version smoke
         run: |
           cargo run --features js-interface --bin gentle_js -- --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo run --features lua-interface --bin gentle_lua -- --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Examples and tutorial schema/drift checks
         run: |
           cargo run --bin gentle_examples_docs -- --check
-          cargo run --bin gentle_examples_docs -- tutorial-check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/check_tutorial_checkouts.py --binary target/debug/gentle_examples_docs.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Install Python test dependencies
         run: |
@@ -423,33 +765,44 @@ jobs:
           if importlib.util.find_spec("pytest") is None:
               subprocess.check_call([sys.executable, "-m", "pip", "install", "pytest"])
           '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: ClawBio skill parity checks
         run: |
           python scripts/generate_clawbio_trigger_keywords.py --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pytest integrations/clawbio/skills/gentle-cloning/tests/ -q
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Workflow example runtime tests
         run: cargo test -q workflow_examples -- --test-threads=1
 
       - name: Full test suite
-        run: cargo test -q
+        run: cargo test -q --locked --workspace
 
       - name: Tutorial core CLI runtime smoke
         run: |
           cargo run --bin gentle_cli -- workflow '@docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo run --bin gentle_cli -- workflow '@docs/examples/workflows/load_and_digest_pgex.json'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo run --bin gentle_cli -- workflow '@docs/examples/workflows/guides_filter_and_generate_oligos.json'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo run --bin gentle_cli -- workflow '@docs/examples/workflows/digest_ligation_extract_region_minimal.json'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Internal preview reviewer smoke
         run: |
           $state = Join-Path $env:RUNNER_TEMP "gentle_preview_state.json"
           Remove-Item -ErrorAction SilentlyContinue $state
           cargo run --bin gentle_cli -- --state $state workflow '@docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo run --bin gentle_cli -- --state $state workflow '@docs/examples/workflows/digest_ligation_extract_region_minimal.json'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo run --bin gentle_cli -- --state $state primers design '{"DesignPrimerPairs":{"template":"pgex_fasta","roi_start_0based":100,"roi_end_0based":300,"forward":{"min_length":18,"max_length":22,"location_0based":null,"start_0based":80,"end_0based":130,"min_tm_c":50.0,"max_tm_c":72.0,"min_gc_fraction":0.2,"max_gc_fraction":0.8,"max_anneal_hits":5},"reverse":{"min_length":18,"max_length":22,"location_0based":null,"start_0based":280,"end_0based":340,"min_tm_c":50.0,"max_tm_c":72.0,"min_gc_fraction":0.2,"max_gc_fraction":0.8,"max_anneal_hits":5},"min_amplicon_bp":120,"max_amplicon_bp":400,"max_pairs":5,"report_id":"preview_pgex_fast"}}' --backend internal
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo run --bin gentle_cli -- --state $state primers show-report preview_pgex_fast
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Engine tests
         run: cargo test -q "engine::tests::"
@@ -457,7 +810,9 @@ jobs:
       - name: Graphics adaptive-default regression tests
         run: |
           cargo test -q default_configuration_graphics_prefers_adaptive_linear_letters
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo test -q apply_configuration_graphics_to_engine_state_keeps_adaptive_linear_defaults
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Glossary coverage guard
         run: cargo test -q --bin gentle_cli test_shell_forwarded_commands_are_documented_in_glossary
@@ -465,8 +820,11 @@ jobs:
       - name: EMBL parser regression tests
         run: |
           cargo test -q test_toy_small_cross_format_sequence_parity
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo test -q test_toy_multi_embl_parses_multiple_records
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo test -q test_embl_wrapped_feature_location_is_parsed
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Genome catalog regression test
         run: cargo test -q genomes::tests::test_repo_assets_genome_catalog_is_valid
@@ -478,7 +836,10 @@ jobs:
         run: |
           $archivePath = Join-Path $env:RUNNER_TEMP "gentle-src.tar"
           git archive --format=tar HEAD --output=$archivePath
-          $hasGeneratedTutorials = tar -tf $archivePath |
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $archiveEntries = tar -tf $archivePath
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $hasGeneratedTutorials = $archiveEntries |
             Select-String -Pattern '^docs/tutorial/generated/' -Quiet
           if ($hasGeneratedTutorials) {
             throw "docs/tutorial/generated unexpectedly present in git archive output"
@@ -491,10 +852,15 @@ jobs:
           $circular = Join-Path $env:RUNNER_TEMP "pgex.circular.svg"
 
           cargo run --bin gentle_cli -- --state $state op '{"LoadFile":{"path":"test_files/pGEX_3X.fa","as_id":"pgex"}}'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo run --bin gentle_cli -- --state $state op '{"SetDisplayVisibility":{"target":"Features","visible":false}}'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo run --bin gentle_cli -- --state $state op '{"SetDisplayVisibility":{"target":"MethylationSites","visible":false}}'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo run --bin gentle_cli -- --state $state render-svg pgex linear $linear
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo run --bin gentle_cli -- --state $state render-svg pgex circular $circular
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
           if (!(Test-Path $linear) -or (Get-Item $linear).Length -eq 0) {
             throw "Linear SVG was not written"
@@ -506,7 +872,9 @@ jobs:
   ci-summary:
     name: CI / selected platform
     needs:
+      - release-policy
       - select-platform
+      - headless-linux
       - macos
       - linux
       - windows
@@ -518,6 +886,8 @@ jobs:
         shell: bash
         env:
           PLATFORM: ${{ needs.select-platform.outputs.platform }}
+          RELEASE_POLICY_RESULT: ${{ needs.release-policy.result }}
+          HEADLESS_RESULT: ${{ needs.headless-linux.result }}
           MACOS_RESULT: ${{ needs.macos.result }}
           LINUX_RESULT: ${{ needs.linux.result }}
           WINDOWS_RESULT: ${{ needs.windows.result }}
@@ -534,6 +904,18 @@ jobs:
           esac
           echo "Selected platform: $PLATFORM"
           echo "Selected platform result: $result"
+          echo "Release candidate safety result: $RELEASE_POLICY_RESULT"
+          echo "Headless Linux result: $HEADLESS_RESULT"
+          echo "Required Windows result: $WINDOWS_RESULT"
+          if [[ "$RELEASE_POLICY_RESULT" != "success" ]]; then
+            exit 1
+          fi
+          if [[ "$HEADLESS_RESULT" != "success" ]]; then
+            exit 1
+          fi
+          if [[ "$WINDOWS_RESULT" != "success" ]]; then
+            exit 1
+          fi
           if [[ "$result" != "success" ]]; then
             exit 1
           fi

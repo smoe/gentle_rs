@@ -1,5 +1,7 @@
 //! CLI binary entry point exposing direct commands and shared shell routing.
 
+#[path = "gentle_cli/allele_hash_screen.rs"]
+mod gentle_cli_allele_hash_screen;
 #[path = "gentle_cli/args.rs"]
 mod gentle_cli_args;
 #[path = "gentle_cli/candidates.rs"]
@@ -18,10 +20,14 @@ mod gentle_cli_reference;
 mod gentle_cli_rendering;
 #[path = "gentle_cli/reporters.rs"]
 mod gentle_cli_reporters;
+#[path = "gentle_cli/rescue_screen.rs"]
+mod gentle_cli_rescue_screen;
 #[path = "gentle_cli/resources.rs"]
 mod gentle_cli_resources;
 #[path = "gentle_cli/services.rs"]
 mod gentle_cli_services;
+#[path = "gentle_cli/tss_output.rs"]
+mod gentle_cli_tss_output;
 
 use gentle::{
     about,
@@ -45,8 +51,11 @@ use gentle::{
         default_catalog_discovery_token, default_helper_semantics_vocabulary_discovery_label,
     },
     resource_status::resource_catalog_status,
+    runtime_status,
     service_readiness::service_readiness_status,
 };
+#[cfg(test)]
+use gentle_protocol::CollectionSubjectRef;
 use gentle_protocol::{EngineError, ErrorCode};
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
@@ -65,6 +74,7 @@ use gentle::engine::{
 };
 
 const DEFAULT_STATE_PATH: &str = ".gentle_state.json";
+const CLI_STACK_SIZE: usize = 16 * 1024 * 1024;
 const DEFAULT_REBASE_RESOURCE_PATH: &str = "data/resources/rebase.enzymes.json";
 const DEFAULT_JASPAR_RESOURCE_PATH: &str = "data/resources/jaspar.motifs.json";
 const DEFAULT_JASPAR_REMOTE_METADATA_PATH: &str = "data/resources/jaspar.remote_metadata.json";
@@ -478,8 +488,9 @@ fn usage_text() -> String {
   gentle_cli --help\n  \
   gentle_cli --version\n  \
   gentle_cli help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|gui-menu|js|lua|mcp]\n  \
-  gentle_cli [--state PATH|--project PATH] [--progress|--progress-stderr|--progress-stdout] COMMAND ...\n\n  \
+  gentle_cli [--state PATH|--project PATH] [--progress|--progress-stderr|--progress-stdout] [--full-report] COMMAND ...\n\n  \
   gentle_cli [--state PATH|--project PATH] capabilities\n  \
+  gentle_cli [--state PATH|--project PATH] introspect facts|capabilities|readiness|verify-effects|all [...]\n  \
   gentle_cli [--state PATH|--project PATH] doctor --agent\n  \
   gentle_cli [--state PATH|--project PATH] op '<operation-json>'|JSON_FILE\n  \
   gentle_cli [--state PATH|--project PATH] workflow '<workflow-json>'|JSON_FILE\n  \
@@ -492,9 +503,17 @@ fn usage_text() -> String {
   gentle_cli reporters list [--filter TEXT] [--limit N] [--output PATH]\n  \
   gentle_cli reporters recommend [--assay NAME] [--chassis HOST] [--color COLOR] [--class CLASS] [--max-length-bp N]\n  \
   gentle_cli reporters export-corpus OUTPUT.json|OUTPUT.jsonl [--format json|jsonl]\n\n  \
-  gentle_cli reporters plan-handoff CANDIDATE_SET.json [--candidate-id ID] [--catalog PATH] [--backbone-seq-id ID] [--backbone-path PATH] [--reference-fragment-seq-id ID] [--alternate-fragment-seq-id ID] [--output-prefix PREFIX] [--output FILE.json]\n\n  \
+  gentle_cli reporters plan-handoff CANDIDATE_SET.json [--candidate-id ID] [--catalog PATH] [--backbone-seq-id ID] [--backbone-path PATH] [--backbone-catalog-id ID] [--helper-catalog PATH] [--reference-fragment-seq-id ID] [--alternate-fragment-seq-id ID] [--output-prefix PREFIX] [--output FILE.json]\n\n  \
+  gentle_cli [--state PATH|--project PATH] promoters panel-readiness request REQUEST_JSON_OR_@FILE [--path REPORT.json]\n  \
+  gentle_cli [--state PATH|--project PATH] promoters panel-readiness proposal PROPOSAL_JSON_OR_@FILE [--approve DIGEST] [--path REPORT.json]\n  \
+  gentle_cli [--state PATH|--project PATH] promoters panel-plan REQUEST_JSON_OR_@FILE [--path PROPOSAL.json]\n  \
+  gentle_cli [--state PATH|--project PATH] promoters panel-materialize PROPOSAL_JSON_OR_@FILE --approve DIGEST\n\n  \
+  gentle_cli rescue-screen --transcript-fasta PATH [--transcript-fasta PATH ...] --genes SYM[,SYM,...] [--gene SYM ...] (--reads PATH [--reads PATH ...] | --read-pair R1,R2 [--read-pair R1,R2 ...]) [--exon-fasta PATH] [--junction-fasta PATH] [--exon-intron-boundary-fasta PATH] [--intron-fasta PATH] [--genomic-region-fasta PATH] [--read-id-allowlist PATH] [--salmon-unmapped-names PATH] [--salmon-mappings-sam PATH] [--kmer-len N] [--min-kmer-hits N] [--gene-symbol-tag KEY ...] --output-prefix PREFIX\n\n  \
+  gentle_cli [--state PATH|--project PATH] allele-hash-screen --gene GENE --transcript-fasta PATH (--variant-table PATH | --vcf PATH --transcript-map PATH [--vcf-sample SAMPLE]) [--from-rna-report REPORT_ID] [--read-file PATH ...] [--read-pair R1,R2 ...] [--salmon-unmapped-names PATH] [--salmon-mappings-sam PATH] [--read-id-allowlist PATH] [--kmer-len N] [--min-unique-kmer-hits N] [--min-informative-reads N] [--balanced-band-lo F] [--balanced-band-hi F] [--max-inline-read-calls N] --out OUT_DIR\n\n  \
   Tip: pass @file.json instead of inline JSON\n  \
-  --project is an alias of --state for project.gentle.json files\n\n  \
+  --project is an alias of --state for project.gentle.json files\n  \
+  TSS exports print a compact summary by default; --full-report restores complete result JSON on stdout.\n  \
+  Full scored data is always saved as OUTPUT_DIR/report.json when exporting.\n\n  \
   Shared command reference (generated from docs/glossary.json):\n  \
   {shell_help}",
         shell_help = shell_help_text()
@@ -515,6 +534,10 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "routines",
     "gene-groups",
     "gene-sets",
+    "gene-locus",
+    "gel-image",
+    "promoters",
+    "collections",
     "planning",
     "gibson",
     "panels",
@@ -535,6 +558,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "splicing-refs",
     "align",
     "reverse-translate",
+    "sequence-design",
     "rna-reads",
     "cutrun",
     "tracks",
@@ -675,12 +699,14 @@ struct GlobalCliArgs {
     cmd_idx: usize,
     progress_sink: Option<ProgressSink>,
     allow_screenshots: bool,
+    full_report: bool,
 }
 
 fn parse_global_args(args: &[String]) -> Result<GlobalCliArgs, String> {
     let mut state_path = DEFAULT_STATE_PATH.to_string();
     let mut progress_sink: Option<ProgressSink> = None;
     let allow_screenshots = false;
+    let mut full_report = false;
     let mut idx = 1usize;
 
     while idx < args.len() {
@@ -700,6 +726,10 @@ fn parse_global_args(args: &[String]) -> Result<GlobalCliArgs, String> {
                 progress_sink = Some(ProgressSink::Stdout);
                 idx += 1;
             }
+            "--full-report" => {
+                full_report = true;
+                idx += 1;
+            }
             "--allow-screenshots" => {
                 return Err("--allow-screenshots is disabled by security policy".to_string());
             }
@@ -712,6 +742,7 @@ fn parse_global_args(args: &[String]) -> Result<GlobalCliArgs, String> {
         cmd_idx: idx,
         progress_sink,
         allow_screenshots,
+        full_report,
     })
 }
 
@@ -903,6 +934,48 @@ impl ProgressPrinter {
         if let Some(count) = p.accepted_assay_count {
             parts.push(format!("accepted_assays={count}"));
         }
+        if let Some(progress) = p.primer3_progress.as_ref() {
+            parts.push(format!("primer3_record={}", progress.record));
+            parts.push(format!(
+                "primer3_work={}/{}",
+                progress.completed, progress.bound
+            ));
+            if let Some(fraction) = progress.fraction() {
+                parts.push(format!("primer3_percent={:.1}", fraction * 100.0));
+            }
+            if let Some(target_id) = progress.search_target_id.as_deref() {
+                parts.push(format!("search_target={target_id}"));
+            }
+            if let Some(record_id) = progress.search_record_id.as_deref() {
+                parts.push(format!("search_record={record_id}"));
+            }
+            if let (Some(ordinal), Some(count)) = (
+                progress.bounded_record_ordinal,
+                progress.bounded_record_count,
+            ) {
+                parts.push(format!("bounded_record={ordinal}/{count}"));
+            }
+            if let Some(bound) = progress.bounded_candidate_pair_upper_bound {
+                parts.push(format!("bounded_pair_upper={bound}"));
+            }
+            if let Some(bound) = progress.bounded_candidate_pair_total_upper_bound {
+                parts.push(format!("bounded_pair_total_upper={bound}"));
+            }
+            if let Some(elapsed_ms) = progress.elapsed_ms {
+                parts.push(format!("primer3_elapsed_ms={elapsed_ms}"));
+            }
+            if let Some(remaining) = progress.work_remaining {
+                parts.push(format!("primer3_work_remaining={remaining}"));
+            }
+            if let Some(projected_total_ms) = progress.projected_total_ms {
+                parts.push(format!(
+                    "primer3_uncertain_projected_total_ms={projected_total_ms}"
+                ));
+            }
+            if let Some(assessment) = progress.runtime_assessment.as_deref() {
+                parts.push(format!("primer3_runtime_assessment={assessment}"));
+            }
+        }
         parts.push(format!("max_output={}", p.max_output));
         parts.push(format!("done={}", p.done));
         parts.push(format!("detail={}", p.detail));
@@ -936,6 +1009,17 @@ impl ProgressPrinter {
 
     fn on_progress(&mut self, progress: OperationProgress) {
         match progress {
+            OperationProgress::SequenceDesign {
+                evaluated_candidates,
+                requested_candidate_budget,
+            } => {
+                self.print_line(&format!("progress sequence-design evaluated_candidates={evaluated_candidates} requested_budget={requested_candidate_budget}"));
+            }
+            OperationProgress::Workflow { completed, total } => {
+                self.print_line(&format!(
+                    "progress workflow completed={completed} total={total}"
+                ));
+            }
             OperationProgress::Tfbs(p) => self.on_tfbs_progress(p),
             OperationProgress::GenomePrepare(p) => self.on_genome_prepare_progress(p),
             OperationProgress::GenomeTrackImport(p) => self.on_genome_track_import_progress(p),
@@ -943,6 +1027,17 @@ impl ProgressPrinter {
             OperationProgress::PrimerDesign(p) => self.on_primer_design_progress(p),
             OperationProgress::ReadAcquisition(p) => self.on_read_acquisition_progress(p),
             OperationProgress::RnaReadInterpret(p) => self.on_rna_read_interpret_progress(p),
+            OperationProgress::GenomicRegionHomology(p) => {
+                let target = p
+                    .target_genome_id
+                    .as_deref()
+                    .map(|value| format!(" target={value}"))
+                    .unwrap_or_default();
+                self.print_line(&format!(
+                    "progress region-homology phase={} target_ordinal={}/{}{} done={} detail={}",
+                    p.phase, p.target_ordinal, p.target_count, target, p.done, p.detail
+                ));
+            }
         }
     }
 }
@@ -1027,9 +1122,26 @@ fn genome_gene_matches_filter(
 }
 
 fn main() {
-    if let Err(e) = run() {
+    if let Err(error) = runtime_status::install_sigusr1_stderr_dump_thread() {
+        eprintln!("Warning: could not install SIGUSR1 runtime-status diagnostics: {error}");
+    }
+    if let Err(e) = run_on_worker() {
         eprintln!("{}", cli_error_payload(&e));
         std::process::exit(1);
+    }
+}
+
+fn run_on_worker() -> Result<(), String> {
+    // Cover parsing and direct engine routes, not only shared-shell workers.
+    // RUST_MIN_STACK cannot enlarge the Windows process main thread.
+    let worker = std::thread::Builder::new()
+        .name("gentle-cli".to_string())
+        .stack_size(CLI_STACK_SIZE)
+        .spawn(run)
+        .map_err(|error| format!("Could not start CLI worker: {error}"))?;
+    match worker.join() {
+        Ok(result) => result,
+        Err(payload) => std::panic::resume_unwind(payload),
     }
 }
 
@@ -1087,6 +1199,7 @@ fn run() -> Result<(), String> {
     let command = &args[cmd_idx];
 
     if let Some(shell_command) = parse_forwarded_shell_command(&args, cmd_idx)? {
+        let export_dir = gentle_cli_tss_output::shell_export_directory(&shell_command);
         let mut engine = GentleEngine::from_state(load_state(&state_path)?);
         let run = execute_shell_command_with_options(&mut engine, &shell_command, &shell_options)?;
         if run.state_changed {
@@ -1095,7 +1208,11 @@ fn run() -> Result<(), String> {
                 .save_to_path(&state_path)
                 .map_err(|e| e.to_string())?;
         }
-        return print_json(&run.output);
+        return print_json(&gentle_cli_tss_output::shell_output(
+            run.output,
+            export_dir.as_deref(),
+            global.full_report,
+        ));
     }
 
     match command.as_str() {
@@ -1121,6 +1238,10 @@ fn run() -> Result<(), String> {
         "resources" => gentle_cli_resources::handle_resources_family(&args, cmd_idx),
         "services" => gentle_cli_services::handle_services_family(&args, cmd_idx),
         "reporters" => gentle_cli_reporters::handle_reporters_family(&args, cmd_idx),
+        "rescue-screen" => gentle_cli_rescue_screen::handle_rescue_screen(&args, cmd_idx),
+        "allele-hash-screen" => {
+            gentle_cli_allele_hash_screen::handle_allele_hash_screen(&args, cmd_idx, &state_path)
+        }
         "shell" => {
             if args.len() <= cmd_idx + 1 {
                 usage();
@@ -1130,6 +1251,7 @@ fn run() -> Result<(), String> {
             }
             let line = args[cmd_idx + 1..].join(" ");
             let command = parse_shell_line(&line)?;
+            let export_dir = gentle_cli_tss_output::shell_export_directory(&command);
             let mut engine = GentleEngine::from_state(load_state(&state_path)?);
             let run = execute_shell_command_with_options(&mut engine, &command, &shell_options)?;
             if run.state_changed {
@@ -1138,7 +1260,11 @@ fn run() -> Result<(), String> {
                     .save_to_path(&state_path)
                     .map_err(|e| e.to_string())?;
             }
-            print_json(&run.output)
+            print_json(&gentle_cli_tss_output::shell_output(
+                run.output,
+                export_dir.as_deref(),
+                global.full_report,
+            ))
         }
         "candidates" => gentle_cli_candidates::handle_candidates_family(
             &args,
@@ -1149,6 +1275,13 @@ fn run() -> Result<(), String> {
         "capabilities" => {
             print_json(&GentleEngine::capabilities())?;
             Ok(())
+        }
+        "introspect" => {
+            let line = args[cmd_idx..].join(" ");
+            let command = parse_shell_line(&line)?;
+            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+            let run = execute_shell_command_with_options(&mut engine, &command, &shell_options)?;
+            print_json(&run.output)
         }
         "doctor" => {
             if args.len() != cmd_idx + 2 || args[cmd_idx + 1] != "--agent" {
@@ -1201,6 +1334,7 @@ fn run() -> Result<(), String> {
             let json = load_json_arg(&args[cmd_idx + 1])?;
             let op: Operation =
                 serde_json::from_str(&json).map_err(|e| format!("Invalid operation JSON: {e}"))?;
+            let export_dir = gentle_cli_tss_output::export_directory(&op);
 
             let mut engine = GentleEngine::from_state(load_state(&state_path)?);
             let result = if let Some(sink) = global.progress_sink {
@@ -1218,7 +1352,11 @@ fn run() -> Result<(), String> {
                 .state()
                 .save_to_path(&state_path)
                 .map_err(|e| e.to_string())?;
-            print_json(&result)
+            print_json(&gentle_cli_tss_output::operation_output(
+                result,
+                export_dir.as_deref(),
+                global.full_report,
+            )?)
         }
         "workflow" => {
             if args.len() <= cmd_idx + 1 {
@@ -1227,6 +1365,11 @@ fn run() -> Result<(), String> {
             }
             let json = load_json_arg(&args[cmd_idx + 1])?;
             let workflow = parse_workflow_json_payload(&json)?;
+            let export_dirs: Vec<_> = workflow
+                .ops
+                .iter()
+                .map(gentle_cli_tss_output::export_directory)
+                .collect();
 
             let mut engine = GentleEngine::from_state(load_state(&state_path)?);
             let results = if let Some(sink) = global.progress_sink {
@@ -1244,7 +1387,18 @@ fn run() -> Result<(), String> {
                 .state()
                 .save_to_path(&state_path)
                 .map_err(|e| e.to_string())?;
-            print_json(&results)
+            let output = results
+                .into_iter()
+                .zip(export_dirs)
+                .map(|(result, directory)| {
+                    gentle_cli_tss_output::operation_output(
+                        result,
+                        directory.as_deref(),
+                        global.full_report,
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            print_json(&output)
         }
         _ => {
             usage();
@@ -1359,6 +1513,113 @@ mod tests {
     }
 
     #[test]
+    fn sequence_design_cli_and_shared_shell_preview_apply_parity() {
+        assert_sequence_design_cli_parity(false, false, false);
+    }
+
+    #[test]
+    fn sequence_design_conflict_cli_and_shared_shell_preview_apply_parity() {
+        assert_sequence_design_cli_parity(true, false, false);
+    }
+
+    #[test]
+    fn sequence_design_gc_cli_and_shared_shell_preview_apply_parity() {
+        for conflict in [false, true] {
+            assert_sequence_design_cli_parity(conflict, true, false);
+        }
+    }
+
+    #[test]
+    fn sequence_design_window_gc_cli_and_shared_shell_preview_apply_parity() {
+        for conflict in [false, true] {
+            for global in [false, true] {
+                assert_sequence_design_cli_parity(conflict, global, true);
+            }
+        }
+    }
+
+    fn assert_sequence_design_cli_parity(conflict_directed: bool, gc: bool, window: bool) {
+        // Literal synthetic MEF insert, not a natural assay template.
+        let mut request = serde_json::json!({
+            "schema":"gentle.dna_sequence_design_request.v1",
+            "target":{"kind":"inline_sequence", "sequence":"ATGGAATTCTAA"},
+            "purpose":"synthetic_coding_insert",
+            "cds":{"start_0based":0, "end_0based_exclusive":12},
+            "protein_sequence":"MEF", "genetic_code":1,
+            "avoid_motifs":[{"pattern":"GAATTC", "strand":"both"}],
+            "max_evaluations":4096, "output_seq_id":"synthetic_without_ecori"
+        });
+        if conflict_directed {
+            request["search_strategy"] = "conflict_directed".into();
+        }
+        if gc {
+            request["gc_content"] =
+                serde_json::json!({"min_basis_points": 2500, "max_basis_points": 2500});
+        }
+        if window {
+            request["gc_window"] = serde_json::json!({"window_bp": 6, "min_basis_points": 0, "max_basis_points": 5000});
+        }
+        let tokens = vec!["sequence-design".into(), "plan".into(), request.to_string()];
+        let mut args = vec!["gentle_cli".into()];
+        args.extend(tokens.clone());
+        let state = ProjectState::default();
+        let (changed, cli_output, planned_state) = execute_forwarded_like_cli(state.clone(), args);
+        let (shell_changed, shell_output, _) = execute_shared_shell_tokens(state.clone(), tokens);
+        assert!(!changed && !shell_changed);
+        assert_eq!(cli_output, shell_output);
+        assert_eq!(
+            serde_json::to_value(&planned_state).unwrap(),
+            serde_json::to_value(&state).unwrap()
+        );
+        let preview = &cli_output["result"]["dna_sequence_design"];
+        assert_eq!(
+            preview["output_sequence"],
+            if gc { "ATGGAGTTTTAA" } else { "ATGGAATTTTAA" }
+        );
+        assert_eq!(
+            preview["algorithm"],
+            match (conflict_directed, gc, window) {
+                (true, _, true) => "synonymous_conflict_search_window_gc_v1",
+                (false, _, true) => "synonymous_full_enumeration_window_gc_v1",
+                (true, true, false) => "synonymous_conflict_search_gc_v1",
+                (false, true, false) => "synonymous_full_enumeration_gc_v1",
+                (true, false, false) => "synonymous_conflict_search_v1",
+                (false, false, false) => "synonymous_full_enumeration_v1",
+            }
+        );
+        if gc {
+            assert_eq!(preview["gc_content"]["output"]["gc_bases"], 3);
+        }
+        if window {
+            assert_eq!(preview["gc_window"]["window_count"], 7);
+            assert!(
+                preview["gc_window"]["output"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|r| r["satisfies_bounds"] == true)
+            );
+        }
+        let tokens = vec![
+            "sequence-design".into(),
+            "apply".into(),
+            preview.to_string(),
+            "--approve".into(),
+            preview["approval_digest"].as_str().unwrap().into(),
+        ];
+        let mut args = vec!["gentle_cli".into()];
+        args.extend(tokens.clone());
+        let (changed, cli_output, cli_state) = execute_forwarded_like_cli(state.clone(), args);
+        let (shell_changed, shell_output, shell_state) = execute_shared_shell_tokens(state, tokens);
+        assert!(changed && shell_changed);
+        assert_eq!(cli_output, shell_output);
+        assert_eq!(
+            cli_state.sequences["synthetic_without_ecori"].get_forward_string(),
+            shell_state.sequences["synthetic_without_ecori"].get_forward_string()
+        );
+    }
+
+    #[test]
     fn test_parse_rebase_site_with_slash_notation() {
         let (seq, cut, overlap) = parse_rebase_site("GAATTC (1/5)").unwrap();
         assert_eq!(seq, "GAATTC");
@@ -1422,7 +1683,26 @@ mod tests {
         assert_eq!(parsed.state_path, "x.json");
         assert_eq!(parsed.progress_sink, Some(ProgressSink::Stdout));
         assert!(!parsed.allow_screenshots);
+        assert!(!parsed.full_report);
         assert_eq!(parsed.cmd_idx, 4);
+    }
+
+    #[test]
+    fn test_parse_global_args_full_report_precedes_command() {
+        let args = [
+            "gentle_cli",
+            "--full-report",
+            "--state",
+            "x.json",
+            "features",
+            "tss-tfbs-profiles",
+        ]
+        .map(str::to_string);
+        let parsed = parse_global_args(&args).unwrap();
+        assert!(parsed.full_report);
+        assert_eq!(parsed.cmd_idx, 4);
+        assert_eq!(parsed.state_path, "x.json");
+        assert!(usage_text().contains("--full-report"));
     }
 
     #[test]
@@ -1873,6 +2153,22 @@ mod tests {
             }
         ));
 
+        let primerbank_search = parse_shell_tokens(&[
+            "primers".to_string(),
+            "primerbank".to_string(),
+            "search".to_string(),
+            "TP73".to_string(),
+            "--by".to_string(),
+            "gene-symbol".to_string(),
+            "--species".to_string(),
+            "human".to_string(),
+        ])
+        .expect("parse PrimerBank search");
+        assert!(matches!(
+            primerbank_search,
+            ShellCommand::PrimersPrimerBankSearch { .. }
+        ));
+
         let primers_test_cdna_pcr = parse_shell_tokens(&[
             "primers".to_string(),
             "test-cdna-pcr".to_string(),
@@ -2125,6 +2421,163 @@ mod tests {
         ];
         let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
         assert!(matches!(parsed, Some(ShellCommand::ServicesProvidersList)));
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_gene_locus_through_shared_parser() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "gene-locus".to_string(),
+            "prepare".to_string(),
+            r#"{"schema":"gentle.gene_locus_evidence_preparation_request.v1","gene_query":"SERPINE1","species":"homo_sapiens","assembly":"GRCh38","allow_ensembl_network":false,"svg_path":"serpine1.svg"}"#.to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        assert!(matches!(
+            parsed,
+            Some(ShellCommand::PrepareGeneLocusEvidence { request })
+                if request.gene_query == "SERPINE1" && request.svg_path == "serpine1.svg"
+        ));
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_primerbank_through_shared_parser() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "primers".to_string(),
+            "primerbank".to_string(),
+            "show".to_string(),
+            "100000001a1".to_string(),
+            "--html".to_string(),
+            "saved.html".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        assert!(matches!(
+            parsed,
+            Some(ShellCommand::PrimersPrimerBankSearch {
+                source_html_path: Some(path),
+                ..
+            }) if path == "saved.html"
+        ));
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_primer_specificity_through_shared_parser() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "primers".to_string(),
+            "specificity".to_string(),
+            "primer_report_1".to_string(),
+            "--pair-rank".to_string(),
+            "2".to_string(),
+            "--target-genome".to_string(),
+            "GRCh38.p14".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1)
+            .expect("parse forwarded primer specificity")
+            .expect("primers is a forwarded shell root");
+        assert!(matches!(
+            parsed,
+            ShellCommand::PrimersSpecificity {
+                primer_report_id,
+                pair_rank: Some(2),
+                target_genome_id,
+                ..
+            } if primer_report_id.as_deref() == Some("primer_report_1")
+                && target_genome_id == "GRCh38.p14"
+        ));
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_collection_primer_specificity() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "collections".to_string(),
+            "run".to_string(),
+            "primer-specificity".to_string(),
+            "resolution:cofactors".to_string(),
+            "--member-report".to_string(),
+            "gene_id:ensg1=primer_report_1".to_string(),
+            "--pair-rank".to_string(),
+            "1".to_string(),
+            "--target-genome".to_string(),
+            "GRCh38.p14".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1)
+            .expect("parse forwarded collection specificity")
+            .expect("collections is a forwarded shell root");
+        assert!(matches!(
+            parsed,
+            ShellCommand::CollectionsRunPrimerSpecificity {
+                collection_subject:
+                    CollectionSubjectRef::GeneSetResolution { report_id },
+                member_bindings,
+                pair_rank: Some(1),
+                target_genome_id,
+                ..
+            } if report_id == "resolution:cofactors"
+                && member_bindings.len() == 1
+                && target_genome_id == "GRCh38.p14"
+        ));
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_collection_restriction_scan() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "collections".to_string(),
+            "run".to_string(),
+            "restriction-scan".to_string(),
+            "resolution:cofactors".to_string(),
+            "--member-sequence".to_string(),
+            "gene_id:ensg1=seq_a".to_string(),
+            "--enzyme".to_string(),
+            "EcoRI".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1)
+            .expect("parse forwarded collection restriction scan")
+            .expect("collections is a forwarded shell root");
+        assert!(matches!(
+            parsed,
+            ShellCommand::CollectionsRunRestrictionScan {
+                collection_subject:
+                    CollectionSubjectRef::GeneSetResolution { report_id },
+                member_bindings,
+                enzymes,
+                ..
+            } if report_id == "resolution:cofactors"
+                && member_bindings.len() == 1
+                && enzymes == ["EcoRI"]
+        ));
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_collection_tfbs_scan() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "collections".to_string(),
+            "run".to_string(),
+            "tfbs-scan".to_string(),
+            "resolution:promoters".to_string(),
+            "--member-sequence".to_string(),
+            "gene_id:ensg1=seq_a".to_string(),
+            "--motif".to_string(),
+            "SP1".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1)
+            .expect("parse forwarded collection TFBS scan")
+            .expect("collections is a forwarded shell root");
+        assert!(matches!(
+            parsed,
+            ShellCommand::CollectionsRunTfbsScan {
+                collection_subject:
+                    CollectionSubjectRef::GeneSetResolution { report_id },
+                member_bindings,
+                motifs,
+                ..
+            } if report_id == "resolution:promoters"
+                && member_bindings.len() == 1
+                && motifs == ["SP1"]
+        ));
     }
 
     #[test]
@@ -2639,6 +3092,10 @@ mod tests {
             "toy_ctcf".to_string(),
             "--read-report".to_string(),
             "toy_cutrun_reads".to_string(),
+            "--catalog".to_string(),
+            "cutrun.json".to_string(),
+            "--cache-dir".to_string(),
+            "cutrun-cache".to_string(),
             "--promoter-search-start".to_string(),
             "10".to_string(),
             "--promoter-search-end".to_string(),
@@ -2659,6 +3116,8 @@ mod tests {
                 seq_id,
                 dataset_ids,
                 read_report_ids,
+                catalog_path,
+                cache_dir,
                 promoter_search_start_0based,
                 promoter_search_end_0based_exclusive,
                 neighbor_window_bp,
@@ -2668,6 +3127,8 @@ mod tests {
                 if seq_id == "toy_slice"
                     && dataset_ids == vec!["toy_ctcf".to_string()]
                     && read_report_ids == vec!["toy_cutrun_reads".to_string()]
+                    && catalog_path.as_deref() == Some("cutrun.json")
+                    && cache_dir.as_deref() == Some("cutrun-cache")
                     && promoter_search_start_0based == Some(10)
                     && promoter_search_end_0based_exclusive == Some(180)
                     && neighbor_window_bp == 42
@@ -3046,6 +3507,10 @@ mod tests {
     fn assert_forwarded_services_dispatch_matches_shared_shell_execution(
         forwarded_args: Vec<String>,
     ) {
+        // Status, handoff and guide read JASPAR. Keep sync-jaspar's temporary
+        // registry replacement/reset outside this entire two-adapter comparison.
+        let _serial = lock_jaspar_tests();
+
         fn normalize_macos_dyld_pid(text: &str) -> Option<String> {
             let mut rest = text;
             let mut normalized = String::new();
@@ -3313,6 +3778,58 @@ mod tests {
         );
     }
 
+    fn write_dbsnp_test_catalog(
+        catalog_path: &Path,
+        fasta_path: &Path,
+        ann_path: &Path,
+        cache_dir: &Path,
+    ) {
+        fs::write(
+            catalog_path,
+            json!({
+                "ToyGenome": {
+                    "description": "toy dbsnp genome",
+                    "sequence_local": fasta_path,
+                    "annotations_local": ann_path,
+                    "cache_dir": cache_dir,
+                }
+            })
+            .to_string(),
+        )
+        .expect("write catalog");
+    }
+
+    #[test]
+    fn test_dbsnp_fixture_catalog_preserves_escaped_paths() {
+        let td = tempdir().expect("tempdir");
+        let catalog_path = td.path().join("catalog.json");
+        // Synthetic path strings exercise JSON escaping on every host, without
+        // requiring foreign-platform paths to exist or resolve locally.
+        for root in [
+            r"C:\Users\RUNNER~1\AppData\Local\Temp\toy genome",
+            r"\\server\share\toy genome",
+            r"\\?\C:\Users\runneradmin\toy genome",
+            r#"/tmp/toy "quoted" genome"#,
+        ] {
+            let fasta_path = Path::new(root).join("toy.fa");
+            let ann_path = Path::new(root).join("toy.gtf");
+            let cache_dir = Path::new(root).join("cache");
+            write_dbsnp_test_catalog(&catalog_path, &fasta_path, &ann_path, &cache_dir);
+            let catalog = gentle::genomes::GenomeCatalog::from_json_file(
+                catalog_path.to_str().expect("UTF-8 catalog path"),
+            )
+            .expect("fixture must load through the production catalog parser");
+            assert_eq!(catalog.list_genomes(), vec!["ToyGenome".to_string()]);
+            let entries: HashMap<String, gentle::genomes::GenomeCatalogEntry> =
+                serde_json::from_slice(&fs::read(&catalog_path).expect("read catalog"))
+                    .expect("typed catalog entries");
+            let entry = &entries["ToyGenome"];
+            assert_eq!(entry.sequence_local.as_deref(), fasta_path.to_str());
+            assert_eq!(entry.annotations_local.as_deref(), ann_path.to_str());
+            assert_eq!(entry.cache_dir.as_deref(), cache_dir.to_str());
+        }
+    }
+
     #[inline(never)]
     fn run_forwarded_dbsnp_fetch_dispatch_parity_test() {
         let _env_lock = TEST_ENV_LOCK.lock().expect("env lock");
@@ -3332,23 +3849,7 @@ mod tests {
         )
         .expect("write gtf");
         let catalog_path = td.path().join("catalog.json");
-        fs::write(
-            &catalog_path,
-            format!(
-                r#"{{
-  "ToyGenome": {{
-    "description": "toy dbsnp genome",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
-  }}
-}}"#,
-                fasta_path.display(),
-                ann_path.display(),
-                cache_dir.display()
-            ),
-        )
-        .expect("write catalog");
+        write_dbsnp_test_catalog(&catalog_path, &fasta_path, &ann_path, &cache_dir);
         let catalog_path_str = catalog_path.to_string_lossy().to_string();
         let mock_dir = td.path().join("mock_dbsnp");
         fs::create_dir_all(&mock_dir).expect("create mock dir");
@@ -3642,6 +4143,90 @@ mod tests {
                 .keys()
                 .cloned()
                 .collect::<std::collections::BTreeSet<_>>()
+        );
+    }
+
+    #[test]
+    fn test_forwarded_transcript_assay_operation_json_matches_shared_shell_execution() {
+        fn strip_generated_at(value: &mut serde_json::Value) {
+            match value {
+                serde_json::Value::Object(map) => {
+                    map.remove("generated_at_unix_ms");
+                    for value in map.values_mut() {
+                        strip_generated_at(value);
+                    }
+                }
+                serde_json::Value::Array(values) => {
+                    for value in values {
+                        strip_generated_at(value);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let mut setup = GentleEngine::default();
+        setup
+            .apply(Operation::LoadFile {
+                path:
+                    "test_files/fixtures/transcript_assay_panel/patz1/patz1_assay_minus_strand.gb"
+                        .to_string(),
+                as_id: Some("patz1_transcript_assay_demo".to_string()),
+            })
+            .expect("load transcript assay fixture");
+        let state = setup.state().clone();
+
+        let workflow: serde_json::Value = serde_json::from_str(include_str!(
+            "../../docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json"
+        ))
+        .expect("parse PATZ1 transcript assay workflow");
+        let mut operation = workflow["workflow"]["ops"][2].clone();
+        operation["DesignTranscriptAssayPanel"]
+            .as_object_mut()
+            .expect("endpoint operation payload")
+            .remove("path");
+
+        let td = tempdir().expect("tempdir");
+        let request_path = td.path().join("endpoint_operation.json");
+        fs::write(
+            &request_path,
+            serde_json::to_vec_pretty(&operation).expect("serialize operation"),
+        )
+        .expect("write operation request");
+        let operand = format!("@{}", request_path.display());
+        let forwarded_args = vec![
+            "gentle_cli".to_string(),
+            "primers".to_string(),
+            "design-transcript-assay-panel".to_string(),
+            operand,
+            "--backend".to_string(),
+            "internal".to_string(),
+        ];
+        let shared_tokens = forwarded_args[1..].to_vec();
+
+        let (forwarded_changed, mut forwarded_output, forwarded_state) =
+            execute_forwarded_like_cli(state.clone(), forwarded_args);
+        let (shared_changed, mut shared_output, shared_state) =
+            execute_shared_shell_tokens(state, shared_tokens);
+        strip_generated_at(&mut forwarded_output);
+        strip_generated_at(&mut shared_output);
+
+        assert_eq!(forwarded_changed, shared_changed);
+        assert_eq!(forwarded_output, shared_output);
+        assert_eq!(
+            forwarded_output["report"]["assay_kind"].as_str(),
+            Some("endpoint_rt_pcr")
+        );
+        assert_eq!(
+            forwarded_output["report"]["objective"].as_str(),
+            Some("isoform_end_matrix")
+        );
+        assert_eq!(
+            forwarded_state
+                .metadata
+                .get("primer_design_reports")
+                .is_some(),
+            shared_state.metadata.get("primer_design_reports").is_some()
         );
     }
 

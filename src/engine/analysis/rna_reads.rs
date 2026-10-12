@@ -13,9 +13,13 @@
 
 use super::*;
 use std::fmt::Write as _;
+use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const RNA_READ_TARGET_QUERY_COVERAGE_BIN_COUNT: usize = 101;
+pub(crate) const RNA_READ_DEXSEQ_VERIFY_HELPER: &str = "scripts/rna_read_dexseq_verify.R";
+pub(crate) const RNA_READ_DEXSEQ_VERIFY_REQUIRED_R_PACKAGES: [&str; 1] = ["DEXSeq"];
+const RNA_READ_DEXSEQ_VERIFY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
 
 #[derive(Debug, Clone, Default)]
 struct RnaReadConcatemerTranscriptCatalogSummary {
@@ -174,6 +178,25 @@ struct RnaReadPreflightScoringContext {
     seed_to_exons: HashMap<u32, Vec<usize>>,
     seed_to_transitions: HashMap<u32, Vec<(usize, usize)>>,
     transcript_exon_models: Vec<TranscriptExonPathModel>,
+}
+
+#[derive(Debug, Clone)]
+struct RnaReadExonicPartPartitionBin {
+    start_1based: usize,
+    end_1based: usize,
+    supporting_transcript_feature_ids: Vec<usize>,
+    constitutive: bool,
+}
+
+impl RnaReadExonicPartPartitionBin {
+    fn summary(&self) -> SplicingExonSummary {
+        SplicingExonSummary {
+            start_1based: self.start_1based,
+            end_1based: self.end_1based,
+            support_transcript_count: self.supporting_transcript_feature_ids.len(),
+            constitutive: self.constitutive,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -551,6 +574,105 @@ impl GentleEngine {
 
                 cause_chain: vec![],
             })
+    }
+
+    /// Resolve persisted RNA-report membership before running the shared allele screen.
+    pub fn run_allele_hash_screen_with_project_sources(
+        &self,
+        mut request: crate::allele_hash_screen::AlleleHashScreenRequest,
+    ) -> Result<crate::allele_hash_screen::AlleleHashScreenReport, String> {
+        let Some(report_id) = request.from_rna_report.clone() else {
+            return crate::allele_hash_screen::run_allele_hash_screen(request);
+        };
+        let audit = self
+            .inspect_rna_read_gene_support(
+                &report_id,
+                std::slice::from_ref(&request.gene),
+                &[],
+                RnaReadGeneSupportCompleteRule::Near,
+                RnaReadGeneSupportAuditCohortFilter::Accepted,
+            )
+            .map_err(|error| error.to_string())?;
+        if audit.matched_gene_ids.is_empty() {
+            return Err(format!(
+                "RNA-read report '{}' does not resolve requested gene '{}'",
+                report_id, request.gene
+            ));
+        }
+        if audit.accepted_target_record_indices.is_empty() {
+            return Err(format!(
+                "RNA-read report '{}' contains no aligned retained reads assigned to gene '{}'",
+                report_id, request.gene
+            ));
+        }
+        let expression_summary = self
+            .summarize_rna_read_gene_support(
+                &report_id,
+                std::slice::from_ref(&request.gene),
+                &[],
+                RnaReadGeneSupportCompleteRule::Near,
+            )
+            .map_err(|error| error.to_string())?;
+
+        let report = self
+            .get_rna_read_report(&report_id)
+            .map_err(|error| error.to_string())?;
+        let accepted_indices = audit
+            .accepted_target_record_indices
+            .into_iter()
+            .collect::<HashSet<_>>();
+        let mut resolved_reads = Vec::with_capacity(accepted_indices.len());
+        let mut transcript_retained_read_support = BTreeMap::<String, u64>::new();
+        for hit in &report.hits {
+            if !accepted_indices.contains(&hit.record_index) {
+                continue;
+            }
+            if hit.sequence.trim().is_empty() {
+                return Err(format!(
+                    "RNA-read report '{}' record_index {} has no stored sequence and cannot feed allele-hash-screen",
+                    report.report_id, hit.record_index
+                ));
+            }
+            if let Some(mapping) = hit.best_mapping.as_ref() {
+                let count = transcript_retained_read_support
+                    .entry(mapping.transcript_id.clone())
+                    .or_default();
+                *count = count.saturating_add(1);
+            }
+            resolved_reads.push(crate::allele_hash_screen::AlleleRnaReportReadInput {
+                read_id: hit.header_id.clone(),
+                sequence: hit.sequence.clone(),
+                report_id: report.report_id.clone(),
+                record_index: hit.record_index,
+            });
+        }
+        if resolved_reads.len() != accepted_indices.len() {
+            return Err(format!(
+                "RNA-read report '{}' resolved {} accepted record indices but only {} stored read rows",
+                report.report_id,
+                accepted_indices.len(),
+                resolved_reads.len()
+            ));
+        }
+        request.from_rna_report = Some(report.report_id.clone());
+        request.rna_report_reads = resolved_reads;
+        let target_gene_retained_read_support = u64::try_from(
+            expression_summary.all_target.read_count,
+        )
+        .map_err(|_| {
+            format!(
+                "RNA-read report '{}' retained-read support exceeds the allele-screen count range",
+                report.report_id
+            )
+        })?;
+        request.rna_report_expression_support = Some(
+            crate::allele_hash_screen::AlleleRnaReportExpressionSupport {
+                report_id: report.report_id.clone(),
+                target_gene_retained_read_support,
+                transcript_retained_read_support,
+            },
+        );
+        crate::allele_hash_screen::run_allele_hash_screen(request)
     }
 
     pub fn export_rna_read_report(
@@ -2256,7 +2378,7 @@ impl GentleEngine {
                 format!("{:.2}", hit.seed_median_transcript_gap)
             };
             let header = format!(
-                "{} record_index={} byte_offset={} seed_hit_fraction={:.3} seed_gap_median={} seed_gap_count={} seed_chain_support={} seed_chain_frac={:.3} seed_chain_tx={} origin_class={} origin_conf={:.3} strand_conf={:.3} perfect={} rc_applied={} msa_eligible={} msa_reason={} exon_path_tx={} exon_path={} exon_transitions={}/{} subset_spec={} {}",
+                "{} record_index={} byte_offset={} seed_hit_fraction={:.3} seed_gap_median={} seed_gap_count={} seed_chain_support={} seed_chain_frac={:.3} seed_chain_tx={} origin_class={} origin_conf={:.3} strand_conf={:.3} perfect={} rc_applied={} msa_eligible={} msa_reason={} exon_path_tx={} transcript_exon_path={} exon_path={} exon_transitions={}/{} subset_spec={} {}",
                 hit.header_id,
                 hit.record_index,
                 hit.source_byte_offset,
@@ -2281,6 +2403,11 @@ impl GentleEngine {
                     "none"
                 } else {
                     hit.exon_path_transcript_id.as_str()
+                },
+                if hit.transcript_exon_path.is_empty() {
+                    "none"
+                } else {
+                    hit.transcript_exon_path.as_str()
                 },
                 if hit.exon_path.is_empty() {
                     "none"
@@ -2517,6 +2644,7 @@ impl GentleEngine {
             row.phase1_primary_transcript_id.as_str(),
             row.seed_chain_transcript_id.as_str(),
             row.exon_path_transcript_id.as_str(),
+            row.transcript_exon_path.as_str(),
             row.exon_path.as_str(),
             row.transcript_id.as_str(),
             row.transcript_label.as_str(),
@@ -2789,6 +2917,7 @@ impl GentleEngine {
                 strand,
                 sequence,
                 genomic_positions_1based: Vec::new(),
+                transcript_local_exon_ordinals: Vec::new(),
                 kmer_positions,
             },
             gene_id,
@@ -2872,7 +3001,6 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read transcript catalog index requires at least one --transcript-fasta path".to_string(),
-            
                 cause_chain: vec![],});
         }
         if seed_kmer_len == 0 || seed_kmer_len > 16 {
@@ -2959,6 +3087,175 @@ impl GentleEngine {
         Ok(index)
     }
 
+    pub fn build_uniprot_linked_transcript_inventory(
+        request: &UniprotLinkedTranscriptInventoryRequest,
+    ) -> Result<UniprotLinkedTranscriptInventory, EngineError> {
+        for (name, value) in [
+            ("inventory_id", request.inventory_id.trim()),
+            ("assembly", request.assembly.trim()),
+            ("annotation_release", request.annotation_release.trim()),
+            ("source_resource_id", request.source_resource_id.trim()),
+            ("output_path", request.output_path.trim()),
+        ] {
+            if value.is_empty() {
+                return Err(EngineError::invalid_input(format!(
+                    "UniProt linked-transcript inventory requires non-empty {name}"
+                )));
+            }
+        }
+        if request.transcript_fasta_paths.is_empty() || request.links.is_empty() {
+            return Err(EngineError::invalid_input(
+                "UniProt linked-transcript inventory requires transcript_fasta_paths and links",
+            ));
+        }
+
+        let mut warnings = Vec::new();
+        let mut sources = Vec::new();
+        let mut sequences = BTreeMap::<String, BTreeSet<String>>::new();
+        let mut next_feature_id = 1usize;
+        for path in &request.transcript_fasta_paths {
+            let bytes = fs::read(path).map_err(|error| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not read transcript FASTA '{path}': {error}"),
+                cause_chain: vec![],
+            })?;
+            sources.push(UniprotLinkedTranscriptInventorySource {
+                path: path.clone(),
+                sha256: crate::digest_utils::sha256_prefixed_bytes(&bytes),
+            });
+            let (templates, _, _) = Self::load_external_rna_read_concatemer_templates(
+                path,
+                8,
+                next_feature_id,
+                &mut warnings,
+            )?;
+            next_feature_id = templates
+                .iter()
+                .map(|template| template.transcript_feature_id)
+                .max()
+                .unwrap_or(next_feature_id.saturating_sub(1))
+                .saturating_add(1);
+            for template in templates {
+                sequences
+                    .entry(template.transcript_id)
+                    .or_default()
+                    .insert(String::from_utf8_lossy(&template.sequence).to_ascii_uppercase());
+            }
+        }
+        sources.sort_by(|left, right| left.path.cmp(&right.path));
+
+        let stable_id = |value: &str| {
+            value
+                .trim()
+                .rsplit_once('.')
+                .filter(|(_, suffix)| suffix.chars().all(|ch| ch.is_ascii_digit()))
+                .map(|(stable, _)| stable)
+                .unwrap_or_else(|| value.trim())
+                .to_string()
+        };
+        let mut records = Vec::new();
+        for link in &request.links {
+            if link.entry_id.trim().is_empty()
+                || link.isoform_id.trim().is_empty()
+                || link.transcript_id.trim().is_empty()
+            {
+                return Err(EngineError::invalid_input(
+                    "UniProt linked-transcript inventory links require entry_id, isoform_id, and transcript_id",
+                ));
+            }
+            let stable = stable_id(&link.transcript_id);
+            let matched = sequences
+                .get(link.transcript_id.trim())
+                .cloned()
+                .unwrap_or_else(|| {
+                    sequences
+                        .iter()
+                        .filter(|(id, _)| stable_id(id) == stable)
+                        .flat_map(|(_, values)| values.iter().cloned())
+                        .collect()
+                });
+            let (status, mature_cdna_sha256, mature_cdna_length_bp, diagnostics) = match matched
+                .len()
+            {
+                0 => (
+                    UniprotLinkedTranscriptInventoryStatus::MissingTranscriptSequence,
+                    None,
+                    None,
+                    vec![format!(
+                        "Transcript '{}' was not found in the declared transcript FASTA resources.",
+                        link.transcript_id
+                    )],
+                ),
+                1 => {
+                    let sequence = matched.iter().next().ok_or_else(|| {
+                        EngineError::internal(
+                            "UniProt inventory lost its single resolved transcript sequence",
+                        )
+                    })?;
+                    (
+                        UniprotLinkedTranscriptInventoryStatus::Resolved,
+                        Some(crate::digest_utils::sha256_prefixed_str(sequence)),
+                        Some(sequence.len()),
+                        Vec::new(),
+                    )
+                }
+                count => (
+                    UniprotLinkedTranscriptInventoryStatus::AmbiguousTranscriptSequence,
+                    None,
+                    None,
+                    vec![format!(
+                        "Transcript '{}' resolves to {count} distinct mature-cDNA sequences.",
+                        link.transcript_id
+                    )],
+                ),
+            };
+            records.push(UniprotLinkedTranscriptInventoryRecord {
+                entry_id: link.entry_id.trim().to_string(),
+                isoform_id: link.isoform_id.trim().to_string(),
+                transcript_id: link.transcript_id.trim().to_string(),
+                locus_reference_accession: link
+                    .locus_reference_accession
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string),
+                status,
+                mature_cdna_sha256,
+                mature_cdna_length_bp,
+                diagnostics,
+            });
+        }
+        records.sort_by(|left, right| {
+            left.entry_id
+                .cmp(&right.entry_id)
+                .then(left.isoform_id.cmp(&right.isoform_id))
+                .then(left.transcript_id.cmp(&right.transcript_id))
+        });
+        records.dedup_by(|left, right| {
+            left.entry_id == right.entry_id
+                && left.isoform_id == right.isoform_id
+                && left.transcript_id == right.transcript_id
+        });
+        let mut inventory = UniprotLinkedTranscriptInventory {
+            schema: UNIPROT_LINKED_TRANSCRIPT_INVENTORY_SCHEMA.to_string(),
+            inventory_id: request.inventory_id.trim().to_string(),
+            assembly: request.assembly.trim().to_string(),
+            annotation_release: request.annotation_release.trim().to_string(),
+            source_resource_id: request.source_resource_id.trim().to_string(),
+            sources,
+            records,
+            content_sha256: String::new(),
+            warnings,
+        };
+        let canonical = serde_json::to_vec(&inventory).map_err(|error| {
+            EngineError::internal(format!(
+                "Could not serialize UniProt linked-transcript inventory identity: {error}"
+            ))
+        })?;
+        inventory.content_sha256 = crate::digest_utils::sha256_prefixed_bytes(&canonical);
+        Ok(inventory)
+    }
+
     fn load_external_rna_read_concatemer_templates_from_index(
         path: &str,
         expected_kmer_len: usize,
@@ -3032,6 +3329,7 @@ impl GentleEngine {
                 strand: record.strand,
                 sequence: record.sequence.into_bytes(),
                 genomic_positions_1based: Vec::new(),
+                transcript_local_exon_ordinals: Vec::new(),
                 kmer_positions: record.kmer_positions.into_iter().collect(),
             });
         }
@@ -4130,6 +4428,7 @@ impl GentleEngine {
                             .to_string(),
                         seed_chain_transcript_id: hit.seed_chain_transcript_id.clone(),
                         exon_path_transcript_id: hit.exon_path_transcript_id.clone(),
+                        transcript_exon_path: hit.transcript_exon_path.clone(),
                         exon_path: hit.exon_path.clone(),
                         exon_transitions_confirmed: hit.exon_transitions_confirmed,
                         exon_transitions_total: hit.exon_transitions_total,
@@ -4296,7 +4595,6 @@ impl GentleEngine {
                 record_index + 1,
                 report.report_id
             ),
-        
             cause_chain: vec![],})?;
         let (aligned_query, aligned_relation, aligned_target, _insertions, _deletions) =
             Self::format_rna_read_alignment_strings(
@@ -4425,7 +4723,7 @@ impl GentleEngine {
         }
         writeln!(
             writer,
-            "report_id\tseq_id\trank\trecord_index\theader_id\tphase1_primary_transcript_id\tseed_chain_transcript_id\texon_path_transcript_id\texon_path\texon_transitions_confirmed\texon_transitions_total\tselected_strand\treverse_complement_applied\talignment_effect\ttranscript_id\ttranscript_label\tstrand\talignment_mode\ttarget_start_1based\ttarget_end_1based\tscore\tidentity_fraction\tquery_coverage_fraction\ttarget_coverage_fraction\tfull_length_exact\tfull_length_near\tfull_length_strict\tfull_length_class\tsecondary_mapping_count\tseed_hit_fraction\tweighted_seed_hit_fraction\tpassed_seed_filter\tmsa_eligible\torigin_class\tmapped_exon_support\tmapped_junction_support"
+            "report_id\tseq_id\trank\trecord_index\theader_id\tphase1_primary_transcript_id\tseed_chain_transcript_id\texon_path_transcript_id\ttranscript_exon_path\texon_path\texon_transitions_confirmed\texon_transitions_total\tselected_strand\treverse_complement_applied\talignment_effect\ttranscript_id\ttranscript_label\tstrand\talignment_mode\ttarget_start_1based\ttarget_end_1based\tscore\tidentity_fraction\tquery_coverage_fraction\ttarget_coverage_fraction\tfull_length_exact\tfull_length_near\tfull_length_strict\tfull_length_class\tsecondary_mapping_count\tseed_hit_fraction\tweighted_seed_hit_fraction\tpassed_seed_filter\tmsa_eligible\torigin_class\tmapped_exon_support\tmapped_junction_support"
         )
         .map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -4433,7 +4731,6 @@ impl GentleEngine {
                 "Could not write RNA-read alignment TSV header to '{}': {e}",
                 path
             ),
-        
             cause_chain: vec![],})?;
         for row in &inspection.rows {
             let full_length_class = Self::rna_read_full_length_class_label(
@@ -4443,7 +4740,7 @@ impl GentleEngine {
             );
             writeln!(
                 writer,
-                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}",
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}",
                 Self::sanitize_tsv_cell(&inspection.report_id),
                 Self::sanitize_tsv_cell(&inspection.seq_id),
                 row.rank,
@@ -4452,6 +4749,7 @@ impl GentleEngine {
                 Self::sanitize_tsv_cell(&row.phase1_primary_transcript_id),
                 Self::sanitize_tsv_cell(&row.seed_chain_transcript_id),
                 Self::sanitize_tsv_cell(&row.exon_path_transcript_id),
+                Self::sanitize_tsv_cell(&row.transcript_exon_path),
                 Self::sanitize_tsv_cell(&row.exon_path),
                 row.exon_transitions_confirmed,
                 row.exon_transitions_total,
@@ -4491,7 +4789,6 @@ impl GentleEngine {
                     "Could not write RNA-read alignment TSV row to '{}': {e}",
                     path
                 ),
-            
                 cause_chain: vec![],})?;
         }
         writer.flush().map_err(|e| EngineError {
@@ -4596,7 +4893,7 @@ impl GentleEngine {
         }
         writeln!(
             writer,
-            "report_id\tseq_id\trecord_index\theader_id\ttriage_bin\ttriage_reason\tread_length_bp\tpassed_seed_filter\torigin_class\tphase1_primary_transcript_id\tseed_chain_transcript_id\texon_path_transcript_id\tbest_transcript_id\tbest_transcript_label\tbest_strand\talignment_effect\tidentity_fraction\tquery_coverage_fraction\tsecondary_mapping_count\texon_path\texon_transitions_confirmed\texon_transitions_total\tconfirmed_transition_fraction\tseed_hit_fraction\tweighted_seed_hit_fraction\tmsa_eligible"
+            "report_id\tseq_id\trecord_index\theader_id\ttriage_bin\ttriage_reason\tread_length_bp\tpassed_seed_filter\torigin_class\tphase1_primary_transcript_id\tseed_chain_transcript_id\texon_path_transcript_id\ttranscript_exon_path\tbest_transcript_id\tbest_transcript_label\tbest_strand\talignment_effect\tidentity_fraction\tquery_coverage_fraction\tsecondary_mapping_count\texon_path\texon_transitions_confirmed\texon_transitions_total\tconfirmed_transition_fraction\tseed_hit_fraction\tweighted_seed_hit_fraction\tmsa_eligible"
         )
         .map_err(|e| {
             EngineError::new(
@@ -4650,7 +4947,7 @@ impl GentleEngine {
                 };
             writeln!(
                 writer,
-                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{}",
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{}",
                 Self::sanitize_tsv_cell(&report.report_id),
                 Self::sanitize_tsv_cell(&report.seq_id),
                 hit.record_index,
@@ -4663,6 +4960,7 @@ impl GentleEngine {
                 Self::sanitize_tsv_cell(primary_transcript_id),
                 Self::sanitize_tsv_cell(&hit.seed_chain_transcript_id),
                 Self::sanitize_tsv_cell(&hit.exon_path_transcript_id),
+                Self::sanitize_tsv_cell(&hit.transcript_exon_path),
                 Self::sanitize_tsv_cell(best_transcript_id),
                 Self::sanitize_tsv_cell(best_transcript_label),
                 Self::sanitize_tsv_cell(best_strand),
@@ -5075,10 +5373,20 @@ impl GentleEngine {
                 current.push(ch);
                 continue;
             }
-            if (ch == ':' || ch == '-') && !current.is_empty() {
+            if ch == ':' || ch == '-' || ch == '_' {
+                if current.is_empty() {
+                    continue;
+                }
                 if let Ok(value) = current.parse::<usize>() {
                     ordinals.push(value);
                     transitions.push(ch);
+                }
+                current.clear();
+                continue;
+            }
+            if !current.is_empty() {
+                if let Ok(value) = current.parse::<usize>() {
+                    ordinals.push(value);
                 }
                 current.clear();
             }
@@ -5137,7 +5445,7 @@ impl GentleEngine {
         }
         writeln!(
             writer,
-            "report_id\tseq_id\trecord_index\theader_id\tsource_byte_offset\tread_length_bp\tseed_hit_fraction\tweighted_seed_hit_fraction\tweighted_matched_kmers\tseed_chain_transcript_id\tseed_chain_support_kmers\tseed_chain_support_fraction\tseed_median_transcript_gap\tseed_transcript_gap_count\tmatched_kmers\ttested_kmers\tpassed_seed_filter\treverse_complement_applied\torigin_class\torigin_reason\torigin_confidence\tstrand_confidence\tmsa_eligible\tmsa_eligibility_reason\texon_path_transcript_id\texon_path\texon_transitions_confirmed\texon_transitions_total\tbest_transcript_id\tbest_alignment_mode\tbest_strand\tbest_target_start_1based\tbest_target_end_1based\tbest_identity_fraction\tbest_query_coverage_fraction"
+            "report_id\tseq_id\trecord_index\theader_id\tsource_byte_offset\tread_length_bp\tseed_hit_fraction\tweighted_seed_hit_fraction\tweighted_matched_kmers\tseed_chain_transcript_id\tseed_chain_support_kmers\tseed_chain_support_fraction\tseed_median_transcript_gap\tseed_transcript_gap_count\tmatched_kmers\ttested_kmers\tpassed_seed_filter\treverse_complement_applied\torigin_class\torigin_reason\torigin_confidence\tstrand_confidence\tmsa_eligible\tmsa_eligibility_reason\texon_path_transcript_id\ttranscript_exon_path\texon_path\texon_transitions_confirmed\texon_transitions_total\tbest_transcript_id\tbest_alignment_mode\tbest_strand\tbest_target_start_1based\tbest_target_end_1based\tbest_identity_fraction\tbest_query_coverage_fraction"
         )
         .map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -5145,7 +5453,6 @@ impl GentleEngine {
                 "Could not write RNA-read exon-path export header to '{}': {e}",
                 path
             ),
-        
             cause_chain: vec![],})?;
         let explicit_record_filter = selected_record_indices
             .iter()
@@ -5215,6 +5522,7 @@ impl GentleEngine {
                 hit.msa_eligible.to_string(),
                 Self::sanitize_tsv_cell(&hit.msa_eligibility_reason),
                 Self::sanitize_tsv_cell(&hit.exon_path_transcript_id),
+                Self::sanitize_tsv_cell(&hit.transcript_exon_path),
                 Self::sanitize_tsv_cell(&hit.exon_path),
                 hit.exon_transitions_confirmed.to_string(),
                 hit.exon_transitions_total.to_string(),
@@ -5304,7 +5612,6 @@ impl GentleEngine {
                 "Could not write RNA-read exon-abundance header to '{}': {e}",
                 path
             ),
-        
             cause_chain: vec![],})?;
         let mut exon_counts = BTreeMap::<usize, usize>::new();
         let mut transition_counts = BTreeMap::<(usize, usize), (usize, usize)>::new();
@@ -5336,6 +5643,9 @@ impl GentleEngine {
             for (idx, transition) in transitions.iter().enumerate() {
                 if idx + 1 >= ordinals.len() {
                     break;
+                }
+                if *transition == '_' {
+                    continue;
                 }
                 let pair = (ordinals[idx], ordinals[idx + 1]);
                 let entry = transition_counts.entry(pair).or_insert((0, 0));
@@ -5413,6 +5723,603 @@ impl GentleEngine {
             exon_row_count: exon_counts.len(),
             transition_row_count: transition_counts.len(),
         })
+    }
+
+    fn validated_rna_read_dexseq_bins<'a>(
+        report: &'a RnaReadInterpretationReport,
+    ) -> Result<&'a [RnaReadExonicPartBin], EngineError> {
+        if report.exonic_part_bins.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "RNA-read report '{}' predates DEXSeq export; re-run alignment to persist the exonic-part bin table",
+                    report.report_id
+                ),
+                cause_chain: vec![],
+            });
+        }
+
+        let mut global_ordinals = BTreeSet::<usize>::new();
+        let mut parts_by_gene = BTreeMap::<String, Vec<&RnaReadExonicPartBin>>::new();
+        for bin in &report.exonic_part_bins {
+            if bin.global_ordinal == 0
+                || bin.exonic_part_number == 0
+                || bin.gene_id.trim().is_empty()
+                || bin.start_1based == 0
+                || bin.end_1based < bin.start_1based
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "RNA-read report '{}' contains an invalid persisted DEXSeq exonic-part bin",
+                        report.report_id
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            if !global_ordinals.insert(bin.global_ordinal) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "RNA-read report '{}' contains duplicate DEXSeq global ordinal {}",
+                        report.report_id, bin.global_ordinal
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            parts_by_gene
+                .entry(bin.gene_id.clone())
+                .or_default()
+                .push(bin);
+        }
+        if global_ordinals
+            .iter()
+            .copied()
+            .ne(1..=global_ordinals.len())
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "RNA-read report '{}' has a non-contiguous DEXSeq global-ordinal table",
+                    report.report_id
+                ),
+                cause_chain: vec![],
+            });
+        }
+        for (gene_id, parts) in &mut parts_by_gene {
+            parts.sort_by_key(|bin| (bin.start_1based, bin.end_1based, bin.global_ordinal));
+            for (index, bin) in parts.iter().enumerate() {
+                if bin.exonic_part_number != index + 1 {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "RNA-read report '{}' has non-contiguous DEXSeq part numbering for aggregate gene '{}'",
+                            report.report_id, gene_id
+                        ),
+                        cause_chain: vec![],
+                    });
+                }
+            }
+        }
+        Ok(&report.exonic_part_bins)
+    }
+
+    fn ordered_rna_read_dexseq_bin_groups(
+        bins: &[RnaReadExonicPartBin],
+    ) -> Vec<(String, Vec<&RnaReadExonicPartBin>)> {
+        let mut grouped = BTreeMap::<String, Vec<&RnaReadExonicPartBin>>::new();
+        for bin in bins {
+            grouped.entry(bin.gene_id.clone()).or_default().push(bin);
+        }
+        let mut groups = grouped.into_iter().collect::<Vec<_>>();
+        for (_, parts) in &mut groups {
+            parts.sort_by_key(|bin| {
+                (
+                    bin.exonic_part_number,
+                    bin.start_1based,
+                    bin.end_1based,
+                    bin.global_ordinal,
+                )
+            });
+        }
+        groups.sort_by(|(left_gene, left_parts), (right_gene, right_parts)| {
+            let left_start = left_parts
+                .iter()
+                .map(|bin| bin.start_1based)
+                .min()
+                .unwrap_or(usize::MAX);
+            let right_start = right_parts
+                .iter()
+                .map(|bin| bin.start_1based)
+                .min()
+                .unwrap_or(usize::MAX);
+            left_start
+                .cmp(&right_start)
+                .then_with(|| left_gene.cmp(right_gene))
+        });
+        groups
+    }
+
+    fn sanitize_rna_read_dexseq_gff_attribute(value: &str) -> String {
+        value
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace(['\t', '\r', '\n'], " ")
+    }
+
+    fn sanitize_rna_read_dexseq_seqname(value: &str) -> String {
+        let value = value.trim();
+        if value.is_empty() {
+            return "GENtle_sequence".to_string();
+        }
+        value
+            .chars()
+            .map(|ch| if ch.is_whitespace() { '_' } else { ch })
+            .collect()
+    }
+
+    pub fn export_rna_read_dexseq_annotation_gff(
+        &self,
+        report_id: &str,
+        path: &str,
+    ) -> Result<RnaReadDexseqAnnotationGffExport, EngineError> {
+        let report = self.get_rna_read_report(report_id)?;
+        let bins = Self::validated_rna_read_dexseq_bins(&report)?;
+        let path = path.trim();
+        if path.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "RNA-read DEXSeq annotation export requires non-empty path".to_string(),
+                cause_chain: vec![],
+            });
+        }
+        let groups = Self::ordered_rna_read_dexseq_bin_groups(bins);
+        let file = File::create(path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not create RNA-read DEXSeq GFF '{}': {e}", path),
+            cause_chain: vec![],
+        })?;
+        let mut writer = BufWriter::new(file);
+        let seqname = Self::sanitize_rna_read_dexseq_seqname(&report.seq_id);
+        for (gene_id, parts) in &groups {
+            let gene_start = parts.iter().map(|bin| bin.start_1based).min().unwrap_or(1);
+            let gene_end = parts
+                .iter()
+                .map(|bin| bin.end_1based)
+                .max()
+                .unwrap_or(gene_start);
+            let strands = parts
+                .iter()
+                .map(|bin| bin.strand.as_str())
+                .filter(|strand| *strand == "+" || *strand == "-")
+                .collect::<BTreeSet<_>>();
+            let strand = if strands.len() == 1 {
+                strands.into_iter().next().unwrap_or(".")
+            } else {
+                "."
+            };
+            writeln!(
+                writer,
+                "{}\tGENtle_dexseq\taggregate_gene\t{}\t{}\t.\t{}\t.\tgene_id \"{}\"",
+                seqname,
+                gene_start,
+                gene_end,
+                strand,
+                Self::sanitize_rna_read_dexseq_gff_attribute(gene_id),
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not write RNA-read DEXSeq gene row to '{}': {e}",
+                    path
+                ),
+                cause_chain: vec![],
+            })?;
+            for bin in parts {
+                writeln!(
+                    writer,
+                    "{}\tGENtle_dexseq\texonic_part\t{}\t{}\t.\t{}\t.\ttranscripts \"{}\"; exonic_part_number \"{:03}\"; gene_id \"{}\"",
+                    seqname,
+                    bin.start_1based,
+                    bin.end_1based,
+                    bin.strand,
+                    Self::sanitize_rna_read_dexseq_gff_attribute(&bin.transcripts.join("+")),
+                    bin.exonic_part_number,
+                    Self::sanitize_rna_read_dexseq_gff_attribute(&bin.gene_id),
+                )
+                .map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!(
+                        "Could not write RNA-read DEXSeq exonic-part row to '{}': {e}",
+                        path
+                    ),
+                    cause_chain: vec![],
+                })?;
+            }
+        }
+        writer.flush().map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not flush RNA-read DEXSeq GFF '{}': {e}", path),
+            cause_chain: vec![],
+        })?;
+        Ok(RnaReadDexseqAnnotationGffExport {
+            schema: RNA_READ_DEXSEQ_ANNOTATION_GFF_EXPORT_SCHEMA.to_string(),
+            path: path.to_string(),
+            report_id: report.report_id.clone(),
+            seq_id: report.seq_id.clone(),
+            row_count: groups.len().saturating_add(bins.len()),
+            aggregate_gene_count: groups.len(),
+            exonic_part_count: bins.len(),
+        })
+    }
+
+    pub fn export_rna_read_dexseq_counts_tsv(
+        &self,
+        report_id: &str,
+        path: &str,
+        selection: RnaReadHitSelection,
+        selected_record_indices: &[usize],
+        subset_spec: Option<&str>,
+    ) -> Result<RnaReadDexseqCountsTsvExport, EngineError> {
+        let report = self.get_rna_read_report(report_id)?;
+        let bins = Self::validated_rna_read_dexseq_bins(&report)?;
+        let path = path.trim();
+        if path.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "RNA-read DEXSeq count export requires non-empty path".to_string(),
+                cause_chain: vec![],
+            });
+        }
+        let groups = Self::ordered_rna_read_dexseq_bin_groups(bins);
+        let bins_by_ordinal = bins
+            .iter()
+            .map(|bin| (bin.global_ordinal, bin))
+            .collect::<HashMap<_, _>>();
+        let explicit_record_filter = selected_record_indices
+            .iter()
+            .copied()
+            .collect::<HashSet<_>>();
+        let mut counts_by_ordinal = HashMap::<usize, usize>::new();
+        let mut selected_read_count = 0usize;
+        let ambiguous_count = 0usize;
+        let mut empty_count = 0usize;
+        let mut lowaqual_count = 0usize;
+        let mut notaligned_count = 0usize;
+        for hit in &report.hits {
+            if !Self::include_rna_read_hit_by_selection_and_indices(
+                hit,
+                selection,
+                &explicit_record_filter,
+            ) {
+                continue;
+            }
+            selected_read_count = selected_read_count.saturating_add(1);
+            if !hit.passed_seed_filter {
+                lowaqual_count = lowaqual_count.saturating_add(1);
+            }
+            if hit.best_mapping.is_none() {
+                notaligned_count = notaligned_count.saturating_add(1);
+            }
+            let (ordinals, _) = Self::parse_exon_path(&hit.exon_path);
+            if ordinals.is_empty() {
+                empty_count = empty_count.saturating_add(1);
+                continue;
+            }
+            let touched = ordinals.into_iter().collect::<BTreeSet<_>>();
+            if let Some(unknown_ordinal) = touched
+                .iter()
+                .find(|ordinal| !bins_by_ordinal.contains_key(ordinal))
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "RNA-read report '{}' has exon_path ordinal {} without a matching persisted DEXSeq bin",
+                        report.report_id, unknown_ordinal
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            for ordinal in touched {
+                *counts_by_ordinal.entry(ordinal).or_insert(0) += 1;
+            }
+        }
+
+        let file = File::create(path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not create RNA-read DEXSeq count table '{}': {e}",
+                path
+            ),
+            cause_chain: vec![],
+        })?;
+        let mut writer = BufWriter::new(file);
+        for (_, parts) in &groups {
+            for bin in parts {
+                writeln!(
+                    writer,
+                    "{}:E{:03}\t{}",
+                    bin.gene_id,
+                    bin.exonic_part_number,
+                    counts_by_ordinal
+                        .get(&bin.global_ordinal)
+                        .copied()
+                        .unwrap_or(0),
+                )
+                .map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!(
+                        "Could not write RNA-read DEXSeq count row to '{}': {e}",
+                        path
+                    ),
+                    cause_chain: vec![],
+                })?;
+            }
+        }
+        for (label, count) in [
+            ("_ambiguous", ambiguous_count),
+            ("_empty", empty_count),
+            ("_ambiguous_readpair", 0),
+            ("_lowaqual", lowaqual_count),
+            ("_notaligned", notaligned_count),
+        ] {
+            writeln!(writer, "{label}\t{count}").map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not write RNA-read DEXSeq special row to '{}': {e}",
+                    path
+                ),
+                cause_chain: vec![],
+            })?;
+        }
+        writer.flush().map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not flush RNA-read DEXSeq count table '{}': {e}",
+                path
+            ),
+            cause_chain: vec![],
+        })?;
+
+        let mut selected_record_indices = selected_record_indices.to_vec();
+        selected_record_indices.sort_unstable();
+        selected_record_indices.dedup();
+        Ok(RnaReadDexseqCountsTsvExport {
+            schema: RNA_READ_DEXSEQ_COUNTS_TSV_EXPORT_SCHEMA.to_string(),
+            path: path.to_string(),
+            report_id: report.report_id.clone(),
+            selection,
+            selected_record_indices,
+            subset_spec: subset_spec.map(str::to_string),
+            selected_read_count,
+            row_count: bins.len().saturating_add(5),
+            aggregate_gene_count: groups.len(),
+            exonic_part_count: bins.len(),
+            ambiguous_count,
+            empty_count,
+            ambiguous_readpair_count: 0,
+            lowaqual_count,
+            notaligned_count,
+        })
+    }
+
+    pub fn verify_rna_read_dexseq_exports(
+        &self,
+        report_id: &str,
+        gff_path: &str,
+        counts_path: &str,
+        selection: RnaReadHitSelection,
+        selected_record_indices: &[usize],
+        subset_spec: Option<&str>,
+        r_library_paths: &[String],
+    ) -> Result<RnaReadDexseqVerification, EngineError> {
+        self.verify_rna_read_dexseq_exports_with_program(
+            report_id,
+            gff_path,
+            counts_path,
+            selection,
+            selected_record_indices,
+            subset_spec,
+            r_library_paths,
+            "Rscript",
+            RNA_READ_DEXSEQ_VERIFY_TIMEOUT,
+            RNA_READ_DEXSEQ_VERIFY_TIMEOUT,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn verify_rna_read_dexseq_exports_with_program(
+        &self,
+        report_id: &str,
+        gff_path: &str,
+        counts_path: &str,
+        selection: RnaReadHitSelection,
+        selected_record_indices: &[usize],
+        subset_spec: Option<&str>,
+        r_library_paths: &[String],
+        rscript_program: &str,
+        preflight_timeout: std::time::Duration,
+        verifier_timeout: std::time::Duration,
+    ) -> Result<RnaReadDexseqVerification, EngineError> {
+        let annotation_export = self.export_rna_read_dexseq_annotation_gff(report_id, gff_path)?;
+        let counts_export = self.export_rna_read_dexseq_counts_tsv(
+            report_id,
+            counts_path,
+            selection,
+            selected_record_indices,
+            subset_spec,
+        )?;
+
+        let mut seen_library_paths = BTreeSet::new();
+        let r_library_paths_requested = r_library_paths
+            .iter()
+            .map(|path| path.trim())
+            .filter(|path| !path.is_empty())
+            .filter(|path| seen_library_paths.insert((*path).to_string()))
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let rscript_dependency = Self::probe_region_command_dependency_with_program(
+            "Rscript",
+            rscript_program,
+            "command",
+            true,
+            &["--version"],
+            preflight_timeout,
+        );
+        let rscript_available = rscript_dependency.status == "present";
+        let packages = RNA_READ_DEXSEQ_VERIFY_REQUIRED_R_PACKAGES
+            .iter()
+            .map(|package| ((*package).to_string(), true))
+            .collect::<Vec<_>>();
+        let package_probe = Self::probe_region_r_package_dependencies_with_program(
+            &packages,
+            rscript_available,
+            &r_library_paths_requested,
+            rscript_program,
+            preflight_timeout,
+        );
+        let mut dependency_checks = vec![rscript_dependency];
+        dependency_checks.extend(package_probe.dependencies);
+
+        let mut command_tokens = vec![
+            "Rscript".to_string(),
+            RNA_READ_DEXSEQ_VERIFY_HELPER.to_string(),
+            annotation_export.path.clone(),
+            counts_export.path.clone(),
+        ];
+        command_tokens.extend(r_library_paths_requested.iter().cloned());
+        let command = command_tokens
+            .iter()
+            .map(|token| Self::rna_read_batch_shell_quote(token))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let base_result = RnaReadDexseqVerification {
+            schema: RNA_READ_DEXSEQ_VERIFICATION_SCHEMA.to_string(),
+            report_id: report_id.to_string(),
+            annotation_export,
+            counts_export,
+            dependency_checks,
+            r_library_paths_requested,
+            r_library_paths_checked: package_probe.library_paths_checked,
+            command,
+            verifier_status: String::new(),
+            verifier_stdout_summary: None,
+            verifier_detail: None,
+        };
+
+        if base_result
+            .dependency_checks
+            .iter()
+            .any(|row| row.required && row.status != "present")
+        {
+            let mut result = base_result;
+            result.verifier_status = if result
+                .dependency_checks
+                .iter()
+                .any(|row| row.status == "timed_out")
+            {
+                "dependency_timed_out".to_string()
+            } else if result
+                .dependency_checks
+                .iter()
+                .any(|row| matches!(row.status.as_str(), "missing" | "unchecked"))
+            {
+                "dependency_missing".to_string()
+            } else {
+                "dependency_probe_failed".to_string()
+            };
+            result.verifier_detail = Some(
+                result
+                    .dependency_checks
+                    .iter()
+                    .filter(|row| row.required && row.status != "present")
+                    .map(|row| {
+                        let detail = row
+                            .detail
+                            .as_deref()
+                            .map(str::trim)
+                            .filter(|detail| !detail.is_empty())
+                            .map(|detail| format!(": {detail}"))
+                            .unwrap_or_default();
+                        format!("{} [{}]{}", row.name, row.status, detail)
+                    })
+                    .collect::<Vec<_>>()
+                    .join("; "),
+            );
+            return Ok(result);
+        }
+
+        let args = command_tokens[1..].to_vec();
+        let verifier_output =
+            Self::probe_region_bounded_command_output(rscript_program, &args, verifier_timeout);
+        let mut result = base_result;
+        match verifier_output {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let summary = stdout
+                    .lines()
+                    .map(str::trim)
+                    .find(|line| line.starts_with("DEXSEQ_OK "))
+                    .map(str::to_string);
+                if output.status.success() {
+                    if let Some(summary) = summary {
+                        result.verifier_status = "verified".to_string();
+                        result.verifier_stdout_summary = Some(summary);
+                    } else {
+                        result.verifier_status = "verification_failed".to_string();
+                        result.verifier_detail = Some(
+                            "DEXSeq verifier exited successfully without a DEXSEQ_OK summary"
+                                .to_string(),
+                        );
+                    }
+                } else {
+                    result.verifier_status = "verification_failed".to_string();
+                    result.verifier_detail = stdout
+                        .lines()
+                        .chain(stderr.lines())
+                        .map(str::trim)
+                        .find(|line| line.starts_with("DEXSEQ_FAIL ") || !line.is_empty())
+                        .map(str::to_string)
+                        .or_else(|| {
+                            Some(format!(
+                                "DEXSeq verifier exited with status {}",
+                                output.status
+                            ))
+                        });
+                }
+            }
+            Err(
+                crate::engine::probe_regions::planning_backend::ProbeRegionBoundedCommandError::TimedOut {
+                    elapsed_ms,
+                },
+            ) => {
+                result.verifier_status = "verification_timed_out".to_string();
+                result.verifier_detail = Some(format!(
+                    "DEXSeq verifier timed out after {elapsed_ms} ms"
+                ));
+            }
+            Err(
+                crate::engine::probe_regions::planning_backend::ProbeRegionBoundedCommandError::Spawn {
+                    message,
+                    ..
+                },
+            ) => {
+                result.verifier_status = "verification_failed".to_string();
+                result.verifier_detail =
+                    Some(format!("Could not start DEXSeq verifier: {message}"));
+            }
+            Err(
+                crate::engine::probe_regions::planning_backend::ProbeRegionBoundedCommandError::Poll(
+                    error,
+                ),
+            ) => {
+                result.verifier_status = "verification_failed".to_string();
+                result.verifier_detail =
+                    Some(format!("Could not monitor DEXSeq verifier: {error}"));
+            }
+        }
+        Ok(result)
     }
 
     pub(super) fn derive_score_density_bins_from_report(
@@ -6091,7 +6998,6 @@ impl GentleEngine {
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not write sample-sheet header to '{}': {e}", path),
-            
                 cause_chain: vec![],})?;
         }
 
@@ -6199,7 +7105,6 @@ impl GentleEngine {
                             "Could not serialize gene-support requested_gene_ids for report '{}': {e}",
                             report.report_id
                         ),
-                    
                         cause_chain: vec![],})?,
                     serde_json::to_string(&summary.matched_gene_ids).map_err(|e| EngineError {
                         code: ErrorCode::Internal,
@@ -6207,7 +7112,6 @@ impl GentleEngine {
                             "Could not serialize gene-support matched_gene_ids for report '{}': {e}",
                             report.report_id
                         ),
-                    
                         cause_chain: vec![],})?,
                     serde_json::to_string(&summary.missing_gene_ids).map_err(|e| EngineError {
                         code: ErrorCode::Internal,
@@ -6215,7 +7119,6 @@ impl GentleEngine {
                             "Could not serialize gene-support missing_gene_ids for report '{}': {e}",
                             report.report_id
                         ),
-                    
                         cause_chain: vec![],})?,
                     summary.complete_rule.as_str().to_string(),
                     summary.aligned_base_count,
@@ -6242,7 +7145,6 @@ impl GentleEngine {
                                 "Could not serialize gene-support exon rows for report '{}': {e}",
                                 report.report_id
                             ),
-                        
                             cause_chain: vec![],}
                     })?,
                     serde_json::to_string(&summary.all_target.exon_pair_support).map_err(
@@ -6252,7 +7154,6 @@ impl GentleEngine {
                                 "Could not serialize gene-support exon-pair rows for report '{}': {e}",
                                 report.report_id
                             ),
-                        
                             cause_chain: vec![],},
                     )?,
                     serde_json::to_string(&summary.all_target.direct_transition_support).map_err(
@@ -6262,7 +7163,6 @@ impl GentleEngine {
                                 "Could not serialize gene-support direct-transition rows for report '{}': {e}",
                                 report.report_id
                             ),
-                        
                             cause_chain: vec![],},
                     )?,
                 )
@@ -6361,7 +7261,6 @@ impl GentleEngine {
                     "Could not write RNA-read sample sheet row to '{}': {e}",
                     path
                 ),
-            
                 cause_chain: vec![],})?;
         }
         writer.flush().map_err(|e| EngineError {
@@ -7741,7 +8640,6 @@ impl GentleEngine {
                             "sample '{}' input_path '{}' does not exist",
                             manifest_row.sample_id, input_path
                         ),
-                    
                         cause_chain: vec![],});
                 }
                 let report_id = match manifest_row.report_id.as_deref() {
@@ -8719,7 +9617,6 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "rna-reads preflight-isoforms --optimize-parameters requires at least one --control-transcript-fasta"
                     .to_string(),
-            
                 cause_chain: vec![],});
         }
         if !(0.0..=1.0).contains(&max_control_match_probability) {
@@ -8960,7 +9857,6 @@ impl GentleEngine {
         .map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write RNA seed-hash catalog header to '{}': {e}", path),
-        
             cause_chain: vec![],})?;
 
         let mut unique_hashes = HashSet::<u32>::new();
@@ -10822,9 +11718,11 @@ impl GentleEngine {
         let is_reverse = lane.strand.trim() == "-";
         let mut sequence = Vec::<u8>::new();
         let mut genomic_positions_1based = Vec::<usize>::new();
+        let mut transcript_local_exon_ordinals = Vec::<usize>::new();
 
         if is_reverse {
-            for exon in lane.exons.iter().rev() {
+            for (local_idx, exon) in lane.exons.iter().rev().enumerate() {
+                let transcript_local_ordinal = local_idx + 1;
                 for pos_1based in (exon.start_1based..=exon.end_1based).rev() {
                     let idx = pos_1based.saturating_sub(1);
                     if idx >= forward.len() {
@@ -10832,10 +11730,12 @@ impl GentleEngine {
                     }
                     sequence.push(Self::complement_nucleotide_base(forward[idx]));
                     genomic_positions_1based.push(pos_1based);
+                    transcript_local_exon_ordinals.push(transcript_local_ordinal);
                 }
             }
         } else {
-            for exon in &lane.exons {
+            for (local_idx, exon) in lane.exons.iter().enumerate() {
+                let transcript_local_ordinal = local_idx + 1;
                 for pos_1based in exon.start_1based..=exon.end_1based {
                     let idx = pos_1based.saturating_sub(1);
                     if idx >= forward.len() {
@@ -10843,6 +11743,7 @@ impl GentleEngine {
                     }
                     sequence.push(Self::normalize_nucleotide_base(forward[idx]));
                     genomic_positions_1based.push(pos_1based);
+                    transcript_local_exon_ordinals.push(transcript_local_ordinal);
                 }
             }
         }
@@ -10865,6 +11766,7 @@ impl GentleEngine {
             strand: lane.strand.clone(),
             sequence,
             genomic_positions_1based,
+            transcript_local_exon_ordinals,
             kmer_positions,
         }
     }
@@ -10876,42 +11778,235 @@ impl GentleEngine {
         for (idx, exon) in exon_summaries.iter().enumerate() {
             let ordinal = idx + 1;
             for pos in exon.start_1based..=exon.end_1based {
-                map.insert(pos, (ordinal, exon.start_1based, exon.end_1based));
+                let previous = map.insert(pos, (ordinal, exon.start_1based, exon.end_1based));
+                debug_assert!(
+                    previous.is_none(),
+                    "RNA-read exonic-part projection generated overlapping bins"
+                );
             }
         }
         map
     }
 
+    fn collect_seed_support_exonic_part_partition(
+        transcript_lanes: &[SplicingTranscriptLane],
+    ) -> Vec<RnaReadExonicPartPartitionBin> {
+        let mut breakpoints = BTreeSet::<usize>::new();
+        let mut exon_intervals = Vec::<(usize, usize, usize)>::new();
+        let mut transcript_ids = HashSet::<usize>::new();
+        for lane in transcript_lanes {
+            transcript_ids.insert(lane.transcript_feature_id);
+            for exon in &lane.exons {
+                let start_1based = exon.start_1based.min(exon.end_1based);
+                let end_1based = exon.start_1based.max(exon.end_1based);
+                if start_1based == 0 || end_1based < start_1based {
+                    continue;
+                }
+                breakpoints.insert(start_1based);
+                breakpoints.insert(end_1based.saturating_add(1));
+                exon_intervals.push((start_1based, end_1based, lane.transcript_feature_id));
+            }
+        }
+        let transcript_count = transcript_ids.len().max(1);
+        let breakpoints = breakpoints.into_iter().collect::<Vec<_>>();
+        let mut exonic_parts = Vec::<RnaReadExonicPartPartitionBin>::new();
+        for window in breakpoints.windows(2) {
+            let start_1based = window[0];
+            let end_exclusive_1based = window[1];
+            if end_exclusive_1based <= start_1based {
+                continue;
+            }
+            let end_1based = end_exclusive_1based - 1;
+            let mut supporting_transcripts = exon_intervals
+                .iter()
+                .filter(|(exon_start, exon_end, _)| {
+                    *exon_start <= start_1based && *exon_end >= end_1based
+                })
+                .map(|(_, _, transcript_feature_id)| *transcript_feature_id)
+                .collect::<HashSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            if supporting_transcripts.is_empty() {
+                continue;
+            }
+            supporting_transcripts.sort_unstable();
+            let constitutive = supporting_transcripts.len() == transcript_count;
+            exonic_parts.push(RnaReadExonicPartPartitionBin {
+                start_1based,
+                end_1based,
+                supporting_transcript_feature_ids: supporting_transcripts,
+                constitutive,
+            });
+        }
+        exonic_parts
+    }
+
     pub(super) fn collect_seed_support_exon_summaries(
         transcript_lanes: &[SplicingTranscriptLane],
     ) -> Vec<SplicingExonSummary> {
-        let mut exon_support = HashMap::<(usize, usize), HashSet<usize>>::new();
+        Self::collect_seed_support_exonic_part_partition(transcript_lanes)
+            .iter()
+            .map(RnaReadExonicPartPartitionBin::summary)
+            .collect()
+    }
+
+    fn synthesized_rna_read_dexseq_gene_id(seq_id: &str) -> String {
+        let mut token = seq_id
+            .trim()
+            .chars()
+            .map(|ch| {
+                if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-') {
+                    ch
+                } else {
+                    '_'
+                }
+            })
+            .collect::<String>();
+        while token.contains("__") {
+            token = token.replace("__", "_");
+        }
+        let token = token.trim_matches('_');
+        if token.is_empty() {
+            "GENtle_unassigned_sequence".to_string()
+        } else {
+            format!("GENtle_unassigned_{token}")
+        }
+    }
+
+    fn build_rna_read_exonic_part_bins(
+        dna: &DNAsequence,
+        seq_id: &str,
+        transcript_lanes: &[SplicingTranscriptLane],
+        target_gene_ids: &[String],
+        default_group_label: &str,
+        partition: &[RnaReadExonicPartPartitionBin],
+    ) -> Vec<RnaReadExonicPartBin> {
+        let fallback_gene_id = Self::synthesized_rna_read_dexseq_gene_id(seq_id);
+        let mut normalized_target_gene_ids = target_gene_ids
+            .iter()
+            .map(|gene_id| gene_id.trim())
+            .filter(|gene_id| !gene_id.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        normalized_target_gene_ids.sort_by_key(|gene_id| gene_id.to_ascii_lowercase());
+        normalized_target_gene_ids.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+        let sole_target_gene_id =
+            (normalized_target_gene_ids.len() == 1).then(|| normalized_target_gene_ids[0].clone());
+        let default_group_label = default_group_label.trim();
+        let usable_default_group = (!default_group_label.is_empty()
+            && !default_group_label.starts_with("mRNA-group-"))
+        .then(|| default_group_label.to_string());
+
+        let mut lane_by_feature_id = HashMap::<usize, &SplicingTranscriptLane>::new();
+        let mut gene_by_feature_id = HashMap::<usize, String>::new();
         for lane in transcript_lanes {
-            for exon in &lane.exons {
-                exon_support
-                    .entry((exon.start_1based, exon.end_1based))
-                    .or_default()
-                    .insert(lane.transcript_feature_id);
+            lane_by_feature_id.insert(lane.transcript_feature_id, lane);
+            let annotated_gene =
+                dna.features()
+                    .get(lane.transcript_feature_id)
+                    .and_then(|feature| {
+                        Self::first_nonempty_feature_qualifier(
+                            feature,
+                            &[
+                                "gene",
+                                "gene_id",
+                                "locus_tag",
+                                "standard_name",
+                                "gene_synonym",
+                            ],
+                        )
+                    });
+            let gene_id = annotated_gene
+                .or_else(|| sole_target_gene_id.clone())
+                .or_else(|| {
+                    if lane.has_target_feature {
+                        usable_default_group.clone()
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(|| fallback_gene_id.clone());
+            gene_by_feature_id.insert(lane.transcript_feature_id, gene_id);
+        }
+
+        let mut bins = Vec::<RnaReadExonicPartBin>::with_capacity(partition.len());
+        for (index, part) in partition.iter().enumerate() {
+            let mut gene_ids = BTreeSet::<String>::new();
+            let mut transcript_ids = BTreeSet::<String>::new();
+            let mut strands = BTreeSet::<String>::new();
+            for transcript_feature_id in &part.supporting_transcript_feature_ids {
+                if let Some(gene_id) = gene_by_feature_id.get(transcript_feature_id) {
+                    gene_ids.insert(gene_id.clone());
+                }
+                if let Some(lane) = lane_by_feature_id.get(transcript_feature_id) {
+                    if !lane.transcript_id.trim().is_empty() {
+                        transcript_ids.insert(lane.transcript_id.trim().to_string());
+                    }
+                    let strand = lane.strand.trim();
+                    if strand == "+" || strand == "-" {
+                        strands.insert(strand.to_string());
+                    }
+                }
+            }
+            if gene_ids.is_empty() {
+                gene_ids.insert(fallback_gene_id.clone());
+            }
+            let strand = if strands.len() == 1 {
+                strands
+                    .into_iter()
+                    .next()
+                    .unwrap_or_else(|| ".".to_string())
+            } else {
+                ".".to_string()
+            };
+            bins.push(RnaReadExonicPartBin {
+                global_ordinal: index + 1,
+                gene_id: gene_ids.into_iter().collect::<Vec<_>>().join("+"),
+                exonic_part_number: 0,
+                start_1based: part.start_1based,
+                end_1based: part.end_1based,
+                strand,
+                transcripts: transcript_ids.into_iter().collect(),
+                constitutive: part.constitutive,
+            });
+        }
+
+        let mut indices_by_gene = BTreeMap::<String, Vec<usize>>::new();
+        for (index, bin) in bins.iter().enumerate() {
+            indices_by_gene
+                .entry(bin.gene_id.clone())
+                .or_default()
+                .push(index);
+        }
+        for indices in indices_by_gene.values_mut() {
+            indices.sort_by_key(|index| {
+                let bin = &bins[*index];
+                (bin.start_1based, bin.end_1based, bin.global_ordinal)
+            });
+            for (part_index, bin_index) in indices.iter().copied().enumerate() {
+                bins[bin_index].exonic_part_number = part_index + 1;
             }
         }
-        let transcript_count = transcript_lanes.len().max(1);
-        let mut exons = exon_support
-            .into_iter()
-            .map(
-                |((start_1based, end_1based), supporting_transcripts)| SplicingExonSummary {
-                    start_1based,
-                    end_1based,
-                    support_transcript_count: supporting_transcripts.len(),
-                    constitutive: supporting_transcripts.len() == transcript_count,
-                },
-            )
-            .collect::<Vec<_>>();
-        exons.sort_by(|left, right| {
-            left.start_1based
-                .cmp(&right.start_1based)
-                .then(left.end_1based.cmp(&right.end_1based))
-        });
-        exons
+        bins
+    }
+
+    #[cfg(test)]
+    pub(super) fn collect_rna_read_exonic_part_bins(
+        dna: &DNAsequence,
+        seq_id: &str,
+        transcript_lanes: &[SplicingTranscriptLane],
+        target_gene_ids: &[String],
+        default_group_label: &str,
+    ) -> Vec<RnaReadExonicPartBin> {
+        let partition = Self::collect_seed_support_exonic_part_partition(transcript_lanes);
+        Self::build_rna_read_exonic_part_bins(
+            dna,
+            seq_id,
+            transcript_lanes,
+            target_gene_ids,
+            default_group_label,
+            &partition,
+        )
     }
 
     pub(super) fn build_seed_support_indexes(
@@ -10935,20 +12030,55 @@ impl GentleEngine {
 
         for template in templates {
             let mut transcript_exons = Vec::<usize>::new();
-            for pos in &template.genomic_positions_1based {
+            let mut transcript_exon_local_ordinals = Vec::<usize>::new();
+            let mut transcript_path_segments = Vec::<(usize, usize)>::new();
+            for (offset, pos) in template.genomic_positions_1based.iter().enumerate() {
                 let Some((ordinal, _, _)) = exon_position_ordinal.get(pos).copied() else {
                     continue;
                 };
+                let transcript_local_ordinal = template
+                    .transcript_local_exon_ordinals
+                    .get(offset)
+                    .copied()
+                    .unwrap_or_default();
                 if transcript_exons.last().copied() != Some(ordinal) {
                     transcript_exons.push(ordinal);
+                    transcript_exon_local_ordinals.push(transcript_local_ordinal);
+                }
+                if transcript_local_ordinal > 0
+                    && transcript_path_segments.last().copied()
+                        != Some((ordinal, transcript_local_ordinal))
+                {
+                    transcript_path_segments.push((ordinal, transcript_local_ordinal));
                 }
             }
             if transcript_exons.is_empty() {
                 continue;
             }
+            let mut transcript_local_ordinals = Vec::<usize>::new();
+            let mut transcript_local_transition_edges = Vec::<(usize, usize)>::new();
+            let mut previous_global_ordinal = None::<usize>;
+            for (global_ordinal, local_ordinal) in &transcript_path_segments {
+                if transcript_local_ordinals.last().copied() != Some(*local_ordinal) {
+                    if !transcript_local_ordinals.is_empty()
+                        && let Some(previous) = previous_global_ordinal
+                    {
+                        transcript_local_transition_edges.push((previous, *global_ordinal));
+                    }
+                    transcript_local_ordinals.push(*local_ordinal);
+                }
+                previous_global_ordinal = Some(*global_ordinal);
+            }
             let transcript_transitions = transcript_exons
                 .windows(2)
-                .map(|pair| (pair[0], pair[1]))
+                .zip(transcript_exon_local_ordinals.windows(2))
+                .filter_map(|(pair, local_pair)| {
+                    if local_pair[0] > 0 && local_pair[0] == local_pair[1] {
+                        None
+                    } else {
+                        Some((pair[0], pair[1]))
+                    }
+                })
                 .collect::<Vec<_>>();
             for transition in &transcript_transitions {
                 transition_catalog.insert(*transition);
@@ -10959,7 +12089,10 @@ impl GentleEngine {
                 transcript_label: template.transcript_label.clone(),
                 strand: template.strand.clone(),
                 exon_ordinals: transcript_exons.clone(),
+                exon_local_ordinals: transcript_exon_local_ordinals.clone(),
                 transitions: transcript_transitions.clone(),
+                transcript_local_ordinals,
+                transcript_local_transition_edges,
             });
 
             if template.sequence.len() < kmer_len {
@@ -10970,7 +12103,7 @@ impl GentleEngine {
                 let Some(bits) = Self::encode_kmer_bits(window) else {
                     continue;
                 };
-                let mut touched_exons = Vec::<usize>::new();
+                let mut touched_segments = Vec::<(usize, usize)>::new();
                 for offset in start..start + kmer_len {
                     let Some(pos_1based) = template.genomic_positions_1based.get(offset).copied()
                     else {
@@ -10980,10 +12113,21 @@ impl GentleEngine {
                     else {
                         continue;
                     };
-                    if touched_exons.last().copied() != Some(ordinal) {
-                        touched_exons.push(ordinal);
+                    let transcript_local_ordinal = template
+                        .transcript_local_exon_ordinals
+                        .get(offset)
+                        .copied()
+                        .unwrap_or_default();
+                    let segment = (ordinal, transcript_local_ordinal);
+                    if touched_segments.last().copied() != Some(segment) {
+                        touched_segments.push(segment);
                     }
                 }
+                let mut touched_exons = touched_segments
+                    .iter()
+                    .map(|(ordinal, _)| *ordinal)
+                    .collect::<Vec<_>>();
+                touched_exons.dedup();
                 if touched_exons.is_empty() {
                     continue;
                 }
@@ -10991,10 +12135,17 @@ impl GentleEngine {
                     .entry(bits)
                     .or_default()
                     .extend(touched_exons.iter().copied());
-                if touched_exons.len() >= 2 {
+                if touched_segments.len() >= 2 {
                     let row = seed_to_transitions.entry(bits).or_default();
-                    for pair in touched_exons.windows(2) {
-                        row.insert((pair[0], pair[1]));
+                    for pair in touched_segments.windows(2) {
+                        let (from_ordinal, from_local_ordinal) = pair[0];
+                        let (to_ordinal, to_local_ordinal) = pair[1];
+                        if from_ordinal == to_ordinal
+                            || (from_local_ordinal > 0 && from_local_ordinal == to_local_ordinal)
+                        {
+                            continue;
+                        }
+                        row.insert((from_ordinal, to_ordinal));
                     }
                 }
             }
@@ -11574,15 +12725,55 @@ impl GentleEngine {
             };
         }
         let mut path = model.exon_ordinals[0].to_string();
-        for pair in model.exon_ordinals.windows(2) {
+        for (idx, pair) in model.exon_ordinals.windows(2).enumerate() {
             let edge = (pair[0], pair[1]);
-            let sep = if supported_transitions.contains(&edge) {
+            let same_transcript_local_exon = model
+                .exon_local_ordinals
+                .get(idx)
+                .zip(model.exon_local_ordinals.get(idx + 1))
+                .map(|(left, right)| *left > 0 && left == right)
+                .unwrap_or(false);
+            let sep = if same_transcript_local_exon {
+                '_'
+            } else if supported_transitions.contains(&edge) {
                 ':'
             } else {
                 '-'
             };
             path.push(sep);
             path.push_str(pair[1].to_string().as_str());
+        }
+        let local_ordinals = if model.transcript_local_ordinals.is_empty() {
+            model.exon_ordinals.as_slice()
+        } else {
+            model.transcript_local_ordinals.as_slice()
+        };
+        let local_transition_edges = if model.transcript_local_transition_edges.is_empty() {
+            model.transitions.as_slice()
+        } else {
+            model.transcript_local_transition_edges.as_slice()
+        };
+        let mut transcript_exon_path = local_ordinals
+            .first()
+            .map(|ordinal| ordinal.to_string())
+            .unwrap_or_default();
+        for (idx, pair) in local_ordinals.windows(2).enumerate() {
+            let fallback_edge = model
+                .transitions
+                .get(idx)
+                .copied()
+                .unwrap_or((pair[0], pair[1]));
+            let edge = local_transition_edges
+                .get(idx)
+                .copied()
+                .unwrap_or(fallback_edge);
+            let sep = if supported_transitions.contains(&edge) {
+                ':'
+            } else {
+                '-'
+            };
+            transcript_exon_path.push(sep);
+            transcript_exon_path.push_str(pair[1].to_string().as_str());
         }
         let plus_best = best_plus;
         let minus_best = best_minus;
@@ -11632,6 +12823,7 @@ impl GentleEngine {
         };
         ReadExonPathInference {
             path,
+            transcript_exon_path,
             confirmed_transitions,
             total_transitions: model.transitions.len(),
             transcript_id: model.transcript_id.clone(),
@@ -12663,7 +13855,22 @@ impl GentleEngine {
         for row in &seed_catalog_rows {
             *seed_occurrence_counts.entry(row.seed_bits).or_insert(0) += 1;
         }
-        let seed_support_exons = Self::collect_seed_support_exon_summaries(&transcript_lanes);
+        let seed_support_partition =
+            Self::collect_seed_support_exonic_part_partition(&transcript_lanes);
+        let seed_support_exons = seed_support_partition
+            .iter()
+            .map(RnaReadExonicPartPartitionBin::summary)
+            .collect::<Vec<_>>();
+        if report.exonic_part_bins.is_empty() {
+            report.exonic_part_bins = Self::build_rna_read_exonic_part_bins(
+                dna,
+                &report.seq_id,
+                &transcript_lanes,
+                &report.target_gene_ids,
+                &splicing.group_label,
+                &seed_support_partition,
+            );
+        }
         let (
             seed_to_exons,
             seed_to_transitions,
@@ -12957,6 +14164,7 @@ impl GentleEngine {
             hit.seed_median_transcript_gap = spacing_metrics.median_transcript_gap;
             hit.seed_transcript_gap_count = spacing_metrics.transcript_gap_count;
             hit.exon_path_transcript_id = path_inference.transcript_id;
+            hit.transcript_exon_path = path_inference.transcript_exon_path;
             hit.exon_path = path_inference.path;
             hit.exon_transitions_confirmed = path_inference.confirmed_transitions;
             hit.exon_transitions_total = path_inference.total_transitions;
@@ -13302,6 +14510,14 @@ impl GentleEngine {
         let run_id = "interactive".to_string();
         let checkpoint = self.maybe_capture_checkpoint(&op);
         let mut result = OpResult {
+            dna_sequence_design: None,
+            dna_sequence_design_receipt: None,
+            primer_group_target_design: None,
+            cryptic_splicing_screen: None,
+            tata_box_screen: None,
+            cryptic_splicing_evidence_overlay: None,
+            cryptic_splicing_protein_projection: None,
+            gene_locus_evidence_preparation: None,
             op_id: self.next_op_id(),
             created_seq_ids: vec![],
             changed_seq_ids: vec![],
@@ -13318,7 +14534,23 @@ impl GentleEngine {
             exon_skip_materialization: None,
             cdna_assay_test_report: None,
             cdna_assay_product_materialization: None,
+            gene_transcript_assay_routine: None,
+            primerbank_search_report: None,
+            external_primer_pair_import_report: None,
+            terminal_exon_rt_primer_pool: None,
+            transcript_capture_pool: None,
+            primer_variant_screen: None,
             transcript_qpcr_panel: None,
+            transcript_assay_panel: None,
+            transcript_assay_fallback_execution: None,
+            transcript_assay_cdna_similarity_map: None,
+            transcript_assay_specificity_redesign: None,
+            gene_isoform_assay_study_plan: None,
+            experimental_assay_handoff: None,
+            primer_specificity_handoff: None,
+            primer_specificity_multi_handoff: None,
+            primer_specificity_multi_summary: None,
+            primer_specificity_multi_summaries: vec![],
             primer_specificity_report: None,
             construct_reasoning_graph: None,
             sequencing_confirmation_report: None,
@@ -13334,7 +14566,15 @@ impl GentleEngine {
             cutrun_regulatory_support: None,
             gene_set_resolution: None,
             gene_set_promoter_cohort: None,
+            collection_operation: None,
+            collection_restriction_site_scan: None,
+            collection_construct_reasoning_inspection: None,
+            collection_tfbs_hit_scan: None,
+            collection_digest: None,
+            collection_pool_export: None,
+            gene_set_pool_creation: None,
             gene_set_cutrun_regulatory_support: None,
+            regulatory_partner_screen: None,
             ortholog_promoter_cohort: None,
             ortholog_promoter_comparison: None,
             read_acquisition_report: None,
@@ -13347,6 +14587,7 @@ impl GentleEngine {
             rna_read_target_quality_export: None,
             rna_read_batch_map_report: None,
             rna_read_isoform_preflight: None,
+            rna_read_dexseq_verification: None,
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
             tfbs_track_similarity: None,
@@ -13355,9 +14596,15 @@ impl GentleEngine {
             repeat_annotation_query: None,
             sequence_repeat_overlaps: None,
             repeat_feature_materialization: None,
+            encode_ccre_overlaps: None,
+            encode_ccre_materialization: None,
+            ensembl_regulation_overlaps: None,
+            ensembl_regulation_materialization: None,
             repeat_environment_cohort: None,
             window_cohort_tfbs: None,
             tfbs_hit_scan: None,
+            genomic_motif_evidence: None,
+            promoter_cofactors: None,
             restriction_site_scan: None,
             jaspar_remote_metadata_snapshot: None,
             jaspar_catalog_report: None,
@@ -13368,6 +14615,7 @@ impl GentleEngine {
             sequence_context_view: None,
             sequence_context_bundle: None,
             alternative_promoter_comparison: None,
+            promoter_reporter_architecture_comparison: None,
             variant_promoter_context: None,
             promoter_evidence_matrix: None,
             isoform_promoter_comparison: None,
@@ -13378,9 +14626,33 @@ impl GentleEngine {
             reporter_recommendation: None,
             reporter_corpus_export: None,
             reporter_construct_handoff: None,
+            reporter_vector_validation: None,
+            promoter_reporter_panel_proposal: None,
+            regulatory_reporter_study: None,
+            reporter_fragment_selection: None,
+            tss_window_geometry: None,
+            regulatory_fragment_panel_plan: None,
+            regulatory_fragment_materialization_proposal: None,
+            regulatory_fragment_materialization_receipt: None,
+            promoter_reporter_panel_readiness: None,
+            promoter_reporter_panel_receipt: None,
             uniprot_projection_audit: None,
+            uniprot_linked_transcript_inventory: None,
             uniprot_projection_audit_parity: None,
             lab_assistant_instructions: None,
+            genomic_region_operation: None,
+            genomic_region_homology: None,
+            promoter_module_assessment: None,
+            feature_location_edit_report: None,
+            feature_record_curation_report: None,
+            tss_inventory: None,
+            tss_collection: None,
+            tss_collection_list: None,
+            tss_tfbs_profiles: None,
+            tss_tfbs_profile_receipt: None,
+            tss_view_svg_export: None,
+            gel_image: None,
+            gel_image_analysis: None,
         };
         report.op_id = Some(result.op_id.clone());
         report.run_id = Some(run_id.clone());
@@ -13412,6 +14684,14 @@ impl GentleEngine {
         let run_id = "interactive".to_string();
         let checkpoint = self.maybe_capture_checkpoint(&op);
         let mut result = OpResult {
+            dna_sequence_design: None,
+            dna_sequence_design_receipt: None,
+            primer_group_target_design: None,
+            cryptic_splicing_screen: None,
+            tata_box_screen: None,
+            cryptic_splicing_evidence_overlay: None,
+            cryptic_splicing_protein_projection: None,
+            gene_locus_evidence_preparation: None,
             op_id: self.next_op_id(),
             created_seq_ids: vec![],
             changed_seq_ids: vec![],
@@ -13428,7 +14708,23 @@ impl GentleEngine {
             exon_skip_materialization: None,
             cdna_assay_test_report: None,
             cdna_assay_product_materialization: None,
+            gene_transcript_assay_routine: None,
+            primerbank_search_report: None,
+            external_primer_pair_import_report: None,
+            terminal_exon_rt_primer_pool: None,
+            transcript_capture_pool: None,
+            primer_variant_screen: None,
             transcript_qpcr_panel: None,
+            transcript_assay_panel: None,
+            transcript_assay_fallback_execution: None,
+            transcript_assay_cdna_similarity_map: None,
+            transcript_assay_specificity_redesign: None,
+            gene_isoform_assay_study_plan: None,
+            experimental_assay_handoff: None,
+            primer_specificity_handoff: None,
+            primer_specificity_multi_handoff: None,
+            primer_specificity_multi_summary: None,
+            primer_specificity_multi_summaries: vec![],
             primer_specificity_report: None,
             construct_reasoning_graph: None,
             sequencing_confirmation_report: None,
@@ -13444,7 +14740,15 @@ impl GentleEngine {
             cutrun_regulatory_support: None,
             gene_set_resolution: None,
             gene_set_promoter_cohort: None,
+            collection_operation: None,
+            collection_restriction_site_scan: None,
+            collection_construct_reasoning_inspection: None,
+            collection_tfbs_hit_scan: None,
+            collection_digest: None,
+            collection_pool_export: None,
+            gene_set_pool_creation: None,
             gene_set_cutrun_regulatory_support: None,
+            regulatory_partner_screen: None,
             ortholog_promoter_cohort: None,
             ortholog_promoter_comparison: None,
             read_acquisition_report: None,
@@ -13457,6 +14761,7 @@ impl GentleEngine {
             rna_read_target_quality_export: None,
             rna_read_batch_map_report: None,
             rna_read_isoform_preflight: None,
+            rna_read_dexseq_verification: None,
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
             tfbs_track_similarity: None,
@@ -13465,9 +14770,15 @@ impl GentleEngine {
             repeat_annotation_query: None,
             sequence_repeat_overlaps: None,
             repeat_feature_materialization: None,
+            encode_ccre_overlaps: None,
+            encode_ccre_materialization: None,
+            ensembl_regulation_overlaps: None,
+            ensembl_regulation_materialization: None,
             repeat_environment_cohort: None,
             window_cohort_tfbs: None,
             tfbs_hit_scan: None,
+            genomic_motif_evidence: None,
+            promoter_cofactors: None,
             restriction_site_scan: None,
             jaspar_remote_metadata_snapshot: None,
             jaspar_catalog_report: None,
@@ -13478,6 +14789,7 @@ impl GentleEngine {
             sequence_context_view: None,
             sequence_context_bundle: None,
             alternative_promoter_comparison: None,
+            promoter_reporter_architecture_comparison: None,
             variant_promoter_context: None,
             promoter_evidence_matrix: None,
             isoform_promoter_comparison: None,
@@ -13488,9 +14800,33 @@ impl GentleEngine {
             reporter_recommendation: None,
             reporter_corpus_export: None,
             reporter_construct_handoff: None,
+            reporter_vector_validation: None,
+            promoter_reporter_panel_proposal: None,
+            regulatory_reporter_study: None,
+            reporter_fragment_selection: None,
+            tss_window_geometry: None,
+            regulatory_fragment_panel_plan: None,
+            promoter_reporter_panel_readiness: None,
+            regulatory_fragment_materialization_proposal: None,
+            regulatory_fragment_materialization_receipt: None,
+            promoter_reporter_panel_receipt: None,
             uniprot_projection_audit: None,
+            uniprot_linked_transcript_inventory: None,
             uniprot_projection_audit_parity: None,
             lab_assistant_instructions: None,
+            genomic_region_operation: None,
+            genomic_region_homology: None,
+            promoter_module_assessment: None,
+            feature_location_edit_report: None,
+            feature_record_curation_report: None,
+            tss_inventory: None,
+            tss_collection: None,
+            tss_collection_list: None,
+            tss_tfbs_profiles: None,
+            tss_tfbs_profile_receipt: None,
+            tss_view_svg_export: None,
+            gel_image: None,
+            gel_image_analysis: None,
         };
         report.op_id = Some(result.op_id.clone());
         report.run_id = Some(run_id.clone());
@@ -13775,7 +15111,20 @@ impl GentleEngine {
         for row in &seed_catalog_rows {
             *seed_occurrence_counts.entry(row.seed_bits).or_insert(0) += 1;
         }
-        let seed_support_exons = Self::collect_seed_support_exon_summaries(&transcript_lanes);
+        let seed_support_partition =
+            Self::collect_seed_support_exonic_part_partition(&transcript_lanes);
+        let seed_support_exons = seed_support_partition
+            .iter()
+            .map(RnaReadExonicPartPartitionBin::summary)
+            .collect::<Vec<_>>();
+        let exonic_part_bins = Self::build_rna_read_exonic_part_bins(
+            dna,
+            seq_id,
+            &transcript_lanes,
+            &normalized_target_gene_ids,
+            &splicing.group_label,
+            &seed_support_partition,
+        );
         let (
             seed_to_exons,
             seed_to_transitions,
@@ -14411,6 +15760,7 @@ impl GentleEngine {
                     seed_median_transcript_gap: spacing_metrics.median_transcript_gap,
                     seed_transcript_gap_count: spacing_metrics.transcript_gap_count,
                     exon_path_transcript_id: path_inference.transcript_id,
+                    transcript_exon_path: path_inference.transcript_exon_path,
                     exon_path: path_inference.path,
                     exon_transitions_confirmed: path_inference.confirmed_transitions,
                     exon_transitions_total: path_inference.total_transitions,
@@ -14779,6 +16129,13 @@ impl GentleEngine {
             report_id,
             report_mode,
             seq_id: seq_id.to_string(),
+            source_sequence_sha256: Some(crate::digest_utils::sha256_prefixed_bytes(
+                dna.forward_bytes(),
+            )),
+            coordinate_space: gentle_protocol::RNA_READ_LOADED_SEQUENCE_COORDINATE_SPACE
+                .to_string(),
+            coordinate_convention: gentle_protocol::RNA_READ_LOADED_SEQUENCE_COORDINATE_CONVENTION
+                .to_string(),
             seed_feature_id,
             generated_at_unix_ms: Self::now_unix_ms(),
             op_id: None,
@@ -14789,6 +16146,7 @@ impl GentleEngine {
             scope,
             origin_mode,
             target_gene_ids: normalized_target_gene_ids,
+            exonic_part_bins,
             roi_seed_capture_enabled,
             checkpoint_path,
             checkpoint_every_reads,
@@ -15039,6 +16397,7 @@ mod tests {
             strand: "-".to_string(),
             sequence: b"CCTT".to_vec(),
             genomic_positions_1based: vec![6, 5, 2, 1],
+            transcript_local_exon_ordinals: vec![1, 1, 2, 2],
             kmer_positions: HashMap::new(),
         };
 

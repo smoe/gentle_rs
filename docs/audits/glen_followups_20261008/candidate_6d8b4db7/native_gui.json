@@ -1,0 +1,229 @@
+{
+  "schema": "gentle.vkorc1_gui_audit.v1",
+  "source_revision": "6d8b4db772a5ed08f5fd7926ec4f1635a14a236a",
+  "profile": "dev",
+  "platform": "Linux/X11",
+  "package_accepted": false,
+  "human_scientific_approval": false,
+  "cargo_lock_sha256": "3dfe44c7a08bf779e32289cf1312103ea1fb5883e44bba5f6e1912ce3ed77745",
+  "binaries": {
+    "gentle": "e63ec2d48c16ec838b9e2aaa7b3d55ea7d21b293c10b0118b097634d1ac8ea7e",
+    "gentle_cli": "6d5ed52d34c17df9ba7a1c348a2f5c0183d971ed563c6fa39032e480eba91070",
+    "gentle_examples_docs": "e4b41018c7b75b2eb7ffb3e3d31b3f87517df0e711237811cd05b82d249ca4f9"
+  },
+  "commands": [
+    {
+      "label": "clone",
+      "argv": [
+        "git",
+        "clone",
+        "--quiet",
+        "--local",
+        "--no-hardlinks",
+        "/home/runner/work/gentle_rs/gentle_rs",
+        "/home/runner/work/_temp/vkorc1-projection-checkout"
+      ],
+      "exit_code": 0
+    },
+    {
+      "label": "generate",
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_examples_docs",
+        "generate"
+      ],
+      "exit_code": 0
+    },
+    {
+      "label": "tutorial-catalog-generate",
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_examples_docs",
+        "tutorial-catalog-generate"
+      ],
+      "exit_code": 0
+    },
+    {
+      "label": "tutorial-manifest-generate",
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_examples_docs",
+        "tutorial-manifest-generate"
+      ],
+      "exit_code": 0
+    },
+    {
+      "label": "tutorial-generate",
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_examples_docs",
+        "tutorial-generate"
+      ],
+      "exit_code": 0
+    },
+    {
+      "label": "check",
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_examples_docs",
+        "--check"
+      ],
+      "exit_code": 0
+    },
+    {
+      "label": "tutorial-catalog-check",
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_examples_docs",
+        "tutorial-catalog-check"
+      ],
+      "exit_code": 0
+    },
+    {
+      "label": "tutorial-manifest-check",
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_examples_docs",
+        "tutorial-manifest-check"
+      ],
+      "exit_code": 0
+    },
+    {
+      "label": "tutorial-check",
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_examples_docs",
+        "tutorial-check"
+      ],
+      "exit_code": 0
+    },
+    {
+      "label": "native-replay",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "-s",
+        "-screen 0 1600x1000x24",
+        "bash",
+        "-c",
+        "set -euo pipefail\n        openbox > \"$1/openbox.log\" 2>&1 &\n        wm=$!\n        trap 'kill \"$wm\" || true' EXIT\n        sleep 1\n        parent_netns=$(readlink /proc/self/ns/net)\n        sudo --preserve-env=DISPLAY,XAUTHORITY unshare --net --           setpriv --reuid=\"$(id -u)\" --regid=\"$(id -g)\" --init-groups           python3 \"$2/scripts/tutorial_gui_acceptance.py\" --repo-root \"$2\"           --gentle \"$3/gentle\" --gentle-cli \"$3/gentle_cli\" --examples-docs \"$3/gentle_examples_docs\"           --chapter vkorc1_warfarin_promoter_luciferase_gui --evidence-dir \"$1\"           --parent-network-namespace \"$parent_netns\" --network-enforcement linux_network_namespace\n        ",
+        "audit",
+        "/home/runner/work/_temp/vkorc1-gui-audit/native",
+        "/home/runner/work/_temp/vkorc1-projection-checkout",
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug"
+      ],
+      "exit_code": 0
+    }
+  ],
+  "status": "pass",
+  "generated_projection_paths": [],
+  "artifacts": {
+    "base-comparison.json": "ff6a4d3c8891a5662f970c80a1c5a167e8839664fe42d27d98dcbec948b05c07",
+    "base-comparison.svg": "412b1dda07391c14913304588051b43800a2b599fe4ea417b2e21b835b888e7a",
+    "build.log": "9915bfff6d3e0f40f4bb22becdfbda28e231fb76315e3a0ee950f5c5d8940d7a",
+    "cargo.txt": "1f88eaf7fe1aaec83184752cf4c944cd22f00184136ff36a3e4c318cc60ef566",
+    "check.log": "f2b2deeb7cf2149fffd46751daf780e2b6a53a67dc20a4c8a8a74018858878a4",
+    "clone.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "generate.log": "cd01a3cf722b04a36d71ddbf61e82754a20e729eb2ebea9969a24171a1b13715",
+    "native/acceptance-report.json": "2bf41c065ce6bbbeb106377c91d2cc2fc2e35031dfdec9b85b2e44df550d8054",
+    "native/environment.json": "34ab833abf1bb0b7f1a6a4d87e03eb316e977a02706ea581983fb9e72f083b87",
+    "native/openbox.log": "95c0b23fa7dc08a3a7816a44ed0ed418004ac3c72977f69174eb7220d35f35ae",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/acceptance-ledger.json": "25d6da8406a7c1f4579fae180fe0fe652f2fc137b727fa6d5d4e1c8ea9564118",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/expand_variation.context.svg": "ec1c96374dda0f57bd4dcf7eda843ed406a964f656c53a5d11b8fc5c9181b84d",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/expand_variation.orientation.svg": "a6228f19a0a59fbaa7b846706feb9266910478c8ca24c1d5fe00941b8c21976d",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/expand_variation.raw.png": "5f637796b6ba4023005450689f54d2ccb83d86447d47ff1425ec013104cd3816",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/expand_variation.screenshot.json": "6cec1026b4d3f0ab61e891e7cf5bfd4e271d06ff91c5c781ecc4de845fb44dd6",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/expand_variation.snapshot.json": "3fb6bc98ba8a42c0540682e38c7bcb35eb66ff9b7c6af363eced17a9d1c71d6a",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/materialize_pair.context.svg": "0a0cb297cc6db2a8870e1981fb5ec43c57323ccd7a1ed21d8d269373bf8dcb90",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/materialize_pair.orientation.svg": "457b3a89b28d4bf90e28e896e005a56527a23a2b2916d41c68e331cc0e702e4e",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/materialize_pair.raw.png": "c2fa85c3836858539a2047944fca9aaf774bff9a09e9d93d5b28ac2fda1f0a64",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/materialize_pair.screenshot.json": "cda8eb9001c2f853a6867a1a5ac904e62482e48ba4741b5b9e05578e60404060",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/materialize_pair.snapshot.json": "87af030d2c27cc368a4899c1f09719f767451fd72824d325ba3223c6a5503f86",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/open_fragment.context.svg": "9c3b0f9e351db26b4dd7c4dfaeed38ed6e2a66c8dc32ca5b308cb8d68af0c2d3",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/open_fragment.orientation.svg": "3125ae9caccc3219a072f1036dccd265ba0a21fa56731de56f6d50c1b60d4539",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/open_fragment.raw.png": "e96e01e5f0804293a3263b58f20845aa988ff1fc835899938510373ac51557ed",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/open_fragment.screenshot.json": "9b8b64af311a5e20b15378166be2de42d19301dd78dafdde7b9bd19731baf564",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/open_fragment.snapshot.json": "ca3a482b95024850f4a1e3763a2794dbb2c298855993d84b8f360270f01a0f95",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/open_promoter.context.svg": "ee6fae59b996a289d832089d62b323d1eceab381809f0942cb302c2d7b45bccf",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/open_promoter.orientation.svg": "a7521fc9b138bcad54af651c599396afbfc831123ad28265c5ffcf1e15cc8c7c",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/open_promoter.raw.png": "a99ca4371258476bfd27106c87311868b6e1126632a2cd5ac8bf454d985d45ee",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/open_promoter.screenshot.json": "be1f80425c418c8a11c4a7ffe00cb64e3c9a65269492a6ab1fd5d501c0368a43",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/open_promoter.snapshot.json": "6a9912fb01ab83e8c97ac586a9aa713db1c3141cb0379e59205638d8a88c2f45",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/review_t.context.svg": "3fe7bf5ccb34d2f6c67c393206f39cf07246507c15fb4b7500af5287dfc42260",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/review_t.orientation.svg": "bd57b946465fe4370f6f800658db896ad9f69104195449d6d47ebf34d21a9591",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/review_t.raw.png": "38c55cb4817a84d8aebbaced941d8868ad4530212e3d43a90f51ba5a7f853c92",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/review_t.screenshot.json": "b0328347e621c00298f15802e0608101e07a31bd3ced12ef88063c99371c959c",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/review_t.snapshot.json": "5496078f652fa4454bd76e6234c30d297446e0bf3d27cfd9b0d528a894045dad",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/scroll_to_allele.context.svg": "110e3b977797ffe753ac4174089364180608643432f903bf5548ebc891cdb4d8",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/scroll_to_allele.orientation.svg": "d27fdb455936bbd6940d349e6ee44a9187f9857560fd6d66ab2908705478e968",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/scroll_to_allele.raw.png": "d305fa08fcc0c5e6f6a4608be16da52f21f19da72d7902823d9a01ab09372445",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/scroll_to_allele.screenshot.json": "8813aa18b086d5d6c531078eae537f6ddb28c94cf29d10b36b4a9917e0675b31",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/scroll_to_allele.snapshot.json": "aab471ecc3d05b94b0d1d9e7b1934079f1b4b74ff8ce0442abbc0f6780f03275",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/scroll_to_pair.context.svg": "dc8bfdb67f31cbcfb673a68e8c04b97ee542ad97819ec1087a666453e24977e1",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/scroll_to_pair.orientation.svg": "1a07641dd246446eff37a06fc5abe9982761727ea9af3987c1768d6dcd43b5d4",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/scroll_to_pair.raw.png": "e57cb21af5b022d09026d3e8790fd74869b6bbfa1192558497ffad6c1de8eeb2",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/scroll_to_pair.screenshot.json": "5de5b785d3791fed5eebc3ee5ad4a8992be14bc3ed9e72454c81cf70b974d247",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/scroll_to_pair.snapshot.json": "4e6a3012e41b893618466be367d1c9e9e89469ea5510b5e8a5e72744d15fb94a",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/select_variant.context.svg": "a6c13582cd0b1ad464ffab88c0be6c62c8c8b1f655b6b722c99863e892e9c917",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/select_variant.orientation.svg": "131a0b4699120e13de13ee3706592bc4bd757e7ac7b14e2c2f57c73c73b4bd0c",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/select_variant.raw.png": "c2f176d77b50b0bda07553e8186a698c5b92f94d7e28c78c57e6b13dcb24e507",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/select_variant.screenshot.json": "bb0fb636898f4505442758e1c27e5c92696a656840aad000bcf4104cd9e2d872",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/select_variant.snapshot.json": "62a94ad6e0bb714c85ac834eb10261e2cd2b4c815474258213513226f0b39d5c",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/commands/001-prepare-starter.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/commands/001-prepare-starter.stdout": "3bf792b53de90150394dfaae98753fa876bd1d4572c01cce9dc1cb8602097073",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/commands/002-prepare-oracle.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/commands/002-prepare-oracle.stdout": "9fe27d00da80b7ea0fecae380360bfefe493ac235855d71338b1c68f0a32a788",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/commands/003-starter-completion.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/commands/003-starter-completion.stdout": "fed9be2cc194bba6badf3c49de8a6974f9c852ea7123d911c229d7a45b37359d",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/commands/004-oracle-completion.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/commands/004-oracle-completion.stdout": "8671889e3a19f9a1905b82304d95d37bdd30ee8b810b32b802ddb8e54d9b13c2",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/commands/005-oracle-check-materialize_pair-before.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/commands/005-oracle-check-materialize_pair-before.stdout": "fed9be2cc194bba6badf3c49de8a6974f9c852ea7123d911c229d7a45b37359d",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/commands/006-oracle-check-materialize_pair-after.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/commands/006-oracle-check-materialize_pair-after.stdout": "8671889e3a19f9a1905b82304d95d37bdd30ee8b810b32b802ddb8e54d9b13c2",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/commands/007-oracle-check-materialize_pair-state-1.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/commands/007-oracle-check-materialize_pair-state-1.stdout": "62d8113bc662c36e16ccb0cea48ec0b2ae54c5c55ec238bdcef92abf2b4a3a29",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/commands/008-runtime-materialize_pair-before.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/commands/008-runtime-materialize_pair-before.stdout": "fed9be2cc194bba6badf3c49de8a6974f9c852ea7123d911c229d7a45b37359d",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/commands/009-runtime-materialize_pair-after.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/commands/009-runtime-materialize_pair-after.stdout": "8671889e3a19f9a1905b82304d95d37bdd30ee8b810b32b802ddb8e54d9b13c2",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/commands/010-runtime-materialize_pair-state-1.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/commands/010-runtime-materialize_pair-state-1.stdout": "2b516ab3c2dd411c6e36608b226be6a5b1c14ee5b64b88241112cf2f050e80de",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/commands/011-runtime-completion.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/commands/011-runtime-completion.stdout": "8671889e3a19f9a1905b82304d95d37bdd30ee8b810b32b802ddb8e54d9b13c2",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/gui.stderr": "76050053c4b02071888d4c96a42008c20783652c7d6b1762457f640578a0d413",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/gui.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/live-semantic-snapshot.json": "7b35cadf8f0c55911fe80609831aa8e120f94ffa3a4fb6b2ea335528ca7c3eda",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/oracle.project.gentle.json": "1c7ebabf9354988b34d1c36d006cdf269d4169cd85059f25050c8aee5e0d77c8",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/profile/home/.gentle_gui_settings.json": "db8564f4c545f1a80f2b7095b9312d610536e95aa6b9fb2ad6586f1271db5302",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/profile/xdg-cache/mesa_shader_cache/16/bb7b2d97125f7abcec7ba343e8f47b4cc9e6f6": "011c4899e76a116a1bd42af3879343540b91a73567794a4c49c1efff74304ca8",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/profile/xdg-cache/mesa_shader_cache/24/5e3027937388d4460b777a0da6a2d73c57af1a": "e9f8c0a3e80bda4a3fac5b91a285df145589636f901b7549f5fab99f108f6db3",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/profile/xdg-cache/mesa_shader_cache/35/d88ab11736e614ad3cb6c9337342b73644bcc4": "908086cde716e117df7edc7838ff72bb5e97f88bccb94b5303aa2096934674a9",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/profile/xdg-cache/mesa_shader_cache/4f/301a42de4d52f8fc0129291b194275a851f551": "06e38b8f165ffdf3fe9089e6320e432fc3931017dc1a0f5eaef488977e8f955a",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/profile/xdg-cache/mesa_shader_cache/67/90f9d87bed4d9bb677047744a933da1a015dd0": "b6c49165abe1c4ad49272a4c98ca904ffc8cdbde3ec5558a656517e50dc4cbe5",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/profile/xdg-cache/mesa_shader_cache/7a/88301dc85ce2e50bcba528df13d7b541a0b1e3": "91543e321375df09b47f977a906783490dd6d517bc292da55d8d96affcefe0d6",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/profile/xdg-cache/mesa_shader_cache/97/bdbc6932736833e140046c83b44b2323df3013": "3ac196227f7fe775a65f3aa94037e6b2a9758be8cb3c60d40901feb18da0d742",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/profile/xdg-cache/mesa_shader_cache/af/d5fcc42736f5dd91e607f910daed9305380320": "5b4785ad5c8ff9dbb444b68d374491c15fc17790d4461f8836c45f115732f5dc",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/profile/xdg-cache/mesa_shader_cache/b2/bab0029b8424b59d44a626bff575d243883a5a": "9d99d99b8037673a91b68b419680051dfda42956b9f4d613b0525b631eec12e1",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/profile/xdg-cache/mesa_shader_cache/c7/c8263faf67f54ea587fc31d06f9bc8197afd7e": "007d12c810602108a3a047933f402da144a36fc9e12d077c57aecb6c46897a94",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/profile/xdg-cache/mesa_shader_cache/ca/2530c5624ebcf8ea0a5a0514c794ecc0269cd5": "78d7a3a5c17424e408ff07a10a28cf3241ccc2b22be051f54003a955f451cc1b",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/profile/xdg-cache/mesa_shader_cache/d9/fce10ab42b380a583d216350116d9f7bf1358a": "36ebc5f7b785d1878f54a66d0e4dd5682c97ee30d729c6da8355a3f5909e7de5",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/profile/xdg-cache/mesa_shader_cache/de/72d50bbc05979915d5ed127f9423efd42ee550": "13d9d9bfecbc3b00293709c0988805c030c1dbb33e9e97be62d1f46dbb5e466a",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/profile/xdg-cache/mesa_shader_cache/index": "e0743ba00988a0de03976f169b3fa00198f812dd057ff84b01a548e61c51c187",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/profile/xdg-cache/mesa_shader_cache/marker": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/starter.project.gentle.json": "4a0af0fdea9ad278b1de533743294a7d9ebb876819297f07a6fec56d146876dc",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/verifiers/oracle-check-materialize_pair-after.fact.json": "8be18ab2dcaa59bf43b39382345e5ed1d1d4a7ff91823c897ddb2a694ea2e808",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/verifiers/oracle-check-materialize_pair-before.fact.json": "8be18ab2dcaa59bf43b39382345e5ed1d1d4a7ff91823c897ddb2a694ea2e808",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/verifiers/oracle-completion.fact.json": "8be18ab2dcaa59bf43b39382345e5ed1d1d4a7ff91823c897ddb2a694ea2e808",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/verifiers/runtime-completion.fact.json": "8be18ab2dcaa59bf43b39382345e5ed1d1d4a7ff91823c897ddb2a694ea2e808",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/verifiers/runtime-materialize_pair-after.fact.json": "8be18ab2dcaa59bf43b39382345e5ed1d1d4a7ff91823c897ddb2a694ea2e808",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/verifiers/runtime-materialize_pair-before.fact.json": "8be18ab2dcaa59bf43b39382345e5ed1d1d4a7ff91823c897ddb2a694ea2e808",
+    "native/vkorc1_warfarin_promoter_luciferase_gui/verifiers/starter-completion.fact.json": "8be18ab2dcaa59bf43b39382345e5ed1d1d4a7ff91823c897ddb2a694ea2e808",
+    "native-replay.log": "2bf41c065ce6bbbeb106377c91d2cc2fc2e35031dfdec9b85b2e44df550d8054",
+    "promoter_pair_.log": "af6b3407ead191218094ac86313c212544afbb3f14000580afe438e5d35e41a5",
+    "reporter_construct_handoff_.log": "1dc244087a3324b15efb42d212c97ef15d6b2b64dec2c825f80924603d876502",
+    "rustc.txt": "b569b0c98ea3133c7252b4b8ea6b39b7b353813df0dd5f5c412c355691424112",
+    "tutorial-catalog-check.log": "58dbfbef2ed21f710f7c1c0a3dcfb043b82d4344dd20bf5b4c2cf4b825402989",
+    "tutorial-catalog-generate.log": "184e623649e7d568ed5705719a554ab79b1dd6d216134e5743a9a4060402b3a3",
+    "tutorial-check.log": "b1ffbb830e4005f331a397d36b12ef344a5b740557a65c74a75336ee34067767",
+    "tutorial-generate.log": "09480e564f2c6c98248b59681393e5bebca5e747d357e25861b2db202da5e1ee",
+    "tutorial-manifest-check.log": "a19f64bacd54f3503940ae68bf06392b8b58a6d7f2168496610691bf5811de84",
+    "tutorial-manifest-generate.log": "a843b0678068914484b465a0a4e9a1aca237ab174d8f592321cfc3cc9a5d6551",
+    "tutorial_gui_acceptance_feature_targets.log": "3ebf7d9936e9a19849685b711311475cb8eaf62974fe47f874759998af149f4c",
+    "tutorial_gui_semantics__tests.log": "a429767315675fb48ab52a294c003af28406463994b71e2c16b0b6bfcb486305",
+    "variant_followup_allele_pair_.log": "4a43cf52249aae54e3265847950f56cf51ebea217e90aece6c90152f18823a22",
+    "vkorc1_pair_gui_starter_and_oracle.log": "d3e634b6278cfe65d8a9293c5c24ad105e20e0bdd8038f8b6fdaaf1a6dd91169"
+  }
+}

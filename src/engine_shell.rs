@@ -19,15 +19,17 @@
 
 use crate::{
     agent_bridge::{
-        AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
-        AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV,
-        AGENT_TIMEOUT_SECS_ENV, AgentExecutionIntent, invoke_agent_support_with_env_overrides,
+        AGENT_ALLOW_WEB_RESEARCH_ENV, AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV,
+        AGENT_MAX_RESPONSE_BYTES_ENV, AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV,
+        AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV, AgentExecutionIntent,
+        build_agent_introspection_context_for_request, invoke_agent_support_with_request_context,
     },
     agent_execution::execute_agent_plan_candidate,
     agent_planner::{load_agent_plan_from_argument, plan_from_shell_options},
     agent_transport::{
         agent_system_availability, discover_models_for_agent_system, load_agent_system_catalog,
     },
+    allele_hash_screen::{AlleleHashScreenRequest, AlleleReadPairInput},
     amino_acids::{STOP_CODON, UNKNOWN_CODON},
     attract_motifs,
     dna_ladder::LadderMolecule,
@@ -38,50 +40,79 @@ use crate::{
         CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
         CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
         CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm,
-        CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder,
-        ConstructReasoningInspectionActionKind, CutRunAlignConfig, CutRunCoverageKind,
-        CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig,
-        DEFAULT_HOST_PROFILE_CATALOG_PATH, DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
+        CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder, CollectionSubjectRef,
+        ConstructReasoningCollectionMemberBinding, ConstructReasoningInspectionActionKind,
+        CutRunAlignConfig, CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout,
+        CutRunSeedFilterConfig, DEFAULT_HOST_PROFILE_CATALOG_PATH,
+        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP,
         DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
-        DOTPLOT_ANALYSIS_METADATA_KEY, DisplayTarget, DotplotMode, DotplotOverlayAnchorExonRef,
-        DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, EditableStatus, Engine, EvidenceClass,
-        ExonSkipReturnKind, ExonSkipSelectionCriterion, FactAtom, FactBasis, FactExpression,
-        FactSubject, FactSubjectKind, FactTruth, FeatureBedCoordinateMode, FeatureExpertTarget,
-        FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY, GeneSetCohortRelationship,
-        GeneSetProducerFilter, GeneSetPromoterCohortReport, GeneSetRequest,
-        GeneSetResolutionReport, GeneSetResolutionReviewStatus, GenomeAnchorSide,
+        DEFAULT_REGULATORY_PARTNER_DISTANCE_BP, DOTPLOT_ANALYSIS_METADATA_KEY,
+        DigestCollectionMemberBinding, DisplayTarget, DotplotInspectionRequestSnapshot,
+        DotplotMode, DotplotOverlayAnchorExonRef, DotplotOverlayQuerySpec, DotplotOverlayXAxisMode,
+        EditableStatus, Engine, EvidenceClass, ExonSkipReturnKind, ExonSkipSelectionCriterion,
+        ExperimentalAssayReadinessPolicy, ExternalPrimerPairImportRequest,
+        ExternalPrimerPairSpecificityRequest, FactAtom, FactBasis, FactEvaluationResult,
+        FactExpression, FactSubject, FactSubjectKind, FactTruth, FeatureBedCoordinateMode,
+        FeatureExpertTarget, FeatureExpertView, FeatureLocationEditRequest,
+        FeatureLocationEditStrand, FeatureRecordCreateRequest, FeatureRecordCurationRequest,
+        FeatureRecordDeleteRequest, FeatureRecordMergeRequest, FeatureRecordQualifier,
+        FeatureRecordSplitRequest, FlexibilityModel, GENE_ISOFORM_ASSAY_STUDY_CHECKPOINT_SCHEMA,
+        GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA, GENE_ISOFORM_ASSAY_STUDY_REUSE_PROPOSAL_SCHEMA,
+        GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_EXECUTION_SCHEMA,
+        GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_REQUEST_SCHEMA,
+        GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_SCHEMA, GUIDE_DESIGN_METADATA_KEY,
+        GeneIsoformAssayStudyCheckpoint, GeneIsoformAssayStudyCheckpointOperation,
+        GeneIsoformAssayStudyPlanReport, GeneIsoformAssayStudyPlanRequest,
+        GeneIsoformAssayStudyReuseProposal, GeneIsoformAssayStudyRuntimeIdentity,
+        GeneIsoformAssayStudyWorkflowBatch, GeneIsoformAssayStudyWorkflowBatchEntry,
+        GeneIsoformAssayStudyWorkflowBatchRequest, GeneIsoformEvidenceRequest,
+        GeneLocusEvidenceDisplayRequest, GeneLocusEvidencePreparationRequest,
+        GeneLocusRegulatoryScoreTrackRequest, GeneLocusScaleBarMode, GeneSetCohortRelationship,
+        GeneSetCutRunRegulatorySupportReport, GeneSetPoolMemberBinding, GeneSetProducerFilter,
+        GeneSetPromoterCohortReport, GeneSetRequest, GeneSetResolutionReport,
+        GeneSetResolutionReviewStatus, GeneTranscriptAssayRoutineRequest, GenomeAnchorSide,
         GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource, GenomeTrackSubscription,
+        GenomicMotifEvidenceInterval, GenomicMotifEvidenceRequest, GenomicMotifEvidenceTarget,
         GentleEngine, GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat,
         GuidePracticalFilterConfig, InlineSequenceTopology, LabAssistantInstructionsFormat,
         LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus,
         OligoOrderFormCreateRequest, Operation, OperationProgress, OrthologAmbiguityPolicy,
-        OrthologPromoterCohortReport, PLANNING_CLONING_CONSULTATION_SCHEMA,
-        PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA,
-        PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
+        OrthologCutRunNormalizationInput, OrthologPromoterCohortReport,
+        PLANNING_CLONING_CONSULTATION_SCHEMA, PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA,
+        PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
         PRIMER_DESIGN_REPORTS_METADATA_KEY, PROTEIN_EXPRESSION_HANDOFF_SCHEMA,
-        PairwiseAlignmentMode, PlanningCloningConsultation, PlanningCloningHelperVectorSummary,
-        PlanningCloningHostProfileSummary, PlanningCloningLocalConstraint,
-        PlanningCloningMissingQuestion, PlanningCloningStrategyCandidate,
-        PlanningCloningSuggestedNextAction, PlanningCloningVectorCandidate, PlanningEstimate,
-        PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
-        PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignReport,
-        PrimerDesignSideConstraint, PrimerSpecificityPolicy, ProbeRegionRequest, ProjectFact,
-        ProjectFactDomain, ProjectFactGraph, ProjectFactTypeSpec, ProjectState,
-        PromoterArtifactManifestEntry, PromoterCohortKind, PromoterExpressionEvidenceInput,
-        PromoterTfbsGeneQuery, PromoterWindowCollapseMode, ProteinExpressionCdsAssessment,
-        ProteinExpressionFeatureSummary, ProteinExpressionHandoffReport,
-        ProteinExpressionHostChassisCandidate, ProteinExpressionProductDefinition,
-        ProteinExpressionProductReadiness, ProteinExpressionSequenceContext,
+        PROTEIN_EXPRESSION_REQUIREMENTS_SCHEMA, PairwiseAlignmentMode, PlanningCloningConsultation,
+        PlanningCloningHelperVectorSummary, PlanningCloningHostProfileSummary,
+        PlanningCloningLocalConstraint, PlanningCloningMissingQuestion,
+        PlanningCloningStrategyCandidate, PlanningCloningSuggestedNextAction,
+        PlanningCloningVectorCandidate, PlanningEstimate, PlanningObjective, PlanningProfile,
+        PlanningProfileScope, PlanningSuggestionStatus, PrimerDesignBackend,
+        PrimerDesignPairConstraint, PrimerDesignReport, PrimerDesignSideConstraint,
+        PrimerGroupTargetDesignRequest, PrimerSpecificityCheckMode,
+        PrimerSpecificityCollectionMemberBinding, PrimerSpecificityPolicy,
+        PrimerVariantScreenRequest, ProbeRegionRequest, ProjectFact, ProjectFactDomain,
+        ProjectFactGraph, ProjectFactTypeSpec, ProjectState, PromoterArtifactManifestEntry,
+        PromoterCohortKind, PromoterExpressionEvidenceInput,
+        PromoterReporterArchitectureComparisonRequest, PromoterReporterFragmentPolicy,
+        PromoterReporterPanelProposal, PromoterReporterPanelReadinessRequest,
+        PromoterReporterPanelRequest, PromoterTfbsGeneQuery, PromoterWindowCollapseMode,
+        ProteinExpressionCdsAssessment, ProteinExpressionFeatureSummary,
+        ProteinExpressionHandoffReport, ProteinExpressionHostChassisCandidate,
+        ProteinExpressionProductDefinition, ProteinExpressionProductReadiness,
+        ProteinExpressionRequirements, ProteinExpressionSequenceContext,
         ProteinExpressionServiceHandoffCandidate, ProteinExpressionTagAssessment,
         ProteinExpressionVectorRouteCandidate, ProteinExternalOpinionSource, ProteinFeatureFilter,
         ProteinToDnaHandoffRankingGoal, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting,
         QpcrTranscriptTargetingMode, RNA_READ_ALIGNMENT_DISPLAY_BATCH_SCHEMA,
         RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
         RackOccupant, RackPhysicalTemplateKind, RackProfileKind, ReadAcquisitionAnalysisFormat,
-        ReadAcquisitionReadLayout, RenderSvgMode, RepeatAnnotationFilter,
+        ReadAcquisitionReadLayout, RegulatoryFragmentPanelPlan, RegulatoryFragmentPanelRequest,
+        RegulatoryPartnerAnchorMode, RegulatoryPartnerMotifThreshold,
+        RegulatoryReporterStudyRequest, RenderSvgMode, RepeatAnnotationFilter,
         RepeatEnvironmentCohortReport, RepeatEnvironmentGeometryMode, ReporterConstraints,
-        ReporterCorpusExportFormat, RestrictionCloningPcrHandoffMode, RestrictionSiteScanReport,
+        ReporterCorpusExportFormat, RestrictionCloningPcrHandoffMode,
+        RestrictionSiteScanCollectionMemberBinding, RestrictionSiteScanReport,
         ReverseTranslationReport, ReverseTranslationReportSummary, RnaReadAlignConfig,
         RnaReadAlignmentDisplayBatch, RnaReadAlignmentInspectionEffectFilter,
         RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
@@ -93,30 +124,54 @@ use crate::{
         SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureRangeRelation,
         SequenceFeatureSortBy, SequenceFeatureStrandFilter, SequenceScanTarget,
         SequencingConfirmationTargetKind, SequencingConfirmationTargetSpec, SplicingRange,
-        SplicingScopePreset, TfThresholdOverride, TfbsRegionSummaryRequest,
-        TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource,
-        TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric, TranslationSpeedMark,
-        TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode, VariantAlleleChoice,
+        SplicingScopePreset, TERMINAL_EXON_RT_PRIMER_POOL_REQUEST_SCHEMA,
+        TerminalExonRtPrimerPoolRequest, TfThresholdOverride, TfbsHitScanCollectionMemberBinding,
+        TfbsRegionSummaryRequest, TfbsScoreTrackCorrelationMetric,
+        TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
+        TfbsTrackSimilarityRankingMetric, TranscriptAssayAmpliconRange,
+        TranscriptAssayCdnaSimilarityMapBuildRequest, TranscriptAssayCdnaSynthesis,
+        TranscriptAssayCoveragePolicy, TranscriptAssayCoverageUniverse,
+        TranscriptAssayInformativeSelectionPolicy, TranscriptAssayJunctionPriority,
+        TranscriptAssayJunctionRequest, TranscriptAssayKind, TranscriptAssayPanelFeasibilityReport,
+        TranscriptAssayPanelObjective, TranscriptAssayPanelSpecificityExecutionManifest,
+        TranscriptAssayPracticalityPolicy, TranscriptAssaySpecificityRedesignRequest,
+        TranscriptAssaySpecificityRequest, TranscriptAssayUseTier, TranslationSpeedMark,
+        TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode,
+        UniprotLinkedTranscriptInventoryRequest, VariantAlleleChoice,
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
-        construct_reasoning_action_dotplot_request, parse_feature_coordinate_term_on_sequence,
-        project_fact_type_specs, resolve_selection_formula_range_0based_on_sequence,
-        split_feature_formula_range_expression,
+        construct_reasoning_action_dotplot_request,
+        construct_reasoning_dotplot_inspection_provenance,
+        parse_feature_coordinate_term_on_sequence, project_fact_type_specs,
+        resolve_selection_formula_range_0based_on_sequence, split_feature_formula_range_expression,
     },
     enzymes::active_restriction_enzymes,
     enzymes::is_type_iis_capable_enzyme_name,
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     gene_groups,
+    gene_set_publication::generate_gene_isoform_assay_publication,
     genomes::{
         GenomeBlastReport, GenomeCatalog, GenomeCatalogListEntry, GenomeGeneRecord,
-        PreparedCacheCleanupMode, PreparedCacheCleanupRequest, configured_helper_genome_cache_dir,
-        configured_reference_genome_cache_dir, default_catalog_discovery_label,
-        default_catalog_discovery_token, default_helper_semantics_vocabulary_discovery_label,
+        PrepareGenomeActivityStatus, PreparedCacheCleanupMode, PreparedCacheCleanupRequest,
+        configured_helper_genome_cache_dir, configured_reference_genome_cache_dir,
+        default_catalog_discovery_label, default_catalog_discovery_token,
+        default_helper_semantics_vocabulary_discovery_label,
     },
     gibson_planning::{GIBSON_ASSEMBLY_PREVIEW_SCHEMA, GibsonAssemblyPlan},
     mirna::{self, MirnaRegionClass, MirnaSeedClass, MirnaTargetScanRequest},
+    primerbank::{
+        PRIMERBANK_CDNA_TEST_REPORT_SCHEMA, PRIMERBANK_USAGE_POLICY_URL, PrimerBankCdnaTestReport,
+        PrimerBankQueryKind, PrimerBankSearchRequest, PrimerBankSpecies,
+        PrimerBankSpeciesMatchStatus,
+    },
     protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
-    publication_resources, resource_status, resource_sync, service_readiness,
+    publication_resources, resource_status, resource_sync,
+    runtime_status::{
+        RuntimeStatusActivity, RuntimeStatusActivityObservation, RuntimeStatusActivityScope,
+        RuntimeStatusActivitySource, RuntimeStatusFrameKind, RuntimeStatusTrigger,
+        runtime_status_registry, runtime_status_snapshot,
+    },
+    service_readiness,
     shell_docs::{
         HelpOutputFormat, shell_help_json as render_shell_help_json,
         shell_help_markdown as render_shell_help_markdown,
@@ -128,11 +183,12 @@ use crate::{
     tf_motifs, ucsc_rmsk,
 };
 use gentle_protocol::{
-    CapabilityDescriptor, EXTERNAL_SERVICE_DELIVERY_ROUTE_REQUEST_SCHEMA,
-    EXTERNAL_SERVICE_REQUEST_SCHEMA, ExternalServiceDeliveryRouteReport,
-    ExternalServiceDeliveryRouteRequest, ExternalServiceRequest,
-    GENE_SET_CO_REGULATED_CACHE_SCHEMA, GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
-    GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA, capability_registry,
+    CapabilityDescriptor, CrypticSplicingEvidenceOverlayRequest,
+    CrypticSplicingProteinProjectionRequest, CrypticSplicingScreenRequest,
+    EXTERNAL_SERVICE_DELIVERY_ROUTE_REQUEST_SCHEMA, EXTERNAL_SERVICE_REQUEST_SCHEMA,
+    ExternalServiceDeliveryRouteReport, ExternalServiceDeliveryRouteRequest,
+    ExternalServiceRequest, GENE_SET_CO_REGULATED_CACHE_SCHEMA, GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
+    GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA, SharedAssetActivityStatus, capability_registry,
 };
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use objc2_app_kit::NSApplication;
@@ -163,14 +219,16 @@ use std::{
 
 pub use gentle_shell::{
     BatchEmitMode, BatchManifestDelimiter, BatchStateMode, CacheCleanupScope, CandidateSetOperator,
-    ShellRunResult, UiIntentAction, UiIntentTarget, UiIntentTargetCatalogRow, split_shell_words,
-    ui_intent_target_catalog,
+    ShellRunResult, UiConfigurationSection, UiIntentAction, UiIntentTarget,
+    UiIntentTargetCatalogRow, split_shell_words, ui_intent_target_catalog,
 };
 
 // Private parser slices for large command families. Shared public command and
 // execution contracts stay in this file so GUI Shell and CLI shell keep one
 // visible behavior surface.
 mod command_parsers;
+pub(crate) mod routine_bindings;
+mod tss_profiles;
 use command_parsers::*;
 
 const CLONING_PATTERN_FILE_SCHEMA: &str = "gentle.cloning_patterns.v1";
@@ -197,15 +255,21 @@ fn protein_expression_geneart_quote_shell_line() -> String {
 }
 
 const BLAST_ASYNC_JOB_SCHEMA: &str = "gentle.blast_async_job_status.v1";
-const BLAST_ASYNC_STORE_SCHEMA: &str = "gentle.blast_async_job_store.v1";
-const BLAST_ASYNC_STORE_METADATA_KEY: &str = "blast_async_jobs";
+const BLAST_ASYNC_STORE_SCHEMA: &str = "gentle.blast_async_job_store.v2";
+const BLAST_ASYNC_STORE_METADATA_KEY: &str = "blast_async_receipts";
+const BLAST_ASYNC_LEGACY_STORE_METADATA_KEY: &str = "blast_async_jobs";
 const BLAST_ASYNC_JOB_HISTORY_LIMIT: usize = 200;
 const BLAST_ASYNC_MAX_CONCURRENT_ENV: &str = "GENTLE_BLAST_ASYNC_MAX_CONCURRENT";
 const BLAST_ASYNC_MAX_CONCURRENT_HARD_LIMIT: usize = 256;
+const BLAST_ASYNC_MAX_QUEUED: usize = 64;
+const BLAST_ASYNC_MAX_QUERY_BYTES: usize = 1024 * 1024;
 const BLAST_ASYNC_RESTART_INTERRUPTED_ERROR: &str =
     "BLAST async job interrupted by restart/reload before completion";
 static BLAST_ASYNC_JOB_COUNTER: AtomicU64 = AtomicU64::new(1);
 const SHELL_EXPANDED_STACK_SIZE: usize = 8 * 1024 * 1024;
+// The all-command dispatcher can retain strict and fallback panel reports plus
+// their serialized audit in one frame; reserve virtual stack accordingly.
+const SHELL_COMMAND_STACK_SIZE: usize = 64 * 1024 * 1024;
 
 thread_local! {
     static SHELL_EXPANDED_STACK_ACTIVE: Cell<bool> = const { Cell::new(false) };
@@ -215,6 +279,7 @@ pub type ShellProgressCallback = Arc<Mutex<Box<dyn FnMut(OperationProgress) -> b
 
 #[derive(Debug)]
 enum BlastAsyncWorkerMessage {
+    Preflight(Value),
     Done(Result<GenomeBlastReport, String>),
 }
 
@@ -239,6 +304,8 @@ struct BlastAsyncLaunchSpec {
     request_options_json: Option<Value>,
     resolved_catalog: Option<String>,
     cache_dir: Option<String>,
+    #[cfg(test)]
+    scoped_tool_overrides: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -264,6 +331,14 @@ struct BlastAsyncJobStatus {
     running_jobs: usize,
     queued_jobs: usize,
     queue_position: Option<usize>,
+    phase: String,
+    updated_at_unix_ms: Option<u128>,
+    owner_instance_id: Option<u64>,
+    observation: String,
+    binary_preflight: Option<Value>,
+    request_sha256: Option<String>,
+    result_sha256: Option<String>,
+    max_queued_jobs: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -301,6 +376,15 @@ pub(crate) static BLAST_ASYNC_TEST_MUTEX: Mutex<()> = Mutex::new(());
 static BLAST_ASYNC_MAX_CONCURRENT_TEST_OVERRIDE: AtomicUsize = AtomicUsize::new(0);
 #[cfg(test)]
 static BLAST_ASYNC_WORKER_DELAY_MS_TEST_OVERRIDE: AtomicU64 = AtomicU64::new(0);
+
+#[cfg(test)]
+#[derive(Clone)]
+struct BlastAsyncWorkerTestGate {
+    entered: mpsc::Sender<()>,
+    release: Arc<Mutex<mpsc::Receiver<()>>>,
+}
+#[cfg(test)]
+static BLAST_ASYNC_WORKER_TEST_GATE: Mutex<Option<BlastAsyncWorkerTestGate>> = Mutex::new(None);
 
 #[cfg(test)]
 pub(crate) fn clear_blast_async_jobs_for_test() {
@@ -490,6 +574,41 @@ impl MacroTemplatePreflightReport {
     }
 }
 
+/// What an approved multi-gene study batch does when one gene's operation
+/// fails.
+///
+/// This governs execution failures only. A digest, plan, workflow, or
+/// feasibility rejection still refuses the complete batch under either policy,
+/// because those are approval failures rather than results.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum GeneIsoformAssayStudyGeneFailurePolicy {
+    /// Refuse the whole batch and leave the live project unchanged.
+    #[default]
+    Abort,
+    /// Roll the failing gene back to its own boundary and continue with the
+    /// other precomputed genes.
+    Continue,
+}
+
+impl GeneIsoformAssayStudyGeneFailurePolicy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Abort => "abort",
+            Self::Continue => "continue",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value.trim() {
+            "abort" => Ok(Self::Abort),
+            "continue" => Ok(Self::Continue),
+            other => Err(format!(
+                "Unknown gene failure policy '{other}'; expected 'abort' or 'continue'"
+            )),
+        }
+    }
+}
+
 /// Canonical parsed shared-shell command enum.
 ///
 /// GUI Shell, `gentle_cli shell`, and any future textual shell adapter should
@@ -537,6 +656,7 @@ pub enum ShellCommand {
         evidence_paths: Vec<String>,
         ui_host_available: bool,
     },
+    IntrospectRuntime,
     HistoryStatus,
     HistoryUndo,
     HistoryRedo,
@@ -583,6 +703,28 @@ pub enum ShellCommand {
         feature_id: usize,
         settings: AttractSplicingEvidenceSettings,
     },
+    SplicingCrypticScreen {
+        request: CrypticSplicingScreenRequest,
+    },
+    GenomicRegions {
+        operation: Operation,
+    },
+    SplicingCrypticRender {
+        request: CrypticSplicingScreenRequest,
+        output: String,
+    },
+    SplicingCrypticExport {
+        request: CrypticSplicingScreenRequest,
+        output: String,
+    },
+    SplicingCrypticOverlay {
+        request: CrypticSplicingEvidenceOverlayRequest,
+        output: Option<String>,
+    },
+    SplicingCrypticProtein {
+        request: CrypticSplicingProteinProjectionRequest,
+        output: Option<String>,
+    },
     MirnaExplainSeed {
         mirna: String,
         mature_sequence: Option<String>,
@@ -605,6 +747,9 @@ pub enum ShellCommand {
         seq_id: String,
         target: FeatureExpertTarget,
         output: String,
+    },
+    PrepareGeneLocusEvidence {
+        request: Box<GeneLocusEvidencePreparationRequest>,
     },
     PanelsImportIsoform {
         seq_id: String,
@@ -633,6 +778,9 @@ pub enum ShellCommand {
     EnsemblGeneFetch {
         query: String,
         species: Option<String>,
+        assembly: Option<String>,
+        flank_5prime_bp: Option<usize>,
+        flank_3prime_bp: Option<usize>,
         entry_id: Option<String>,
     },
     EnsemblRegionFetch {
@@ -729,6 +877,9 @@ pub enum ShellCommand {
         ensembl_entry_id: Option<String>,
         report_id: Option<String>,
     },
+    UniprotBuildLinkedTranscriptInventory {
+        request: UniprotLinkedTranscriptInventoryRequest,
+    },
     UniprotAuditParity {
         projection_id: String,
         transcript_id: Option<String>,
@@ -793,6 +944,11 @@ pub enum ShellCommand {
     GibsonApply {
         request_json: String,
     },
+    Digest {
+        input: String,
+        enzymes: Vec<String>,
+        output_prefix: Option<String>,
+    },
     CacheInspect {
         scope: CacheCleanupScope,
         cache_dirs: Vec<String>,
@@ -812,6 +968,7 @@ pub enum ShellCommand {
         container_ids: Option<Vec<String>>,
         arrangement_id: Option<String>,
         conditions: gentle_protocol::GelRunConditions,
+        render_options: gentle_protocol::PoolGelRenderOptions,
     },
     CreateArrangementSerial {
         container_ids: Vec<String>,
@@ -963,9 +1120,48 @@ pub enum ShellCommand {
         output: String,
         format: ReporterCorpusExportFormat,
     },
+    PromotersPanelPlan {
+        request: PromoterReporterPanelRequest,
+        output: Option<String>,
+    },
+    PromotersComposeStudy {
+        request: RegulatoryReporterStudyRequest,
+        output: Option<String>,
+    },
+    PromotersRegulatoryPanelPlan {
+        request: RegulatoryFragmentPanelRequest,
+        output: Option<String>,
+    },
+    PromotersFragmentCandidates {
+        request: crate::engine::FragmentSelectionRequest,
+        output: Option<String>,
+    },
+    PromotersRegulatoryPanelRender {
+        plan: RegulatoryFragmentPanelPlan,
+        output: String,
+    },
+    PromotersPanelReadiness {
+        request: PromoterReporterPanelReadinessRequest,
+        output: Option<String>,
+    },
+    PromotersCompareArchitectures {
+        request: PromoterReporterArchitectureComparisonRequest,
+        output: Option<String>,
+        svg_output: Option<String>,
+    },
+    PromotersPanelMaterialize {
+        proposal: PromoterReporterPanelProposal,
+        approval_digest: String,
+    },
     ExportPool {
         inputs: Vec<String>,
         output: String,
+        human_id: Option<String>,
+    },
+    CollectionsRunExportPool {
+        collection_subject: CollectionSubjectRef,
+        output: String,
+        pool_id: Option<String>,
         human_id: Option<String>,
     },
     ExportRunBundle {
@@ -986,6 +1182,13 @@ pub enum ShellCommand {
     ResourcesSyncAttract {
         input: String,
         output: Option<String>,
+    },
+    ResourcesSyncMaxent {
+        input: String,
+        output: Option<String>,
+        source_url: Option<String>,
+        retrieved_on: Option<String>,
+        redistribution_status: Option<String>,
     },
     ResourcesSyncRebase {
         input: String,
@@ -1059,6 +1262,36 @@ pub enum ShellCommand {
     },
     ResourcesSuggestUcscRmskIndex {
         assembly_database: Option<String>,
+        output: Option<String>,
+    },
+    ResourcesListEncodeCcreSources {
+        assembly: Option<String>,
+        output: Option<String>,
+    },
+    ResourcesInstallEncodeCcres {
+        source_id: String,
+        input: Option<String>,
+        bed_output: Option<String>,
+        index_output: Option<String>,
+    },
+    ResourcesPrepareEncodeCcreIndex {
+        source_id: String,
+        bed_path: String,
+        output: Option<String>,
+    },
+    ResourcesListEnsemblRegulationSources {
+        assembly: Option<String>,
+        output: Option<String>,
+    },
+    ResourcesInstallEnsemblRegulatoryFeatures {
+        source_id: String,
+        input: Option<String>,
+        intervals_output: Option<String>,
+        index_output: Option<String>,
+    },
+    ResourcesPrepareEnsemblRegulationIndex {
+        source_id: String,
+        intervals_path: String,
         output: Option<String>,
     },
     ResourcesSyncJasparRemoteMetadata {
@@ -1137,6 +1370,15 @@ pub enum ShellCommand {
         allow_draft: bool,
         allow_deprecated: bool,
         output: Option<String>,
+    },
+    GeneSetsCreatePool {
+        resolution_id: String,
+        member_bindings: Vec<GeneSetPoolMemberBinding>,
+        output_prefix: Option<String>,
+        container_name: Option<String>,
+        dry_run: bool,
+        expected_plan_fingerprint_sha256: Option<String>,
+        path: Option<String>,
     },
     GeneSetsProduceDirectList {
         cache_path: String,
@@ -1220,6 +1462,22 @@ pub enum ShellCommand {
         allow_deprecated: bool,
         output: Option<String>,
     },
+    GeneSetsRegulatoryPartnerScreen {
+        genome_id: String,
+        resolution: Box<GeneSetResolutionReport>,
+        cutrun_support: Option<Box<GeneSetCutRunRegulatorySupportReport>>,
+        anchor_motifs: Vec<String>,
+        partner_motifs: Vec<String>,
+        min_llr_bits: f64,
+        per_motif_thresholds: Vec<RegulatoryPartnerMotifThreshold>,
+        max_distance_bp: usize,
+        anchor_mode: RegulatoryPartnerAnchorMode,
+        genome_catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        upstream_bp: usize,
+        downstream_bp: usize,
+        output: Option<String>,
+    },
     OrthologsResolvePromoterCohort {
         anchor_species: String,
         anchor_genome_id: String,
@@ -1247,6 +1505,13 @@ pub enum ShellCommand {
         expression_source_label: Option<String>,
         cutrun_dataset_ids: Vec<String>,
         cutrun_read_report_ids: Vec<String>,
+        cutrun_normalization: Option<OrthologCutRunNormalizationInput>,
+        output: Option<String>,
+    },
+    OrthologsConservationComparison {
+        cohort: Option<Box<OrthologPromoterCohortReport>>,
+        cohort_path: Option<String>,
+        min_conserved_bp: usize,
         output: Option<String>,
     },
     ResourcesListPublicationDatasets {
@@ -1337,6 +1602,7 @@ pub enum ShellCommand {
     PlanningProteinExpressionHandoff {
         seq_id: Option<String>,
         objective_json: Option<String>,
+        requirements_json: Option<String>,
         profile_scope: PlanningProfileScope,
         output_format: String,
     },
@@ -1407,6 +1673,7 @@ pub enum ShellCommand {
         max_response_bytes: Option<usize>,
         include_state_summary: bool,
         allow_auto_exec: bool,
+        allow_web_research: bool,
         execute_all: bool,
         execute_indices: Vec<usize>,
     },
@@ -1442,9 +1709,42 @@ pub enum ShellCommand {
         species: Option<String>,
         latest: bool,
     },
+    UiRecentProject {
+        item_id: String,
+    },
+    UiTutorialProject {
+        chapter_id: String,
+    },
+    UiTutorialGuide {
+        tutorial_id: String,
+    },
+    UiConfiguration {
+        action: UiIntentAction,
+        section: UiConfigurationSection,
+    },
     UiSequenceWindow {
         action: UiIntentAction,
         seq_id: String,
+    },
+    UiSplicingExpert {
+        action: UiIntentAction,
+        seq_id: String,
+        feature_id: usize,
+    },
+    UiTssCollection {
+        action: UiIntentAction,
+        collection_id: String,
+    },
+    UiTssProfile {
+        action: UiIntentAction,
+        report_path: String,
+    },
+    /// Explicit local scoring for the active annotated TSS viewer; its own settings.
+    UiTssLocalScore {
+        action: UiIntentAction,
+        matrix_ids: Vec<String>,
+        score_kind: TfbsScoreTrackValueKind,
+        clip_negative: bool,
     },
     UiSequenceSelection {
         seq_id: String,
@@ -1539,6 +1839,30 @@ pub enum ShellCommand {
         catalog_path: Option<String>,
         cache_dir: Option<String>,
         timeout_seconds: Option<u64>,
+    },
+    ReferencePrepareBlastResource {
+        helper_mode: bool,
+        resource_id: String,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        force_rebuild: bool,
+    },
+    ReferenceAdoptBlastResource {
+        helper_mode: bool,
+        resource_id: String,
+        sequence_path: String,
+        blast_db_prefix: String,
+        expected_content_fingerprint: String,
+        expected_sequence_sha1: Option<String>,
+        verify_source_identities: bool,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
+    ReferenceInspectBlastResource {
+        helper_mode: bool,
+        resource_id: String,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
     },
     ReferenceRemovePrepared {
         helper_mode: bool,
@@ -1795,6 +2119,8 @@ pub enum ShellCommand {
         seq_id: String,
         dataset_ids: Vec<String>,
         read_report_ids: Vec<String>,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
         promoter_search_start_0based: Option<usize>,
         promoter_search_end_0based_exclusive: Option<usize>,
         neighbor_window_bp: usize,
@@ -1885,6 +2211,8 @@ pub enum ShellCommand {
         gene_label: Option<String>,
         level: Option<String>,
         min_abs_logfc: Option<f64>,
+        threshold_source: Option<String>,
+        policy_sha256: Option<String>,
         path: Option<String>,
     },
     ArraysProbeRegions {
@@ -1897,6 +2225,7 @@ pub enum ShellCommand {
         probeset_ids: Vec<String>,
         platform: Option<String>,
         annotation_library_path: Option<String>,
+        r_library_paths: Vec<String>,
         condition_column: Option<String>,
         sample_column: Option<String>,
         block_column: Option<String>,
@@ -2110,6 +2439,54 @@ pub enum ShellCommand {
         seq_id: String,
         expression: String,
     },
+    FeaturesEditLocation {
+        seq_id: String,
+        feature_index: usize,
+        segment_index: Option<usize>,
+        start_1based: usize,
+        end_1based_inclusive: usize,
+        dry_run: bool,
+        expected_feature_fingerprint_sha256: Option<String>,
+        path: Option<String>,
+    },
+    FeaturesCreate {
+        seq_id: String,
+        feature_kind: String,
+        start_1based: usize,
+        end_1based_inclusive: usize,
+        strand: FeatureLocationEditStrand,
+        qualifiers: Vec<FeatureRecordQualifier>,
+        dry_run: bool,
+        expected_annotation_state_fingerprint_sha256: Option<String>,
+        path: Option<String>,
+    },
+    FeaturesDelete {
+        seq_id: String,
+        feature_index: usize,
+        dry_run: bool,
+        expected_feature_fingerprint_sha256: Option<String>,
+        expected_annotation_state_fingerprint_sha256: Option<String>,
+        path: Option<String>,
+    },
+    FeaturesSplit {
+        seq_id: String,
+        feature_index: usize,
+        split_before_1based: usize,
+        dry_run: bool,
+        expected_feature_fingerprint_sha256: Option<String>,
+        expected_annotation_state_fingerprint_sha256: Option<String>,
+        path: Option<String>,
+    },
+    FeaturesMerge {
+        seq_id: String,
+        first_feature_index: usize,
+        second_feature_index: usize,
+        dry_run: bool,
+        expected_first_feature_fingerprint_sha256: Option<String>,
+        expected_second_feature_fingerprint_sha256: Option<String>,
+        expected_annotation_state_fingerprint_sha256: Option<String>,
+        path: Option<String>,
+    },
     FeaturesQuery {
         query: SequenceFeatureQuery,
     },
@@ -2162,6 +2539,13 @@ pub enum ShellCommand {
         max_hits: Option<usize>,
         path: Option<String>,
     },
+    FeaturesPromoterCofactors {
+        request: gentle_protocol::promoter_cofactors::PromoterCofactorRequest,
+    },
+    FeaturesGenomicMotifEvidence {
+        request: GenomicMotifEvidenceRequest,
+        path: Option<String>,
+    },
     FeaturesRestrictionScan {
         target: SequenceScanTarget,
         enzymes: Vec<String>,
@@ -2187,6 +2571,44 @@ pub enum ShellCommand {
     FeaturesMaterializeRepeats {
         seq_id: String,
         rmsk_index_path: String,
+        max_features: Option<usize>,
+        clear_existing: bool,
+        path: Option<String>,
+    },
+    FeaturesEncodeCcreOverlaps {
+        seq_id: String,
+        index_path: String,
+        bed_path: Option<String>,
+        start_0based: Option<usize>,
+        end_0based_exclusive: Option<usize>,
+        classes: Vec<String>,
+        limit: Option<usize>,
+        path: Option<String>,
+    },
+    FeaturesMaterializeEncodeCcres {
+        seq_id: String,
+        index_path: String,
+        bed_path: Option<String>,
+        classes: Vec<String>,
+        max_features: Option<usize>,
+        clear_existing: bool,
+        path: Option<String>,
+    },
+    FeaturesEnsemblRegulationOverlaps {
+        seq_id: String,
+        index_path: String,
+        intervals_path: Option<String>,
+        start_0based: Option<usize>,
+        end_0based_exclusive: Option<usize>,
+        feature_types: Vec<String>,
+        limit: Option<usize>,
+        path: Option<String>,
+    },
+    FeaturesMaterializeEnsemblRegulation {
+        seq_id: String,
+        index_path: String,
+        intervals_path: Option<String>,
+        feature_types: Vec<String>,
         max_features: Option<usize>,
         clear_existing: bool,
         path: Option<String>,
@@ -2278,12 +2700,37 @@ pub enum ShellCommand {
         seq_id: String,
         variant_label_or_id: Option<String>,
         allele: VariantAlleleChoice,
+        alternate_allele: Option<String>,
         output_id: Option<String>,
     },
     PrimersDesign {
         request_json: String,
         backend: Option<PrimerDesignBackend>,
         primer3_executable: Option<String>,
+    },
+    PrimersDesignTerminalExonRtPool {
+        request_json: String,
+    },
+    PrimersPrimerBankSearch {
+        request: PrimerBankSearchRequest,
+        source_html_path: Option<String>,
+        path: Option<String>,
+    },
+    PrimersPrimerBankTestCdna {
+        seq_id: String,
+        feature_id: usize,
+        primerbank_id: String,
+        expected_species: PrimerBankSpecies,
+        source_html_path: Option<String>,
+        transcript_id: Option<String>,
+        min_amplicon_bp: Option<usize>,
+        max_amplicon_bp: Option<usize>,
+        max_mismatches: Option<usize>,
+        require_3prime_exact_bases: Option<usize>,
+        transcript_order: Option<CdnaAssayTranscriptOrder>,
+        transcript_map_coordinate_mode: Option<CdnaAssayTranscriptMapCoordinateMode>,
+        path: Option<String>,
+        svg_path: Option<String>,
     },
     PrimersSeedFromFeature {
         seq_id: String,
@@ -2345,6 +2792,112 @@ pub enum ShellCommand {
         cache_dir: Option<String>,
         path: Option<String>,
     },
+    CollectionsRunPrimerSpecificity {
+        collection_subject: CollectionSubjectRef,
+        member_bindings: Vec<PrimerSpecificityCollectionMemberBinding>,
+        pair_rank: Option<usize>,
+        pair_index: Option<usize>,
+        target_genome_id: String,
+        policy: PrimerSpecificityPolicy,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        path: Option<String>,
+    },
+    CollectionsRunRestrictionScan {
+        collection_subject: CollectionSubjectRef,
+        member_bindings: Vec<RestrictionSiteScanCollectionMemberBinding>,
+        enzymes: Vec<String>,
+        max_sites_per_enzyme: Option<usize>,
+        include_cut_geometry: bool,
+        path: Option<String>,
+    },
+    CollectionsRunConstructReasoningInspection {
+        collection_subject: CollectionSubjectRef,
+        member_bindings: Vec<ConstructReasoningCollectionMemberBinding>,
+        path: Option<String>,
+    },
+    CollectionsRunTfbsScan {
+        collection_subject: CollectionSubjectRef,
+        member_bindings: Vec<TfbsHitScanCollectionMemberBinding>,
+        motifs: Vec<String>,
+        min_llr_bits: Option<f64>,
+        min_llr_quantile: Option<f64>,
+        per_tf_thresholds: Vec<TfThresholdOverride>,
+        max_hits_per_member: Option<usize>,
+        path: Option<String>,
+    },
+    CollectionsRunDigest {
+        collection_subject: CollectionSubjectRef,
+        member_bindings: Vec<DigestCollectionMemberBinding>,
+        enzymes: Vec<String>,
+        output_prefix: Option<String>,
+        dry_run: bool,
+        expected_plan_fingerprint_sha256: Option<String>,
+        path: Option<String>,
+    },
+    PrimersSpecificityPlan {
+        primer_report_id: Option<String>,
+        pair_rank: Option<usize>,
+        pair_index: Option<usize>,
+        forward_primer: Option<String>,
+        reverse_primer: Option<String>,
+        target_genome_id: String,
+        policy: PrimerSpecificityPolicy,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        output_dir: String,
+    },
+    PrimersSpecificityImport {
+        handoff_path: String,
+        path: Option<String>,
+    },
+    PrimersSpecificityAlignmentHtml {
+        report_id: String,
+        path: String,
+    },
+    PrimersTranscriptAssaySpecificityPlan {
+        panel_report_id: String,
+        target_genome_id: String,
+        policy: PrimerSpecificityPolicy,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        output_dir: String,
+    },
+    PrimersTranscriptAssaySpecificityFinalize {
+        handoff_path: String,
+        execution_manifest_json: String,
+        path: Option<String>,
+    },
+    PrimersTranscriptAssaySpecificityRedesign {
+        request_json: String,
+        path: Option<String>,
+    },
+    PrimersImportExternalPairs {
+        input_path: String,
+        input_format: Option<String>,
+        seq_id: String,
+        feature_id: usize,
+        report_id: Option<String>,
+        transcript_id: Option<String>,
+        min_amplicon_bp: Option<usize>,
+        max_amplicon_bp: Option<usize>,
+        max_mismatches: Option<usize>,
+        require_3prime_exact_bases: Option<usize>,
+        transcript_order: Option<CdnaAssayTranscriptOrder>,
+        transcript_map_coordinate_mode: Option<CdnaAssayTranscriptMapCoordinateMode>,
+        specificity_target_genome_id: Option<String>,
+        specificity_catalog_path: Option<String>,
+        specificity_cache_dir: Option<String>,
+        artifact_output_dir: Option<String>,
+        materialize_products: bool,
+        product_gel_ladders: Vec<String>,
+        path: Option<String>,
+    },
+    PrimersScreenVariants {
+        request_json: String,
+        path: Option<String>,
+        evidence_dir: Option<String>,
+    },
     PrimersTestCdnaPcr {
         seq_id: String,
         feature_id: usize,
@@ -2388,6 +2941,90 @@ pub enum ShellCommand {
         seq_id: String,
         feature_id: usize,
         shared_qpcr_report_id: String,
+        path: Option<String>,
+    },
+    PrimersBuildTranscriptAssayCdnaSimilarityMap {
+        request_json: String,
+        path: Option<String>,
+    },
+    PrimersDesignGroupTarget {
+        request_json: String,
+        path: Option<String>,
+        backend: Option<PrimerDesignBackend>,
+        primer3_executable: Option<String>,
+    },
+    PrimersDesignTranscriptAssayPanel {
+        seq_id: String,
+        feature_id: usize,
+        assay_kind: TranscriptAssayKind,
+        cdna_synthesis: TranscriptAssayCdnaSynthesis,
+        objective: TranscriptAssayPanelObjective,
+        coverage_policy: TranscriptAssayCoveragePolicy,
+        coverage_universe: TranscriptAssayCoverageUniverse,
+        assay_tier: TranscriptAssayUseTier,
+        practicality: Option<TranscriptAssayPracticalityPolicy>,
+        min_amplicon_bp: Option<usize>,
+        max_amplicon_bp: Option<usize>,
+        max_assays_per_class: Option<usize>,
+        max_mismatches: Option<usize>,
+        require_3prime_exact_bases: Option<usize>,
+        oligo_dt_5prime_risk_threshold_bp: Option<usize>,
+        junctions_json: Option<String>,
+        junction_evidence_paths: Vec<String>,
+        junction_evidence_priority: TranscriptAssayJunctionPriority,
+        min_3prime_junction_overlap_bp: Option<usize>,
+        min_5prime_junction_overlap_bp: Option<usize>,
+        annotation_release: Option<String>,
+        specificity: Option<TranscriptAssaySpecificityRequest>,
+        report_id: Option<String>,
+        path: Option<String>,
+        backend: Option<PrimerDesignBackend>,
+        primer3_executable: Option<String>,
+    },
+    PrimersDesignTranscriptAssayPanelRequest {
+        operation_json: String,
+        backend: Option<PrimerDesignBackend>,
+        primer3_executable: Option<String>,
+    },
+    PrimersInspectTranscriptAssayFeasibility {
+        operation_json: String,
+        path: Option<String>,
+    },
+    PrimersPlanGeneIsoformAssayStudy {
+        request_json: String,
+        normalize_only: bool,
+        normalized_request_path: Option<String>,
+        path: Option<String>,
+        workflow_path: Option<String>,
+    },
+    PrimersExecuteGeneIsoformAssayStudyWorkflow {
+        plan_json: String,
+        workflow_json: String,
+    },
+    PrimersComposeGeneIsoformAssayStudyWorkflowBatch {
+        request_json: String,
+    },
+    PrimersInspectGeneIsoformAssayStudyReuse {
+        batch_json: String,
+        checkpoint_dir: String,
+        path: Option<String>,
+    },
+    PrimersExecuteGeneIsoformAssayStudyWorkflowBatch {
+        batch_json: String,
+        checkpoint_dir: Option<String>,
+        reuse_proposal_json: Option<String>,
+        approve_reuse_sha256: Option<String>,
+        on_gene_failure: GeneIsoformAssayStudyGeneFailurePolicy,
+    },
+    PrimersPublishGeneIsoformAssayStudy {
+        request_path: String,
+        output_directory: String,
+        profile: Option<String>,
+        block_ids: Vec<String>,
+        generate_pdf: bool,
+    },
+    PrimersComposeGeneTranscriptAssayRoutine {
+        request_json: String,
         path: Option<String>,
     },
     PrimersTestCdnaQpcrFasta {
@@ -2447,6 +3084,32 @@ pub enum ShellCommand {
         report_id: String,
         path: String,
     },
+    PrimersListTranscriptAssayPanels,
+    PrimersShowTranscriptAssayPanel {
+        report_id: String,
+    },
+    PrimersExportTranscriptAssayPanel {
+        report_id: String,
+        path: String,
+    },
+    PrimersListTranscriptAssayFallbacks,
+    PrimersShowTranscriptAssayFallback {
+        execution_id: String,
+    },
+    PrimersExportTranscriptAssayFallback {
+        execution_id: String,
+        path: String,
+    },
+    PrimersExperimentalHandoff {
+        panel_report_id: String,
+        policy_json: Option<String>,
+        variant_evidence_paths: Vec<String>,
+        order_form_id: Option<String>,
+        path: Option<String>,
+        order_table_path: Option<String>,
+        virtual_gel_svg_path: Option<String>,
+        virtual_gel_ladders: Vec<String>,
+    },
     PrimersOligoOrderCreate {
         request_json: String,
     },
@@ -2462,6 +3125,14 @@ pub enum ShellCommand {
         report_id: String,
         assay_ranks: Vec<usize>,
         include_probe: bool,
+        form_id: Option<String>,
+        scale: Option<String>,
+        purification: Option<String>,
+        modifications: Vec<String>,
+    },
+    PrimersOligoOrderFromExperimentalHandoff {
+        handoff_path: String,
+        expected_sha256: Option<String>,
         form_id: Option<String>,
         scale: Option<String>,
         purification: Option<String>,
@@ -2820,6 +3491,27 @@ pub enum ShellCommand {
         seed_kmer_len: usize,
         transcript_fasta_paths: Vec<String>,
     },
+    RnaReadsAlleleHashScreen {
+        gene: String,
+        transcript_fasta: String,
+        variant_table: Option<String>,
+        vcf: Option<String>,
+        transcript_map: Option<String>,
+        vcf_sample: Option<String>,
+        read_files: Vec<String>,
+        read_pairs: Vec<(String, String)>,
+        read_id_allowlist: Option<String>,
+        from_rna_report: Option<String>,
+        salmon_unmapped_names: Option<String>,
+        salmon_mappings_sam: Option<String>,
+        out_dir: String,
+        kmer_len: usize,
+        min_unique_kmer_hits: u64,
+        min_informative_reads: u64,
+        balanced_band_lo: f64,
+        balanced_band_hi: f64,
+        max_inline_read_calls: usize,
+    },
     RnaReadsMaterializeHits {
         report_id: String,
         selection: RnaReadHitSelection,
@@ -2864,6 +3556,26 @@ pub enum ShellCommand {
         selection: RnaReadHitSelection,
         selected_record_indices: Vec<usize>,
         subset_spec: Option<String>,
+    },
+    RnaReadsExportDexseqAnnotationGff {
+        report_id: String,
+        path: String,
+    },
+    RnaReadsExportDexseqCountsTsv {
+        report_id: String,
+        path: String,
+        selection: RnaReadHitSelection,
+        selected_record_indices: Vec<usize>,
+        subset_spec: Option<String>,
+    },
+    RnaReadsVerifyDexseq {
+        report_id: String,
+        gff_path: String,
+        counts_path: String,
+        selection: RnaReadHitSelection,
+        selected_record_indices: Vec<usize>,
+        subset_spec: Option<String>,
+        r_library_paths: Vec<String>,
     },
     RnaReadsExportScoreDensitySvg {
         report_id: String,
@@ -3464,6 +4176,13 @@ fn load_cloning_pattern_templates_from_path(
         ));
     }
     Ok((templates, source_files))
+}
+
+/// Validated static catalog rows for browsing, without project-dependent planning.
+#[cfg(feature = "desktop-gui")]
+pub(crate) fn cloning_routine_catalog_rows(path: &str) -> Result<Value, String> {
+    serde_json::to_value(load_cloning_routine_catalog(path)?.routines)
+        .map_err(|err| format!("Could not serialize routine catalog: {err}"))
 }
 
 fn load_cloning_routine_catalog(path: &str) -> Result<CloningRoutineCatalog, String> {
@@ -5139,8 +5858,9 @@ fn parse_ortholog_ambiguity_policy(
         "" => Err(format!("{context} --ambiguity-policy must not be empty")),
         "reject" | "error" | "strict" => Ok(OrthologAmbiguityPolicy::Reject),
         "first" | "first_match" | "allow_first" => Ok(OrthologAmbiguityPolicy::First),
+        "preserve" => Ok(OrthologAmbiguityPolicy::Preserve),
         other => Err(format!(
-            "Invalid --ambiguity-policy '{other}' for {context}; expected reject or first"
+            "Invalid --ambiguity-policy '{other}' for {context}; expected reject, first, or preserve"
         )),
     }
 }
@@ -6113,7 +6833,10 @@ fn preflight_workflow_macro_template_run(
             }
         };
 
-    let catalog_path = DEFAULT_CLONING_ROUTINE_CATALOG_PATH.to_string();
+    let catalog_path =
+        crate::runtime_assets::resolve_runtime_asset_path(DEFAULT_CLONING_ROUTINE_CATALOG_PATH)
+            .to_string_lossy()
+            .into_owned();
     report.catalog_path = Some(catalog_path.clone());
     let mut matched_routine: Option<CloningRoutineDefinition> = None;
     match load_cloning_routine_catalog(&catalog_path) {
@@ -6258,7 +6981,10 @@ fn preflight_workflow_macro_template_run(
     for contract in contracts {
         let port = contract.port;
         let value = resolved_bindings
-            .get(&port.port_id)
+            .get(routine_bindings::routine_parameter_name(
+                &template.name,
+                &port.port_id,
+            ))
             .or_else(|| bindings.get(&port.port_id))
             .cloned();
         match value {
@@ -6373,6 +7099,11 @@ fn preflight_workflow_macro_template_run(
     }
 
     apply_cross_port_semantics(engine, &mut report);
+    if let Err(error) =
+        routine_bindings::grna_binding_readiness(engine, &template.name, &resolved_bindings)
+    {
+        report.errors.push(error);
+    }
     apply_family_specific_preflight_semantics(engine, &mut report, &resolved_bindings);
 
     Ok(report)
@@ -6393,6 +7124,46 @@ fn format_optional_span(start: Option<usize>, end_exclusive: Option<usize>) -> S
 }
 
 impl ShellCommand {
+    /// Interactive hosts select the existing async lifecycle without changing
+    /// the query or options. Synchronous CLI/scripting dispatch stays unchanged.
+    pub(crate) fn into_interactive_blast(self) -> Self {
+        match self {
+            Self::ReferenceBlast {
+                helper_mode,
+                genome_id,
+                query_sequence,
+                max_hits,
+                max_hits_explicit,
+                task,
+                request_options_json,
+                catalog_path,
+                cache_dir,
+            } => Self::ReferenceBlastAsyncStart {
+                helper_mode,
+                genome_id,
+                query_sequence,
+                max_hits,
+                max_hits_explicit,
+                task,
+                request_options_json,
+                catalog_path,
+                cache_dir,
+            },
+            other => other,
+        }
+    }
+
+    pub(crate) fn is_blast_job_command(&self) -> bool {
+        matches!(
+            self,
+            Self::ReferenceBlast { .. }
+                | Self::ReferenceBlastAsyncStart { .. }
+                | Self::ReferenceBlastAsyncStatus { .. }
+                | Self::ReferenceBlastAsyncCancel { .. }
+                | Self::ReferenceBlastAsyncList { .. }
+        )
+    }
+
     pub fn preview(&self) -> String {
         match self {
             Self::Help {
@@ -6478,6 +7249,9 @@ impl ShellCommand {
                 evidence_paths.len(),
                 ui_host_available
             ),
+            Self::IntrospectRuntime => {
+                "introspect runtime status for this GENtle process".to_string()
+            }
             Self::HistoryStatus => "show session-local undo/redo history status".to_string(),
             Self::HistoryUndo => "undo the most recent operation-level state change".to_string(),
             Self::HistoryRedo => {
@@ -6583,6 +7357,44 @@ impl ShellCommand {
                 settings.boundary_flank_bp,
                 settings.transcript_strand_only
             ),
+            Self::SplicingCrypticScreen { request } => format!(
+                "screen cryptic-splicing candidates on '{}':{}..{} ({})",
+                request.seq_id,
+                request.start_1based,
+                request.end_1based,
+                request.strand.as_str()
+            ),
+            Self::GenomicRegions { operation } => {
+                format!("execute shared genomic-region operation {operation:?}")
+            }
+            Self::SplicingCrypticRender { request, output } => format!(
+                "render cryptic-splicing screen for '{}':{}..{} ({}) to '{}'",
+                request.seq_id,
+                request.start_1based,
+                request.end_1based,
+                request.strand.as_str(),
+                output
+            ),
+            Self::SplicingCrypticExport { request, output } => format!(
+                "export cryptic-splicing screen for '{}':{}..{} ({}) to '{}'",
+                request.seq_id,
+                request.start_1based,
+                request.end_1based,
+                request.strand.as_str(),
+                output
+            ),
+            Self::SplicingCrypticOverlay { request, output } => format!(
+                "join cryptic-splicing screen for '{}' with {} RNA-read report(s) (output='{}')",
+                request.screen_request.seq_id,
+                request.rna_read_report_ids.len(),
+                output.as_deref().unwrap_or("-")
+            ),
+            Self::SplicingCrypticProtein { request, output } => format!(
+                "project cryptic-splicing screen for '{}' onto UniProt projection '{}' (output='{}')",
+                request.screen_request.seq_id,
+                request.uniprot_projection_id,
+                output.as_deref().unwrap_or("-")
+            ),
             Self::RenderFeatureExpertSvg {
                 seq_id,
                 target,
@@ -6590,6 +7402,14 @@ impl ShellCommand {
             } => format!(
                 "render feature expert SVG for '{seq_id}' target={} to '{output}'",
                 target.describe()
+            ),
+            Self::PrepareGeneLocusEvidence { request } => format!(
+                "prepare gene-locus evidence for '{}' (species={}, assembly={}, network={}, svg='{}')",
+                request.gene_query,
+                request.species,
+                request.assembly,
+                request.allow_ensembl_network,
+                request.svg_path
             ),
             Self::PanelsImportIsoform {
                 seq_id,
@@ -6641,14 +7461,23 @@ impl ShellCommand {
             Self::EnsemblGeneFetch {
                 query,
                 species,
+                assembly,
+                flank_5prime_bp,
+                flank_3prime_bp,
                 entry_id,
             } => format!(
-                "fetch Ensembl gene '{}' (species={}, entry_id={})",
+                "fetch Ensembl gene '{}' (species={}, assembly={}, flank_5p={} bp, flank_3p={} bp, entry_id={})",
                 query,
                 species
                     .as_deref()
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or("auto"),
+                assembly
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("current endpoint"),
+                flank_5prime_bp.unwrap_or(0),
+                flank_3prime_bp.unwrap_or(0),
                 entry_id
                     .as_deref()
                     .filter(|v| !v.trim().is_empty())
@@ -6847,6 +7676,16 @@ impl ShellCommand {
             Self::GibsonApply { .. } => {
                 "apply Gibson assembly plan and create output sequences".to_string()
             }
+            Self::Digest {
+                input,
+                enzymes,
+                output_prefix,
+            } => format!(
+                "digest '{}' with {} (output_prefix={})",
+                input,
+                enzymes.join(","),
+                output_prefix.as_deref().unwrap_or("generated")
+            ),
             Self::CacheInspect { scope, cache_dirs } => {
                 let roots = if cache_dirs.is_empty() {
                     default_cache_cleanup_roots(*scope).join(",")
@@ -6899,6 +7738,7 @@ impl ShellCommand {
                 container_ids,
                 arrangement_id,
                 conditions,
+                render_options,
             } => {
                 let ladders = ladders
                     .as_ref()
@@ -6914,11 +7754,14 @@ impl ShellCommand {
                     .filter(|v| !v.is_empty())
                     .unwrap_or("-");
                 format!(
-                    "render serial gel SVG to '{output}' (inputs={}, containers={}, arrangement={}, ladders={ladders}, conditions={})",
+                    "render serial gel SVG to '{output}' (inputs={}, containers={}, arrangement={}, ladders={ladders}, conditions={}, lane labels={}, band labels={}, isoform markers={})",
                     inputs.len(),
                     containers,
                     arrangement,
-                    conditions.describe()
+                    conditions.describe(),
+                    render_options.lane_label_layout.as_str(),
+                    render_options.band_label_layout.as_str(),
+                    render_options.isoform_marker_mode.as_str()
                 )
             }
             Self::CreateArrangementSerial {
@@ -7222,6 +8065,18 @@ impl ShellCommand {
                     inputs.len()
                 )
             }
+            Self::CollectionsRunExportPool {
+                collection_subject,
+                output,
+                pool_id,
+                human_id,
+            } => format!(
+                "combine {:?} collection members into pool artifact '{}' (pool_id={}, human_id={})",
+                collection_subject.kind(),
+                output,
+                pool_id.as_deref().unwrap_or("source container id"),
+                human_id.as_deref().unwrap_or("source container name"),
+            ),
             Self::ExportRunBundle { output, run_id } => {
                 let run_id = run_id
                     .as_deref()
@@ -7378,6 +8233,60 @@ impl ShellCommand {
                     .as_deref()
                     .unwrap_or(ucsc_rmsk::DEFAULT_UCSC_RMSK_ASSEMBLY),
                 output.as_deref().unwrap_or("-"),
+            ),
+            Self::ResourcesListEncodeCcreSources { assembly, output } => format!(
+                "list ENCODE SCREEN Registry V4 cCRE sources (assembly={}, output={})",
+                assembly.as_deref().unwrap_or("all"),
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::ResourcesInstallEncodeCcres {
+                source_id,
+                input,
+                bed_output,
+                index_output,
+            } => format!(
+                "install ENCODE SCREEN cCRE source '{}' from '{}' (bed_output={}, index_output={})",
+                source_id,
+                input.as_deref().unwrap_or("catalog URL"),
+                bed_output.as_deref().unwrap_or("default"),
+                index_output.as_deref().unwrap_or("default"),
+            ),
+            Self::ResourcesPrepareEncodeCcreIndex {
+                source_id,
+                bed_path,
+                output,
+            } => format!(
+                "prepare ENCODE SCREEN cCRE interval index for '{}' from '{}' (output={})",
+                source_id,
+                bed_path,
+                output.as_deref().unwrap_or("default"),
+            ),
+            Self::ResourcesListEnsemblRegulationSources { assembly, output } => format!(
+                "list Ensembl Regulation sources (assembly={}, output={})",
+                assembly.as_deref().unwrap_or("all"),
+                output.as_deref().unwrap_or("-")
+            ),
+            Self::ResourcesInstallEnsemblRegulatoryFeatures {
+                source_id,
+                input,
+                intervals_output,
+                index_output,
+            } => format!(
+                "install Ensembl Regulation source '{}' (input={}, intervals={}, index={})",
+                source_id,
+                input.as_deref().unwrap_or("pinned API"),
+                intervals_output.as_deref().unwrap_or("default"),
+                index_output.as_deref().unwrap_or("default"),
+            ),
+            Self::ResourcesPrepareEnsemblRegulationIndex {
+                source_id,
+                intervals_path,
+                output,
+            } => format!(
+                "prepare Ensembl Regulation index for '{}' from '{}' (output={})",
+                source_id,
+                intervals_path,
+                output.as_deref().unwrap_or("default"),
             ),
             Self::ResourcesSyncJasparRemoteMetadata {
                 motifs,
@@ -7548,6 +8457,23 @@ impl ShellCommand {
                 allow_deprecated,
                 output.as_deref().unwrap_or("-"),
             ),
+            Self::GeneSetsCreatePool {
+                resolution_id,
+                member_bindings,
+                output_prefix,
+                container_name,
+                dry_run,
+                path,
+                ..
+            } => format!(
+                "{} physical pool for gene-set resolution '{}' (source_containers={}, output_prefix='{}', container_name='{}', path='{}')",
+                if *dry_run { "preview" } else { "create" },
+                resolution_id,
+                member_bindings.len(),
+                output_prefix.as_deref().unwrap_or("gene_set_pool"),
+                container_name.as_deref().unwrap_or("generated"),
+                path.as_deref().unwrap_or("-"),
+            ),
             Self::GeneSetsProduceDirectList {
                 cache_path,
                 query,
@@ -7637,6 +8563,34 @@ impl ShellCommand {
                 downstream_bp,
                 output.as_deref().unwrap_or("-"),
             ),
+            Self::GeneSetsRegulatoryPartnerScreen {
+                genome_id,
+                resolution,
+                cutrun_support,
+                anchor_motifs,
+                partner_motifs,
+                min_llr_bits,
+                max_distance_bp,
+                anchor_mode,
+                upstream_bp,
+                downstream_bp,
+                output,
+                ..
+            } => format!(
+                "screen regulatory partners for gene-set source '{}' in genome '{}' (members={}, anchor_motifs='{}', partner_motifs='{}', min_llr_bits={}, max_distance_bp={}, anchor_mode={:?}, cutrun_support={}, upstream_bp={}, downstream_bp={}, output='{}')",
+                resolution.request.source_kind_label(),
+                genome_id,
+                resolution.resolved_members.len(),
+                anchor_motifs.join(","),
+                partner_motifs.join(","),
+                min_llr_bits,
+                max_distance_bp,
+                anchor_mode,
+                cutrun_support.is_some(),
+                upstream_bp,
+                downstream_bp,
+                output.as_deref().unwrap_or("-"),
+            ),
             Self::OrthologsResolvePromoterCohort {
                 anchor_species,
                 anchor_genome_id,
@@ -7669,10 +8623,11 @@ impl ShellCommand {
                 score_kind,
                 clip_negative,
                 relationship,
+                cutrun_normalization,
                 output,
                 ..
             } => format!(
-                "compare ortholog promoters from {} with {} motif(s) (score_kind={}, clip_negative={}, relationship={:?}, output='{}')",
+                "compare ortholog promoters from {} with {} motif(s) (score_kind={}, clip_negative={}, relationship={:?}, normalized_cutrun={}, output='{}')",
                 cohort_path
                     .as_deref()
                     .or_else(|| cohort.as_ref().map(|_| "inline cohort"))
@@ -7681,6 +8636,21 @@ impl ShellCommand {
                 score_kind.as_str(),
                 clip_negative,
                 relationship,
+                cutrun_normalization.is_some(),
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::OrthologsConservationComparison {
+                cohort,
+                cohort_path,
+                min_conserved_bp,
+                output,
+            } => format!(
+                "compare ortholog promoter conservation from {} (min_conserved_bp={}, output='{}')",
+                cohort_path
+                    .as_deref()
+                    .or_else(|| cohort.as_ref().map(|_| "inline cohort"))
+                    .unwrap_or("-"),
+                min_conserved_bp,
                 output.as_deref().unwrap_or("-"),
             ),
             Self::ReportersList {
@@ -7738,6 +8708,66 @@ impl ShellCommand {
                     .unwrap_or("assets/reporter_catalog.json"),
                 format,
                 output,
+            ),
+            Self::PromotersFragmentCandidates { request, output } => format!(
+                "propose evidence-guided reporter boundaries for {} transcript anchor(s) (output='{}')",
+                request.anchors.len(),
+                output.as_deref().unwrap_or("-")
+            ),
+            Self::PromotersPanelPlan { request, output } => format!(
+                "plan promoter-reporter panel '{}' from {} selected candidate(s) into vector '{}' (output='{}')",
+                request.panel_id,
+                request.members.len(),
+                request.vector_seq_id,
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::PromotersComposeStudy { request, output } => format!(
+                "compose regulatory-reporter study '{}' from genome '{}' (output='{}')",
+                request.study_id,
+                request.genome_id,
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::PromotersRegulatoryPanelPlan { request, output } => format!(
+                "plan exact regulatory-fragment panel '{}' from {} persisted ROI binding(s) into vector '{}' (output='{}')",
+                request.plan_id,
+                request.fragments.len(),
+                request.vector_seq_id,
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::PromotersRegulatoryPanelRender { plan, output } => format!(
+                "render exact regulatory-fragment panel plan '{}' to '{}'",
+                plan.plan_id, output
+            ),
+            Self::PromotersPanelReadiness { request, output } => format!(
+                "inspect promoter-reporter panel readiness from {} (output='{}')",
+                if request.proposal.is_some() {
+                    "a proposal"
+                } else {
+                    "a panel request"
+                },
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::PromotersCompareArchitectures {
+                request,
+                output,
+                svg_output,
+            } => format!(
+                "compare transcript-aware promoter-reporter architectures on '{}' (transcripts={}, JSON='{}', SVG='{}')",
+                request.seq_id,
+                if request.transcript_ids.is_empty() {
+                    "all".to_string()
+                } else {
+                    request.transcript_ids.len().to_string()
+                },
+                output.as_deref().unwrap_or("-"),
+                svg_output.as_deref().unwrap_or("-"),
+            ),
+            Self::PromotersPanelMaterialize {
+                proposal,
+                approval_digest,
+            } => format!(
+                "materialize promoter-reporter panel proposal '{}' with approval digest '{}'",
+                proposal.proposal_id, approval_digest
             ),
             Self::ResourcesListPublicationDatasets {
                 filter,
@@ -7800,6 +8830,22 @@ impl ShellCommand {
                 });
                 format!("sync ATtRACT from '{input}' to '{output}'")
             }
+            Self::ResourcesSyncMaxent {
+                input,
+                output,
+                source_url,
+                retrieved_on,
+                redistribution_status,
+            } => format!(
+                "sync user-supplied MaxEnt model from '{}' to '{}' (source_url='{}', retrieved_on='{}', redistribution='{}')",
+                input,
+                output
+                    .as_deref()
+                    .unwrap_or(crate::maxent_splicing::DEFAULT_MAXENT_SPLICE_MODEL_PATH),
+                source_url.as_deref().unwrap_or("-"),
+                retrieved_on.as_deref().unwrap_or("-"),
+                redistribution_status.as_deref().unwrap_or("not_recorded")
+            ),
             Self::ResourcesInspectJaspar {
                 motif,
                 random_sequence_length_bp,
@@ -7815,7 +8861,7 @@ impl ShellCommand {
                 output.as_deref().unwrap_or("-"),
             ),
             Self::ResourcesStatus => {
-                "inspect active REBASE/JASPAR/ATtRACT resource status".to_string()
+                "inspect active REBASE/JASPAR/ATtRACT/MaxEnt resource status".to_string()
             }
             Self::ServicesStatus => {
                 "inspect combined service readiness for canonical references/helpers/resources"
@@ -7996,6 +9042,7 @@ impl ShellCommand {
             Self::PlanningProteinExpressionHandoff {
                 seq_id,
                 objective_json,
+                requirements_json,
                 profile_scope,
                 output_format,
             } => {
@@ -8010,11 +9057,18 @@ impl ShellCommand {
                     .filter(|value| !value.is_empty())
                     .map(|value| format!("payload_len={}", value.len()))
                     .unwrap_or_else(|| "stored_objective".to_string());
+                let requirements = requirements_json
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(|value| format!("payload_len={}", value.len()))
+                    .unwrap_or_else(|| "not_supplied".to_string());
                 format!(
-                    "plan protein-expression handoff (scope={}, seq_id={}, objective={}, format={})",
+                    "plan protein-expression handoff (scope={}, seq_id={}, objective={}, requirements={}, format={})",
                     profile_scope.as_str(),
                     seq_id,
                     objective,
+                    requirements,
                     output_format
                 )
             }
@@ -8151,6 +9205,7 @@ impl ShellCommand {
                 max_response_bytes,
                 include_state_summary,
                 allow_auto_exec,
+                allow_web_research,
                 execute_all,
                 execute_indices,
             } => {
@@ -8192,9 +9247,10 @@ impl ShellCommand {
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "-".to_string());
                 format!(
-                    "ask agent '{system_id}' (catalog='{catalog}', prompt_len={}, include_state_summary={}, base_url_override={base_url}, model_override={model}, timeout_secs={timeout}, connect_timeout_secs={connect_timeout}, read_timeout_secs={read_timeout}, max_retries={retries}, max_response_bytes={max_bytes}, execute={execute_mode})",
+                    "ask agent '{system_id}' (catalog='{catalog}', prompt_len={}, include_state_summary={}, allow_web_research={}, base_url_override={base_url}, model_override={model}, timeout_secs={timeout}, connect_timeout_secs={connect_timeout}, read_timeout_secs={read_timeout}, max_retries={retries}, max_response_bytes={max_bytes}, execute={execute_mode})",
                     prompt.len(),
-                    include_state_summary
+                    include_state_summary,
+                    allow_web_research
                 )
             }
             Self::AgentsPlan {
@@ -8281,12 +9337,61 @@ impl ShellCommand {
                     target.as_str()
                 )
             }
+            Self::UiRecentProject { item_id } => {
+                format!("request GUI open for recent project '{item_id}'")
+            }
+            Self::UiTutorialProject { chapter_id } => {
+                format!("request GUI open for tutorial project '{chapter_id}'")
+            }
+            Self::UiTutorialGuide { tutorial_id } => {
+                format!("request GUI open for tutorial guide '{tutorial_id}'")
+            }
+            Self::UiConfiguration { action, section } => format!(
+                "request GUI {} for Configuration section '{}'",
+                action.as_str(),
+                section.as_str()
+            ),
+            Self::UiTssCollection {
+                action,
+                collection_id,
+            } => format!(
+                "request GUI {} for TSS collection '{}'",
+                action.as_str(),
+                collection_id
+            ),
+            Self::UiTssProfile {
+                action,
+                report_path,
+            } => format!(
+                "request GUI {} for active TSS view with profile report '{}'",
+                action.as_str(),
+                report_path
+            ),
+            Self::UiTssLocalScore {
+                action,
+                matrix_ids,
+                score_kind,
+                ..
+            } => format!(
+                "request GUI {} for active TSS view with locally computed {} curves for {}",
+                action.as_str(),
+                score_kind.as_str(),
+                matrix_ids.join(", ")
+            ),
             Self::UiSequenceWindow { action, seq_id } => {
                 format!(
                     "request GUI {} for sequence window '{seq_id}'",
                     action.as_str()
                 )
             }
+            Self::UiSplicingExpert {
+                action,
+                seq_id,
+                feature_id,
+            } => format!(
+                "request GUI {} for Splicing Expert '{seq_id}' feature {feature_id}",
+                action.as_str()
+            ),
             Self::UiSequenceSelection {
                 seq_id,
                 start_0based,
@@ -8565,6 +9670,50 @@ impl ShellCommand {
                     .unwrap_or_else(|| "-".to_string());
                 format!(
                     "prepare {label} '{genome_id}' (catalog='{catalog}', cache='{cache}', timeout='{timeout}')"
+                )
+            }
+            Self::ReferencePrepareBlastResource {
+                helper_mode,
+                resource_id,
+                catalog_path,
+                cache_dir,
+                force_rebuild,
+            } => {
+                let label = if *helper_mode { "helper" } else { "reference" };
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
+                let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
+                format!(
+                    "prepare {label} BLAST sequence resource '{resource_id}' (catalog='{catalog}', cache='{cache}', force_rebuild={force_rebuild})"
+                )
+            }
+            Self::ReferenceAdoptBlastResource {
+                helper_mode,
+                resource_id,
+                sequence_path,
+                blast_db_prefix,
+                verify_source_identities,
+                ..
+            } => {
+                let label = if *helper_mode { "helper" } else { "reference" };
+                format!(
+                    "adopt existing {label} BLAST sequence resource '{resource_id}' (sequence='{sequence_path}', prefix='{blast_db_prefix}', verify_source_identities={verify_source_identities})"
+                )
+            }
+            Self::ReferenceInspectBlastResource {
+                helper_mode,
+                resource_id,
+                catalog_path,
+                cache_dir,
+            } => {
+                let label = if *helper_mode { "helper" } else { "reference" };
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
+                let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
+                format!(
+                    "inspect {label} BLAST sequence resource '{resource_id}' (catalog='{catalog}', cache='{cache}')"
                 )
             }
             Self::ReferenceRemovePrepared {
@@ -9277,16 +10426,20 @@ impl ShellCommand {
                 seq_id,
                 dataset_ids,
                 read_report_ids,
+                catalog_path,
+                cache_dir,
                 promoter_search_start_0based,
                 promoter_search_end_0based_exclusive,
                 neighbor_window_bp,
                 species_filters,
                 output_path,
             } => format!(
-                "inspect CUT&RUN regulatory support for '{}' (datasets={}, read_reports={}, promoter={}..{}, neighbor_window_bp={}, species_filters={}, output='{}')",
+                "inspect CUT&RUN regulatory support for '{}' (datasets={}, read_reports={}, catalog='{}', cache='{}', promoter={}..{}, neighbor_window_bp={}, species_filters={}, output='{}')",
                 seq_id,
                 dataset_ids.len(),
                 read_report_ids.len(),
+                catalog_path.as_deref().unwrap_or("-"),
+                cache_dir.as_deref().unwrap_or("-"),
                 promoter_search_start_0based
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "-".to_string()),
@@ -9465,15 +10618,19 @@ impl ShellCommand {
                 gene_label,
                 level,
                 min_abs_logfc,
+                threshold_source,
+                policy_sha256,
                 path,
             } => format!(
-                "interpret projected probe-region evidence on '{}' (gene={}, level={}, min_abs_logfc={}, path={})",
+                "interpret projected probe-region evidence on '{}' (gene={}, level={}, min_abs_logfc={}, threshold_source={}, policy_sha256={}, path={})",
                 seq_id,
                 gene_label.as_deref().unwrap_or("all"),
                 level.as_deref().unwrap_or("all"),
                 min_abs_logfc
                     .map(|value| format!("{value:.3}"))
                     .unwrap_or_else(|| "-".to_string()),
+                threshold_source.as_deref().unwrap_or("-"),
+                policy_sha256.as_deref().unwrap_or("-"),
                 path.as_deref().unwrap_or("-")
             ),
             Self::ArraysProbeRegions {
@@ -10007,8 +11164,81 @@ impl ShellCommand {
                 "resolve feature-coordinate formula on '{}' ({})",
                 seq_id, expression
             ),
+            Self::FeaturesEditLocation {
+                seq_id,
+                feature_index,
+                segment_index,
+                start_1based,
+                end_1based_inclusive,
+                dry_run,
+                ..
+            } => format!(
+                "{} feature {}{} location on '{}' to {}..{}",
+                if *dry_run { "preview" } else { "edit" },
+                feature_index,
+                segment_index
+                    .map(|index| format!(" segment {index}"))
+                    .unwrap_or_default(),
+                seq_id,
+                start_1based,
+                end_1based_inclusive
+            ),
+            Self::FeaturesCreate {
+                seq_id,
+                feature_kind,
+                start_1based,
+                end_1based_inclusive,
+                strand,
+                dry_run,
+                ..
+            } => format!(
+                "{} {} feature on '{}' at {}..{} ({:?})",
+                if *dry_run { "preview" } else { "create" },
+                feature_kind,
+                seq_id,
+                start_1based,
+                end_1based_inclusive,
+                strand
+            ),
+            Self::FeaturesDelete {
+                seq_id,
+                feature_index,
+                dry_run,
+                ..
+            } => format!(
+                "{} feature {} deletion on '{}'",
+                if *dry_run { "preview" } else { "apply" },
+                feature_index,
+                seq_id
+            ),
+            Self::FeaturesSplit {
+                seq_id,
+                feature_index,
+                split_before_1based,
+                dry_run,
+                ..
+            } => format!(
+                "{} feature {} split on '{}' before base {}",
+                if *dry_run { "preview" } else { "apply" },
+                feature_index,
+                seq_id,
+                split_before_1based
+            ),
+            Self::FeaturesMerge {
+                seq_id,
+                first_feature_index,
+                second_feature_index,
+                dry_run,
+                ..
+            } => format!(
+                "{} merge of features {} and {} on '{}'",
+                if *dry_run { "preview" } else { "apply" },
+                first_feature_index,
+                second_feature_index,
+                seq_id
+            ),
             Self::FeaturesQuery { query } => format!(
-                "query features on '{}' (kinds={}, range={}..{}, relation={}, strand={}, label='{}', qualifiers={}, limit={}, offset={})",
+                "query features on '{}' (kinds={}, range={}..{}, nearest_to={}, relation={}, strand={}, label='{}', qualifiers={}, limit={}, offset={})",
                 query.seq_id,
                 if query.kind_in.is_empty() {
                     "any".to_string()
@@ -10021,6 +11251,10 @@ impl ShellCommand {
                     .unwrap_or_else(|| "-".to_string()),
                 query
                     .end_0based_exclusive
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                query
+                    .nearest_to_0based
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "-".to_string()),
                 query.range_relation.as_str(),
@@ -10269,6 +11503,47 @@ impl ShellCommand {
                     path.as_deref().unwrap_or("-"),
                 )
             }
+            Self::FeaturesPromoterCofactors { request } => {
+                format!("query promoter cofactors: {:?}", request.query)
+            }
+            Self::FeaturesGenomicMotifEvidence { request, path } => {
+                let target = match &request.target {
+                    GenomicMotifEvidenceTarget::PackageCatalog {
+                        search,
+                        offset,
+                        limit,
+                    } => {
+                        format!("package catalog search={search:?} offset={offset} limit={limit}")
+                    }
+                    GenomicMotifEvidenceTarget::PackageTssWindows { gene_query, tss_id } => {
+                        format!("package TSS windows gene={gene_query:?} tss={tss_id:?}")
+                    }
+                    GenomicMotifEvidenceTarget::AnchoredSequence {
+                        seq_id,
+                        span_start_0based,
+                        span_end_0based_exclusive,
+                    } => format!(
+                        "sequence '{}' span={}",
+                        seq_id,
+                        format_optional_span(*span_start_0based, *span_end_0based_exclusive)
+                    ),
+                    GenomicMotifEvidenceTarget::GenomicIntervals { intervals } => {
+                        format!("{} explicit genomic interval(s)", intervals.len())
+                    }
+                    GenomicMotifEvidenceTarget::StoredRegionSet { region_set_id } => {
+                        format!("stored genomic region set '{region_set_id}'")
+                    }
+                };
+                format!(
+                    "query precomputed genomic motif evidence for {} (motifs={}, max_rows={}, max_payload_files={}, timeout_seconds={}, path={})",
+                    target,
+                    request.motif_ids.join(","),
+                    request.max_rows,
+                    request.max_payload_files,
+                    request.timeout_seconds,
+                    path.as_deref().unwrap_or("-")
+                )
+            }
             Self::FeaturesRestrictionScan {
                 target,
                 enzymes,
@@ -10395,6 +11670,114 @@ impl ShellCommand {
                 max_features
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "all".to_string()),
+                clear_existing,
+                path.as_deref().unwrap_or("-"),
+            ),
+            Self::FeaturesEncodeCcreOverlaps {
+                seq_id,
+                index_path,
+                bed_path,
+                start_0based,
+                end_0based_exclusive,
+                classes,
+                limit,
+                path,
+            } => format!(
+                "query ENCODE SCREEN cCRE overlaps on '{}' from '{}' (bed={}, range={}..{}, classes={}, limit={}, path={})",
+                seq_id,
+                index_path,
+                bed_path.as_deref().unwrap_or("index-bound"),
+                start_0based
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "0".to_string()),
+                end_0based_exclusive
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "full".to_string()),
+                if classes.is_empty() {
+                    "all source classes".to_string()
+                } else {
+                    classes.join(",")
+                },
+                limit
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "default".to_string()),
+                path.as_deref().unwrap_or("-"),
+            ),
+            Self::FeaturesMaterializeEncodeCcres {
+                seq_id,
+                index_path,
+                bed_path,
+                classes,
+                max_features,
+                clear_existing,
+                path,
+            } => format!(
+                "materialize ENCODE SCREEN cCREs on '{}' from '{}' (bed={}, classes={}, max_features={}, clear_existing={}, path={})",
+                seq_id,
+                index_path,
+                bed_path.as_deref().unwrap_or("index-bound"),
+                if classes.is_empty() {
+                    "all source classes".to_string()
+                } else {
+                    classes.join(",")
+                },
+                max_features
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "default".to_string()),
+                clear_existing,
+                path.as_deref().unwrap_or("-"),
+            ),
+            Self::FeaturesEnsemblRegulationOverlaps {
+                seq_id,
+                index_path,
+                intervals_path,
+                start_0based,
+                end_0based_exclusive,
+                feature_types,
+                limit,
+                path,
+            } => format!(
+                "query Ensembl Regulation overlaps on '{}' from '{}' (intervals={}, range={}..{}, types={}, limit={}, path={})",
+                seq_id,
+                index_path,
+                intervals_path.as_deref().unwrap_or("index-bound"),
+                start_0based
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "0".to_string()),
+                end_0based_exclusive
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "full".to_string()),
+                if feature_types.is_empty() {
+                    "all source types".to_string()
+                } else {
+                    feature_types.join(",")
+                },
+                limit
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "default".to_string()),
+                path.as_deref().unwrap_or("-"),
+            ),
+            Self::FeaturesMaterializeEnsemblRegulation {
+                seq_id,
+                index_path,
+                intervals_path,
+                feature_types,
+                max_features,
+                clear_existing,
+                path,
+            } => format!(
+                "materialize Ensembl regulatory features on '{}' from '{}' (intervals={}, types={}, max_features={}, clear_existing={}, path={})",
+                seq_id,
+                index_path,
+                intervals_path.as_deref().unwrap_or("index-bound"),
+                if feature_types.is_empty() {
+                    "all source types".to_string()
+                } else {
+                    feature_types.join(",")
+                },
+                max_features
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "default".to_string()),
                 clear_existing,
                 path.as_deref().unwrap_or("-"),
             ),
@@ -10584,12 +11967,14 @@ impl ShellCommand {
                 seq_id,
                 variant_label_or_id,
                 allele,
+                alternate_allele,
                 output_id,
             } => format!(
-                "materialize {} allele on '{}' (variant='{}', output_id='{}')",
+                "materialize {} allele on '{}' (variant='{}', alternate='{}', output_id='{}')",
                 allele.as_str(),
                 seq_id,
                 variant_label_or_id.as_deref().unwrap_or("auto"),
+                alternate_allele.as_deref().unwrap_or("auto"),
                 output_id.as_deref().unwrap_or("auto"),
             ),
             Self::PrimersDesign {
@@ -10607,6 +11992,37 @@ impl ShellCommand {
                     .map(str::trim)
                     .filter(|v| !v.is_empty())
                     .unwrap_or("default"),
+            ),
+            Self::PrimersDesignTerminalExonRtPool { request_json } => format!(
+                "design an ordered terminal-exon RT-primer pool from JSON request payload (len={})",
+                request_json.len()
+            ),
+            Self::PrimersPrimerBankSearch {
+                request,
+                source_html_path,
+                path,
+            } => format!(
+                "search PrimerBank for '{}' (by={}, species={}, source={}, path={})",
+                request.query,
+                request.query_kind.as_str(),
+                request.species.as_str(),
+                source_html_path.as_deref().unwrap_or("live"),
+                path.as_deref().unwrap_or("none"),
+            ),
+            Self::PrimersPrimerBankTestCdna {
+                seq_id,
+                feature_id,
+                primerbank_id,
+                expected_species,
+                source_html_path,
+                ..
+            } => format!(
+                "retrieve PrimerBank pair '{}' for species '{}' and test it on '{}' feature n-{} (source={})",
+                primerbank_id,
+                expected_species.as_str(),
+                seq_id,
+                feature_id + 1,
+                source_html_path.as_deref().unwrap_or("live"),
             ),
             Self::PrimersSeedFromFeature { seq_id, feature_id } => format!(
                 "seed primer/qPCR design ROI payloads from feature n-{} on '{}'",
@@ -10795,6 +12211,12 @@ impl ShellCommand {
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or("auto"),
             ),
+            Self::UniprotBuildLinkedTranscriptInventory { request } => format!(
+                "build UniProt linked-transcript inventory '{}' (links={}, output={})",
+                request.inventory_id,
+                request.links.len(),
+                request.output_path
+            ),
             Self::UniprotAuditParity {
                 projection_id,
                 transcript_id,
@@ -10879,6 +12301,171 @@ impl ShellCommand {
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or("none"),
             ),
+            Self::CollectionsRunPrimerSpecificity {
+                collection_subject,
+                member_bindings,
+                target_genome_id,
+                path,
+                ..
+            } => format!(
+                "map primer-pair specificity over {:?} collection members against prepared genome '{}' (explicit_bindings={}, path={})",
+                collection_subject.kind(),
+                target_genome_id,
+                member_bindings.len(),
+                path.as_deref()
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or("none"),
+            ),
+            Self::CollectionsRunRestrictionScan {
+                collection_subject,
+                member_bindings,
+                enzymes,
+                path,
+                ..
+            } => format!(
+                "map restriction-site scanning over {:?} collection members (explicit_bindings={}, enzymes={}, path={})",
+                collection_subject.kind(),
+                member_bindings.len(),
+                if enzymes.is_empty() {
+                    "preferred/default".to_string()
+                } else {
+                    enzymes.join(",")
+                },
+                path.as_deref()
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or("none"),
+            ),
+            Self::CollectionsRunConstructReasoningInspection {
+                collection_subject,
+                member_bindings,
+                path,
+            } => format!(
+                "map non-mutating construct-reasoning inspection over {:?} collection members (explicit_bindings={}, path={})",
+                collection_subject.kind(),
+                member_bindings.len(),
+                path.as_deref()
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or("none"),
+            ),
+            Self::CollectionsRunTfbsScan {
+                collection_subject,
+                member_bindings,
+                motifs,
+                max_hits_per_member,
+                path,
+                ..
+            } => format!(
+                "map non-mutating TFBS hit scanning over {:?} collection members (explicit_bindings={}, motifs={}, max_hits_per_member={}, path={})",
+                collection_subject.kind(),
+                member_bindings.len(),
+                motifs.join(","),
+                max_hits_per_member
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "unlimited".to_string()),
+                path.as_deref()
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or("none"),
+            ),
+            Self::CollectionsRunDigest {
+                collection_subject,
+                member_bindings,
+                enzymes,
+                output_prefix,
+                dry_run,
+                path,
+                ..
+            } => format!(
+                "{} restriction digest over {:?} collection members (explicit_bindings={}, enzymes={}, output_prefix={}, path={})",
+                if *dry_run { "preview" } else { "apply" },
+                collection_subject.kind(),
+                member_bindings.len(),
+                enzymes.join(","),
+                output_prefix.as_deref().unwrap_or("generated"),
+                path.as_deref()
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or("none"),
+            ),
+            Self::PrimersSpecificityPlan {
+                primer_report_id,
+                forward_primer,
+                reverse_primer,
+                target_genome_id,
+                output_dir,
+                ..
+            } => format!(
+                "prepare external primer-pair specificity BLAST commands against genome '{}' (source={}, explicit_pair={}, output_dir='{}')",
+                target_genome_id,
+                primer_report_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("explicit"),
+                forward_primer.is_some() && reverse_primer.is_some(),
+                output_dir,
+            ),
+            Self::PrimersSpecificityImport { handoff_path, path } => format!(
+                "import completed external primer-specificity BLAST outputs from '{}' (path={})",
+                handoff_path,
+                path.as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("none"),
+            ),
+            Self::PrimersSpecificityAlignmentHtml { report_id, path } => format!(
+                "render persisted full-primer alignments from specificity report '{}' to '{}'",
+                report_id, path,
+            ),
+            Self::PrimersTranscriptAssaySpecificityPlan {
+                panel_report_id,
+                target_genome_id,
+                output_dir,
+                ..
+            } => format!(
+                "prepare whole-panel external specificity commands for transcript assay panel '{}' against genome '{}' (output_dir='{}')",
+                panel_report_id, target_genome_id, output_dir,
+            ),
+            Self::PrimersTranscriptAssaySpecificityFinalize {
+                handoff_path,
+                execution_manifest_json,
+                path,
+            } => format!(
+                "finalize whole-panel specificity handoff '{}' from execution manifest (manifest_len={}, path={})",
+                handoff_path,
+                execution_manifest_json.len(),
+                path.as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("none"),
+            ),
+            Self::PrimersTranscriptAssaySpecificityRedesign { request_json, path } => format!(
+                "propose content-bound replacements for specificity-failed transcript assays (request_len={}, path={})",
+                request_json.len(),
+                path.as_deref()
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or("none"),
+            ),
+            Self::PrimersImportExternalPairs {
+                input_path,
+                seq_id,
+                feature_id,
+                specificity_target_genome_id,
+                materialize_products,
+                ..
+            } => format!(
+                "import external primer pairs from '{}' and evaluate them on '{}' feature n-{} (specificity_genome={}, materialize_products={})",
+                input_path,
+                seq_id,
+                feature_id.saturating_add(1),
+                specificity_target_genome_id.as_deref().unwrap_or("not_run"),
+                materialize_products,
+            ),
+            Self::PrimersScreenVariants {
+                request_json,
+                path,
+                evidence_dir,
+            } => format!(
+                "screen assembly-aware primer binding geometry against a local variant source (request_len={}, path={}, evidence_dir={})",
+                request_json.len(),
+                path.as_deref().unwrap_or("none"),
+                evidence_dir.as_deref().unwrap_or("none"),
+            ),
             Self::PrimersTestCdnaPcr {
                 seq_id,
                 feature_id,
@@ -10937,6 +12524,163 @@ impl ShellCommand {
                 seq_id,
                 feature_id + 1,
                 shared_qpcr_report_id,
+                path.as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("none"),
+            ),
+            Self::PrimersBuildTranscriptAssayCdnaSimilarityMap { request_json, path } => format!(
+                "build transcript-assay cDNA similarity map (request={}, path={})",
+                if request_json.trim_start().starts_with('@') {
+                    request_json.trim()
+                } else {
+                    "inline-json"
+                },
+                path.as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("none"),
+            ),
+            Self::PrimersDesignGroupTarget {
+                request_json,
+                path,
+                backend,
+                primer3_executable,
+            } => format!(
+                "design one common primer pair across related loaded sequences (request={}, path={}, backend={}, primer3_executable={})",
+                if request_json.trim_start().starts_with('@') {
+                    request_json.trim()
+                } else {
+                    "inline-json"
+                },
+                path.as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("none"),
+                backend
+                    .map(PrimerDesignBackend::as_str)
+                    .unwrap_or("default"),
+                primer3_executable
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("default"),
+            ),
+            Self::PrimersDesignTranscriptAssayPanel {
+                seq_id,
+                feature_id,
+                assay_kind,
+                cdna_synthesis,
+                objective,
+                coverage_policy,
+                coverage_universe,
+                assay_tier,
+                report_id,
+                path,
+                ..
+            } => format!(
+                "design transcript assay panel on '{}' feature n-{} (assay_kind={}, cdna_synthesis={}, objective={}, assay_tier={}, coverage_policy={}, coverage_universe={}, report_id={}, path={})",
+                seq_id,
+                feature_id + 1,
+                assay_kind.as_str(),
+                cdna_synthesis.as_str(),
+                objective.as_str(),
+                assay_tier.as_str(),
+                coverage_policy.as_str(),
+                coverage_universe.kind.as_str(),
+                report_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("auto"),
+                path.as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("none"),
+            ),
+            Self::PrimersDesignTranscriptAssayPanelRequest {
+                operation_json,
+                backend,
+                primer3_executable,
+            } => format!(
+                "design transcript assay panel from full operation JSON (len={}, backend={}, primer3_executable={})",
+                operation_json.len(),
+                backend
+                    .map(PrimerDesignBackend::as_str)
+                    .unwrap_or("default"),
+                primer3_executable
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("default"),
+            ),
+            Self::PrimersInspectTranscriptAssayFeasibility {
+                operation_json,
+                path,
+            } => format!(
+                "inspect transcript endpoint-assay feasibility from full operation JSON (len={}, path={})",
+                operation_json.len(),
+                path.as_deref().unwrap_or("none"),
+            ),
+            Self::PrimersPlanGeneIsoformAssayStudy {
+                request_json,
+                normalize_only,
+                path,
+                workflow_path,
+                ..
+            } => format!(
+                "plan gene isoform assay study from JSON request (len={}, normalize_only={}, path={}, workflow={})",
+                request_json.len(),
+                normalize_only,
+                path.as_deref().unwrap_or("none"),
+                workflow_path.as_deref().unwrap_or("none"),
+            ),
+            Self::PrimersExecuteGeneIsoformAssayStudyWorkflow {
+                plan_json,
+                workflow_json,
+            } => format!(
+                "execute approved gene isoform assay workflow (plan={}, workflow={})",
+                plan_json, workflow_json
+            ),
+            Self::PrimersComposeGeneIsoformAssayStudyWorkflowBatch { request_json } => format!(
+                "compose exact multi-study gene isoform assay workflow batch from JSON request (len={})",
+                request_json.len()
+            ),
+            Self::PrimersInspectGeneIsoformAssayStudyReuse {
+                batch_json,
+                checkpoint_dir,
+                ..
+            } => format!(
+                "inspect approved gene isoform assay checkpoint reuse (batch_len={}, checkpoint_dir={})",
+                batch_json.len(),
+                checkpoint_dir
+            ),
+            Self::PrimersExecuteGeneIsoformAssayStudyWorkflowBatch {
+                batch_json,
+                on_gene_failure,
+                ..
+            } => format!(
+                "execute approved multi-study gene isoform assay workflow batch (len={}, on_gene_failure={})",
+                batch_json.len(),
+                on_gene_failure.as_str()
+            ),
+            Self::PrimersPublishGeneIsoformAssayStudy {
+                request_path,
+                output_directory,
+                profile,
+                block_ids,
+                generate_pdf,
+            } => format!(
+                "publish gene isoform assay dossier from '{}' into '{}' (profile={}, blocks={}, pdf={})",
+                request_path,
+                output_directory,
+                profile.as_deref().unwrap_or("request_default"),
+                block_ids.len(),
+                generate_pdf,
+            ),
+            Self::PrimersComposeGeneTranscriptAssayRoutine { request_json, path } => format!(
+                "compose gene transcript-assay routine from JSON request (len={}, path={})",
+                request_json.len(),
                 path.as_deref()
                     .map(str::trim)
                     .filter(|value| !value.is_empty())
@@ -11019,12 +12763,17 @@ impl ShellCommand {
                     .filter(|v| !v.is_empty())
                     .unwrap_or("default"),
             ),
-            Self::PrimersListReports => "list stored primer-design reports".to_string(),
+            Self::PrimersListReports => {
+                "list stored primer-design and primer-specificity reports".to_string()
+            }
             Self::PrimersShowReport { report_id } => {
-                format!("show stored primer-design report '{}'", report_id)
+                format!(
+                    "show stored primer-design or primer-specificity report '{}'",
+                    report_id
+                )
             }
             Self::PrimersExportReport { report_id, path } => format!(
-                "export stored primer-design report '{}' to '{}'",
+                "export stored primer-design or primer-specificity report '{}' to '{}'",
                 report_id, path
             ),
             Self::PrimersListQpcrReports => "list stored qPCR-design reports".to_string(),
@@ -11034,6 +12783,42 @@ impl ShellCommand {
             Self::PrimersExportQpcrReport { report_id, path } => format!(
                 "export stored qPCR-design report '{}' to '{}'",
                 report_id, path
+            ),
+            Self::PrimersListTranscriptAssayPanels => {
+                "list stored transcript assay panel reports".to_string()
+            }
+            Self::PrimersShowTranscriptAssayPanel { report_id } => {
+                format!("show stored transcript assay panel report '{}'", report_id)
+            }
+            Self::PrimersExportTranscriptAssayPanel { report_id, path } => format!(
+                "export stored transcript assay panel report '{}' to '{}'",
+                report_id, path
+            ),
+            Self::PrimersListTranscriptAssayFallbacks => {
+                "list stored transcript assay strict/fallback execution audits".to_string()
+            }
+            Self::PrimersShowTranscriptAssayFallback { execution_id } => format!(
+                "show transcript assay strict/fallback execution audit '{}'",
+                execution_id
+            ),
+            Self::PrimersExportTranscriptAssayFallback { execution_id, path } => format!(
+                "export transcript assay strict/fallback execution audit '{}' to '{}'",
+                execution_id, path
+            ),
+            Self::PrimersExperimentalHandoff {
+                panel_report_id,
+                variant_evidence_paths,
+                order_form_id,
+                path,
+                order_table_path,
+                ..
+            } => format!(
+                "build experimental handoff from transcript assay panel '{}' (variant_evidence={}, order_form={}, json={}, table={})",
+                panel_report_id,
+                variant_evidence_paths.len(),
+                order_form_id.as_deref().unwrap_or("none"),
+                path.as_deref().unwrap_or("none"),
+                order_table_path.as_deref().unwrap_or("none"),
             ),
             Self::PrimersOligoOrderCreate { request_json } => format!(
                 "create oligo order form from JSON request payload (len={})",
@@ -11055,6 +12840,15 @@ impl ShellCommand {
             } => format!(
                 "create oligo order form from qPCR report '{}' assay rank(s) {:?} (include_probe={})",
                 report_id, assay_ranks, include_probe
+            ),
+            Self::PrimersOligoOrderFromExperimentalHandoff {
+                handoff_path,
+                expected_sha256,
+                ..
+            } => format!(
+                "create oligo order form from policy-gated experimental handoff '{}' (expected_sha256={})",
+                handoff_path,
+                expected_sha256.as_deref().unwrap_or("not_supplied")
             ),
             Self::PrimersOligoOrderList => "list stored oligo order forms".to_string(),
             Self::PrimersOligoOrderShow { form_id } => {
@@ -11924,6 +13718,31 @@ impl ShellCommand {
                     transcript_fasta_paths.join(",")
                 }
             ),
+            Self::RnaReadsAlleleHashScreen {
+                gene,
+                transcript_fasta,
+                variant_table,
+                read_files,
+                out_dir,
+                kmer_len,
+                min_unique_kmer_hits,
+                min_informative_reads,
+                balanced_band_lo,
+                balanced_band_hi,
+                ..
+            } => format!(
+                "screen allele-aware RNA-read haplotype support for '{}' (transcripts='{}', variants='{}', reads={}, kmer_len={}, min_unique_kmer_hits={}, min_informative_reads={}, balanced_band=[{:.3},{:.3}], out='{}')",
+                gene,
+                transcript_fasta,
+                variant_table.as_deref().unwrap_or("<none>"),
+                read_files.len(),
+                kmer_len,
+                min_unique_kmer_hits,
+                min_informative_reads,
+                balanced_band_lo,
+                balanced_band_hi,
+                out_dir
+            ),
             Self::RnaReadsMaterializeHits {
                 report_id,
                 selection,
@@ -12017,6 +13836,42 @@ impl ShellCommand {
                 selection.as_str(),
                 selected_record_indices.len(),
                 subset_spec.as_deref().unwrap_or("none")
+            ),
+            Self::RnaReadsExportDexseqAnnotationGff { report_id, path } => format!(
+                "export RNA-read DEXSeq flattened annotation from '{}' to '{}'",
+                report_id, path
+            ),
+            Self::RnaReadsExportDexseqCountsTsv {
+                report_id,
+                path,
+                selection,
+                selected_record_indices,
+                subset_spec,
+            } => format!(
+                "export RNA-read DEXSeq counts from '{}' to '{}' (selection={}, selected_record_indices={}, subset_spec={})",
+                report_id,
+                path,
+                selection.as_str(),
+                selected_record_indices.len(),
+                subset_spec.as_deref().unwrap_or("none")
+            ),
+            Self::RnaReadsVerifyDexseq {
+                report_id,
+                gff_path,
+                counts_path,
+                selection,
+                selected_record_indices,
+                subset_spec,
+                r_library_paths,
+            } => format!(
+                "verify RNA-read DEXSeq exports from '{}' via GFF '{}' and counts '{}' (selection={}, selected_record_indices={}, subset_spec={}, r_library_paths={})",
+                report_id,
+                gff_path,
+                counts_path,
+                selection.as_str(),
+                selected_record_indices.len(),
+                subset_spec.as_deref().unwrap_or("none"),
+                r_library_paths.len(),
             ),
             Self::RnaReadsExportScoreDensitySvg {
                 report_id,
@@ -12174,6 +14029,12 @@ impl ShellCommand {
                     "set compressed linear DNA letters '{}' (applies in auto mode)",
                     value_json
                 ),
+                "linear_show_sequence_bases"
+                | "linear_show_sequence_letters"
+                | "show_linear_sequence_bases"
+                | "show_linear_sequence_letters" => {
+                    format!("set linear-map DNA letter visibility to {}", value_json)
+                }
                 "linear_show_double_strand_bases"
                 | "show_linear_double_strand_bases"
                 | "linear_show_reverse_strand_bases"
@@ -12226,6 +14087,27 @@ impl ShellCommand {
     }
 
     pub fn is_state_mutating(&self) -> bool {
+        // Exempt only named read-only inspections; imports and file-writing
+        // handoffs keep the conservative generic-op confirmation behavior.
+        if let Self::Op { payload } = self
+            && let Ok(operation) = serde_json::from_str::<Operation>(payload)
+            && matches!(
+                operation,
+                Operation::PlanDnaSequenceDesign { .. }
+                    | Operation::GetPrimerPairMultiReferenceSpecificitySummary { .. }
+                    | Operation::ListPrimerPairMultiReferenceSpecificitySummaries { .. }
+            )
+        {
+            return false;
+        }
+        if let Self::FeaturesEditLocation { dry_run, .. }
+        | Self::FeaturesCreate { dry_run, .. }
+        | Self::FeaturesDelete { dry_run, .. }
+        | Self::FeaturesSplit { dry_run, .. }
+        | Self::FeaturesMerge { dry_run, .. } = self
+        {
+            return !dry_run;
+        }
         if let Self::MacrosTemplateRun { validate_only, .. } = self
             && *validate_only
         {
@@ -12238,6 +14120,8 @@ impl ShellCommand {
                 | Self::ImportPool { .. }
                 | Self::ReferenceInstallEnsembl { .. }
                 | Self::ReferencePrepare { .. }
+                | Self::ReferencePrepareBlastResource { .. }
+                | Self::ReferenceAdoptBlastResource { .. }
                 | Self::ReferenceExtractRegion { .. }
                 | Self::ReferenceExtractGene { .. }
                 | Self::ReferenceExtractPromoter { .. }
@@ -12297,6 +14181,15 @@ impl ShellCommand {
                 | Self::PrimersDesign { .. }
                 | Self::PrimersDesignQpcr { .. }
                 | Self::PrimersSpecificity { .. }
+                | Self::CollectionsRunPrimerSpecificity { .. }
+                | Self::PrimersSpecificityPlan { .. }
+                | Self::PrimersSpecificityImport { .. }
+                | Self::PrimersSpecificityAlignmentHtml { .. }
+                | Self::PrimersTranscriptAssaySpecificityPlan { .. }
+                | Self::PrimersTranscriptAssaySpecificityFinalize { .. }
+                | Self::PrimersTranscriptAssaySpecificityRedesign { .. }
+                | Self::PrimersExecuteGeneIsoformAssayStudyWorkflow { .. }
+                | Self::PrimersExecuteGeneIsoformAssayStudyWorkflowBatch { .. }
                 | Self::PrimersPrepareRestrictionCloning { .. }
                 | Self::PrimersSeedRestrictionCloningHandoff { .. }
                 | Self::PrimersListRestrictionCloningHandoffs
@@ -12441,6 +14334,18 @@ fn resolved_catalog_path(catalog_path: &Option<String>, _helper_mode: bool) -> O
         .filter(|v| !v.is_empty())
 }
 
+fn load_shell_genome_catalog(
+    catalog_path: &Option<String>,
+    helper_mode: bool,
+) -> Result<GenomeCatalog, String> {
+    match resolved_catalog_path(catalog_path, helper_mode) {
+        Some(path) if path != default_catalog_discovery_token(helper_mode) => {
+            GenomeCatalog::from_json_file(path)
+        }
+        _ => GenomeCatalog::from_default_discovery(helper_mode),
+    }
+}
+
 fn effective_catalog_path(catalog_path: &Option<String>, helper_mode: bool) -> String {
     catalog_path
         .as_deref()
@@ -12466,7 +14371,7 @@ fn default_cache_dir(helper_mode: bool) -> String {
     }
 }
 
-fn quote_shell_arg(raw: &str) -> String {
+pub(crate) fn quote_shell_arg(raw: &str) -> String {
     if raw.is_empty() {
         "''".to_string()
     } else if raw
@@ -12504,6 +14409,7 @@ pub(crate) fn arrays_shell_command_to_line(cmd: &ShellCommand) -> Option<String>
             probeset_ids,
             platform,
             annotation_library_path,
+            r_library_paths,
             condition_column,
             sample_column,
             block_column,
@@ -12545,6 +14451,9 @@ pub(crate) fn arrays_shell_command_to_line(cmd: &ShellCommand) -> Option<String>
             }
             if let Some(annotation_library_path) = annotation_library_path {
                 push_option(&mut tokens, "--annotation-library", annotation_library_path);
+            }
+            for r_library_path in r_library_paths {
+                push_option(&mut tokens, "--r-library-path", r_library_path);
             }
             if let Some(condition_column) = condition_column {
                 push_option(&mut tokens, "--condition-column", condition_column);
@@ -12824,6 +14733,9 @@ fn refresh_blast_async_orphaned_non_terminal_record(record: &mut BlastAsyncJobRe
     }
     record.status.result_available = false;
     record.report = None;
+    record.status.phase = record.status.state.clone();
+    record.status.observation = "persisted_interrupted".into();
+    record.status.updated_at_unix_ms = record.status.finished_at_unix_ms;
 }
 
 fn refresh_blast_async_job_record(record: &mut BlastAsyncJobRecord) {
@@ -12832,10 +14744,26 @@ fn refresh_blast_async_job_record(record: &mut BlastAsyncJobRecord) {
         return;
     };
     match receiver.try_recv() {
+        Ok(BlastAsyncWorkerMessage::Preflight(preflight)) => {
+            record.status.binary_preflight = Some(preflight);
+            record.status.phase = if record.cancel_requested.load(Ordering::Relaxed) {
+                "cancelling"
+            } else {
+                "search"
+            }
+            .into();
+            record.status.updated_at_unix_ms = Some(shell_now_unix_ms());
+            refresh_blast_async_job_record(record);
+        }
         Ok(BlastAsyncWorkerMessage::Done(result)) => {
             record.status.done_queries = 1;
             record.status.total_queries = 1;
             record.status.finished_at_unix_ms = Some(shell_now_unix_ms());
+            let result = if record.cancel_requested.load(Ordering::Relaxed) {
+                Err("BLAST search cancelled by caller; unpublished result discarded".into())
+            } else {
+                result
+            };
             match result {
                 Ok(report) => {
                     record.status.state = "completed".to_string();
@@ -12854,6 +14782,8 @@ fn refresh_blast_async_job_record(record: &mut BlastAsyncJobRecord) {
                     record.report = None;
                 }
             }
+            record.status.phase = record.status.state.clone();
+            record.status.updated_at_unix_ms = record.status.finished_at_unix_ms;
             record.receiver = None;
         }
         Err(mpsc::TryRecvError::Empty) => {}
@@ -12864,6 +14794,8 @@ fn refresh_blast_async_job_record(record: &mut BlastAsyncJobRecord) {
             record.status.result_available = false;
             record.report = None;
             record.receiver = None;
+            record.status.phase = "failed".into();
+            record.status.updated_at_unix_ms = record.status.finished_at_unix_ms;
         }
     }
 }
@@ -12893,56 +14825,116 @@ fn spawn_blast_async_worker(record: &mut BlastAsyncJobRecord) {
     let (tx, rx) = mpsc::channel::<BlastAsyncWorkerMessage>();
     let started_at = shell_now_unix_ms();
     record.status.state = "running".to_string();
+    record.status.phase = "preflight".into();
     record.status.started_at_unix_ms = Some(started_at);
+    record.status.updated_at_unix_ms = Some(started_at);
     record.receiver = Some(rx);
 
-    thread::spawn(move || {
-        #[cfg(test)]
-        {
-            let delay_ms = BLAST_ASYNC_WORKER_DELAY_MS_TEST_OVERRIDE.load(Ordering::SeqCst);
-            if delay_ms > 0 {
-                thread::sleep(Duration::from_millis(delay_ms));
+    let job_id = record.status.job_id.clone();
+    #[cfg(test)]
+    let test_gate = BLAST_ASYNC_WORKER_TEST_GATE.lock().unwrap().clone();
+    #[cfg(test)]
+    let test_delay = BLAST_ASYNC_WORKER_DELAY_MS_TEST_OVERRIDE.load(Ordering::SeqCst);
+    let spawn = thread::Builder::new()
+        .name(format!("gentle-{job_id}"))
+        .spawn(move || {
+            #[cfg(test)]
+            let _scoped_tool_overrides =
+                crate::tool_overrides::ScopedToolOverridesSnapshotGuard::install(
+                    spec.scoped_tool_overrides.clone(),
+                );
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                #[cfg(test)]
+                {
+                    if let Some(gate) = test_gate {
+                        let _ = gate.entered.send(());
+                        gate.release
+                            .lock()
+                            .unwrap()
+                            .recv_timeout(Duration::from_secs(5))
+                            .map_err(|e| e.to_string())?;
+                    }
+                    if test_delay > 0 {
+                        thread::sleep(Duration::from_millis(test_delay));
+                    }
+                }
+                let mut should_cancel = || cancel_for_thread.load(Ordering::Relaxed);
+                if should_cancel() {
+                    return Err("BLAST search cancelled before preflight".to_string());
+                }
+                let preflight = crate::genomes::blast_external_binary_preflight_report_with_cancel(
+                    &mut should_cancel,
+                );
+                let ready = preflight.blastn.version_probe_ok;
+                let preflight =
+                    serde_json::to_value(preflight).map_err(|error| error.to_string())?;
+                let _ = tx.send(BlastAsyncWorkerMessage::Preflight(preflight));
+                kick_blast_async_scheduler();
+                if should_cancel() {
+                    return Err("BLAST search cancelled during preflight".to_string());
+                }
+                if !ready {
+                    return Err(
+                        "BLAST executable preflight failed; inspect job.binary_preflight".into(),
+                    );
+                }
+                let result = if spec.helper_mode {
+                    spec.engine_snapshot
+                        .blast_helper_genome_with_project_and_request_options_and_cancel(
+                            &spec.genome_id,
+                            &spec.query_sequence,
+                            spec.request_options_json.as_ref(),
+                            spec.task.as_deref(),
+                            if spec.max_hits_explicit {
+                                Some(spec.max_hits)
+                            } else {
+                                None
+                            },
+                            spec.resolved_catalog.as_deref(),
+                            spec.cache_dir.as_deref(),
+                            &mut should_cancel,
+                        )
+                } else {
+                    spec.engine_snapshot
+                        .blast_reference_genome_with_project_and_request_options_and_cancel(
+                            spec.resolved_catalog.as_deref(),
+                            &spec.genome_id,
+                            &spec.query_sequence,
+                            spec.request_options_json.as_ref(),
+                            spec.task.as_deref(),
+                            if spec.max_hits_explicit {
+                                Some(spec.max_hits)
+                            } else {
+                                None
+                            },
+                            spec.cache_dir.as_deref(),
+                            &mut should_cancel,
+                        )
+                };
+                result.map_err(|e| e.to_string())
+            }))
+            .unwrap_or_else(|_| Err("BLAST async worker panicked".into()));
+            let result_hash = result
+                .as_ref()
+                .ok()
+                .and_then(|report| serde_json::to_vec(report).ok())
+                .map(|bytes| crate::digest_utils::sha256_prefixed_bytes(&bytes));
+            if let Ok(mut jobs) = BLAST_ASYNC_JOBS.lock()
+                && let Some(record) = jobs.get_mut(&job_id)
+            {
+                record.status.result_sha256 = result_hash;
             }
-        }
-        let mut should_cancel = || cancel_for_thread.load(Ordering::Relaxed);
-        let result = if spec.helper_mode {
-            spec.engine_snapshot
-                .blast_helper_genome_with_project_and_request_options_and_cancel(
-                    &spec.genome_id,
-                    &spec.query_sequence,
-                    spec.request_options_json.as_ref(),
-                    spec.task.as_deref(),
-                    if spec.max_hits_explicit {
-                        Some(spec.max_hits)
-                    } else {
-                        None
-                    },
-                    spec.resolved_catalog.as_deref(),
-                    spec.cache_dir.as_deref(),
-                    &mut should_cancel,
-                )
-        } else {
-            spec.engine_snapshot
-                .blast_reference_genome_with_project_and_request_options_and_cancel(
-                    spec.resolved_catalog.as_deref(),
-                    &spec.genome_id,
-                    &spec.query_sequence,
-                    spec.request_options_json.as_ref(),
-                    spec.task.as_deref(),
-                    if spec.max_hits_explicit {
-                        Some(spec.max_hits)
-                    } else {
-                        None
-                    },
-                    spec.cache_dir.as_deref(),
-                    &mut should_cancel,
-                )
-        };
-        let _ = tx.send(BlastAsyncWorkerMessage::Done(
-            result.map_err(|e| e.to_string()),
-        ));
-        kick_blast_async_scheduler();
-    });
+            let _ = tx.send(BlastAsyncWorkerMessage::Done(result));
+            kick_blast_async_scheduler();
+        });
+    if let Err(error) = spawn {
+        record.receiver = None;
+        record.status.state = "failed".into();
+        record.status.phase = "failed".into();
+        record.status.error = Some(format!("Could not start BLAST worker: {error}"));
+        record.status.finished_at_unix_ms = Some(shell_now_unix_ms());
+        record.status.updated_at_unix_ms = record.status.finished_at_unix_ms;
+    }
 }
 
 fn refresh_and_dispatch_blast_async_jobs_locked(jobs: &mut HashMap<String, BlastAsyncJobRecord>) {
@@ -12966,7 +14958,15 @@ fn refresh_and_dispatch_blast_async_jobs_locked(jobs: &mut HashMap<String, Blast
                 }
             })
             .collect();
-        queued_job_ids.sort_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
+        queued_job_ids.sort_by(|left, right| {
+            left.0
+                .cmp(&right.0)
+                .then_with(|| {
+                    blast_async_next_counter_from_job_id(&left.1)
+                        .cmp(&blast_async_next_counter_from_job_id(&right.1))
+                })
+                .then(left.1.cmp(&right.1))
+        });
         for (_, job_id) in queued_job_ids {
             if running_jobs >= max_concurrent {
                 break;
@@ -12998,7 +14998,15 @@ fn refresh_and_dispatch_blast_async_jobs_locked(jobs: &mut HashMap<String, Blast
             }
         })
         .collect();
-    queued_job_ids.sort_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
+    queued_job_ids.sort_by(|left, right| {
+        left.0
+            .cmp(&right.0)
+            .then_with(|| {
+                blast_async_next_counter_from_job_id(&left.1)
+                    .cmp(&blast_async_next_counter_from_job_id(&right.1))
+            })
+            .then(left.1.cmp(&right.1))
+    });
     let queued_jobs = queued_job_ids.len();
     let mut queue_positions: HashMap<String, usize> = HashMap::new();
     for (index, (_, job_id)) in queued_job_ids.into_iter().enumerate() {
@@ -13022,12 +15030,11 @@ fn blast_async_store_from_jobs(
             status.cancel_requested =
                 status.cancel_requested || record.cancel_requested.load(Ordering::Relaxed);
             normalize_blast_async_status(&mut status);
+            // Admission/cancellation persist small receipts, never copy every
+            // completed HSP report under the project/registry locks.
+            status.result_available = false;
             BlastAsyncPersistedJob {
-                report: if status.result_available {
-                    record.report.clone()
-                } else {
-                    None
-                },
+                report: None,
                 status,
             }
         })
@@ -13057,51 +15064,63 @@ fn hydrate_blast_async_jobs_from_engine(
     jobs: &mut HashMap<String, BlastAsyncJobRecord>,
     engine: &GentleEngine,
 ) {
-    let Some(raw_store) = engine
-        .state()
-        .metadata
-        .get(BLAST_ASYNC_STORE_METADATA_KEY)
-        .cloned()
-    else {
-        return;
-    };
-    let Ok(mut store) = serde_json::from_value::<BlastAsyncPersistedStore>(raw_store) else {
-        return;
-    };
-
-    blast_async_update_counter_floor(store.next_job_counter.max(1));
-    for mut persisted in store.jobs.drain(..) {
-        normalize_blast_async_status(&mut persisted.status);
-        let job_id = persisted.status.job_id.trim().to_string();
-        if job_id.is_empty() {
+    for key in [
+        BLAST_ASYNC_STORE_METADATA_KEY,
+        BLAST_ASYNC_LEGACY_STORE_METADATA_KEY,
+    ] {
+        let Some(raw_store) = engine.state().metadata.get(key) else {
             continue;
-        }
-        persisted.status.job_id = job_id.clone();
-        if let Some(next_counter) = blast_async_next_counter_from_job_id(&job_id) {
-            blast_async_update_counter_floor(next_counter);
-        }
-        if let Some(existing) = jobs.get_mut(&job_id) {
-            if existing.report.is_none() && persisted.status.result_available {
-                existing.report = persisted.report.clone();
-            }
+        };
+        let Some(rows) = raw_store.get("jobs").and_then(Value::as_array) else {
             continue;
-        }
-        let cancel_requested = persisted.status.cancel_requested;
-        let result_available = persisted.status.result_available;
-        jobs.insert(
-            job_id,
-            BlastAsyncJobRecord {
-                status: persisted.status,
-                cancel_requested: Arc::new(AtomicBool::new(cancel_requested)),
-                receiver: None,
-                launch_spec: None,
-                report: if result_available {
-                    persisted.report
-                } else {
-                    None
-                },
-            },
+        };
+        blast_async_update_counter_floor(
+            raw_store
+                .get("next_job_counter")
+                .and_then(Value::as_u64)
+                .unwrap_or(1),
         );
+        for row in rows.iter().take(
+            BLAST_ASYNC_JOB_HISTORY_LIMIT
+                + BLAST_ASYNC_MAX_CONCURRENT_HARD_LIMIT
+                + BLAST_ASYNC_MAX_QUEUED,
+        ) {
+            let Ok(mut status) =
+                serde_json::from_value::<BlastAsyncJobStatus>(row["status"].clone())
+            else {
+                continue;
+            };
+            normalize_blast_async_status(&mut status);
+            let job_id = status.job_id.trim().to_string();
+            if job_id.is_empty() {
+                continue;
+            }
+            status.job_id = job_id.clone();
+            if let Some(next_counter) = blast_async_next_counter_from_job_id(&job_id) {
+                blast_async_update_counter_floor(next_counter);
+            }
+            if key == BLAST_ASYNC_LEGACY_STORE_METADATA_KEY
+                && !matches!(status.state.as_str(), "queued" | "running")
+            {
+                continue;
+            }
+            if jobs.contains_key(&job_id) {
+                continue;
+            }
+            let cancel_requested = status.cancel_requested;
+            status.observation = "persisted".into();
+            status.result_available = false;
+            jobs.insert(
+                job_id,
+                BlastAsyncJobRecord {
+                    status,
+                    cancel_requested: Arc::new(AtomicBool::new(cancel_requested)),
+                    receiver: None,
+                    launch_spec: None,
+                    report: None,
+                },
+            );
+        }
     }
 }
 
@@ -13117,8 +15136,7 @@ fn persist_blast_async_jobs_to_engine(
     if jobs.is_empty() {
         if existing.is_some() {
             engine
-                .state_mut()
-                .metadata
+                .auxiliary_metadata_mut()
                 .remove(BLAST_ASYNC_STORE_METADATA_KEY);
             return Ok(true);
         }
@@ -13131,8 +15149,7 @@ fn persist_blast_async_jobs_to_engine(
         return Ok(false);
     }
     engine
-        .state_mut()
-        .metadata
+        .auxiliary_metadata_mut()
         .insert(BLAST_ASYNC_STORE_METADATA_KEY.to_string(), value);
     Ok(true)
 }
@@ -13193,12 +15210,11 @@ fn prune_blast_async_jobs_locked(jobs: &mut HashMap<String, BlastAsyncJobRecord>
 }
 
 fn collect_blast_async_job_snapshots(
-    jobs: &mut HashMap<String, BlastAsyncJobRecord>,
+    jobs: &HashMap<String, BlastAsyncJobRecord>,
     helper_mode_filter: Option<bool>,
 ) -> Vec<BlastAsyncJobStatus> {
-    refresh_and_dispatch_blast_async_jobs_locked(jobs);
     let mut statuses: Vec<BlastAsyncJobStatus> = vec![];
-    for record in jobs.values_mut() {
+    for record in jobs.values() {
         if let Some(helper_mode) = helper_mode_filter
             && record.status.helper_mode != helper_mode
         {
@@ -13214,14 +15230,230 @@ fn collect_blast_async_job_snapshots(
     statuses
 }
 
+pub(crate) fn runtime_status_payload_with_observed_activities(
+    engine: &mut GentleEngine,
+    trigger: RuntimeStatusTrigger,
+) -> Result<(Value, bool), String> {
+    let mut activities = Vec::new();
+    let mut notes = vec![
+        "frames are live and process-local; persisted/project activities are observations from existing ledgers".to_string(),
+        "out-of-process GUI live stacks are not visible without future IPC; stale/cross-process records are labelled explicitly".to_string(),
+    ];
+    collect_runtime_genome_prepare_activities(false, &mut activities, &mut notes);
+    collect_runtime_genome_prepare_activities(true, &mut activities, &mut notes);
+    collect_runtime_cutrun_activities(engine, &mut activities, &mut notes);
+    let blast_jobs = collect_runtime_blast_async_activities(engine)?;
+    activities.extend(blast_jobs.iter().map(runtime_activity_from_blast_async_job));
+    let snapshot = runtime_status_snapshot(trigger).with_activities(activities, notes);
+    Ok((
+        serde_json::to_value(snapshot)
+            .map_err(|e| format!("Could not serialize runtime status: {e}"))?,
+        false,
+    ))
+}
+
+fn collect_runtime_blast_async_activities(
+    engine: &mut GentleEngine,
+) -> Result<Vec<BlastAsyncJobStatus>, String> {
+    Ok(observe_blast_async_jobs(engine, None, None, false)?
+        .into_iter()
+        .map(|(status, _)| status)
+        .collect())
+}
+
+fn collect_runtime_genome_prepare_activities(
+    helper_mode: bool,
+    activities: &mut Vec<RuntimeStatusActivity>,
+    notes: &mut Vec<String>,
+) {
+    let catalog = match GenomeCatalog::from_default_discovery(helper_mode) {
+        Ok(catalog) => catalog,
+        Err(err) => {
+            notes.push(format!(
+                "could not inspect {} genome prepare activities from default catalog discovery: {err}",
+                if helper_mode { "helper" } else { "reference" }
+            ));
+            return;
+        }
+    };
+    match catalog.inspect_all_prepare_activity_statuses(None) {
+        Ok(statuses) => {
+            activities.extend(
+                statuses
+                    .iter()
+                    .map(|status| runtime_activity_from_prepare_genome(status, helper_mode)),
+            );
+        }
+        Err(err) => notes.push(format!(
+            "could not inspect {} genome prepare activity status files: {err}",
+            if helper_mode { "helper" } else { "reference" }
+        )),
+    }
+}
+
+fn collect_runtime_cutrun_activities(
+    engine: &GentleEngine,
+    activities: &mut Vec<RuntimeStatusActivity>,
+    notes: &mut Vec<String>,
+) {
+    let datasets = match GentleEngine::list_cutrun_datasets(None, None) {
+        Ok(report) => report.datasets,
+        Err(err) => {
+            notes.push(format!(
+                "could not inspect CUT&RUN shared-asset activities from default catalog discovery: {}",
+                err.message
+            ));
+            return;
+        }
+    };
+    for row in datasets {
+        match engine.show_cutrun_dataset_status(&row.dataset_id, None, None) {
+            Ok(status) => {
+                if let Some(activity) = status.current_activity.as_ref() {
+                    activities.push(runtime_activity_from_cutrun_shared_asset(activity));
+                }
+            }
+            Err(err) => notes.push(format!(
+                "could not inspect CUT&RUN activity for '{}': {}",
+                row.dataset_id, err.message
+            )),
+        }
+    }
+}
+
+fn runtime_activity_from_prepare_genome(
+    status: &PrepareGenomeActivityStatus,
+    helper_mode: bool,
+) -> RuntimeStatusActivity {
+    let prepare_kind = if helper_mode { "helper" } else { "reference" };
+    let mut activity = RuntimeStatusActivity::new(
+        RuntimeStatusActivitySource::PrepareGenome,
+        RuntimeStatusActivityScope::PersistedActivity,
+        format!("prepare-genome:{prepare_kind}:{}", status.genome_id),
+        format!(
+            "{} genome prepare: {}",
+            if helper_mode { "Helper" } else { "Reference" },
+            status.genome_id
+        ),
+        status.lifecycle_status.clone(),
+    );
+    activity.observation = observed_activity_state(&status.lifecycle_status, status.owner_pid);
+    activity.phase = status.phase.clone();
+    activity.detail = status
+        .item
+        .clone()
+        .or_else(|| status.step_label.clone())
+        .or_else(|| Some(status.prepare_mode.clone()));
+    activity.progress_percent = status.percent;
+    activity.bytes_done = Some(status.bytes_done);
+    activity.bytes_total = status.bytes_total;
+    activity.started_at_unix_ms = Some(status.started_at_unix_ms);
+    activity.updated_at_unix_ms = Some(status.updated_at_unix_ms);
+    activity.finished_at_unix_ms = status.finished_at_unix_ms;
+    activity.origin_process_id = status.owner_pid;
+    activity.source_path = Some(status.status_path.clone());
+    activity.stale_reason = match status.lifecycle_status.as_str() {
+        "stale" | "failed" | "cancelled" => status.last_error.clone(),
+        _ => None,
+    };
+    activity
+}
+
+fn runtime_activity_from_cutrun_shared_asset(
+    status: &SharedAssetActivityStatus,
+) -> RuntimeStatusActivity {
+    let mut activity = RuntimeStatusActivity::new(
+        RuntimeStatusActivitySource::CutrunSharedAsset,
+        RuntimeStatusActivityScope::PersistedActivity,
+        format!("cutrun-shared-asset:{}", status.resource_key),
+        status.display_name.clone(),
+        status.lifecycle_status.clone(),
+    );
+    activity.observation = observed_activity_state(&status.lifecycle_status, status.owner_pid);
+    activity.phase = status.phase.clone();
+    activity.detail = status.item.clone();
+    activity.progress_percent = status.percent;
+    activity.bytes_done = Some(status.bytes_done);
+    activity.bytes_total = status.bytes_total;
+    activity.started_at_unix_ms = Some(status.started_at_unix_ms);
+    activity.updated_at_unix_ms = Some(status.updated_at_unix_ms);
+    activity.finished_at_unix_ms = status.finished_at_unix_ms;
+    activity.origin_process_id = status.owner_pid;
+    activity.source_path = Some(status.status_path.clone());
+    activity.stale_reason = match status.lifecycle_status.as_str() {
+        "stale" | "failed" | "cancelled" => status.last_error.clone(),
+        _ => None,
+    };
+    activity
+}
+
+fn runtime_activity_from_blast_async_job(status: &BlastAsyncJobStatus) -> RuntimeStatusActivity {
+    let mut activity = RuntimeStatusActivity::new(
+        RuntimeStatusActivitySource::BlastAsyncJob,
+        RuntimeStatusActivityScope::ProjectAsyncRegistry,
+        format!("blast-async:{}", status.job_id),
+        format!("BLAST async job {} ({})", status.job_id, status.genome_id),
+        status.state.clone(),
+    );
+    activity.phase = Some(if status.phase.is_empty() {
+        status.task.clone()
+    } else {
+        status.phase.clone()
+    });
+    activity.detail = Some(format!(
+        "genome={} helper_mode={} queries={}/{} max_hits={}",
+        status.genome_id,
+        status.helper_mode,
+        status.done_queries,
+        status.total_queries,
+        status.max_hits
+    ));
+    if status.total_queries > 0 {
+        activity.progress_percent = Some(
+            ((status.done_queries as f64 / status.total_queries as f64) * 100.0).clamp(0.0, 100.0),
+        );
+    }
+    activity.started_at_unix_ms = status.started_at_unix_ms;
+    activity.updated_at_unix_ms = Some(
+        status
+            .updated_at_unix_ms
+            .or(status.finished_at_unix_ms)
+            .or(status.started_at_unix_ms)
+            .unwrap_or(status.created_at_unix_ms),
+    );
+    activity.finished_at_unix_ms = status.finished_at_unix_ms;
+    activity.stale_reason = status.error.clone();
+    activity
+}
+
+fn observed_activity_state(
+    lifecycle_status: &str,
+    owner_pid: Option<u32>,
+) -> RuntimeStatusActivityObservation {
+    if lifecycle_status.eq_ignore_ascii_case("running")
+        && owner_pid.is_some_and(|pid| pid != std::process::id())
+    {
+        return RuntimeStatusActivityObservation::CrossProcess;
+    }
+    match lifecycle_status.trim().to_ascii_lowercase().as_str() {
+        "running" | "queued" | "preparing" | "in_progress" => {
+            RuntimeStatusActivityObservation::Live
+        }
+        "ready" | "completed" | "done" | "ok" => RuntimeStatusActivityObservation::Completed,
+        "failed" | "error" => RuntimeStatusActivityObservation::Failed,
+        "cancelled" | "canceled" => RuntimeStatusActivityObservation::Cancelled,
+        "stale" => RuntimeStatusActivityObservation::Stale,
+        _ => RuntimeStatusActivityObservation::Unknown,
+    }
+}
+
 fn get_blast_async_job_snapshot(
-    jobs: &mut HashMap<String, BlastAsyncJobRecord>,
+    jobs: &HashMap<String, BlastAsyncJobRecord>,
     job_id: &str,
     include_report: bool,
 ) -> Result<(BlastAsyncJobStatus, Option<GenomeBlastReport>), String> {
-    refresh_and_dispatch_blast_async_jobs_locked(jobs);
     let record = jobs
-        .get_mut(job_id)
+        .get(job_id)
         .ok_or_else(|| format!("BLAST async job '{}' not found", job_id))?;
     Ok((
         record.status.clone(),
@@ -13233,6 +15465,97 @@ fn get_blast_async_job_snapshot(
     ))
 }
 
+/// Observation never dispatches work, drains receivers, prunes, or persists.
+/// Legacy saved receipts are projected locally. Live jobs retain the existing
+/// process scope, including MCP calls that rehydrate an engine for each request.
+fn observe_blast_async_jobs(
+    engine: &GentleEngine,
+    helper_mode: Option<bool>,
+    job_id: Option<&str>,
+    include_report: bool,
+) -> Result<Vec<(BlastAsyncJobStatus, Option<GenomeBlastReport>)>, String> {
+    let jobs = BLAST_ASYNC_JOBS
+        .lock()
+        .map_err(|_| "BLAST status registry is unavailable".to_string())?;
+    let mut rows = std::collections::BTreeMap::new();
+    for key in [
+        BLAST_ASYNC_LEGACY_STORE_METADATA_KEY,
+        BLAST_ASYNC_STORE_METADATA_KEY,
+    ] {
+        if let Some(saved) = engine
+            .state()
+            .metadata
+            .get(key)
+            .and_then(|store| store.get("jobs"))
+            .and_then(Value::as_array)
+        {
+            for row in saved.iter().take(
+                BLAST_ASYNC_JOB_HISTORY_LIMIT
+                    + BLAST_ASYNC_MAX_CONCURRENT_HARD_LIMIT
+                    + BLAST_ASYNC_MAX_QUEUED,
+            ) {
+                if job_id.is_some_and(|id| row["status"]["job_id"].as_str() != Some(id)) {
+                    continue;
+                }
+                let Ok(mut status) =
+                    serde_json::from_value::<BlastAsyncJobStatus>(row["status"].clone())
+                else {
+                    continue;
+                };
+                if helper_mode.is_some_and(|mode| status.helper_mode != mode) {
+                    continue;
+                }
+                normalize_blast_async_status(&mut status);
+                let report = if include_report {
+                    serde_json::from_value(row["report"].clone()).ok()
+                } else {
+                    None
+                };
+                status.result_available = status.result_available && !row["report"].is_null();
+                status.observation = "persisted".into();
+                if matches!(status.state.as_str(), "queued" | "running") {
+                    status.state = if status.cancel_requested {
+                        "cancelled"
+                    } else {
+                        "failed"
+                    }
+                    .into();
+                    status.phase = "interrupted".into();
+                    status.observation = "persisted_interrupted".into();
+                    status.error = Some(BLAST_ASYNC_RESTART_INTERRUPTED_ERROR.into());
+                    status.result_available = false;
+                }
+                rows.insert(status.job_id.clone(), (status, report));
+            }
+        }
+    }
+    for status in collect_blast_async_job_snapshots(&jobs, helper_mode) {
+        if job_id.is_some_and(|id| id != status.job_id) {
+            continue;
+        }
+        let result = get_blast_async_job_snapshot(&jobs, &status.job_id, include_report)?;
+        rows.insert(status.job_id.clone(), result);
+    }
+    if let Some(id) = job_id
+        && !rows.contains_key(id)
+    {
+        return Err(format!(
+            "BLAST async job '{id}' not found in this process or saved state"
+        ));
+    }
+    let mut rows: Vec<_> = rows.into_values().collect();
+    rows.sort_by(|a, b| blast_async_fifo_key(&a.0).cmp(&blast_async_fifo_key(&b.0)));
+    Ok(rows)
+}
+
+fn blast_async_fifo_key(status: &BlastAsyncJobStatus) -> (u128, u64, &str) {
+    (
+        status.created_at_unix_ms,
+        blast_async_next_counter_from_job_id(&status.job_id).unwrap_or(0),
+        &status.job_id,
+    )
+}
+
 fn cancel_blast_async_job(
     jobs: &mut HashMap<String, BlastAsyncJobRecord>,
     job_id: &str,
@@ -13240,8 +15563,16 @@ fn cancel_blast_async_job(
     let record = jobs
         .get_mut(job_id)
         .ok_or_else(|| format!("BLAST async job '{}' not found", job_id))?;
+    if matches!(
+        record.status.state.as_str(),
+        "completed" | "failed" | "cancelled"
+    ) {
+        return Ok(record.status.clone());
+    }
     record.cancel_requested.store(true, Ordering::Relaxed);
     record.status.cancel_requested = true;
+    record.status.phase = "cancelling".into();
+    record.status.updated_at_unix_ms = Some(shell_now_unix_ms());
     if record.receiver.is_none() {
         if record.status.state == "queued" || record.status.state == "running" {
             record.status.state = "cancelled".to_string();
@@ -13249,6 +15580,7 @@ fn cancel_blast_async_job(
             record.status.error = Some("BLAST search cancelled by caller".to_string());
             record.status.result_available = false;
             record.launch_spec = None;
+            record.status.phase = "cancelled".into();
         }
     } else if record.status.started_at_unix_ms.is_none() {
         record.status.started_at_unix_ms = Some(shell_now_unix_ms());
@@ -13274,6 +15606,21 @@ fn start_blast_async_job(
     catalog_path: Option<String>,
     cache_dir: Option<String>,
 ) -> Result<BlastAsyncJobStatus, String> {
+    if query_sequence.len() > BLAST_ASYNC_MAX_QUERY_BYTES
+        || [
+            Some(genome_id),
+            task.as_deref(),
+            catalog_path.as_deref(),
+            cache_dir.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .any(|s| s.len() > 4096)
+    {
+        return Err(
+            "Async BLAST admission exceeds the 1-MiB query or 4096-byte argument limit".into(),
+        );
+    }
     if genome_id.trim().is_empty() {
         return Err("BLAST async start requires a non-empty genome_id".to_string());
     }
@@ -13283,12 +15630,27 @@ fn start_blast_async_job(
     if max_hits == 0 {
         return Err("BLAST async start requires max_hits >= 1".to_string());
     }
+    if let Some(options) = request_options_json.as_ref() {
+        GentleEngine::validate_blast_async_json_budget(options)?;
+    }
+    if jobs.values().filter(|r| r.status.state == "queued").count() >= BLAST_ASYNC_MAX_QUEUED {
+        return Err(format!(
+            "BLAST queue capacity reached ({BLAST_ASYNC_MAX_QUEUED} waiting jobs); request was not admitted"
+        ));
+    }
 
     let resolved_catalog = resolved_catalog_path(&catalog_path, helper_mode).map(str::to_string);
     let job_id = next_blast_async_job_id();
     let created_at = shell_now_unix_ms();
     let cancel_requested = Arc::new(AtomicBool::new(false));
     let task_name = task.clone().unwrap_or_else(|| "blastn-short".to_string());
+    let owner_instance_id = engine_snapshot.instance_id();
+    let request_sha256 = crate::digest_utils::sha256_prefixed_bytes(&serde_json::to_vec(&json!({
+        "helper_mode": helper_mode, "genome_id": genome_id, "query_sequence": query_sequence,
+        "max_hits": max_hits, "max_hits_explicit": max_hits_explicit, "task": task,
+        "request_options": request_options_json, "catalog": resolved_catalog, "cache": cache_dir,
+        "project_options": engine_snapshot.state().metadata,
+    })).map_err(|error| error.to_string())?);
     let launch_spec = BlastAsyncLaunchSpec {
         engine_snapshot,
         helper_mode,
@@ -13300,6 +15662,8 @@ fn start_blast_async_job(
         request_options_json,
         resolved_catalog,
         cache_dir,
+        #[cfg(test)]
+        scoped_tool_overrides: crate::tool_overrides::scoped_tool_overrides_snapshot(),
     };
 
     let status = BlastAsyncJobStatus {
@@ -13323,6 +15687,14 @@ fn start_blast_async_job(
         running_jobs: 0,
         queued_jobs: 0,
         queue_position: None,
+        phase: "queued".into(),
+        updated_at_unix_ms: Some(created_at),
+        owner_instance_id: Some(owner_instance_id),
+        observation: "live".into(),
+        binary_preflight: None,
+        request_sha256: Some(request_sha256),
+        result_sha256: None,
+        max_queued_jobs: BLAST_ASYNC_MAX_QUEUED,
     };
     jobs.insert(
         job_id,
@@ -13583,7 +15955,7 @@ fn parse_feature_expert_target_tokens(
 ) -> Result<FeatureExpertTarget, String> {
     if tokens.is_empty() {
         return Err(format!(
-            "{context} requires target syntax: tfbs FEATURE_ID | restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | splicing FEATURE_ID | isoform PANEL_ID | protein-comparison [--transcript ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... | uniprot-projection PROJECTION_ID"
+            "{context} requires target syntax: tfbs FEATURE_ID | restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | splicing FEATURE_ID | isoform PANEL_ID | isoform-evidence PANEL_ID [evidence options] | gene-locus-evidence PANEL_ID [evidence options] [--probe-effect-table PATH]... [--probe-effect-contrast TOKEN]... [--probe-effect-coordinate-system ID] [--homology-report PATH]... [--upstream-bp N] [--downstream-bp N] [--occupancy-layout JSON_OR_@FILE] [--motif TOKEN]... [--score-kind KIND] [--motif-threshold N] | protein-comparison [--transcript ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... | uniprot-projection PROJECTION_ID"
         ));
     }
     match tokens[0].trim().to_ascii_lowercase().as_str() {
@@ -13683,6 +16055,405 @@ fn parse_feature_expert_target_tokens(
                 return Err("isoform PANEL_ID must not be empty".to_string());
             }
             Ok(FeatureExpertTarget::IsoformArchitecture { panel_id })
+        }
+        "isoform-evidence" => {
+            if tokens.len() < 2 {
+                return Err(format!(
+                    "{context} isoform-evidence target expects at least: isoform-evidence PANEL_ID"
+                ));
+            }
+            let panel_id = tokens[1].trim().to_string();
+            if panel_id.is_empty() {
+                return Err("isoform-evidence PANEL_ID must not be empty".to_string());
+            }
+            let mut request = GeneIsoformEvidenceRequest {
+                panel_id,
+                ..Default::default()
+            };
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--annotation-release" => {
+                        request.annotation_release = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--annotation-release",
+                            context,
+                        )?);
+                    }
+                    "--rna-read-report-id" => {
+                        request.rna_read_report_ids.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--rna-read-report-id",
+                            context,
+                        )?);
+                    }
+                    "--qpcr-report-id" => {
+                        request.qpcr_report_ids.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--qpcr-report-id",
+                            context,
+                        )?);
+                    }
+                    "--probe-evidence" => {
+                        request.probe_evidence_paths.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--probe-evidence",
+                            context,
+                        )?);
+                    }
+                    "--cdna-est-resource" => {
+                        request.cdna_est_resource_paths.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--cdna-est-resource",
+                            context,
+                        )?);
+                    }
+                    "--expression-tsv" => {
+                        request.expression_tsv_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--expression-tsv",
+                            context,
+                        )?);
+                    }
+                    "--occupancy-track" => {
+                        request.occupancy_track_names.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--occupancy-track",
+                            context,
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {context} isoform-evidence"
+                        ));
+                    }
+                }
+            }
+            request.rna_read_report_ids.sort();
+            request.rna_read_report_ids.dedup();
+            request.qpcr_report_ids.sort();
+            request.qpcr_report_ids.dedup();
+            request.probe_evidence_paths.sort();
+            request.probe_evidence_paths.dedup();
+            request.cdna_est_resource_paths.sort();
+            request.cdna_est_resource_paths.dedup();
+            let mut unique_occupancy_tracks = Vec::new();
+            for track_name in request.occupancy_track_names.drain(..) {
+                if !unique_occupancy_tracks
+                    .iter()
+                    .any(|value: &String| value.eq_ignore_ascii_case(&track_name))
+                {
+                    unique_occupancy_tracks.push(track_name);
+                }
+            }
+            request.occupancy_track_names = unique_occupancy_tracks;
+            Ok(FeatureExpertTarget::IsoformEvidence { request })
+        }
+        "gene-locus-evidence" | "locus-evidence" => {
+            if tokens.len() < 2 {
+                return Err(format!(
+                    "{context} gene-locus-evidence target expects at least: gene-locus-evidence PANEL_ID"
+                ));
+            }
+            let panel_id = tokens[1].trim().to_string();
+            if panel_id.is_empty() {
+                return Err("gene-locus-evidence PANEL_ID must not be empty".to_string());
+            }
+            let mut request = GeneLocusEvidenceDisplayRequest {
+                isoform_evidence: GeneIsoformEvidenceRequest {
+                    panel_id,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--annotation-release" => {
+                        request.isoform_evidence.annotation_release = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--annotation-release",
+                            context,
+                        )?);
+                    }
+                    "--rna-read-report-id" => {
+                        request
+                            .isoform_evidence
+                            .rna_read_report_ids
+                            .push(parse_option_path(
+                                tokens,
+                                &mut idx,
+                                "--rna-read-report-id",
+                                context,
+                            )?);
+                    }
+                    "--qpcr-report-id" => {
+                        request
+                            .isoform_evidence
+                            .qpcr_report_ids
+                            .push(parse_option_path(
+                                tokens,
+                                &mut idx,
+                                "--qpcr-report-id",
+                                context,
+                            )?);
+                    }
+                    "--probe-evidence" => {
+                        request
+                            .isoform_evidence
+                            .probe_evidence_paths
+                            .push(parse_option_path(
+                                tokens,
+                                &mut idx,
+                                "--probe-evidence",
+                                context,
+                            )?);
+                    }
+                    "--cdna-est-resource" => {
+                        request
+                            .isoform_evidence
+                            .cdna_est_resource_paths
+                            .push(parse_option_path(
+                                tokens,
+                                &mut idx,
+                                "--cdna-est-resource",
+                                context,
+                            )?);
+                    }
+                    "--expression-tsv" => {
+                        request.isoform_evidence.expression_tsv_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--expression-tsv",
+                            context,
+                        )?);
+                    }
+                    "--probe-effect-table" => {
+                        request.probe_effect_table_paths.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--probe-effect-table",
+                            context,
+                        )?);
+                    }
+                    "--probe-effect-contrast" => {
+                        request.probe_effect_contrasts.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--probe-effect-contrast",
+                            context,
+                        )?);
+                    }
+                    "--probe-effect-coordinate-system" => {
+                        request.probe_effect_coordinate_system = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--probe-effect-coordinate-system",
+                            context,
+                        )?);
+                    }
+                    "--homology-report" => {
+                        request.homology_report_paths.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--homology-report",
+                            context,
+                        )?);
+                    }
+                    "--occupancy-track" => {
+                        request
+                            .isoform_evidence
+                            .occupancy_track_names
+                            .push(parse_option_path(
+                                tokens,
+                                &mut idx,
+                                "--occupancy-track",
+                                context,
+                            )?);
+                    }
+                    "--occupancy-layout" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--occupancy-layout", context)?;
+                        request.occupancy_layout =
+                            parse_required_json_payload(&raw, "gene locus occupancy layout")?;
+                    }
+                    "--upstream-bp" | "--downstream-bp" | "--flank-bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        let value = raw
+                            .parse::<usize>()
+                            .map_err(|error| format!("Invalid {flag} value '{raw}': {error}"))?;
+                        match flag.as_str() {
+                            "--upstream-bp" => request.upstream_bp = value,
+                            "--downstream-bp" => request.downstream_bp = value,
+                            _ => {
+                                request.upstream_bp = value;
+                                request.downstream_bp = value;
+                            }
+                        }
+                    }
+                    "--motif" => {
+                        request
+                            .motifs
+                            .push(parse_option_path(tokens, &mut idx, "--motif", context)?);
+                    }
+                    "--motifs" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--motifs", context)?;
+                        request.motifs.extend(
+                            raw.split(',')
+                                .map(str::trim)
+                                .filter(|value| !value.is_empty())
+                                .map(str::to_string),
+                        );
+                    }
+                    "--score-kind" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--score-kind", context)?;
+                        request.motif_score_kind =
+                            parse_tfbs_score_track_value_kind_shell(&raw, context)?
+                                .as_str()
+                                .to_string();
+                    }
+                    "--motif-threshold" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--motif-threshold", context)?;
+                        request.motif_display_threshold =
+                            Some(raw.parse::<f64>().map_err(|error| {
+                                format!("Invalid --motif-threshold value '{raw}': {error}")
+                            })?);
+                    }
+                    "--motif-top-hits" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--motif-top-hits", context)?;
+                        request.motif_top_hit_count = raw.parse::<usize>().map_err(|error| {
+                            format!("Invalid --motif-top-hits value '{raw}': {error}")
+                        })?;
+                    }
+                    "--regulatory-score-tracks" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--regulatory-score-tracks",
+                            context,
+                        )?;
+                        let loaded = parse_json_payload(&raw)?;
+                        if let Ok(tracks) = serde_json::from_str::<
+                            Vec<GeneLocusRegulatoryScoreTrackRequest>,
+                        >(&loaded)
+                        {
+                            request.regulatory_score_tracks = tracks;
+                        } else {
+                            let value = serde_json::from_str::<serde_json::Value>(&loaded)
+                                .map_err(|error| {
+                                    format!(
+                                        "Invalid gene-locus regulatory-score JSON payload: {error}"
+                                    )
+                                })?;
+                            request.regulatory_score_tracks = serde_json::from_value(
+                                value.get("tracks").cloned().ok_or_else(|| {
+                                    "Regulatory-score JSON must be an array or contain a 'tracks' array"
+                                        .to_string()
+                                })?,
+                            )
+                            .map_err(|error| {
+                                format!(
+                                    "Invalid gene-locus regulatory-score track request: {error}"
+                                )
+                            })?;
+                        }
+                    }
+                    "--scale-bar" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--scale-bar", context)?;
+                        request.scale_bar.mode = match raw.as_str() {
+                            "hidden" => GeneLocusScaleBarMode::Hidden,
+                            "auto" => GeneLocusScaleBarMode::Auto,
+                            "fixed" => GeneLocusScaleBarMode::Fixed,
+                            _ => {
+                                return Err(format!(
+                                    "Invalid --scale-bar value '{raw}': expected hidden, auto, or fixed"
+                                ));
+                            }
+                        };
+                    }
+                    "--scale-bar-bp" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--scale-bar-bp", context)?;
+                        request.scale_bar.length_bp =
+                            Some(raw.parse::<usize>().map_err(|error| {
+                                format!("Invalid --scale-bar-bp value '{raw}': {error}")
+                            })?);
+                    }
+                    "--include-local-source-paths" => {
+                        request.include_local_source_paths = true;
+                        idx += 1;
+                    }
+                    "--allow-negative" => {
+                        request.motif_clip_negative = false;
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {context} gene-locus-evidence"
+                        ));
+                    }
+                }
+            }
+            if !request.occupancy_layout.groups.is_empty()
+                && !request.isoform_evidence.occupancy_track_names.is_empty()
+            {
+                return Err(
+                    "gene-locus-evidence accepts either --occupancy-layout or --occupancy-track, not both"
+                        .to_string(),
+                );
+            }
+            request.isoform_evidence.rna_read_report_ids.sort();
+            request.isoform_evidence.rna_read_report_ids.dedup();
+            request.isoform_evidence.qpcr_report_ids.sort();
+            request.isoform_evidence.qpcr_report_ids.dedup();
+            request.isoform_evidence.probe_evidence_paths.sort();
+            request.isoform_evidence.probe_evidence_paths.dedup();
+            request.isoform_evidence.cdna_est_resource_paths.sort();
+            request.isoform_evidence.cdna_est_resource_paths.dedup();
+            request.probe_effect_table_paths.sort();
+            request.probe_effect_table_paths.dedup();
+            request.homology_report_paths.sort();
+            request.homology_report_paths.dedup();
+            let mut unique_probe_effect_contrasts = Vec::new();
+            for contrast in request.probe_effect_contrasts.drain(..) {
+                if !unique_probe_effect_contrasts
+                    .iter()
+                    .any(|value: &String| value.eq_ignore_ascii_case(&contrast))
+                {
+                    unique_probe_effect_contrasts.push(contrast);
+                }
+            }
+            request.probe_effect_contrasts = unique_probe_effect_contrasts;
+            let mut unique_occupancy_tracks = Vec::new();
+            for track_name in request.isoform_evidence.occupancy_track_names.drain(..) {
+                if !unique_occupancy_tracks
+                    .iter()
+                    .any(|value: &String| value.eq_ignore_ascii_case(&track_name))
+                {
+                    unique_occupancy_tracks.push(track_name);
+                }
+            }
+            request.isoform_evidence.occupancy_track_names = unique_occupancy_tracks;
+            let mut unique_motifs: Vec<String> = Vec::new();
+            for motif in request.motifs.drain(..) {
+                if !unique_motifs
+                    .iter()
+                    .any(|value: &String| value.eq_ignore_ascii_case(&motif))
+                {
+                    unique_motifs.push(motif);
+                }
+            }
+            request.motifs = unique_motifs;
+            Ok(FeatureExpertTarget::GeneLocusEvidence { request })
         }
         "protein-comparison" => {
             let mut transcript_id_filter: Option<String> = None;
@@ -13816,7 +16587,7 @@ fn parse_feature_expert_target_tokens(
             })
         }
         other => Err(format!(
-            "Unknown feature target '{other}' (expected tfbs|restriction|splicing|isoform|protein-comparison|uniprot-projection)"
+            "Unknown feature target '{other}' (expected tfbs|restriction|splicing|isoform|isoform-evidence|protein-comparison|uniprot-projection)"
         )),
     }
 }
@@ -13953,6 +16724,106 @@ fn parse_primer_design_backend(value: &str) -> Result<PrimerDesignBackend, Strin
     }
 }
 
+fn parse_primer_specificity_check_mode(value: &str) -> Result<PrimerSpecificityCheckMode, String> {
+    match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "none" | "off" => Ok(PrimerSpecificityCheckMode::None),
+        "report_only" | "report" => Ok(PrimerSpecificityCheckMode::ReportOnly),
+        "require_pass" | "required" | "gate" => Ok(PrimerSpecificityCheckMode::RequirePass),
+        other => Err(format!(
+            "Unsupported primer specificity check '{other}' (expected none|report-only|require-pass)"
+        )),
+    }
+}
+
+fn parse_transcript_assay_panel_objective(
+    value: &str,
+) -> Result<TranscriptAssayPanelObjective, String> {
+    match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "pan_transcript" | "pan" => Ok(TranscriptAssayPanelObjective::PanTranscript),
+        "one_per_class" | "per_class" => Ok(TranscriptAssayPanelObjective::OnePerClass),
+        "minimal_discrimination_panel" | "minimal_discrimination" | "minimal" => {
+            Ok(TranscriptAssayPanelObjective::MinimalDiscriminationPanel)
+        }
+        "maximally_informative_panel" | "maximally_informative" | "informative" => {
+            Ok(TranscriptAssayPanelObjective::MaximallyInformativePanel)
+        }
+        "isoform_end_matrix" | "end_matrix" | "first_last_matrix" => {
+            Ok(TranscriptAssayPanelObjective::IsoformEndMatrix)
+        }
+        other => Err(format!(
+            "Unsupported transcript assay objective '{other}' (expected pan-transcript|one-per-class|minimal-discrimination-panel|maximally-informative-panel|isoform-end-matrix)"
+        )),
+    }
+}
+
+fn parse_transcript_assay_use_tier(value: &str) -> Result<TranscriptAssayUseTier, String> {
+    match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "unspecified" | "none" => Ok(TranscriptAssayUseTier::Unspecified),
+        "routine_common_region_screen" | "routine_common" | "routine" => {
+            Ok(TranscriptAssayUseTier::RoutineCommonRegionScreen)
+        }
+        "isoform_discrimination" | "discrimination" => {
+            Ok(TranscriptAssayUseTier::IsoformDiscrimination)
+        }
+        "long_range_structure_discovery" | "long_range" | "structure_discovery" => {
+            Ok(TranscriptAssayUseTier::LongRangeStructureDiscovery)
+        }
+        other => Err(format!(
+            "Unsupported transcript assay tier '{other}' (expected routine-common-region-screen|isoform-discrimination|long-range-structure-discovery)"
+        )),
+    }
+}
+
+fn parse_transcript_assay_kind(value: &str) -> Result<TranscriptAssayKind, String> {
+    match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "endpoint_rt_pcr" | "endpoint" | "rt_pcr" => Ok(TranscriptAssayKind::EndpointRtPcr),
+        "sybr_qpcr" | "sybr" => Ok(TranscriptAssayKind::SybrQpcr),
+        "taqman_qpcr" | "taqman" | "probe" => Ok(TranscriptAssayKind::TaqmanQpcr),
+        other => Err(format!(
+            "Unsupported transcript assay kind '{other}' (expected endpoint-rt-pcr|sybr-qpcr|taqman-qpcr)"
+        )),
+    }
+}
+
+fn parse_transcript_assay_cdna_synthesis(
+    value: &str,
+) -> Result<TranscriptAssayCdnaSynthesis, String> {
+    match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "unspecified" | "unknown" => Ok(TranscriptAssayCdnaSynthesis::Unspecified),
+        "oligo_dt" | "oligodt" => Ok(TranscriptAssayCdnaSynthesis::OligoDt),
+        "random_hexamers" | "random" => Ok(TranscriptAssayCdnaSynthesis::RandomHexamers),
+        "gene_specific" => Ok(TranscriptAssayCdnaSynthesis::GeneSpecific),
+        "mixed" | "mixture" => Ok(TranscriptAssayCdnaSynthesis::Mixed),
+        other => Err(format!(
+            "Unsupported cDNA synthesis method '{other}' (expected unspecified|oligo-dt|random-hexamers|gene-specific|mixed)"
+        )),
+    }
+}
+
+fn parse_transcript_assay_junction_priority(
+    value: &str,
+) -> Result<TranscriptAssayJunctionPriority, String> {
+    match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "required" | "must" => Ok(TranscriptAssayJunctionPriority::Required),
+        "preferred" | "prefer" => Ok(TranscriptAssayJunctionPriority::Preferred),
+        other => Err(format!(
+            "Unsupported junction priority '{other}' (expected required|preferred)"
+        )),
+    }
+}
+
+fn parse_transcript_assay_coverage_policy(
+    value: &str,
+) -> Result<TranscriptAssayCoveragePolicy, String> {
+    match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "require_all" | "strict" => Ok(TranscriptAssayCoveragePolicy::RequireAll),
+        "best_effort" => Ok(TranscriptAssayCoveragePolicy::BestEffort),
+        other => Err(format!(
+            "Unsupported transcript assay coverage policy '{other}' (expected require-all|best-effort)"
+        )),
+    }
+}
+
 fn parse_anchor_side(value: &str) -> Result<GenomeAnchorSide, String> {
     match value.trim().to_ascii_lowercase().as_str() {
         "5" | "5p" | "5prime" | "5'" | "five_prime" | "five-prime" => {
@@ -13995,13 +16866,13 @@ fn active_window_info_from_appkit() -> Result<(u64, String), String> {
         return Err("Screenshot capture requires the macOS main thread".to_string());
     };
     let app = NSApplication::sharedApplication(mtm);
-    let Some(window) = app.keyWindow().or_else(|| unsafe { app.mainWindow() }) else {
+    let Some(window) = app.keyWindow().or_else(|| app.mainWindow()) else {
         return Err(
             "No active GENtle window in this process; run from GUI shell with the target window focused"
                 .to_string(),
         );
     };
-    let raw_window_id = unsafe { window.windowNumber() };
+    let raw_window_id = window.windowNumber();
     if raw_window_id <= 0 {
         return Err(format!(
             "Active GENtle window reported invalid window number {raw_window_id}"
@@ -14086,7 +16957,14 @@ fn parse_json_payload(raw: &str) -> Result<String, String> {
         return Ok(raw.to_string());
     }
     let candidate = Path::new(trimmed);
-    if candidate.is_file() {
+    // Preserve inline JSON strings/scalars, but report file intent as a file
+    // error instead of passing a missing path to the JSON decoder.
+    let looks_like_path = !trimmed.starts_with('"')
+        && (trimmed.contains(['/', '\\'])
+            || candidate
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("json")));
+    if candidate.is_file() || looks_like_path {
         let text = fs::read_to_string(candidate).map_err(|e| {
             format!(
                 "Could not read JSON file '{}': {e}",
@@ -14119,6 +16997,249 @@ where
     let loaded = parse_json_payload(raw)?;
     serde_json::from_str::<T>(loaded.trim())
         .map_err(|e| format!("Invalid {context} JSON payload: {e}"))
+}
+
+fn parse_gel_image_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    use gentle_protocol::gel_image::{
+        GelImageAnalysisRequest, GelImageExportRequest, GelImageImportRequest,
+    };
+    let payload = tokens.get(2..).unwrap_or_default().join(" ");
+    let operation = match tokens.get(1).map(String::as_str) {
+        Some("import") => Operation::ImportGelImage {
+            request: parse_required_json_payload::<GelImageImportRequest>(
+                &payload,
+                "gel-image import",
+            )?,
+        },
+        Some("analyze") => Operation::AnalyzeGelImage {
+            request: Box::new(parse_required_json_payload::<GelImageAnalysisRequest>(
+                &payload,
+                "gel-image analysis",
+            )?),
+        },
+        Some("save-draft") => Operation::SaveGelImageDraft {
+            request: std::sync::Arc::new(parse_required_json_payload::<GelImageAnalysisRequest>(
+                &payload, "gel-image draft",
+            )?),
+        },
+        Some("export") => Operation::ExportGelImageAnalysis {
+            request: parse_required_json_payload::<GelImageExportRequest>(
+                &payload,
+                "gel-image export",
+            )?,
+        },
+        Some("inspect") if tokens.len() == 3 => Operation::InspectGelImageAnalysis {
+            report_id: tokens[2].clone(),
+        },
+        _ => return Err(
+            "gel-image requires import|save-draft|analyze|export REQUEST_JSON_OR_@FILE or inspect REPORT_ID"
+                .into(),
+        ),
+    };
+    Ok(ShellCommand::Op {
+        payload: serde_json::to_string(&operation).map_err(|error| error.to_string())?,
+    })
+}
+
+fn parse_genomic_regions_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "regions requires: create|capture|preview-feature|materialize-feature|list|inspect|update|derive|import|export|homology-screen|render-homology-svg [REQUEST_JSON_OR_@FILE]"
+                .to_string(),
+        );
+    }
+    let action = tokens[1].as_str();
+    let payload = tokens.get(2..).unwrap_or_default().join(" ");
+    let operation = match action {
+        "preview-feature" | "materialize-feature" => {
+            let request = parse_required_json_payload::<
+                gentle_protocol::GenomicRegionFeatureRequest,
+            >(&payload, "genomic-region feature request")?;
+            if action == "preview-feature" {
+                Operation::PreviewGenomicRegionFeature { request }
+            } else {
+                Operation::MaterializeGenomicRegionFeature { request }
+            }
+        }
+        "create" => Operation::CreateGenomicRegion {
+            request: parse_required_json_payload::<gentle_protocol::GenomicRegionCreateRequest>(
+                &payload,
+                "genomic-region create request",
+            )?,
+        },
+        "capture" => Operation::CaptureGenomicRegion {
+            request: parse_required_json_payload::<gentle_protocol::GenomicRegionCaptureRequest>(
+                &payload,
+                "genomic-region capture request",
+            )?,
+        },
+        "list" => Operation::ListGenomicRegions {
+            request: if payload.trim().is_empty() {
+                gentle_protocol::GenomicRegionListRequest::default()
+            } else {
+                parse_required_json_payload::<gentle_protocol::GenomicRegionListRequest>(
+                    &payload,
+                    "genomic-region list request",
+                )?
+            },
+        },
+        "inspect" => Operation::InspectGenomicRegion {
+            request: parse_required_json_payload::<gentle_protocol::GenomicRegionInspectRequest>(
+                &payload,
+                "genomic-region inspect request",
+            )?,
+        },
+        "update" => Operation::UpdateGenomicRegionPresentation {
+            request: parse_required_json_payload::<gentle_protocol::GenomicRegionUpdateRequest>(
+                &payload,
+                "genomic-region presentation update request",
+            )?,
+        },
+        "derive" => Operation::DeriveGenomicRegion {
+            request: parse_required_json_payload::<gentle_protocol::GenomicRegionDeriveRequest>(
+                &payload,
+                "genomic-region derive request",
+            )?,
+        },
+        "import" => Operation::ImportGenomicRegionSet {
+            request: parse_required_json_payload::<gentle_protocol::GenomicRegionImportRequest>(
+                &payload,
+                "genomic-region import request",
+            )?,
+        },
+        "export" => Operation::ExportGenomicRegionSet {
+            request: parse_required_json_payload::<gentle_protocol::GenomicRegionExportRequest>(
+                &payload,
+                "genomic-region export request",
+            )?,
+        },
+        "homology-screen" => Operation::ScreenGenomicRegionHomology {
+            request: parse_required_json_payload::<
+                gentle_protocol::GenomicRegionHomologyScreenRequest,
+            >(&payload, "genomic-region homology request")?,
+            path: None,
+        },
+        "render-homology-svg" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "regions render-homology-svg requires REPORT_JSON_OR_@FILE OUTPUT.svg"
+                        .to_string(),
+                );
+            }
+            let path = tokens
+                .last()
+                .cloned()
+                .ok_or_else(|| "regions render-homology-svg requires OUTPUT.svg".to_string())?;
+            let report_payload = tokens[2..tokens.len() - 1].join(" ");
+            Operation::RenderGenomicRegionHomologySvg {
+                report: Box::new(parse_required_json_payload::<
+                    gentle_protocol::GenomicRegionHomologyScreenReport,
+                >(
+                    &report_payload, "genomic-region homology report"
+                )?),
+                path,
+            }
+        }
+        other => {
+            return Err(format!(
+                "Unknown regions subcommand '{other}'; expected create, capture, preview-feature, materialize-feature, list, inspect, update, derive, import, export, homology-screen, or render-homology-svg"
+            ));
+        }
+    };
+    Ok(ShellCommand::GenomicRegions { operation })
+}
+
+fn parse_splicing_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 3 {
+        return Err(
+            "splicing requires: cryptic-screen REQUEST_JSON_OR_@FILE | cryptic-render REQUEST_JSON_OR_@FILE OUTPUT.svg | cryptic-export REQUEST_JSON_OR_@FILE OUTPUT.json | cryptic-overlay REQUEST_JSON_OR_@FILE [--output OUTPUT.json] | cryptic-protein REQUEST_JSON_OR_@FILE [--output OUTPUT.json]"
+                .to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "cryptic-screen" => {
+            let payload = tokens[2..].join(" ");
+            let request = parse_required_json_payload::<CrypticSplicingScreenRequest>(
+                &payload,
+                "cryptic-splicing screen request",
+            )?;
+            Ok(ShellCommand::SplicingCrypticScreen { request })
+        }
+        "cryptic-render" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "splicing cryptic-render requires REQUEST_JSON_OR_@FILE OUTPUT.svg".to_string(),
+                );
+            }
+            let output = tokens
+                .last()
+                .cloned()
+                .ok_or_else(|| "splicing cryptic-render requires OUTPUT.svg".to_string())?;
+            if output.trim().is_empty() {
+                return Err("splicing cryptic-render OUTPUT.svg must not be empty".to_string());
+            }
+            let payload = tokens[2..tokens.len() - 1].join(" ");
+            let request = parse_required_json_payload::<CrypticSplicingScreenRequest>(
+                &payload,
+                "cryptic-splicing render request",
+            )?;
+            Ok(ShellCommand::SplicingCrypticRender { request, output })
+        }
+        "cryptic-export" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "splicing cryptic-export requires REQUEST_JSON_OR_@FILE OUTPUT.json"
+                        .to_string(),
+                );
+            }
+            let output = tokens
+                .last()
+                .cloned()
+                .ok_or_else(|| "splicing cryptic-export requires OUTPUT.json".to_string())?;
+            if output.trim().is_empty() {
+                return Err("splicing cryptic-export OUTPUT.json must not be empty".to_string());
+            }
+            let payload = tokens[2..tokens.len() - 1].join(" ");
+            let request = parse_required_json_payload::<CrypticSplicingScreenRequest>(
+                &payload,
+                "cryptic-splicing export request",
+            )?;
+            Ok(ShellCommand::SplicingCrypticExport { request, output })
+        }
+        "cryptic-overlay" => {
+            let mut payload_end = tokens.len();
+            let output = if tokens.len() >= 5 && tokens[tokens.len() - 2] == "--output" {
+                payload_end -= 2;
+                Some(tokens[tokens.len() - 1].clone())
+            } else {
+                None
+            };
+            let payload = tokens[2..payload_end].join(" ");
+            let request = parse_required_json_payload::<CrypticSplicingEvidenceOverlayRequest>(
+                &payload,
+                "cryptic-splicing evidence-overlay request",
+            )?;
+            Ok(ShellCommand::SplicingCrypticOverlay { request, output })
+        }
+        "cryptic-protein" => {
+            let mut payload_end = tokens.len();
+            let output = if tokens.len() >= 5 && tokens[tokens.len() - 2] == "--output" {
+                payload_end -= 2;
+                Some(tokens[tokens.len() - 1].clone())
+            } else {
+                None
+            };
+            let payload = tokens[2..payload_end].join(" ");
+            let request = parse_required_json_payload::<CrypticSplicingProteinProjectionRequest>(
+                &payload,
+                "cryptic-splicing protein-projection request",
+            )?;
+            Ok(ShellCommand::SplicingCrypticProtein { request, output })
+        }
+        other => Err(format!(
+            "Unknown splicing subcommand '{other}'; expected cryptic-screen, cryptic-render, cryptic-export, cryptic-overlay, or cryptic-protein"
+        )),
+    }
 }
 
 fn parse_facts_command(tokens: &[String]) -> Result<ShellCommand, String> {
@@ -14203,7 +17324,7 @@ fn parse_introspection_arg_binding(raw: &str) -> Result<(String, String), String
 fn parse_introspect_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "introspect requires a subcommand: facts, capabilities, readiness, verify-effects, or all".to_string(),
+            "introspect requires a subcommand: facts, capabilities, readiness, verify-effects, runtime, or all".to_string(),
         );
     }
     match tokens[1].as_str() {
@@ -14475,8 +17596,14 @@ fn parse_introspect_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 ui_host_available,
             })
         }
+        "runtime" => {
+            if tokens.len() != 2 {
+                return Err("introspect runtime does not accept options".to_string());
+            }
+            Ok(ShellCommand::IntrospectRuntime)
+        }
         other => Err(format!(
-            "Unknown introspect subcommand '{other}' (expected facts, capabilities, readiness, verify-effects, or all)"
+            "Unknown introspect subcommand '{other}' (expected facts, capabilities, readiness, verify-effects, runtime, or all)"
         )),
     }
 }
@@ -14540,15 +17667,61 @@ fn introspection_report_fact(report_id: impl Into<String>, report_kind: &str) ->
 fn push_introspection_report_facts(graph: &mut ProjectFactGraph, engine: &GentleEngine) {
     graph.facts.extend(
         engine
+            .state()
+            .gel_images
+            .analyses
+            .keys()
+            .map(|id| introspection_report_fact(id.clone(), "gel_image_analysis")),
+    );
+    graph.facts.extend(
+        engine
             .list_primer_design_reports()
             .into_iter()
             .map(|row| introspection_report_fact(row.report_id, "primer_design")),
     );
     graph.facts.extend(
         engine
+            .list_terminal_exon_rt_primer_pool_reports()
+            .into_iter()
+            .map(|row| introspection_report_fact(row.report_id, "terminal_exon_rt_primer_pool")),
+    );
+    graph.facts.extend(
+        engine
+            .list_primer_specificity_reports()
+            .into_iter()
+            .map(|row| introspection_report_fact(row.report_id, "primer_specificity")),
+    );
+    graph.facts.extend(
+        engine
+            .list_primer_pair_multi_reference_specificity_summaries()
+            .into_iter()
+            .map(|row| introspection_report_fact(row.summary_id, "primer_specificity_multi")),
+    );
+    graph.facts.extend(
+        engine
             .list_qpcr_design_reports()
             .into_iter()
             .map(|row| introspection_report_fact(row.report_id, "qpcr_design")),
+    );
+    graph.facts.extend(
+        engine
+            .list_transcript_assay_panel_reports()
+            .into_iter()
+            .map(|row| introspection_report_fact(row.report_id, "transcript_assay_panel")),
+    );
+    graph.facts.extend(
+        engine
+            .list_transcript_assay_fallback_executions()
+            .into_iter()
+            .map(|row| {
+                introspection_report_fact(row.execution_id, "transcript_assay_fallback_execution")
+            }),
+    );
+    graph.facts.extend(
+        engine
+            .list_external_primer_pair_import_report_ids()
+            .into_iter()
+            .map(|report_id| introspection_report_fact(report_id, "external_primer_pair_import")),
     );
     graph.facts.extend(
         engine
@@ -14637,6 +17810,19 @@ fn push_introspection_view_facts(graph: &mut ProjectFactGraph, engine: &GentleEn
     });
 }
 
+pub(crate) fn push_ui_host_availability_fact(
+    graph: &mut ProjectFactGraph,
+    ui_host_available: bool,
+) {
+    graph.facts.push(ProjectFact {
+        fact: "ui.host_available".to_string(),
+        domain: ProjectFactDomain::View,
+        subject: introspection_fact_subject(FactSubjectKind::Ui, "host"),
+        value: Some(json!(ui_host_available)),
+        ..ProjectFact::default()
+    });
+}
+
 fn introspection_project_graph(
     engine: &GentleEngine,
     restriction_reports: &[RestrictionSiteScanReport],
@@ -14646,11 +17832,32 @@ fn introspection_project_graph(
     push_introspection_report_facts(&mut graph, engine);
     push_introspection_config_facts(&mut graph, engine);
     push_introspection_view_facts(&mut graph, engine);
+    push_ui_host_availability_fact(&mut graph, ui_host_available);
     graph.facts.push(ProjectFact {
-        fact: "ui.host_available".to_string(),
+        fact: "view.viewport".to_string(),
         domain: ProjectFactDomain::View,
-        subject: introspection_fact_subject(FactSubjectKind::Ui, "host"),
-        value: Some(json!(ui_host_available)),
+        subject: FactSubject {
+            kind: FactSubjectKind::Ui,
+            id: "linear_sequence".to_string(),
+        },
+        value: Some(json!({
+            "start_bp": engine.state().display.linear_view_start_bp,
+            "span_bp": engine.state().display.linear_view_span_bp,
+        })),
+        ..ProjectFact::default()
+    });
+    graph.facts.push(ProjectFact {
+        fact: "view.visible_tracks".to_string(),
+        domain: ProjectFactDomain::View,
+        subject: FactSubject {
+            kind: FactSubjectKind::Ui,
+            id: "host".to_string(),
+        },
+        value: Some(json!({
+            "features": engine.state().display.show_features,
+            "tfbs": engine.state().display.show_tfbs,
+            "restriction_enzymes": engine.state().display.show_restriction_enzymes,
+        })),
         ..ProjectFact::default()
     });
     if let Ok((_catalog_path, catalog)) = load_agent_system_catalog(None) {
@@ -14665,6 +17872,16 @@ fn introspection_project_graph(
             });
         }
     }
+    graph.facts.push(ProjectFact {
+        fact: "config.param".to_string(),
+        domain: ProjectFactDomain::Config,
+        subject: FactSubject {
+            kind: FactSubjectKind::Other,
+            id: "max_fragments_per_container".to_string(),
+        },
+        value: Some(json!(engine.state().parameters.max_fragments_per_container)),
+        ..ProjectFact::default()
+    });
     graph
 }
 
@@ -15219,6 +18436,78 @@ fn cdna_assay_test_descriptor(
             }
         ],
         "precondition_expr": precondition_expr,
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn external_primer_pair_import_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "INPUT_PATH", "required": true, "subject_kind": "other", "detail": "external primer-pair JSON or TSV batch path"},
+            {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence carrying transcript annotation"},
+            {"name": "FEATURE_ID", "required": true, "subject_kind": "other", "detail": "source transcript/gene feature index"},
+            {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "explicit external-primer import report id; required for deterministic effect verification"},
+            {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external JSON report path"},
+            {"name": "ARTIFACT_OUTPUT_DIR", "required": false, "subject_kind": "other", "detail": "optional directory for per-pair cDNA map/report and gel artifacts"},
+            {"name": "MATERIALIZE_PRODUCTS", "required": false, "subject_kind": "other", "detail": "whether detected cDNA products are materialized and gel-rendered"}
+        ],
+        "reads": [
+            {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+        ],
+        "effects": [
+            {
+                "fact": "report.exists",
+                "subject": {"arg": "REPORT_ID"},
+                "report_kind": "external_primer_pair_import",
+                "equals": "external_primer_pair_import",
+                "effect_kind": "must_on_success"
+            },
+            {
+                "effect_kind": "may_on_success",
+                "description": "May write an aggregate JSON export and per-pair cDNA report, transcript-map, and product-gel artifacts; may materialize detected cDNA products when requested."
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn primer_variant_screen_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "REQUEST_JSON", "required": true, "subject_kind": "other", "detail": "assembly-aware primer/probe geometry plus one local VCF, VCF.gz, or prepared variant-resource manifest"},
+            {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external gentle.primer_variant_screen.v1 JSON path"},
+            {"name": "EVIDENCE_DIR", "required": false, "subject_kind": "other", "detail": "optional directory for one gentle.primer_variant_evidence.v1 JSON report per physical primer pair"}
+        ],
+        "reads": [],
+        "effects": [
+            {
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "external_handoff"
+            },
+            {
+                "effect_kind": "may_on_success",
+                "description": "May write one generated primer-variant evidence artifact per physical pair under EVIDENCE_DIR."
+            }
+        ],
+        "precondition_expr": {"all": []},
         "description": description,
         "annotation_status": "fact_annotated",
         "registry": registry_metadata_for_introspection(id)
@@ -16306,6 +19595,22 @@ fn sequencing_primer_suggest_descriptor(id: &str, description: &str) -> Value {
     })
 }
 
+fn transcript_capture_descriptor(id: &str) -> Value {
+    json!({
+        "id": id, "kind": "operation", "mutating": "true", "requires_confirmation": false,
+        "args": [
+            {"name": "REQUEST_JSON", "required": true, "detail": "gentle.transcript_capture_pool_request.v1 with explicit roles, windows, budgets and stages"},
+            {"name": "TARGET_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "repeat for every loaded annotated DNA source in request.targets[].sources[]"},
+            {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "request.report_id"}
+        ],
+        "reads": [{"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}],
+        "effects": [{"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "report_kind": "transcript_capture_pool", "equals": "transcript_capture_pool", "effect_kind": "must_on_success"}],
+        "precondition_expr": {"all": [{"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}]},
+        "description": "Discover exact sense/antisense capture sites across explicit transcript targets, distinguish retained isoform information and jointly assess fixed-oligo interactions by stage. Persists a bounded proposal, never specificity approval or an order.",
+        "annotation_status": "fact_annotated", "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn primer_design_operation_descriptor(id: &str, report_kind: &str, description: &str) -> Value {
     json!({
         "id": id,
@@ -16331,6 +19636,41 @@ fn primer_design_operation_descriptor(id: &str, report_kind: &str, description: 
         "precondition_expr": {
             "all": [
                 {"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn primer_group_target_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {
+                "name": "TEMPLATE_SEQ_IDS",
+                "required": true,
+                "subject_kind": "sequence",
+                "detail": "two or more loaded related sequence ids; readiness is checked for every member"
+            },
+            {
+                "name": "OUTPUT_PATH",
+                "required": false,
+                "subject_kind": "other",
+                "detail": "optional external JSON report path"
+            }
+        ],
+        "reads": [
+            {"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_IDS"}}
+        ],
+        "effects": [],
+        "precondition_expr": {
+            "all": [
+                {"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_IDS"}}
             ]
         },
         "description": description,
@@ -16510,7 +19850,9 @@ fn candidate_set_delete_descriptor(id: &str, description: &str) -> Value {
         "reads": [
             {"fact": "candidate_set.exists", "subject": {"arg": "SET_NAME"}}
         ],
-        "effects": [],
+        "effects": [
+            closed_world_absence_effect("candidate_set.exists", "SET_NAME")
+        ],
         "precondition_expr": {
             "all": [
                 {"fact": "candidate_set.exists", "subject": {"arg": "SET_NAME"}}
@@ -16519,6 +19861,16 @@ fn candidate_set_delete_descriptor(id: &str, description: &str) -> Value {
         "description": description,
         "annotation_status": "fact_annotated",
         "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn closed_world_absence_effect(fact: &str, arg: &str) -> Value {
+    json!({
+        "not": {
+            "fact": fact,
+            "subject": {"arg": arg}
+        },
+        "effect_kind": "must_on_success"
     })
 }
 
@@ -16600,7 +19952,9 @@ fn guide_set_delete_descriptor(id: &str, description: &str) -> Value {
         "reads": [
             {"fact": "guide_set.exists", "subject": {"arg": "GUIDE_SET_ID"}}
         ],
-        "effects": [],
+        "effects": [
+            closed_world_absence_effect("guide_set.exists", "GUIDE_SET_ID")
+        ],
         "precondition_expr": {
             "all": [
                 {"fact": "guide_set.exists", "subject": {"arg": "GUIDE_SET_ID"}}
@@ -16966,6 +20320,234 @@ fn pool_artifact_descriptor_with_readiness(
     })
 }
 
+fn primer_specificity_report_descriptor(id: &str, description: &str, args: Vec<Value>) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": args,
+        "reads": [],
+        "effects": [
+            {
+                "fact": "report.exists",
+                "report_kind": "primer_specificity",
+                "equals": "primer_specificity",
+                "effect_kind": "may_on_success",
+                "description": "Persists a primer_specificity report under its deterministic report id."
+            },
+            {
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "may_on_success",
+                "description": "Writes the optional external JSON export when OUTPUT_PATH is supplied."
+            }
+        ],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn primer_specificity_alignment_html_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted primer-specificity report id"},
+            {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "HTML path for the deterministic full-alignment projection"}
+        ],
+        "reads": [
+            {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_specificity"}
+        ],
+        "effects": [
+            {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "must_on_success"}
+        ],
+        "precondition_expr": {"all": [
+            {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_specificity"}
+        ]},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn primer_specificity_multi_descriptor(id: &str, action: &str) -> Value {
+    if action == "handoff" {
+        let mut descriptor = pool_artifact_descriptor(
+            id,
+            "Prepare one non-executing handoff for 1..=8 exact references after file-write approval; preflight required indexes before writing, never attach readiness.",
+            vec![
+                json!({"name":"REQUEST","required":true,"subject_kind":"other","detail":"gentle.primer_pair_multi_reference_request.v1 JSON or @file; saved or explicit pair, common policy, explicit kinds/requirements and optional caller mappings"}),
+                json!({"name":"OUTPUT_PATH","required":true,"subject_kind":"other","detail":"fresh external bundle directory"}),
+            ],
+        );
+        descriptor["requires_confirmation"] = json!(true);
+        return descriptor;
+    }
+    let (args, reads, effects, mutating, description) = match action {
+        "import" => (
+            vec![
+                json!({"name":"HANDOFF_PATH","required":true,"subject_kind":"other","detail":"bound multi-reference handoff JSON"}),
+                json!({"name":"MANIFEST_PATH","required":true,"subject_kind":"other","detail":"versioned process/output receipt JSON"}),
+            ],
+            vec![],
+            vec![
+                json!({"fact":"report.exists","equals":"primer_specificity_multi","report_kind":"primer_specificity_multi","effect_kind":"may_on_success"}),
+            ],
+            true,
+            "Validate exact references, commands and retained output bytes; atomically persist an immutable standalone summary, never attach order readiness.",
+        ),
+        "show" => (
+            vec![
+                json!({"name":"SUMMARY_ID","required":true,"subject_kind":"report","detail":"historical content-derived multi-reference summary ID"}),
+            ],
+            vec![
+                json!({"fact":"report.exists","subject":{"arg":"SUMMARY_ID"},"equals":"primer_specificity_multi"}),
+            ],
+            vec![],
+            false,
+            "Inspect a historical multi-reference summary without probing databases; applicability is recorded at import.",
+        ),
+        _ => (
+            vec![],
+            vec![],
+            vec![],
+            false,
+            "List retained multi-reference summaries in stable content-ID order without probing databases.",
+        ),
+    };
+    json!({"id":id,"kind":"operation","mutating":if mutating {"true"} else {"false"},"requires_confirmation":mutating,
+        "args":args,"reads":reads,"effects":effects,"precondition_expr":{"all":reads},"description":description,
+        "annotation_status":"fact_annotated","registry":registry_metadata_for_introspection(id)})
+}
+
+fn transcript_assay_cdna_similarity_map_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "external",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence carrying the target gene and transcript annotations"},
+            {"name": "TARGET_RESOURCE_ID", "required": true, "subject_kind": "other", "detail": "prepared transcriptome/cDNA BLAST resource with content fingerprint and subject annotations"},
+            {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional content-bound similarity-map JSON path"}
+        ],
+        "reads": [
+            {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+        ],
+        "effects": [],
+        "precondition_expr": {
+            "all": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn transcript_assay_specificity_plan_descriptor(id: &str, description: &str) -> Value {
+    let mut descriptor = pool_artifact_descriptor_with_readiness(
+        id,
+        description,
+        vec![
+            json!({"name": "PANEL_REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted transcript assay panel report id"}),
+            json!({"name": "TARGET_GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared genomic-DNA or transcriptome-cDNA resource id"}),
+            json!({"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external aggregate handoff bundle directory carried by --output-dir"}),
+        ],
+        vec![
+            json!({"fact": "report.exists", "subject": {"arg": "PANEL_REPORT_ID"}, "equals": "transcript_assay_panel"}),
+        ],
+        json!({"all": [
+            {"fact": "report.exists", "subject": {"arg": "PANEL_REPORT_ID"}, "equals": "transcript_assay_panel"}
+        ]}),
+    );
+    if id == "transcript_assay_specificity_plan" {
+        descriptor["mutating"] = json!("external");
+        descriptor["requires_confirmation"] = json!(true);
+        descriptor["args"].as_array_mut().unwrap().push(json!({
+            "name": "CONFIRM", "required": true, "subject_kind": "other",
+            "detail": "MCP confirm=true is required before reading state or writing the handoff"
+        }));
+    }
+    descriptor
+}
+
+fn transcript_assay_specificity_finalize_descriptor(id: &str, description: &str) -> Value {
+    let mut descriptor = json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "HANDOFF_PATH", "required": true, "subject_kind": "other", "detail": "existing aggregate panel specificity handoff JSON path"},
+            {"name": "EXECUTION_MANIFEST", "required": true, "subject_kind": "other", "detail": "execution manifest JSON or @file proving every declared command outcome"},
+            {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external acceptance JSON path"}
+        ],
+        "reads": [],
+        "effects": [
+            {
+                "fact": "report.exists",
+                "report_kind": "transcript_assay_panel",
+                "equals": "transcript_assay_panel",
+                "effect_kind": "may_on_success",
+                "description": "Atomically attaches complete pass, specificity-fail, or not-assessed evidence to the source panel; incomplete evidence is returned but not attached."
+            },
+            {
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "may_on_success",
+                "description": "Writes the optional external acceptance JSON when OUTPUT_PATH is supplied."
+            }
+        ],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    });
+    if id == "transcript_assay_specificity_finalize" {
+        descriptor["requires_confirmation"] = json!(true);
+        descriptor["args"].as_array_mut().unwrap().push(json!({
+            "name": "CONFIRM", "required": true, "subject_kind": "other",
+            "detail": "MCP confirm=true is required before reading evidence or persisting results"
+        }));
+    }
+    descriptor
+}
+
+fn transcript_assay_specificity_redesign_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "content-bound gentle transcript-assay specificity redesign request JSON or @file"},
+            {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external redesign report JSON path"}
+        ],
+        "reads": [
+            {"fact": "report.exists", "equals": "transcript_assay_panel"}
+        ],
+        "effects": [
+            {
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "may_on_success",
+                "description": "Writes a pure-read replacement/infeasibility report; proposed replacements remain subject to the original specificity gates."
+            }
+        ],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn uniprot_projection_read_descriptor(id: &str, description: &str) -> Value {
     json!({
         "id": id,
@@ -17016,6 +20598,26 @@ fn uniprot_projection_audit_descriptor(id: &str, report_kind: &str, description:
                 {"fact": "uniprot_projection.exists", "subject": {"arg": "PROJECTION_ID"}}
             ]
         },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn uniprot_linked_transcript_inventory_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "content-bound linked-transcript inventory request"}
+        ],
+        "reads": [],
+        "effects": [
+            {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "may_on_success", "description": "Writes a deterministic gentle.uniprot_linked_transcript_inventory.v1 artifact."}
+        ],
+        "precondition_expr": {"all": []},
         "description": description,
         "annotation_status": "fact_annotated",
         "registry": registry_metadata_for_introspection(id)
@@ -17468,6 +21070,32 @@ fn workflow_macro_template_descriptor(
     })
 }
 
+fn workflow_macro_template_delete_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            persisted_other_arg("TEMPLATE_NAME", true, "persisted workflow macro template name to delete")
+        ],
+        "reads": [
+            {"fact": "workflow_macro_template.exists", "subject": {"arg": "TEMPLATE_NAME"}}
+        ],
+        "effects": [
+            closed_world_absence_effect("workflow_macro_template.exists", "TEMPLATE_NAME")
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "workflow_macro_template.exists", "subject": {"arg": "TEMPLATE_NAME"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn workflow_macro_template_import_descriptor(id: &str, description: &str) -> Value {
     json!({
         "id": id,
@@ -17482,6 +21110,195 @@ fn workflow_macro_template_import_descriptor(id: &str, description: &str) -> Val
         "precondition_expr": {"all": []},
         "description": description,
         "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn genomic_region_capability_descriptor(
+    id: &str,
+    mutating: &str,
+    requires_confirmation: bool,
+    description: &str,
+) -> Value {
+    if matches!(
+        id,
+        "regions preview-feature"
+            | "PreviewGenomicRegionFeature"
+            | "regions materialize-feature"
+            | "MaterializeGenomicRegionFeature"
+    ) {
+        let apply = mutating == "true";
+        return json!({
+            "id": id, "kind": "operation", "mutating": mutating,
+            "requires_confirmation": requires_confirmation,
+            "args": [{"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other",
+                "detail": "GenomicRegionFeatureRequest: set_id, region_id, seq_id, expected_region_content_sha256; optional catalog_path/cache_dir; apply requires expected_approval_sha256"}],
+            "reads": [],
+            "effects": if apply { vec![json!({"effect_kind": "may_on_success",
+                "description": "Appends one evidence-qualified DNA feature after exact local-reference and approval checks; undoable."})] } else { vec![] },
+            "precondition_expr": {"all": []},
+            "description": description, "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection(id)
+        });
+    }
+    let effects = match mutating {
+        "true" => vec![json!({
+            "effect_kind": "may_on_success",
+            "description": "The operation may add or update a content-bound genomic region set."
+        })],
+        "external" => vec![json!({
+            "fact": "artifact.written",
+            "effect_kind": "external_handoff",
+            "description": "The operation may write canonical JSON and BED plus its bound manifest."
+        })],
+        _ => vec![],
+    };
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": mutating,
+        "requires_confirmation": requires_confirmation,
+        "args": [
+            {"name": "REQUEST_JSON_OR_@FILE", "required": id != "regions list", "subject_kind": "other", "detail": "typed genomic-region request payload"}
+        ],
+        "reads": [],
+        "effects": effects,
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn gel_image_capability_descriptor(id: &str) -> Value {
+    match id {
+        "gel-image inspect" | "InspectGelImageAnalysis" => {
+            return report_show_operation_descriptor(
+                id,
+                "gel_image_analysis",
+                "Inspect a persisted gel-image sizing report without changing project state.",
+            );
+        }
+        "gel-image export" | "ExportGelImageAnalysis" => {
+            let mut descriptor = report_export_operation_descriptor(
+                id,
+                "gel_image_analysis",
+                "GelImageExportRequest.path: new JSON, TSV or SVG file; never overwrite",
+                "Export a gel-image report after revalidating its original image and calibration; not an undoable project edit.",
+            );
+            descriptor["mutating"] = json!("external");
+            descriptor["requires_confirmation"] = json!(true);
+            return descriptor;
+        }
+        _ => {}
+    }
+    let (request, effect, description) = match id {
+        "gel-image import" | "ImportGelImage" => (
+            "GelImageImportRequest: image_id, local path and optional TIFF page",
+            json!({"effect_kind": "must_on_success", "description": "Persist the validated original image bytes, content hash and preview; no sizing analysis is implied."}),
+            "Import a measured gel image into project state without assigning lanes or estimating band sizes.",
+        ),
+        "gel-image save-draft" | "SaveGelImageDraft" => (
+            "GelImageAnalysisRequest: existing image ID/hash and editable lane, ladder and sample assignments",
+            json!({"effect_kind": "must_on_success", "description": "Persist an editable image-bound draft; incomplete calibration is allowed and is not a validated report."}),
+            "Save manual gel assignments after image/hash and draft checks; does not establish calibrated sizing results.",
+        ),
+        "gel-image analyze" | "AnalyzeGelImage" => (
+            "GelImageAnalysisRequest: new report ID, existing image ID/hash, lanes, confirmed ladder and sample bands",
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "gel_image_analysis", "effect_kind": "must_on_success"}),
+            "Validate the image hash, assignments and calibration, then persist an auditable gel-image sizing report; never extrapolate beyond the ladder.",
+        ),
+        _ => unreachable!("unknown gel-image capability"),
+    };
+    json!({
+        "id": id, "kind": "operation", "mutating": "true",
+        "requires_confirmation": true,
+        "args": [{"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": request},
+            {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "analysis request report_id, used for post-run effect verification"}],
+        "reads": [], "effects": [effect], "precondition_expr": {"all": []},
+        "description": description, "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn tss_profile_capability_descriptor(id: &str, compute: bool) -> Value {
+    json!({
+        "id": id, "kind": "operation", "mutating": "external",
+        "requires_confirmation": true,
+        "args": [
+            {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": if compute {
+                "ComputeTssProfilesRequest: bound FASTA/manifest, exact matrix panel and reference expectations; optional export for typed operations"
+            } else { "Supplied TssTfbsProfilesReport plus ExportTssProfilesRequest; no persisted project report is required" }},
+            {"name": "OUTPUT_DIRECTORY", "required": id != "ComputeTssTfbsProfiles", "subject_kind": "other", "detail": "new export directory, required by shell routes and export-only operations"},
+            {"name": "CONTEXT_MANIFEST", "required": false, "subject_kind": "other", "detail": "--context-manifest FILE, or context_manifest on ExportTssProfilesRequest: gentle.tss_detail_context_inputs.v1 with exact reference, gene IDs and hash-bound locus JSON/full locus FASTA/optional TATA report. Adds aligned CUT&RUN and annotation evidence without rescoring; omitted for source-free re-export of an enriched report."},
+            {"name": "GENOMIC_MOTIF_EVIDENCE", "required": false, "subject_kind": "other", "detail": "Repeat --genomic-motif-evidence FILE, or genomic_motif_evidence paths on ExportTssProfilesRequest. Attach saved gentle.genomic_motif_evidence.v1 DuckDB reports as separate strand/span/score triangle lanes and a complete hit TSV. Exact genome/assembly/accession checks; imported scores and retention limits remain distinct from local PWM traces. No database query or rescoring; paths omitted for enriched-report replay."}
+        ],
+        "reads": [], "precondition_expr": {"all": []},
+        "effects": [{"fact": "artifact.written", "subject": {"arg": "OUTPUT_DIRECTORY"}, "effect_kind": "external_handoff"}],
+        "description": if compute {
+            "Validate accession-pinned inputs and score TSS profiles without changing project state. Optional typed-operation export writes a bound artifact bundle; shell computation always exports."
+        } else { "Validate and export a supplied TSS profile report without rescoring or changing project state." },
+        "annotation_status": "fact_annotated", "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn sequence_design_capability_descriptor(id: &str, apply: bool) -> Value {
+    let mut args = vec![
+        json!({"name":"REQUEST", "required":true, "subject_kind":"other", "detail": if apply {
+        "Exact gentle.dna_sequence_design_report.v1 feasible preview JSON or @file; request.output_seq_id is never overwritten"
+    } else { "gentle.dna_sequence_design_request.v1 JSON or @file: explicit synthetic purpose, inline/loaded DNA, local half-open CDS, supplied protein, code 1, protected intervals, finite IUPAC motifs/strands, budget and output ID; optional gc_content={min_basis_points,max_basis_points}, inclusive 0..10000 over the complete CDS including frozen start/stop, not flanks; optional gc_window={window_bp,min_basis_points,max_basis_points} checks every complete CDS window at a fixed one-base step, with no flanks/partial windows/stride; empty motifs require at least one explicit GC constraint. Optional search_strategy=full_enumeration (default) or conflict_directed, never automatic; GC bounds are not expression/folding/synthesis claims" }}),
+    ];
+    if apply {
+        args.push(json!({"name":"APPROVAL_DIGEST", "required":true, "subject_kind":"other", "detail":"--approve exact preview.approval_digest, only after explicit review/approval; never fabricated or reused after edits"}));
+    }
+    args.push(json!({"name":"OUTPUT_ID", "required":false, "subject_kind":"sequence", "detail":"exact request.output_seq_id, also inside a preview.request"}));
+    if !apply {
+        args.push(json!({"name":"OUTPUT_PATH", "required":false, "subject_kind":"other", "detail":"optional --path writes the preview, including unresolved/infeasible outcomes"}));
+    }
+    json!({
+        "id":id, "kind":if id.starts_with("sequence-design ") {"command"} else {"operation"},
+        "mutating":if apply {"true"} else {"false"}, "requires_confirmation":apply,
+        "args":args, "reads":[], "precondition_expr":{"all":[]},
+        "effects":if apply {vec![json!({"fact":"sequence.exists", "subject":{"arg":"OUTPUT_ID"}, "effect_kind":"may_on_success"})]} else {vec![json!({"fact":"artifact.written", "subject":{"arg":"OUTPUT_PATH"}, "effect_kind":"external_handoff"})]},
+        "description":if apply {
+            "Create exact approved synthetic DNA without rerunning search. Execution validates source/table/protection/output bindings; cancelled, unresolved, altered or stale previews are refused. One undoable derivation; original annotations omitted. No functional, order or experimental approval."
+        } else {
+            "Read-only bounded synonymous motif removal for synthetic coding inserts, not natural assay targets or full DNA Chisel. Runtime admission validates explicit CDS/protein/code and frozen bases. Both-strand/overlap/flank motifs supported. Search exhaustion is unresolved, never infeasibility; no performance claim."
+        }, "annotation_status":"fact_annotated", "registry":registry_metadata_for_introspection(id)
+    })
+}
+
+fn tss_view_svg_capability_descriptor(id: &str) -> Value {
+    json!({
+        "id": id, "kind": "operation", "mutating": "external",
+        "requires_confirmation": true,
+        "args": [
+            {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "one loaded sequence with valid GENtle annotated-TSS metadata; exactly one SEQ_ID or COLLECTION_ID is required"},
+            {"name": "COLLECTION_ID", "required": false, "subject_kind": "other", "detail": "--collection ID, or collection_id on the typed operation; validates all GetTssCollection members, at most 32, exclusive with SEQ_ID"},
+            {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "single SVG destination, or a new directory for ordered collection SVGs, index.html and receipt.json"},
+            {"name": "REPORT_PATH", "required": false, "subject_kind": "other", "detail": "--report PATH, or report on the typed operation; validates and attaches a saved profile without rescoring it"},
+            {"name": "MATRIX_IDS", "required": false, "subject_kind": "other", "detail": "repeat --motif ACCESSION, or local_motifs on the typed operation; exact full-PFM accessions only, no factor aliases"},
+            {"name": "SCORE_KIND", "required": false, "subject_kind": "other", "detail": "--score-kind KIND, or score_kind on the typed operation; defaults to llr_bits, never inherited from a GUI"},
+            {"name": "CLIP_NEGATIVE", "required": false, "subject_kind": "other", "detail": "defaults to true; --keep-negative disables clipping"},
+            {"name": "SPAN", "required": false, "subject_kind": "other", "detail": "--span START..END uses 1-based inclusive local coordinates; typed start_0based/end_0based_exclusive use a half-open interval. Local scoring scans only complete footprints within this span, excluding boundary-crossing windows. Admission limits still use the full annotated window; empirical quantiles use the scored span. Attached reports are only clipped, never rescored"},
+            {"name": "WIDTH_PX", "required": false, "subject_kind": "other", "detail": "--width PX, or width_px on the typed operation; defaults to 1600"}
+        ],
+        "reads": [{"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}, {"fact": "tss_collection.exists", "subject": {"arg": "COLLECTION_ID"}}],
+        "precondition_expr": {"any": [{"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}, {"fact": "tss_collection.exists", "subject": {"arg": "COLLECTION_ID"}}]},
+        "effects": [{"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}],
+        "description": "Export native annotated-TSS SVGs and a typed hash receipt without changing project state or requiring a GUI. Collection export stages at most 32 validated windows in a new directory (32 MiB total). Preserve each window's lane scales, including supplied report scaling; no new cross-window calibration. At most 128 hover titles per lane/strand, with emitted/total/omitted counts and unchanged curves/bands. Top three raw-score starts rank positions only within a matrix lane, never factors or binding likelihood. Runtime validation checks exact target, membership, TSS/report bindings and scoring limits.",
+        "annotation_status": "fact_annotated", "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn tata_capability_descriptor(id: &str, mutating: bool) -> Value {
+    json!({
+        "id": id, "kind": "operation", "mutating": if mutating { "true" } else { "false" },
+        "requires_confirmation": mutating,
+        "args": [{"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": if mutating { "TataBoxMaterializeRequest: screen request, reviewed report hash, selected row IDs" } else { "TataBoxScreenRequest: sequence, TSS/window policy and optional assembly-bound EPD files" }}],
+        "reads": [], "effects": if mutating { vec![json!({"effect_kind":"may_on_success", "description":"Adds only selected, hash-reviewed TATA/EPD evidence features to the loaded sequence."})] } else { vec![] },
+        "precondition_expr": {"all": []}, "annotation_status": "fact_annotated",
+        "description": if mutating { "Explicit, undoable TATA feature materialization; EPD classes mark TSSs, not invented sites." } else { "Read-only source annotations, EPD classifications and TSS-aware exact-version TBP predictions. Optional --output writes report JSON." },
         "registry": registry_metadata_for_introspection(id)
     })
 }
@@ -17587,6 +21404,32 @@ fn candidate_macro_template_descriptor(
     })
 }
 
+fn candidate_macro_template_delete_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            persisted_other_arg("TEMPLATE_NAME", true, "persisted candidate macro template name to delete")
+        ],
+        "reads": [
+            {"fact": "candidate_macro_template.exists", "subject": {"arg": "TEMPLATE_NAME"}}
+        ],
+        "effects": [
+            closed_world_absence_effect("candidate_macro_template.exists", "TEMPLATE_NAME")
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "candidate_macro_template.exists", "subject": {"arg": "TEMPLATE_NAME"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn annotated_introspection_capability_descriptors() -> Vec<Value> {
     vec![
         json!({
@@ -17644,6 +21487,221 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "description": "Summarize loaded project state through the shared MCP/tool route.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("state_summary")
+        }),
+        genomic_region_capability_descriptor(
+            "regions create",
+            "true",
+            false,
+            "Create and persist one assembly-bound genomic region of interest.",
+        ),
+        genomic_region_capability_descriptor(
+            "regions preview-feature",
+            "false",
+            false,
+            "Preview a saved cofactor motif feature against exact prepared reference DNA; no download or mutation.",
+        ),
+        genomic_region_capability_descriptor(
+            "PreviewGenomicRegionFeature",
+            "false",
+            false,
+            "Preview a saved cofactor motif feature with reference and annotation-bound approval.",
+        ),
+        genomic_region_capability_descriptor(
+            "regions materialize-feature",
+            "true",
+            true,
+            "Explicitly attach a previewed cofactor motif feature using a fresh approval digest.",
+        ),
+        genomic_region_capability_descriptor(
+            "MaterializeGenomicRegionFeature",
+            "true",
+            true,
+            "Attach a previewed cofactor motif feature; rejects changed evidence, DNA, reference or annotations.",
+        ),
+        genomic_region_capability_descriptor(
+            "CreateGenomicRegion",
+            "true",
+            true,
+            "Create and persist one assembly-bound genomic region through the shared engine operation.",
+        ),
+        genomic_region_capability_descriptor(
+            "regions capture",
+            "true",
+            false,
+            "Capture a sequence selection, feature, CUT&RUN support window, or Ensembl regulatory feature as a portable region.",
+        ),
+        genomic_region_capability_descriptor(
+            "CaptureGenomicRegion",
+            "true",
+            true,
+            "Capture an existing evidence-bearing interval through the shared engine operation.",
+        ),
+        genomic_region_capability_descriptor(
+            "regions list",
+            "false",
+            false,
+            "List persisted genomic region sets without mutating project state.",
+        ),
+        genomic_region_capability_descriptor(
+            "ListGenomicRegions",
+            "false",
+            false,
+            "List persisted genomic region sets through the shared engine operation.",
+        ),
+        genomic_region_capability_descriptor(
+            "regions inspect",
+            "false",
+            false,
+            "Inspect one saved genomic region and its current local-projection availability.",
+        ),
+        genomic_region_capability_descriptor(
+            "InspectGenomicRegion",
+            "false",
+            false,
+            "Inspect one saved genomic region through the shared engine operation.",
+        ),
+        genomic_region_capability_descriptor(
+            "regions update",
+            "true",
+            false,
+            "Update only the human label, description, notes, and display colour of one saved region.",
+        ),
+        genomic_region_capability_descriptor(
+            "UpdateGenomicRegionPresentation",
+            "true",
+            true,
+            "Update presentation-only fields on one saved region through the shared engine operation.",
+        ),
+        genomic_region_capability_descriptor(
+            "regions derive",
+            "true",
+            false,
+            "Create an explicit union, intersection, or hull from saved parent regions.",
+        ),
+        genomic_region_capability_descriptor(
+            "DeriveGenomicRegion",
+            "true",
+            true,
+            "Derive a content-bound genomic region through the shared engine operation.",
+        ),
+        genomic_region_capability_descriptor(
+            "regions import",
+            "true",
+            false,
+            "Import a validated canonical JSON region set or explicitly bound BED input.",
+        ),
+        genomic_region_capability_descriptor(
+            "ImportGenomicRegionSet",
+            "true",
+            true,
+            "Import a validated genomic region set through the shared engine operation.",
+        ),
+        genomic_region_capability_descriptor(
+            "regions export",
+            "external",
+            true,
+            "Export canonical JSON and/or BED6 with a content-bound manifest.",
+        ),
+        genomic_region_capability_descriptor(
+            "ExportGenomicRegionSet",
+            "external",
+            true,
+            "Export a genomic region set through the shared engine operation.",
+        ),
+        genomic_region_capability_descriptor(
+            "regions homology-screen",
+            "false",
+            false,
+            "Search validated local genomic-DNA BLAST indexes for query-referenced similarity to one saved portable region.",
+        ),
+        genomic_region_capability_descriptor(
+            "ScreenGenomicRegionHomology",
+            "false",
+            false,
+            "Build a content-bound genomic-region homology report through the shared read-only engine operation.",
+        ),
+        genomic_region_capability_descriptor(
+            "regions render-homology-svg",
+            "external",
+            true,
+            "Render a content-bound query-referenced homology report as deterministic SVG without rerunning BLAST.",
+        ),
+        genomic_region_capability_descriptor(
+            "RenderGenomicRegionHomologySvg",
+            "external",
+            true,
+            "Render a genomic-region homology report through the shared engine operation.",
+        ),
+        genomic_region_capability_descriptor(
+            "promoters assess-conserved-modules",
+            "false",
+            false,
+            "Classify traceable reporter-module hypotheses from a content-bound homology report and explicitly selected evidence spans.",
+        ),
+        genomic_region_capability_descriptor(
+            "AssessPromoterConservedModules",
+            "false",
+            false,
+            "Assess conserved promoter-module hypotheses through the shared read-only engine operation.",
+        ),
+        tss_workspace_capability_descriptor("InspectTssInventory", false, false),
+        sequence_design_capability_descriptor("PlanDnaSequenceDesign", false),
+        sequence_design_capability_descriptor("sequence-design plan", false),
+        sequence_design_capability_descriptor("ApplyDnaSequenceDesign", true),
+        sequence_design_capability_descriptor("sequence-design apply", true),
+        tss_workspace_capability_descriptor("promoters tss-inventory", false, false),
+        tss_workspace_capability_descriptor("MaterializeTssWindows", true, false),
+        tss_workspace_capability_descriptor("promoters tss-materialize", true, false),
+        tss_workspace_capability_descriptor("GetTssCollection", false, true),
+        tss_workspace_capability_descriptor("ListTssCollections", false, false),
+        tss_workspace_capability_descriptor("promoters tss-list", false, false),
+        tss_workspace_capability_descriptor("promoters tss-collection", false, true),
+        tss_workspace_capability_descriptor("ForgetTssCollection", true, true),
+        tss_workspace_capability_descriptor("promoters tss-forget", true, true),
+        tss_workspace_capability_descriptor("ui open tss-view --collection", false, true),
+        tata_capability_descriptor("promoters tata-screen", false),
+        tata_capability_descriptor("ScreenTataBoxes", false),
+        tata_capability_descriptor("promoters tata-materialize", true),
+        tata_capability_descriptor("MaterializeTataBoxFeatures", true),
+        gel_image_capability_descriptor("gel-image import"),
+        gel_image_capability_descriptor("ImportGelImage"),
+        gel_image_capability_descriptor("gel-image save-draft"),
+        gel_image_capability_descriptor("SaveGelImageDraft"),
+        gel_image_capability_descriptor("gel-image analyze"),
+        gel_image_capability_descriptor("AnalyzeGelImage"),
+        gel_image_capability_descriptor("gel-image inspect"),
+        gel_image_capability_descriptor("InspectGelImageAnalysis"),
+        gel_image_capability_descriptor("gel-image export"),
+        gel_image_capability_descriptor("ExportGelImageAnalysis"),
+        tss_profile_capability_descriptor("features tss-tfbs-profiles", true),
+        tss_profile_capability_descriptor("ComputeTssTfbsProfiles", true),
+        tss_profile_capability_descriptor("features tss-tfbs-profiles-export", false),
+        tss_profile_capability_descriptor("ExportTssTfbsProfiles", false),
+        tss_view_svg_capability_descriptor("promoters tss-view-svg"),
+        tss_view_svg_capability_descriptor("ExportTssViewSvg"),
+        json!({
+            "id": "gene_isoform_assay_publication",
+            "kind": "operation",
+            "mutating": "external",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "REQUEST_PATH", "required": true, "subject_kind": "other", "detail": "gentle.gene_isoform_assay_publication_request.v1 JSON path"},
+                {"name": "OUTPUT_DIRECTORY", "required": true, "subject_kind": "other", "detail": "output directory for the canonical report and its declared projections"},
+                {"name": "PROFILE", "required": false, "subject_kind": "other", "detail": "optional GENtle-declared profile id"},
+                {"name": "BLOCKS", "required": false, "subject_kind": "other", "detail": "optional ordered subset of GENtle-declared block ids"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_DIRECTORY"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Project an immutable canonical assay dossier through the MCP adapter; confirmation authorizes file writes, not a new scientific decision.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("gene_isoform_assay_publication")
         }),
         container_update_descriptor(
             "containers set-exclusive",
@@ -17733,6 +21791,58 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             vec![sequence_inputs_foreach_atom()],
             json!({"all": [sequence_inputs_foreach_atom()]}),
         ),
+        json!({
+            "id": "ExportPoolCollection",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "CONTAINER_ID", "required": true, "subject_kind": "other", "detail": "exclusive persisted physical container"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external gentle.pool.v1 JSON artifact path"},
+                {"name": "POOL_ID", "required": false, "subject_kind": "other", "detail": "optional exported pool id; defaults to the source container id"},
+                {"name": "HUMAN_ID", "required": false, "subject_kind": "other", "detail": "optional exported pool label; defaults to the source container name"}
+            ],
+            "reads": [
+                {"fact": "container.exists", "subject": {"arg": "CONTAINER_ID"}}
+            ],
+            "effects": [{
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "external_handoff"
+            }],
+            "precondition_expr": {"all": [
+                {"fact": "container.exists", "subject": {"arg": "CONTAINER_ID"}}
+            ]},
+            "description": "Atomically combine one exclusive physical container into a portable GENtle pool artifact and collection report.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ExportPoolCollection")
+        }),
+        json!({
+            "id": "collections run export-pool",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "CONTAINER_ID", "required": true, "subject_kind": "other", "detail": "exclusive persisted physical container"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external gentle.pool.v1 JSON artifact path"},
+                {"name": "POOL_ID", "required": false, "subject_kind": "other", "detail": "optional exported pool id"},
+                {"name": "HUMAN_ID", "required": false, "subject_kind": "other", "detail": "optional exported pool label"}
+            ],
+            "reads": [
+                {"fact": "container.exists", "subject": {"arg": "CONTAINER_ID"}}
+            ],
+            "effects": [{
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "external_handoff"
+            }],
+            "precondition_expr": {"all": [
+                {"fact": "container.exists", "subject": {"arg": "CONTAINER_ID"}}
+            ]},
+            "description": "Export one exclusive physical container through the shared collection pool-export operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("collections run export-pool")
+        }),
         pool_artifact_descriptor_with_readiness(
             "render-pool-gel-svg",
             "Render sequence, container, or arrangement pool lanes to an external SVG gel artifact.",
@@ -17741,6 +21851,9 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "CONTAINER_IDS", "required": false, "subject_kind": "other", "detail": "optional container-id list; each id is validated during execution"}),
                 json!({"name": "ARRANGEMENT_ID", "required": false, "subject_kind": "other", "detail": "optional persisted arrangement id validated during execution"}),
                 json!({"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path"}),
+                json!({"name": "LANE_LABEL_LAYOUT", "required": false, "subject_kind": "other", "detail": "auto, horizontal, wrapped, staggered, or angled lane-label placement"}),
+                json!({"name": "BAND_LABEL_LAYOUT", "required": false, "subject_kind": "other", "detail": "auto, inline, or fragment-table-only panel band labels"}),
+                json!({"name": "ISOFORM_MARKERS", "required": false, "subject_kind": "other", "detail": "auto detects transcript accessions and adds color/position/binary identity markers; off suppresses them"}),
             ],
             vec![
                 sequence_inputs_foreach_atom(),
@@ -17772,6 +21885,9 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "CONTAINER_IDS", "required": false, "subject_kind": "other", "detail": "optional container-id list carried by container_ids; each id is validated during execution"}),
                 json!({"name": "ARRANGEMENT_ID", "required": false, "subject_kind": "other", "detail": "optional persisted arrangement id carried by arrangement_id"}),
                 json!({"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path carried by path"}),
+                json!({"name": "LANE_LABEL_LAYOUT", "required": false, "subject_kind": "other", "detail": "presentation-only lane-label placement carried by render_options"}),
+                json!({"name": "BAND_LABEL_LAYOUT", "required": false, "subject_kind": "other", "detail": "presentation-only in-gel band-label placement carried by render_options"}),
+                json!({"name": "ISOFORM_MARKERS", "required": false, "subject_kind": "other", "detail": "presentation-only transcript identity markers carried by render_options"}),
             ],
             vec![
                 sequence_inputs_foreach_atom(),
@@ -17784,9 +21900,9 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 arrangement_id_atom()
             ]}),
         ),
-        pool_artifact_descriptor(
+        primer_specificity_report_descriptor(
             "AssessPrimerPairSpecificity",
-            "Assess one primer pair against a prepared reference genome and optionally write the returned specificity report to JSON.",
+            "Assess one primer pair against a prepared reference genome, persist the returned specificity artifact, and optionally write it to JSON.",
             vec![
                 json!({"name": "PRIMER_REPORT_ID", "required": false, "subject_kind": "report", "detail": "optional primer-design report id carried by primer_report_id"}),
                 json!({"name": "FORWARD_PRIMER", "required": false, "subject_kind": "other", "detail": "explicit forward primer sequence alternative"}),
@@ -17794,6 +21910,122 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "TARGET_GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared reference genome id used for specificity search"}),
                 json!({"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external primer-specificity JSON output path carried by path"}),
             ],
+        ),
+        primer_specificity_report_descriptor(
+            "primers specificity",
+            "Run and persist the shared local-BLAST specificity interpretation for one persisted or explicit primer pair.",
+            vec![
+                json!({"name": "PRIMER_REPORT_ID", "required": false, "subject_kind": "report", "detail": "optional persisted primer-design report id"}),
+                json!({"name": "FORWARD_PRIMER", "required": false, "subject_kind": "other", "detail": "explicit forward primer sequence alternative"}),
+                json!({"name": "REVERSE_PRIMER", "required": false, "subject_kind": "other", "detail": "explicit reverse primer sequence alternative"}),
+                json!({"name": "TARGET_GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared genomic-DNA or transcriptome-cDNA resource id"}),
+                json!({"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external primer-specificity JSON output path"}),
+            ],
+        ),
+        primer_specificity_report_descriptor(
+            "AssessPrimerPairSpecificityCollection",
+            "Map the existing primer-pair specificity assessment over a typed project-sequence or persisted gene-set collection and return one aggregate collection report.",
+            vec![
+                json!({"name": "COLLECTION_SUBJECT", "required": true, "subject_kind": "other", "detail": "typed project_sequences or gene_set_resolution collection subject"}),
+                json!({"name": "MEMBER_BINDINGS", "required": false, "subject_kind": "report", "detail": "member-id to primer-design-report bindings; required for logical gene-set members and optional for uniquely resolvable project sequences"}),
+                json!({"name": "TARGET_GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared genomic-DNA or transcriptome-cDNA resource id"}),
+                json!({"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external aggregate collection-report JSON path"}),
+            ],
+        ),
+        primer_specificity_report_descriptor(
+            "collections run primer-specificity",
+            "Map GENtle's existing local-BLAST primer specificity assessment over project sequences or a persisted gene-set resolution, retaining per-member failures and produced report IDs.",
+            vec![
+                json!({"name": "GENE_SET_REPORT_ID", "required": false, "subject_kind": "report", "detail": "persisted gene-set resolution artifact id; alternative to SEQ_IDS"}),
+                json!({"name": "TSS_COLLECTION_ID", "required": false, "subject_kind": "other", "detail": "--tss-collection ID validates persisted members; exclusive with gene-set and sequence arguments; primer-report bindings remain supported"}),
+                json!({"name": "SEQ_IDS", "required": false, "subject_kind": "sequence", "detail": "project sequence ids; alternative to GENE_SET_REPORT_ID"}),
+                json!({"name": "MEMBER_BINDINGS", "required": false, "subject_kind": "report", "detail": "repeated MEMBER_ID=PRIMER_REPORT_ID bindings"}),
+                json!({"name": "TARGET_GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared genomic-DNA or transcriptome-cDNA resource id"}),
+                json!({"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external aggregate collection-report JSON path"}),
+            ],
+        ),
+        pool_artifact_descriptor(
+            "PreparePrimerPairSpecificityHandoff",
+            "Prepare deterministic primer BLAST commands and query files without running the BLAST searches.",
+            vec![
+                json!({"name": "PRIMER_REPORT_ID", "required": false, "subject_kind": "report", "detail": "optional primer-design report id carried by primer_report_id"}),
+                json!({"name": "FORWARD_PRIMER", "required": false, "subject_kind": "other", "detail": "explicit forward primer sequence alternative"}),
+                json!({"name": "REVERSE_PRIMER", "required": false, "subject_kind": "other", "detail": "explicit reverse primer sequence alternative"}),
+                json!({"name": "TARGET_GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared reference genome id used to resolve the BLAST database"}),
+                json!({"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external handoff bundle directory carried by output_dir"}),
+            ],
+        ),
+        primer_specificity_multi_descriptor(
+            "PreparePrimerPairMultiReferenceSpecificityHandoff",
+            "handoff",
+        ),
+        primer_specificity_multi_descriptor("primers specificity-multi-handoff", "handoff"),
+        primer_specificity_multi_descriptor("ImportPrimerPairMultiReferenceSpecificity", "import"),
+        primer_specificity_multi_descriptor("primers specificity-multi-import", "import"),
+        primer_specificity_multi_descriptor("primer_specificity_multi_import", "import"),
+        primer_specificity_multi_descriptor(
+            "GetPrimerPairMultiReferenceSpecificitySummary",
+            "show",
+        ),
+        primer_specificity_multi_descriptor("primers specificity-multi-show", "show"),
+        primer_specificity_multi_descriptor("primer_specificity_multi_show", "show"),
+        primer_specificity_multi_descriptor(
+            "ListPrimerPairMultiReferenceSpecificitySummaries",
+            "list",
+        ),
+        primer_specificity_multi_descriptor("primers specificity-multi-list", "list"),
+        primer_specificity_multi_descriptor("primer_specificity_multi_list", "list"),
+        primer_specificity_multi_descriptor("primer_specificity_multi_handoff", "handoff"),
+        pool_artifact_descriptor(
+            "primers specificity-plan",
+            "Prepare deterministic primer BLAST commands and query files without running the BLAST searches.",
+            vec![
+                json!({"name": "PRIMER_REPORT_ID", "required": false, "subject_kind": "report", "detail": "optional persisted primer-design report id"}),
+                json!({"name": "FORWARD_PRIMER", "required": false, "subject_kind": "other", "detail": "explicit forward primer sequence alternative"}),
+                json!({"name": "REVERSE_PRIMER", "required": false, "subject_kind": "other", "detail": "explicit reverse primer sequence alternative"}),
+                json!({"name": "TARGET_GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared genomic-DNA or transcriptome-cDNA resource id"}),
+                json!({"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external handoff bundle directory carried by --output-dir"}),
+            ],
+        ),
+        primer_specificity_report_descriptor(
+            "ImportPrimerPairSpecificityHandoff",
+            "Import completed primer BLAST TSVs from a deterministic handoff, apply the shared specificity interpretation, and persist the report artifact.",
+            vec![
+                json!({"name": "HANDOFF_PATH", "required": true, "subject_kind": "other", "detail": "existing gentle.primer_specificity_handoff.v1 JSON path"}),
+                json!({"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external primer-specificity JSON output path carried by path"}),
+            ],
+        ),
+        primer_specificity_report_descriptor(
+            "primers specificity-import",
+            "Validate and import completed primer BLAST TSVs from a deterministic handoff through the shared specificity interpreter.",
+            vec![
+                json!({"name": "HANDOFF_PATH", "required": true, "subject_kind": "other", "detail": "existing gentle.primer_specificity_handoff.v1 JSON path"}),
+                json!({"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external primer-specificity JSON output path"}),
+            ],
+        ),
+        primer_specificity_alignment_html_descriptor(
+            "primers specificity-alignment-html",
+            "Render persisted full-primer alignments as deterministic HTML without rerunning BLAST or alignment.",
+        ),
+        transcript_assay_specificity_plan_descriptor(
+            "primers transcript-assay-specificity-plan",
+            "Prepare one aggregate external BLAST handoff covering every selected assay in a persisted transcript panel.",
+        ),
+        transcript_assay_specificity_plan_descriptor(
+            "transcript_assay_specificity_plan",
+            "Prepare the shared whole-panel BLAST handoff through MCP after explicit confirmation; does not execute BLAST.",
+        ),
+        transcript_assay_specificity_finalize_descriptor(
+            "primers transcript-assay-specificity-finalize",
+            "Validate one aggregate execution manifest, classify each assay, and atomically attach only a complete panel verdict.",
+        ),
+        transcript_assay_specificity_finalize_descriptor(
+            "transcript_assay_specificity_finalize",
+            "Validate shared execution evidence and persist only complete panel assessments through MCP after explicit confirmation; success does not imply a passing biological verdict.",
+        ),
+        transcript_assay_specificity_redesign_descriptor(
+            "primers transcript-assay-specificity-redesign",
+            "Retain passing assays and propose content-bound replacements, or a bounded infeasibility disposition, for specificity-failed assays without mutating project state.",
         ),
         arrangement_create_descriptor(
             "arrange-serial",
@@ -18231,6 +22463,32 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("introspect all")
         }),
         json!({
+            "id": "introspect runtime",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Return the process-local live runtime activity stack for shell, background, agent, and MCP work in this GENtle process.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("introspect runtime")
+        }),
+        json!({
+            "id": "runtime_status",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Return the process-local live runtime activity stack through the MCP tool route.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("runtime_status")
+        }),
+        json!({
             "id": "sequence create",
             "kind": "operation",
             "mutating": "true",
@@ -18478,6 +22736,14 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "uniprot compare-ensembl-peptide",
             "Compare projected UniProt peptide sequence against an optional stored Ensembl protein entry.",
         ),
+        uniprot_linked_transcript_inventory_descriptor(
+            "uniprot build-linked-transcript-inventory",
+            "Build a content-bound UniProt linked-transcript inventory from explicit mappings and transcript FASTA resources.",
+        ),
+        uniprot_linked_transcript_inventory_descriptor(
+            "BuildUniprotLinkedTranscriptInventory",
+            "Build a content-bound UniProt linked-transcript inventory through the shared engine operation.",
+        ),
         uniprot_projection_audit_descriptor(
             "uniprot audit-projection",
             "uniprot_projection_audit",
@@ -18515,6 +22781,9 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             vec![
                 json!({"name": "QUERY", "required": true, "subject_kind": "other", "detail": "Ensembl gene id or symbol"}),
                 json!({"name": "SPECIES", "required": false, "subject_kind": "other", "detail": "optional Ensembl species name"}),
+                json!({"name": "ASSEMBLY", "required": false, "subject_kind": "other", "detail": "optional assembly name that must match the resolved Ensembl gene"}),
+                json!({"name": "FLANK_5PRIME_BP", "required": false, "subject_kind": "other", "detail": "optional strand-aware 5-prime flank length in bp"}),
+                json!({"name": "FLANK_3PRIME_BP", "required": false, "subject_kind": "other", "detail": "optional strand-aware 3-prime flank length in bp"}),
             ],
         ),
         metadata_entry_create_descriptor(
@@ -18524,6 +22793,9 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             vec![
                 json!({"name": "QUERY", "required": true, "subject_kind": "other", "detail": "Ensembl gene id or symbol carried by query"}),
                 json!({"name": "SPECIES", "required": false, "subject_kind": "other", "detail": "optional Ensembl species name carried by species"}),
+                json!({"name": "ASSEMBLY", "required": false, "subject_kind": "other", "detail": "optional assembly name carried by assembly and checked against the resolved gene"}),
+                json!({"name": "FLANK_5PRIME_BP", "required": false, "subject_kind": "other", "detail": "optional strand-aware 5-prime flank length carried by flank_5prime_bp"}),
+                json!({"name": "FLANK_3PRIME_BP", "required": false, "subject_kind": "other", "detail": "optional strand-aware 3-prime flank length carried by flank_3prime_bp"}),
             ],
         ),
         metadata_entry_create_descriptor(
@@ -18733,6 +23005,218 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("SetTopology")
         }),
         json!({
+            "id": "features edit-location",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence containing the feature"},
+                {"name": "FEATURE_INDEX", "required": true, "subject_kind": "other", "detail": "zero-based feature index"},
+                {"name": "--segment-index", "required": false, "subject_kind": "other", "detail": "zero-based child index in a supported flat exact Join/Order compound"},
+                {"name": "--start-1based", "required": true, "subject_kind": "other", "detail": "new 1-based inclusive start"},
+                {"name": "--end-1based-inclusive", "required": true, "subject_kind": "other", "detail": "new 1-based inclusive end"},
+                {"name": "--dry-run", "required": false, "subject_kind": "other", "detail": "preview without mutation and return the required feature fingerprint"},
+                {"name": "--expected-feature-fingerprint-sha256", "required": false, "subject_kind": "other", "detail": "preview fingerprint required when applying"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Preview or apply one exact simple feature-location edit or one segment-boundary edit in a supported flat compound; apply requires the fingerprint returned by preview.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("features edit-location")
+        }),
+        json!({
+            "id": "PreviewFeatureLocationEdit",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by request.seq_id"},
+                {"name": "FEATURE_INDEX", "required": true, "subject_kind": "other", "detail": "zero-based feature index carried by request.feature_index"},
+                {"name": "SEGMENT_INDEX", "required": false, "subject_kind": "other", "detail": "optional zero-based child index for a supported flat exact Join/Order compound"},
+                {"name": "NEW_START_0BASED", "required": true, "subject_kind": "other", "detail": "new half-open interval start"},
+                {"name": "NEW_END_0BASED_EXCLUSIVE", "required": true, "subject_kind": "other", "detail": "new half-open interval end"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Validate and report one exact simple or flat-compound segment location edit without changing project state.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("PreviewFeatureLocationEdit")
+        }),
+        json!({
+            "id": "EditFeatureLocation",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by request.seq_id"},
+                {"name": "FEATURE_INDEX", "required": true, "subject_kind": "other", "detail": "zero-based feature index carried by request.feature_index"},
+                {"name": "SEGMENT_INDEX", "required": false, "subject_kind": "other", "detail": "optional zero-based child index for a supported flat exact Join/Order compound"},
+                {"name": "NEW_START_0BASED", "required": true, "subject_kind": "other", "detail": "new half-open interval start"},
+                {"name": "NEW_END_0BASED_EXCLUSIVE", "required": true, "subject_kind": "other", "detail": "new half-open interval end"},
+                {"name": "EXPECTED_FEATURE_FINGERPRINT_SHA256", "required": true, "subject_kind": "other", "detail": "complete-feature fingerprint returned by preview"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Apply one previewed exact simple or flat-compound segment location edit while preserving strand, topology, and qualifier content.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("EditFeatureLocation")
+        }),
+        json!({
+            "id": "features create",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence receiving the appended feature record"},
+                {"name": "--kind", "required": true, "subject_kind": "other", "detail": "GenBank feature kind"},
+                {"name": "--start-1based", "required": true, "subject_kind": "other", "detail": "new 1-based inclusive start"},
+                {"name": "--end-1based-inclusive", "required": true, "subject_kind": "other", "detail": "new 1-based inclusive end"},
+                {"name": "--strand", "required": false, "subject_kind": "other", "detail": "forward or reverse; defaults to forward"},
+                {"name": "--qualifier", "required": false, "subject_kind": "other", "detail": "repeatable ordered KEY or KEY=VALUE qualifier"},
+                {"name": "--dry-run", "required": false, "subject_kind": "other", "detail": "preview without mutation and return the annotation-state fingerprint"},
+                {"name": "--expected-annotation-state-fingerprint-sha256", "required": false, "subject_kind": "other", "detail": "preview fingerprint required when applying"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Preview or append one exact simple feature record while preserving ordered duplicate and valueless qualifiers.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("features create")
+        }),
+        json!({
+            "id": "features delete",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence containing the feature"},
+                {"name": "FEATURE_INDEX", "required": true, "subject_kind": "other", "detail": "zero-based feature index"},
+                {"name": "--dry-run", "required": false, "subject_kind": "other", "detail": "preview without mutation and return both required fingerprints"},
+                {"name": "--expected-feature-fingerprint-sha256", "required": false, "subject_kind": "other", "detail": "complete-feature preview fingerprint required when applying"},
+                {"name": "--expected-annotation-state-fingerprint-sha256", "required": false, "subject_kind": "other", "detail": "ordered annotation-state preview fingerprint required when applying"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Preview or delete one complete feature record of any existing location shape; later feature indices shift down by one.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("features delete")
+        }),
+        json!({
+            "id": "features split",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence containing the exact simple feature"},
+                {"name": "FEATURE_INDEX", "required": true, "subject_kind": "other", "detail": "zero-based feature index"},
+                {"name": "--split-before-1based", "required": true, "subject_kind": "other", "detail": "1-based base before which the feature is divided"},
+                {"name": "--dry-run", "required": false, "subject_kind": "other", "detail": "preview without mutation and return both required fingerprints"},
+                {"name": "--expected-feature-fingerprint-sha256", "required": false, "subject_kind": "other", "detail": "complete-feature preview fingerprint required when applying"},
+                {"name": "--expected-annotation-state-fingerprint-sha256", "required": false, "subject_kind": "other", "detail": "ordered annotation-state preview fingerprint required when applying"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Preview or split one exact simple feature at an internal boundary, preserving kind, strand, and ordered qualifiers on both explicit outputs.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("features split")
+        }),
+        json!({
+            "id": "features merge",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence containing both exact simple features"},
+                {"name": "FIRST_FEATURE_INDEX", "required": true, "subject_kind": "other", "detail": "first zero-based feature index"},
+                {"name": "SECOND_FEATURE_INDEX", "required": true, "subject_kind": "other", "detail": "second distinct zero-based feature index"},
+                {"name": "--dry-run", "required": false, "subject_kind": "other", "detail": "preview without mutation and return all required fingerprints"},
+                {"name": "--expected-first-feature-fingerprint-sha256", "required": false, "subject_kind": "other", "detail": "first complete-feature preview fingerprint required when applying"},
+                {"name": "--expected-second-feature-fingerprint-sha256", "required": false, "subject_kind": "other", "detail": "second complete-feature preview fingerprint required when applying"},
+                {"name": "--expected-annotation-state-fingerprint-sha256", "required": false, "subject_kind": "other", "detail": "ordered annotation-state preview fingerprint required when applying"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Preview or merge two exactly touching simple features only when kind, strand, and ordered qualifiers are identical.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("features merge")
+        }),
+        json!({
+            "id": "PreviewFeatureRecordCuration",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "tagged create/delete/split/merge request carrying request.seq_id"}
+            ],
+            "reads": [],
+            "effects": [],
+            "description": "Validate and report one feature-record creation, deletion, split, or merge without changing project state.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("PreviewFeatureRecordCuration")
+        }),
+        json!({
+            "id": "ApplyFeatureRecordCuration",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "tagged create/delete/split/merge request carrying preview fingerprints"}
+            ],
+            "reads": [],
+            "effects": [],
+            "description": "Apply one preview-locked feature-record creation, deletion, split, or merge with full undo history.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ApplyFeatureRecordCuration")
+        }),
+        json!({
             "id": "RecomputeFeatures",
             "kind": "operation",
             "mutating": "true",
@@ -18752,6 +23236,105 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "description": "Recompute derived feature annotations for one loaded sequence.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("RecomputeFeatures")
+        }),
+        json!({
+            "id": "Digest",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "INPUT_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded source sequence id"},
+                {"name": "ENZYMES", "required": true, "subject_kind": "other", "detail": "one or more known restriction enzyme names"},
+                {"name": "OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": "optional fragment sequence-id prefix"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "INPUT_SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "INPUT_SEQ_ID"}}
+                ]
+            },
+            "description": "Digest one loaded sequence with known restriction enzymes and create fragment sequences.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("Digest")
+        }),
+        json!({
+            "id": "digest",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "INPUT_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded source sequence id"},
+                {"name": "--enzyme", "required": true, "subject_kind": "other", "detail": "repeatable restriction enzyme name"},
+                {"name": "--output-prefix", "required": false, "subject_kind": "other", "detail": "optional fragment sequence-id prefix"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "INPUT_SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "INPUT_SEQ_ID"}}
+                ]
+            },
+            "description": "Digest one loaded sequence through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("digest")
+        }),
+        json!({
+            "id": "DigestCollection",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "COLLECTION_SUBJECT", "required": true, "subject_kind": "other", "detail": "typed project_sequences or gene_set_resolution collection subject"},
+                {"name": "MEMBER_BINDINGS", "required": false, "subject_kind": "sequence", "detail": "member-id to loaded-sequence bindings; required for logical gene-set members"},
+                {"name": "ENZYMES", "required": true, "subject_kind": "other", "detail": "one or more known restriction enzyme names"},
+                {"name": "OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": "optional common prefix; member ids are appended deterministically"},
+                {"name": "DRY_RUN", "required": false, "subject_kind": "other", "detail": "preview products without mutation"},
+                {"name": "EXPECTED_PLAN_FINGERPRINT_SHA256", "required": false, "subject_kind": "other", "detail": "preview fingerprint required when applying"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external report JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "report.exists",
+                "report_kind": "collection_digest",
+                "equals": "collection_digest",
+                "effect_kind": "must_on_success"
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Preview or apply a fingerprint-locked restriction digest over a logical sequence collection.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("DigestCollection")
+        }),
+        json!({
+            "id": "collections run digest",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "TSS_COLLECTION_ID", "required": false, "subject_kind": "other", "detail": "--tss-collection ID validates persisted members; exclusive with gene-set, sequence and member-sequence bindings"},
+                {"name": "GENE_SET_REPORT_ID", "required": false, "subject_kind": "report", "detail": "persisted gene-set resolution artifact id; alternative to SEQ_IDS"},
+                {"name": "SEQ_IDS", "required": false, "subject_kind": "sequence", "detail": "loaded project sequence ids; alternative to GENE_SET_REPORT_ID"},
+                {"name": "MEMBER_BINDINGS", "required": false, "subject_kind": "sequence", "detail": "repeated MEMBER_ID=SEQ_ID bindings required for logical gene-set members"},
+                {"name": "ENZYMES", "required": true, "subject_kind": "other", "detail": "one or more known restriction enzyme names"},
+                {"name": "--apply", "required": false, "subject_kind": "other", "detail": "materialize a previously previewed plan"},
+                {"name": "--expected-plan-fingerprint-sha256", "required": false, "subject_kind": "other", "detail": "required with --apply"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external report JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "report.exists",
+                "report_kind": "collection_digest",
+                "equals": "collection_digest",
+                "effect_kind": "must_on_success"
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Preview by default or explicitly apply a fingerprint-locked collection digest.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("collections run digest")
         }),
         json!({
             "id": "features restriction-scan",
@@ -18797,6 +23380,151 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             ],
         ),
         json!({
+            "id": "FindRestrictionSitesCollection",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "COLLECTION_SUBJECT", "required": true, "subject_kind": "other", "detail": "typed project_sequences or gene_set_resolution collection subject"},
+                {"name": "MEMBER_BINDINGS", "required": false, "subject_kind": "sequence", "detail": "member-id to loaded-sequence bindings; required for logical gene-set members"},
+                {"name": "ENZYMES", "required": false, "subject_kind": "other", "detail": "optional enzyme names; empty resolves configured preferred/default enzymes"},
+                {"name": "MAX_SITES_PER_ENZYME", "required": false, "subject_kind": "other", "detail": "optional per-enzyme site cap"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external aggregate report JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "report.exists",
+                "report_kind": "collection_restriction_scan",
+                "equals": "collection_restriction_scan",
+                "effect_kind": "must_on_success"
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Map the shared restriction-site scanner over a project-sequence or explicitly sequence-bound gene-set collection.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("FindRestrictionSitesCollection")
+        }),
+        json!({
+            "id": "collections run restriction-scan",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "TSS_COLLECTION_ID", "required": false, "subject_kind": "other", "detail": "--tss-collection ID validates persisted members; exclusive with gene-set, sequence and member-sequence bindings"},
+                {"name": "GENE_SET_REPORT_ID", "required": false, "subject_kind": "report", "detail": "persisted gene-set resolution artifact id; alternative to SEQ_IDS"},
+                {"name": "SEQ_IDS", "required": false, "subject_kind": "sequence", "detail": "loaded project sequence ids; alternative to GENE_SET_REPORT_ID"},
+                {"name": "MEMBER_BINDINGS", "required": false, "subject_kind": "sequence", "detail": "repeated MEMBER_ID=SEQ_ID bindings required for logical gene-set members"},
+                {"name": "ENZYMES", "required": false, "subject_kind": "other", "detail": "optional enzyme names"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external aggregate report JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "report.exists",
+                "report_kind": "collection_restriction_scan",
+                "equals": "collection_restriction_scan",
+                "effect_kind": "must_on_success"
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Map restriction-site scanning over loaded project sequences or explicitly sequence-bound gene-set members.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("collections run restriction-scan")
+        }),
+        json!({
+            "id": "InspectConstructReasoningCollection",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "COLLECTION_SUBJECT", "required": true, "subject_kind": "other", "detail": "typed project_sequences or gene_set_resolution collection subject"},
+                {"name": "MEMBER_BINDINGS", "required": false, "subject_kind": "sequence", "detail": "member-id to loaded-sequence bindings; required for logical gene-set members"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external aggregate report JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "report.exists",
+                "report_kind": "collection_construct_reasoning_inspection",
+                "equals": "collection_construct_reasoning_inspection",
+                "effect_kind": "must_on_success"
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Assemble non-persisted construct-reasoning inspection snapshots over a project-sequence or explicitly sequence-bound homogeneous gene-set collection.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("InspectConstructReasoningCollection")
+        }),
+        json!({
+            "id": "collections run construct-reasoning-inspection",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "GENE_SET_REPORT_ID", "required": false, "subject_kind": "report", "detail": "persisted gene-set resolution artifact id; alternative to SEQ_IDS"},
+                {"name": "SEQ_IDS", "required": false, "subject_kind": "sequence", "detail": "loaded project sequence ids; alternative to GENE_SET_REPORT_ID"},
+                {"name": "MEMBER_BINDINGS", "required": false, "subject_kind": "sequence", "detail": "repeated MEMBER_ID=SEQ_ID bindings required for logical gene-set members"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external aggregate report JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "report.exists",
+                "report_kind": "collection_construct_reasoning_inspection",
+                "equals": "collection_construct_reasoning_inspection",
+                "effect_kind": "must_on_success"
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Map non-mutating construct-reasoning inspection over loaded project sequences or explicitly sequence-bound homogeneous gene-set members.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("collections run construct-reasoning-inspection")
+        }),
+        json!({
+            "id": "ScanTfbsHitsCollection",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "COLLECTION_SUBJECT", "required": true, "subject_kind": "other", "detail": "typed project_sequences, validated tss_collection, or gene_set_resolution collection subject"},
+                {"name": "MEMBER_BINDINGS", "required": false, "subject_kind": "sequence", "detail": "member-id to loaded-sequence bindings; required for logical gene-set members"},
+                {"name": "MOTIFS", "required": true, "subject_kind": "other", "detail": "motif query tokens shared by all members"},
+                {"name": "MIN_LLR_BITS", "required": false, "subject_kind": "other", "detail": "optional minimum log-likelihood-ratio threshold in bits"},
+                {"name": "MIN_LLR_QUANTILE", "required": false, "subject_kind": "other", "detail": "optional quantile threshold"},
+                {"name": "MAX_HITS_PER_MEMBER", "required": false, "subject_kind": "other", "detail": "optional retained-hit cap per member; omitted means unlimited"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external aggregate report JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "report.exists",
+                "report_kind": "collection_tfbs_hit_scan",
+                "equals": "collection_tfbs_hit_scan",
+                "effect_kind": "must_on_success"
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Map the shared non-mutating TFBS hit scanner over a project-sequence or explicitly sequence-bound gene-set collection.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ScanTfbsHitsCollection")
+        }),
+        json!({
+            "id": "collections run tfbs-scan",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "TSS_COLLECTION_ID", "required": false, "subject_kind": "other", "detail": "--tss-collection ID validates all persisted members; exclusive with gene-set, sequence and member bindings"},
+                {"name": "GENE_SET_REPORT_ID", "required": false, "subject_kind": "report", "detail": "persisted gene-set resolution artifact id; alternative to SEQ_IDS"},
+                {"name": "SEQ_IDS", "required": false, "subject_kind": "sequence", "detail": "loaded project sequence ids; alternative to GENE_SET_REPORT_ID"},
+                {"name": "MEMBER_BINDINGS", "required": false, "subject_kind": "sequence", "detail": "repeated MEMBER_ID=SEQ_ID bindings required for logical gene-set members"},
+                {"name": "MOTIFS", "required": true, "subject_kind": "other", "detail": "motif query tokens shared by all members"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external aggregate report JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "report.exists",
+                "report_kind": "collection_tfbs_hit_scan",
+                "equals": "collection_tfbs_hit_scan",
+                "effect_kind": "must_on_success"
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Map non-mutating TFBS hit scanning over loaded project sequences or explicitly sequence-bound gene-set members.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("collections run tfbs-scan")
+        }),
+        json!({
             "id": "features query",
             "kind": "operation",
             "mutating": "false",
@@ -18804,7 +23532,8 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "args": [
                 {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id"},
                 {"name": "--kind", "required": false, "detail": "optional feature kind filter"},
-                {"name": "--range", "required": false, "detail": "optional query interval START..END"}
+                {"name": "--range", "required": false, "detail": "optional query interval START..END"},
+                {"name": "--nearest-to", "required": false, "detail": "optional 0-based sequence coordinate that sorts matching features by nearest-base distance"}
             ],
             "reads": [
                 {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
@@ -18932,7 +23661,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "requires_confirmation": false,
             "args": [
                 {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id"},
-                {"name": "TARGET", "required": true, "detail": "expert target such as tfbs, restriction, splicing, isoform, protein-comparison, or uniprot-projection"}
+                {"name": "TARGET", "required": true, "detail": "expert target such as tfbs, restriction, splicing, isoform, isoform-evidence, protein-comparison, or uniprot-projection"}
             ],
             "reads": [
                 {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
@@ -18946,6 +23675,109 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "description": "Inspect one feature-expert target on a loaded sequence.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("inspect-feature-expert")
+        }),
+        json!({
+            "id": "splicing cryptic-screen",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "gentle.cryptic_splicing_screen.v1 request source and deterministic search bounds"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Inspect bounded structural GT-AG cryptic-splicing candidates; model scores and observed RNA junctions remain distinct evidence layers.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("splicing cryptic-screen")
+        }),
+        json!({
+            "id": "splicing cryptic-render",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "gentle.cryptic_splicing_screen.v1 request source and deterministic search bounds"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Render the typed bounded cryptic-splicing structural screen as a provenance-marked SVG.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("splicing cryptic-render")
+        }),
+        json!({
+            "id": "splicing cryptic-export",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "gentle.cryptic_splicing_screen.v1 request source and deterministic search bounds"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external JSON output path"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Export the typed bounded cryptic-splicing report as canonical JSON through the shared operation path.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("splicing cryptic-export")
+        }),
+        json!({
+            "id": "splicing cryptic-overlay",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "gentle.cryptic_splicing_evidence_overlay.v1 request source"},
+                {"name": "--output", "required": false, "subject_kind": "other", "detail": "optional external JSON output path"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "--output"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Join a structural cryptic-splicing screen with digest- and coordinate-bound RNA junction evidence without treating missing support as absence.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("splicing cryptic-overlay")
+        }),
+        json!({
+            "id": "splicing cryptic-protein",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "gentle.cryptic_splicing_protein_projection.v1 request source"},
+                {"name": "--output", "required": false, "subject_kind": "other", "detail": "optional external JSON output path"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "--output"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Project candidate removals onto a digest-bound UniProt feature projection as a separate annotation-evidence layer.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("splicing cryptic-protein")
         }),
         json!({
             "id": "restriction_site_detail",
@@ -18979,7 +23811,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "requires_confirmation": false,
             "args": [
                 {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id"},
-                {"name": "TARGET", "required": true, "detail": "expert target such as tfbs, restriction, splicing, isoform, protein-comparison, or uniprot-projection"},
+                {"name": "TARGET", "required": true, "detail": "expert target such as tfbs, restriction, splicing, isoform, isoform-evidence, protein-comparison, or uniprot-projection"},
                 {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path"}
             ],
             "reads": [
@@ -19000,6 +23832,42 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "description": "Render one feature-expert target from a loaded sequence to an external SVG file.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("render-feature-expert-svg")
+        }),
+        json!({
+            "id": "gene-locus prepare",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "gentle.gene_locus_evidence_preparation_request.v1; network consent and all output paths are explicit in the request"}
+            ],
+            "reads": [],
+            "effects": [
+                {"effect_kind": "may_on_success", "description": "Adds the resolved Ensembl gene sequence and derived panel to project state; their ids are nested in the typed request or derived from the resolved entry."},
+                {"fact": "artifact.written", "subject": {"literal": "declared SVG/PNG/PDF/report/receipt outputs"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Compose stored or explicitly retrieved Ensembl annotation, declared local BED/BigWig tracks, normalized TF score tracks, and shared gene-locus SVG/PNG/PDF exports with a hash-bound receipt.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("gene-locus prepare")
+        }),
+        json!({
+            "id": "PrepareGeneLocusEvidence",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "gentle.gene_locus_evidence_preparation_request.v1 operation payload; network consent and all output paths are explicit in the request"}
+            ],
+            "reads": [],
+            "effects": [
+                {"effect_kind": "may_on_success", "description": "Adds the resolved Ensembl gene sequence and derived panel to project state; their ids are nested in the typed request or derived from the resolved entry."},
+                {"fact": "artifact.written", "subject": {"literal": "declared SVG/PNG/PDF/report/receipt outputs"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Compose stored or explicitly retrieved Ensembl annotation, declared local BED/BigWig tracks, normalized TF score tracks, and shared gene-locus SVG/PNG/PDF exports with a hash-bound receipt through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("PrepareGeneLocusEvidence")
         }),
         json!({
             "id": "features tfbs-summary",
@@ -19126,6 +23994,21 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             ],
         ),
         sequence_optional_artifact_operation_descriptor(
+            "features tfbs-scan",
+            "false",
+            false,
+            "SEQ_ID",
+            "loaded sequence id when the target is not inline sequence text",
+            "optional external TFBS hit-scan JSON output path",
+            "Scan one loaded or inline sequence target for TFBS/PSSM hits.",
+            vec![
+                json!({"name": "--motif|--motifs", "required": true, "subject_kind": "other", "detail": "motif query tokens"}),
+                json!({"name": "--min-llr-bits", "required": false, "subject_kind": "other", "detail": "optional minimum log-likelihood-ratio threshold in bits"}),
+                json!({"name": "--min-llr-quantile", "required": false, "subject_kind": "other", "detail": "optional quantile threshold"}),
+                json!({"name": "--max-hits", "required": false, "subject_kind": "other", "detail": "optional maximum number of hits"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
             "ScanTfbsHits",
             "false",
             false,
@@ -19138,6 +24021,86 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "MIN_LLR_BITS", "required": false, "subject_kind": "other", "detail": "optional minimum log-likelihood-ratio threshold in bits"}),
                 json!({"name": "MIN_LLR_QUANTILE", "required": false, "subject_kind": "other", "detail": "optional quantile threshold"}),
                 json!({"name": "MAX_HITS", "required": false, "subject_kind": "other", "detail": "optional maximum number of hits"}),
+            ],
+        ),
+        json!({
+            "id": "features genomic-motif-evidence",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional loaded genome-anchored sequence target; alternative to explicit genomic intervals"},
+                {"name": "--region", "required": false, "subject_kind": "other", "detail": "one or more explicit BED-style [ID=]CHR:START..END intervals; alternative to SEQ_ID"},
+                {"name": "--motif|--motifs", "required": false, "subject_kind": "other", "detail": "required for row queries: 1-64 exact JASPAR accessions; ALL is refused; omitted with --inspect"},
+                {"name": "--inspect", "required": false, "subject_kind": "other", "detail": "regulatory-subset catalog only; --search TEXT, --catalog-offset N and --catalog-limit 1..1000; no hit payloads or project required"},
+                {"name": "--gene|--tss-id", "required": false, "subject_kind": "other", "detail": "regulatory subset: exact annotated gene ID/name or physical TSS ID; alternative to loaded sequence/interval targets, not a TF name search"},
+                {"name": "--package", "required": false, "subject_kind": "other", "detail": "optional finalized jaspar-mapping package root; otherwise GENTLE_JASPAR_GENOME_SCAN_PACKAGE is consulted"},
+                {"name": "--max-rows", "required": false, "subject_kind": "other", "detail": "bounded returned-row limit"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external gentle.genomic_motif_evidence.v1 JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "external_handoff"
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Query exact inventory-selected Parquet payloads in an optional finalized jaspar-mapping package without making DuckDB or the package a GENtle runtime dependency.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("features genomic-motif-evidence")
+        }),
+        json!({
+            "id": "QueryGenomicMotifEvidence",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "typed anchored-sequence, explicit-interval, stored-region-set, package_catalog or package_tss_windows request with motif, score, file, row, and timeout bounds"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external gentle.genomic_motif_evidence.v1 JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "external_handoff"
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Query optional precomputed full-scan or annotation-selected regulatory/TSS motif evidence through the shared read-only engine operation; neither source establishes experimental binding.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("QueryGenomicMotifEvidence")
+        }),
+        json!({
+            "id": "features promoter-cofactors", "kind": "shell_command", "mutating": "false",
+            "requires_confirmation": false,
+            "args": [{"name":"REQUEST_JSON_OR_@FILE","required":true,"subject_kind":"other","detail":"Bounded collaborator-package query; not a complete genome scan"}],
+            "reads": [], "effects": [], "precondition_expr": {"all": []},
+            "description": "Inspect or query a validated local promoter cofactor package, retaining coverage limits and original cohort statistics.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("features promoter-cofactors")
+        }),
+        json!({
+            "id": "QueryPromoterCofactors", "kind": "operation", "mutating": "false",
+            "requires_confirmation": false,
+            "args": [{"name":"REQUEST","required":true,"subject_kind":"other","detail":"Typed reduced-package query"}],
+            "reads": [], "effects": [], "precondition_expr": {"all": []},
+            "description": "Read-only promoter cofactor package query with integrity, assembly, coverage, row and runtime bounds.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("QueryPromoterCofactors")
+        }),
+        sequence_optional_artifact_operation_descriptor(
+            "features tfbs-scan",
+            "false",
+            false,
+            "SEQ_ID",
+            "loaded sequence id when the target is not inline sequence text",
+            "optional external TFBS hit-scan JSON output path",
+            "Scan one loaded or inline sequence target for TFBS/PSSM hits.",
+            vec![
+                json!({"name": "MOTIFS", "required": true, "subject_kind": "other", "detail": "motif query tokens"}),
+                json!({"name": "--range", "required": false, "subject_kind": "other", "detail": "optional scan interval START..END"}),
+                json!({"name": "--min-llr-bits", "required": false, "subject_kind": "other", "detail": "optional minimum log-likelihood-ratio threshold in bits"}),
+                json!({"name": "--min-llr-quantile", "required": false, "subject_kind": "other", "detail": "optional quantile threshold"}),
+                json!({"name": "--max-hits", "required": false, "subject_kind": "other", "detail": "optional maximum number of retained hits"}),
             ],
         ),
         optional_artifact_resource_report_descriptor(
@@ -19217,6 +24180,178 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "RMSK_INDEX_PATH", "required": true, "subject_kind": "other", "detail": "prepared repeat-index path carried by rmsk_index_path"}),
                 json!({"name": "MAX_FEATURES", "required": false, "subject_kind": "other", "detail": "optional maximum feature count"}),
                 json!({"name": "CLEAR_EXISTING", "required": false, "subject_kind": "other", "detail": "whether existing repeat features are cleared first"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "resources list-encode-ccre-sources",
+            "optional external gentle.encode_ccre_source_catalog.v1 JSON output path",
+            "List the built-in, species- and assembly-bound ENCODE SCREEN Registry V4 cCRE sources without accessing the network or local BED files.",
+            vec![
+                json!({"name": "--assembly", "required": false, "subject_kind": "other", "detail": "optional GRCh38/hg38 or GRCm38/mm10 source filter"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "resources install-encode-ccres",
+            "external BED and gentle.encode_ccre_interval_index.v1 output paths",
+            "Explicitly download or copy one catalog-selected SCREEN Registry V4 ELS BED and build its content-bound sparse interval index.",
+            vec![
+                json!({"name": "SOURCE_ID", "required": true, "subject_kind": "other", "detail": "exact built-in source id selecting species, assembly, Registry version, and subset"}),
+                json!({"name": "--input", "required": false, "subject_kind": "other", "detail": "optional local path or URL override"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "resources prepare-encode-ccre-index",
+            "external gentle.encode_ccre_interval_index.v1 output path",
+            "Build a compact content-bound interval index for an existing local SCREEN Registry V4 ELS BED.",
+            vec![
+                json!({"name": "SOURCE_ID", "required": true, "subject_kind": "other", "detail": "exact built-in source id selecting species, assembly, Registry version, and subset"}),
+                json!({"name": "BED_PATH", "required": true, "subject_kind": "other", "detail": "local six-column SCREEN Registry V4 ELS BED"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "features encode-ccre-overlaps",
+            "false",
+            false,
+            "SEQ_ID",
+            "loaded genome-anchored sequence id",
+            "optional external gentle.encode_ccre_overlap.v1 JSON output path",
+            "Query a content-bound local SCREEN Registry V4 cCRE index, rejecting assembly/species mismatches before projecting overlaps into sequence-local coordinates.",
+            vec![
+                json!({"name": "INDEX_PATH", "required": true, "subject_kind": "other", "detail": "prepared SCREEN cCRE interval-index path"}),
+                json!({"name": "--bed", "required": false, "subject_kind": "other", "detail": "optional relocated BED override, still verified against the index digest"}),
+                json!({"name": "--range", "required": false, "subject_kind": "other", "detail": "optional sequence-local interval"}),
+                json!({"name": "--class", "required": false, "subject_kind": "other", "detail": "optional pELS/dELS filter"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "QueryEncodeCcreOverlaps",
+            "false",
+            false,
+            "SEQ_ID",
+            "loaded genome-anchored sequence id carried by seq_id",
+            "optional external gentle.encode_ccre_overlap.v1 JSON output path carried by path",
+            "Query content-bound local SCREEN Registry V4 cCRE overlaps through the shared read-only engine operation.",
+            vec![
+                json!({"name": "INDEX_PATH", "required": true, "subject_kind": "other", "detail": "prepared SCREEN cCRE interval-index path carried by index_path"}),
+                json!({"name": "BED_PATH", "required": false, "subject_kind": "other", "detail": "optional relocated BED override carried by bed_path"}),
+                json!({"name": "CLASSES", "required": false, "subject_kind": "other", "detail": "optional exact cCRE class filters"}),
+                json!({"name": "LIMIT", "required": false, "subject_kind": "other", "detail": "optional maximum returned rows"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "features materialize-encode-ccres",
+            "true",
+            false,
+            "SEQ_ID",
+            "loaded genome-anchored sequence id receiving regulatory_region features",
+            "optional external gentle.encode_ccre_materialization.v1 JSON output path",
+            "Materialize verified SCREEN Registry V4 cCRE overlaps as ordinary generated regulatory_region features.",
+            vec![
+                json!({"name": "INDEX_PATH", "required": true, "subject_kind": "other", "detail": "prepared SCREEN cCRE interval-index path"}),
+                json!({"name": "--bed", "required": false, "subject_kind": "other", "detail": "optional relocated BED override, still verified against the index digest"}),
+                json!({"name": "--class", "required": false, "subject_kind": "other", "detail": "optional pELS/dELS filter"}),
+                json!({"name": "--max-features", "required": false, "subject_kind": "other", "detail": "bounded maximum generated feature count"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "MaterializeEncodeCcreFeatures",
+            "true",
+            false,
+            "SEQ_ID",
+            "loaded genome-anchored sequence id carried by seq_id",
+            "optional external gentle.encode_ccre_materialization.v1 JSON output path carried by path",
+            "Materialize verified SCREEN Registry V4 cCRE overlaps through the shared engine operation.",
+            vec![
+                json!({"name": "INDEX_PATH", "required": true, "subject_kind": "other", "detail": "prepared SCREEN cCRE interval-index path carried by index_path"}),
+                json!({"name": "BED_PATH", "required": false, "subject_kind": "other", "detail": "optional relocated BED override carried by bed_path"}),
+                json!({"name": "CLASSES", "required": false, "subject_kind": "other", "detail": "optional exact cCRE class filters"}),
+                json!({"name": "MAX_FEATURES", "required": false, "subject_kind": "other", "detail": "bounded maximum generated feature count"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "resources list-ensembl-regulation-sources",
+            "optional external gentle.ensembl_regulation_source_catalog.v1 JSON output path",
+            "List pinned, species- and assembly-bound Ensembl Regulation annotation sources without accessing the network or local interval files.",
+            vec![
+                json!({"name": "--assembly", "required": false, "subject_kind": "other", "detail": "optional GRCh38/hg38 or GRCm39/mm39 source filter"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "resources install-ensembl-regulatory-features",
+            "external normalized intervals and gentle.ensembl_regulation_interval_index.v1 output paths",
+            "Explicitly fetch the pinned Ensembl Regulation annotation API snapshot, normalize it, and build a content-bound sparse interval index; activity and primary signals remain separate.",
+            vec![
+                json!({"name": "SOURCE_ID", "required": true, "subject_kind": "other", "detail": "exact built-in source id selecting release, species, and assembly"}),
+                json!({"name": "--input", "required": false, "subject_kind": "other", "detail": "optional complete annotation API JSON response for offline installation"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "resources prepare-ensembl-regulation-index",
+            "external gentle.ensembl_regulation_interval_index.v1 output path",
+            "Build a compact content-bound sparse index for an existing GENtle-normalized Ensembl Regulation interval snapshot.",
+            vec![
+                json!({"name": "SOURCE_ID", "required": true, "subject_kind": "other", "detail": "exact built-in source id selecting release, species, and assembly"}),
+                json!({"name": "INTERVALS_PATH", "required": true, "subject_kind": "other", "detail": "normalized Ensembl Regulation interval TSV with bound source header"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "features ensembl-regulation-overlaps",
+            "false",
+            false,
+            "SEQ_ID",
+            "loaded genome-anchored sequence id",
+            "optional external gentle.ensembl_regulation_overlap.v1 JSON output path",
+            "Query a content-bound local Ensembl Regulation index, rejecting release/species/assembly mismatches before projecting annotation into sequence-local coordinates.",
+            vec![
+                json!({"name": "INDEX_PATH", "required": true, "subject_kind": "other", "detail": "prepared Ensembl Regulation interval-index path"}),
+                json!({"name": "--intervals", "required": false, "subject_kind": "other", "detail": "optional relocated interval snapshot, still verified against the index digest"}),
+                json!({"name": "--range", "required": false, "subject_kind": "other", "detail": "optional sequence-local interval"}),
+                json!({"name": "--feature-type", "required": false, "subject_kind": "other", "detail": "optional promoter/enhancer/open_chromatin_region/ctcf/emar filter"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "QueryEnsemblRegulationOverlaps",
+            "false",
+            false,
+            "SEQ_ID",
+            "loaded genome-anchored sequence id carried by seq_id",
+            "optional external gentle.ensembl_regulation_overlap.v1 JSON output path carried by path",
+            "Query content-bound local Ensembl Regulation overlaps through the shared read-only engine operation.",
+            vec![
+                json!({"name": "INDEX_PATH", "required": true, "subject_kind": "other", "detail": "prepared Ensembl Regulation interval-index path carried by index_path"}),
+                json!({"name": "INTERVALS_PATH", "required": false, "subject_kind": "other", "detail": "optional relocated interval snapshot carried by intervals_path"}),
+                json!({"name": "FEATURE_TYPES", "required": false, "subject_kind": "other", "detail": "optional exact feature-type filters"}),
+                json!({"name": "LIMIT", "required": false, "subject_kind": "other", "detail": "optional maximum returned rows"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "features materialize-ensembl-regulation",
+            "true",
+            false,
+            "SEQ_ID",
+            "loaded genome-anchored sequence id receiving regulatory_region features",
+            "optional external gentle.ensembl_regulation_materialization.v1 JSON output path",
+            "Materialize verified Ensembl Regulation overlaps as ordinary generated regulatory_region features without claiming biosample activity.",
+            vec![
+                json!({"name": "INDEX_PATH", "required": true, "subject_kind": "other", "detail": "prepared Ensembl Regulation interval-index path"}),
+                json!({"name": "--intervals", "required": false, "subject_kind": "other", "detail": "optional relocated interval snapshot, still verified against the index digest"}),
+                json!({"name": "--feature-type", "required": false, "subject_kind": "other", "detail": "optional regulatory feature-type filter"}),
+                json!({"name": "--max-features", "required": false, "subject_kind": "other", "detail": "bounded maximum generated feature count"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "MaterializeEnsemblRegulationFeatures",
+            "true",
+            false,
+            "SEQ_ID",
+            "loaded genome-anchored sequence id carried by seq_id",
+            "optional external gentle.ensembl_regulation_materialization.v1 JSON output path carried by path",
+            "Materialize verified Ensembl Regulation overlaps through the shared engine operation.",
+            vec![
+                json!({"name": "INDEX_PATH", "required": true, "subject_kind": "other", "detail": "prepared Ensembl Regulation interval-index path carried by index_path"}),
+                json!({"name": "INTERVALS_PATH", "required": false, "subject_kind": "other", "detail": "optional relocated interval snapshot carried by intervals_path"}),
+                json!({"name": "FEATURE_TYPES", "required": false, "subject_kind": "other", "detail": "optional exact feature-type filters"}),
+                json!({"name": "MAX_FEATURES", "required": false, "subject_kind": "other", "detail": "bounded maximum generated feature count"}),
             ],
         ),
         optional_artifact_resource_report_descriptor(
@@ -19334,7 +24469,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 {"name": "--transcript-id", "required": false, "detail": "optional transcript-id filter"},
                 {"name": "--upstream-bp", "required": false, "detail": "promoter window upstream length"},
                 {"name": "--downstream-bp", "required": false, "detail": "promoter window downstream length"},
-                {"name": "--collapse", "required": false, "detail": "transcript or gene promoter-window collapse mode"}
+                {"name": "--collapse", "required": false, "detail": "transcript, gene, or tss-cluster[:TOLERANCE_BP] promoter-window collapse mode"}
             ],
             "reads": [
                 {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
@@ -19360,7 +24495,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 {"name": "TRANSCRIPT_ID", "required": false, "detail": "optional transcript-id filter carried by transcript_id"},
                 {"name": "UPSTREAM_BP", "required": false, "detail": "promoter window upstream length carried by upstream_bp"},
                 {"name": "DOWNSTREAM_BP", "required": false, "detail": "promoter window downstream length carried by downstream_bp"},
-                {"name": "COLLAPSE_MODE", "required": false, "detail": "transcript or gene promoter-window collapse mode carried by collapse_mode"}
+                {"name": "COLLAPSE_MODE", "required": false, "detail": "transcript, gene, or tss-cluster[:TOLERANCE_BP] promoter-window collapse mode carried by collapse_mode"}
             ],
             "reads": [
                 {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
@@ -19451,6 +24586,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "args": [
                 {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence carrying a variant feature"},
                 {"name": "--allele", "required": true, "detail": "reference or alternate allele choice"},
+                {"name": "--alternate-base", "required": false, "detail": "explicit alternate SNV base; required when vcf_alt lists more than one candidate"},
                 {"name": "OUTPUT_ID", "required": false, "subject_kind": "sequence", "detail": "explicit sequence id supplied with --output-id; required for deterministic effect verification"}
             ],
             "reads": [
@@ -19468,7 +24604,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                     {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
                 ]
             },
-            "description": "Create one reference or alternate single-allele sequence from a variant-bearing sequence.",
+            "description": "Create one reference or explicit alternate single-allele sequence from a variant-bearing sequence; multiallelic variants require --alternate-base.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("variant materialize-allele")
         }),
@@ -19480,6 +24616,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "args": [
                 {"name": "INPUT_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence carrying a variant feature, carried by the operation input field"},
                 {"name": "ALLELE", "required": true, "detail": "reference or alternate allele choice carried by the operation payload"},
+                {"name": "ALTERNATE_ALLELE", "required": false, "detail": "explicit alternate SNV base carried by alternate_allele; required when vcf_alt lists more than one candidate"},
                 {"name": "OUTPUT_ID", "required": false, "subject_kind": "sequence", "detail": "explicit sequence id carried by the operation payload; required for deterministic effect verification"}
             ],
             "reads": [
@@ -19855,7 +24992,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         ),
         candidate_set_delete_descriptor(
             "candidates delete",
-            "Delete one persisted candidate set; deletion has no positive hard effect until absence effects are modeled.",
+            "Delete one persisted candidate set and verify that the closed-world candidate-set fact is absent.",
         ),
         candidate_set_delete_descriptor(
             "DeleteCandidateSet",
@@ -19936,7 +25073,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         ),
         guide_set_delete_descriptor(
             "guides delete",
-            "Delete one persisted guide set; deletion has no positive hard effect until absence effects are modeled.",
+            "Delete one persisted guide set and verify that the closed-world guide-set fact is absent.",
         ),
         guide_set_delete_descriptor(
             "DeleteGuideSet",
@@ -20125,6 +25262,118 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "description": "Render one feature-expert target from a loaded sequence to an external SVG file through the shared engine operation.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("RenderFeatureExpertSvg")
+        }),
+        json!({
+            "id": "InspectCrypticSplicingScreen",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by request.seq_id"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external JSON output path carried by path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Inspect or export one bounded cryptic-splicing screen through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("InspectCrypticSplicingScreen")
+        }),
+        json!({
+            "id": "RenderCrypticSplicingScreenSvg",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by request.seq_id"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path carried by path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Render one bounded cryptic-splicing screen to an external SVG through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("RenderCrypticSplicingScreenSvg")
+        }),
+        json!({
+            "id": "InspectCrypticSplicingEvidenceOverlay",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by request.screen_request.seq_id"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external JSON output path carried by path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Inspect a cryptic-splicing screen plus content-bound RNA junction evidence through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("InspectCrypticSplicingEvidenceOverlay")
+        }),
+        json!({
+            "id": "InspectCrypticSplicingProteinProjection",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by request.screen_request.seq_id"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external JSON output path carried by path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Inspect a cryptic-splicing screen plus a digest-bound UniProt feature projection through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("InspectCrypticSplicingProteinProjection")
         }),
         isoform_panel_import_descriptor(
             "panels import-isoform",
@@ -20587,6 +25836,93 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "primer_design",
             "Generate and persist a ranked insertion-primer design report through the shared engine operation.",
         ),
+        transcript_capture_descriptor("DesignTranscriptCapturePool"),
+        transcript_capture_descriptor("primers design-transcript-capture-pool"),
+        json!({
+            "id": "primers design-terminal-exon-rt-pool",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON", "required": true, "detail": "gentle.terminal_exon_rt_primer_pool_request.v1 payload or @file"},
+                {"name": "TARGET_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "one loaded annotated sequence id from targets[]; repeat readiness checks for every ordered target"},
+                {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "explicit terminal-exon RT-primer pool report id carried by the request; required for deterministic effect verification"}
+                ,{"name": "TARGET_GENOME_ID", "required": false, "subject_kind": "prepared_reference", "detail": "prepared genomic-DNA index named by optional genomic_specificity; when present, GENtle runs exhaustive blastn-short checks and binds the report to the database content fingerprint"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "report.exists",
+                    "subject": {"arg": "REPORT_ID"},
+                    "report_kind": "terminal_exon_rt_primer_pool",
+                    "equals": "terminal_exon_rt_primer_pool",
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}
+                ]
+            },
+            "description": "Compose Splicing Expert transcript resolution, mature-transcript geometry, fixed-adapter oligo construction, and shared complementarity metrics into a persisted ordered RT-primer pool near explicit terminal-exon starts.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers design-terminal-exon-rt-pool")
+        }),
+        json!({
+            "id": "DesignTerminalExonRtPrimerPool",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "TARGET_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "one loaded annotated sequence id from request.targets; repeat readiness checks for every ordered target"},
+                {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "explicit report id carried by the operation payload; required for deterministic effect verification"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "report.exists",
+                    "subject": {"arg": "REPORT_ID"},
+                    "report_kind": "terminal_exon_rt_primer_pool",
+                    "equals": "terminal_exon_rt_primer_pool",
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}
+                ]
+            },
+            "description": "Compose existing engine-owned transcript, exon-coordinate, and oligo-scoring services into one persisted ordered terminal-exon RT-primer-pool report.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("DesignTerminalExonRtPrimerPool")
+        }),
+        json!({
+            "id": "primer_reports",
+            "kind": "operation",
+            "mutating": "external",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "FAMILY", "required": true, "subject_kind": "other", "detail": "MCP family: primer, qpcr, transcript_assay_panel, or transcript_assay_fallback"},
+                {"name": "ACTION", "required": true, "subject_kind": "other", "detail": "MCP action: list, show, or export"},
+                {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "Required for show/export; execution_id for a fallback. Not supplied for list."},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "MCP path, required only for export"},
+                {"name": "CONFIRM", "required": false, "subject_kind": "other", "detail": "MCP confirm=true is required only for export; list/show need no approval"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "description": "Show/export read the selected family report; list has no individual report prerequisite."}
+            ],
+            "effects": [
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "may_on_success", "description": "Only action=export writes an external report file, after explicit confirmation; list/show do not write."}
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Dispatch stored-report list/show/export through fixed shared shell routes without mutating project state. The dispatcher has no unconditional project precondition; use the selected shell route for family/action-specific report readiness. Confirmation metadata conservatively covers export, not list/show.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primer_reports")
+        }),
         json!({
             "id": "primers list-reports",
             "kind": "operation",
@@ -20596,7 +25932,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "reads": [],
             "effects": [],
             "precondition_expr": {"all": []},
-            "description": "List persisted primer-pair design reports.",
+            "description": "List persisted primer-pair design, terminal-exon RT-primer-pool, and primer-specificity reports.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("primers list-reports")
         }),
@@ -20606,18 +25942,20 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "mutating": "false",
             "requires_confirmation": false,
             "args": [
-                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted primer-design report id"}
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted primer-design, terminal-exon RT-primer-pool, or primer-specificity report id"}
             ],
             "reads": [
-                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_design"}
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}}
             ],
             "effects": [],
             "precondition_expr": {
-                "all": [
-                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_design"}
+                "any": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_design"},
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "terminal_exon_rt_primer_pool"},
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_specificity"}
                 ]
             },
-            "description": "Inspect one persisted primer-pair design report.",
+            "description": "Inspect one persisted primer-pair design, terminal-exon RT-primer-pool, or primer-specificity report.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("primers show-report")
         }),
@@ -20627,11 +25965,11 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "mutating": "false",
             "requires_confirmation": false,
             "args": [
-                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted primer-design report id"},
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted primer-design, terminal-exon RT-primer-pool, or primer-specificity report id"},
                 {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external JSON output path"}
             ],
             "reads": [
-                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_design"}
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}}
             ],
             "effects": [
                 {
@@ -20641,11 +25979,13 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 }
             ],
             "precondition_expr": {
-                "all": [
-                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_design"}
+                "any": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_design"},
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "terminal_exon_rt_primer_pool"},
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_specificity"}
                 ]
             },
-            "description": "Export one persisted primer-pair design report to an external JSON file.",
+            "description": "Export one persisted primer-pair design, terminal-exon RT-primer-pool, or primer-specificity report to an external JSON file.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("primers export-report")
         }),
@@ -20684,6 +26024,285 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "DesignQpcrAssays",
             "qpcr_design",
             "Generate and persist a ranked qPCR assay design report through the shared engine operation.",
+        ),
+        transcript_assay_cdna_similarity_map_descriptor(
+            "BuildTranscriptAssayCdnaSimilarityMap",
+            "Search a prepared whole-cDNA resource once per distinct mature-cDNA class and materialize advisory, content-bound similarity intervals for bounded primer planning.",
+        ),
+        transcript_assay_cdna_similarity_map_descriptor(
+            "primers build-transcript-assay-cdna-similarity-map",
+            "Build the same advisory, content-bound cDNA-similarity intervals through the shared shell route.",
+        ),
+        primer_group_target_descriptor(
+            "DesignPrimerGroupTarget",
+            "Align related loaded sequences, derive exact common primer intervals, run bounded primer design, and test every accepted pair against every member.",
+        ),
+        primer_group_target_descriptor(
+            "primers design-group-target",
+            "Run the same bounded related-sequence common-primer design from a complete JSON request.",
+        ),
+        primer_specificity_alignment_html_descriptor(
+            "ExportPrimerSpecificityAlignmentHtml",
+            "Render persisted full-primer alignments through the shared engine operation without rerunning BLAST or alignment.",
+        ),
+        transcript_assay_specificity_redesign_descriptor(
+            "RedesignTranscriptAssaySpecificityFailures",
+            "Retain passing assays and propose content-bound replacements, or a bounded infeasibility disposition, through the shared engine operation.",
+        ),
+        json!({
+            "id": "DesignTranscriptAssayPanel",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence carrying transcript annotations"},
+                {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "explicit transcript assay panel report id carried by the operation payload; required for deterministic effect verification"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "report.exists",
+                    "subject": {"arg": "REPORT_ID"},
+                    "report_kind": "transcript_assay_panel",
+                    "equals": "transcript_assay_panel",
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Generate and persist an exact-cDNA-equivalence-aware transcript assay panel through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("DesignTranscriptAssayPanel")
+        }),
+        json!({
+            "id": "DesignTranscriptAssayPanelWithFallback",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence named by the exact nested strict operation"},
+                {"name": "FALLBACK_POLICY", "required": true, "subject_kind": "other", "detail": "versioned pre-approved informative-partial policy or explicit mode=never"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "report.exists",
+                    "report_kind": "transcript_assay_fallback_execution",
+                    "equals": "transcript_assay_fallback_execution",
+                    "effect_kind": "may_on_success",
+                    "description": "Persists a deterministic execution audit when the strict operation succeeds or an eligible fallback attempt is recorded."
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Run an unchanged strict transcript-panel operation and submit a separate budgeted informative partial only after machine-typed strict coverage infeasibility and prior policy approval.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("DesignTranscriptAssayPanelWithFallback")
+        }),
+        json!({
+            "id": "primers inspect-transcript-assay-feasibility",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "OPERATION_JSON", "required": true, "subject_kind": "other", "detail": "exact DesignTranscriptAssayPanel operation payload to assess without changing it"},
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded annotated sequence named inside the operation payload"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional feasibility-report JSON path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Inspect deterministic annotation and end-window feasibility for an exact endpoint isoform-matrix operation without running Primer3.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers inspect-transcript-assay-feasibility")
+        }),
+        json!({
+            "id": "transcript_assay_feasibility",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "OPERATION_JSON", "required": true, "subject_kind": "other", "detail": "exact DesignTranscriptAssayPanel operation payload to assess without changing it"},
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded annotated sequence named inside the operation payload"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Inspect deterministic annotation and end-window feasibility through the MCP projection without running Primer3.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("transcript_assay_feasibility")
+        }),
+        json!({
+            "id": "primers inspect-gene-isoform-study-reuse",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "BATCH_JSON", "required": true, "subject_kind": "other", "detail": "approved gene isoform-assay workflow batch"},
+                {"name": "CHECKPOINT_DIR", "required": true, "subject_kind": "other", "detail": "private checkpoint directory to inspect"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional reuse-proposal JSON path"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Inspect approved-operation checkpoints and emit an exact-prefix reuse proposal without importing state or running Primer3.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers inspect-gene-isoform-study-reuse")
+        }),
+        json!({
+            "id": "PlanGeneIsoformAssayStudy",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "content-bound gentle.gene_isoform_assay_study_plan_request.v1 payload"},
+                {"name": "ISOFORM_EVIDENCE_PATH", "required": true, "subject_kind": "other", "detail": "exported gene isoform-evidence report named by the request"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional study-plan JSON path"},
+                {"name": "WORKFLOW_PATH", "required": false, "subject_kind": "other", "detail": "optional exact ordered operation workflow for separate approval"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Recommend a deterministic gene isoform-assay study profile and emit exact ordered DesignTranscriptAssayPanel payloads without executing them.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("PlanGeneIsoformAssayStudy")
+        }),
+        json!({
+            "id": "ComposeGeneTranscriptAssayRoutine",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "ISOFORM_EVIDENCE_PATH", "required": true, "subject_kind": "other", "detail": "exported gentle.gene_isoform_evidence.v1/v2 JSON path"},
+                {"name": "PANEL_REPORT_IDS", "required": false, "subject_kind": "report", "detail": "persisted transcript assay panel report ids"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Compose an immutable gene-level evidence and assay review manifest without rerunning design or specificity.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ComposeGeneTranscriptAssayRoutine")
+        }),
+        json!({
+            "id": "BuildExperimentalAssayHandoff",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "PANEL_REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted transcript assay panel report id"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external handoff JSON path"},
+                {"name": "VIRTUAL_GEL_SVG_PATH", "required": false, "subject_kind": "other", "detail": "optional GENtle-attributed one-primer-pair-per-lane virtual-gel SVG path"},
+                {"name": "VIRTUAL_GEL_LADDERS", "required": false, "subject_kind": "other", "detail": "optional repeated DNA ladder names shared across all primer-pair lanes"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "PANEL_REPORT_ID"}, "equals": "transcript_assay_panel"}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "PANEL_REPORT_ID"}, "equals": "transcript_assay_panel"}
+                ]
+            },
+            "description": "Project one persisted transcript assay panel into deterministic per-pair experimental cards, an order/readiness table, and an optional shared-condition virtual gel.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("BuildExperimentalAssayHandoff")
+        }),
+        optional_artifact_inspection_operation_descriptor(
+            "SearchPrimerBank",
+            "optional external gentle.primerbank_search.v1 JSON output path",
+            "Search individual PrimerBank records through the shared read-only engine operation using the official public HTML form or a saved response.",
+            vec![
+                json!({"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "typed PrimerBank query, query-kind, and species selector; results report matched, mismatch, unresolved, or not_requested"}),
+                json!({"name": "SOURCE_HTML_PATH", "required": false, "subject_kind": "other", "detail": "optional saved PrimerBank HTML response for offline/reproducible parsing"}),
+            ],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "primers primerbank search",
+            "optional external gentle.primerbank_search.v1 JSON output path",
+            "Search individual PrimerBank records through the official public HTML form or parse a saved response without mirroring the database.",
+            vec![
+                json!({"name": "QUERY", "required": true, "subject_kind": "other", "detail": "gene symbol, accession, NCBI id, PrimerBank id, or keyword"}),
+                json!({"name": "QUERY_KIND", "required": false, "subject_kind": "other", "detail": "PrimerBank search-field selector"}),
+                json!({"name": "SPECIES", "required": false, "subject_kind": "other", "detail": "human, mouse, or all"}),
+                json!({"name": "SOURCE_HTML_PATH", "required": false, "subject_kind": "other", "detail": "optional saved PrimerBank HTML response for offline/reproducible parsing"}),
+            ],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "primers primerbank show",
+            "optional external gentle.primerbank_search.v1 JSON output path",
+            "Look up one PrimerBank id through the same typed, policy-aware search adapter.",
+            vec![
+                json!({"name": "PRIMERBANK_ID", "required": true, "subject_kind": "other", "detail": "PrimerBank pair identifier"}),
+                json!({"name": "EXPECTED_SPECIES", "required": false, "subject_kind": "other", "detail": "optional human, mouse, or all species selector and response cross-check"}),
+                json!({"name": "SOURCE_HTML_PATH", "required": false, "subject_kind": "other", "detail": "optional saved PrimerBank HTML response for offline/reproducible parsing"}),
+            ],
+        ),
+        json!({
+            "id": "primers primerbank test-cdna",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence carrying transcript annotations"},
+                {"name": "FEATURE_ID", "required": true, "subject_kind": "other", "detail": "zero-based source transcript/gene feature index"},
+                {"name": "PRIMERBANK_ID", "required": true, "subject_kind": "other", "detail": "PrimerBank pair identifier"},
+                {"name": "EXPECTED_SPECIES", "required": true, "subject_kind": "other", "detail": "required human or mouse species cross-check against both the returned PrimerBank record and any organism annotation on the selected sequence"},
+                {"name": "SOURCE_HTML_PATH", "required": false, "subject_kind": "other", "detail": "optional saved PrimerBank HTML response"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external gentle.primerbank_cdna_test.v1 JSON path"},
+                {"name": "SVG_PATH", "required": false, "subject_kind": "other", "detail": "optional external transcript-map SVG path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {"effect_kind": "may_on_success", "description": "May write optional cDNA assay JSON/SVG artifacts; the project remains unchanged."}
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Retrieve one PrimerBank pair, cross-check catalog and annotated target species, and test it through GENtle's existing transcript-derived cDNA PCR engine without implying genomic specificity or experimental validation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers primerbank test-cdna")
+        }),
+        external_primer_pair_import_descriptor(
+            "ImportExternalPrimerPairs",
+            "Import a provenance-bearing external primer-pair batch, canonicalize sequence-derived identities, and evaluate every unique pair through GENtle's shared cDNA, QC, carryover, specificity, map, and optional product-gel paths.",
+        ),
+        external_primer_pair_import_descriptor(
+            "primers import-external-pairs",
+            "Import a JSON or TSV external primer-pair batch and evaluate every unique pair without treating source targeting or validation claims as biological evidence.",
+        ),
+        primer_variant_screen_descriptor(
+            "ScreenPrimerVariants",
+            "Screen explicit assembly-aware primer and probe binding geometry against one local variant resource, preserving source attribution and conservative frequency semantics.",
+        ),
+        primer_variant_screen_descriptor(
+            "primers screen-variants",
+            "Screen explicit assembly-aware primer and probe binding geometry against one local VCF, VCF.gz, or prepared manifest and optionally emit handoff-ready per-pair evidence.",
         ),
         cdna_assay_test_descriptor(
             "TestCdnaPcr",
@@ -20783,11 +26402,296 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("primers export-qpcr-report")
         }),
+        json!({
+            "id": "primers design-transcript-assay-panel",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence carrying transcript annotations"},
+                {"name": "FEATURE_ID", "required": true, "subject_kind": "feature", "detail": "zero-based transcript/gene feature used to resolve the splicing group"},
+                {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "explicit transcript assay panel report id; required for deterministic effect verification"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "report.exists",
+                    "subject": {"arg": "REPORT_ID"},
+                    "report_kind": "transcript_assay_panel",
+                    "equals": "transcript_assay_panel",
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Generate and persist an exact-cDNA-equivalence-aware transcript assay panel; require_all is the default coverage policy.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers design-transcript-assay-panel")
+        }),
+        json!({
+            "id": "primers plan-gene-isoform-study",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "REQUEST_JSON", "required": true, "subject_kind": "other", "detail": "gentle.gene_isoform_assay_study_plan_request.v1 JSON or @file"},
+                {"name": "NORMALIZED_REQUEST_PATH", "required": false, "subject_kind": "other", "detail": "optional content-bound normalized request output path"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional study-plan JSON output path"},
+                {"name": "WORKFLOW_PATH", "required": false, "subject_kind": "other", "detail": "optional exact ordered operation workflow output path"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Normalize and content-bind a gene isoform-assay request, returning the normalized request itself for --normalize-only, or recommend a study profile and emit exact ordered assay operations without executing them.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers plan-gene-isoform-study")
+        }),
+        json!({
+            "id": "primers execute-gene-isoform-study-workflow",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "PLAN_JSON", "required": true, "subject_kind": "other", "detail": "gentle.gene_isoform_assay_study_plan.v1 JSON or @file carrying approved_workflow_sha256"},
+                {"name": "WORKFLOW_JSON", "required": true, "subject_kind": "other", "detail": "exact emitted workflow JSON or @file whose bytes and operation batch must match the plan"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Verify an emitted gene isoform-assay workflow against its approved plan byte digest and ordered-operation digest, then execute that exact batch.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers execute-gene-isoform-study-workflow")
+        }),
+        json!({
+            "id": "primers compose-gene-isoform-study-workflow-batch",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON", "required": true, "subject_kind": "other", "detail": "gentle.gene_isoform_assay_study_workflow_batch_request.v1 JSON or @file listing ordered plan/workflow path pairs"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Validate all approved plan/workflow pairs and return one deterministic, content-bound multi-study second-stage approval basis without executing operations.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers compose-gene-isoform-study-workflow-batch")
+        }),
+        json!({
+            "id": "primers execute-gene-isoform-study-workflow-batch",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "BATCH_JSON", "required": true, "subject_kind": "other", "detail": "gentle.gene_isoform_assay_study_workflow_batch.v1 JSON or @file emitted by the compose route"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Prevalidate every content-bound plan/workflow pair, then execute the exact workflows in approved order inside one state-bound command.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers execute-gene-isoform-study-workflow-batch")
+        }),
+        json!({
+            "id": "primers publish-gene-isoform-study",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "REQUEST_PATH", "required": true, "subject_kind": "other", "detail": "gentle.gene_isoform_assay_publication_request.v1 JSON path"},
+                {"name": "OUTPUT_DIRECTORY", "required": true, "subject_kind": "other", "detail": "output directory for the canonical report and declared projections"},
+                {"name": "PROFILE", "required": false, "subject_kind": "other", "detail": "optional GENtle-declared presentation profile id"},
+                {"name": "BLOCKS", "required": false, "subject_kind": "other", "detail": "optional ordered subset of GENtle-declared presentation block ids"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_DIRECTORY"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Project immutable, content-addressed assay reports into GENtle-declared HTML, print/PDF, and order-sheet artifacts without changing scientific content.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers publish-gene-isoform-study")
+        }),
+        json!({
+            "id": "primers compose-gene-assay-routine",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON", "required": true, "subject_kind": "other", "detail": "GeneTranscriptAssayRoutineRequest JSON or @file"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external JSON output path"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Compose an immutable gene-level evidence and assay review manifest without rerunning design or specificity.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers compose-gene-assay-routine")
+        }),
+        json!({
+            "id": "primers experimental-handoff",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "PANEL_REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted transcript assay panel report id"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external handoff JSON path"},
+                {"name": "GEL_SVG", "required": false, "subject_kind": "other", "detail": "optional GENtle-attributed one-primer-pair-per-lane virtual-gel SVG path"},
+                {"name": "GEL_LADDER", "required": false, "subject_kind": "other", "detail": "optional repeatable DNA ladder name shared across the comparison"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "PANEL_REPORT_ID"}, "equals": "transcript_assay_panel"}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "PANEL_REPORT_ID"}, "equals": "transcript_assay_panel"}
+                ]
+            },
+            "description": "Build deterministic experimental assay cards, an order/readiness table, and an optional shared-condition virtual gel from a persisted transcript assay panel.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers experimental-handoff")
+        }),
+        json!({
+            "id": "primers list-transcript-assay-panels",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "List persisted transcript assay panel reports.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers list-transcript-assay-panels")
+        }),
+        json!({
+            "id": "primers show-transcript-assay-panel",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted transcript assay panel report id"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "transcript_assay_panel"}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "transcript_assay_panel"}
+                ]
+            },
+            "description": "Inspect one persisted transcript assay panel report.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers show-transcript-assay-panel")
+        }),
+        json!({
+            "id": "primers export-transcript-assay-panel",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted transcript assay panel report id"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external JSON output path"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "transcript_assay_panel"}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "transcript_assay_panel"}
+                ]
+            },
+            "description": "Export one persisted transcript assay panel report to an external JSON file.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers export-transcript-assay-panel")
+        }),
+        json!({
+            "id": "primers list-transcript-assay-fallbacks",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "List persisted strict/fallback transcript-assay execution audits.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers list-transcript-assay-fallbacks")
+        }),
+        json!({
+            "id": "primers show-transcript-assay-fallback",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "EXECUTION_ID", "required": true, "subject_kind": "report", "detail": "persisted transcript assay fallback execution id"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "EXECUTION_ID"}, "equals": "transcript_assay_fallback_execution"}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "EXECUTION_ID"}, "equals": "transcript_assay_fallback_execution"}
+                ]
+            },
+            "description": "Inspect the preserved strict failure/success and linked informative fallback outcome.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers show-transcript-assay-fallback")
+        }),
+        json!({
+            "id": "primers export-transcript-assay-fallback",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "EXECUTION_ID", "required": true, "subject_kind": "report", "detail": "persisted transcript assay fallback execution id"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external JSON output path"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "EXECUTION_ID"}, "equals": "transcript_assay_fallback_execution"}
+            ],
+            "effects": [
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "EXECUTION_ID"}, "equals": "transcript_assay_fallback_execution"}
+                ]
+            },
+            "description": "Export one strict/fallback transcript-assay execution audit without rerunning design.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers export-transcript-assay-fallback")
+        }),
         report_export_any_kind_operation_descriptor(
             "ExportPrimerDesignReport",
             &["primer_design", "qpcr_design"],
             "external JSON output path carried by the operation payload",
             "Export one persisted primer or qPCR design report to an external JSON file through the shared engine operation.",
+        ),
+        report_export_any_kind_operation_descriptor(
+            "ExportTerminalExonRtPrimerPoolReport",
+            &["terminal_exon_rt_primer_pool"],
+            "external JSON output path carried by the operation payload",
+            "Export one persisted terminal-exon RT-primer pool report to an external JSON file through the shared engine operation.",
         ),
         json!({
             "id": "primers prepare-restriction-cloning",
@@ -21330,6 +27234,40 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "--transcript-fasta", "required": true, "subject_kind": "other", "detail": "transcript FASTA/FASTA.GZ input path; may be repeated"}),
             ],
         ),
+        json!({
+            "id": "rna-reads allele-hash-screen",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                json!({"name": "--gene", "required": true, "subject_kind": "other", "detail": "target gene symbol"}),
+                json!({"name": "--transcript-fasta", "required": true, "subject_kind": "other", "detail": "local transcript FASTA input path"}),
+                json!({"name": "--variant-table", "required": false, "subject_kind": "other", "detail": "transcript-coordinate TSV variant table; alternative to --vcf plus --transcript-map"}),
+                json!({"name": "--read-file", "required": false, "subject_kind": "other", "detail": "FASTA/FASTQ read input path; may be repeated and is required when Salmon selectors are used"}),
+                json!({"name": "--read-id-allowlist", "required": false, "subject_kind": "other", "detail": "optional read id allowlist path"}),
+                json!({"name": "--from-rna-report", "required": false, "subject_kind": "report", "detail": "persisted RNA-read report whose target-gene-aligned retained reads are screened directly"}),
+                json!({"name": "--salmon-unmapped-names", "required": false, "subject_kind": "other", "detail": "Salmon unmapped_names path used as an ID selector over explicit read inputs"}),
+                json!({"name": "--salmon-mappings-sam", "required": false, "subject_kind": "other", "detail": "Salmon mapping SAM used to select reads mapped to target transcripts from explicit read inputs"}),
+                json!({"name": "--kmer-len", "required": false, "subject_kind": "other", "detail": "k-mer length"}),
+                json!({"name": "--min-unique-kmer-hits", "required": false, "subject_kind": "other", "detail": "minimum unique haplotype k-mer hits for a haplotype call"}),
+                json!({"name": "--min-informative-reads", "required": false, "subject_kind": "other", "detail": "minimum phased allele-informative observations for a representation verdict; default 10"}),
+                json!({"name": "--balanced-band-lo", "required": false, "subject_kind": "other", "detail": "inclusive lower hap1-fraction bound for a balanced verdict; default 0.40"}),
+                json!({"name": "--balanced-band-hi", "required": false, "subject_kind": "other", "detail": "inclusive upper hap1-fraction bound for a balanced verdict; default 0.60"}),
+                json!({"name": "--out", "required": true, "subject_kind": "other", "detail": "external allele-hash screen output directory"}),
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUT_DIR"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Run a deterministic allele-aware RNA-read k-mer screen from explicit reads and/or target-gene reads resolved from a persisted RNA-read report, with optional Salmon cohort selectors.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("rna-reads allele-hash-screen")
+        }),
         rna_read_report_mutation_descriptor(
             "rna-reads align-report",
             "Run the retained-hit alignment pass for one persisted RNA-read interpretation report.",
@@ -21467,6 +27405,53 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "external exon-abundance TSV output path",
             "Export exon and transition abundance rows from one persisted RNA-read interpretation report.",
         ),
+        report_export_operation_descriptor(
+            "rna-reads export-dexseq-annotation-gff",
+            "rna_read",
+            "external DEXSeq flattened-annotation GFF output path",
+            "Export the persisted exonic-part partition from one RNA-read interpretation report as a DEXSeq flattened annotation.",
+        ),
+        report_export_operation_descriptor(
+            "rna-reads export-dexseq-counts-tsv",
+            "rna_read",
+            "external two-column DEXSeq/HTSeq count-table path",
+            "Export selected exonic-part counts from one RNA-read interpretation report as a DEXSeq-compatible HTSeq table.",
+        ),
+        json!({
+            "id": "rna-reads verify-dexseq",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted RNA-read interpretation report id"},
+                {"name": "GFF_PATH", "required": true, "subject_kind": "other", "detail": "external DEXSeq flattened-annotation GFF output path"},
+                {"name": "COUNTS_PATH", "required": true, "subject_kind": "other", "detail": "external two-column DEXSeq/HTSeq count-table output path"},
+                {"name": "R_LIBRARY_PATHS", "required": false, "subject_kind": "other", "detail": "optional repeatable R library search paths"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "GFF_PATH"},
+                    "effect_kind": "external_handoff"
+                },
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "COUNTS_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}
+                ]
+            },
+            "description": "Export one matched DEXSeq input pair, preflight R/DEXSeq, and verify the pair with DEXSeqDataSetFromHTSeq when dependencies are available.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("rna-reads verify-dexseq")
+        }),
         report_export_operation_descriptor(
             "rna-reads export-score-density-svg",
             "rna_read",
@@ -21648,6 +27633,53 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "external exon-abundance TSV output path carried by the operation payload",
             "Export exon and transition abundance rows from one persisted RNA-read report through the shared engine operation.",
         ),
+        report_export_operation_descriptor(
+            "ExportRnaReadDexseqAnnotationGff",
+            "rna_read",
+            "external DEXSeq flattened-annotation GFF output path carried by the operation payload",
+            "Export the persisted disjoint exonic-part partition from one RNA-read report as a DEXSeq flattened-annotation GFF.",
+        ),
+        report_export_operation_descriptor(
+            "ExportRnaReadDexseqCountsTsv",
+            "rna_read",
+            "external two-column DEXSeq/HTSeq count-table path carried by the operation payload",
+            "Export selected exonic-part counts from one persisted RNA-read report as a DEXSeq-compatible HTSeq table.",
+        ),
+        json!({
+            "id": "VerifyRnaReadDexseqExports",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted RNA-read interpretation report id carried by the operation payload"},
+                {"name": "GFF_PATH", "required": true, "subject_kind": "other", "detail": "external DEXSeq flattened-annotation GFF output path carried by the operation payload"},
+                {"name": "COUNTS_PATH", "required": true, "subject_kind": "other", "detail": "external two-column DEXSeq/HTSeq count-table output path carried by the operation payload"},
+                {"name": "R_LIBRARY_PATHS", "required": false, "subject_kind": "other", "detail": "optional R library search paths carried by the operation payload"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "GFF_PATH"},
+                    "effect_kind": "external_handoff"
+                },
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "COUNTS_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}
+                ]
+            },
+            "description": "Export one matched DEXSeq input pair and verify it with DEXSeqDataSetFromHTSeq when local R dependencies are available.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("VerifyRnaReadDexseqExports")
+        }),
         report_export_operation_descriptor(
             "ExportRnaReadScoreDensitySvg",
             "rna_read",
@@ -21863,18 +27895,456 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "FORMAT", "required": false, "subject_kind": "other", "detail": "json or jsonl output format carried by format"}),
             ],
         ),
+        json!({
+            "id": "promoters compose-study",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "gentle.regulatory_reporter_study_request.v1 with a gene-set source or resolved cohort, prepared genome id, explicit TSS/evidence policy, vector identity, and output directory"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional portable gentle.regulatory_reporter_study.v1 report supplied by --path"}
+            ],
+            "reads": [],
+            "effects": [
+                {"fact": "sequence.exists", "subject": {"arg": "PROMOTER_LOCUS_SEQ_ID"}, "effect_kind": "must_on_success"},
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_DIR"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Resolve a gene list or evidence-derived cohort against a prepared genome, extract one transcript-bound promoter locus per member, write candidate sets and a panel request, and recompute context-bound panel readiness without materializing constructs.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("promoters compose-study")
+        }),
+        json!({
+            "id": "ComposeRegulatoryReporterStudy",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "gentle.regulatory_reporter_study_request.v1"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional portable study report carried by path"}
+            ],
+            "reads": [],
+            "effects": [
+                {"fact": "sequence.exists", "subject": {"arg": "PROMOTER_LOCUS_SEQ_ID"}, "effect_kind": "must_on_success"},
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_DIR"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Compose the front half of a regulatory-reporter study through the shared engine contract; exact required evidence kinds fail closed and terminal readiness is delegated to the context-bound panel inspector.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ComposeRegulatoryReporterStudy")
+        }),
         optional_artifact_resource_report_descriptor(
             "PlanReporterConstructHandoff",
             "optional external reporter-construct handoff JSON output path carried by path",
-            "Plan a reporter-construct handoff from an external candidate set; optional loaded backbone/reference/alternate sequence ids are validated during execution when supplied.",
+            "Plan a reporter-construct handoff from an external candidate set; an optional exact helper-catalog vector identity is validated fail-closed before construct commands are enabled.",
             vec![
                 json!({"name": "CANDIDATE_SET_PATH", "required": true, "subject_kind": "other", "detail": "external reporter candidate-set path carried by candidate_set_path"}),
                 json!({"name": "CANDIDATE_ID", "required": false, "subject_kind": "other", "detail": "optional candidate id carried by candidate_id"}),
                 json!({"name": "REPORTER_BACKBONE_SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional loaded reporter backbone sequence id"}),
+                json!({"name": "REPORTER_BACKBONE_CATALOG_ID", "required": false, "subject_kind": "other", "detail": "optional exact helper-vector identity carried by reporter_backbone_catalog_id"}),
+                json!({"name": "HELPER_CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional helper/vector catalog override carried by helper_catalog_path"}),
                 json!({"name": "REFERENCE_FRAGMENT_SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional loaded reference fragment sequence id"}),
                 json!({"name": "ALTERNATE_FRAGMENT_SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional loaded alternate fragment sequence id"}),
             ],
         ),
+        json!({
+            "id": "promoters compare-architectures",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "gentle.promoter_reporter_architecture_comparison_request.v1"},
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded annotated locus carried inside request.seq_id"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional portable JSON report supplied by --path"},
+                {"name": "SVG_PATH", "required": false, "subject_kind": "other", "detail": "optional shared-axis SVG supplied by --svg-path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"},
+                {"fact": "artifact.written", "subject": {"arg": "SVG_PATH"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ]},
+            "description": "Compare transcript-aware promoter-reporter geometries without materializing constructs; occupancy and initiation evidence remain separate layers.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("promoters compare-architectures")
+        }),
+        json!({
+            "id": "ComparePromoterReporterArchitectures",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "gentle.promoter_reporter_architecture_comparison_request.v1"},
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded annotated locus carried inside request.seq_id"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional JSON report carried by path"},
+                {"name": "SVG_PATH", "required": false, "subject_kind": "other", "detail": "optional shared-axis SVG carried by svg_path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"},
+                {"fact": "artifact.written", "subject": {"arg": "SVG_PATH"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ]},
+            "description": "Build the portable read-only promoter-reporter architecture comparison through the shared engine operation and generic MCP op surface.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ComparePromoterReporterArchitectures")
+        }),
+        json!({
+            "id": "promoters panel-readiness",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "INPUT_KIND", "required": true, "subject_kind": "other", "detail": "request or proposal; an explicit gentle.promoter_reporter_panel_readiness_request.v1 wrapper is also accepted"},
+                {"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "gentle.promoter_reporter_panel_request.v1 or gentle.promoter_reporter_panel_proposal.v1 selected by INPUT_KIND"},
+                {"name": "APPROVAL_DIGEST", "required": false, "subject_kind": "other", "detail": "optional exact proposal digest supplied by --approve for proposal input"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional portable readiness JSON supplied by --path"}
+            ],
+            "reads": [],
+            "effects": [
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Recompute context-bound promoter-reporter vector, candidate/TSS, evidence, proposal-currency, and exact-approval readiness without changing project state.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("promoters panel-readiness")
+        }),
+        json!({
+            "id": "InspectPromoterReporterPanelReadiness",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "gentle.promoter_reporter_panel_readiness_request.v1"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional readiness JSON carried by path"}
+            ],
+            "reads": [],
+            "effects": [
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Inspect promoter-reporter panel readiness through the shared engine operation; blocked inputs remain inspectable instead of being hidden by a coarse precondition.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("InspectPromoterReporterPanelReadiness")
+        }),
+        json!({
+            "id": "promoter_reporter_panel_readiness",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "INPUT_KIND", "required": true, "subject_kind": "other", "detail": "request or proposal"},
+                {"name": "INPUT", "required": true, "subject_kind": "other", "detail": "exact request/proposal object or JSON string selected by INPUT_KIND"},
+                {"name": "APPROVAL_DIGEST", "required": false, "subject_kind": "other", "detail": "optional exact proposal digest; valid only for proposal input"},
+                {"name": "STATE_PATH", "required": false, "subject_kind": "other", "detail": "optional persisted project-state path"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Recompute context-bound promoter-reporter readiness through the MCP projection while keeping blocked inputs inspectable.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("promoter_reporter_panel_readiness")
+        }),
+        json!({
+            "id": "promoters panel-plan",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "gentle.promoter_reporter_panel_request.v1 selecting loaded vector and already-ranked candidate reports"},
+                {"name": "VECTOR_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded exact vector id carried inside the request"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional proposal JSON output path supplied by --path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}}
+            ],
+            "effects": [
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}}
+            ]},
+            "description": "Build a read-only, content-addressed promoter-reporter panel proposal on a detached engine clone.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("promoters panel-plan")
+        }),
+        json!({
+            "id": "PlanPromoterReporterPanel",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "gentle.promoter_reporter_panel_request.v1"},
+                {"name": "VECTOR_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded exact vector id carried inside request.vector_seq_id"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional proposal JSON output path carried by path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}}
+            ],
+            "effects": [
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}}
+            ]},
+            "description": "Build the shared read-only promoter-reporter panel proposal through the engine contract.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("PlanPromoterReporterPanel")
+        }),
+        json!({
+            "id": "promoters fragment-candidates", "kind": "operation", "mutating": "false", "requires_confirmation": false,
+            "args": [{"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "gentle.reporter_fragment_selection_request.v1; hash-bound loaded locus, anchor transcripts, boundary policy and optional exact vector"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional JSON report via --path"}],
+            "reads": [], "effects": [{"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}],
+            "precondition_expr": {"all": []}, "annotation_status": "fact_annotated",
+            "description": "Propose auditable reporter boundaries and optional MCS-compatible trims. Validates bound locus/vector content at execution; never saves regions or constructs.",
+            "registry": registry_metadata_for_introspection("promoters fragment-candidates")
+        }),
+        json!({
+            "id": "ComputeTssWindowGeometry", "kind": "operation", "mutating": "false", "requires_confirmation": false,
+            "args": [{"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "gentle.tss_window_geometry_request.v1; bounded fixed windows and annotation intersections"}],
+            "reads": [], "effects": [], "precondition_expr": {"all": []}, "annotation_status": "fact_annotated",
+            "description": "Compute fixed TSS windows, connected stretches and regulatory intersections without loading or mutating a project; not reporter insert selection.",
+            "registry": registry_metadata_for_introspection("ComputeTssWindowGeometry")
+        }),
+        json!({
+            "id": "PlanEvidenceGuidedFragmentCandidates", "kind": "operation", "mutating": "false", "requires_confirmation": false,
+            "args": [{"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "gentle.reporter_fragment_selection_request.v1"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional JSON report path"}],
+            "reads": [], "effects": [{"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}],
+            "precondition_expr": {"all": []}, "annotation_status": "fact_annotated",
+            "description": "Read-only upstream fragment selection from a validated locus, fixed-window evidence and explicit boundary changes; runtime binding checks remain authoritative.",
+            "registry": registry_metadata_for_introspection("PlanEvidenceGuidedFragmentCandidates")
+        }),
+        json!({
+            "id": "promoters regulatory-panel-plan",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "gentle.regulatory_fragment_panel_request.v1 with exact persisted ROI, vector, geometry, policy, and question bindings"},
+                {"name": "VECTOR_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded exact vector id carried inside request.vector_seq_id"},
+                {"name": "SOURCE_SEQ_IDS", "required": true, "subject_kind": "sequence", "detail": "loaded source sequences pinned by every request.fragments[].region.local_projection"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional plan JSON output path supplied by --path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}},
+                {"fact": "sequence.exists", "subject": {"arg": "SOURCE_SEQ_IDS"}}
+            ],
+            "effects": [
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}},
+                {"fact": "sequence.exists", "subject": {"arg": "SOURCE_SEQ_IDS"}}
+            ]},
+            "description": "Build the exact read-only regulatory-fragment panel plan through the shared shell route.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("promoters regulatory-panel-plan")
+        }),
+        json!({
+            "id": "promoters regulatory-panel-render",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "PLAN_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "unchanged gentle.regulatory_fragment_panel_plan.v1 with a valid embedded proposal digest"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "SVG output path supplied by --path"}
+            ],
+            "reads": [],
+            "effects": [
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Render a passive review figure from an unchanged exact regulatory-fragment panel plan.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("promoters regulatory-panel-render")
+        }),
+        json!({
+            "id": "PlanRegulatoryFragmentPanel",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "gentle.regulatory_fragment_panel_request.v1 with exact persisted ROI, vector, geometry, policy, and question bindings"},
+                {"name": "VECTOR_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded exact vector id carried inside request.vector_seq_id"},
+                {"name": "SOURCE_SEQ_IDS", "required": true, "subject_kind": "sequence", "detail": "loaded source sequences pinned by every request.fragments[].region.local_projection"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional plan JSON output path carried by path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}},
+                {"fact": "sequence.exists", "subject": {"arg": "SOURCE_SEQ_IDS"}}
+            ],
+            "effects": [
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}},
+                {"fact": "sequence.exists", "subject": {"arg": "SOURCE_SEQ_IDS"}}
+            ]},
+            "description": "Build a deterministic, read-only regulatory-fragment contrast plan from exact persisted genomic regions, including typed sequence-context evidence while unavailable external evidence remains explicitly not evaluated.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("PlanRegulatoryFragmentPanel")
+        }),
+        json!({
+            "id": "PlanRegulatoryFragmentMaterialization", "kind": "operation", "mutating": "false", "requires_confirmation": false,
+            "args": [{"name":"PLAN", "required":true, "subject_kind":"other", "detail":"current digest-valid regulatory-fragment plan"},
+                {"name":"OUTPUT_PREFIX", "required":true, "subject_kind":"other", "detail":"exact unused product ID prefix"}],
+            "reads": [], "effects": [], "precondition_expr": {"all":[]},
+            "description":"Prepare exact ordered vector-context replacement designs with per-instance provenance; not a cloning simulation or functional verdict.",
+            "annotation_status":"fact_annotated", "registry":registry_metadata_for_introspection("PlanRegulatoryFragmentMaterialization")
+        }),
+        json!({
+            "id": "promoters regulatory-products-plan", "kind": "command", "mutating": "false", "requires_confirmation": false,
+            "args": [{"name":"PLAN", "required":true, "subject_kind":"other", "detail":"current regulatory-fragment plan JSON or @file"},
+                {"name":"OUTPUT_PREFIX", "required":true, "subject_kind":"other", "detail":"--output-prefix exact unused product ID prefix"}],
+            "reads": [], "effects": [], "precondition_expr": {"all":[]},
+            "description":"Prepare a separate exact-product approval proposal through PlanRegulatoryFragmentMaterialization; validates bound sources without mutation.",
+            "annotation_status":"fact_annotated", "registry":registry_metadata_for_introspection("promoters regulatory-products-plan")
+        }),
+        json!({
+            "id": "MaterializeRegulatoryFragmentPanel", "kind": "operation", "mutating": "true", "requires_confirmation": true,
+            "args": [{"name":"PROPOSAL", "required":true, "subject_kind":"other", "detail":"exact materialization proposal"},
+                {"name":"APPROVAL_DIGEST", "required":true, "subject_kind":"other", "detail":"digest of the reviewed ordered product payload"}],
+            "reads": [], "effects": [], "precondition_expr": {"all":[]},
+            "description":"Atomically create exact design sequences and a retained receipt after content approval; rejects stale sources and existing output IDs. Experimental QA remains not evaluated.",
+            "annotation_status":"fact_annotated", "registry":registry_metadata_for_introspection("MaterializeRegulatoryFragmentPanel")
+        }),
+        json!({
+            "id": "promoters regulatory-products-materialize", "kind": "command", "mutating": "true", "requires_confirmation": true,
+            "args": [{"name":"PROPOSAL", "required":true, "subject_kind":"other", "detail":"exact materialization proposal JSON or @file"},
+                {"name":"APPROVAL_DIGEST", "required":true, "subject_kind":"other", "detail":"--approve digest of the explicitly reviewed proposal"}],
+            "reads": [], "effects": [], "precondition_expr": {"all":[]},
+            "description":"Commit exact designed products atomically through MaterializeRegulatoryFragmentPanel; approval is not biological validation.",
+            "annotation_status":"fact_annotated", "registry":registry_metadata_for_introspection("promoters regulatory-products-materialize")
+        }),
+        json!({
+            "id": "RenderRegulatoryFragmentPanelSvg",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "PLAN", "required": true, "subject_kind": "other", "detail": "unchanged gentle.regulatory_fragment_panel_plan.v1 object with a valid embedded proposal digest"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "SVG output path"}
+            ],
+            "reads": [],
+            "effects": [
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Render a deterministic passive SVG projection of an exact regulatory-fragment plan without recomputing or promoting evidence.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("RenderRegulatoryFragmentPanelSvg")
+        }),
+        json!({
+            "id": "promoter_reporter_panel_plan",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "exact gentle.promoter_reporter_panel_request.v1 object or JSON string"},
+                {"name": "VECTOR_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded exact vector id carried inside the request"},
+                {"name": "STATE_PATH", "required": false, "subject_kind": "other", "detail": "optional persisted project-state path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {"all": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}}
+            ]},
+            "description": "Build a read-only, content-addressed promoter-reporter panel proposal through the MCP projection.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("promoter_reporter_panel_plan")
+        }),
+        json!({
+            "id": "promoters panel-materialize",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "PROPOSAL_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "unchanged gentle.promoter_reporter_panel_proposal.v1"},
+                {"name": "--approve", "required": true, "subject_kind": "other", "detail": "exact proposal_digest reviewed by the caller"},
+                {"name": "VECTOR_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded exact vector id bound inside the proposal"},
+                {"name": "PRODUCT_SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "product ids bound inside the proposal"},
+                {"name": "OUTPUT_DIR", "required": false, "subject_kind": "other", "detail": "artifact directory bound inside the proposal"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}}
+            ],
+            "effects": [
+                {"fact": "sequence.exists", "subject": {"arg": "PRODUCT_SEQ_ID"}, "effect_kind": "must_on_success"},
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_DIR"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}}
+            ]},
+            "description": "Recompute and materialize only the exactly approved promoter-reporter panel proposal; reject state, source, vector, or output drift.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("promoters panel-materialize")
+        }),
+        json!({
+            "id": "MaterializePromoterReporterPanel",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "PROPOSAL", "required": true, "subject_kind": "other", "detail": "unchanged gentle.promoter_reporter_panel_proposal.v1"},
+                {"name": "APPROVAL_DIGEST", "required": true, "subject_kind": "other", "detail": "exact embedded proposal_digest"},
+                {"name": "VECTOR_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded exact vector id bound inside the proposal"},
+                {"name": "PRODUCT_SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "product ids bound inside the proposal"},
+                {"name": "OUTPUT_DIR", "required": false, "subject_kind": "other", "detail": "artifact directory bound inside the proposal"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}}
+            ],
+            "effects": [
+                {"fact": "sequence.exists", "subject": {"arg": "PRODUCT_SEQ_ID"}, "effect_kind": "must_on_success"},
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_DIR"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}}
+            ]},
+            "description": "Materialize a content-addressed promoter-reporter panel proposal through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("MaterializePromoterReporterPanel")
+        }),
+        json!({
+            "id": "promoter_reporter_panel_materialize",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "CONFIRM", "required": true, "subject_kind": "other", "detail": "must be true before project state or approved artifacts may change"},
+                {"name": "PROPOSAL", "required": true, "subject_kind": "other", "detail": "exact unchanged gentle.promoter_reporter_panel_proposal.v1 object or JSON string"},
+                {"name": "APPROVAL_DIGEST", "required": true, "subject_kind": "other", "detail": "exact proposal_digest presented for approval"},
+                {"name": "VECTOR_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded exact vector id bound inside the proposal"},
+                {"name": "PRODUCT_SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "product ids bound inside the proposal"},
+                {"name": "OUTPUT_DIR", "required": false, "subject_kind": "other", "detail": "artifact directory bound inside the proposal"},
+                {"name": "STATE_PATH", "required": false, "subject_kind": "other", "detail": "optional persisted project-state path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}}
+            ],
+            "effects": [
+                {"fact": "sequence.exists", "subject": {"arg": "PRODUCT_SEQ_ID"}, "effect_kind": "must_on_success"},
+                {"fact": "artifact.written", "subject": {"arg": "OUTPUT_DIR"}, "effect_kind": "external_handoff"}
+            ],
+            "precondition_expr": {"all": [
+                {"fact": "sequence.exists", "subject": {"arg": "VECTOR_SEQ_ID"}}
+            ]},
+            "description": "Materialize an unchanged, exactly approved promoter-reporter panel proposal through the MCP projection.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("promoter_reporter_panel_materialize")
+        }),
         no_project_inspection_operation_descriptor(
             "services status",
             "Inspect combined GENtle service/resource readiness without project-state preconditions.",
@@ -21957,6 +28427,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             vec![
                 json!({"name": "--seq-id", "required": false, "subject_kind": "sequence", "detail": "optional sequence id for product-context inspection; absence does not block handoff generation"}),
                 json!({"name": "--objective", "required": false, "subject_kind": "other", "detail": "optional planning objective JSON payload or @file"}),
+                json!({"name": "--requirements", "required": false, "subject_kind": "other", "detail": "optional gentle.protein_expression_requirements.v1 JSON payload or @file"}),
                 json!({"name": "--profile-scope", "required": false, "subject_kind": "other", "detail": "currently effective only"}),
                 json!({"name": "--format", "required": false, "subject_kind": "other", "detail": "json or text output"}),
             ],
@@ -22106,6 +28577,17 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "Normalize a JASPAR source file or URL into GENtle's local TF-motif resource format without project-state preconditions.",
             vec![
                 json!({"name": "INPUT", "required": true, "subject_kind": "other", "detail": "JASPAR source path or URL"}),
+            ],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "resources sync-maxent",
+            "external normalized MaxEnt splice-model JSON output path; default path is used when omitted",
+            "Normalize a user-supplied MaxEntScan directory or ZIP into a provenance-bound local model snapshot without downloading or redistributing upstream tables.",
+            vec![
+                json!({"name": "INPUT", "required": true, "subject_kind": "other", "detail": "user-supplied local MaxEntScan directory or ZIP path"}),
+                json!({"name": "--source-url", "required": false, "subject_kind": "other", "detail": "recorded upstream source URL"}),
+                json!({"name": "--retrieved-on", "required": false, "subject_kind": "other", "detail": "recorded retrieval date"}),
+                json!({"name": "--redistribution-status", "required": false, "subject_kind": "other", "detail": "caller-supplied redistribution/licensing status note"}),
             ],
         ),
         optional_artifact_inspection_operation_descriptor(
@@ -22425,6 +28907,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             vec![
                 json!({"name": "PROMPT", "required": true, "subject_kind": "other", "detail": "user prompt sent to the configured agent system"}),
                 json!({"name": "--allow-auto-exec", "required": false, "subject_kind": "other", "detail": "whether auto-executable suggested commands may run"}),
+                json!({"name": "--allow-web-research", "required": false, "subject_kind": "other", "detail": "whether a capable inner agent may search and read public web pages for this request"}),
             ],
         ),
         agent_system_host_readiness_descriptor(
@@ -23271,17 +29754,13 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             true,
             true,
         ),
-        candidate_macro_template_descriptor(
+        candidate_macro_template_delete_descriptor(
             "candidates template-delete",
             "Delete one persisted candidate macro template by name.",
-            true,
-            false,
         ),
-        candidate_macro_template_descriptor(
+        candidate_macro_template_delete_descriptor(
             "DeleteCandidateMacroTemplate",
             "Delete a candidate macro template through the shared engine operation.",
-            true,
-            false,
         ),
         candidate_macro_template_descriptor(
             "candidates template-run",
@@ -23326,17 +29805,13 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             true,
             true,
         ),
-        workflow_macro_template_descriptor(
+        workflow_macro_template_delete_descriptor(
             "macros template-delete",
             "Delete one persisted workflow macro template by name.",
-            true,
-            false,
         ),
-        workflow_macro_template_descriptor(
+        workflow_macro_template_delete_descriptor(
             "DeleteWorkflowMacroTemplate",
             "Delete a workflow macro template through the shared engine operation.",
-            true,
-            false,
         ),
         workflow_macro_template_import_descriptor(
             "macros template-import",
@@ -23958,6 +30433,41 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "GENOME_ID",
             "Prepare and index one genome through the JS/Lua adapter alias; catalog, cache, source, and BLAST-binary checks happen during execution.",
         ),
+        local_state_may_change_descriptor(
+            "genomes prepare-blast-resource",
+            "Prepare or import one catalog-declared sequence-only transcriptome-cDNA BLAST resource without manufacturing genome annotation artifacts.",
+            "external",
+            vec![
+                json!({"name": "RESOURCE_ID", "required": true, "subject_kind": "other", "detail": "catalog id declaring blast_index_kind=transcriptome_cdna"}),
+                json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional genome catalog path"}),
+                json!({"name": "CACHE_DIR", "required": false, "subject_kind": "other", "detail": "optional prepared-resource cache directory"}),
+                json!({"name": "FORCE_REBUILD", "required": false, "subject_kind": "other", "detail": "explicitly permit replacement of an existing content-bound index when the declared source changed"}),
+            ],
+        ),
+        local_state_may_change_descriptor(
+            "genomes adopt-blast-resource",
+            "Validate and register an already-built transcriptome-cDNA BLAST database against corrected catalog metadata without rebuilding or deleting index files.",
+            "external",
+            vec![
+                json!({"name": "RESOURCE_ID", "required": true, "subject_kind": "other", "detail": "catalog id declaring transcriptome cDNA kind, reference name/release, masking, and corrected sequence source"}),
+                json!({"name": "SEQUENCE_PATH", "required": true, "subject_kind": "other", "detail": "existing prepared FASTA used for sequence identity and subject annotations"}),
+                json!({"name": "BLAST_DB_PREFIX", "required": true, "subject_kind": "other", "detail": "existing BLAST database prefix; index files are read only"}),
+                json!({"name": "EXPECTED_CONTENT_FINGERPRINT", "required": true, "subject_kind": "other", "detail": "previously reviewed database fingerprint"}),
+                json!({"name": "EXPECTED_SEQUENCE_SHA1", "required": false, "subject_kind": "other", "detail": "optional reviewed prepared-FASTA SHA-1"}),
+                json!({"name": "VERIFY_SOURCE_IDENTITIES", "required": false, "subject_kind": "other", "detail": "compare every FASTA accession/length with blastdbcmd output before marking the source link verified"}),
+                json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional genome catalog path"}),
+                json!({"name": "CACHE_DIR", "required": false, "subject_kind": "other", "detail": "optional manifest/subject-sidecar cache directory"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "genomes inspect-blast-resource",
+            "Inspect validation, sequence count, masking, release, and fingerprint metadata for one prepared sequence-only BLAST resource.",
+            vec![
+                json!({"name": "RESOURCE_ID", "required": true, "subject_kind": "other", "detail": "catalog id of the prepared sequence-only BLAST resource"}),
+                json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional genome catalog path"}),
+                json!({"name": "CACHE_DIR", "required": false, "subject_kind": "other", "detail": "optional prepared-resource cache directory"}),
+            ],
+        ),
         genome_install_ensembl_descriptor(
             "genomes install-ensembl",
             "Resolve one current Ensembl candidate into a reference-genome catalog row and prepare its local cache.",
@@ -24036,7 +30546,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         json!({
             "id": "genomes blast-status",
             "kind": "operation",
-            "mutating": "true",
+            "mutating": "false",
             "requires_confirmation": false,
             "args": [
                 {"name": "JOB_ID", "required": true, "subject_kind": "other", "detail": "async reference-genome BLAST job id"},
@@ -24052,7 +30562,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         json!({
             "id": "helpers blast-status",
             "kind": "operation",
-            "mutating": "true",
+            "mutating": "false",
             "requires_confirmation": false,
             "args": [
                 {"name": "JOB_ID", "required": true, "subject_kind": "other", "detail": "async helper-genome BLAST job id"},
@@ -24068,33 +30578,33 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         json!({
             "id": "genomes blast-list",
             "kind": "operation",
-            "mutating": "true",
+            "mutating": "false",
             "requires_confirmation": false,
             "args": [],
             "reads": [],
             "effects": [],
             "precondition_expr": {"all": []},
-            "description": "List known async reference-genome BLAST jobs; refreshing persisted job snapshots may update runtime metadata.",
+            "description": "Observe cached reference-genome BLAST jobs without dispatching work or changing project metadata.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("genomes blast-list")
         }),
         json!({
             "id": "helpers blast-list",
             "kind": "operation",
-            "mutating": "true",
+            "mutating": "false",
             "requires_confirmation": false,
             "args": [],
             "reads": [],
             "effects": [],
             "precondition_expr": {"all": []},
-            "description": "List known async helper-genome BLAST jobs; refreshing persisted job snapshots may update runtime metadata.",
+            "description": "Observe cached helper-genome BLAST jobs without dispatching work or changing project metadata.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("helpers blast-list")
         }),
         json!({
             "id": "blast_async_status",
             "kind": "operation",
-            "mutating": "true",
+            "mutating": "false",
             "requires_confirmation": false,
             "args": [
                 {"name": "JOB_ID", "required": true, "subject_kind": "other", "detail": "async BLAST job id"},
@@ -24110,7 +30620,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         json!({
             "id": "blast_async_list",
             "kind": "operation",
-            "mutating": "true",
+            "mutating": "false",
             "requires_confirmation": false,
             "args": [
                 {"name": "HELPER_MODE", "required": false, "subject_kind": "other", "detail": "optional helper/reference job-scope filter"}
@@ -24118,7 +30628,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "reads": [],
             "effects": [],
             "precondition_expr": {"all": []},
-            "description": "List known async BLAST jobs through the MCP/tool route; refreshing persisted job snapshots may update runtime metadata.",
+            "description": "Observe cached BLAST jobs through MCP without dispatching work or changing project metadata.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("blast_async_list")
         }),
@@ -24221,6 +30731,82 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "--threshold", "required": true, "subject_kind": "other", "detail": "score threshold expression"}),
             ],
         ),
+        json!({
+            "id": "CreateGeneSetPool",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "COLLECTION_SUBJECT", "required": true, "subject_kind": "report", "detail": "persisted gene_set_resolution subject"},
+                {"name": "MEMBER_BINDINGS", "required": true, "subject_kind": "container", "detail": "one resolved-member id to exclusive singleton-container binding per member"},
+                {"name": "OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": "derived aliquot sequence-id prefix"},
+                {"name": "CONTAINER_NAME", "required": false, "subject_kind": "other", "detail": "display name for the new physical pool"},
+                {"name": "DRY_RUN", "required": false, "subject_kind": "other", "detail": "preview without project-state mutation"},
+                {"name": "EXPECTED_PLAN_FINGERPRINT_SHA256", "required": false, "subject_kind": "other", "detail": "preview fingerprint required when applying"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external report JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "report.exists",
+                "report_kind": "gene_set_pool_creation",
+                "equals": "gene_set_pool_creation",
+                "effect_kind": "must_on_success"
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Preview or apply explicit physical pooling of a complete resolved gene set from exclusive singleton source containers.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("CreateGeneSetPool")
+        }),
+        json!({
+            "id": "gene-sets create-pool",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "RESOLUTION_ID", "required": true, "subject_kind": "report", "detail": "persisted complete gene-set resolution id"},
+                {"name": "--member-container", "required": true, "subject_kind": "container", "detail": "repeatable MEMBER_ID=CONTAINER_ID binding to an exclusive singleton source"},
+                {"name": "--output-prefix", "required": false, "subject_kind": "other", "detail": "derived aliquot sequence-id prefix"},
+                {"name": "--container-name", "required": false, "subject_kind": "other", "detail": "display name for the new physical pool"},
+                {"name": "--apply", "required": false, "subject_kind": "other", "detail": "materialize a previously previewed plan"},
+                {"name": "--expected-plan-fingerprint-sha256", "required": false, "subject_kind": "other", "detail": "required with --apply"},
+                {"name": "--path", "required": false, "subject_kind": "other", "detail": "optional external report JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "report.exists",
+                "report_kind": "gene_set_pool_creation",
+                "equals": "gene_set_pool_creation",
+                "effect_kind": "must_on_success"
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Preview by default or explicitly create a fingerprint-locked physical pool from a complete resolved gene set.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("gene-sets create-pool")
+        }),
+        json!({
+            "id": "BuildGeneSetPromoterCohort",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "GENOME_ID", "required": true, "subject_kind": "other", "detail": "reference/helper genome catalog id"},
+                {"name": "SOURCE|RESOLUTION", "required": true, "subject_kind": "other", "detail": "gene-set request or resolved gene-set report"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external promoter-cohort JSON output path"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "may_on_success",
+                    "description": "Writes the optional external JSON export when OUTPUT_PATH is supplied."
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Build and persist strand-aware promoter windows plus a collection-operation report for a resolved gene set.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("BuildGeneSetPromoterCohort")
+        }),
         optional_artifact_resource_report_descriptor(
             "gene-sets promoter-cohort",
             "optional external gene-set promoter-cohort JSON output path",
@@ -24230,6 +30816,42 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "--group|--genes|--neighbors", "required": false, "subject_kind": "other", "detail": "gene-set or neighbor selector"}),
                 json!({"name": "--upstream-bp", "required": false, "subject_kind": "other", "detail": "promoter upstream window length"}),
                 json!({"name": "--downstream-bp", "required": false, "subject_kind": "other", "detail": "promoter downstream window length"}),
+            ],
+        ),
+        json!({
+            "id": "InspectRegulatoryPartnerScreen",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared reference/helper genome id"},
+                {"name": "RESOLUTION", "required": true, "subject_kind": "other", "detail": "portable gene-set resolution"},
+                {"name": "ANCHOR_MOTIFS", "required": true, "subject_kind": "other", "detail": "one or more anchor motif queries"},
+                {"name": "PARTNER_MOTIFS", "required": true, "subject_kind": "other", "detail": "one or more candidate partner motif queries"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external report JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "may_on_success",
+                "description": "Writes the optional portable regulatory-partner report when OUTPUT_PATH is supplied."
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Enumerate exact promoter motif tuples and emit a replayable evidence decision tree for a resolved gene set.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("InspectRegulatoryPartnerScreen")
+        }),
+        optional_artifact_resource_report_descriptor(
+            "gene-sets regulatory-partner-screen",
+            "optional external regulatory-partner screen JSON output path",
+            "Build an exact promoter motif-tuple ledger and replayable evidence tree; motif and occupancy observations remain non-causal associations.",
+            vec![
+                json!({"name": "GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared reference/helper genome id"}),
+                json!({"name": "--resolution", "required": true, "subject_kind": "other", "detail": "gene-set resolution JSON"}),
+                json!({"name": "--anchor-motif", "required": true, "subject_kind": "other", "detail": "repeatable or comma-separated anchor motif query"}),
+                json!({"name": "--partner-motif", "required": true, "subject_kind": "other", "detail": "repeatable or comma-separated partner motif query"}),
+                json!({"name": "--cutrun-support", "required": false, "subject_kind": "other", "detail": "optional gene-set CUT&RUN support JSON"}),
             ],
         ),
         optional_artifact_resource_report_descriptor(
@@ -24242,6 +30864,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "--anchor-gene", "required": true, "subject_kind": "other", "detail": "anchor gene query"}),
                 json!({"name": "--orthologs", "required": true, "subject_kind": "other", "detail": "ortholog resource path"}),
                 json!({"name": "--target-species|--target-genome|--transcript", "required": false, "subject_kind": "other", "detail": "target species/genome/transcript selectors"}),
+                json!({"name": "--ambiguity-policy", "required": false, "subject_kind": "other", "detail": "reject, first, or preserve; preserve retains structured candidates without selecting one"}),
             ],
         ),
         optional_artifact_resource_report_descriptor(
@@ -24253,6 +30876,16 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "--motif|--motifs", "required": true, "subject_kind": "other", "detail": "motif query tokens"}),
                 json!({"name": "--score-kind|--relationship", "required": false, "subject_kind": "other", "detail": "comparison scoring controls"}),
                 json!({"name": "--expression-json|--cutrun-dataset-id|--cutrun-read-report-id", "required": false, "subject_kind": "other", "detail": "optional supporting evidence"}),
+                json!({"name": "--cutrun-normalization-json", "required": false, "subject_kind": "other", "detail": "explicit normalized CUT&RUN values plus method, unit, shared reference, and provenance; accepts JSON or @FILE"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "orthologs conservation-comparison",
+            "optional external ortholog promoter-conservation JSON output path",
+            "Globally align every resolved target promoter to the cohort anchor and report exact intervals shared on anchor coordinates.",
+            vec![
+                json!({"name": "--cohort|--cohort-json", "required": true, "subject_kind": "other", "detail": "ortholog promoter cohort path or inline JSON"}),
+                json!({"name": "--min-conserved-bp", "required": false, "subject_kind": "other", "detail": "minimum exact interval length; default 8"}),
             ],
         ),
         optional_artifact_operation_descriptor(
@@ -24439,7 +31072,8 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "requires_confirmation": false,
             "args": [
                 {"name": "TARGET", "required": true, "subject_kind": "other", "detail": "UI target such as sequence-window, pcr-design, prepared-references, or agent-assistant"},
-                {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "loaded sequence id when TARGET is sequence-window"},
+                {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "required loaded sequence id for sequence-window or splicing-expert"},
+                {"name": "FEATURE_ID", "required": false, "subject_kind": "other", "detail": "required zero-based feature id for splicing-expert; discover via features query"},
                 {"name": "--genome-id|--helpers|--catalog|--cache-dir|--filter|--species|--latest", "required": false, "subject_kind": "other", "detail": "prepared-reference selection options"}
             ],
             "reads": [
@@ -24462,7 +31096,8 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "requires_confirmation": false,
             "args": [
                 {"name": "TARGET", "required": true, "subject_kind": "other", "detail": "UI target such as sequence-window, pcr-design, prepared-references, or agent-assistant"},
-                {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "loaded sequence id when TARGET is sequence-window"},
+                {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "required loaded sequence id for sequence-window or splicing-expert"},
+                {"name": "FEATURE_ID", "required": false, "subject_kind": "other", "detail": "required zero-based feature id for splicing-expert; discover via features query"},
                 {"name": "--genome-id|--helpers|--catalog|--cache-dir|--filter|--species|--latest", "required": false, "subject_kind": "other", "detail": "prepared-reference selection options"}
             ],
             "reads": [
@@ -24485,7 +31120,8 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "requires_confirmation": false,
             "args": [
                 {"name": "TARGET", "required": true, "subject_kind": "other", "detail": "UI target such as sequence-window, pcr-design, prepared-references, or agent-assistant"},
-                {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "loaded sequence id when TARGET is sequence-window"}
+                {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "required loaded sequence id for sequence-window or splicing-expert"},
+                {"name": "FEATURE_ID", "required": false, "subject_kind": "other", "detail": "required zero-based feature id for splicing-expert; closes only the bound expert"}
             ],
             "reads": [
                 {"fact": "ui.host_available", "equals": true}
@@ -24906,6 +31542,52 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "introspect verify-effects"
         | "introspect all" => Some(vec![]),
         "sequence create" => Some(vec![]),
+        "regions create"
+        | "CreateGenomicRegion"
+        | "regions capture"
+        | "CaptureGenomicRegion"
+        | "regions preview-feature"
+        | "PreviewGenomicRegionFeature"
+        | "regions materialize-feature"
+        | "MaterializeGenomicRegionFeature"
+        | "regions list"
+        | "ListGenomicRegions"
+        | "regions inspect"
+        | "InspectGenomicRegion"
+        | "regions update"
+        | "UpdateGenomicRegionPresentation"
+        | "regions derive"
+        | "DeriveGenomicRegion"
+        | "regions import"
+        | "ImportGenomicRegionSet"
+        | "regions export"
+        | "ExportGenomicRegionSet"
+        | "regions homology-screen"
+        | "ScreenGenomicRegionHomology"
+        | "regions render-homology-svg"
+        | "RenderGenomicRegionHomologySvg"
+        | "promoters assess-conserved-modules"
+        | "AssessPromoterConservedModules"
+        | "promoters tata-screen"
+        | "ScreenTataBoxes"
+        | "promoters tata-materialize"
+        | "MaterializeTataBoxFeatures"
+        | "gel-image import"
+        | "ImportGelImage"
+        | "gel-image save-draft"
+        | "SaveGelImageDraft"
+        | "gel-image analyze"
+        | "AnalyzeGelImage"
+        | "features tss-tfbs-profiles"
+        | "ComputeTssTfbsProfiles"
+        | "features tss-tfbs-profiles-export"
+        | "ExportTssTfbsProfiles" => Some(vec![]),
+        "gel-image inspect"
+        | "InspectGelImageAnalysis"
+        | "gel-image export"
+        | "ExportGelImageAnalysis" => Some(vec![
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "gel_image_analysis"}),
+        ]),
         "DigestContainer" | "LigationContainer" | "FilterContainerByMolecularWeight" => Some(vec![
             json!({"fact": "container.exists", "subject": {"arg": "CONTAINER_ID"}}),
         ]),
@@ -24940,6 +31622,9 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "genomes blast-track" | "helpers blast-track" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}),
         ]),
+        "uniprot build-linked-transcript-inventory" | "BuildUniprotLinkedTranscriptInventory" => {
+            Some(vec![])
+        }
         "uniprot map" | "ProjectUniprotToGenome" => Some(vec![
             json!({"fact": "uniprot_entry.exists", "subject": {"arg": "ENTRY_ID"}}),
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
@@ -24956,8 +31641,23 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "AuditUniprotProjectionParity" => Some(vec![
             json!({"fact": "uniprot_projection.exists", "subject": {"arg": "PROJECTION_ID"}}),
         ]),
+        "ScanTfbsHitsCollection"
+        | "collections run tfbs-scan"
+        | "features genomic-motif-evidence"
+        | "QueryGenomicMotifEvidence"
+        | "features promoter-cofactors"
+        | "QueryPromoterCofactors"
+        | "DigestCollection"
+        | "collections run digest"
+        | "CreateGeneSetPool"
+        | "gene-sets create-pool" => Some(vec![]),
+        "ExportPoolCollection" | "collections run export-pool" => Some(vec![
+            json!({"fact": "container.exists", "subject": {"arg": "CONTAINER_ID"}}),
+        ]),
         "features restriction-scan"
         | "FindRestrictionSites"
+        | "FindRestrictionSitesCollection"
+        | "collections run restriction-scan"
         | "features tfbs-score-tracks-svg"
         | "RenderTfbsScoreTracksSvg"
         | "SummarizeTfbsScoreTracks"
@@ -24967,15 +31667,47 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "features repeat-overlaps"
         | "QueryRepeatOverlaps"
         | "features materialize-repeats"
-        | "MaterializeRepeatFeatures" => Some(vec![
+        | "MaterializeRepeatFeatures"
+        | "features encode-ccre-overlaps"
+        | "QueryEncodeCcreOverlaps"
+        | "features materialize-encode-ccres"
+        | "MaterializeEncodeCcreFeatures"
+        | "features ensembl-regulation-overlaps"
+        | "QueryEnsemblRegulationOverlaps"
+        | "features materialize-ensembl-regulation"
+        | "MaterializeEnsemblRegulationFeatures" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
         "features repeat-query"
         | "QueryRepeatAnnotations"
         | "features repeat-cohort"
         | "BuildRepeatEnvironmentCohort"
-        | "features window-cohort-tfbs" => Some(vec![]),
+        | "features window-cohort-tfbs"
+        | "resources list-encode-ccre-sources"
+        | "resources install-encode-ccres"
+        | "resources prepare-encode-ccre-index"
+        | "resources list-ensembl-regulation-sources"
+        | "resources install-ensembl-regulatory-features"
+        | "resources prepare-ensembl-regulation-index" => Some(vec![]),
+        "GetPrimerPairMultiReferenceSpecificitySummary"
+        | "primers specificity-multi-show"
+        | "primer_specificity_multi_show" => Some(vec![
+            json!({"fact":"report.exists","subject":{"arg":"SUMMARY_ID"},"equals":"primer_specificity_multi"}),
+        ]),
         "AssessPrimerPairSpecificity"
+        | "AssessPrimerPairSpecificityCollection"
+        | "collections run primer-specificity"
+        | "PreparePrimerPairSpecificityHandoff"
+        | "PreparePrimerPairMultiReferenceSpecificityHandoff"
+        | "primers specificity-multi-handoff"
+        | "ImportPrimerPairMultiReferenceSpecificity"
+        | "ListPrimerPairMultiReferenceSpecificitySummaries"
+        | "primers specificity-multi-import"
+        | "primers specificity-multi-list"
+        | "primer_specificity_multi_handoff"
+        | "primer_specificity_multi_import"
+        | "primer_specificity_multi_list"
+        | "ImportPrimerPairSpecificityHandoff"
         | "ExportPool"
         | "FilterByDesignConstraints"
         | "FilterByMolecularWeight"
@@ -24992,9 +31724,19 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "features export-bed" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
-        "inspect-feature-expert" | "restriction_site_detail" => Some(vec![
+        "inspect-feature-expert"
+        | "restriction_site_detail"
+        | "InspectCrypticSplicingScreen"
+        | "RenderCrypticSplicingScreenSvg"
+        | "InspectCrypticSplicingEvidenceOverlay"
+        | "InspectCrypticSplicingProteinProjection" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
+        "splicing cryptic-screen"
+        | "splicing cryptic-render"
+        | "splicing cryptic-export"
+        | "splicing cryptic-overlay"
+        | "splicing cryptic-protein" => Some(vec![]),
         "render-feature-expert-svg" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
@@ -25086,21 +31828,32 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "primers design" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_ID"}}),
         ]),
+        "primers design-terminal-exon-rt-pool" | "DesignTerminalExonRtPrimerPool" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}),
+        ]),
+        "primers design-transcript-capture-pool" | "DesignTranscriptCapturePool" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}),
+        ]),
         "primers list-reports" => Some(vec![]),
         "primers show-report" => Some(vec![
-            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_design"}),
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}}),
         ]),
         "primers export-report" => Some(vec![
-            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_design"}),
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}}),
         ]),
         "primers design-qpcr" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_ID"}}),
         ]),
-        "primers test-cdna-pcr" | "primers test-cdna-qpcr" | "TestCdnaPcr" | "TestCdnaQpcr" => {
-            Some(vec![
-                json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
-            ])
+        "SearchPrimerBank" | "primers primerbank search" | "primers primerbank show" => {
+            Some(vec![])
         }
+        "primers primerbank test-cdna"
+        | "primers test-cdna-pcr"
+        | "primers test-cdna-qpcr"
+        | "TestCdnaPcr"
+        | "TestCdnaQpcr" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
         "primers test-cdna-qpcr-fasta" | "TestCdnaQpcrFasta" => Some(vec![]),
         "primers list-qpcr-reports" => Some(vec![]),
         "primers show-qpcr-report" => Some(vec![
@@ -25109,6 +31862,40 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "primers export-qpcr-report" => Some(vec![
             json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "qpcr_design"}),
         ]),
+        "primers design-transcript-assay-panel"
+        | "primers inspect-transcript-assay-feasibility"
+        | "DesignTranscriptAssayPanel"
+        | "DesignTranscriptAssayPanelWithFallback" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "primers design-group-target" | "DesignPrimerGroupTarget" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_IDS"}}),
+        ]),
+        "primers plan-gene-isoform-study" | "PlanGeneIsoformAssayStudy" => Some(vec![]),
+        "primers execute-gene-isoform-study-workflow" => Some(vec![]),
+        "primers compose-gene-isoform-study-workflow-batch" => Some(vec![]),
+        "primers execute-gene-isoform-study-workflow-batch" => Some(vec![]),
+        "primers publish-gene-isoform-study" => Some(vec![]),
+        "primers compose-gene-assay-routine" | "ComposeGeneTranscriptAssayRoutine" => Some(vec![]),
+        "primers experimental-handoff" | "BuildExperimentalAssayHandoff" => Some(vec![
+            json!({"fact": "report.exists", "subject": {"arg": "PANEL_REPORT_ID"}, "equals": "transcript_assay_panel"}),
+        ]),
+        "primers import-external-pairs" | "ImportExternalPrimerPairs" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "primers screen-variants" | "ScreenPrimerVariants" => Some(vec![]),
+        "primers list-transcript-assay-panels" => Some(vec![]),
+        "primers list-transcript-assay-fallbacks" => Some(vec![]),
+        "primers show-transcript-assay-panel" | "primers export-transcript-assay-panel" => {
+            Some(vec![
+                json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "transcript_assay_panel"}),
+            ])
+        }
+        "primers show-transcript-assay-fallback" | "primers export-transcript-assay-fallback" => {
+            Some(vec![
+                json!({"fact": "report.exists", "subject": {"arg": "EXECUTION_ID"}, "equals": "transcript_assay_fallback_execution"}),
+            ])
+        }
         "primers prepare-restriction-cloning" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_ID"}}),
             json!({"fact": "report.exists", "subject": {"arg": "PRIMER_REPORT_ID"}, "equals": "primer_design"}),
@@ -25211,6 +31998,9 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "rna-reads export-target-quality"
         | "rna-reads export-paths-tsv"
         | "rna-reads export-abundance-tsv"
+        | "rna-reads export-dexseq-annotation-gff"
+        | "rna-reads export-dexseq-counts-tsv"
+        | "rna-reads verify-dexseq"
         | "rna-reads export-score-density-svg"
         | "rna-reads export-alignments-tsv"
         | "rna-reads export-isoform-triage-tsv"
@@ -25223,6 +32013,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "ExportRnaReadSampleSheet"
         | "rna-reads export-sample-sheet"
         | "rna-reads build-transcript-index"
+        | "rna-reads allele-hash-screen"
         | "SummarizeMultiGenePromoterTfbs"
         | "RenderMultiGenePromoterTfbsSvg" => Some(vec![]),
         "SummarizeAlternativePromoterComparison"
@@ -25273,6 +32064,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "resources sync-rebase"
         | "sync_rebase"
         | "resources sync-jaspar"
+        | "resources sync-maxent"
         | "sync_jaspar"
         | "resources sync-ucsc-rmsk"
         | "resources import-gene-list-cache"
@@ -25413,6 +32205,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "gene-sets produce ontology-assignment"
         | "gene-sets produce co-regulated"
         | "gene-sets promoter-cohort"
+        | "gene-sets regulatory-partner-screen"
         | "orthologs resolve-promoter-cohort"
         | "orthologs promoter-comparison"
         | "ladders export"
@@ -25447,6 +32240,9 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "ExportRnaReadTargetQuality"
         | "ExportRnaReadExonPathsTsv"
         | "ExportRnaReadExonAbundanceTsv"
+        | "ExportRnaReadDexseqAnnotationGff"
+        | "ExportRnaReadDexseqCountsTsv"
+        | "VerifyRnaReadDexseqExports"
         | "ExportRnaReadScoreDensitySvg"
         | "ExportRnaReadAlignmentsTsv"
         | "ExportRnaReadIsoformTriageTsv"
@@ -25492,19 +32288,58 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
     }
 }
 
-fn capability_precondition_expr_value(capability_id: &str) -> Option<Value> {
+fn capability_descriptor(capability_id: &str) -> Option<&'static Value> {
+    static DESCRIPTORS: std::sync::OnceLock<HashMap<String, Value>> = std::sync::OnceLock::new();
     let canonical = canonical_introspection_capability_id(capability_id);
-    let descriptor = annotated_introspection_capability_descriptors()
-        .into_iter()
-        .find(|descriptor| descriptor["id"].as_str() == Some(canonical))?;
-    descriptor.get("precondition_expr").cloned()
+    DESCRIPTORS
+        .get_or_init(|| {
+            let mut descriptors = HashMap::new();
+            // Preserve the previous lookup's first-match semantics for legacy duplicate IDs.
+            for descriptor in annotated_introspection_capability_descriptors() {
+                if let Some(id) = descriptor["id"].as_str() {
+                    descriptors.entry(id.to_string()).or_insert(descriptor);
+                }
+            }
+            descriptors
+        })
+        .get(canonical)
+}
+
+fn capability_precondition_expr_value(
+    capability_id: &str,
+    args: &BTreeMap<String, String>,
+) -> Option<Value> {
+    let descriptor = capability_descriptor(capability_id)?;
+    let expression = descriptor.get("precondition_expr")?;
+    // TSS export selects one target, unlike independent readiness alternatives.
+    if matches!(capability_id, "promoters tss-view-svg" | "ExportTssViewSvg") {
+        let selected_arg = match (
+            args.contains_key("SEQ_ID"),
+            args.contains_key("COLLECTION_ID"),
+        ) {
+            (true, false) => Some("SEQ_ID"),
+            (false, true) => Some("COLLECTION_ID"),
+            _ => None,
+        };
+        if let Some(selected_arg) = selected_arg
+            && let Some(selected) =
+                expression
+                    .get("any")
+                    .and_then(Value::as_array)
+                    .and_then(|children| {
+                        children
+                            .iter()
+                            .find(|child| child["subject"]["arg"] == selected_arg)
+                    })
+        {
+            return Some(selected.clone());
+        }
+    }
+    Some(expression.clone())
 }
 
 fn capability_must_effect_atoms(capability_id: &str) -> Option<Vec<Value>> {
-    let canonical = canonical_introspection_capability_id(capability_id);
-    let descriptor = annotated_introspection_capability_descriptors()
-        .into_iter()
-        .find(|descriptor| descriptor["id"].as_str() == Some(canonical))?;
+    let descriptor = capability_descriptor(capability_id)?;
     let effects = descriptor["effects"].as_array()?;
     Some(
         effects
@@ -25700,53 +32535,98 @@ fn fact_atom_label(atom: &Value) -> Value {
     labeled
 }
 
+/// Preserve unresolved leaves at their exact position, not in a flat veto list.
+enum BoundIntrospectionExpression {
+    All(Vec<Self>),
+    Any(Vec<Self>),
+    Not(Box<Self>),
+    Bound(FactExpression),
+    Unbound,
+}
+
+impl BoundIntrospectionExpression {
+    fn evaluate(&self, graph: &ProjectFactGraph) -> FactEvaluationResult {
+        let mut unmet_atoms = vec![];
+        let mut unknown_atoms = vec![];
+        let truth = self.evaluate_truth(graph, &mut unmet_atoms, &mut unknown_atoms);
+        FactEvaluationResult {
+            schema: crate::engine::FACT_EVALUATION_SCHEMA.to_string(),
+            truth,
+            unmet_atoms,
+            unknown_atoms,
+        }
+    }
+
+    fn evaluate_truth(
+        &self,
+        graph: &ProjectFactGraph,
+        unmet_atoms: &mut Vec<FactAtom>,
+        unknown_atoms: &mut Vec<FactAtom>,
+    ) -> FactTruth {
+        match self {
+            Self::All(children) => FactTruth::all(
+                children
+                    .iter()
+                    .map(|child| child.evaluate_truth(graph, unmet_atoms, unknown_atoms)),
+            ),
+            Self::Any(children) => FactTruth::any(
+                children
+                    .iter()
+                    .map(|child| child.evaluate_truth(graph, unmet_atoms, unknown_atoms)),
+            ),
+            Self::Not(child) => {
+                let before_unmet = unmet_atoms.len();
+                let truth = child.evaluate_truth(graph, unmet_atoms, unknown_atoms);
+                if truth != FactTruth::Satisfied {
+                    unmet_atoms.truncate(before_unmet);
+                }
+                truth.negated()
+            }
+            Self::Bound(expression) => {
+                let evaluation =
+                    GentleEngine::evaluate_fact_expression_against_graph(expression, graph);
+                unmet_atoms.extend(evaluation.unmet_atoms);
+                unknown_atoms.extend(evaluation.unknown_atoms);
+                evaluation.truth
+            }
+            Self::Unbound => FactTruth::Unknown,
+        }
+    }
+}
+
 fn instantiate_introspection_expression(
     value: &Value,
     args: &BTreeMap<String, String>,
     unknown_atoms: &mut Vec<Value>,
-) -> Option<FactExpression> {
+) -> BoundIntrospectionExpression {
     if let Some(children) = value.get("all").and_then(Value::as_array) {
-        let mut local_unknown_atoms = vec![];
-        let all = children
-            .iter()
-            .filter_map(|child| {
-                instantiate_introspection_expression(child, args, &mut local_unknown_atoms)
-            })
-            .collect::<Vec<_>>();
-        if !children.is_empty() && all.is_empty() && !local_unknown_atoms.is_empty() {
-            unknown_atoms.extend(local_unknown_atoms);
-            return None;
-        }
-        unknown_atoms.extend(local_unknown_atoms);
-        return Some(FactExpression::All { all });
+        return BoundIntrospectionExpression::All(
+            children
+                .iter()
+                .map(|child| instantiate_introspection_expression(child, args, unknown_atoms))
+                .collect(),
+        );
     }
     if let Some(children) = value.get("any").and_then(Value::as_array) {
-        let mut any = vec![];
-        let mut branch_unknown_atoms = vec![];
-        for child in children {
-            let mut local_unknown_atoms = vec![];
-            if let Some(expression) =
-                instantiate_introspection_expression(child, args, &mut local_unknown_atoms)
-            {
-                any.push(expression);
-            } else {
-                branch_unknown_atoms.extend(local_unknown_atoms);
-            }
-        }
-        if any.is_empty() {
-            unknown_atoms.extend(branch_unknown_atoms);
-        }
-        return Some(FactExpression::Any { any });
+        return BoundIntrospectionExpression::Any(
+            children
+                .iter()
+                .map(|child| instantiate_introspection_expression(child, args, unknown_atoms))
+                .collect(),
+        );
     }
     if let Some(child) = value.get("not") {
-        return instantiate_introspection_expression(child, args, unknown_atoms)
-            .map(|not| FactExpression::Not { not: Box::new(not) });
+        return BoundIntrospectionExpression::Not(Box::new(instantiate_introspection_expression(
+            child,
+            args,
+            unknown_atoms,
+        )));
     }
     match instantiate_introspection_atom_expression(value, args) {
-        Ok(expression) => Some(expression),
+        Ok(expression) => BoundIntrospectionExpression::Bound(expression),
         Err(_) => {
             unknown_atoms.push(fact_atom_label(value));
-            None
+            BoundIntrospectionExpression::Unbound
         }
     }
 }
@@ -25758,7 +32638,7 @@ fn introspection_readiness_for_capability(
     evidence: &[RestrictionSiteScanReport],
     ui_host_available: bool,
 ) -> Value {
-    let Some(precondition_expr) = capability_precondition_expr_value(capability_id) else {
+    let Some(precondition_expr) = capability_precondition_expr_value(capability_id, args) else {
         return json!({
             "capability_id": capability_id,
             "mode": if args.is_empty() { "unbound" } else { "bound" },
@@ -25779,42 +32659,25 @@ fn introspection_readiness_for_capability(
                 "unmet_atoms": [],
             });
         };
-        let mut expression_atoms = vec![];
-        for atom in &atoms {
-            match instantiate_introspection_atom(atom, args) {
-                Ok(instantiated) => expression_atoms.push(FactExpression::Atom(instantiated)),
-                Err(_) => unknown_atoms.push(fact_atom_label(atom)),
-            }
-        }
-        FactExpression::All {
-            all: expression_atoms,
-        }
+        instantiate_introspection_expression(&json!({"all": atoms}), args, &mut unknown_atoms)
     } else {
         instantiate_introspection_expression(&precondition_expr, args, &mut unknown_atoms)
-            .unwrap_or(FactExpression::All { all: vec![] })
     };
     let graph = introspection_project_graph(engine, evidence, ui_host_available);
-    let evaluation = Some(GentleEngine::evaluate_fact_expression_against_graph(
-        &expression,
-        &graph,
-    ));
-    let mut readiness = match evaluation.as_ref().map(|result| result.truth) {
-        Some(FactTruth::Satisfied) if unknown_atoms.is_empty() => "ready",
-        Some(FactTruth::Unsatisfied) => "blocked",
-        Some(FactTruth::Unknown) | None => "unknown",
-        Some(FactTruth::Satisfied) => "unknown",
+    let evaluation = expression.evaluate(&graph);
+    let readiness = match evaluation.truth {
+        FactTruth::Satisfied => "ready",
+        FactTruth::Unsatisfied => "blocked",
+        FactTruth::Unknown => "unknown",
     };
-    if !unknown_atoms.is_empty() && readiness == "ready" {
-        readiness = "unknown";
-    }
     json!({
         "capability_id": capability_id,
         "mode": mode,
         "readiness": readiness,
-        "truth": evaluation.as_ref().map(|result| result.truth),
-        "unmet_atoms": evaluation.as_ref().map(|result| result.unmet_atoms.clone()).unwrap_or_default(),
+        "truth": evaluation.truth,
+        "unmet_atoms": evaluation.unmet_atoms,
         "unknown_atoms": unknown_atoms,
-        "evaluation_unknown_atoms": evaluation.as_ref().map(|result| result.unknown_atoms.clone()).unwrap_or_default(),
+        "evaluation_unknown_atoms": evaluation.unknown_atoms,
     })
 }
 
@@ -25890,34 +32753,16 @@ fn introspection_verify_effects_payload(
             "evaluation_unknown_atoms": [],
         });
     }
-    let mut expression_atoms = vec![];
     let mut unknown_atoms = vec![];
-    for atom in &atoms {
-        match instantiate_introspection_atom(atom, args) {
-            Ok(instantiated) => expression_atoms.push(FactExpression::Atom(instantiated)),
-            Err(_) => unknown_atoms.push(fact_atom_label(atom)),
-        }
-    }
+    let expression =
+        instantiate_introspection_expression(&json!({"all": atoms}), args, &mut unknown_atoms);
     let graph = introspection_project_graph(engine, evidence, ui_host_available);
-    let evaluation = if expression_atoms.is_empty() {
-        None
-    } else {
-        Some(GentleEngine::evaluate_fact_expression_against_graph(
-            &FactExpression::All {
-                all: expression_atoms,
-            },
-            &graph,
-        ))
-    };
-    let verified = matches!(
-        evaluation.as_ref().map(|result| result.truth),
-        Some(FactTruth::Satisfied)
-    ) && unknown_atoms.is_empty();
-    let status = match evaluation.as_ref().map(|result| result.truth) {
-        Some(FactTruth::Satisfied) if unknown_atoms.is_empty() => "verified",
-        Some(FactTruth::Unsatisfied) => "failed",
-        Some(FactTruth::Unknown) | None => "unknown",
-        Some(FactTruth::Satisfied) => "unknown",
+    let evaluation = expression.evaluate(&graph);
+    let verified = evaluation.truth == FactTruth::Satisfied;
+    let status = match evaluation.truth {
+        FactTruth::Satisfied => "verified",
+        FactTruth::Unsatisfied => "failed",
+        FactTruth::Unknown => "unknown",
     };
     json!({
         "schema": "gentle.introspection.v1",
@@ -25927,10 +32772,10 @@ fn introspection_verify_effects_payload(
         "verified": verified,
         "status": status,
         "must_on_success_effects": atoms,
-        "truth": evaluation.as_ref().map(|result| result.truth),
-        "unmet_atoms": evaluation.as_ref().map(|result| result.unmet_atoms.clone()).unwrap_or_default(),
+        "truth": evaluation.truth,
+        "unmet_atoms": evaluation.unmet_atoms,
         "unknown_atoms": unknown_atoms,
-        "evaluation_unknown_atoms": evaluation.as_ref().map(|result| result.unknown_atoms.clone()).unwrap_or_default(),
+        "evaluation_unknown_atoms": evaluation.unknown_atoms,
     })
 }
 
@@ -27182,9 +34027,169 @@ fn protein_expression_analyze_sequence(
     }
 }
 
+fn validate_protein_expression_requirements(
+    requirements: &ProteinExpressionRequirements,
+) -> Result<(), String> {
+    if requirements.schema.trim() != PROTEIN_EXPRESSION_REQUIREMENTS_SCHEMA {
+        return Err(format!(
+            "Unsupported protein-expression requirements schema '{}' (expected '{}')",
+            requirements.schema, PROTEIN_EXPRESSION_REQUIREMENTS_SCHEMA
+        ));
+    }
+    if let Some(yield_goal) = requirements.yield_goal.as_ref() {
+        if yield_goal.metric.trim().is_empty() {
+            return Err("Protein-expression yield_goal.metric must not be empty".to_string());
+        }
+        if let Some(amount) = yield_goal.target_amount {
+            if !amount.is_finite() || amount <= 0.0 {
+                return Err(
+                    "Protein-expression yield_goal.target_amount must be finite and positive"
+                        .to_string(),
+                );
+            }
+            if yield_goal
+                .target_amount_unit
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .is_none()
+            {
+                return Err(
+                    "Protein-expression yield_goal.target_amount_unit is required when target_amount is supplied"
+                        .to_string(),
+                );
+            }
+        }
+    }
+    if let Some(chassis) = requirements.chassis.as_ref()
+        && chassis.acceptable_chassis.is_empty()
+        && !chassis.provider_managed_allowed
+    {
+        return Err(
+            "Protein-expression chassis must name at least one acceptable_chassis or allow provider-managed expression"
+                .to_string(),
+        );
+    }
+    if let Some(localization) = requirements.localization.as_ref()
+        && localization.target.trim().is_empty()
+    {
+        return Err("Protein-expression localization.target must not be empty".to_string());
+    }
+    if let Some(toxicity_induction) = requirements.toxicity_induction.as_ref() {
+        if toxicity_induction.toxicity_expected.is_none() {
+            return Err(
+                "Protein-expression toxicity_induction.toxicity_expected must be explicit"
+                    .to_string(),
+            );
+        }
+        if toxicity_induction.induction_policy.trim().is_empty() {
+            return Err(
+                "Protein-expression toxicity_induction.induction_policy must not be empty"
+                    .to_string(),
+            );
+        }
+        if toxicity_induction
+            .maximum_temperature_c
+            .is_some_and(|value| !value.is_finite())
+        {
+            return Err(
+                "Protein-expression toxicity_induction.maximum_temperature_c must be finite"
+                    .to_string(),
+            );
+        }
+    }
+    if let Some(tag_policy) = requirements.tag_policy.as_ref()
+        && tag_policy.strategy.trim().is_empty()
+    {
+        return Err("Protein-expression tag_policy.strategy must not be empty".to_string());
+    }
+    if let Some(scale_purification) = requirements.scale_purification.as_ref() {
+        if scale_purification.production_scale.trim().is_empty() {
+            return Err(
+                "Protein-expression scale_purification.production_scale must not be empty"
+                    .to_string(),
+            );
+        }
+        if scale_purification.purification_endpoint.trim().is_empty() {
+            return Err(
+                "Protein-expression scale_purification.purification_endpoint must not be empty"
+                    .to_string(),
+            );
+        }
+        if scale_purification
+            .target_purity_percent
+            .is_some_and(|value| !value.is_finite() || !(0.0..=100.0).contains(&value))
+        {
+            return Err(
+                "Protein-expression scale_purification.target_purity_percent must be between 0 and 100"
+                    .to_string(),
+            );
+        }
+    }
+    if let Some(outsourcing) = requirements.outsourcing.as_ref()
+        && outsourcing.allowed.is_none()
+    {
+        return Err(
+            "Protein-expression outsourcing.allowed must be explicitly true or false".to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn protein_expression_reviewed_requirement_topics(
+    requirements: &ProteinExpressionRequirements,
+) -> Vec<&'static str> {
+    let mut topics = vec![];
+    if requirements.yield_goal.is_some() {
+        topics.push("yield_goal");
+    }
+    if requirements.chassis.is_some() {
+        topics.push("chassis");
+    }
+    if requirements.localization.is_some() {
+        topics.push("localization");
+    }
+    if requirements.folding.is_some() {
+        topics.push("folding");
+    }
+    if requirements.toxicity_induction.is_some() {
+        topics.push("toxicity_induction");
+    }
+    if requirements.tag_policy.is_some() {
+        topics.push("tag_policy");
+    }
+    if requirements.scale_purification.is_some() {
+        topics.push("scale_purification");
+    }
+    if requirements.outsourcing.is_some() {
+        topics.push("outsourcing");
+    }
+    topics
+}
+
+fn protein_expression_requirement_answers_question(
+    requirements: &ProteinExpressionRequirements,
+    question_id: &str,
+) -> bool {
+    match question_id {
+        "protein_yield_metric" => requirements.yield_goal.is_some(),
+        "purification_endpoint" | "scale_and_purification_endpoint" => {
+            requirements.scale_purification.is_some()
+        }
+        "tag_preference" | "tag_missing_inputs" => requirements.tag_policy.is_some(),
+        "expression_chassis" => requirements.chassis.is_some(),
+        "toxicity_and_induction_tolerance" => requirements.toxicity_induction.is_some(),
+        "protein_folding_requirements" => requirements.folding.is_some(),
+        "secreted_vs_intracellular" => requirements.localization.is_some(),
+        "outsourcing_permission" => requirements.outsourcing.is_some(),
+        _ => false,
+    }
+}
+
 fn protein_expression_handoff_missing_questions(
     readiness: &ProteinExpressionProductReadiness,
     tag_assessment: &ProteinExpressionTagAssessment,
+    requirements: Option<&ProteinExpressionRequirements>,
 ) -> Vec<PlanningCloningMissingQuestion> {
     let has_inferable_product_context = readiness.usable_cds_context
         || matches!(
@@ -27271,6 +34276,16 @@ fn protein_expression_handoff_missing_questions(
                 tag_assessment.missing_inputs.join(", ")
             ),
             reason: "Tag decisions are product-specific and remain review-gated even when a CDS appears usable.".to_string(),
+        });
+    }
+    questions.push(PlanningCloningMissingQuestion {
+        question_id: "outsourcing_permission".to_string(),
+        prompt: "May this product and its sequence context be shared with an external expression provider, or must production remain in-house?".to_string(),
+        reason: "Provider handoff requires an explicit outsourcing and data-sharing decision; a local review draft is not permission to submit.".to_string(),
+    });
+    if let Some(requirements) = requirements {
+        questions.retain(|question| {
+            !protein_expression_requirement_answers_question(requirements, &question.question_id)
         });
     }
     questions
@@ -27569,9 +34584,12 @@ fn protein_expression_vector_route_candidates() -> Vec<ProteinExpressionVectorRo
 }
 
 fn protein_expression_service_handoff_candidates(
+    product_definition: &ProteinExpressionProductDefinition,
+    sequence: Option<&DNAsequence>,
+    requirements: Option<&ProteinExpressionRequirements>,
     warnings: &mut Vec<String>,
 ) -> Vec<ProteinExpressionServiceHandoffCandidate> {
-    let draft_request_preview =
+    let example_request_preview =
         match fs::read_to_string(PROTEIN_EXPRESSION_GENEART_EXAMPLE_REQUEST_PATH) {
             Ok(raw) => match serde_json::from_str::<Value>(&raw) {
                 Ok(value) => value,
@@ -27602,48 +34620,184 @@ fn protein_expression_service_handoff_candidates(
             }
         };
 
-    vec![ProteinExpressionServiceHandoffCandidate {
+    let product_draft = sequence.and_then(|sequence| {
+        let readiness = &product_definition.readiness;
+        if !matches!(
+            readiness.status.as_str(),
+            "whole_sequence_cds_candidate"
+                | "annotated_cds_review_required"
+                | "protein_sequence_review_required"
+        ) {
+            return None;
+        }
+        let seq_id = product_definition.seq_id.as_deref()?;
+        let name = product_definition
+            .sequence_name
+            .as_deref()
+            .unwrap_or(seq_id);
+        let source_target = if sequence.is_protein_sequence() {
+            json!({
+                "kind": "project_sequence",
+                "protein_seq_id": seq_id,
+                "name": name,
+                "molecule_type": sequence.molecule_type().unwrap_or("protein"),
+                "length_aa": sequence.len(),
+                "readiness_status": readiness.status,
+                "note": "Project protein reference generated by planning protein-expression-handoff; review the target and reverse-translation/provider route before external handoff."
+            })
+        } else {
+            json!({
+                "kind": "project_sequence",
+                "seq_id": seq_id,
+                "name": name,
+                "molecule_type": sequence.molecule_type().unwrap_or("DNA"),
+                "length_bp": sequence.len(),
+                "readiness_status": readiness.status,
+                "note": "Project coding-sequence reference generated by planning protein-expression-handoff; review exact CDS boundaries before external handoff."
+            })
+        };
+        let mut request = serde_json::from_value::<ExternalServiceRequest>(
+            example_request_preview.clone(),
+        )
+        .unwrap_or_else(|_| ExternalServiceRequest {
+            schema: EXTERNAL_SERVICE_REQUEST_SCHEMA.to_string(),
+            provider: "geneart".to_string(),
+            service_kind: "protein_expression".to_string(),
+            ..ExternalServiceRequest::default()
+        });
+        request.schema = EXTERNAL_SERVICE_REQUEST_SCHEMA.to_string();
+        request.provider = "geneart".to_string();
+        request.service_kind = "protein_expression".to_string();
+        request.source_target = source_target;
+        request.request_metadata = Some(json!({
+            "tutorial": false,
+            "human_review_only": true,
+            "generated_by": "planning protein-expression-handoff",
+            "template_path": PROTEIN_EXPRESSION_GENEART_EXAMPLE_REQUEST_PATH,
+            "notes": [
+                "Product-specific review draft; no provider call or submission has occurred.",
+                "Resolve the remaining protein-expression questions before quote handoff."
+            ]
+        }));
+        match serde_json::to_value(request) {
+            Ok(value) => Some(value),
+            Err(err) => {
+                warnings.push(format!(
+                    "Could not serialize the product-specific protein-expression request draft: {err}."
+                ));
+                None
+            }
+        }
+    });
+
+    let (status, draft_request_preview, shell_line, rationale) = if let Some(
+        draft_request_preview,
+    ) = product_draft
+    {
+        let request_json =
+            serde_json::to_string(&draft_request_preview).unwrap_or_else(|_| "{}".to_string());
+        (
+            "product_draft_review_required",
+            draft_request_preview,
+            format!(
+                "services project-preflight {}",
+                quote_shell_arg(&request_json)
+            ),
+            "Uses the selected project product in a review-only GeneArt request draft; V1 does not submit, quote, optimize, or order anything.",
+        )
+    } else {
+        (
+            "draft_example_review_required",
+            example_request_preview,
+            protein_expression_geneart_preflight_shell_line(),
+            "Uses the bundled GeneArt protein-expression example only as a template because no provider-ready product context is available.",
+        )
+    };
+
+    let mut candidate = ProteinExpressionServiceHandoffCandidate {
         provider: "geneart".to_string(),
         service_kind: "protein_expression".to_string(),
-        status: "draft_example_review_required".to_string(),
+        status: status.to_string(),
         example_request_path: PROTEIN_EXPRESSION_GENEART_EXAMPLE_REQUEST_PATH.to_string(),
         draft_request_preview,
-        shell_line: protein_expression_geneart_preflight_shell_line(),
-        rationale: "Uses the existing provider-neutral GeneArt protein-expression request example as a review scaffold; V1 does not submit, quote, optimize, or order anything.".to_string(),
-    }]
+        shell_line,
+        rationale: rationale.to_string(),
+    };
+    if requirements
+        .and_then(|requirements| requirements.outsourcing.as_ref())
+        .and_then(|outsourcing| outsourcing.allowed)
+        == Some(false)
+    {
+        candidate.status = "withheld_by_outsourcing_requirement".to_string();
+        candidate.shell_line.clear();
+        candidate.rationale = "The reviewed requirements explicitly keep protein-expression work in-house; this provider row is retained only as provenance and has no executable handoff command."
+            .to_string();
+    }
+    vec![candidate]
+}
+
+fn protein_expression_service_quote_shell_line(
+    service: &ProteinExpressionServiceHandoffCandidate,
+) -> String {
+    if service.status == "product_draft_review_required"
+        && let Ok(request_json) = serde_json::to_string(&service.draft_request_preview)
+    {
+        return format!("services project-quote {}", quote_shell_arg(&request_json));
+    }
+    protein_expression_geneart_quote_shell_line()
 }
 
 fn protein_expression_suggested_next_actions(
     product_definition: &ProteinExpressionProductDefinition,
+    service_handoff: Option<&ProteinExpressionServiceHandoffCandidate>,
+    requirements: Option<&ProteinExpressionRequirements>,
+    missing_questions: &[PlanningCloningMissingQuestion],
 ) -> Vec<PlanningCloningSuggestedNextAction> {
-    let mut actions = vec![PlanningCloningSuggestedNextAction {
-        action_id: "answer_yield_questions".to_string(),
-        label: "Answer protein-expression disambiguation questions".to_string(),
-        shell_line: "planning objective show".to_string(),
-        rationale: "Review the active objective before narrowing yield metric, chassis, and endpoint choices.".to_string(),
-    }];
+    let mut actions = vec![];
+    if !missing_questions.is_empty() {
+        actions.push(PlanningCloningSuggestedNextAction {
+            action_id: "answer_yield_questions".to_string(),
+            label: "Answer protein-expression disambiguation questions".to_string(),
+            shell_line: "planning objective show".to_string(),
+            rationale: "Review the active objective before narrowing yield metric, chassis, and endpoint choices.".to_string(),
+        });
+    }
 
+    let outsourcing_disallowed = requirements
+        .and_then(|requirements| requirements.outsourcing.as_ref())
+        .and_then(|outsourcing| outsourcing.allowed)
+        == Some(false);
     let readiness = &product_definition.readiness;
     match readiness.status.as_str() {
         "whole_sequence_cds_candidate" | "annotated_cds_review_required" => {
-            actions.push(PlanningCloningSuggestedNextAction {
-                action_id: "inspect_geneart_protein_expression_preflight".to_string(),
-                label: "Inspect GeneArt protein-expression preflight scaffold".to_string(),
-                shell_line: protein_expression_geneart_preflight_shell_line(),
-                rationale: "A reviewable product context is present, so the local provider-neutral preflight scaffold can be inspected without submitting or ordering anything.".to_string(),
-            });
+            let preflight_shell_line = service_handoff
+                .map(|service| service.shell_line.clone())
+                .unwrap_or_else(protein_expression_geneart_preflight_shell_line);
+            let quote_shell_line = service_handoff
+                .map(protein_expression_service_quote_shell_line)
+                .unwrap_or_else(protein_expression_geneart_quote_shell_line);
+            if !outsourcing_disallowed {
+                actions.push(PlanningCloningSuggestedNextAction {
+                    action_id: "inspect_geneart_protein_expression_preflight".to_string(),
+                    label: "Inspect GeneArt protein-expression preflight scaffold".to_string(),
+                    shell_line: preflight_shell_line,
+                    rationale: "A reviewable product context is present, so its product-specific request draft can be inspected without submitting or ordering anything.".to_string(),
+                });
+            }
             actions.push(PlanningCloningSuggestedNextAction {
                 action_id: "consult_cloning_strategy".to_string(),
                 label: "Consult cloning strategy after expression constraints are known".to_string(),
                 shell_line: "planning consult cloning --objective '{\"schema\":\"gentle.planning_objective.v1\",\"biological_intent\":\"protein_expression_max_yield\"}' --format json".to_string(),
                 rationale: "Rank cloning routine families only after product boundaries and protein-expression constraints are explicit.".to_string(),
             });
-            actions.push(PlanningCloningSuggestedNextAction {
-                action_id: "prepare_geneart_quote_packet_after_review".to_string(),
-                label: "Prepare GeneArt protein-expression quote packet after review".to_string(),
-                shell_line: protein_expression_geneart_quote_shell_line(),
-                rationale: "After product and outsourcing constraints are reviewed, prepare the provider-neutral quote packet without submitting it.".to_string(),
-            });
+            if !outsourcing_disallowed {
+                actions.push(PlanningCloningSuggestedNextAction {
+                    action_id: "prepare_geneart_quote_packet_after_review".to_string(),
+                    label: "Prepare GeneArt protein-expression quote packet after review".to_string(),
+                    shell_line: quote_shell_line,
+                    rationale: "After product and outsourcing constraints are reviewed, prepare the provider-neutral quote packet without submitting it.".to_string(),
+                });
+            }
         }
         "protein_sequence_review_required" => {
             let protein_seq_id = product_definition
@@ -27657,12 +34811,16 @@ fn protein_expression_suggested_next_actions(
                 shell_line: format!("reverse-translate run {protein_seq_id}"),
                 rationale: "A protein sequence defines the target product but still needs a reviewed coding-DNA, codon, or provider-target route before expression planning.".to_string(),
             });
-            actions.push(PlanningCloningSuggestedNextAction {
-                action_id: "inspect_provider_protein_target_handoff".to_string(),
-                label: "Inspect provider protein-target handoff scaffold".to_string(),
-                shell_line: protein_expression_geneart_preflight_shell_line(),
-                rationale: "Use the local service-request scaffold only as a review packet for a protein target; GENtle does not reverse-translate, optimize, quote, or order automatically.".to_string(),
-            });
+            if !outsourcing_disallowed {
+                actions.push(PlanningCloningSuggestedNextAction {
+                    action_id: "inspect_provider_protein_target_handoff".to_string(),
+                    label: "Inspect provider protein-target handoff scaffold".to_string(),
+                    shell_line: service_handoff
+                        .map(|service| service.shell_line.clone())
+                        .unwrap_or_else(protein_expression_geneart_preflight_shell_line),
+                    rationale: "Use the local service-request scaffold only as a review packet for a protein target; GENtle does not reverse-translate, optimize, quote, or order automatically.".to_string(),
+                });
+            }
         }
         "needs_cds_boundary" | "needs_cds_boundaries" => {
             let seq_id = product_definition
@@ -27708,6 +34866,17 @@ fn build_protein_expression_handoff_text(report: &ProteinExpressionHandoffReport
             report.product_readiness.status, report.product_readiness.usable_cds_context
         ));
     }
+    if let Some(requirements) = report.requirements.as_ref() {
+        let topics = protein_expression_reviewed_requirement_topics(requirements);
+        lines.push(format!(
+            "Reviewed expression requirements: {}",
+            if topics.is_empty() {
+                "none".to_string()
+            } else {
+                topics.join(", ")
+            }
+        ));
+    }
     if !report.cds_assessment.context_source.is_empty() {
         lines.push(format!(
             "CDS assessment: source={}, translation_possible={}, protein_length_aa={}, internal_stops={}, ambiguous_codons={}",
@@ -27745,17 +34914,29 @@ fn build_protein_expression_handoff_text(report: &ProteinExpressionHandoffReport
             lines.push(format!("- {}", question.prompt));
         }
     }
-    if let Some(service) = report.service_handoff_candidates.first() {
+    let provider_actions = report
+        .suggested_next_actions
+        .iter()
+        .filter(|action| {
+            matches!(
+                action.action_id.as_str(),
+                "inspect_geneart_protein_expression_preflight"
+                    | "inspect_provider_protein_target_handoff"
+                    | "prepare_geneart_quote_packet_after_review"
+            )
+        })
+        .collect::<Vec<_>>();
+    if !provider_actions.is_empty()
+        && let Some(service) = report.service_handoff_candidates.first()
+    {
         lines.push(String::new());
         lines.push(format!(
             "Service handoff scaffold: {} {}",
             service.provider, service.service_kind
         ));
-        lines.push(format!("Preflight: {}", service.shell_line));
-        lines.push(format!(
-            "Quote packet after review: {}",
-            protein_expression_geneart_quote_shell_line()
-        ));
+        for action in provider_actions {
+            lines.push(format!("{}: {}", action.label, action.shell_line));
+        }
     }
     lines.join("\n")
 }
@@ -27764,6 +34945,7 @@ fn execute_planning_protein_expression_handoff(
     engine: &GentleEngine,
     seq_id: &Option<String>,
     objective_json: &Option<String>,
+    requirements_json: &Option<String>,
     profile_scope: PlanningProfileScope,
     output_format: &str,
 ) -> Result<ProteinExpressionHandoffReport, String> {
@@ -27773,6 +34955,18 @@ fn execute_planning_protein_expression_handoff(
                 .to_string(),
         );
     }
+
+    let requirements = match requirements_json.as_deref() {
+        Some(payload) => {
+            let requirements = parse_required_json_payload::<ProteinExpressionRequirements>(
+                payload,
+                "planning protein-expression-handoff requirements",
+            )?;
+            validate_protein_expression_requirements(&requirements)?;
+            Some(requirements)
+        }
+        None => None,
+    };
 
     let objective = match objective_json.as_deref() {
         Some(payload) => parse_optional_json_payload::<PlanningObjective>(
@@ -27815,14 +35009,36 @@ fn execute_planning_protein_expression_handoff(
             .iter()
             .map(|blocker| format!("Product readiness blocker: {blocker}")),
     );
+    if requirements
+        .as_ref()
+        .and_then(|requirements| requirements.outsourcing.as_ref())
+        .and_then(|outsourcing| outsourcing.allowed)
+        == Some(false)
+    {
+        warnings.push(
+            "Outsourcing is explicitly disallowed by the reviewed requirements; provider preflight and quote actions were withheld."
+                .to_string(),
+        );
+    }
     let host_chassis_candidates = protein_expression_host_chassis_candidates();
     let vector_route_candidates = protein_expression_vector_route_candidates();
     let missing_questions = protein_expression_handoff_missing_questions(
         &sequence_analysis.product_readiness,
         &sequence_analysis.tag_assessment,
+        requirements.as_ref(),
     );
-    let service_handoff_candidates = protein_expression_service_handoff_candidates(&mut warnings);
-    let suggested_next_actions = protein_expression_suggested_next_actions(&product_definition);
+    let service_handoff_candidates = protein_expression_service_handoff_candidates(
+        &product_definition,
+        resolved_sequence,
+        requirements.as_ref(),
+        &mut warnings,
+    );
+    let suggested_next_actions = protein_expression_suggested_next_actions(
+        &product_definition,
+        service_handoff_candidates.first(),
+        requirements.as_ref(),
+        &missing_questions,
+    );
 
     let status = if !sequence_analysis.product_readiness.status.is_empty() {
         sequence_analysis.product_readiness.status.as_str()
@@ -27838,6 +35054,7 @@ fn execute_planning_protein_expression_handoff(
         biological_intent,
         product_definition,
         product_readiness: sequence_analysis.product_readiness,
+        requirements,
         sequence_context: sequence_analysis.sequence_context,
         cds_assessment: sequence_analysis.cds_assessment,
         tag_assessment: sequence_analysis.tag_assessment,
@@ -28602,7 +35819,7 @@ fn expand_batch_workflows(
         .collect()
 }
 
-fn shell_quote(value: &str) -> String {
+pub(crate) fn shell_quote(value: &str) -> String {
     if value.is_empty() {
         return "''".to_string();
     }
@@ -29540,6 +36757,165 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 catalog_path,
                 cache_dir,
                 timeout_seconds,
+            })
+        }
+        "prepare-blast-resource" | "import-blast-resource" => {
+            if tokens.len() < 3 {
+                return Err(format!(
+                    "{label} {} requires RESOURCE_ID [--catalog PATH] [--cache-dir PATH] [--force-rebuild]",
+                    tokens[1]
+                ));
+            }
+            let resource_id = tokens[2].clone();
+            let mut catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut force_rebuild = false;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
+                    }
+                    "--force-rebuild" => {
+                        force_rebuild = true;
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {label} {}",
+                            tokens[1]
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReferencePrepareBlastResource {
+                helper_mode,
+                resource_id,
+                catalog_path,
+                cache_dir,
+                force_rebuild,
+            })
+        }
+        "adopt-blast-resource" => {
+            const USAGE: &str = "adopt-blast-resource RESOURCE_ID --sequence-path PREPARED.fa --blast-db-prefix PREFIX --expected-content-fingerprint sha256:... [--expected-sequence-sha1 SHA1] [--verify-source-identities] [--catalog PATH] [--cache-dir PATH]";
+            if tokens.len() < 3 {
+                return Err(format!("{label} {USAGE}"));
+            }
+            let resource_id = tokens[2].clone();
+            let mut sequence_path = None;
+            let mut blast_db_prefix = None;
+            let mut expected_content_fingerprint = None;
+            let mut expected_sequence_sha1 = None;
+            let mut verify_source_identities = false;
+            let mut catalog_path = None;
+            let mut cache_dir = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--sequence-path" => {
+                        sequence_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--sequence-path",
+                            label,
+                        )?);
+                    }
+                    "--blast-db-prefix" => {
+                        blast_db_prefix = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--blast-db-prefix",
+                            label,
+                        )?);
+                    }
+                    "--expected-content-fingerprint" => {
+                        expected_content_fingerprint = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--expected-content-fingerprint",
+                            label,
+                        )?);
+                    }
+                    "--expected-sequence-sha1" => {
+                        expected_sequence_sha1 = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--expected-sequence-sha1",
+                            label,
+                        )?);
+                    }
+                    "--verify-source-identities" => {
+                        verify_source_identities = true;
+                        idx += 1;
+                    }
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?);
+                    }
+                    "--cache-dir" => {
+                        cache_dir =
+                            Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {label} adopt-blast-resource\n       {label} {USAGE}"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReferenceAdoptBlastResource {
+                helper_mode,
+                resource_id,
+                sequence_path: sequence_path.ok_or_else(|| {
+                    format!("{label} adopt-blast-resource requires --sequence-path")
+                })?,
+                blast_db_prefix: blast_db_prefix.ok_or_else(|| {
+                    format!("{label} adopt-blast-resource requires --blast-db-prefix")
+                })?,
+                expected_content_fingerprint: expected_content_fingerprint.ok_or_else(|| {
+                    format!("{label} adopt-blast-resource requires --expected-content-fingerprint")
+                })?,
+                expected_sequence_sha1,
+                verify_source_identities,
+                catalog_path,
+                cache_dir,
+            })
+        }
+        "inspect-blast-resource" => {
+            if tokens.len() < 3 {
+                return Err(format!(
+                    "{label} inspect-blast-resource requires RESOURCE_ID [--catalog PATH] [--cache-dir PATH]"
+                ));
+            }
+            let resource_id = tokens[2].clone();
+            let mut catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {label} inspect-blast-resource"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReferenceInspectBlastResource {
+                helper_mode,
+                resource_id,
+                catalog_path,
+                cache_dir,
             })
         }
         "remove-prepared" => {
@@ -31372,12 +38748,27 @@ fn parse_dbsnp_command(tokens: &[String]) -> Result<ShellCommand, String> {
 }
 
 fn parse_promoter_window_collapse_mode(raw: &str) -> Result<PromoterWindowCollapseMode, String> {
-    match raw.trim().to_ascii_lowercase().as_str() {
+    let normalized = raw.trim().to_ascii_lowercase();
+    match normalized.as_str() {
         "transcript" => Ok(PromoterWindowCollapseMode::Transcript),
         "gene" => Ok(PromoterWindowCollapseMode::Gene),
-        other => Err(format!(
-            "Invalid promoter collapse mode '{other}' (expected transcript or gene)"
-        )),
+        "tss_cluster" | "tss-cluster" => Ok(PromoterWindowCollapseMode::TssCluster {
+            tolerance_bp: PromoterReporterFragmentPolicy::DEFAULT_TSS_CLUSTER_TOLERANCE_BP,
+        }),
+        other => {
+            let tolerance = other
+                .strip_prefix("tss_cluster:")
+                .or_else(|| other.strip_prefix("tss-cluster:"));
+            if let Some(tolerance) = tolerance {
+                let tolerance_bp = tolerance
+                    .parse::<usize>()
+                    .map_err(|e| format!("Invalid TSS-cluster tolerance '{tolerance}': {e}"))?;
+                return Ok(PromoterWindowCollapseMode::TssCluster { tolerance_bp });
+            }
+            Err(format!(
+                "Invalid promoter collapse mode '{other}' (expected transcript, gene, or tss-cluster[:TOLERANCE_BP])"
+            ))
+        }
     }
 }
 
@@ -31697,7 +39088,7 @@ fn parse_variant_command(tokens: &[String]) -> Result<ShellCommand, String> {
         "materialize-allele" => {
             if tokens.len() < 3 {
                 return Err(
-                    "variant materialize-allele requires SEQ_ID --allele reference|alternate [--variant ID] [--output-id ID]"
+                    "variant materialize-allele requires SEQ_ID --allele reference|alternate [--alternate-base BASE] [--variant ID] [--output-id ID]"
                         .to_string(),
                 );
             }
@@ -31707,6 +39098,7 @@ fn parse_variant_command(tokens: &[String]) -> Result<ShellCommand, String> {
             }
             let mut variant_label_or_id: Option<String> = None;
             let mut allele: Option<VariantAlleleChoice> = None;
+            let mut alternate_allele: Option<String> = None;
             let mut output_id: Option<String> = None;
             let mut idx = 3usize;
             while idx < tokens.len() {
@@ -31727,6 +39119,14 @@ fn parse_variant_command(tokens: &[String]) -> Result<ShellCommand, String> {
                             "variant materialize-allele",
                         )?;
                         allele = Some(parse_variant_allele_choice(&raw)?);
+                    }
+                    "--alternate-base" | "--alternate-allele" => {
+                        alternate_allele = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--alternate-base",
+                            "variant materialize-allele",
+                        )?);
                     }
                     "--output-id" => {
                         output_id = Some(parse_option_path(
@@ -31749,6 +39149,7 @@ fn parse_variant_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 allele: allele.ok_or_else(|| {
                     "variant materialize-allele requires --allele reference|alternate".to_string()
                 })?,
+                alternate_allele,
                 output_id,
             })
         }
@@ -31761,7 +39162,7 @@ fn parse_variant_command(tokens: &[String]) -> Result<ShellCommand, String> {
 fn parse_uniprot_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "uniprot requires a subcommand: fetch, import-swissprot, list, show, map, projection-list, projection-show, feature-coding-dna, resolve-ensembl-links, transcript-accounting, compare-ensembl-exons, compare-ensembl-peptide, audit-projection, audit-parity, audit-list, audit-show, audit-export, audit-parity-list, audit-parity-show, audit-parity-export"
+            "uniprot requires a subcommand: fetch, import-swissprot, list, show, map, projection-list, projection-show, feature-coding-dna, resolve-ensembl-links, transcript-accounting, compare-ensembl-exons, compare-ensembl-peptide, build-linked-transcript-inventory, audit-projection, audit-parity, audit-list, audit-show, audit-export, audit-parity-list, audit-parity-show, audit-parity-export"
                 .to_string(),
         );
     }
@@ -32175,6 +39576,20 @@ fn parse_uniprot_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 ensembl_entry_id,
             })
         }
+        "build-linked-transcript-inventory" => {
+            if tokens.len() != 3 {
+                return Err(
+                    "uniprot build-linked-transcript-inventory requires REQUEST_JSON_OR_@FILE"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::UniprotBuildLinkedTranscriptInventory {
+                request: parse_required_json_payload(
+                    &tokens[2],
+                    "UniProt linked-transcript inventory request",
+                )?,
+            })
+        }
         "audit-projection" => {
             if tokens.len() < 3 {
                 return Err(
@@ -32374,7 +39789,7 @@ fn parse_uniprot_command(tokens: &[String]) -> Result<ShellCommand, String> {
             Ok(ShellCommand::UniprotAuditParityExport { report_id, path })
         }
         other => Err(format!(
-            "Unknown uniprot subcommand '{other}' (expected fetch, import-swissprot, list, show, map, projection-list, projection-show, feature-coding-dna, resolve-ensembl-links, transcript-accounting, compare-ensembl-exons, compare-ensembl-peptide, audit-projection, audit-parity, audit-list, audit-show, audit-export, audit-parity-list, audit-parity-show, audit-parity-export)"
+            "Unknown uniprot subcommand '{other}' (expected fetch, import-swissprot, list, show, map, projection-list, projection-show, feature-coding-dna, resolve-ensembl-links, transcript-accounting, compare-ensembl-exons, compare-ensembl-peptide, build-linked-transcript-inventory, audit-projection, audit-parity, audit-list, audit-show, audit-export, audit-parity-list, audit-parity-show, audit-parity-export)"
         )),
     }
 }
@@ -32484,7 +39899,7 @@ fn parse_ensembl_gene_command(tokens: &[String]) -> Result<ShellCommand, String>
         "fetch" => {
             if tokens.len() < 3 {
                 return Err(
-                    "ensembl-gene fetch requires QUERY [--species NAME] [--entry-id ID] [--no-open]"
+                    "ensembl-gene fetch requires QUERY [--species NAME] [--assembly NAME] [--flank-bp N|--flank-5p-bp N --flank-3p-bp N] [--entry-id ID] [--no-open]"
                         .to_string(),
                 );
             }
@@ -32493,6 +39908,9 @@ fn parse_ensembl_gene_command(tokens: &[String]) -> Result<ShellCommand, String>
                 return Err("ensembl-gene fetch QUERY must not be empty".to_string());
             }
             let mut species: Option<String> = None;
+            let mut assembly: Option<String> = None;
+            let mut flank_5prime_bp: Option<usize> = None;
+            let mut flank_3prime_bp: Option<usize> = None;
             let mut entry_id: Option<String> = None;
             let mut idx = 3usize;
             while idx < tokens.len() {
@@ -32502,6 +39920,40 @@ fn parse_ensembl_gene_command(tokens: &[String]) -> Result<ShellCommand, String>
                             tokens,
                             &mut idx,
                             "--species",
+                            "ensembl-gene fetch",
+                        )?);
+                    }
+                    "--assembly" => {
+                        assembly = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--assembly",
+                            "ensembl-gene fetch",
+                        )?);
+                    }
+                    "--flank" | "--flank-bp" => {
+                        let value = parse_ensembl_gene_flank_bp(
+                            tokens,
+                            &mut idx,
+                            "--flank-bp",
+                            "ensembl-gene fetch",
+                        )?;
+                        flank_5prime_bp = Some(value);
+                        flank_3prime_bp = Some(value);
+                    }
+                    "--flank-5p-bp" | "--flank-5prime-bp" => {
+                        flank_5prime_bp = Some(parse_ensembl_gene_flank_bp(
+                            tokens,
+                            &mut idx,
+                            "--flank-5p-bp",
+                            "ensembl-gene fetch",
+                        )?);
+                    }
+                    "--flank-3p-bp" | "--flank-3prime-bp" => {
+                        flank_3prime_bp = Some(parse_ensembl_gene_flank_bp(
+                            tokens,
+                            &mut idx,
+                            "--flank-3p-bp",
                             "ensembl-gene fetch",
                         )?);
                     }
@@ -32524,6 +39976,9 @@ fn parse_ensembl_gene_command(tokens: &[String]) -> Result<ShellCommand, String>
             Ok(ShellCommand::EnsemblGeneFetch {
                 query,
                 species,
+                assembly,
+                flank_5prime_bp,
+                flank_3prime_bp,
                 entry_id,
             })
         }
@@ -32581,6 +40036,17 @@ fn parse_ensembl_gene_command(tokens: &[String]) -> Result<ShellCommand, String>
             "Unknown ensembl-gene subcommand '{other}' (expected fetch|list|show|import-sequence)"
         )),
     }
+}
+
+fn parse_ensembl_gene_flank_bp(
+    tokens: &[String],
+    idx: &mut usize,
+    option: &str,
+    context: &str,
+) -> Result<usize, String> {
+    let raw = parse_option_path(tokens, idx, option, context)?;
+    raw.parse::<usize>()
+        .map_err(|error| format!("Invalid {option} value '{raw}' for {context}: {error}"))
 }
 
 fn parse_ensembl_region_bound(raw: &str, label: &str) -> Result<usize, String> {
@@ -32938,7 +40404,7 @@ fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
         "ask" => {
             if tokens.len() < 3 {
                 return Err(
-                    "agents ask requires SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]".to_string(),
+                    "agents ask requires SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--allow-web-research] [--execute-all] [--execute-index N ...] [--no-state-summary]".to_string(),
                 );
             }
             let system_id = tokens[2].trim().to_string();
@@ -32957,6 +40423,7 @@ fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
             let mut max_response_bytes: Option<usize> = None;
             let mut include_state_summary = true;
             let mut allow_auto_exec = false;
+            let mut allow_web_research = false;
             let mut execute_all = false;
             let mut execute_indices: Vec<usize> = vec![];
             let mut idx = 3usize;
@@ -33066,6 +40533,10 @@ fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
                         allow_auto_exec = true;
                         idx += 1;
                     }
+                    "--allow-web-research" => {
+                        allow_web_research = true;
+                        idx += 1;
+                    }
                     "--execute-all" => {
                         execute_all = true;
                         idx += 1;
@@ -33113,6 +40584,7 @@ fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 max_response_bytes,
                 include_state_summary,
                 allow_auto_exec,
+                allow_web_research,
                 execute_all,
                 execute_indices,
             })
@@ -33341,6 +40813,25 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         "selection" | "select" => parse_ui_sequence_selection_command(tokens),
         action_raw
+            if UiIntentAction::parse(action_raw).is_some()
+                && tokens.get(2).and_then(|raw| UiIntentTarget::parse(raw))
+                    == Some(UiIntentTarget::SplicingExpert) =>
+        {
+            if tokens.len() != 5 || tokens[3].trim().is_empty() {
+                return Err(
+                    "ui open|focus|close splicing-expert requires SEQ_ID FEATURE_ID".into(),
+                );
+            }
+            let feature_id = tokens[4].parse::<usize>().map_err(|_| {
+                "splicing-expert FEATURE_ID must be a zero-based non-negative integer".to_string()
+            })?;
+            Ok(ShellCommand::UiSplicingExpert {
+                action: UiIntentAction::parse(action_raw).unwrap(),
+                seq_id: tokens[3].trim().to_string(),
+                feature_id,
+            })
+        }
+        action_raw
             if tokens.len() >= 3
                 && UiIntentAction::parse(action_raw).is_some()
                 && matches!(
@@ -33361,6 +40852,204 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
             }
             Ok(ShellCommand::UiSequenceWindow { action, seq_id })
         }
+        action_raw
+            if tokens.len() >= 3
+                && UiIntentAction::parse(action_raw).is_some()
+                && UiIntentTarget::parse(&tokens[2]) == Some(UiIntentTarget::RecentProject) =>
+        {
+            let action = UiIntentAction::parse(action_raw)
+                .expect("checked ui intent action before parsing recent-project intent");
+            if !UiIntentTarget::RecentProject
+                .actions()
+                .iter()
+                .any(|candidate| *candidate == action.as_str())
+            {
+                return Err(format!(
+                    "ui {} does not support target recent-project",
+                    action.as_str()
+                ));
+            }
+            if tokens.len() != 4 {
+                return Err(format!("ui {action_raw} recent-project requires ITEM_ID"));
+            }
+            let item_id = tokens[3].trim().to_string();
+            if item_id.is_empty() {
+                return Err(format!(
+                    "ui {action_raw} recent-project ITEM_ID must not be empty"
+                ));
+            }
+            Ok(ShellCommand::UiRecentProject { item_id })
+        }
+        action_raw
+            if tokens.len() >= 3
+                && UiIntentAction::parse(action_raw).is_some()
+                && UiIntentTarget::parse(&tokens[2]) == Some(UiIntentTarget::TutorialProject) =>
+        {
+            let action = UiIntentAction::parse(action_raw)
+                .expect("checked ui intent action before parsing tutorial-project intent");
+            if !UiIntentTarget::TutorialProject
+                .actions()
+                .iter()
+                .any(|candidate| *candidate == action.as_str())
+            {
+                return Err(format!(
+                    "ui {} does not support target tutorial-project",
+                    action.as_str()
+                ));
+            }
+            if tokens.len() != 4 {
+                return Err(format!(
+                    "ui {action_raw} tutorial-project requires CHAPTER_ID"
+                ));
+            }
+            let chapter_id = tokens[3].trim().to_string();
+            if chapter_id.is_empty() {
+                return Err(format!(
+                    "ui {action_raw} tutorial-project CHAPTER_ID must not be empty"
+                ));
+            }
+            Ok(ShellCommand::UiTutorialProject { chapter_id })
+        }
+        action_raw
+            if tokens.len() >= 3
+                && UiIntentAction::parse(action_raw).is_some()
+                && UiIntentTarget::parse(&tokens[2]) == Some(UiIntentTarget::TutorialGuide) =>
+        {
+            let action = UiIntentAction::parse(action_raw)
+                .expect("checked ui intent action before parsing tutorial-guide intent");
+            if !UiIntentTarget::TutorialGuide
+                .actions()
+                .iter()
+                .any(|candidate| *candidate == action.as_str())
+            {
+                return Err(format!(
+                    "ui {} does not support target tutorial-guide",
+                    action.as_str()
+                ));
+            }
+            if tokens.len() != 4 {
+                return Err(format!(
+                    "ui {action_raw} tutorial-guide requires TUTORIAL_ID"
+                ));
+            }
+            let tutorial_id = tokens[3].trim().to_string();
+            if tutorial_id.is_empty() {
+                return Err(format!(
+                    "ui {action_raw} tutorial-guide TUTORIAL_ID must not be empty"
+                ));
+            }
+            Ok(ShellCommand::UiTutorialGuide { tutorial_id })
+        }
+        action_raw
+            if tokens.len() >= 3
+                && UiIntentAction::parse(action_raw).is_some()
+                && UiIntentTarget::parse(&tokens[2]) == Some(UiIntentTarget::Configuration) =>
+        {
+            let action = UiIntentAction::parse(action_raw)
+                .expect("checked ui intent action before parsing configuration intent");
+            if tokens.len() > 4 {
+                return Err(format!(
+                    "ui {action_raw} configuration accepts at most one SECTION"
+                ));
+            }
+            if matches!(action, UiIntentAction::Close) && tokens.len() == 4 {
+                return Err("ui close configuration does not take a SECTION".to_string());
+            }
+            let section = tokens
+                .get(3)
+                .map(|raw| {
+                    UiConfigurationSection::parse(raw).ok_or_else(|| {
+                        let expected = UiConfigurationSection::all()
+                            .iter()
+                            .map(|section| section.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        format!(
+                            "Unknown Configuration section '{raw}'. Expected one of: {expected}"
+                        )
+                    })
+                })
+                .transpose()?
+                .unwrap_or_default();
+            Ok(ShellCommand::UiConfiguration { action, section })
+        }
+        action_raw
+            if UiIntentAction::parse(action_raw).is_some()
+                && tokens
+                    .get(2)
+                    .is_some_and(|s| UiIntentTarget::parse(s) == Some(UiIntentTarget::TssView))
+                && tokens.len() > 3 =>
+        {
+            const TSS_VIEW_USAGE: &str = "ui open|focus|close tss-view --collection COLLECTION_ID, ui open|focus tss-view --report REPORT_JSON, or ui open|focus tss-view --local-score ACCESSION[,ACCESSION...] [--score-kind KIND] [--keep-negative]";
+            let action = UiIntentAction::parse(action_raw).unwrap();
+            if tokens[3] == "--local-score" {
+                if matches!(action, UiIntentAction::Close) {
+                    return Err("ui close tss-view --local-score is not supported; use ui close tss-view to return to the Standard map".into());
+                }
+                let raw = tokens
+                    .get(4)
+                    .filter(|s| !s.trim().is_empty())
+                    .ok_or(TSS_VIEW_USAGE)?;
+                // Exact accessions only; the viewer refuses aliases, ALL and consensus fallback.
+                let matrix_ids = raw
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .collect::<Vec<_>>();
+                let mut score_kind = TfbsScoreTrackValueKind::default();
+                let mut clip_negative = true;
+                let mut idx = 5;
+                while idx < tokens.len() {
+                    match tokens[idx].as_str() {
+                        "--score-kind" => {
+                            idx += 1;
+                            let raw = tokens
+                                .get(idx)
+                                .ok_or("--score-kind requires a value")?
+                                .clone();
+                            score_kind = parse_tfbs_score_track_value_kind_shell(
+                                &raw,
+                                "ui open tss-view --local-score",
+                            )?;
+                        }
+                        "--keep-negative" => clip_negative = false,
+                        "--clip-negative" => clip_negative = true,
+                        other => {
+                            return Err(format!(
+                                "Unknown ui tss-view --local-score option '{other}'. {TSS_VIEW_USAGE}"
+                            ));
+                        }
+                    }
+                    idx += 1;
+                }
+                return Ok(ShellCommand::UiTssLocalScore {
+                    action,
+                    matrix_ids,
+                    score_kind,
+                    clip_negative,
+                });
+            }
+            if tokens.len() != 5 || tokens[4].trim().is_empty() {
+                return Err(TSS_VIEW_USAGE.into());
+            }
+            if tokens[3] == "--report" {
+                if matches!(action, UiIntentAction::Close) {
+                    return Err("ui close tss-view --report is not supported; use ui close tss-view to return to the Standard map".into());
+                }
+                return Ok(ShellCommand::UiTssProfile {
+                    action,
+                    report_path: tokens[4].clone(),
+                });
+            }
+            if tokens[3] != "--collection" {
+                return Err(TSS_VIEW_USAGE.into());
+            }
+            Ok(ShellCommand::UiTssCollection {
+                action,
+                collection_id: tokens[4].clone(),
+            })
+        }
         action_raw if UiIntentAction::parse(action_raw).is_some() => {
             if tokens.len() < 3 {
                 return Err(
@@ -33378,6 +41067,16 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
                     .join(", ");
                 format!("Unknown ui target. Expected one of: {expected}")
             })?;
+            if matches!(
+                target,
+                UiIntentTarget::GelImageEditor | UiIntentTarget::TssView
+            ) && tokens.len() != 3
+            {
+                return Err(format!(
+                    "ui open|focus|close {} takes no options",
+                    target.as_str()
+                ));
+            }
             if !target
                 .actions()
                 .iter()
@@ -33745,7 +41444,8 @@ fn parse_display_command(tokens: &[String]) -> Result<ShellCommand, String> {
 fn parse_gene_sets_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "gene-sets requires a subcommand: resolve, produce, or promoter-cohort".to_string(),
+            "gene-sets requires a subcommand: resolve, produce, create-pool, promoter-cohort, or regulatory-partner-screen"
+                .to_string(),
         );
     }
     match tokens[1].as_str() {
@@ -34353,6 +42053,114 @@ fn parse_gene_sets_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 )),
             }
         }
+        "create-pool" | "create_pool" => {
+            let context = "gene-sets create-pool";
+            let mut resolution_id: Option<String> = None;
+            let mut member_bindings = Vec::new();
+            let mut output_prefix = None;
+            let mut container_name = None;
+            let mut dry_run = true;
+            let mut expected_plan_fingerprint_sha256 = None;
+            let mut path = None;
+            let mut idx = 2usize;
+            if let Some(value) = tokens.get(idx)
+                && !value.starts_with("--")
+            {
+                resolution_id = Some(value.trim().to_string());
+                idx += 1;
+            }
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--member-container" | "--member-binding" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        let (member_id, container_id) = raw
+                            .split_once('=')
+                            .ok_or_else(|| format!("{flag} requires MEMBER_ID=CONTAINER_ID"))?;
+                        let member_id = member_id.trim();
+                        let container_id = container_id.trim();
+                        if member_id.is_empty() || container_id.is_empty() {
+                            return Err(format!(
+                                "{flag} requires non-empty MEMBER_ID=CONTAINER_ID"
+                            ));
+                        }
+                        member_bindings.push(GeneSetPoolMemberBinding {
+                            stable_member_id: member_id.to_string(),
+                            source_container_id: container_id.to_string(),
+                        });
+                    }
+                    "--output-prefix" => {
+                        output_prefix = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output-prefix",
+                            context,
+                        )?);
+                    }
+                    "--container-name" => {
+                        container_name = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--container-name",
+                            context,
+                        )?);
+                    }
+                    "--preview" | "--dry-run" => {
+                        dry_run = true;
+                        idx += 1;
+                    }
+                    "--apply" => {
+                        dry_run = false;
+                        idx += 1;
+                    }
+                    "--expected-plan-fingerprint-sha256" => {
+                        expected_plan_fingerprint_sha256 = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--expected-plan-fingerprint-sha256",
+                            context,
+                        )?);
+                    }
+                    "--path" | "--output" => {
+                        let flag = tokens[idx].clone();
+                        path = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    other => return Err(format!("Unknown option '{other}' for {context}")),
+                }
+            }
+            let resolution_id = resolution_id
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| format!("{context} requires RESOLUTION_ID"))?;
+            if member_bindings.is_empty() {
+                return Err(format!(
+                    "{context} requires at least one --member-container MEMBER_ID=CONTAINER_ID"
+                ));
+            }
+            if !dry_run
+                && expected_plan_fingerprint_sha256
+                    .as_deref()
+                    .map(str::trim)
+                    .is_none_or(str::is_empty)
+            {
+                return Err(format!(
+                    "{context} --apply requires --expected-plan-fingerprint-sha256 SHA256"
+                ));
+            }
+            if dry_run && expected_plan_fingerprint_sha256.is_some() {
+                return Err(format!(
+                    "{context} accepts --expected-plan-fingerprint-sha256 only with --apply"
+                ));
+            }
+            Ok(ShellCommand::GeneSetsCreatePool {
+                resolution_id,
+                member_bindings,
+                output_prefix,
+                container_name,
+                dry_run,
+                expected_plan_fingerprint_sha256,
+                path,
+            })
+        }
         "promoter-cohort" | "promoter_cohort" => {
             let context = "gene-sets promoter-cohort";
             let mut source_args = GeneSetSourceArgs::default();
@@ -34459,8 +42267,177 @@ fn parse_gene_sets_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 output,
             })
         }
+        "regulatory-partner-screen" | "regulatory_partner_screen" | "regulatory-partners" => {
+            let context = "gene-sets regulatory-partner-screen";
+            let mut genome_id: Option<String> = None;
+            let mut resolution: Option<GeneSetResolutionReport> = None;
+            let mut cutrun_support: Option<GeneSetCutRunRegulatorySupportReport> = None;
+            let mut anchor_motifs = vec![];
+            let mut partner_motifs = vec![];
+            let mut min_llr_bits = 0.0_f64;
+            let mut per_motif_thresholds = vec![];
+            let mut max_distance_bp = DEFAULT_REGULATORY_PARTNER_DISTANCE_BP;
+            let mut anchor_mode = RegulatoryPartnerAnchorMode::OccupancyPreferred;
+            let mut genome_catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut upstream_bp = DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP;
+            let mut downstream_bp = DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP;
+            let mut output: Option<String> = None;
+            let mut idx = 2usize;
+            if idx < tokens.len() && !tokens[idx].starts_with("--") {
+                genome_id = Some(tokens[idx].clone());
+                idx += 1;
+            }
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--genome" | "--genome-id" | "--genome_id" => {
+                        let flag = tokens[idx].clone();
+                        genome_id = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--resolution" | "--gene-set-resolution" | "--gene_set_resolution" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        resolution = Some(parse_required_json_payload::<GeneSetResolutionReport>(
+                            &raw,
+                            "gene-set resolution",
+                        )?);
+                    }
+                    "--cutrun-support" | "--cutrun_support" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        cutrun_support = Some(parse_required_json_payload::<
+                            GeneSetCutRunRegulatorySupportReport,
+                        >(
+                            &raw, "gene-set CUT&RUN support report"
+                        )?);
+                    }
+                    "--anchor-motif" | "--anchor_motif" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        anchor_motifs.extend(
+                            raw.split(',')
+                                .map(str::trim)
+                                .filter(|value| !value.is_empty())
+                                .map(str::to_string),
+                        );
+                    }
+                    "--partner-motif" | "--partner_motif" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        partner_motifs.extend(
+                            raw.split(',')
+                                .map(str::trim)
+                                .filter(|value| !value.is_empty())
+                                .map(str::to_string),
+                        );
+                    }
+                    "--min-llr-bits" | "--min_llr_bits" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        min_llr_bits = raw.parse::<f64>().map_err(|error| {
+                            format!("Invalid {flag} value '{raw}' for {context}: {error}")
+                        })?;
+                    }
+                    "--motif-threshold" | "--motif_threshold" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        let (motif, bits) = raw.split_once('=').ok_or_else(|| {
+                            format!("{context} {flag} expects MOTIF=MIN_LLR_BITS")
+                        })?;
+                        let motif = motif.trim();
+                        if motif.is_empty() {
+                            return Err(format!("{context} {flag} motif must not be empty"));
+                        }
+                        let min_llr_bits = bits.trim().parse::<f64>().map_err(|error| {
+                            format!("Invalid {flag} value '{raw}' for {context}: {error}")
+                        })?;
+                        per_motif_thresholds.push(RegulatoryPartnerMotifThreshold {
+                            motif: motif.to_string(),
+                            min_llr_bits,
+                        });
+                    }
+                    "--max-distance-bp" | "--max_distance_bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        max_distance_bp = raw.parse::<usize>().map_err(|error| {
+                            format!("Invalid {flag} value '{raw}' for {context}: {error}")
+                        })?;
+                    }
+                    "--anchor-mode" | "--anchor_mode" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        anchor_mode = match raw.trim().to_ascii_lowercase().as_str() {
+                            "occupancy-preferred" | "occupancy_preferred" | "occupancy" => {
+                                RegulatoryPartnerAnchorMode::OccupancyPreferred
+                            }
+                            "motif-only" | "motif_only" | "motif" => {
+                                RegulatoryPartnerAnchorMode::MotifOnly
+                            }
+                            _ => {
+                                return Err(format!(
+                                    "Invalid {flag} value '{raw}' for {context} (expected occupancy-preferred or motif-only)"
+                                ));
+                            }
+                        };
+                    }
+                    "--genome-catalog" | "--genome_catalog" => {
+                        let flag = tokens[idx].clone();
+                        genome_catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--cache-dir" | "--cache_dir" => {
+                        let flag = tokens[idx].clone();
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--upstream-bp" | "--upstream_bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        upstream_bp = raw.parse::<usize>().map_err(|error| {
+                            format!("Invalid {flag} value '{raw}' for {context}: {error}")
+                        })?;
+                    }
+                    "--downstream-bp" | "--downstream_bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        downstream_bp = raw.parse::<usize>().map_err(|error| {
+                            format!("Invalid {flag} value '{raw}' for {context}: {error}")
+                        })?;
+                    }
+                    "--output" | "--path" => {
+                        let flag = tokens[idx].clone();
+                        output = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    other => return Err(format!("Unknown option '{other}' for {context}")),
+                }
+            }
+            let genome_id = genome_id
+                .ok_or_else(|| format!("{context} requires GENOME_ID or --genome GENOME_ID"))?;
+            let resolution =
+                resolution.ok_or_else(|| format!("{context} requires --resolution REPORT.json"))?;
+            if anchor_motifs.is_empty() || partner_motifs.is_empty() {
+                return Err(format!(
+                    "{context} requires at least one --anchor-motif and one --partner-motif"
+                ));
+            }
+            Ok(ShellCommand::GeneSetsRegulatoryPartnerScreen {
+                genome_id,
+                resolution: Box::new(resolution),
+                cutrun_support: cutrun_support.map(Box::new),
+                anchor_motifs,
+                partner_motifs,
+                min_llr_bits,
+                per_motif_thresholds,
+                max_distance_bp,
+                anchor_mode,
+                genome_catalog_path,
+                cache_dir,
+                upstream_bp,
+                downstream_bp,
+                output,
+            })
+        }
         other => Err(format!(
-            "Unknown gene-sets subcommand '{other}' (expected resolve, produce, or promoter-cohort)"
+            "Unknown gene-sets subcommand '{other}' (expected resolve, produce, create-pool, promoter-cohort, or regulatory-partner-screen)"
         )),
     }
 }
@@ -34468,7 +42445,7 @@ fn parse_gene_sets_command(tokens: &[String]) -> Result<ShellCommand, String> {
 fn parse_orthologs_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "orthologs requires a subcommand: resolve-promoter-cohort or promoter-comparison"
+            "orthologs requires a subcommand: resolve-promoter-cohort, promoter-comparison, or conservation-comparison"
                 .to_string(),
         );
     }
@@ -34628,6 +42605,7 @@ fn parse_orthologs_command(tokens: &[String]) -> Result<ShellCommand, String> {
             let mut expression_source_label: Option<String> = None;
             let mut cutrun_dataset_ids: Vec<String> = vec![];
             let mut cutrun_read_report_ids: Vec<String> = vec![];
+            let mut cutrun_normalization: Option<OrthologCutRunNormalizationInput> = None;
             let mut output: Option<String> = None;
             let mut idx = 2usize;
             while idx < tokens.len() {
@@ -34704,6 +42682,20 @@ fn parse_orthologs_command(tokens: &[String]) -> Result<ShellCommand, String> {
                         )?;
                         cutrun_read_report_ids.extend(split_csv_tokens_with_empty_error(&raw)?);
                     }
+                    "--cutrun-normalization-json" | "--cutrun-normalization" => {
+                        let flag = tokens[idx].clone();
+                        if cutrun_normalization.is_some() {
+                            return Err(format!(
+                                "{context} accepts at most one --cutrun-normalization-json value"
+                            ));
+                        }
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        cutrun_normalization = Some(parse_required_json_payload::<
+                            OrthologCutRunNormalizationInput,
+                        >(
+                            &raw, "ortholog CUT&RUN normalization"
+                        )?);
+                    }
                     "--output" | "--path" => {
                         let flag = tokens[idx].clone();
                         output = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
@@ -34739,11 +42731,70 @@ fn parse_orthologs_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 expression_source_label,
                 cutrun_dataset_ids,
                 cutrun_read_report_ids,
+                cutrun_normalization,
+                output,
+            })
+        }
+        "conservation-comparison" | "conservation_comparison" | "compare-conservation" => {
+            let context = "orthologs conservation-comparison";
+            let mut cohort: Option<OrthologPromoterCohortReport> = None;
+            let mut cohort_path: Option<String> = None;
+            let mut min_conserved_bp = 8usize;
+            let mut output: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--cohort" | "--cohort-path" => {
+                        let flag = tokens[idx].clone();
+                        cohort_path = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--cohort-json" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--cohort-json", context)?;
+                        cohort = Some(parse_required_json_payload::<OrthologPromoterCohortReport>(
+                            &raw,
+                            "ortholog promoter cohort",
+                        )?);
+                    }
+                    "--min-conserved-bp" | "--min_conserved_bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        min_conserved_bp = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid {flag} value '{raw}' for {context}: {e}")
+                        })?;
+                    }
+                    "--output" | "--path" => {
+                        let flag = tokens[idx].clone();
+                        output = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    other if !other.starts_with("--") && cohort_path.is_none() => {
+                        cohort_path = Some(other.to_string());
+                        idx += 1;
+                    }
+                    other => return Err(format!("Unknown option '{other}' for {context}")),
+                }
+            }
+            if cohort.is_some() && cohort_path.is_some() {
+                return Err(format!(
+                    "{context} accepts either --cohort PATH or --cohort-json JSON, not both"
+                ));
+            }
+            if cohort.is_none() && cohort_path.is_none() {
+                return Err(format!(
+                    "{context} requires --cohort PATH or --cohort-json JSON"
+                ));
+            }
+            if min_conserved_bp == 0 {
+                return Err(format!("{context} requires --min-conserved-bp >= 1"));
+            }
+            Ok(ShellCommand::OrthologsConservationComparison {
+                cohort: cohort.map(Box::new),
+                cohort_path,
+                min_conserved_bp,
                 output,
             })
         }
         other => Err(format!(
-            "Unknown orthologs subcommand '{other}' (expected resolve-promoter-cohort or promoter-comparison)"
+            "Unknown orthologs subcommand '{other}' (expected resolve-promoter-cohort, promoter-comparison, or conservation-comparison)"
         )),
     }
 }
@@ -35129,6 +43180,600 @@ fn parse_gene_groups_command(tokens: &[String]) -> Result<ShellCommand, String> 
         }
         other => Err(format!(
             "Unknown gene-groups subcommand '{other}' (expected list, show, resolve, doctor, draft)"
+        )),
+    }
+}
+
+fn tss_workspace_capability_descriptor(id: &str, mutating: bool, collection: bool) -> Value {
+    if matches!(id, "ListTssCollections" | "promoters tss-list") {
+        return json!({
+            "id": id, "kind": "operation", "mutating": "false",
+            "requires_confirmation": false, "args": [], "reads": [], "effects": [],
+            "precondition_expr": {"all":[]}, "annotation_status":"fact_annotated",
+            "description": "Discover persisted TSS collections by ID, source locus, gene query and window count. Registry metadata only: every entry is not_checked, never validated. Legacy/invalid records remain visible. Use promoters tss-collection ID for explicit member validation.",
+            "registry": registry_metadata_for_introspection(id)
+        });
+    }
+    json!({
+        "id": id, "kind": "operation", "mutating": if mutating {"true"} else {"false"},
+        "requires_confirmation": mutating,
+        "args": if collection { vec![json!({"name":"COLLECTION_ID", "required":true,"subject_kind":"other"})] }
+            else { vec![json!({"name":"REQUEST_JSON_OR_@FILE","required":true,"subject_kind":"other", "detail": if mutating {"inventory request, expected_approval_sha256 from preview, explicit selected_tss_ids"} else {"seq_id, gene_query, collection_id, upstream_bp (default 500), downstream_bp (default 200)"}})] },
+        "reads": if collection {vec![json!({"fact":"tss_collection.exists","subject":{"arg":"COLLECTION_ID"}})]} else {vec![]},
+        "effects": [], "precondition_expr": if collection {json!({"all":[{"fact":"tss_collection.exists","subject":{"arg":"COLLECTION_ID"}}]})} else {json!({"all":[]})},
+        "annotation_status":"fact_annotated",
+        "description": if mutating && collection {"Forget only the named TSS collection registry entry, including stale/legacy metadata. Member sequences and lineage are retained. Explicit confirmation required; no silent recovery or overwrite."} else {"All annotated TSSs / Transkriptionsstartstellen, one window per exact start: promoters tss-inventory previews an anchored loaded locus; promoters tss-materialize explicitly approves selected starts; ui open tss-view --collection COLLECTION_ID opens up to 32 windows, reusing existing windows. Never guess coordinates or promote clipped transcript ends to TSSs. GetTssCollection returns a validated TssCollection subject for optional ScanTfbsHitsCollection; collections run tfbs-scan --tss-collection ID avoids copying member IDs."},
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "promoters requires a subcommand: tata-screen, tata-materialize, assess-conserved-modules, compose-study, compare-architectures, panel-readiness, panel-plan, panel-materialize, regulatory-panel-plan, regulatory-panel-render, regulatory-products-plan, or regulatory-products-materialize"
+                .to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "tss-list" => {
+            if tokens.len() != 2 {
+                return Err("promoters tss-list takes no arguments".into());
+            }
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&Operation::ListTssCollections {})
+                    .map_err(|e| e.to_string())?,
+            })
+        }
+        "tss-view-svg" => {
+            // Same native presentation the GUI draws; attachments stay explicit.
+            if tokens.len() < 4 {
+                return Err("promoters tss-view-svg SEQ_ID OUTPUT.svg | --collection COLLECTION_ID OUTPUT_DIR [--report REPORT_JSON] [--motif ACCESSION]... [--score-kind KIND] [--keep-negative] [--span START..END] [--width PX]".into());
+            }
+            let (seq_id, collection_id, path, mut idx) = if tokens[2] == "--collection" {
+                let id = tokens
+                    .get(3)
+                    .filter(|id| !id.trim().is_empty() && !id.starts_with("--"))
+                    .ok_or("--collection requires COLLECTION_ID")?
+                    .clone();
+                let path = tokens
+                    .get(4)
+                    .filter(|path| !path.trim().is_empty() && !path.starts_with("--"))
+                    .ok_or("--collection requires a new OUTPUT_DIR")?
+                    .clone();
+                (String::new(), Some(id), path, 5)
+            } else {
+                (tokens[2].clone(), None, tokens[3].clone(), 4)
+            };
+            let mut report: Option<String> = None;
+            let mut local_motifs: Vec<String> = vec![];
+            let mut score_kind = TfbsScoreTrackValueKind::default();
+            let mut clip_negative = true;
+            let mut start_0based: Option<usize> = None;
+            let mut end_0based_exclusive: Option<usize> = None;
+            let mut width_px: Option<u32> = None;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--report" => {
+                        idx += 1;
+                        report = Some(
+                            tokens
+                                .get(idx)
+                                .filter(|s| !s.trim().is_empty())
+                                .ok_or("--report requires REPORT_JSON")?
+                                .clone(),
+                        );
+                    }
+                    "--motif" => {
+                        idx += 1;
+                        let raw = tokens
+                            .get(idx)
+                            .filter(|s| !s.trim().is_empty())
+                            .ok_or("--motif requires an exact full-PFM accession")?;
+                        // Accept repeated flags and comma lists; never expand to ALL.
+                        local_motifs.extend(
+                            raw.split(',')
+                                .map(str::trim)
+                                .filter(|s| !s.is_empty())
+                                .map(str::to_string),
+                        );
+                    }
+                    "--score-kind" => {
+                        idx += 1;
+                        let raw = tokens
+                            .get(idx)
+                            .ok_or("--score-kind requires a value")?
+                            .clone();
+                        score_kind = parse_tfbs_score_track_value_kind_shell(
+                            &raw,
+                            "promoters tss-view-svg",
+                        )?;
+                    }
+                    "--keep-negative" => clip_negative = false,
+                    "--clip-negative" => clip_negative = true,
+                    "--span" => {
+                        idx += 1;
+                        let raw = tokens.get(idx).ok_or("--span requires START..END")?;
+                        let (a, b) = raw
+                            .split_once("..")
+                            .ok_or("--span expects local 1-based START..END")?;
+                        let a: usize = a
+                            .trim()
+                            .parse()
+                            .map_err(|_| "--span START must be a positive integer")?;
+                        let b: usize = b
+                            .trim()
+                            .parse()
+                            .map_err(|_| "--span END must be a positive integer")?;
+                        if a == 0 || b < a {
+                            return Err("--span expects local 1-based START..END with START >= 1 and END >= START".into());
+                        }
+                        start_0based = Some(a - 1);
+                        end_0based_exclusive = Some(b);
+                    }
+                    "--width" => {
+                        idx += 1;
+                        width_px = Some(
+                            tokens
+                                .get(idx)
+                                .ok_or("--width requires a pixel count")?
+                                .trim()
+                                .parse()
+                                .map_err(|_| "--width must be an integer between 1000 and 5000")?,
+                        );
+                    }
+                    other => {
+                        return Err(format!("Unknown promoters tss-view-svg option '{other}'"));
+                    }
+                }
+                idx += 1;
+            }
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&Operation::ExportTssViewSvg {
+                    seq_id,
+                    collection_id,
+                    path,
+                    report,
+                    local_motifs,
+                    score_kind,
+                    clip_negative,
+                    start_0based,
+                    end_0based_exclusive,
+                    width_px,
+                })
+                .map_err(|e| e.to_string())?,
+            })
+        }
+        "tss-inventory" | "tss-materialize" | "tss-collection" | "tss-forget" => {
+            if tokens.len() != 3 {
+                return Err("promoters tss-inventory REQUEST_JSON_OR_@FILE | promoters tss-materialize REQUEST_JSON_OR_@FILE | promoters tss-collection COLLECTION_ID | promoters tss-forget COLLECTION_ID (retain sequences)".into());
+            }
+            let operation = match tokens[1].as_str() {
+                "tss-inventory" => Operation::InspectTssInventory {
+                    request: parse_required_json_payload(&tokens[2], "TSS inventory request")?,
+                },
+                "tss-materialize" => Operation::MaterializeTssWindows {
+                    request: parse_required_json_payload(
+                        &tokens[2],
+                        "TSS materialization request",
+                    )?,
+                },
+                "tss-forget" => Operation::ForgetTssCollection {
+                    collection_id: tokens[2].clone(),
+                },
+                _ => Operation::GetTssCollection {
+                    collection_id: tokens[2].clone(),
+                },
+            };
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&operation).map_err(|e| e.to_string())?,
+            })
+        }
+        "tata-screen" | "tata-materialize" => {
+            if tokens.len() != 3
+                && !(tokens[1] == "tata-screen" && tokens.len() == 5 && tokens[3] == "--output")
+            {
+                return Err("promoters tata-screen REQUEST_JSON_OR_@FILE [--output REPORT.json] | promoters tata-materialize REQUEST_JSON_OR_@FILE".into());
+            }
+            let operation = if tokens[1] == "tata-screen" {
+                Operation::ScreenTataBoxes {
+                    request: parse_required_json_payload(&tokens[2], "TATA screen request")?,
+                    path: tokens.get(4).cloned(),
+                }
+            } else {
+                Operation::MaterializeTataBoxFeatures {
+                    request: parse_required_json_payload(
+                        &tokens[2],
+                        "TATA materialization request",
+                    )?,
+                }
+            };
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&operation).map_err(|e| e.to_string())?,
+            })
+        }
+        "compose-study" => {
+            if tokens.len() < 3 || tokens[2].starts_with("--") {
+                return Err(
+                    "promoters compose-study requires REQUEST_JSON_OR_@FILE [--path REPORT.json]"
+                        .to_string(),
+                );
+            }
+            let request = parse_required_json_payload::<RegulatoryReporterStudyRequest>(
+                &tokens[2],
+                "regulatory-reporter study request",
+            )?;
+            let mut output = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--path" | "--output" => {
+                        output = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--path",
+                            "promoters compose-study",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for promoters compose-study"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PromotersComposeStudy { request, output })
+        }
+        "assess-conserved-modules" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "promoters assess-conserved-modules requires REQUEST_JSON_OR_@FILE".to_string(),
+                );
+            }
+            let payload = tokens[2..].join(" ");
+            Ok(ShellCommand::GenomicRegions {
+                operation: Operation::AssessPromoterConservedModules {
+                    request: parse_required_json_payload::<
+                        gentle_protocol::PromoterModuleAssessmentRequest,
+                    >(
+                        &payload, "promoter conserved-module assessment request"
+                    )?,
+                    path: None,
+                },
+            })
+        }
+        "compare-architectures" => {
+            if tokens.len() < 3 || tokens[2].starts_with("--") {
+                return Err(
+                    "promoters compare-architectures requires REQUEST_JSON_OR_@FILE [--path REPORT.json] [--svg-path FIGURE.svg]"
+                        .to_string(),
+                );
+            }
+            let request =
+                parse_required_json_payload::<PromoterReporterArchitectureComparisonRequest>(
+                    &tokens[2],
+                    "promoter-reporter architecture comparison request",
+                )?;
+            let mut output = None;
+            let mut svg_output = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--path" | "--output" => {
+                        output = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--path",
+                            "promoters compare-architectures",
+                        )?);
+                    }
+                    "--svg-path" | "--svg-output" => {
+                        svg_output = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--svg-path",
+                            "promoters compare-architectures",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for promoters compare-architectures"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PromotersCompareArchitectures {
+                request,
+                output,
+                svg_output,
+            })
+        }
+        "panel-plan" => {
+            if tokens.len() < 3 || tokens[2].starts_with("--") {
+                return Err(
+                    "promoters panel-plan requires REQUEST_JSON_OR_@FILE [--path PROPOSAL.json]"
+                        .to_string(),
+                );
+            }
+            let request = parse_required_json_payload::<PromoterReporterPanelRequest>(
+                &tokens[2],
+                "promoter-reporter panel request",
+            )?;
+            let mut output = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--path" | "--output" => {
+                        output = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--path",
+                            "promoters panel-plan",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for promoters panel-plan"));
+                    }
+                }
+            }
+            Ok(ShellCommand::PromotersPanelPlan { request, output })
+        }
+        "fragment-candidates" => {
+            if tokens.len() < 3 || tokens[2].starts_with("--") {
+                return Err("promoters fragment-candidates requires REQUEST_JSON_OR_@FILE [--path REPORT.json]".into());
+            }
+            let request = parse_required_json_payload::<crate::engine::FragmentSelectionRequest>(
+                &tokens[2],
+                "reporter fragment selection",
+            )?;
+            let mut output = None;
+            let mut idx = 3;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--path" | "--output" => {
+                        output = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--path",
+                            "promoters fragment-candidates",
+                        )?)
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for promoters fragment-candidates"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PromotersFragmentCandidates { request, output })
+        }
+        "regulatory-panel-plan" => {
+            if tokens.len() < 3 || tokens[2].starts_with("--") {
+                return Err(
+                    "promoters regulatory-panel-plan requires REQUEST_JSON_OR_@FILE [--path PLAN.json]"
+                        .to_string(),
+                );
+            }
+            let request = parse_required_json_payload::<RegulatoryFragmentPanelRequest>(
+                &tokens[2],
+                "regulatory-fragment panel request",
+            )?;
+            let mut output = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--path" | "--output" => {
+                        output = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--path",
+                            "promoters regulatory-panel-plan",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for promoters regulatory-panel-plan"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PromotersRegulatoryPanelPlan { request, output })
+        }
+        "regulatory-panel-render" => {
+            if tokens.len() < 3 || tokens[2].starts_with("--") {
+                return Err(
+                    "promoters regulatory-panel-render requires PLAN_JSON_OR_@FILE --path FIGURE.svg"
+                        .to_string(),
+                );
+            }
+            let plan = parse_required_json_payload::<RegulatoryFragmentPanelPlan>(
+                &tokens[2],
+                "regulatory-fragment panel plan",
+            )?;
+            let mut output = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--path" | "--output" => {
+                        output = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--path",
+                            "promoters regulatory-panel-render",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for promoters regulatory-panel-render"
+                        ));
+                    }
+                }
+            }
+            let output = output.ok_or_else(|| {
+                "promoters regulatory-panel-render requires --path FIGURE.svg".to_string()
+            })?;
+            Ok(ShellCommand::PromotersRegulatoryPanelRender { plan, output })
+        }
+        "regulatory-products-plan" => {
+            if tokens.len() != 5 || tokens[3] != "--output-prefix" {
+                return Err(
+                    "promoters regulatory-products-plan PLAN_JSON_OR_@FILE --output-prefix PREFIX"
+                        .into(),
+                );
+            }
+            let operation = Operation::PlanRegulatoryFragmentMaterialization {
+                plan: Box::new(parse_required_json_payload(
+                    &tokens[2],
+                    "regulatory panel plan",
+                )?),
+                output_prefix: tokens[4].clone(),
+            };
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&operation).map_err(|e| e.to_string())?,
+            })
+        }
+        "regulatory-products-materialize" => {
+            if tokens.len() != 5 || tokens[3] != "--approve" {
+                return Err("promoters regulatory-products-materialize PROPOSAL_JSON_OR_@FILE --approve DIGEST".into());
+            }
+            let operation = Operation::MaterializeRegulatoryFragmentPanel {
+                proposal: Box::new(parse_required_json_payload(
+                    &tokens[2],
+                    "regulatory materialization proposal",
+                )?),
+                approval_digest: tokens[4].clone(),
+            };
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&operation).map_err(|e| e.to_string())?,
+            })
+        }
+        "panel-readiness" => {
+            if tokens.len() < 3 || tokens[2].starts_with("--") {
+                return Err(
+                    "promoters panel-readiness requires request REQUEST_JSON_OR_@FILE or proposal PROPOSAL_JSON_OR_@FILE [--approve DIGEST] [--path REPORT.json]"
+                        .to_string(),
+                );
+            }
+            let (mut request, mut idx) = match tokens[2].as_str() {
+                "request" => {
+                    if tokens.len() < 4 || tokens[3].starts_with("--") {
+                        return Err(
+                            "promoters panel-readiness request requires REQUEST_JSON_OR_@FILE"
+                                .to_string(),
+                        );
+                    }
+                    let panel_request = parse_required_json_payload::<PromoterReporterPanelRequest>(
+                        &tokens[3],
+                        "promoter-reporter panel request",
+                    )?;
+                    (
+                        PromoterReporterPanelReadinessRequest {
+                            panel_request: Some(Box::new(panel_request)),
+                            ..PromoterReporterPanelReadinessRequest::default()
+                        },
+                        4,
+                    )
+                }
+                "proposal" => {
+                    if tokens.len() < 4 || tokens[3].starts_with("--") {
+                        return Err(
+                            "promoters panel-readiness proposal requires PROPOSAL_JSON_OR_@FILE"
+                                .to_string(),
+                        );
+                    }
+                    let proposal = parse_required_json_payload::<PromoterReporterPanelProposal>(
+                        &tokens[3],
+                        "promoter-reporter panel proposal",
+                    )?;
+                    (
+                        PromoterReporterPanelReadinessRequest {
+                            proposal: Some(Box::new(proposal)),
+                            ..PromoterReporterPanelReadinessRequest::default()
+                        },
+                        4,
+                    )
+                }
+                _ => (
+                    parse_required_json_payload::<PromoterReporterPanelReadinessRequest>(
+                        &tokens[2],
+                        "promoter-reporter panel readiness request",
+                    )?,
+                    3,
+                ),
+            };
+            let mut output = None;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--approve" => {
+                        if request.proposal.is_none() {
+                            return Err(
+                                "promoters panel-readiness --approve requires proposal input"
+                                    .to_string(),
+                            );
+                        }
+                        request.approval_digest = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--approve",
+                            "promoters panel-readiness",
+                        )?);
+                    }
+                    "--path" | "--output" => {
+                        output = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--path",
+                            "promoters panel-readiness",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for promoters panel-readiness"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PromotersPanelReadiness { request, output })
+        }
+        "panel-materialize" => {
+            if tokens.len() < 3 || tokens[2].starts_with("--") {
+                return Err(
+                    "promoters panel-materialize requires PROPOSAL_JSON_OR_@FILE --approve DIGEST"
+                        .to_string(),
+                );
+            }
+            let proposal = parse_required_json_payload::<PromoterReporterPanelProposal>(
+                &tokens[2],
+                "promoter-reporter panel proposal",
+            )?;
+            let mut approval_digest = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--approve" => {
+                        approval_digest = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--approve",
+                            "promoters panel-materialize",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for promoters panel-materialize"
+                        ));
+                    }
+                }
+            }
+            let approval_digest = approval_digest.ok_or_else(|| {
+                "promoters panel-materialize requires --approve DIGEST".to_string()
+            })?;
+            Ok(ShellCommand::PromotersPanelMaterialize {
+                proposal,
+                approval_digest,
+            })
+        }
+        other => Err(format!(
+            "Unknown promoters subcommand '{other}' (expected assess-conserved-modules, compose-study, compare-architectures, panel-readiness, panel-plan, panel-materialize, regulatory-panel-plan, regulatory-panel-render, regulatory-products-plan, or regulatory-products-materialize)"
         )),
     }
 }
@@ -35929,7 +44574,7 @@ fn parse_slash_fetch_alias(tokens: &[String]) -> Result<ShellCommand, String> {
             if tokens.len() < 3 {
                 return Err(slash_alias_rejection(
                     "/fetch",
-                    "/fetch ensembl requires QUERY [--species NAME] [--id ID] [--no-open]",
+                    "/fetch ensembl requires QUERY [--species NAME] [--assembly NAME] [--flank-bp N|--flank-5p-bp N --flank-3p-bp N] [--id ID] [--no-open]",
                 ));
             }
             let query = tokens[2].trim().to_string();
@@ -35940,6 +44585,9 @@ fn parse_slash_fetch_alias(tokens: &[String]) -> Result<ShellCommand, String> {
                 ));
             }
             let mut species: Option<String> = None;
+            let mut assembly: Option<String> = None;
+            let mut flank_5prime_bp: Option<usize> = None;
+            let mut flank_3prime_bp: Option<usize> = None;
             let mut entry_id: Option<String> = None;
             let mut idx = 3usize;
             while idx < tokens.len() {
@@ -35949,6 +44597,40 @@ fn parse_slash_fetch_alias(tokens: &[String]) -> Result<ShellCommand, String> {
                             tokens,
                             &mut idx,
                             "--species",
+                            "/fetch ensembl",
+                        )?);
+                    }
+                    "--assembly" => {
+                        assembly = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--assembly",
+                            "/fetch ensembl",
+                        )?);
+                    }
+                    "--flank" | "--flank-bp" => {
+                        let value = parse_ensembl_gene_flank_bp(
+                            tokens,
+                            &mut idx,
+                            "--flank-bp",
+                            "/fetch ensembl",
+                        )?;
+                        flank_5prime_bp = Some(value);
+                        flank_3prime_bp = Some(value);
+                    }
+                    "--flank-5p-bp" | "--flank-5prime-bp" => {
+                        flank_5prime_bp = Some(parse_ensembl_gene_flank_bp(
+                            tokens,
+                            &mut idx,
+                            "--flank-5p-bp",
+                            "/fetch ensembl",
+                        )?);
+                    }
+                    "--flank-3p-bp" | "--flank-3prime-bp" => {
+                        flank_3prime_bp = Some(parse_ensembl_gene_flank_bp(
+                            tokens,
+                            &mut idx,
+                            "--flank-3p-bp",
                             "/fetch ensembl",
                         )?);
                     }
@@ -35973,6 +44655,9 @@ fn parse_slash_fetch_alias(tokens: &[String]) -> Result<ShellCommand, String> {
             Ok(ShellCommand::EnsemblGeneFetch {
                 query,
                 species,
+                assembly,
+                flank_5prime_bp,
+                flank_3prime_bp,
                 entry_id,
             })
         }
@@ -36078,6 +44763,20 @@ fn parse_slash_alias(tokens: &[String]) -> Result<ShellCommand, String> {
                 ))
             }
         }
+        "/history" | "/undo" | "/redo" => {
+            if tokens.len() != 1 {
+                return Err(slash_alias_rejection(
+                    cmd,
+                    format!("{cmd} does not take arguments"),
+                ));
+            }
+            match cmd {
+                "/history" => Ok(ShellCommand::HistoryStatus),
+                "/undo" => Ok(ShellCommand::HistoryUndo),
+                "/redo" => Ok(ShellCommand::HistoryRedo),
+                _ => unreachable!("history slash alias match is exhaustive"),
+            }
+        }
         "/open" | "/import" => {
             if tokens.len() == 1 {
                 Ok(ShellCommand::UiIntent {
@@ -36179,6 +44878,7 @@ fn parse_arrays_probe_regions_command(tokens: &[String]) -> Result<ShellCommand,
     let mut probeset_ids = Vec::new();
     let mut platform: Option<String> = None;
     let mut annotation_library_path: Option<String> = None;
+    let mut r_library_paths = Vec::new();
     let mut condition_column: Option<String> = None;
     let mut sample_column: Option<String> = None;
     let mut block_column: Option<String> = None;
@@ -36287,6 +44987,14 @@ fn parse_arrays_probe_regions_command(tokens: &[String]) -> Result<ShellCommand,
                 }
                 annotation_library_path = Some(value);
             }
+            "--r-library-path" | "--r-lib" => {
+                let option = tokens[idx].clone();
+                let value = parse_option_path(tokens, &mut idx, &option, "arrays probe-regions")?;
+                if value.trim().is_empty() {
+                    return Err(format!("{option} must not be empty"));
+                }
+                r_library_paths.push(value);
+            }
             "--condition-column" => {
                 let value = parse_option_path(
                     tokens,
@@ -36367,6 +45075,7 @@ fn parse_arrays_probe_regions_command(tokens: &[String]) -> Result<ShellCommand,
         probeset_ids,
         platform,
         annotation_library_path,
+        r_library_paths,
         condition_column,
         sample_column,
         block_column,
@@ -36441,6 +45150,9 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
             }
         }
         "sequence" | "sequences" => parse_sequence_command(tokens),
+        "regions" | "region-sets" => parse_genomic_regions_command(tokens),
+        "gel-image" => parse_gel_image_command(tokens),
+        "splicing" => parse_splicing_command(tokens),
         "mirna" | "mirnas" => parse_mirna_command(tokens),
         "screenshot-window" => {
             let _ = tokens;
@@ -36583,6 +45295,18 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 seq_id,
                 target,
                 output,
+            })
+        }
+        "gene-locus" => {
+            if tokens.len() != 3 || tokens[1] != "prepare" {
+                return Err("gene-locus requires: prepare REQUEST_JSON_OR_@FILE".to_string());
+            }
+            let request = parse_required_json_payload::<GeneLocusEvidencePreparationRequest>(
+                &tokens[2],
+                "gene-locus evidence preparation request",
+            )?;
+            Ok(ShellCommand::PrepareGeneLocusEvidence {
+                request: Box::new(request),
             })
         }
         "render-rna-svg" => {
@@ -36811,6 +45535,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 )),
             }
         }
+        "digest" => parse_digest_command(tokens),
         "render-pool-gel-svg" | "render-gel-svg" => {
             if tokens.len() < 3 {
                 return Err(token_error(cmd));
@@ -36825,6 +45550,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
             let mut container_ids: Option<Vec<String>> = None;
             let mut arrangement_id: Option<String> = None;
             let mut conditions = gentle_protocol::GelRunConditions::default();
+            let mut render_options = gentle_protocol::PoolGelRenderOptions::default();
             let mut idx = 3usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -36897,6 +45623,48 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                             })?;
                         idx += 2;
                     }
+                    "--lane-label-layout" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --lane-label-layout".to_string());
+                        }
+                        render_options.lane_label_layout =
+                            gentle_protocol::GelLaneLabelLayout::from_hint(&tokens[idx + 1])
+                                .ok_or_else(|| {
+                                    format!(
+                                        "Unknown lane-label layout '{}' (expected auto|horizontal|wrapped|staggered|angled)",
+                                        tokens[idx + 1]
+                                    )
+                                })?;
+                        idx += 2;
+                    }
+                    "--band-label-layout" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --band-label-layout".to_string());
+                        }
+                        render_options.band_label_layout =
+                            gentle_protocol::GelBandLabelLayout::from_hint(&tokens[idx + 1])
+                                .ok_or_else(|| {
+                                    format!(
+                                        "Unknown band-label layout '{}' (expected auto|inline|panel)",
+                                        tokens[idx + 1]
+                                    )
+                                })?;
+                        idx += 2;
+                    }
+                    "--isoform-markers" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --isoform-markers".to_string());
+                        }
+                        render_options.isoform_marker_mode =
+                            gentle_protocol::GelIsoformMarkerMode::from_hint(&tokens[idx + 1])
+                                .ok_or_else(|| {
+                                    format!(
+                                        "Unknown isoform-marker mode '{}' (expected auto|off)",
+                                        tokens[idx + 1]
+                                    )
+                                })?;
+                        idx += 2;
+                    }
                     other => {
                         return Err(format!("Unknown argument '{other}' for {cmd_name}"));
                     }
@@ -36917,6 +45685,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 container_ids,
                 arrangement_id,
                 conditions: conditions.normalized(),
+                render_options,
             })
         }
         "arrange-serial" => {
@@ -38130,12 +46899,14 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "routines" => parse_routines_command(tokens),
         "orthologs" | "ortholog" => parse_orthologs_command(tokens),
         "gene-sets" | "gene_sets" | "genesets" => parse_gene_sets_command(tokens),
+        "collections" | "collection" => parse_collections_command(tokens),
         "gene-groups" | "gene_groups" | "genegroups" => parse_gene_groups_command(tokens),
+        "promoters" => parse_promoters_command(tokens),
         "reporters" => parse_reporters_command(tokens),
         "resources" => {
             if tokens.len() < 2 {
                 return Err(
-                    "resources requires a subcommand: sync-rebase, sync-jaspar, sync-ucsc-rmsk, install-ucsc-rmsk, prepare-ucsc-rmsk-index, suggest-ucsc-rmsk-index, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, list-publication-datasets, status-publication-dataset, prepare-publication-dataset, inspect-jaspar, sync-attract, or status".to_string(),
+                    "resources requires a subcommand: sync-rebase, sync-jaspar, sync-ucsc-rmsk, install-ucsc-rmsk, prepare-ucsc-rmsk-index, suggest-ucsc-rmsk-index, list-encode-ccre-sources, install-encode-ccres, prepare-encode-ccre-index, list-ensembl-regulation-sources, install-ensembl-regulatory-features, prepare-ensembl-regulation-index, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, list-publication-datasets, status-publication-dataset, prepare-publication-dataset, inspect-jaspar, sync-attract, sync-maxent, or status".to_string(),
                 );
             }
             match tokens[1].as_str() {
@@ -38786,6 +47557,264 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         output,
                     })
                 }
+                "list-encode-ccre-sources" | "list-screen-ccre-sources" => {
+                    let mut assembly: Option<String> = None;
+                    let mut output: Option<String> = None;
+                    let mut idx = 2usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--assembly" | "--genome" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing ASSEMBLY after --assembly for resources list-encode-ccre-sources"
+                                            .to_string(),
+                                    );
+                                }
+                                assembly = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--output" | "--path" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --output for resources list-encode-ccre-sources"
+                                            .to_string(),
+                                    );
+                                }
+                                output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for resources list-encode-ccre-sources"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesListEncodeCcreSources { assembly, output })
+                }
+                "install-encode-ccres" | "install-screen-ccres" => {
+                    if tokens.len() < 3 {
+                        return Err(
+                            "resources install-encode-ccres requires SOURCE_ID [--input PATH_OR_URL] [--bed-output PATH] [--index-output PATH]"
+                                .to_string(),
+                        );
+                    }
+                    let source_id = tokens[2].clone();
+                    let mut input: Option<String> = None;
+                    let mut bed_output: Option<String> = None;
+                    let mut index_output: Option<String> = None;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--input" | "--source" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH_OR_URL after --input for resources install-encode-ccres"
+                                            .to_string(),
+                                    );
+                                }
+                                input = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--bed-output" | "--resource-output" | "--resource" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --bed-output for resources install-encode-ccres"
+                                            .to_string(),
+                                    );
+                                }
+                                bed_output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--index-output" | "--index" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --index-output for resources install-encode-ccres"
+                                            .to_string(),
+                                    );
+                                }
+                                index_output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for resources install-encode-ccres"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesInstallEncodeCcres {
+                        source_id,
+                        input,
+                        bed_output,
+                        index_output,
+                    })
+                }
+                "prepare-encode-ccre-index" | "index-encode-ccres" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "resources prepare-encode-ccre-index requires SOURCE_ID BED_PATH [--output PATH]"
+                                .to_string(),
+                        );
+                    }
+                    let source_id = tokens[2].clone();
+                    let bed_path = tokens[3].clone();
+                    let mut output: Option<String> = None;
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--output" | "--index-output" | "--index" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --output for resources prepare-encode-ccre-index"
+                                            .to_string(),
+                                    );
+                                }
+                                output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for resources prepare-encode-ccre-index"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesPrepareEncodeCcreIndex {
+                        source_id,
+                        bed_path,
+                        output,
+                    })
+                }
+                "list-ensembl-regulation-sources" => {
+                    let mut assembly = None;
+                    let mut output = None;
+                    let mut idx = 2usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--assembly" | "--genome" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing ASSEMBLY after --assembly for resources list-ensembl-regulation-sources"
+                                            .to_string(),
+                                    );
+                                }
+                                assembly = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--output" | "--path" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --output for resources list-ensembl-regulation-sources"
+                                            .to_string(),
+                                    );
+                                }
+                                output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for resources list-ensembl-regulation-sources"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesListEnsemblRegulationSources { assembly, output })
+                }
+                "install-ensembl-regulatory-features" => {
+                    if tokens.len() < 3 {
+                        return Err(
+                            "resources install-ensembl-regulatory-features requires SOURCE_ID [--input COMPLETE_API_JSON] [--intervals-output PATH] [--index-output PATH]"
+                                .to_string(),
+                        );
+                    }
+                    let source_id = tokens[2].clone();
+                    let mut input = None;
+                    let mut intervals_output = None;
+                    let mut index_output = None;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--input" | "--source" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing COMPLETE_API_JSON after --input for resources install-ensembl-regulatory-features"
+                                            .to_string(),
+                                    );
+                                }
+                                input = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--intervals-output" | "--resource-output" | "--resource" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --intervals-output for resources install-ensembl-regulatory-features"
+                                            .to_string(),
+                                    );
+                                }
+                                intervals_output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--index-output" | "--index" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --index-output for resources install-ensembl-regulatory-features"
+                                            .to_string(),
+                                    );
+                                }
+                                index_output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for resources install-ensembl-regulatory-features"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesInstallEnsemblRegulatoryFeatures {
+                        source_id,
+                        input,
+                        intervals_output,
+                        index_output,
+                    })
+                }
+                "prepare-ensembl-regulation-index" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "resources prepare-ensembl-regulation-index requires SOURCE_ID INTERVALS_PATH [--output PATH]"
+                                .to_string(),
+                        );
+                    }
+                    let source_id = tokens[2].clone();
+                    let intervals_path = tokens[3].clone();
+                    let mut output = None;
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--output" | "--index-output" | "--index" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --output for resources prepare-ensembl-regulation-index"
+                                            .to_string(),
+                                    );
+                                }
+                                output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for resources prepare-ensembl-regulation-index"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesPrepareEnsemblRegulationIndex {
+                        source_id,
+                        intervals_path,
+                        output,
+                    })
+                }
                 "sync-jaspar-remote-metadata" => {
                     let mut motifs: Vec<String> = vec![];
                     let mut use_all = false;
@@ -39095,6 +48124,68 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         idx += 1;
                     }
                     Ok(ShellCommand::ResourcesSyncAttract { input, output })
+                }
+                "sync-maxent" => {
+                    if tokens.len() < 3 {
+                        return Err(
+                            "resources sync-maxent requires INPUT.directory_or_zip".to_string()
+                        );
+                    }
+                    let input = tokens[2].clone();
+                    let mut output = None;
+                    let mut source_url = None;
+                    let mut retrieved_on = None;
+                    let mut redistribution_status = None;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--source-url" => {
+                                source_url = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--source-url",
+                                    "resources sync-maxent",
+                                )?);
+                            }
+                            "--retrieved-on" => {
+                                retrieved_on = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--retrieved-on",
+                                    "resources sync-maxent",
+                                )?);
+                            }
+                            "--redistribution-status" => {
+                                redistribution_status = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--redistribution-status",
+                                    "resources sync-maxent",
+                                )?);
+                            }
+                            value if value.starts_with("--") => {
+                                return Err(format!(
+                                    "Unknown option '{value}' for resources sync-maxent"
+                                ));
+                            }
+                            value => {
+                                if output.is_some() {
+                                    return Err(format!(
+                                        "Unexpected extra positional argument '{value}' for resources sync-maxent"
+                                    ));
+                                }
+                                output = Some(value.to_string());
+                                idx += 1;
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesSyncMaxent {
+                        input,
+                        output,
+                        source_url,
+                        retrieved_on,
+                        redistribution_status,
+                    })
                 }
                 "inspect-jaspar" => {
                     if tokens.len() < 3 {
@@ -39412,7 +48503,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     Ok(ShellCommand::ResourcesStatus)
                 }
                 other => Err(format!(
-                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar, sync-ucsc-rmsk, install-ucsc-rmsk, prepare-ucsc-rmsk-index, suggest-ucsc-rmsk-index, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, list-publication-datasets, status-publication-dataset, prepare-publication-dataset, resolve-tf-query, inspect-jaspar or sync-attract)"
+                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar, sync-ucsc-rmsk, install-ucsc-rmsk, prepare-ucsc-rmsk-index, suggest-ucsc-rmsk-index, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, list-publication-datasets, status-publication-dataset, prepare-publication-dataset, resolve-tf-query, inspect-jaspar, sync-attract or sync-maxent)"
                 )),
             }
         }
@@ -40560,7 +49651,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 "interpret-probe-region-evidence" | "interpret-probe-region-output" => {
                     if tokens.len() < 3 {
                         return Err(
-                            "arrays interpret-probe-region-evidence requires SEQ_ID [--gene LABEL] [--level all|probe_region|pm_probe] [--min-abs-logfc N] [--path FILE]"
+                            "arrays interpret-probe-region-evidence requires SEQ_ID [--gene LABEL] [--level all|probe_region|pm_probe] [--min-abs-logfc N] [--threshold-source TEXT] [--policy-sha256 SHA256] [--path FILE]"
                                 .to_string(),
                         );
                     }
@@ -40574,6 +49665,8 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     let mut gene_label = None;
                     let mut level = None;
                     let mut min_abs_logfc = None;
+                    let mut threshold_source = None;
+                    let mut policy_sha256 = None;
                     let mut path = None;
                     let mut idx = 3usize;
                     while idx < tokens.len() {
@@ -40611,6 +49704,22 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                                 min_abs_logfc = Some(value);
                                 idx += 1;
                             }
+                            "--threshold-source" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err("Missing TEXT after --threshold-source".to_string());
+                                }
+                                threshold_source = Some(tokens[idx].clone());
+                                idx += 1;
+                            }
+                            "--policy-sha256" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err("Missing SHA256 after --policy-sha256".to_string());
+                                }
+                                policy_sha256 = Some(tokens[idx].clone());
+                                idx += 1;
+                            }
                             "--path" | "--output" => {
                                 idx += 1;
                                 if idx >= tokens.len() {
@@ -40631,6 +49740,8 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         gene_label,
                         level,
                         min_abs_logfc,
+                        threshold_source,
+                        policy_sha256,
                         path,
                     })
                 }
@@ -40658,6 +49769,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "guides" => parse_guides_command(tokens),
         "features" => parse_features_command(tokens),
         "primers" => parse_primers_command(tokens),
+        "sequence-design" => parse_sequence_design_command(tokens),
         "display" => parse_display_command(tokens),
         "set-param" => {
             if tokens.len() < 3 {
@@ -40844,74 +49956,66 @@ fn run_candidates_macro(
     if statements.is_empty() {
         return Err("candidates macro script is empty".to_string());
     }
-    let rollback_state = if transactional {
-        Some(engine.state().clone())
-    } else {
-        None
-    };
-    let mut executed = 0usize;
-    let mut changed = false;
-    let mut rows: Vec<Value> = vec![];
-    for statement in statements {
-        let statement = statement.trim();
-        if statement.is_empty() {
-            continue;
-        }
-        let prefixed = if statement.starts_with("candidates ") {
-            statement.to_string()
-        } else {
-            format!("candidates {statement}")
-        };
-        let tokens = split_shell_words(&prefixed)?;
-        let cmd = parse_candidates_command(&tokens)?;
-        if matches!(
-            cmd,
-            ShellCommand::CandidatesMacro { .. }
-                | ShellCommand::CandidatesTemplateRun { .. }
-                | ShellCommand::MacrosRun { .. }
-                | ShellCommand::MacrosTemplateRun { .. }
-        ) {
-            return Err("Nested candidates macro/template-run calls are not allowed".to_string());
-        }
-        let run = match execute_shell_command_with_options(engine, &cmd, options) {
-            Ok(run) => run,
-            Err(err) => {
-                if transactional {
-                    if let Some(state) = rollback_state {
-                        *engine = GentleEngine::from_state(state);
-                    }
+    run_macro_transaction(engine, transactional, |engine| {
+        let total = statements.len();
+        let mut executed = 0usize;
+        let mut changed = false;
+        let mut rows: Vec<Value> = vec![];
+        for statement in statements {
+            check_shell_workflow_boundary(options, executed, total)?;
+            let statement = statement.trim();
+            if statement.is_empty() {
+                continue;
+            }
+            let prefixed = if statement.starts_with("candidates ") {
+                statement.to_string()
+            } else {
+                format!("candidates {statement}")
+            };
+            let tokens = split_shell_words(&prefixed)?;
+            let cmd = parse_candidates_command(&tokens)?;
+            if matches!(
+                cmd,
+                ShellCommand::CandidatesMacro { .. }
+                    | ShellCommand::CandidatesTemplateRun { .. }
+                    | ShellCommand::MacrosRun { .. }
+                    | ShellCommand::MacrosTemplateRun { .. }
+            ) {
+                return Err(
+                    "Nested candidates macro/template-run calls are not allowed".to_string()
+                );
+            }
+            let run = match execute_shell_command_with_options(engine, &cmd, options) {
+                Ok(run) => run,
+                Err(err) => {
                     return Err(format!(
-                        "candidates macro failed at statement {} ('{}'): {err}; all macro changes were rolled back",
+                        "candidates macro failed at statement {} ('{}'): {err}",
                         executed + 1,
                         statement
                     ));
                 }
-                return Err(format!(
-                    "candidates macro failed at statement {} ('{}'): {err}",
-                    executed + 1,
-                    statement
-                ));
-            }
-        };
-        executed = executed.saturating_add(1);
-        changed |= run.state_changed;
-        rows.push(json!({
-            "statement": statement,
-            "state_changed": run.state_changed,
-            "output": run.output
-        }));
-    }
-    if executed == 0 {
-        return Err("candidates macro script has no executable statements".to_string());
-    }
-    Ok(ShellRunResult {
-        state_changed: changed,
-        output: json!({
-            "executed": executed,
-            "transactional": transactional,
-            "state_changed": changed,
-            "results": rows
-        }),
+            };
+            executed = executed.saturating_add(1);
+            changed |= run.state_changed;
+            rows.push(json!({
+                "statement": statement,
+                "state_changed": run.state_changed,
+                "output": run.output
+            }));
+        }
+        if executed == 0 {
+            return Err("candidates macro script has no executable statements".to_string());
+        }
+        check_shell_workflow_boundary(options, executed, total)?;
+        Ok(ShellRunResult {
+            state_changed: changed,
+            output: json!({
+                "executed": executed,
+                "transactional": transactional,
+                "state_changed": changed,
+                "results": rows
+            }),
+        })
     })
 }
 
@@ -40926,88 +50030,94 @@ fn run_workflow_macro(
     if statements.is_empty() {
         return Err("macros run script is empty".to_string());
     }
-    let rollback_state = if transactional {
-        Some(engine.state().clone())
-    } else {
-        None
-    };
-    let mut executed = 0usize;
-    let mut changed = false;
-    let mut rows: Vec<Value> = vec![];
-    for statement in statements {
-        let statement = statement.trim();
-        if statement.is_empty() {
-            continue;
-        }
-        let cmd = if let Some(raw_payload) = statement.strip_prefix("op ") {
-            let payload = raw_payload.trim();
-            if payload.is_empty() {
-                return Err("macros run statement 'op' requires a JSON payload".to_string());
+    run_macro_transaction(engine, transactional, |engine| {
+        let total = statements.len();
+        let mut executed = 0usize;
+        let mut changed = false;
+        let mut rows: Vec<Value> = vec![];
+        for statement in statements {
+            check_shell_workflow_boundary(options, executed, total)?;
+            let statement = statement.trim();
+            if statement.is_empty() {
+                continue;
             }
-            ShellCommand::Op {
-                payload: payload.to_string(),
+            let cmd = if let Some(raw_payload) = statement.strip_prefix("op ") {
+                let payload = raw_payload.trim();
+                if payload.is_empty() {
+                    return Err("macros run statement 'op' requires a JSON payload".to_string());
+                }
+                ShellCommand::Op {
+                    payload: payload.to_string(),
+                }
+            } else if let Some(raw_payload) = statement.strip_prefix("workflow ") {
+                let payload = raw_payload.trim();
+                if payload.is_empty() {
+                    return Err(
+                        "macros run statement 'workflow' requires a JSON payload".to_string()
+                    );
+                }
+                ShellCommand::Workflow {
+                    payload: payload.to_string(),
+                }
+            } else {
+                let tokens = split_shell_words(statement)?;
+                parse_shell_tokens(&tokens)?
+            };
+            if matches!(
+                cmd,
+                ShellCommand::CandidatesMacro { .. }
+                    | ShellCommand::CandidatesTemplateRun { .. }
+                    | ShellCommand::MacrosRun { .. }
+                    | ShellCommand::MacrosTemplateRun { .. }
+            ) {
+                return Err("Nested macros/template-run calls are not allowed".to_string());
             }
-        } else if let Some(raw_payload) = statement.strip_prefix("workflow ") {
-            let payload = raw_payload.trim();
-            if payload.is_empty() {
-                return Err("macros run statement 'workflow' requires a JSON payload".to_string());
-            }
-            ShellCommand::Workflow {
-                payload: payload.to_string(),
-            }
-        } else {
-            let tokens = split_shell_words(statement)?;
-            parse_shell_tokens(&tokens)?
-        };
-        if matches!(
-            cmd,
-            ShellCommand::CandidatesMacro { .. }
-                | ShellCommand::CandidatesTemplateRun { .. }
-                | ShellCommand::MacrosRun { .. }
-                | ShellCommand::MacrosTemplateRun { .. }
-        ) {
-            return Err("Nested macros/template-run calls are not allowed".to_string());
-        }
-        let run = match execute_shell_command_with_options(engine, &cmd, options) {
-            Ok(run) => run,
-            Err(err) => {
-                if transactional {
-                    if let Some(state) = rollback_state {
-                        *engine = GentleEngine::from_state(state);
-                    }
+            let run = match execute_shell_command_with_options(engine, &cmd, options) {
+                Ok(run) => run,
+                Err(err) => {
                     return Err(format!(
-                        "macros run failed at statement {} ('{}'): {err}; all macro changes were rolled back",
+                        "macros run failed at statement {} ('{}'): {err}",
                         executed + 1,
                         statement
                     ));
                 }
-                return Err(format!(
-                    "macros run failed at statement {} ('{}'): {err}",
-                    executed + 1,
-                    statement
-                ));
-            }
-        };
-        executed = executed.saturating_add(1);
-        changed |= run.state_changed;
-        rows.push(json!({
-            "statement": statement,
-            "state_changed": run.state_changed,
-            "output": run.output
-        }));
-    }
-    if executed == 0 {
-        return Err("macros run script has no executable statements".to_string());
-    }
-    Ok(ShellRunResult {
-        state_changed: changed,
-        output: json!({
-            "executed": executed,
-            "transactional": transactional,
-            "state_changed": changed,
-            "results": rows
-        }),
+            };
+            executed = executed.saturating_add(1);
+            changed |= run.state_changed;
+            rows.push(json!({
+                "statement": statement,
+                "state_changed": run.state_changed,
+                "output": run.output
+            }));
+        }
+        if executed == 0 {
+            return Err("macros run script has no executable statements".to_string());
+        }
+        check_shell_workflow_boundary(options, executed, total)?;
+        Ok(ShellRunResult {
+            state_changed: changed,
+            output: json!({
+                "executed": executed,
+                "transactional": transactional,
+                "state_changed": changed,
+                "results": rows
+            }),
+        })
     })
+}
+
+fn run_macro_transaction(
+    engine: &mut GentleEngine,
+    transactional: bool,
+    work: impl FnOnce(&mut GentleEngine) -> Result<ShellRunResult, String>,
+) -> Result<ShellRunResult, String> {
+    if transactional {
+        engine.with_rollback_on_error(work).map_err(|error| {
+            format!("{error}; all macro project changes were rolled back; external files, resources and jobs were not rolled back")
+        })
+    } else {
+        work(engine)
+    }
 }
 
 fn macro_statement_contains_agent_invocation(engine: &GentleEngine, statement: &str) -> bool {
@@ -41159,6 +50269,34 @@ struct AgentSuggestedExecutionReport {
     state_changed: bool,
     error: Option<String>,
     output: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    feedback: Option<crate::agent_feedback::AgentExecutionReceipt>,
+}
+
+pub(crate) const AGENT_HISTORY_CONFIRMATION_REQUIRED: &str =
+    "Undo/redo suggestions require explicit user confirmation and cannot be auto-executed";
+pub(crate) const AGENT_MUTATION_CONFIRMATION_REQUIRED: &str =
+    "Mutating suggestions require explicit user confirmation and cannot be auto-executed";
+
+fn bind_agent_execution_reports(
+    invocation: &crate::agent_bridge::AgentInvocationOutcome,
+    rows: &mut [AgentSuggestedExecutionReport],
+) -> BTreeMap<String, usize> {
+    let turn_id = invocation
+        .request
+        .get("x_request_id")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let mut counts = BTreeMap::new();
+    for row in rows {
+        if let Some(receipt) = &mut row.feedback {
+            receipt.turn_id = turn_id.clone();
+            *counts
+                .entry(receipt.status.as_str().to_string())
+                .or_default() += 1;
+        }
+    }
+    counts
 }
 
 fn should_execute_agent_suggestion(
@@ -41188,8 +50326,12 @@ fn execute_agent_suggested_commands(
     allow_auto_exec: bool,
     options: &ShellExecutionOptions,
 ) -> (bool, Vec<AgentSuggestedExecutionReport>) {
+    use crate::agent_feedback::{
+        AgentExecutionReceipt, AgentExecutionRevision, AgentExecutionStatus, new_agent_context_id,
+    };
     let mut changed = false;
     let mut rows: Vec<AgentSuggestedExecutionReport> = vec![];
+    let session_id = new_agent_context_id();
     let nested_options = ShellExecutionOptions {
         allow_screenshots: options.allow_screenshots,
         allow_agent_commands: false,
@@ -41204,103 +50346,83 @@ fn execute_agent_suggested_commands(
             execute_indices,
             allow_auto_exec,
         );
-        if trigger.is_none() {
-            rows.push(AgentSuggestedExecutionReport {
-                index: index_1based,
-                command: suggestion.command.clone(),
-                execution_intent: suggestion.execution.as_str().to_string(),
-                trigger: "none".to_string(),
-                executed: false,
-                ok: true,
-                state_changed: false,
-                error: None,
-                output: None,
-            });
-            continue;
-        }
-        let command_text = suggestion.command.trim().to_string();
-        if command_text.is_empty() {
-            rows.push(AgentSuggestedExecutionReport {
-                index: index_1based,
-                command: suggestion.command.clone(),
-                execution_intent: suggestion.execution.as_str().to_string(),
-                trigger: trigger.unwrap_or("unknown").to_string(),
-                executed: false,
-                ok: false,
-                state_changed: false,
-                error: Some("Suggested command is empty".to_string()),
-                output: None,
-            });
-            continue;
-        }
-        let parsed = match parse_shell_line(&command_text) {
-            Ok(command) => command,
-            Err(err) => {
-                rows.push(AgentSuggestedExecutionReport {
-                    index: index_1based,
-                    command: command_text,
-                    execution_intent: suggestion.execution.as_str().to_string(),
-                    trigger: trigger.unwrap_or("unknown").to_string(),
-                    executed: true,
-                    ok: false,
-                    state_changed: false,
-                    error: Some(format!("Could not parse suggested command: {err}")),
-                    output: None,
-                });
-                continue;
-            }
+        let before = Some(AgentExecutionRevision::capture(engine));
+        let mut row = AgentSuggestedExecutionReport {
+            index: index_1based,
+            command: suggestion.command.trim().to_string(),
+            execution_intent: suggestion.execution.as_str().to_string(),
+            trigger: trigger.unwrap_or("none").to_string(),
+            executed: false,
+            ok: false,
+            state_changed: false,
+            error: None,
+            output: None,
+            feedback: None,
         };
-        if matches!(
-            parsed,
-            ShellCommand::AgentsAsk { .. }
-                | ShellCommand::AgentsPlan { .. }
-                | ShellCommand::AgentsExecutePlan { .. }
-        ) {
-            rows.push(AgentSuggestedExecutionReport {
-                index: index_1based,
-                command: command_text,
-                execution_intent: suggestion.execution.as_str().to_string(),
-                trigger: trigger.unwrap_or("unknown").to_string(),
-                executed: true,
-                ok: false,
-                state_changed: false,
-                error: Some(
-                    "Agent-to-agent assistant/planner execution is blocked for suggested commands"
-                        .to_string(),
-                ),
-                output: None,
-            });
-            continue;
-        }
-        match execute_shell_command_with_options(engine, &parsed, &nested_options) {
-            Ok(run) => {
-                changed |= run.state_changed;
-                rows.push(AgentSuggestedExecutionReport {
-                    index: index_1based,
-                    command: command_text,
-                    execution_intent: suggestion.execution.as_str().to_string(),
-                    trigger: trigger.unwrap_or("unknown").to_string(),
-                    executed: true,
-                    ok: true,
-                    state_changed: run.state_changed,
-                    error: None,
-                    output: Some(run.output),
-                });
+        let mut status = AgentExecutionStatus::NotRun;
+        // A rejected proposal was not dispatched, regardless of why it was rejected.
+        if trigger.is_some() {
+            match parse_shell_line(&row.command) {
+                Err(err) => {
+                    status = AgentExecutionStatus::Blocked;
+                    row.error = Some(format!("Could not parse suggested command: {err}"));
+                }
+                Ok(parsed) => {
+                    if trigger == Some("allow_auto_exec") && parsed.is_state_mutating() {
+                        status = AgentExecutionStatus::Blocked;
+                        row.error = Some(AGENT_MUTATION_CONFIRMATION_REQUIRED.to_string());
+                    } else if trigger == Some("allow_auto_exec")
+                        && matches!(
+                            parsed,
+                            ShellCommand::HistoryUndo | ShellCommand::HistoryRedo
+                        )
+                    {
+                        status = AgentExecutionStatus::Blocked;
+                        row.error = Some(AGENT_HISTORY_CONFIRMATION_REQUIRED.to_string());
+                    } else if matches!(
+                        parsed,
+                        ShellCommand::AgentsAsk { .. }
+                            | ShellCommand::AgentsPlan { .. }
+                            | ShellCommand::AgentsExecutePlan { .. }
+                    ) {
+                        status = AgentExecutionStatus::Blocked;
+                        row.error = Some("Agent-to-agent assistant/planner execution is blocked for suggested commands".to_string());
+                    } else {
+                        row.executed = true;
+                        match execute_shell_command_with_options(engine, &parsed, &nested_options) {
+                            Ok(run) => {
+                                status = AgentExecutionStatus::from_shell_output(&run.output);
+                                row.ok = true;
+                                row.state_changed = run.state_changed;
+                                row.output = Some(run.output);
+                            }
+                            Err(err) => {
+                                status = AgentExecutionStatus::Failed;
+                                row.error = Some(err);
+                            }
+                        }
+                    }
+                }
             }
-            Err(err) => {
-                rows.push(AgentSuggestedExecutionReport {
-                    index: index_1based,
-                    command: command_text,
-                    execution_intent: suggestion.execution.as_str().to_string(),
-                    trigger: trigger.unwrap_or("unknown").to_string(),
-                    executed: true,
-                    ok: false,
-                    state_changed: false,
-                    error: Some(err),
-                    output: None,
-                });
-            }
+        } else {
+            row.ok = true; // Legacy meaning: no dispatch error, not completion.
         }
+        let after = Some(AgentExecutionRevision::capture(engine));
+        row.state_changed |= before
+            .zip(after)
+            .is_some_and(|(a, b)| a.mutation != b.mutation);
+        let mut feedback = AgentExecutionReceipt::new(&row.command, status, before, after);
+        feedback.session_id = session_id.clone();
+        feedback.suggestion_index = Some(index_1based);
+        if let Some(output) = &row.output {
+            feedback.bind_output(output);
+        }
+        if let Some(error) = &row.error {
+            feedback.bind_error(error);
+        }
+        row.feedback = Some(feedback);
+        changed |= row.state_changed;
+        rows.push(row);
     }
     (changed, rows)
 }
@@ -41323,6 +50445,9 @@ fn is_reference_or_track_command(command: &ShellCommand) -> bool {
             | ShellCommand::ReferenceStatus { .. }
             | ShellCommand::ReferenceGenes { .. }
             | ShellCommand::ReferencePrepare { .. }
+            | ShellCommand::ReferencePrepareBlastResource { .. }
+            | ShellCommand::ReferenceAdoptBlastResource { .. }
+            | ShellCommand::ReferenceInspectBlastResource { .. }
             | ShellCommand::ReferenceRemovePrepared { .. }
             | ShellCommand::ReferenceRemoveCatalogEntry { .. }
             | ShellCommand::ReferenceBlast { .. }
@@ -41368,6 +50493,8 @@ fn execute_stack_safe_reference_command(
     if matches!(
         command,
         ShellCommand::ReferencePrepare { .. }
+            | ShellCommand::ReferencePrepareBlastResource { .. }
+            | ShellCommand::ReferenceAdoptBlastResource { .. }
             | ShellCommand::ReferenceExtractRegion { .. }
             | ShellCommand::ReferenceExtendAnchor { .. }
     ) {
@@ -41749,6 +50876,7 @@ fn execute_agents_ask_command(
     max_response_bytes: Option<usize>,
     include_state_summary: bool,
     allow_auto_exec: bool,
+    allow_web_research: bool,
     execute_all: bool,
     execute_indices: &[usize],
     options: &ShellExecutionOptions,
@@ -41759,8 +50887,15 @@ fn execute_agents_ask_command(
                 .to_string(),
         );
     }
-    let state_summary = if include_state_summary {
-        Some(engine.summarize_state())
+    let request_context = if include_state_summary {
+        Some((
+            engine.summarize_state(),
+            build_agent_introspection_context_for_request(
+                &engine.project_fact_graph(),
+                prompt,
+                None,
+            ),
+        ))
     } else {
         None
     };
@@ -41804,11 +50939,18 @@ fn execute_agents_ask_command(
             max_response_bytes.to_string(),
         );
     }
-    let invocation = invoke_agent_support_with_env_overrides(
+    if allow_web_research {
+        env_overrides.insert(AGENT_ALLOW_WEB_RESEARCH_ENV.to_string(), "1".to_string());
+    }
+    let invocation = invoke_agent_support_with_request_context(
         catalog_path,
         system_id,
         prompt,
-        state_summary.as_ref(),
+        request_context.as_ref().map(|(summary, _)| summary),
+        request_context
+            .as_ref()
+            .map(|(_, introspection)| introspection),
+        None,
         if env_overrides.is_empty() {
             None
         } else {
@@ -41829,7 +50971,7 @@ fn execute_agents_ask_command(
         .copied()
         .filter(|idx| *idx >= 1 && *idx <= suggested_count)
         .collect::<BTreeSet<_>>();
-    let (state_changed, execution_reports) = execute_agent_suggested_commands(
+    let (state_changed, mut execution_reports) = execute_agent_suggested_commands(
         engine,
         &suggested,
         execute_all,
@@ -41837,6 +50979,7 @@ fn execute_agents_ask_command(
         allow_auto_exec,
         options,
     );
+    let execution_status_counts = bind_agent_execution_reports(&invocation, &mut execution_reports);
     let executed_count = execution_reports.iter().filter(|row| row.executed).count();
     let executed_error_count = execution_reports
         .iter()
@@ -41854,6 +50997,7 @@ fn execute_agents_ask_command(
             "request": {
                 "include_state_summary": include_state_summary,
                 "allow_auto_exec": allow_auto_exec,
+                "allow_web_research": allow_web_research,
                 "execute_all": execute_all,
                 "execute_indices": execute_indices,
                 "base_url_override": base_url_override,
@@ -41870,6 +51014,7 @@ fn execute_agents_ask_command(
                 "auto_suggestion_count": auto_suggestion_count,
                 "executed_count": executed_count,
                 "executed_error_count": executed_error_count,
+                "execution_status_counts": execution_status_counts,
             },
             "executions": execution_reports
         }),
@@ -42135,6 +51280,16 @@ fn execute_agent_meta_command(
             state_changed: false,
             output: introspection_capabilities_payload(kind_filter.as_deref()),
         }),
+        ShellCommand::IntrospectRuntime => {
+            let (output, state_changed) = runtime_status_payload_with_observed_activities(
+                engine,
+                RuntimeStatusTrigger::Shell,
+            )?;
+            Ok(ShellRunResult {
+                state_changed,
+                output,
+            })
+        }
         ShellCommand::IntrospectReadiness {
             capability_id,
             args,
@@ -43145,6 +52300,7 @@ fn execute_pool_gel_and_ladder_command(
             container_ids,
             arrangement_id,
             conditions,
+            render_options,
         } => {
             let layout = engine
                 .build_serial_gel_layout_for_render(
@@ -43167,6 +52323,7 @@ fn execute_pool_gel_and_ladder_command(
                             container_ids: container_ids.clone(),
                             arrangement_id: arrangement_id.clone(),
                             conditions: Some(conditions.clone()),
+                            render_options: Some(render_options.clone()),
                         })
                         .map_err(|e| e.to_string())?,
                     "gel_band_rows": gel_band_rows,
@@ -43175,6 +52332,7 @@ fn execute_pool_gel_and_ladder_command(
                     "sample_lane_count": layout.sample_count,
                     "pool_member_count": layout.pool_member_count,
                     "selected_ladders": layout.selected_ladders,
+                    "render_options": render_options,
                 }),
             })
         }
@@ -44226,6 +53384,32 @@ fn execute_export_import_and_resource_command(
                 output: json!({ "result": op_result }),
             })
         }
+        ShellCommand::CollectionsRunExportPool {
+            collection_subject,
+            output,
+            pool_id,
+            human_id,
+        } => {
+            let op_result = engine
+                .apply(Operation::ExportPoolCollection {
+                    collection_subject: collection_subject.clone(),
+                    path: output.clone(),
+                    pool_id: pool_id.clone(),
+                    human_id: human_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.collection_pool_export.clone().ok_or_else(|| {
+                "Collection pool export operation returned no domain report".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.collection_pool_export_command.v1",
+                    "report": report,
+                    "result": op_result,
+                }),
+            })
+        }
         ShellCommand::ExportRunBundle { output, run_id } => {
             let op_result = engine
                 .apply(Operation::ExportProcessRunBundle {
@@ -44503,6 +53687,152 @@ fn execute_export_import_and_resource_command(
                     .map_err(|e| format!("Could not serialize UCSC rmsk descriptor: {e}"))?,
             })
         }
+        ShellCommand::ResourcesListEncodeCcreSources { assembly, output } => {
+            let mut catalog = crate::encode_ccre::source_catalog();
+            if let Some(assembly) = assembly
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                catalog.sources.retain(|source| {
+                    crate::encode_ccre::genome_id_matches_source(assembly, source)
+                });
+            }
+            if let Some(path) = output {
+                ensure_shell_output_parent_dir(path)?;
+                let mut text = serde_json::to_string_pretty(&catalog)
+                    .map_err(|error| format!("Could not serialize ENCODE cCRE catalog: {error}"))?;
+                text.push('\n');
+                fs::write(path, text)
+                    .map_err(|error| format!("Could not write ENCODE cCRE catalog: {error}"))?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(catalog)
+                    .map_err(|error| format!("Could not serialize ENCODE cCRE catalog: {error}"))?,
+            })
+        }
+        ShellCommand::ResourcesInstallEncodeCcres {
+            source_id,
+            input,
+            bed_output,
+            index_output,
+        } => {
+            let report = resource_sync::install_encode_ccres(
+                source_id,
+                input.as_deref(),
+                bed_output.as_deref(),
+                index_output.as_deref(),
+            )?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "message": format!(
+                        "Installed {} ENCODE SCREEN cCRE row(s) for '{}' (BED='{}', index='{}')",
+                        report.row_count,
+                        report.source.source_id,
+                        report.bed_output,
+                        report.index_output,
+                    ),
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::ResourcesPrepareEncodeCcreIndex {
+            source_id,
+            bed_path,
+            output,
+        } => {
+            let report =
+                resource_sync::prepare_encode_ccre_index(source_id, bed_path, output.as_deref())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "message": format!(
+                        "Prepared ENCODE SCREEN cCRE index for {} row(s) from '{}'",
+                        report.row_count,
+                        bed_path,
+                    ),
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::ResourcesListEnsemblRegulationSources { assembly, output } => {
+            let mut catalog = crate::ensembl_regulation::source_catalog();
+            if let Some(assembly) = assembly
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                catalog.sources.retain(|source| {
+                    crate::ensembl_regulation::genome_id_matches_source(assembly, source)
+                });
+            }
+            if let Some(path) = output {
+                ensure_shell_output_parent_dir(path)?;
+                let mut text = serde_json::to_string_pretty(&catalog).map_err(|error| {
+                    format!("Could not serialize Ensembl Regulation catalog: {error}")
+                })?;
+                text.push('\n');
+                fs::write(path, text).map_err(|error| {
+                    format!("Could not write Ensembl Regulation catalog: {error}")
+                })?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(catalog).map_err(|error| {
+                    format!("Could not serialize Ensembl Regulation catalog: {error}")
+                })?,
+            })
+        }
+        ShellCommand::ResourcesInstallEnsemblRegulatoryFeatures {
+            source_id,
+            input,
+            intervals_output,
+            index_output,
+        } => {
+            let report = resource_sync::install_ensembl_regulatory_features(
+                source_id,
+                input.as_deref(),
+                intervals_output.as_deref(),
+                index_output.as_deref(),
+            )?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "message": format!(
+                        "Installed {} Ensembl regulatory feature row(s) for '{}' (intervals='{}', index='{}')",
+                        report.row_count,
+                        report.source.source_id,
+                        report.intervals_output,
+                        report.index_output,
+                    ),
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::ResourcesPrepareEnsemblRegulationIndex {
+            source_id,
+            intervals_path,
+            output,
+        } => {
+            let report = resource_sync::prepare_ensembl_regulation_index(
+                source_id,
+                intervals_path,
+                output.as_deref(),
+            )?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "message": format!(
+                        "Prepared Ensembl Regulation index for {} row(s) from '{}'",
+                        report.row_count,
+                        intervals_path,
+                    ),
+                    "report": report,
+                }),
+            })
+        }
         ShellCommand::ResourcesSyncJasparRemoteMetadata {
             motifs,
             filter,
@@ -44755,6 +54085,40 @@ fn execute_export_import_and_resource_command(
                     .map_err(|e| format!("Could not serialize gene-set resolution: {e}"))?,
             })
         }
+        ShellCommand::GeneSetsCreatePool {
+            resolution_id,
+            member_bindings,
+            output_prefix,
+            container_name,
+            dry_run,
+            expected_plan_fingerprint_sha256,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::CreateGeneSetPool {
+                    collection_subject: CollectionSubjectRef::GeneSetResolution {
+                        report_id: resolution_id.clone(),
+                    },
+                    member_bindings: member_bindings.clone(),
+                    output_prefix: output_prefix.clone(),
+                    container_name: container_name.clone(),
+                    dry_run: *dry_run,
+                    expected_plan_fingerprint_sha256: expected_plan_fingerprint_sha256.clone(),
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result.gene_set_pool_creation.clone().ok_or_else(|| {
+                "CreateGeneSetPool did not return a gene-set pool creation report".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: !dry_run && report.created_container_id.is_some(),
+                output: json!({
+                    "schema": "gentle.gene_set_pool_creation_command.v1",
+                    "report": report,
+                    "result": op_result,
+                }),
+            })
+        }
         ShellCommand::GeneSetsProduceDirectList {
             cache_path,
             query,
@@ -44965,6 +54329,51 @@ fn execute_export_import_and_resource_command(
                     .map_err(|e| format!("Could not serialize gene-set promoter cohort: {e}"))?,
             })
         }
+        ShellCommand::GeneSetsRegulatoryPartnerScreen {
+            genome_id,
+            resolution,
+            cutrun_support,
+            anchor_motifs,
+            partner_motifs,
+            min_llr_bits,
+            per_motif_thresholds,
+            max_distance_bp,
+            anchor_mode,
+            genome_catalog_path,
+            cache_dir,
+            upstream_bp,
+            downstream_bp,
+            output,
+        } => {
+            let result = engine
+                .apply(Operation::InspectRegulatoryPartnerScreen {
+                    genome_id: genome_id.clone(),
+                    resolution: resolution.clone(),
+                    cutrun_support: cutrun_support.clone(),
+                    anchor_motifs: anchor_motifs.clone(),
+                    partner_motifs: partner_motifs.clone(),
+                    min_llr_bits: *min_llr_bits,
+                    per_motif_thresholds: per_motif_thresholds.clone(),
+                    max_distance_bp: *max_distance_bp,
+                    anchor_mode: *anchor_mode,
+                    upstream_bp: *upstream_bp,
+                    downstream_bp: *downstream_bp,
+                    genome_catalog_path: genome_catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = result.regulatory_partner_screen.ok_or_else(|| {
+                "InspectRegulatoryPartnerScreen did not return a regulatory-partner screen"
+                    .to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report.as_ref()).map_err(|error| {
+                    format!("Could not serialize regulatory-partner screen: {error}")
+                })?,
+            })
+        }
         ShellCommand::OrthologsResolvePromoterCohort {
             anchor_species,
             anchor_genome_id,
@@ -45015,6 +54424,7 @@ fn execute_export_import_and_resource_command(
             expression_source_label,
             cutrun_dataset_ids,
             cutrun_read_report_ids,
+            cutrun_normalization,
             output,
         } => {
             let op_result = engine
@@ -45029,12 +54439,51 @@ fn execute_export_import_and_resource_command(
                     expression_source_label: expression_source_label.clone(),
                     cutrun_dataset_ids: cutrun_dataset_ids.clone(),
                     cutrun_read_report_ids: cutrun_read_report_ids.clone(),
+                    cutrun_normalization: cutrun_normalization.clone(),
                     path: output.clone(),
                 })
                 .map_err(|e| e.to_string())?;
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::OrthologsConservationComparison {
+            cohort,
+            cohort_path,
+            min_conserved_bp,
+            output,
+        } => {
+            let cohort = match (cohort.as_ref(), cohort_path.as_deref()) {
+                (Some(report), _) => (**report).clone(),
+                (None, Some(path)) => {
+                    let raw = std::fs::read_to_string(path).map_err(|e| {
+                        format!("Could not read ortholog promoter cohort '{path}': {e}")
+                    })?;
+                    serde_json::from_str::<OrthologPromoterCohortReport>(&raw).map_err(|e| {
+                        format!("Could not parse ortholog promoter cohort '{path}': {e}")
+                    })?
+                }
+                (None, None) => {
+                    return Err("orthologs conservation-comparison requires a cohort".to_string());
+                }
+            };
+            let report = engine
+                .compare_ortholog_promoter_conservation(cohort, *min_conserved_bp)
+                .map_err(|e| e.to_string())?;
+            if let Some(path) = output.as_deref() {
+                let serialized = serde_json::to_string_pretty(&report).map_err(|e| {
+                    format!("Could not serialize ortholog promoter conservation report: {e}")
+                })?;
+                std::fs::write(path, format!("{serialized}\n")).map_err(|e| {
+                    format!("Could not write ortholog promoter conservation report '{path}': {e}")
+                })?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report).map_err(|e| {
+                    format!("Could not serialize ortholog promoter conservation report: {e}")
+                })?,
             })
         }
         ShellCommand::ReportersList {
@@ -45099,6 +54548,139 @@ fn execute_export_import_and_resource_command(
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({ "result": export }),
+            })
+        }
+        ShellCommand::PromotersComposeStudy { request, output } => {
+            let op_result = engine
+                .apply(Operation::ComposeRegulatoryReporterStudy {
+                    request: Box::new(request.clone()),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.regulatory_reporter_study.ok_or_else(|| {
+                "Regulatory-reporter study composition returned no report".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": report }),
+            })
+        }
+        ShellCommand::PromotersPanelPlan { request, output } => {
+            let op_result = engine
+                .apply(Operation::PlanPromoterReporterPanel {
+                    request: Box::new(request.clone()),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let proposal = op_result.promoter_reporter_panel_proposal.ok_or_else(|| {
+                "Promoter-reporter panel planning returned no proposal".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": proposal }),
+            })
+        }
+        ShellCommand::PromotersFragmentCandidates { request, output } => {
+            let result = engine
+                .apply(Operation::PlanEvidenceGuidedFragmentCandidates {
+                    request: Box::new(request.clone()),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = result
+                .reporter_fragment_selection
+                .ok_or("Fragment selection returned no report")?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({"result": report}),
+            })
+        }
+        ShellCommand::PromotersRegulatoryPanelPlan { request, output } => {
+            let op_result = engine
+                .apply(Operation::PlanRegulatoryFragmentPanel {
+                    request: Box::new(request.clone()),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let plan = op_result
+                .regulatory_fragment_panel_plan
+                .ok_or_else(|| "Regulatory-fragment panel planning returned no plan".to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": plan }),
+            })
+        }
+        ShellCommand::PromotersRegulatoryPanelRender { plan, output } => {
+            engine
+                .apply(Operation::RenderRegulatoryFragmentPanelSvg {
+                    plan: Box::new(plan.clone()),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": {
+                        "plan_id": plan.plan_id,
+                        "proposal_digest": plan.proposal_digest,
+                        "path": output,
+                    }
+                }),
+            })
+        }
+        ShellCommand::PromotersPanelReadiness { request, output } => {
+            let op_result = engine
+                .apply(Operation::InspectPromoterReporterPanelReadiness {
+                    request: Box::new(request.clone()),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.promoter_reporter_panel_readiness.ok_or_else(|| {
+                "Promoter-reporter panel readiness operation returned no report".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": report }),
+            })
+        }
+        ShellCommand::PromotersCompareArchitectures {
+            request,
+            output,
+            svg_output,
+        } => {
+            let op_result = engine
+                .apply(Operation::ComparePromoterReporterArchitectures {
+                    request: Box::new(request.clone()),
+                    path: output.clone(),
+                    svg_path: svg_output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result
+                .promoter_reporter_architecture_comparison
+                .ok_or_else(|| {
+                    "Promoter-reporter architecture comparison returned no report".to_string()
+                })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": report }),
+            })
+        }
+        ShellCommand::PromotersPanelMaterialize {
+            proposal,
+            approval_digest,
+        } => {
+            let op_result = engine
+                .apply(Operation::MaterializePromoterReporterPanel {
+                    proposal: Box::new(proposal.clone()),
+                    approval_digest: approval_digest.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let receipt = op_result.promoter_reporter_panel_receipt.ok_or_else(|| {
+                "Promoter-reporter panel materialization returned no receipt".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": receipt }),
             })
         }
         ShellCommand::ResourcesListPublicationDatasets {
@@ -45171,6 +54753,30 @@ fn execute_export_import_and_resource_command(
                 output: json!({
                     "message": format!("Synced {} {} entries to '{}'", report.item_count, report.resource, report.output),
                     "report": report,
+                }),
+            })
+        }
+        ShellCommand::ResourcesSyncMaxent {
+            input,
+            output,
+            source_url,
+            retrieved_on,
+            redistribution_status,
+        } => {
+            let report = resource_sync::sync_maxent_splice_model(
+                input,
+                output.as_deref(),
+                source_url.as_deref(),
+                retrieved_on.as_deref(),
+                redistribution_status.as_deref(),
+            )?;
+            let status = crate::maxent_splicing::reload_from_path(Some(&report.output));
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "message": format!("Synced user-supplied MaxEnt splice model to '{}'", report.output),
+                    "report": report,
+                    "model_fingerprint_sha256": status.model.as_ref().map(|model| model.snapshot().model_fingerprint_sha256.clone()),
                 }),
             })
         }
@@ -45730,6 +55336,8 @@ fn execute_cutrun_command(
             seq_id,
             dataset_ids,
             read_report_ids,
+            catalog_path,
+            cache_dir,
             promoter_search_start_0based,
             promoter_search_end_0based_exclusive,
             neighbor_window_bp,
@@ -45741,6 +55349,8 @@ fn execute_cutrun_command(
                     seq_id: seq_id.clone(),
                     dataset_ids: dataset_ids.clone(),
                     read_report_ids: read_report_ids.clone(),
+                    catalog_path: catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
                     promoter_search_start_0based: *promoter_search_start_0based,
                     promoter_search_end_0based_exclusive: *promoter_search_end_0based_exclusive,
                     neighbor_window_bp: *neighbor_window_bp,
@@ -46210,6 +55820,34 @@ fn execute_reference_and_track_command(
                 )
             }
             .map_err(|e| e.to_string())?;
+            let prepared_inspection = if *helper_mode {
+                GentleEngine::inspect_helper_genome_prepared(
+                    genome_id,
+                    resolved_catalog,
+                    cache_dir.as_deref(),
+                )
+            } else {
+                GentleEngine::inspect_reference_genome_prepared(
+                    resolved_catalog,
+                    genome_id,
+                    cache_dir.as_deref(),
+                )
+            }
+            .map_err(|e| e.to_string())?;
+            let component_ready = prepared_inspection
+                .as_ref()
+                .map(|inspection| {
+                    inspection.sequence_present
+                        && inspection.annotation_present
+                        && inspection.fasta_index_ready
+                        && inspection.gene_index_ready
+                        && inspection
+                            .blast_database
+                            .as_ref()
+                            .map(|database| database.validation_status == "valid")
+                            .unwrap_or(false)
+                })
+                .unwrap_or(false);
             let lifecycle_status =
                 GenomeCatalog::derive_prepare_lifecycle_status(prepared, current_activity.as_ref());
             let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
@@ -46226,7 +55864,7 @@ fn execute_reference_and_track_command(
                 .filter(|value| !value.is_empty())
                 .map(|value| format!(" --catalog {}", quote_shell_arg(value)))
                 .unwrap_or_default();
-            let prepare_command = if lifecycle_status == "running" || lifecycle_status == "ready" {
+            let prepare_command = if lifecycle_status == "running" || component_ready {
                 None
             } else {
                 Some(format!(
@@ -46246,7 +55884,20 @@ fn execute_reference_and_track_command(
                 },
                 genome_id
             );
-            let status_message = if lifecycle_status == "running" {
+            let status_message = if component_ready {
+                let activity_note = (lifecycle_status != "ready")
+                    .then(|| {
+                        format!(
+                            " The overall prepare activity is '{}', but component validation is authoritative for reuse.",
+                            lifecycle_status
+                        )
+                    })
+                    .unwrap_or_default();
+                format!(
+                    "Genome '{}' has ready sequence, annotation, and BLAST components in '{}'.{}",
+                    compatibility.requested_catalog_key, effective_cache_dir, activity_note
+                )
+            } else if lifecycle_status == "running" {
                 let activity_brief = current_activity
                     .as_ref()
                     .and_then(|activity| activity.phase.as_ref())
@@ -46302,6 +55953,8 @@ fn execute_reference_and_track_command(
                     "cache_dir": cache_dir,
                     "effective_cache_dir": effective_cache_dir,
                     "prepared": prepared,
+                    "component_ready": component_ready,
+                    "components": prepared_inspection,
                     "lifecycle_status": lifecycle_status,
                     "current_activity": current_activity,
                     "requested_catalog_key": compatibility.requested_catalog_key,
@@ -46388,19 +56041,88 @@ fn execute_reference_and_track_command(
             cache_dir,
             timeout_seconds,
         } => {
-            let binary_preflight = engine.blast_external_binary_preflight_report();
             let op = Operation::PrepareGenome {
                 genome_id: genome_id.clone(),
                 catalog_path: operation_catalog_path(catalog_path, *helper_mode),
                 cache_dir: cache_dir.clone(),
                 timeout_seconds: *timeout_seconds,
             };
-            let op_result = engine.apply(op).map_err(|e| e.to_string())?;
+            execute_prepare_genome_operation(engine, op, &ShellExecutionOptions::default())
+        }
+        ShellCommand::ReferencePrepareBlastResource {
+            helper_mode,
+            resource_id,
+            catalog_path,
+            cache_dir,
+            force_rebuild,
+        } => {
+            let catalog = load_shell_genome_catalog(catalog_path, *helper_mode)?;
+            let report = catalog
+                .prepare_blast_sequence_resource_with_options(
+                    resource_id,
+                    cache_dir.as_deref(),
+                    *force_rebuild,
+                )
+                .map_err(|error| error.to_string())?;
             Ok(ShellRunResult {
-                state_changed: true,
+                state_changed: false,
                 output: json!({
-                    "binary_preflight": binary_preflight,
-                    "result": op_result
+                    "catalog_path": effective_catalog_path(catalog_path, *helper_mode),
+                    "cache_dir": cache_dir,
+                    "result": report,
+                }),
+            })
+        }
+        ShellCommand::ReferenceAdoptBlastResource {
+            helper_mode,
+            resource_id,
+            sequence_path,
+            blast_db_prefix,
+            expected_content_fingerprint,
+            expected_sequence_sha1,
+            verify_source_identities,
+            catalog_path,
+            cache_dir,
+        } => {
+            let catalog = load_shell_genome_catalog(catalog_path, *helper_mode)?;
+            let report = catalog
+                .adopt_blast_sequence_resource(
+                    resource_id,
+                    sequence_path,
+                    blast_db_prefix,
+                    expected_content_fingerprint,
+                    expected_sequence_sha1.as_deref(),
+                    *verify_source_identities,
+                    cache_dir.as_deref(),
+                )
+                .map_err(|error| error.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "catalog_path": effective_catalog_path(catalog_path, *helper_mode),
+                    "cache_dir": cache_dir,
+                    "result": report,
+                }),
+            })
+        }
+        ShellCommand::ReferenceInspectBlastResource {
+            helper_mode,
+            resource_id,
+            catalog_path,
+            cache_dir,
+        } => {
+            let catalog = load_shell_genome_catalog(catalog_path, *helper_mode)?;
+            let inspection = catalog
+                .inspect_blast_sequence_resource(resource_id, cache_dir.as_deref())
+                .map_err(|error| error.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "catalog_path": effective_catalog_path(catalog_path, *helper_mode),
+                    "cache_dir": cache_dir,
+                    "resource_id": resource_id,
+                    "prepared": inspection.is_some(),
+                    "inspection": inspection,
                 }),
             })
         }
@@ -46531,8 +56253,9 @@ fn execute_reference_and_track_command(
             catalog_path,
             cache_dir,
         } => {
-            let binary_preflight = engine.blast_external_binary_preflight_report();
-            let engine_snapshot = engine.clone();
+            let engine_snapshot = engine
+                .blast_execution_snapshot()
+                .map_err(|e| e.to_string())?;
             let (status, state_changed) = with_blast_async_registry(engine, true, |jobs| {
                 start_blast_async_job(
                     jobs,
@@ -46551,36 +56274,61 @@ fn execute_reference_and_track_command(
             Ok(ShellRunResult {
                 state_changed,
                 output: json!({
-                    "schema": "gentle.blast_async_start.v1",
-                    "binary_preflight": binary_preflight,
+                    "schema": "gentle.blast_async_start.v2",
+                    "binary_preflight": null,
+                    "binary_preflight_status": "pending",
                     "job": status,
                 }),
             })
         }
         ShellCommand::ReferenceBlastAsyncStatus {
-            helper_mode: _,
+            helper_mode,
             job_id,
             include_report,
         } => {
-            let (status_and_report, state_changed) =
-                with_blast_async_registry(engine, true, |jobs| {
-                    get_blast_async_job_snapshot(jobs, job_id, *include_report)
-                })?;
-            let (status, report) = status_and_report;
+            let (status, report) = observe_blast_async_jobs(
+                engine,
+                Some(*helper_mode),
+                Some(job_id),
+                *include_report,
+            )?
+            .into_iter()
+            .next()
+            .ok_or_else(|| "BLAST job not found".to_string())?;
             Ok(ShellRunResult {
-                state_changed,
+                state_changed: false,
                 output: json!({
                     "schema": "gentle.blast_async_status.v1",
+                    "binary_preflight": status.binary_preflight,
                     "job": status,
                     "report": report,
                 }),
             })
         }
         ShellCommand::ReferenceBlastAsyncCancel {
-            helper_mode: _,
+            helper_mode,
             job_id,
         } => {
+            let observed =
+                observe_blast_async_jobs(engine, Some(*helper_mode), Some(job_id), false)?;
+            if let Some((status, _)) = observed.into_iter().next()
+                && matches!(status.state.as_str(), "completed" | "failed" | "cancelled")
+                && status.observation != "persisted_interrupted"
+            {
+                return Ok(ShellRunResult {
+                    state_changed: false,
+                    output: json!({
+                        "schema": "gentle.blast_async_cancel.v1", "job": status,
+                    }),
+                });
+            }
             let (status, state_changed) = with_blast_async_registry(engine, false, |jobs| {
+                let record = jobs
+                    .get(job_id)
+                    .ok_or_else(|| format!("BLAST async job '{job_id}' not found"))?;
+                if record.status.helper_mode != *helper_mode {
+                    return Err("BLAST job belongs to another catalog scope".into());
+                }
                 cancel_blast_async_job(jobs, job_id)
             })?;
             Ok(ShellRunResult {
@@ -46592,11 +56340,12 @@ fn execute_reference_and_track_command(
             })
         }
         ShellCommand::ReferenceBlastAsyncList { helper_mode } => {
-            let (jobs, state_changed) = with_blast_async_registry(engine, true, |jobs| {
-                Ok(collect_blast_async_job_snapshots(jobs, Some(*helper_mode)))
-            })?;
+            let jobs: Vec<_> = observe_blast_async_jobs(engine, Some(*helper_mode), None, false)?
+                .into_iter()
+                .map(|(status, _)| status)
+                .collect();
             Ok(ShellRunResult {
-                state_changed,
+                state_changed: false,
                 output: json!({
                     "schema": "gentle.blast_async_list.v1",
                     "helper_mode": helper_mode,
@@ -46685,6 +56434,8 @@ fn execute_reference_and_track_command(
                         task: report.task.clone(),
                         blastn_executable: report.blastn_executable.clone(),
                         blast_db_prefix: report.blast_db_prefix.clone(),
+                        blast_database_content_fingerprint: None,
+                        blast_database_index_kind: None,
                         command: report.command.clone(),
                         command_line,
                         catalog_path: resolved_catalog.map(str::to_string),
@@ -47246,6 +56997,8 @@ fn execute_reference_and_track_command(
             gene_label,
             level,
             min_abs_logfc,
+            threshold_source,
+            policy_sha256,
             path,
         } => {
             let op_result = engine
@@ -47254,6 +57007,8 @@ fn execute_reference_and_track_command(
                     gene_label: gene_label.clone(),
                     level: level.clone(),
                     min_abs_logfc: *min_abs_logfc,
+                    threshold_source: threshold_source.clone(),
+                    policy_sha256: policy_sha256.clone(),
                     path: path.clone(),
                 })
                 .map_err(|e| e.to_string())?;
@@ -47272,6 +57027,7 @@ fn execute_reference_and_track_command(
             probeset_ids,
             platform,
             annotation_library_path,
+            r_library_paths,
             condition_column,
             sample_column,
             block_column,
@@ -47292,6 +57048,7 @@ fn execute_reference_and_track_command(
                 probeset_ids: probeset_ids.clone(),
                 platform: platform.clone(),
                 annotation_library_path: annotation_library_path.clone(),
+                r_library_paths: r_library_paths.clone(),
                 condition_column: condition_column.clone(),
                 sample_column: sample_column.clone(),
                 block_column: block_column.clone(),
@@ -47953,6 +57710,7 @@ fn execute_planning_command(
         ShellCommand::PlanningProteinExpressionHandoff {
             seq_id,
             objective_json,
+            requirements_json,
             profile_scope,
             output_format,
         } => {
@@ -47960,6 +57718,7 @@ fn execute_planning_command(
                 engine,
                 seq_id,
                 objective_json,
+                requirements_json,
                 *profile_scope,
                 output_format,
             )?;
@@ -48518,6 +58277,96 @@ fn forward_shell_progress(
     Ok((guard)(progress))
 }
 
+fn primerbank_target_sequence_species(dna: &DNAsequence, feature_id: usize) -> Option<String> {
+    let selected = dna.features().get(feature_id);
+    selected
+        .into_iter()
+        .chain(
+            dna.features()
+                .iter()
+                .filter(|feature| feature.kind.to_string().eq_ignore_ascii_case("source")),
+        )
+        .chain(dna.features().iter())
+        .flat_map(|feature| {
+            feature
+                .qualifier_values("organism")
+                .chain(feature.qualifier_values("translation_context_organism"))
+        })
+        .map(str::trim)
+        .find(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+#[inline(never)]
+fn execute_non_materializing_cdna_pcr(
+    engine: &GentleEngine,
+    seq_id: &str,
+    feature_id: usize,
+    forward_primer: &str,
+    reverse_primer: &str,
+    transcript_id: Option<&str>,
+    min_amplicon_bp: Option<usize>,
+    max_amplicon_bp: Option<usize>,
+    max_mismatches: Option<usize>,
+    require_3prime_exact_bases: Option<usize>,
+    transcript_order: Option<CdnaAssayTranscriptOrder>,
+    transcript_map_coordinate_mode: Option<CdnaAssayTranscriptMapCoordinateMode>,
+    path: Option<&str>,
+    svg_path: Option<&str>,
+) -> Result<ShellRunResult, String> {
+    let report = engine
+        .test_cdna_pcr_assay_with_map_options(
+            seq_id,
+            feature_id,
+            forward_primer,
+            reverse_primer,
+            transcript_id,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_mismatches,
+            require_3prime_exact_bases,
+            transcript_order.unwrap_or_default(),
+            transcript_map_coordinate_mode.unwrap_or_default(),
+        )
+        .map_err(|e| e.to_string())?;
+    if let Some(path) = path.map(str::trim).filter(|value| !value.is_empty()) {
+        let json_text = serde_json::to_string_pretty(&report)
+            .map_err(|e| format!("Could not serialize cDNA PCR assay-test report: {e}"))?;
+        ensure_shell_output_parent_dir(path)?;
+        fs::write(path, json_text)
+            .map_err(|e| format!("Could not write cDNA PCR assay-test report to '{path}': {e}"))?;
+    }
+    if let Some(svg_path) = svg_path.map(str::trim).filter(|value| !value.is_empty()) {
+        let svg = report
+            .transcript_map
+            .as_ref()
+            .map(|map| map.svg.as_str())
+            .unwrap_or_default();
+        ensure_shell_output_parent_dir(svg_path)?;
+        fs::write(svg_path, svg).map_err(|e| {
+            format!("Could not write cDNA PCR transcript-map SVG to '{svg_path}': {e}")
+        })?;
+    }
+    let preferred_artifacts = cdna_assay_preferred_artifacts(
+        svg_path,
+        "cDNA PCR transcript map",
+        None,
+        "cDNA PCR product gel",
+    );
+    Ok(ShellRunResult {
+        state_changed: false,
+        output: json!({
+            "schema": "gentle.cdna_assay_test_command.v1",
+            "report": report.clone(),
+            "cdna_assay_test_report": report,
+            "materialization": null,
+            "path": path,
+            "svg_path": svg_path,
+            "preferred_artifacts": preferred_artifacts,
+        }),
+    })
+}
+
 fn execute_primers_command(
     engine: &mut GentleEngine,
     command: &ShellCommand,
@@ -48556,6 +58405,154 @@ fn execute_primers_command(
         }
     }
 
+    fn run_design_primer_group_target_request(
+        engine: &mut GentleEngine,
+        request: PrimerGroupTargetDesignRequest,
+        path: Option<String>,
+        backend: Option<PrimerDesignBackend>,
+        primer3_executable: Option<&str>,
+        options: &ShellExecutionOptions,
+    ) -> Result<ShellRunResult, String> {
+        if let Some(path) = path
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            ensure_shell_output_parent_dir(path)?;
+        }
+        let previous_backend = engine.state().parameters.primer_design_backend;
+        let previous_executable = engine.state().parameters.primer3_executable.clone();
+        if let Some(override_backend) = backend {
+            engine.state_mut().parameters.primer_design_backend = override_backend;
+        }
+        if let Some(override_exec) = primer3_executable
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            engine.state_mut().parameters.primer3_executable = override_exec.to_string();
+        }
+        let operation = Operation::DesignPrimerGroupTarget {
+            request,
+            path: path.clone(),
+        };
+        let op_result = if options.progress_callback.is_some() {
+            engine
+                .apply_with_progress(operation, |progress| {
+                    forward_shell_progress(options, progress).unwrap_or(false)
+                })
+                .map_err(|error| error.to_string())
+        } else {
+            engine.apply(operation).map_err(|error| error.to_string())
+        };
+        engine.state_mut().parameters.primer_design_backend = previous_backend;
+        engine.state_mut().parameters.primer3_executable = previous_executable;
+        let op_result = op_result?;
+        let report = op_result
+            .primer_group_target_design
+            .as_ref()
+            .map(|report| (**report).clone())
+            .ok_or_else(|| "Group-target primer operation did not return its report".to_string())?;
+        Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "schema": "gentle.primer_group_target_design_command.v1",
+                "report": report,
+                "path": path,
+                "preferred_artifacts": path.as_ref().map(|path| vec![json!({
+                    "path": path,
+                    "kind": "related-sequence group-target primer report"
+                })]).unwrap_or_default(),
+                "result": op_result,
+            }),
+        })
+    }
+
+    fn parse_design_transcript_assay_panel_operation_request(
+        json_text: &str,
+    ) -> Result<Operation, String> {
+        let op: Operation = serde_json::from_str(json_text).map_err(|error| {
+            format!(
+                "Invalid primers design-transcript-assay-panel operation JSON: {error} (expected DesignTranscriptAssayPanel or DesignTranscriptAssayPanelWithFallback)"
+            )
+        })?;
+        match op {
+            Operation::DesignTranscriptAssayPanel { .. }
+            | Operation::DesignTranscriptAssayPanelWithFallback { .. } => Ok(op),
+            _ => Err(
+                "primers design-transcript-assay-panel expects DesignTranscriptAssayPanel or DesignTranscriptAssayPanelWithFallback"
+                    .to_string(),
+            ),
+        }
+    }
+
+    fn run_design_transcript_assay_panel_operation(
+        engine: &mut GentleEngine,
+        operation: Operation,
+        backend: Option<PrimerDesignBackend>,
+        primer3_executable: Option<&str>,
+        options: &ShellExecutionOptions,
+    ) -> Result<ShellRunResult, String> {
+        let path = match &operation {
+            Operation::DesignTranscriptAssayPanel { path, .. }
+            | Operation::DesignTranscriptAssayPanelWithFallback { path, .. } => path.clone(),
+            _ => {
+                return Err(
+                    "Transcript assay panel shell execution requires DesignTranscriptAssayPanel or DesignTranscriptAssayPanelWithFallback".to_string(),
+                );
+            }
+        };
+        let before = engine
+            .state()
+            .metadata
+            .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+            .cloned();
+        let previous_backend = engine.state().parameters.primer_design_backend;
+        let previous_executable = engine.state().parameters.primer3_executable.clone();
+        if let Some(override_backend) = backend {
+            engine.state_mut().parameters.primer_design_backend = override_backend;
+        }
+        if let Some(override_exec) = primer3_executable
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            engine.state_mut().parameters.primer3_executable = override_exec.to_string();
+        }
+        let op_result = if options.progress_callback.is_some() {
+            engine
+                .apply_with_progress(operation, |progress| {
+                    forward_shell_progress(options, progress).unwrap_or(false)
+                })
+                .map_err(|error| error.to_string())
+        } else {
+            engine.apply(operation).map_err(|error| error.to_string())
+        };
+        engine.state_mut().parameters.primer_design_backend = previous_backend;
+        engine.state_mut().parameters.primer3_executable = previous_executable;
+        let op_result = op_result?;
+        let report = op_result
+            .transcript_assay_panel
+            .as_ref()
+            .map(|report| (**report).clone());
+        if report.is_none() && op_result.transcript_assay_fallback_execution.is_none() {
+            return Err("Transcript assay panel operation returned neither a panel nor a fallback execution audit".to_string());
+        }
+        let after = engine
+            .state()
+            .metadata
+            .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+            .cloned();
+        Ok(ShellRunResult {
+            state_changed: before != after,
+            output: json!({
+                "schema": "gentle.transcript_assay_panel_command.v3",
+                "report": report,
+                "fallback_execution": op_result.transcript_assay_fallback_execution.as_deref(),
+                "path": path,
+                "result": op_result,
+            }),
+        })
+    }
+
     fn qpcr_seed_output(
         template: &str,
         source: serde_json::Value,
@@ -48590,6 +58587,160 @@ fn execute_primers_command(
     }
 
     match command {
+        ShellCommand::PrimersPrimerBankSearch {
+            request,
+            source_html_path,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::SearchPrimerBank {
+                    request: request.clone(),
+                    source_html_path: source_html_path.clone(),
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result.primerbank_search_report.ok_or_else(|| {
+                "PrimerBank search operation did not return its typed report".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report)
+                    .map_err(|error| format!("Could not serialize PrimerBank report: {error}"))?,
+            })
+        }
+        ShellCommand::PrimersPrimerBankTestCdna {
+            seq_id,
+            feature_id,
+            primerbank_id,
+            expected_species,
+            source_html_path,
+            transcript_id,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_mismatches,
+            require_3prime_exact_bases,
+            transcript_order,
+            transcript_map_coordinate_mode,
+            path,
+            svg_path,
+        } => {
+            let target_sequence_species = engine
+                .state()
+                .sequences
+                .get(seq_id)
+                .ok_or_else(|| format!("Sequence '{seq_id}' not found"))
+                .map(|dna| primerbank_target_sequence_species(dna, *feature_id))?;
+            let target_sequence_species_match_status =
+                expected_species.match_observed_label(target_sequence_species.as_deref());
+            if target_sequence_species_match_status == PrimerBankSpeciesMatchStatus::Mismatch {
+                return Err(format!(
+                    "PrimerBank target-sequence species cross-check failed for sequence '{}': expected '{}', annotated organism '{}', status='mismatch'",
+                    seq_id,
+                    expected_species.as_str(),
+                    target_sequence_species.as_deref().unwrap_or("unresolved")
+                ));
+            }
+            let lookup_request = PrimerBankSearchRequest {
+                query: primerbank_id.clone(),
+                query_kind: PrimerBankQueryKind::PrimerbankId,
+                species: *expected_species,
+            };
+            let lookup = engine
+                .apply(Operation::SearchPrimerBank {
+                    request: lookup_request,
+                    source_html_path: source_html_path.clone(),
+                    path: None,
+                })
+                .map_err(|error| error.to_string())?
+                .primerbank_search_report
+                .ok_or_else(|| {
+                    "PrimerBank search operation did not return its typed report".to_string()
+                })?;
+            let (gene, pair) = lookup.gene_and_pair_by_id(primerbank_id).ok_or_else(|| {
+                format!(
+                    "PrimerBank response did not contain requested pair '{}' (returned ids: {})",
+                    primerbank_id,
+                    lookup
+                        .primer_pairs()
+                        .map(|pair| pair.primerbank_id.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            })?;
+            if gene.species_match_status != crate::primerbank::PrimerBankSpeciesMatchStatus::Matched
+            {
+                return Err(format!(
+                    "PrimerBank pair '{}' species cross-check failed: expected '{}', observed '{}', status='{:?}'",
+                    primerbank_id,
+                    expected_species.as_str(),
+                    gene.species.as_deref().unwrap_or("unresolved"),
+                    gene.species_match_status
+                ));
+            }
+            let pair = pair.clone();
+            let primerbank_species = gene.species.clone();
+            let species_match_status = gene.species_match_status;
+            let mut warnings = Vec::new();
+            if target_sequence_species_match_status == PrimerBankSpeciesMatchStatus::Unresolved {
+                warnings.push(format!(
+                    "Target sequence '{}' has no recognized organism annotation; GENtle used the explicit expected species '{}' but could not independently confirm the target sequence species.",
+                    seq_id,
+                    expected_species.as_str()
+                ));
+            }
+            let cdna_run = execute_non_materializing_cdna_pcr(
+                engine,
+                seq_id,
+                *feature_id,
+                &pair.forward.sequence_5_to_3,
+                &pair.reverse.sequence_5_to_3,
+                transcript_id.as_deref(),
+                *min_amplicon_bp,
+                *max_amplicon_bp,
+                *max_mismatches,
+                *require_3prime_exact_bases,
+                *transcript_order,
+                *transcript_map_coordinate_mode,
+                None,
+                svg_path.as_deref(),
+            )?;
+            let report = PrimerBankCdnaTestReport {
+                schema: PRIMERBANK_CDNA_TEST_REPORT_SCHEMA.to_string(),
+                primerbank_query: lookup.query,
+                primerbank_source_url: lookup.source_url,
+                primerbank_usage_policy_url: PRIMERBANK_USAGE_POLICY_URL.to_string(),
+                primerbank_pair: pair,
+                expected_species: *expected_species,
+                primerbank_species,
+                species_match_status,
+                target_sequence_species,
+                target_sequence_species_match_status,
+                warnings,
+                interpretation: "PrimerBank catalog evidence was forwarded into GENtle's transcript-aware cDNA PCR test; this does not establish whole-genome specificity or experimental validation."
+                    .to_string(),
+                cdna_test: cdna_run.output,
+            };
+            if let Some(path) = path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                let file = std::fs::File::create(path).map_err(|error| {
+                    format!("Could not create PrimerBank cDNA test report '{path}': {error}")
+                })?;
+                serde_json::to_writer_pretty(std::io::BufWriter::new(file), &report).map_err(
+                    |error| {
+                        format!("Could not serialize PrimerBank cDNA test report '{path}': {error}")
+                    },
+                )?;
+            }
+            Ok(ShellRunResult {
+                state_changed: cdna_run.state_changed,
+                output: serde_json::to_value(report).map_err(|error| {
+                    format!("Could not serialize PrimerBank cDNA test report: {error}")
+                })?,
+            })
+        }
         ShellCommand::PrimersSeedFromFeature { seq_id, feature_id } => {
             let dna = engine
                 .state()
@@ -48943,6 +59094,44 @@ fn execute_primers_command(
                 }),
             })
         }
+        ShellCommand::PrimersDesignTerminalExonRtPool { request_json } => {
+            let json_text = parse_json_payload(request_json)?;
+            let request: TerminalExonRtPrimerPoolRequest = serde_json::from_str(&json_text)
+                .map_err(|error| {
+                    format!(
+                        "Invalid primers design-terminal-exon-rt-pool request JSON: {error} (expected {})",
+                        TERMINAL_EXON_RT_PRIMER_POOL_REQUEST_SCHEMA
+                    )
+                })?;
+            let before = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let result = engine
+                .apply(Operation::DesignTerminalExonRtPrimerPool { request })
+                .map_err(|error| error.to_string())?;
+            let report = result
+                .terminal_exon_rt_primer_pool
+                .as_deref()
+                .cloned()
+                .ok_or_else(|| {
+                    "Terminal-exon RT-primer pool operation returned no report".to_string()
+                })?;
+            let after = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "schema": "gentle.terminal_exon_rt_primer_pool_command.v1",
+                    "result": result,
+                    "report": report,
+                }),
+            })
+        }
         ShellCommand::PrimersDesignQpcr {
             request_json,
             backend,
@@ -49026,36 +59215,550 @@ fn execute_primers_command(
             cache_dir,
             path,
         } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::AssessPrimerPairSpecificity {
+                    primer_report_id: primer_report_id.clone(),
+                    pair_rank: *pair_rank,
+                    pair_index: *pair_index,
+                    forward_primer: forward_primer.clone(),
+                    reverse_primer: reverse_primer.clone(),
+                    target_genome_id: target_genome_id.clone(),
+                    policy: policy.clone(),
+                    catalog_path: catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result
+                .primer_specificity_report
+                .as_deref()
+                .cloned()
+                .ok_or_else(|| "Primer specificity operation returned no report".to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "schema": "gentle.primer_specificity_command.v1",
+                    "result": op_result,
+                    "report": report,
+                    "path": path,
+                }),
+            })
+        }
+        ShellCommand::CollectionsRunPrimerSpecificity {
+            collection_subject,
+            member_bindings,
+            pair_rank,
+            pair_index,
+            target_genome_id,
+            policy,
+            catalog_path,
+            cache_dir,
+            path,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::AssessPrimerPairSpecificityCollection {
+                    collection_subject: collection_subject.clone(),
+                    member_bindings: member_bindings.clone(),
+                    pair_rank: *pair_rank,
+                    pair_index: *pair_index,
+                    target_genome_id: target_genome_id.clone(),
+                    policy: policy.clone(),
+                    catalog_path: catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result.collection_operation.clone().ok_or_else(|| {
+                "Collection primer specificity operation returned no collection report".to_string()
+            })?;
+            let after = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "schema": "gentle.collection_primer_specificity_command.v1",
+                    "report": report,
+                    "result": op_result,
+                }),
+            })
+        }
+        ShellCommand::CollectionsRunRestrictionScan {
+            collection_subject,
+            member_bindings,
+            enzymes,
+            max_sites_per_enzyme,
+            include_cut_geometry,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::FindRestrictionSitesCollection {
+                    collection_subject: collection_subject.clone(),
+                    member_bindings: member_bindings.clone(),
+                    enzymes: enzymes.clone(),
+                    max_sites_per_enzyme: *max_sites_per_enzyme,
+                    include_cut_geometry: *include_cut_geometry,
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result
+                .collection_restriction_site_scan
+                .clone()
+                .ok_or_else(|| {
+                    "Collection restriction-site scan operation returned no domain report"
+                        .to_string()
+                })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.collection_restriction_site_scan_command.v1",
+                    "report": report,
+                    "result": op_result,
+                }),
+            })
+        }
+        ShellCommand::CollectionsRunConstructReasoningInspection {
+            collection_subject,
+            member_bindings,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::InspectConstructReasoningCollection {
+                    collection_subject: collection_subject.clone(),
+                    member_bindings: member_bindings.clone(),
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result
+                .collection_construct_reasoning_inspection
+                .clone()
+                .ok_or_else(|| {
+                    "Collection construct-reasoning inspection operation returned no domain report"
+                        .to_string()
+                })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.collection_construct_reasoning_inspection_command.v1",
+                    "report": report,
+                    "result": op_result,
+                }),
+            })
+        }
+        ShellCommand::CollectionsRunTfbsScan {
+            collection_subject,
+            member_bindings,
+            motifs,
+            min_llr_bits,
+            min_llr_quantile,
+            per_tf_thresholds,
+            max_hits_per_member,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::ScanTfbsHitsCollection {
+                    collection_subject: collection_subject.clone(),
+                    member_bindings: member_bindings.clone(),
+                    motifs: motifs.clone(),
+                    min_llr_bits: *min_llr_bits,
+                    min_llr_quantile: *min_llr_quantile,
+                    per_tf_thresholds: per_tf_thresholds.clone(),
+                    max_hits_per_member: *max_hits_per_member,
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result.collection_tfbs_hit_scan.clone().ok_or_else(|| {
+                "Collection TFBS hit scan operation returned no domain report".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.collection_tfbs_hit_scan_command.v1",
+                    "report": report,
+                    "result": op_result,
+                }),
+            })
+        }
+        ShellCommand::CollectionsRunDigest {
+            collection_subject,
+            member_bindings,
+            enzymes,
+            output_prefix,
+            dry_run,
+            expected_plan_fingerprint_sha256,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::DigestCollection {
+                    collection_subject: collection_subject.clone(),
+                    member_bindings: member_bindings.clone(),
+                    enzymes: enzymes.clone(),
+                    output_prefix: output_prefix.clone(),
+                    dry_run: *dry_run,
+                    expected_plan_fingerprint_sha256: expected_plan_fingerprint_sha256.clone(),
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result.collection_digest.clone().ok_or_else(|| {
+                "Collection digest operation returned no domain report".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: !dry_run && !op_result.created_seq_ids.is_empty(),
+                output: json!({
+                    "schema": "gentle.collection_digest_command.v1",
+                    "report": report,
+                    "result": op_result,
+                }),
+            })
+        }
+        ShellCommand::PrimersSpecificityPlan {
+            primer_report_id,
+            pair_rank,
+            pair_index,
+            forward_primer,
+            reverse_primer,
+            target_genome_id,
+            policy,
+            catalog_path,
+            cache_dir,
+            output_dir,
+        } => {
+            let op_result = engine
+                .apply(Operation::PreparePrimerPairSpecificityHandoff {
+                    primer_report_id: primer_report_id.clone(),
+                    pair_rank: *pair_rank,
+                    pair_index: *pair_index,
+                    forward_primer: forward_primer.clone(),
+                    reverse_primer: reverse_primer.clone(),
+                    target_genome_id: target_genome_id.clone(),
+                    policy: policy.clone(),
+                    catalog_path: catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
+                    output_dir: output_dir.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let handoff = op_result
+                .primer_specificity_handoff
+                .map(|handoff| *handoff)
+                .ok_or_else(|| {
+                    "Primer specificity handoff operation returned no handoff".to_string()
+                })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.primer_specificity_plan_command.v1",
+                    "handoff": handoff,
+                }),
+            })
+        }
+        ShellCommand::PrimersSpecificityImport { handoff_path, path } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::ImportPrimerPairSpecificityHandoff {
+                    handoff_path: handoff_path.clone(),
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result
+                .primer_specificity_report
+                .map(|report| *report)
+                .ok_or_else(|| {
+                    "Primer specificity handoff import operation returned no report".to_string()
+                })?;
+            let after = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "schema": "gentle.primer_specificity_import_command.v1",
+                    "report": report,
+                    "path": path,
+                }),
+            })
+        }
+        ShellCommand::PrimersSpecificityAlignmentHtml { report_id, path } => {
+            ensure_shell_output_parent_dir(path)?;
             let report = engine
-                .assess_primer_pair_specificity(
-                    primer_report_id.as_deref(),
-                    *pair_rank,
-                    *pair_index,
-                    forward_primer.as_deref(),
-                    reverse_primer.as_deref(),
+                .get_primer_specificity_report(report_id)
+                .map_err(|error| error.to_string())?;
+            let report_sha256 = serde_json::to_vec(&report)
+                .map(|bytes| crate::digest_utils::sha256_prefixed_bytes(&bytes))
+                .map_err(|error| {
+                    format!("Could not fingerprint primer-specificity report: {error}")
+                })?;
+            engine
+                .apply(Operation::ExportPrimerSpecificityAlignmentHtml {
+                    report_id: report_id.clone(),
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.primer_specificity_alignment_html.v1",
+                    "report_id": report_id,
+                    "report_sha256": report_sha256,
+                    "path": path,
+                }),
+            })
+        }
+        ShellCommand::PrimersTranscriptAssaySpecificityPlan {
+            panel_report_id,
+            target_genome_id,
+            policy,
+            catalog_path,
+            cache_dir,
+            output_dir,
+        } => {
+            let handoff = engine
+                .prepare_transcript_assay_panel_specificity_handoff(
+                    panel_report_id,
                     target_genome_id,
                     policy.clone(),
                     catalog_path.as_deref(),
                     cache_dir.as_deref(),
+                    output_dir,
                 )
-                .map_err(|e| e.to_string())?;
+                .map_err(|error| error.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.transcript_assay_panel_specificity_plan_command.v1",
+                    "handoff": handoff,
+                }),
+            })
+        }
+        ShellCommand::PrimersTranscriptAssaySpecificityFinalize {
+            handoff_path,
+            execution_manifest_json,
+            path,
+        } => {
+            let payload = parse_json_payload(execution_manifest_json)?;
+            let manifest =
+                serde_json::from_str::<TranscriptAssayPanelSpecificityExecutionManifest>(&payload)
+                    .map_err(|error| {
+                        format!(
+                            "Invalid transcript assay panel specificity execution manifest: {error}"
+                        )
+                    })?;
+            let before = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let acceptance = engine
+                .finalize_transcript_assay_panel_specificity_handoff(
+                    handoff_path,
+                    manifest,
+                    path.as_deref(),
+                )
+                .map_err(|error| error.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "schema": "gentle.transcript_assay_panel_specificity_finalize_command.v1",
+                    "acceptance": acceptance,
+                    "path": path,
+                }),
+            })
+        }
+        ShellCommand::PrimersTranscriptAssaySpecificityRedesign { request_json, path } => {
+            let payload = parse_json_payload(request_json)?;
+            let request =
+                serde_json::from_str::<TranscriptAssaySpecificityRedesignRequest>(&payload)
+                    .map_err(|error| {
+                        format!("Invalid transcript-assay specificity redesign request: {error}")
+                    })?;
             if let Some(path) = path
                 .as_deref()
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
             {
-                let json_text = serde_json::to_string_pretty(&report)
-                    .map_err(|e| format!("Could not serialize primer specificity report: {e}"))?;
-                fs::write(path, json_text).map_err(|e| {
-                    format!("Could not write primer specificity report to '{path}': {e}")
-                })?;
+                ensure_shell_output_parent_dir(path)?;
             }
+            let operation = Operation::RedesignTranscriptAssaySpecificityFailures {
+                request,
+                path: path.clone(),
+            };
+            let op_result = if options.progress_callback.is_some() {
+                engine.apply_with_progress(operation, |progress| {
+                    forward_shell_progress(options, progress).unwrap_or(false)
+                })
+            } else {
+                engine.apply(operation)
+            }
+            .map_err(|error| error.to_string())?;
+            let report = op_result
+                .transcript_assay_specificity_redesign
+                .as_ref()
+                .map(|report| (**report).clone())
+                .ok_or_else(|| {
+                    "Transcript-assay specificity redesign operation returned no report".to_string()
+                })?;
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({
-                    "schema": "gentle.primer_specificity_command.v1",
+                    "schema": "gentle.transcript_assay_specificity_redesign_command.v1",
                     "report": report,
                     "path": path,
+                    "result": op_result,
+                }),
+            })
+        }
+        ShellCommand::PrimersImportExternalPairs {
+            input_path,
+            input_format,
+            seq_id,
+            feature_id,
+            report_id,
+            transcript_id,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_mismatches,
+            require_3prime_exact_bases,
+            transcript_order,
+            transcript_map_coordinate_mode,
+            specificity_target_genome_id,
+            specificity_catalog_path,
+            specificity_cache_dir,
+            artifact_output_dir,
+            materialize_products,
+            product_gel_ladders,
+            path,
+        } => {
+            let (batch, input_provenance) =
+                GentleEngine::load_external_primer_pair_batch(input_path, input_format.as_deref())
+                    .map_err(|error| error.to_string())?;
+            let specificity = specificity_target_genome_id.as_ref().map(|genome_id| {
+                let mut policy = PrimerSpecificityPolicy::default();
+                policy.specificity_check = PrimerSpecificityCheckMode::ReportOnly;
+                policy.specificity_target_genome_id = Some(genome_id.clone());
+                ExternalPrimerPairSpecificityRequest {
+                    target_genome_id: genome_id.clone(),
+                    policy,
+                    catalog_path: specificity_catalog_path.clone(),
+                    cache_dir: specificity_cache_dir.clone(),
+                }
+            });
+            let op_result = engine
+                .apply(Operation::ImportExternalPrimerPairs {
+                    request: ExternalPrimerPairImportRequest {
+                        report_id: report_id.clone().unwrap_or_default(),
+                        seq_id: seq_id.clone(),
+                        source_feature_id: *feature_id,
+                        transcript_id: transcript_id.clone(),
+                        min_amplicon_bp: *min_amplicon_bp,
+                        max_amplicon_bp: *max_amplicon_bp,
+                        max_mismatches: *max_mismatches,
+                        require_3prime_exact_bases: *require_3prime_exact_bases,
+                        transcript_order: transcript_order.unwrap_or_default(),
+                        transcript_map_coordinate_mode: transcript_map_coordinate_mode
+                            .unwrap_or_default(),
+                        specificity,
+                        artifact_output_dir: artifact_output_dir.clone(),
+                        materialize_products: *materialize_products,
+                        product_gel_ladders: product_gel_ladders.clone(),
+                        batch,
+                        input_provenance,
+                    },
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result
+                .external_primer_pair_import_report
+                .as_ref()
+                .map(|report| (**report).clone())
+                .ok_or_else(|| {
+                    "External primer-pair import operation returned no report".to_string()
+                })?;
+            let preferred_artifacts = report
+                .pairs
+                .iter()
+                .flat_map(|pair| {
+                    [
+                        pair.artifacts.product_gel_svg_path.as_ref().map(
+                            |path| json!({"path": path, "kind": "external primer product gel"}),
+                        ),
+                        pair.artifacts.transcript_map_svg_path.as_ref().map(
+                            |path| json!({"path": path, "kind": "external primer transcript map"}),
+                        ),
+                        pair.artifacts.cdna_report_json_path.as_ref().map(
+                            |path| json!({"path": path, "kind": "external primer cDNA report"}),
+                        ),
+                    ]
+                    .into_iter()
+                    .flatten()
+                })
+                .collect::<Vec<_>>();
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "schema": "gentle.external_primer_pair_import_command.v1",
+                    "report": report,
+                    "path": path,
+                    "preferred_artifacts": preferred_artifacts,
+                    "result": op_result,
+                }),
+            })
+        }
+        ShellCommand::PrimersScreenVariants {
+            request_json,
+            path,
+            evidence_dir,
+        } => {
+            let request = parse_required_json_payload::<PrimerVariantScreenRequest>(
+                request_json,
+                "primer variant screen request",
+            )?;
+            let op_result = engine
+                .apply(Operation::ScreenPrimerVariants {
+                    request: Box::new(request),
+                    path: path.clone(),
+                    evidence_dir: evidence_dir.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result
+                .primer_variant_screen
+                .as_ref()
+                .map(|report| (**report).clone())
+                .ok_or_else(|| "Primer variant screen operation returned no report".to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.primer_variant_screen_command.v1",
+                    "report": report,
+                    "path": path,
+                    "evidence_dir": evidence_dir,
+                    "result": op_result,
                 }),
             })
         }
@@ -49142,66 +59845,22 @@ fn execute_primers_command(
                     }),
                 });
             }
-            let report = engine
-                .test_cdna_pcr_assay_with_map_options(
-                    seq_id,
-                    *feature_id,
-                    forward_primer,
-                    reverse_primer,
-                    transcript_id.as_deref(),
-                    *min_amplicon_bp,
-                    *max_amplicon_bp,
-                    *max_mismatches,
-                    *require_3prime_exact_bases,
-                    transcript_order.unwrap_or_default(),
-                    transcript_map_coordinate_mode.unwrap_or_default(),
-                )
-                .map_err(|e| e.to_string())?;
-            if let Some(path) = path
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                let json_text = serde_json::to_string_pretty(&report)
-                    .map_err(|e| format!("Could not serialize cDNA PCR assay-test report: {e}"))?;
-                ensure_shell_output_parent_dir(path)?;
-                fs::write(path, json_text).map_err(|e| {
-                    format!("Could not write cDNA PCR assay-test report to '{path}': {e}")
-                })?;
-            }
-            if let Some(svg_path) = svg_path
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                let svg = report
-                    .transcript_map
-                    .as_ref()
-                    .map(|map| map.svg.as_str())
-                    .unwrap_or_default();
-                ensure_shell_output_parent_dir(svg_path)?;
-                fs::write(svg_path, svg).map_err(|e| {
-                    format!("Could not write cDNA PCR transcript-map SVG to '{svg_path}': {e}")
-                })?;
-            }
-            let preferred_artifacts = cdna_assay_preferred_artifacts(
+            execute_non_materializing_cdna_pcr(
+                engine,
+                seq_id,
+                *feature_id,
+                forward_primer,
+                reverse_primer,
+                transcript_id.as_deref(),
+                *min_amplicon_bp,
+                *max_amplicon_bp,
+                *max_mismatches,
+                *require_3prime_exact_bases,
+                *transcript_order,
+                *transcript_map_coordinate_mode,
+                path.as_deref(),
                 svg_path.as_deref(),
-                "cDNA PCR transcript map",
-                None,
-                "cDNA PCR product gel",
-            );
-            Ok(ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.cdna_assay_test_command.v1",
-                    "report": report.clone(),
-                    "cdna_assay_test_report": report,
-                    "materialization": null,
-                    "path": path,
-                    "svg_path": svg_path,
-                    "preferred_artifacts": preferred_artifacts,
-                }),
-            })
+            )
         }
         ShellCommand::PrimersTestCdnaQpcr {
             seq_id,
@@ -49376,6 +60035,341 @@ fn execute_primers_command(
                 output: json!({
                     "report": report,
                     "path": path,
+                }),
+            })
+        }
+        ShellCommand::PrimersBuildTranscriptAssayCdnaSimilarityMap { request_json, path } => {
+            let request = parse_required_json_payload::<
+                TranscriptAssayCdnaSimilarityMapBuildRequest,
+            >(
+                request_json, "transcript-assay cDNA similarity-map request"
+            )?;
+            let op_result = engine
+                .apply(Operation::BuildTranscriptAssayCdnaSimilarityMap {
+                    request,
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result
+                .transcript_assay_cdna_similarity_map
+                .as_ref()
+                .map(|report| (**report).clone())
+                .ok_or_else(|| {
+                    "Transcript-assay cDNA similarity-map operation returned no report".to_string()
+                })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.transcript_assay_cdna_similarity_map_command.v1",
+                    "report": report,
+                    "path": path,
+                    "preferred_artifacts": path.as_ref().map(|path| vec![json!({
+                        "path": path,
+                        "kind": "transcript-assay cDNA similarity map"
+                    })]).unwrap_or_default(),
+                    "result": op_result,
+                }),
+            })
+        }
+        ShellCommand::PrimersDesignGroupTarget {
+            request_json,
+            path,
+            backend,
+            primer3_executable,
+        } => {
+            let request = parse_required_json_payload::<PrimerGroupTargetDesignRequest>(
+                request_json,
+                "related-sequence group-target primer request",
+            )?;
+            run_design_primer_group_target_request(
+                engine,
+                request,
+                path.clone(),
+                *backend,
+                primer3_executable.as_deref(),
+                options,
+            )
+        }
+        ShellCommand::PrimersDesignTranscriptAssayPanel {
+            seq_id,
+            feature_id,
+            assay_kind,
+            cdna_synthesis,
+            objective,
+            coverage_policy,
+            coverage_universe,
+            assay_tier,
+            practicality,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_assays_per_class,
+            max_mismatches,
+            require_3prime_exact_bases,
+            oligo_dt_5prime_risk_threshold_bp,
+            junctions_json,
+            junction_evidence_paths,
+            junction_evidence_priority,
+            min_3prime_junction_overlap_bp,
+            min_5prime_junction_overlap_bp,
+            annotation_release,
+            specificity,
+            report_id,
+            path,
+            backend,
+            primer3_executable,
+        } => {
+            let junctions = if let Some(raw) = junctions_json.as_deref() {
+                let payload = parse_json_payload(raw)?;
+                serde_json::from_str::<Vec<TranscriptAssayJunctionRequest>>(&payload)
+                    .or_else(|_| {
+                        #[derive(Deserialize)]
+                        struct JunctionRequestEnvelope {
+                            junctions: Vec<TranscriptAssayJunctionRequest>,
+                        }
+                        serde_json::from_str::<JunctionRequestEnvelope>(&payload)
+                            .map(|value| value.junctions)
+                    })
+                    .map_err(|error| {
+                        format!(
+                            "Could not parse transcript junction request JSON from '{}': {error}",
+                            raw
+                        )
+                    })?
+            } else {
+                vec![]
+            };
+            let operation = Operation::DesignTranscriptAssayPanel {
+                seq_id: seq_id.clone(),
+                source_feature_id: *feature_id,
+                assay_kind: *assay_kind,
+                cdna_synthesis: *cdna_synthesis,
+                objective: *objective,
+                coverage_policy: *coverage_policy,
+                coverage_universe: coverage_universe.clone(),
+                assay_tier: *assay_tier,
+                practicality: practicality.clone(),
+                forward: PrimerDesignSideConstraint::default(),
+                reverse: PrimerDesignSideConstraint::default(),
+                probe: PrimerDesignSideConstraint::default(),
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: *min_amplicon_bp,
+                max_amplicon_bp: *max_amplicon_bp,
+                max_tm_delta_c: None,
+                max_probe_tm_delta_c: None,
+                max_assays_per_class: *max_assays_per_class,
+                max_mismatches: *max_mismatches,
+                require_3prime_exact_bases: *require_3prime_exact_bases,
+                oligo_dt_5prime_risk_threshold_bp: *oligo_dt_5prime_risk_threshold_bp,
+                search_policy: None,
+                informative_selection: (*objective
+                    == TranscriptAssayPanelObjective::MaximallyInformativePanel)
+                    .then(TranscriptAssayInformativeSelectionPolicy::default),
+                junctions,
+                junction_evidence_paths: junction_evidence_paths.clone(),
+                junction_evidence_priority: *junction_evidence_priority,
+                min_3prime_junction_overlap_bp: *min_3prime_junction_overlap_bp,
+                min_5prime_junction_overlap_bp: *min_5prime_junction_overlap_bp,
+                annotation_release: annotation_release.clone(),
+                specificity: specificity.clone(),
+                report_id: report_id.clone(),
+                path: path.clone(),
+            };
+            run_design_transcript_assay_panel_operation(
+                engine,
+                operation,
+                *backend,
+                primer3_executable.as_deref(),
+                options,
+            )
+        }
+        ShellCommand::PrimersDesignTranscriptAssayPanelRequest {
+            operation_json,
+            backend,
+            primer3_executable,
+        } => {
+            let json_text = parse_json_payload(operation_json)?;
+            let operation = parse_design_transcript_assay_panel_operation_request(&json_text)?;
+            run_design_transcript_assay_panel_operation(
+                engine,
+                operation,
+                *backend,
+                primer3_executable.as_deref(),
+                options,
+            )
+        }
+        ShellCommand::PrimersInspectTranscriptAssayFeasibility {
+            operation_json,
+            path,
+        } => {
+            let json_text = parse_json_payload(operation_json)?;
+            let operation = parse_design_transcript_assay_panel_operation_request(&json_text)?;
+            let report = engine
+                .inspect_transcript_assay_panel_feasibility_operation(&operation)
+                .map_err(|error| error.to_string())?;
+            if let Some(path) = path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                ensure_shell_output_parent_dir(path)?;
+                let json_text = serde_json::to_string_pretty(&report).map_err(|error| {
+                    format!("Could not serialize transcript assay feasibility report: {error}")
+                })?;
+                fs::write(path, json_text).map_err(|error| {
+                    format!(
+                        "Could not write transcript assay feasibility report to '{path}': {error}"
+                    )
+                })?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.transcript_assay_panel_feasibility_command.v1",
+                    "report": report,
+                    "path": path,
+                }),
+            })
+        }
+        ShellCommand::PrimersPlanGeneIsoformAssayStudy {
+            request_json,
+            normalize_only,
+            normalized_request_path,
+            path,
+            workflow_path,
+        } => {
+            let payload = parse_json_payload(request_json)?;
+            let request: GeneIsoformAssayStudyPlanRequest = serde_json::from_str(&payload)
+                .map_err(|error| {
+                    format!(
+                        "Could not parse gene isoform assay study request from '{}': {error}",
+                        request_json
+                    )
+                })?;
+            let normalized = engine
+                .normalize_gene_isoform_assay_study_request(request)
+                .map_err(|error| error.to_string())?;
+            if let Some(output_path) = normalized_request_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                let file = std::fs::File::create(output_path).map_err(|error| {
+                    format!("Could not create normalized study request '{output_path}': {error}")
+                })?;
+                serde_json::to_writer_pretty(std::io::BufWriter::new(file), &normalized).map_err(
+                    |error| {
+                        format!(
+                            "Could not serialize normalized study request '{output_path}': {error}"
+                        )
+                    },
+                )?;
+            }
+            if *normalize_only {
+                return Ok(ShellRunResult {
+                    state_changed: false,
+                    // The normalization route deliberately returns the request
+                    // itself. Callers may persist stdout verbatim as the first
+                    // approval basis without unwrapping an adapter envelope.
+                    output: json!(normalized),
+                });
+            }
+            let result = engine
+                .apply(Operation::PlanGeneIsoformAssayStudy {
+                    request: normalized,
+                    path: path.clone(),
+                    workflow_path: workflow_path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "report": result.gene_isoform_assay_study_plan,
+                    "path": path,
+                    "workflow_path": workflow_path,
+                    "normalized_request_path": normalized_request_path,
+                    "warnings": result.warnings,
+                    "messages": result.messages,
+                }),
+            })
+        }
+        ShellCommand::PrimersExecuteGeneIsoformAssayStudyWorkflow {
+            plan_json,
+            workflow_json,
+        } => execute_approved_gene_isoform_assay_study_workflow(
+            engine,
+            plan_json,
+            workflow_json,
+            options,
+        ),
+        ShellCommand::PrimersComposeGeneIsoformAssayStudyWorkflowBatch { request_json } => {
+            compose_gene_isoform_assay_study_workflow_batch(request_json)
+        }
+        ShellCommand::PrimersInspectGeneIsoformAssayStudyReuse {
+            batch_json,
+            checkpoint_dir,
+            path,
+        } => inspect_gene_isoform_assay_study_reuse(
+            engine,
+            batch_json,
+            checkpoint_dir,
+            path.as_deref(),
+        ),
+        ShellCommand::PrimersExecuteGeneIsoformAssayStudyWorkflowBatch {
+            batch_json,
+            checkpoint_dir,
+            reuse_proposal_json,
+            approve_reuse_sha256,
+            on_gene_failure,
+        } => execute_approved_gene_isoform_assay_study_workflow_batch_with_reuse(
+            engine,
+            batch_json,
+            checkpoint_dir.as_deref(),
+            reuse_proposal_json.as_deref(),
+            approve_reuse_sha256.as_deref(),
+            *on_gene_failure,
+            options,
+        ),
+        ShellCommand::PrimersPublishGeneIsoformAssayStudy {
+            request_path,
+            output_directory,
+            profile,
+            block_ids,
+            generate_pdf,
+        } => {
+            let receipt = generate_gene_isoform_assay_publication(
+                std::path::Path::new(request_path),
+                std::path::Path::new(output_directory),
+                profile.as_deref(),
+                block_ids,
+                *generate_pdf,
+            )?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(receipt).map_err(|error| error.to_string())?,
+            })
+        }
+        ShellCommand::PrimersComposeGeneTranscriptAssayRoutine { request_json, path } => {
+            let payload = parse_json_payload(request_json)?;
+            let request: GeneTranscriptAssayRoutineRequest = serde_json::from_str(&payload)
+                .map_err(|error| {
+                    format!(
+                        "Could not parse gene transcript-assay routine request from '{}': {error}",
+                        request_json
+                    )
+                })?;
+            let result = engine
+                .apply(Operation::ComposeGeneTranscriptAssayRoutine {
+                    request,
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "report": result.gene_transcript_assay_routine,
+                    "path": path,
+                    "warnings": result.warnings,
+                    "messages": result.messages,
                 }),
             })
         }
@@ -49622,41 +60616,114 @@ fn execute_primers_command(
         }
         ShellCommand::PrimersListReports => {
             let reports = engine.list_primer_design_reports();
+            let terminal_exon_rt_primer_pools = engine.list_terminal_exon_rt_primer_pool_reports();
+            let transcript_capture_pool_ids = engine.list_transcript_capture_pool_report_ids();
+            let specificity_reports = engine.list_primer_specificity_reports();
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({
                     "schema": "gentle.primer_design_report_list.v1",
                     "report_count": reports.len(),
                     "reports": reports,
+                    "terminal_exon_rt_primer_pool_count": terminal_exon_rt_primer_pools.len(),
+                    "terminal_exon_rt_primer_pools": terminal_exon_rt_primer_pools,
+                    "transcript_capture_pool_ids": transcript_capture_pool_ids,
+                    "specificity_report_count": specificity_reports.len(),
+                    "specificity_reports": specificity_reports,
                 }),
             })
         }
         ShellCommand::PrimersShowReport { report_id } => {
-            let report = engine
-                .get_primer_design_report(report_id)
-                .map_err(|e| e.to_string())?;
-            let simple_pcr_pairs = primer_design_simple_pcr_pairs_json(&report);
-            Ok(ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "report": report,
-                    "simple_pcr_pairs": simple_pcr_pairs,
-                }),
-            })
+            if let Ok(report) = engine.get_transcript_capture_pool_report(report_id) {
+                Ok(ShellRunResult {
+                    state_changed: false,
+                    output: json!({"report_kind": "transcript_capture_pool", "report": report}),
+                })
+            } else if let Ok(report) = engine.get_primer_design_report(report_id) {
+                let simple_pcr_pairs = primer_design_simple_pcr_pairs_json(&report);
+                Ok(ShellRunResult {
+                    state_changed: false,
+                    output: json!({
+                        "report_kind": "primer_design",
+                        "report": report,
+                        "simple_pcr_pairs": simple_pcr_pairs,
+                    }),
+                })
+            } else if let Ok(report) = engine.get_terminal_exon_rt_primer_pool_report(report_id) {
+                Ok(ShellRunResult {
+                    state_changed: false,
+                    output: json!({
+                        "report_kind": "terminal_exon_rt_primer_pool",
+                        "report": report,
+                        "simple_pcr_pairs": [],
+                    }),
+                })
+            } else {
+                let report = engine
+                    .get_primer_specificity_report(report_id)
+                    .map_err(|error| error.to_string())?;
+                Ok(ShellRunResult {
+                    state_changed: false,
+                    output: json!({
+                        "report_kind": "primer_specificity",
+                        "report": report,
+                        "simple_pcr_pairs": [],
+                    }),
+                })
+            }
         }
         ShellCommand::PrimersExportReport { report_id, path } => {
-            let report = engine
-                .export_primer_design_report(report_id, path)
-                .map_err(|e| e.to_string())?;
-            Ok(ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.primer_design_report_export.v1",
-                    "report_id": report.report_id,
-                    "path": path,
-                    "pair_count": report.pair_count,
-                }),
-            })
+            if engine.get_transcript_capture_pool_report(report_id).is_ok() {
+                let report = engine
+                    .export_transcript_capture_pool_report(report_id, path)
+                    .map_err(|error| error.to_string())?;
+                Ok(ShellRunResult {
+                    state_changed: false,
+                    output: json!({"schema": "gentle.transcript_capture_pool_export.v1", "report_id": report.report_id, "path": path}),
+                })
+            } else if let Ok(report) = engine.get_primer_design_report(report_id) {
+                engine
+                    .export_primer_design_report(report_id, path)
+                    .map_err(|error| error.to_string())?;
+                Ok(ShellRunResult {
+                    state_changed: false,
+                    output: json!({
+                        "schema": "gentle.primer_design_report_export.v1",
+                        "report_kind": "primer_design",
+                        "report_id": report.report_id,
+                        "path": path,
+                        "pair_count": report.pair_count,
+                    }),
+                })
+            } else if let Ok(report) = engine.get_terminal_exon_rt_primer_pool_report(report_id) {
+                engine
+                    .export_terminal_exon_rt_primer_pool_report(report_id, path)
+                    .map_err(|error| error.to_string())?;
+                Ok(ShellRunResult {
+                    state_changed: false,
+                    output: json!({
+                        "schema": "gentle.terminal_exon_rt_primer_pool_export.v1",
+                        "report_kind": "terminal_exon_rt_primer_pool",
+                        "report_id": report.report_id,
+                        "path": path,
+                        "target_count": report.targets.len(),
+                    }),
+                })
+            } else {
+                let report = engine
+                    .export_primer_specificity_report(report_id, path)
+                    .map_err(|error| error.to_string())?;
+                Ok(ShellRunResult {
+                    state_changed: false,
+                    output: json!({
+                        "schema": "gentle.primer_specificity_report_export.v1",
+                        "report_kind": "primer_specificity",
+                        "report_id": report.report_id,
+                        "path": path,
+                        "status": report.summary.status,
+                    }),
+                })
+            }
         }
         ShellCommand::PrimersListQpcrReports => {
             let reports = engine.list_qpcr_design_reports();
@@ -49691,6 +60758,143 @@ fn execute_primers_command(
                     "report_id": report.report_id,
                     "path": path,
                     "assay_count": report.assay_count,
+                }),
+            })
+        }
+        ShellCommand::PrimersListTranscriptAssayPanels => {
+            let reports = engine.list_transcript_assay_panel_reports();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.transcript_assay_panel_list.v2",
+                    "report_count": reports.len(),
+                    "reports": reports,
+                }),
+            })
+        }
+        ShellCommand::PrimersShowTranscriptAssayPanel { report_id } => {
+            let report = engine
+                .get_transcript_assay_panel_report(report_id)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::PrimersExportTranscriptAssayPanel { report_id, path } => {
+            let report = engine
+                .export_transcript_assay_panel_report(report_id, path)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.transcript_assay_panel_export.v2",
+                    "report_id": report.report_id,
+                    "path": path,
+                    "selected_assay_count": report.selected_assay_count,
+                }),
+            })
+        }
+        ShellCommand::PrimersListTranscriptAssayFallbacks => {
+            let reports = engine.list_transcript_assay_fallback_executions();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.transcript_assay_fallback_execution_list.v1",
+                    "execution_count": reports.len(),
+                    "executions": reports,
+                }),
+            })
+        }
+        ShellCommand::PrimersShowTranscriptAssayFallback { execution_id } => {
+            let report = engine
+                .get_transcript_assay_fallback_execution(execution_id)
+                .map_err(|error| error.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "report": report }),
+            })
+        }
+        ShellCommand::PrimersExportTranscriptAssayFallback { execution_id, path } => {
+            let report = engine
+                .export_transcript_assay_fallback_execution(execution_id, path)
+                .map_err(|error| error.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.transcript_assay_fallback_execution_export.v1",
+                    "execution_id": report.execution_id,
+                    "path": path,
+                }),
+            })
+        }
+        ShellCommand::PrimersExperimentalHandoff {
+            panel_report_id,
+            policy_json,
+            variant_evidence_paths,
+            order_form_id,
+            path,
+            order_table_path,
+            virtual_gel_svg_path,
+            virtual_gel_ladders,
+        } => {
+            let policy = match policy_json {
+                Some(payload) => {
+                    let text = parse_json_payload(payload)?;
+                    serde_json::from_str::<ExperimentalAssayReadinessPolicy>(&text).map_err(
+                        |error| {
+                            format!("Invalid experimental assay readiness policy JSON: {error}")
+                        },
+                    )?
+                }
+                None => ExperimentalAssayReadinessPolicy::default(),
+            };
+            let op_result = engine
+                .apply(Operation::BuildExperimentalAssayHandoff {
+                    panel_report_id: panel_report_id.clone(),
+                    policy,
+                    variant_evidence_paths: variant_evidence_paths.clone(),
+                    order_form_id: order_form_id.clone(),
+                    path: path.clone(),
+                    order_table_path: order_table_path.clone(),
+                    virtual_gel_svg_path: virtual_gel_svg_path.clone(),
+                    virtual_gel_ladders: virtual_gel_ladders.clone(),
+                    virtual_gel_render_options: gentle_protocol::PoolGelRenderOptions::default(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result
+                .experimental_assay_handoff
+                .as_ref()
+                .ok_or_else(|| {
+                    "Experimental handoff operation returned no handoff report".to_string()
+                })?;
+            let virtual_gel_path = report.virtual_gel.as_ref().map(|gel| gel.svg_path.clone());
+            let preferred_artifacts = report
+                .virtual_gel
+                .as_ref()
+                .map(|gel| {
+                    vec![json!({
+                        "artifact_id": "experimental_assay_virtual_gel_svg",
+                        "path": gel.svg_path,
+                        "media_type": "image/svg+xml",
+                        "artifact_kind": "experimental_assay_virtual_gel",
+                        "caption": "[gentle] Primer-pair product comparison",
+                        "recommended_use": "Compare one GENtle-predicted product lane per primer pair under shared gel conditions.",
+                        "presentation_rank": 0,
+                        "is_best_first_artifact": true,
+                    })]
+                })
+                .unwrap_or_default();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "report": report,
+                    "json_path": path,
+                    "order_table_path": order_table_path,
+                    "virtual_gel_svg_path": virtual_gel_path,
+                    "preferred_artifacts": preferred_artifacts,
                 }),
             })
         }
@@ -49807,6 +61011,49 @@ fn execute_primers_command(
                     "source_kind": "qpcr_report",
                     "report_id": report_id,
                     "include_probe": include_probe,
+                    "form_id": form.form_id,
+                    "line_count": form.line_items.len(),
+                    "duplicate_group_count": form.duplicate_groups.len(),
+                    "sequence_reuse_group_count": form.sequence_reuse_groups.len(),
+                    "form": form,
+                }),
+            })
+        }
+        ShellCommand::PrimersOligoOrderFromExperimentalHandoff {
+            handoff_path,
+            expected_sha256,
+            form_id,
+            scale,
+            purification,
+            modifications,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let form = engine
+                .create_oligo_order_form_from_experimental_handoff(
+                    handoff_path,
+                    expected_sha256.as_deref(),
+                    form_id.as_deref(),
+                    scale.as_deref(),
+                    purification.as_deref(),
+                    modifications,
+                )
+                .map_err(|error| error.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "schema": "gentle.oligo_order_form_create_result.v1",
+                    "source_kind": "experimental_assay_handoff",
+                    "handoff_path": handoff_path,
+                    "expected_sha256": expected_sha256,
                     "form_id": form.form_id,
                     "line_count": form.line_items.len(),
                     "duplicate_group_count": form.duplicate_groups.len(),
@@ -50009,6 +61256,259 @@ fn execute_feature_scan_command(
     command: &ShellCommand,
 ) -> Result<ShellRunResult, String> {
     match command {
+        ShellCommand::FeaturesEditLocation {
+            seq_id,
+            feature_index,
+            segment_index,
+            start_1based,
+            end_1based_inclusive,
+            dry_run,
+            expected_feature_fingerprint_sha256,
+            path,
+        } => {
+            let new_start_0based = i64::try_from(start_1based.checked_sub(1).ok_or_else(|| {
+                "features edit-location --start-1based must be at least 1".to_string()
+            })?)
+            .map_err(|_| {
+                "features edit-location start exceeds the supported coordinate range".to_string()
+            })?;
+            let new_end_0based_exclusive = i64::try_from(*end_1based_inclusive).map_err(|_| {
+                "features edit-location end exceeds the supported coordinate range".to_string()
+            })?;
+            let request = FeatureLocationEditRequest {
+                seq_id: seq_id.clone(),
+                feature_index: *feature_index,
+                new_start_0based,
+                new_end_0based_exclusive,
+                expected_feature_fingerprint_sha256: expected_feature_fingerprint_sha256.clone(),
+                segment_index: *segment_index,
+            };
+            let operation = if *dry_run {
+                Operation::PreviewFeatureLocationEdit { request }
+            } else {
+                Operation::EditFeatureLocation { request }
+            };
+            let op_result = engine.apply(operation).map_err(|e| e.to_string())?;
+            let report = op_result
+                .feature_location_edit_report
+                .clone()
+                .ok_or_else(|| "Feature-location operation returned no report".to_string())?;
+            if let Some(path) = path.as_deref() {
+                let text = serde_json::to_string_pretty(report.as_ref()).map_err(|e| {
+                    format!("Could not serialize feature-location report for '{path}': {e}")
+                })?;
+                fs::write(path, text).map_err(|e| {
+                    format!("Could not write feature-location report to '{path}': {e}")
+                })?;
+            }
+            Ok(ShellRunResult {
+                state_changed: !dry_run,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                    "path": path,
+                }),
+            })
+        }
+        ShellCommand::FeaturesCreate {
+            seq_id,
+            feature_kind,
+            start_1based,
+            end_1based_inclusive,
+            strand,
+            qualifiers,
+            dry_run,
+            expected_annotation_state_fingerprint_sha256,
+            path,
+        } => {
+            let start_0based =
+                i64::try_from(start_1based.checked_sub(1).ok_or_else(|| {
+                    "features create --start-1based must be at least 1".to_string()
+                })?)
+                .map_err(|_| {
+                    "features create start exceeds the supported coordinate range".to_string()
+                })?;
+            let end_0based_exclusive = i64::try_from(*end_1based_inclusive).map_err(|_| {
+                "features create end exceeds the supported coordinate range".to_string()
+            })?;
+            let request = FeatureRecordCurationRequest::Create(FeatureRecordCreateRequest {
+                seq_id: seq_id.clone(),
+                feature_kind: feature_kind.clone(),
+                start_0based,
+                end_0based_exclusive,
+                strand: *strand,
+                qualifiers: qualifiers.clone(),
+                expected_annotation_state_fingerprint_sha256:
+                    expected_annotation_state_fingerprint_sha256.clone(),
+            });
+            let operation = if *dry_run {
+                Operation::PreviewFeatureRecordCuration { request }
+            } else {
+                Operation::ApplyFeatureRecordCuration { request }
+            };
+            let op_result = engine.apply(operation).map_err(|e| e.to_string())?;
+            let report = op_result
+                .feature_record_curation_report
+                .clone()
+                .ok_or_else(|| "Feature create operation returned no report".to_string())?;
+            if let Some(path) = path.as_deref() {
+                let text = serde_json::to_string_pretty(report.as_ref()).map_err(|e| {
+                    format!("Could not serialize feature create report for '{path}': {e}")
+                })?;
+                fs::write(path, text).map_err(|e| {
+                    format!("Could not write feature create report to '{path}': {e}")
+                })?;
+            }
+            Ok(ShellRunResult {
+                state_changed: !dry_run,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                    "path": path,
+                }),
+            })
+        }
+        ShellCommand::FeaturesDelete {
+            seq_id,
+            feature_index,
+            dry_run,
+            expected_feature_fingerprint_sha256,
+            expected_annotation_state_fingerprint_sha256,
+            path,
+        } => {
+            let request = FeatureRecordCurationRequest::Delete(FeatureRecordDeleteRequest {
+                seq_id: seq_id.clone(),
+                feature_index: *feature_index,
+                expected_feature_fingerprint_sha256: expected_feature_fingerprint_sha256.clone(),
+                expected_annotation_state_fingerprint_sha256:
+                    expected_annotation_state_fingerprint_sha256.clone(),
+            });
+            let operation = if *dry_run {
+                Operation::PreviewFeatureRecordCuration { request }
+            } else {
+                Operation::ApplyFeatureRecordCuration { request }
+            };
+            let op_result = engine.apply(operation).map_err(|e| e.to_string())?;
+            let report = op_result
+                .feature_record_curation_report
+                .clone()
+                .ok_or_else(|| "Feature delete operation returned no report".to_string())?;
+            if let Some(path) = path.as_deref() {
+                let text = serde_json::to_string_pretty(report.as_ref()).map_err(|e| {
+                    format!("Could not serialize feature delete report for '{path}': {e}")
+                })?;
+                fs::write(path, text).map_err(|e| {
+                    format!("Could not write feature delete report to '{path}': {e}")
+                })?;
+            }
+            Ok(ShellRunResult {
+                state_changed: !dry_run,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                    "path": path,
+                }),
+            })
+        }
+        ShellCommand::FeaturesSplit {
+            seq_id,
+            feature_index,
+            split_before_1based,
+            dry_run,
+            expected_feature_fingerprint_sha256,
+            expected_annotation_state_fingerprint_sha256,
+            path,
+        } => {
+            let split_at_0based =
+                i64::try_from(split_before_1based.checked_sub(1).ok_or_else(|| {
+                    "features split --split-before-1based must be at least 1".to_string()
+                })?)
+                .map_err(|_| {
+                    "features split boundary exceeds the supported coordinate range".to_string()
+                })?;
+            let request = FeatureRecordCurationRequest::Split(FeatureRecordSplitRequest {
+                seq_id: seq_id.clone(),
+                feature_index: *feature_index,
+                split_at_0based,
+                expected_feature_fingerprint_sha256: expected_feature_fingerprint_sha256.clone(),
+                expected_annotation_state_fingerprint_sha256:
+                    expected_annotation_state_fingerprint_sha256.clone(),
+            });
+            let operation = if *dry_run {
+                Operation::PreviewFeatureRecordCuration { request }
+            } else {
+                Operation::ApplyFeatureRecordCuration { request }
+            };
+            let op_result = engine.apply(operation).map_err(|e| e.to_string())?;
+            let report = op_result
+                .feature_record_curation_report
+                .clone()
+                .ok_or_else(|| "Feature split operation returned no report".to_string())?;
+            if let Some(path) = path.as_deref() {
+                let text = serde_json::to_string_pretty(report.as_ref()).map_err(|e| {
+                    format!("Could not serialize feature split report for '{path}': {e}")
+                })?;
+                fs::write(path, text).map_err(|e| {
+                    format!("Could not write feature split report to '{path}': {e}")
+                })?;
+            }
+            Ok(ShellRunResult {
+                state_changed: !dry_run,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                    "path": path,
+                }),
+            })
+        }
+        ShellCommand::FeaturesMerge {
+            seq_id,
+            first_feature_index,
+            second_feature_index,
+            dry_run,
+            expected_first_feature_fingerprint_sha256,
+            expected_second_feature_fingerprint_sha256,
+            expected_annotation_state_fingerprint_sha256,
+            path,
+        } => {
+            let request = FeatureRecordCurationRequest::Merge(FeatureRecordMergeRequest {
+                seq_id: seq_id.clone(),
+                first_feature_index: *first_feature_index,
+                second_feature_index: *second_feature_index,
+                expected_first_feature_fingerprint_sha256:
+                    expected_first_feature_fingerprint_sha256.clone(),
+                expected_second_feature_fingerprint_sha256:
+                    expected_second_feature_fingerprint_sha256.clone(),
+                expected_annotation_state_fingerprint_sha256:
+                    expected_annotation_state_fingerprint_sha256.clone(),
+            });
+            let operation = if *dry_run {
+                Operation::PreviewFeatureRecordCuration { request }
+            } else {
+                Operation::ApplyFeatureRecordCuration { request }
+            };
+            let op_result = engine.apply(operation).map_err(|e| e.to_string())?;
+            let report = op_result
+                .feature_record_curation_report
+                .clone()
+                .ok_or_else(|| "Feature merge operation returned no report".to_string())?;
+            if let Some(path) = path.as_deref() {
+                let text = serde_json::to_string_pretty(report.as_ref()).map_err(|e| {
+                    format!("Could not serialize feature merge report for '{path}': {e}")
+                })?;
+                fs::write(path, text).map_err(|e| {
+                    format!("Could not write feature merge report to '{path}': {e}")
+                })?;
+            }
+            Ok(ShellRunResult {
+                state_changed: !dry_run,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                    "path": path,
+                }),
+            })
+        }
         ShellCommand::FeaturesResolveFormula { seq_id, expression } => {
             let dna = engine
                 .state()
@@ -50221,6 +61721,33 @@ fn execute_feature_scan_command(
                 }),
             })
         }
+        ShellCommand::FeaturesPromoterCofactors { request } => {
+            let result = engine
+                .apply(Operation::QueryPromoterCofactors {
+                    request: request.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({"report": result.promoter_cofactors, "result": result}),
+            })
+        }
+        ShellCommand::FeaturesGenomicMotifEvidence { request, path } => {
+            let op_result = engine
+                .apply(Operation::QueryGenomicMotifEvidence {
+                    request: request.clone(),
+                    path: path.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.genomic_motif_evidence.clone();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
         ShellCommand::FeaturesRepeatQuery {
             genome_id,
             rmsk_path,
@@ -50290,6 +61817,126 @@ fn execute_feature_scan_command(
                 })
                 .map_err(|e| e.to_string())?;
             let report = op_result.repeat_feature_materialization.clone();
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::FeaturesEncodeCcreOverlaps {
+            seq_id,
+            index_path,
+            bed_path,
+            start_0based,
+            end_0based_exclusive,
+            classes,
+            limit,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::QueryEncodeCcreOverlaps {
+                    seq_id: seq_id.clone(),
+                    index_path: index_path.clone(),
+                    bed_path: bed_path.clone(),
+                    start_0based: *start_0based,
+                    end_0based_exclusive: *end_0based_exclusive,
+                    classes: classes.clone(),
+                    limit: *limit,
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result.encode_ccre_overlaps.clone();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::FeaturesMaterializeEncodeCcres {
+            seq_id,
+            index_path,
+            bed_path,
+            classes,
+            max_features,
+            clear_existing,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::MaterializeEncodeCcreFeatures {
+                    seq_id: seq_id.clone(),
+                    index_path: index_path.clone(),
+                    bed_path: bed_path.clone(),
+                    classes: classes.clone(),
+                    max_features: *max_features,
+                    clear_existing: Some(*clear_existing),
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result.encode_ccre_materialization.clone();
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::FeaturesEnsemblRegulationOverlaps {
+            seq_id,
+            index_path,
+            intervals_path,
+            start_0based,
+            end_0based_exclusive,
+            feature_types,
+            limit,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::QueryEnsemblRegulationOverlaps {
+                    seq_id: seq_id.clone(),
+                    index_path: index_path.clone(),
+                    intervals_path: intervals_path.clone(),
+                    start_0based: *start_0based,
+                    end_0based_exclusive: *end_0based_exclusive,
+                    feature_types: feature_types.clone(),
+                    limit: *limit,
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result.ensembl_regulation_overlaps.clone();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::FeaturesMaterializeEnsemblRegulation {
+            seq_id,
+            index_path,
+            intervals_path,
+            feature_types,
+            max_features,
+            clear_existing,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::MaterializeEnsemblRegulationFeatures {
+                    seq_id: seq_id.clone(),
+                    index_path: index_path.clone(),
+                    intervals_path: intervals_path.clone(),
+                    feature_types: feature_types.clone(),
+                    max_features: *max_features,
+                    clear_existing: Some(*clear_existing),
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result.ensembl_regulation_materialization.clone();
             Ok(ShellRunResult {
                 state_changed: true,
                 output: json!({
@@ -50680,6 +62327,7 @@ fn execute_sequence_analysis_command(
                     retain_downstream_from_tss_bp: *retain_downstream_from_tss_bp,
                     retain_upstream_beyond_variant_bp: *retain_upstream_beyond_variant_bp,
                     max_candidates: *max_candidates,
+                    fragment_policy: Default::default(),
                     path: path.clone(),
                 })
                 .map_err(|e| e.to_string())?;
@@ -50695,6 +62343,7 @@ fn execute_sequence_analysis_command(
             seq_id,
             variant_label_or_id,
             allele,
+            alternate_allele,
             output_id,
         } => {
             let op_result = engine
@@ -50702,6 +62351,7 @@ fn execute_sequence_analysis_command(
                     input: seq_id.clone(),
                     variant_label_or_id: variant_label_or_id.clone(),
                     allele: *allele,
+                    alternate_allele: alternate_allele.clone(),
                     output_id: output_id.clone(),
                 })
                 .map_err(|e| e.to_string())?;
@@ -50743,6 +62393,7 @@ fn execute_sequence_analysis_command(
                     max_mismatches: *max_mismatches,
                     tile_bp: *tile_bp,
                     store_as: dotplot_id.clone(),
+                    inspection_provenance: None,
                 })
                 .map_err(|e| e.to_string())?;
             let after = engine
@@ -51025,6 +62676,98 @@ fn execute_feature_expert_command(
                     .map_err(|e| format!("Could not serialize ATtRACT splicing view: {e}"))?,
             })
         }
+        ShellCommand::SplicingCrypticScreen { request } => {
+            let result = engine
+                .apply(Operation::InspectCrypticSplicingScreen {
+                    request: request.clone(),
+                    path: None,
+                })
+                .map_err(|e| e.to_string())?;
+            let view = result
+                .cryptic_splicing_screen
+                .ok_or_else(|| "Cryptic-splicing operation returned no typed report".to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&view)
+                    .map_err(|e| format!("Could not serialize cryptic-splicing screen: {e}"))?,
+            })
+        }
+        ShellCommand::SplicingCrypticRender { request, output } => {
+            let result = engine
+                .apply(Operation::RenderCrypticSplicingScreenSvg {
+                    request: request.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let view = result
+                .cryptic_splicing_screen
+                .ok_or_else(|| "Cryptic-splicing render returned no typed report".to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": view.schema,
+                    "request_sha256": view.request_sha256,
+                    "source_digest": view.source_digest,
+                    "candidate_count": view.candidates.len(),
+                    "output": output,
+                }),
+            })
+        }
+        ShellCommand::SplicingCrypticExport { request, output } => {
+            let result = engine
+                .apply(Operation::InspectCrypticSplicingScreen {
+                    request: request.clone(),
+                    path: Some(output.clone()),
+                })
+                .map_err(|e| e.to_string())?;
+            let view = result
+                .cryptic_splicing_screen
+                .ok_or_else(|| "Cryptic-splicing export returned no typed report".to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": view.schema,
+                    "request_sha256": view.request_sha256,
+                    "source_digest": view.source_digest,
+                    "candidate_count": view.candidates.len(),
+                    "output": output,
+                }),
+            })
+        }
+        ShellCommand::SplicingCrypticOverlay { request, output } => {
+            let result = engine
+                .apply(Operation::InspectCrypticSplicingEvidenceOverlay {
+                    request: request.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = result.cryptic_splicing_evidence_overlay.ok_or_else(|| {
+                "Cryptic-splicing evidence operation returned no typed report".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&report).map_err(|error| {
+                    format!("Could not serialize cryptic-splicing evidence overlay: {error}")
+                })?,
+            })
+        }
+        ShellCommand::SplicingCrypticProtein { request, output } => {
+            let result = engine
+                .apply(Operation::InspectCrypticSplicingProteinProjection {
+                    request: request.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = result.cryptic_splicing_protein_projection.ok_or_else(|| {
+                "Cryptic-splicing protein operation returned no typed report".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&report).map_err(|error| {
+                    format!("Could not serialize cryptic-splicing protein projection: {error}")
+                })?,
+            })
+        }
         ShellCommand::RenderFeatureExpertSvg {
             seq_id,
             target,
@@ -51040,6 +62783,23 @@ fn execute_feature_expert_command(
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::PrepareGeneLocusEvidence { request } => {
+            let op_result = engine
+                .apply(Operation::PrepareGeneLocusEvidence {
+                    request: request.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let receipt = op_result
+                .gene_locus_evidence_preparation
+                .clone()
+                .ok_or_else(|| {
+                    "PrepareGeneLocusEvidence returned no typed preparation receipt".to_string()
+                })?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({ "receipt": receipt, "result": op_result }),
             })
         }
         ShellCommand::PanelsImportIsoform {
@@ -51110,6 +62870,46 @@ fn execute_feature_expert_command(
         }
         _ => unreachable!("non-feature-expert command passed to feature-expert helper"),
     }
+}
+
+#[inline(never)]
+fn execute_genomic_regions_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    let ShellCommand::GenomicRegions { operation } = command else {
+        return Err("unexpected command routed to genomic-region executor".to_string());
+    };
+    let state_changed = matches!(
+        operation,
+        Operation::CreateGenomicRegion { .. }
+            | Operation::CaptureGenomicRegion { .. }
+            | Operation::MaterializeGenomicRegionFeature { .. }
+            | Operation::UpdateGenomicRegionPresentation { .. }
+            | Operation::DeriveGenomicRegion { .. }
+            | Operation::ImportGenomicRegionSet { .. }
+    );
+    let result = engine
+        .apply(operation.clone())
+        .map_err(|error| error.to_string())?;
+    let output = if let Some(report) = result.genomic_region_operation.as_ref() {
+        serde_json::to_value(report)
+            .map_err(|error| format!("Could not serialize genomic-region report: {error}"))?
+    } else if let Some(report) = result.genomic_region_homology.as_ref() {
+        serde_json::to_value(report)
+            .map_err(|error| format!("Could not serialize genomic-region homology: {error}"))?
+    } else if let Some(report) = result.promoter_module_assessment.as_ref() {
+        serde_json::to_value(report)
+            .map_err(|error| format!("Could not serialize promoter-module assessment: {error}"))?
+    } else if matches!(operation, Operation::RenderGenomicRegionHomologySvg { .. }) {
+        json!({"result": result})
+    } else {
+        return Err("genomic-region operation returned no typed report".to_string());
+    };
+    Ok(ShellRunResult {
+        state_changed,
+        output,
+    })
 }
 
 #[inline(never)]
@@ -51445,31 +63245,61 @@ fn format_construct_reasoning_fact_summary(fact: &crate::engine::DesignFact) -> 
         .iter()
         .map(|severity| {
             let evidence_count = severity.supporting_evidence_ids.len();
-            let score = severity
+            let effective_score = severity
                 .score
-                .map(|value| format!(" score={value:.2}"))
+                .map(|value| format!(" effective_score={value:.2}"))
                 .unwrap_or_default();
+            let base_score = severity
+                .base_score
+                .map(|value| format!(" base_score={value:.2}"))
+                .unwrap_or_default();
+            let adjustment = severity
+                .objective_adjustment
+                .map(|value| format!(" objective_adjustment={value:+.2}"))
+                .unwrap_or_default();
+            let base_severity = severity
+                .base_severity
+                .map(|value| format!(" base_severity={}", value.as_str()))
+                .unwrap_or_default();
+            let applicability = format!(
+                " applicability={} applicability_basis={}",
+                severity.applicability.as_str(),
+                severity.applicability_basis.as_str()
+            );
             let rationale = severity.rationale.trim();
             if rationale.is_empty() {
                 detail_lines.push(format!(
-                    "task_severity: {}={}{} (evidence={})",
+                    "task_severity: {}={}{}{}{}{}{} (evidence={})",
                     severity.task.as_str(),
                     severity.severity.as_str(),
-                    score,
+                    effective_score,
+                    base_severity,
+                    base_score,
+                    adjustment,
+                    applicability,
                     evidence_count
                 ));
             } else {
                 detail_lines.push(format!(
-                    "task_severity: {}={}{} (evidence={}): {}",
+                    "task_severity: {}={}{}{}{}{}{} (evidence={}): {}",
                     severity.task.as_str(),
                     severity.severity.as_str(),
-                    score,
+                    effective_score,
+                    base_severity,
+                    base_score,
+                    adjustment,
+                    applicability,
                     evidence_count,
                     rationale
                 ));
             }
             json!({
                 "task": severity.task.as_str(),
+                "applicability": severity.applicability.as_str(),
+                "applicability_basis": severity.applicability_basis.as_str(),
+                "base_severity": severity.base_severity.map(|value| value.as_str()),
+                "base_score": severity.base_score,
+                "objective_adjustment": severity.objective_adjustment,
                 "severity": severity.severity.as_str(),
                 "score": severity.score,
                 "rationale": &severity.rationale,
@@ -51828,12 +63658,18 @@ fn execute_protein_sequence_command(
         ShellCommand::EnsemblGeneFetch {
             query,
             species,
+            assembly,
+            flank_5prime_bp,
+            flank_3prime_bp,
             entry_id,
         } => {
             let op_result = engine
                 .apply(Operation::FetchEnsemblGene {
                     query: query.clone(),
                     species: species.clone(),
+                    assembly: assembly.clone(),
+                    flank_5prime_bp: *flank_5prime_bp,
+                    flank_3prime_bp: *flank_3prime_bp,
                     entry_id: entry_id.clone(),
                 })
                 .map_err(|e| e.to_string())?;
@@ -52103,6 +63939,21 @@ fn execute_protein_sequence_command(
                 })?,
             })
         }
+        ShellCommand::UniprotBuildLinkedTranscriptInventory { request } => {
+            let result = engine
+                .apply(Operation::BuildUniprotLinkedTranscriptInventory {
+                    request: request.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let inventory = result.uniprot_linked_transcript_inventory.clone();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": result,
+                    "inventory": inventory,
+                }),
+            })
+        }
         ShellCommand::UniprotAuditProjection {
             projection_id,
             transcript_id,
@@ -52347,11 +64198,13 @@ fn execute_protein_sequence_command(
             let graph = engine
                 .construct_reasoning_graph(graph_id)
                 .map_err(|e| e.to_string())?;
+            let snapshot_status = engine.construct_reasoning_graph_snapshot_status(&graph);
             let summary = format_construct_reasoning_graph_summary(&graph);
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({
                     "graph": graph,
+                    "snapshot_status": snapshot_status,
                     "summary": summary,
                 }),
             })
@@ -52369,6 +64222,7 @@ fn execute_protein_sequence_command(
             let graph = engine
                 .construct_reasoning_graph(graph_id)
                 .map_err(|e| e.to_string())?;
+            let snapshot_status = engine.construct_reasoning_graph_snapshot_status(&graph);
             let fact_id = fact_id
                 .as_deref()
                 .map(str::trim)
@@ -52437,6 +64291,7 @@ fn execute_protein_sequence_command(
                 output: json!({
                     "schema": "gentle.construct_reasoning_inspection_action_list.v1",
                     "graph_id": graph.graph_id,
+                    "snapshot_status": snapshot_status,
                     "filters": {
                         "fact_id": fact_id,
                         "annotation_id": annotation_id,
@@ -52464,6 +64319,14 @@ fn execute_protein_sequence_command(
             let graph = engine
                 .construct_reasoning_graph(graph_id)
                 .map_err(|e| e.to_string())?;
+            let snapshot_status = engine.construct_reasoning_graph_snapshot_status(&graph);
+            if snapshot_status.freshness == crate::engine::ConstructReasoningGraphFreshness::Stale {
+                return Err(format!(
+                    "Construct-reasoning graph '{}' is stale: {} Refresh the graph before running inspection actions.",
+                    graph.graph_id,
+                    snapshot_status.reasons.join(" ")
+                ));
+            }
             let action = graph
                 .inspection_actions
                 .iter()
@@ -52515,7 +64378,27 @@ fn execute_protein_sequence_command(
                     .map_err(|err| err.to_string())?;
             let store_as = dotplot_id
                 .clone()
-                .or_else(|| Some(dotplot_request.store_as.clone()));
+                .unwrap_or_else(|| dotplot_request.store_as.clone());
+            let inspection_provenance = construct_reasoning_dotplot_inspection_provenance(
+                &graph,
+                &action,
+                &snapshot_status,
+                &dotplot_request,
+                DotplotInspectionRequestSnapshot {
+                    dotplot_id: store_as.clone(),
+                    seq_id: dotplot_request.seq_id.clone(),
+                    reference_seq_id: None,
+                    span_start_0based: dotplot_request.span_start_0based,
+                    span_end_0based: dotplot_request.span_end_0based,
+                    reference_span_start_0based: dotplot_request.span_start_0based,
+                    reference_span_end_0based: dotplot_request.span_end_0based,
+                    mode: dotplot_request.mode,
+                    word_size: *word_size,
+                    step_bp: *step_bp,
+                    max_mismatches: *max_mismatches,
+                    tile_bp: *tile_bp,
+                },
+            );
             let before = engine
                 .state()
                 .metadata
@@ -52534,7 +64417,8 @@ fn execute_protein_sequence_command(
                     step_bp: *step_bp,
                     max_mismatches: *max_mismatches,
                     tile_bp: *tile_bp,
-                    store_as,
+                    store_as: Some(store_as),
+                    inspection_provenance: Some(Box::new(inspection_provenance)),
                 })
                 .map_err(|e| e.to_string())?;
             let after = engine
@@ -52589,6 +64473,7 @@ fn execute_protein_sequence_command(
                 output: json!({
                     "schema": "gentle.construct_reasoning_inspection_action_dotplot_run.v1",
                     "graph_id": graph.graph_id,
+                    "snapshot_status": snapshot_status,
                     "action": action,
                     "compute_parameters": compute_parameters,
                     "result": op_result,
@@ -53332,6 +65217,62 @@ fn execute_rna_reads_command(
                 }),
             })
         }
+        ShellCommand::RnaReadsAlleleHashScreen {
+            gene,
+            transcript_fasta,
+            variant_table,
+            vcf,
+            transcript_map,
+            vcf_sample,
+            read_files,
+            read_pairs,
+            read_id_allowlist,
+            from_rna_report,
+            salmon_unmapped_names,
+            salmon_mappings_sam,
+            out_dir,
+            kmer_len,
+            min_unique_kmer_hits,
+            min_informative_reads,
+            balanced_band_lo,
+            balanced_band_hi,
+            max_inline_read_calls,
+        } => {
+            let report =
+                engine.run_allele_hash_screen_with_project_sources(AlleleHashScreenRequest {
+                    gene: gene.clone(),
+                    transcript_fasta: transcript_fasta.clone(),
+                    variant_table: variant_table.clone(),
+                    vcf: vcf.clone(),
+                    transcript_map: transcript_map.clone(),
+                    vcf_sample: vcf_sample.clone(),
+                    read_files: read_files.clone(),
+                    read_pairs: read_pairs
+                        .iter()
+                        .map(|(read1, read2)| AlleleReadPairInput {
+                            read1: read1.clone(),
+                            read2: read2.clone(),
+                        })
+                        .collect(),
+                    read_id_allowlist: read_id_allowlist.clone(),
+                    from_rna_report: from_rna_report.clone(),
+                    salmon_unmapped_names: salmon_unmapped_names.clone(),
+                    salmon_mappings_sam: salmon_mappings_sam.clone(),
+                    out_dir: out_dir.clone(),
+                    kmer_len: *kmer_len,
+                    min_unique_kmer_hits: *min_unique_kmer_hits,
+                    min_informative_reads: *min_informative_reads,
+                    balanced_band_lo: *balanced_band_lo,
+                    balanced_band_hi: *balanced_band_hi,
+                    max_inline_read_calls: *max_inline_read_calls,
+                    ..AlleleHashScreenRequest::default()
+                })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&report)
+                    .map_err(|e| format!("Could not serialize allele hash screen report: {e}"))?,
+            })
+        }
         ShellCommand::RnaReadsMaterializeHits {
             report_id,
             selection,
@@ -53538,6 +65479,67 @@ fn execute_rna_reads_command(
                 }),
             })
         }
+        ShellCommand::RnaReadsExportDexseqAnnotationGff { report_id, path } => {
+            let export = engine
+                .export_rna_read_dexseq_annotation_gff(report_id, path)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(export).map_err(|e| {
+                    format!("Could not serialize RNA-read DEXSeq annotation export: {e}")
+                })?,
+            })
+        }
+        ShellCommand::RnaReadsExportDexseqCountsTsv {
+            report_id,
+            path,
+            selection,
+            selected_record_indices,
+            subset_spec,
+        } => {
+            let export = engine
+                .export_rna_read_dexseq_counts_tsv(
+                    report_id,
+                    path,
+                    *selection,
+                    selected_record_indices,
+                    subset_spec.as_deref(),
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(export).map_err(|e| {
+                    format!("Could not serialize RNA-read DEXSeq count export: {e}")
+                })?,
+            })
+        }
+        ShellCommand::RnaReadsVerifyDexseq {
+            report_id,
+            gff_path,
+            counts_path,
+            selection,
+            selected_record_indices,
+            subset_spec,
+            r_library_paths,
+        } => {
+            let verification = engine
+                .verify_rna_read_dexseq_exports(
+                    report_id,
+                    gff_path,
+                    counts_path,
+                    *selection,
+                    selected_record_indices,
+                    subset_spec.as_deref(),
+                    r_library_paths,
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(verification).map_err(|e| {
+                    format!("Could not serialize RNA-read DEXSeq verification: {e}")
+                })?,
+            })
+        }
         ShellCommand::RnaReadsExportScoreDensitySvg {
             report_id,
             path,
@@ -53717,10 +65719,17 @@ fn execute_reference_and_track_command_with_expanded_stack(
 ) -> Result<ShellRunResult, String> {
     let engine_ptr = engine as *mut GentleEngine as usize;
     let command = command.clone();
+    #[cfg(test)]
+    let scoped_tool_overrides = crate::tool_overrides::scoped_tool_overrides_snapshot();
     let worker = thread::Builder::new()
         .name("gentle-shell-reference-command".to_string())
         .stack_size(SHELL_EXPANDED_STACK_SIZE)
         .spawn(move || {
+            #[cfg(test)]
+            let _scoped_tool_overrides =
+                crate::tool_overrides::ScopedToolOverridesSnapshotGuard::install(
+                    scoped_tool_overrides,
+                );
             // SAFETY: the caller synchronously joins this worker before returning
             // and does not access `engine` while the worker is running. This keeps
             // the shared reference/track command path intact while avoiding the
@@ -53848,12 +65857,61 @@ fn execute_cache_command(
 }
 
 #[inline(never)]
-fn execute_op_command(engine: &mut GentleEngine, payload: &str) -> Result<ShellRunResult, String> {
+fn execute_op_command(
+    engine: &mut GentleEngine,
+    payload: &str,
+    options: &ShellExecutionOptions,
+) -> Result<ShellRunResult, String> {
     let json_text = parse_json_payload(payload)?;
     let op: Operation =
         serde_json::from_str(&json_text).map_err(|e| format!("Invalid operation JSON: {e}"))?;
+    // Images and immutable reports can be large; these operations have explicit mutation semantics
+    // and must not serialize the entire project twice just to detect a change.
+    if matches!(
+        &op,
+        Operation::ImportGelImage { .. }
+            | Operation::PlanDnaSequenceDesign { .. }
+            | Operation::SaveGelImageDraft { .. }
+            | Operation::AnalyzeGelImage { .. }
+            | Operation::InspectGelImageAnalysis { .. }
+            | Operation::ExportGelImageAnalysis { .. }
+            | Operation::ComputeTssTfbsProfiles { .. }
+            | Operation::ExportTssTfbsProfiles { .. }
+            | Operation::ComputeTssWindowGeometry { .. }
+            | Operation::InspectTssInventory { .. }
+            | Operation::GetTssCollection { .. }
+            | Operation::ListTssCollections { .. }
+    ) {
+        let state_changed = matches!(
+            &op,
+            Operation::ImportGelImage { .. }
+                | Operation::AnalyzeGelImage { .. }
+                | Operation::SaveGelImageDraft { .. }
+        );
+        let result = if matches!(
+            &op,
+            Operation::ComputeTssTfbsProfiles { .. }
+                | Operation::ExportTssTfbsProfiles { .. }
+                | Operation::PlanDnaSequenceDesign { .. }
+        ) {
+            engine.apply_with_progress(op, |progress| {
+                forward_shell_progress(options, progress).unwrap_or(false)
+            })
+        } else {
+            engine.apply(op)
+        }
+        .map_err(|error| error.to_string())?;
+        return Ok(ShellRunResult {
+            state_changed,
+            output: json!({ "result": result }),
+        });
+    }
     let before_state = serde_json::to_value(engine.snapshot()).ok();
-    let op_result = engine.apply(op).map_err(|e| e.to_string())?;
+    let op_result = engine
+        .apply_with_progress(op, |progress| {
+            forward_shell_progress(options, progress).unwrap_or(false)
+        })
+        .map_err(|e| e.to_string())?;
     let state_changed = if let Some(before) = before_state {
         serde_json::to_value(engine.snapshot())
             .map(|after| after != before)
@@ -53873,11 +65931,55 @@ fn execute_op_command(engine: &mut GentleEngine, payload: &str) -> Result<ShellR
 fn execute_workflow_command(
     engine: &mut GentleEngine,
     payload: &str,
+    options: &ShellExecutionOptions,
 ) -> Result<ShellRunResult, String> {
     let json_text = parse_json_payload(payload)?;
     let workflow = parse_workflow_json_payload(&json_text)?;
+    execute_parsed_workflow_command(engine, workflow, options)
+}
+
+fn execute_prepare_genome_operation(
+    engine: &mut GentleEngine,
+    op: Operation,
+    options: &ShellExecutionOptions,
+) -> Result<ShellRunResult, String> {
+    let binary_preflight = engine.blast_external_binary_preflight_report();
+    let result = engine
+        .apply_with_progress(op, |progress| {
+            forward_shell_progress(options, progress).unwrap_or(false)
+        })
+        .map_err(|error| error.to_string())?;
+    Ok(ShellRunResult {
+        state_changed: true,
+        output: json!({ "binary_preflight": binary_preflight, "result": result }),
+    })
+}
+
+fn check_shell_workflow_boundary(
+    options: &ShellExecutionOptions,
+    completed: usize,
+    total: usize,
+) -> Result<(), String> {
+    if forward_shell_progress(options, OperationProgress::Workflow { completed, total })? {
+        Ok(())
+    } else {
+        Err(format!(
+            "Command workflow cancelled after {completed} of {total} statements"
+        ))
+    }
+}
+
+fn execute_parsed_workflow_command(
+    engine: &mut GentleEngine,
+    workflow: Workflow,
+    options: &ShellExecutionOptions,
+) -> Result<ShellRunResult, String> {
     let before_state = serde_json::to_value(engine.snapshot()).ok();
-    let results = engine.apply_workflow(workflow).map_err(|e| e.to_string())?;
+    let results = engine
+        .apply_workflow_with_progress(workflow, |progress| {
+            forward_shell_progress(options, progress).unwrap_or(false)
+        })
+        .map_err(|e| e.to_string())?;
     let state_changed = if let Some(before) = before_state {
         serde_json::to_value(engine.snapshot())
             .map(|after| after != before)
@@ -53894,6 +65996,1351 @@ fn execute_workflow_command(
     Ok(ShellRunResult {
         state_changed,
         output: json!({ "results": results }),
+    })
+}
+
+struct VerifiedGeneIsoformAssayStudyWorkflow {
+    plan: GeneIsoformAssayStudyPlanReport,
+    workflow: Workflow,
+    workflow_sha256: String,
+    operation_batch_sha256: String,
+}
+
+fn verify_approved_gene_isoform_assay_study_workflow(
+    plan_text: &str,
+    workflow_text: &str,
+    source_label: &str,
+) -> Result<VerifiedGeneIsoformAssayStudyWorkflow, String> {
+    let plan: GeneIsoformAssayStudyPlanReport =
+        serde_json::from_str(plan_text).map_err(|error| {
+            format!("Could not parse gene isoform assay study plan from '{source_label}': {error}")
+        })?;
+    if plan.schema != GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA {
+        return Err(format!(
+            "Gene isoform assay study plan '{}' uses unsupported schema '{}'; expected '{}'",
+            plan.plan_id, plan.schema, GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA
+        ));
+    }
+    if plan.approved_workflow_sha256.trim().is_empty() {
+        return Err(format!(
+            "Gene isoform assay study plan '{}' predates exact workflow-byte binding; re-run primers plan-gene-isoform-study before execution",
+            plan.plan_id
+        ));
+    }
+    let observed_workflow_sha256 =
+        crate::digest_utils::sha256_prefixed_bytes(workflow_text.as_bytes());
+    if observed_workflow_sha256 != plan.approved_workflow_sha256 {
+        return Err(format!(
+            "Approved workflow digest mismatch for plan '{}': expected '{}', observed '{}'; no operations were executed",
+            plan.plan_id, plan.approved_workflow_sha256, observed_workflow_sha256
+        ));
+    }
+    let workflow = parse_workflow_json_payload(&workflow_text)?;
+    let observed_operation_batch_sha256 = crate::digest_utils::sha256_prefixed_bytes(
+        &serde_json::to_vec(&workflow.ops)
+            .map_err(|error| format!("Could not hash approved workflow operations: {error}"))?,
+    );
+    if observed_operation_batch_sha256 != plan.operation_batch_sha256 {
+        return Err(format!(
+            "Approved workflow operation batch mismatch for plan '{}': expected '{}', observed '{}'; no operations were executed",
+            plan.plan_id, plan.operation_batch_sha256, observed_operation_batch_sha256
+        ));
+    }
+
+    Ok(VerifiedGeneIsoformAssayStudyWorkflow {
+        plan,
+        workflow,
+        workflow_sha256: observed_workflow_sha256,
+        operation_batch_sha256: observed_operation_batch_sha256,
+    })
+}
+
+fn preflight_approved_transcript_assay_operations(
+    engine: &GentleEngine,
+    operations: &[Operation],
+    source_label: &str,
+) -> Result<Vec<TranscriptAssayPanelFeasibilityReport>, String> {
+    let mut reports = vec![];
+    for (index, operation) in operations.iter().enumerate() {
+        let Operation::DesignTranscriptAssayPanel {
+            assay_kind: TranscriptAssayKind::EndpointRtPcr,
+            objective: TranscriptAssayPanelObjective::IsoformEndMatrix,
+            coverage_policy,
+            ..
+        } = operation
+        else {
+            continue;
+        };
+        let report = engine
+            .inspect_transcript_assay_panel_feasibility_operation(operation)
+            .map_err(|error| {
+                format!(
+                    "Could not preflight approved endpoint operation {} from '{}': {}; no operations were executed",
+                    index.saturating_add(1),
+                    source_label,
+                    error
+                )
+            })?;
+        if *coverage_policy == TranscriptAssayCoveragePolicy::RequireAll
+            && !report.structurally_impossible_reaction_ids.is_empty()
+        {
+            let report_json = serde_json::to_string(&report).map_err(|error| {
+                format!(
+                    "Could not serialize rejected endpoint feasibility report for '{}': {error}; no operations were executed",
+                    source_label
+                )
+            })?;
+            return Err(format!(
+                "Approved endpoint operation {} from '{}' is structurally infeasible under require_all: reactions [{}], equivalence classes [{}]; no Primer3 process was started and no operations were executed. The exact operation remains unchanged. feasibility_report={}",
+                index.saturating_add(1),
+                source_label,
+                report.structurally_impossible_reaction_ids.join(", "),
+                report
+                    .structurally_impossible_equivalence_group_ids
+                    .join(", "),
+                report_json
+            ));
+        }
+        if report.search_plan.as_ref().is_some_and(|plan| {
+            plan.status != crate::engine::TranscriptAssayPrimerSearchPlanStatus::Ready
+        }) {
+            let report_json = serde_json::to_string(&report).map_err(|error| {
+                format!(
+                    "Could not serialize rejected endpoint search plan for '{}': {error}; no operations were executed",
+                    source_label
+                )
+            })?;
+            return Err(format!(
+                "Approved endpoint operation {} from '{}' has no acceptable bounded Primer3 search plan; no Primer3 process was started and no operations were executed. The exact operation and require_all policy remain unchanged. feasibility_report={}",
+                index.saturating_add(1),
+                source_label,
+                report_json
+            ));
+        }
+        reports.push(report);
+    }
+    Ok(reports)
+}
+
+fn execute_approved_gene_isoform_assay_study_workflow(
+    engine: &mut GentleEngine,
+    plan_json: &str,
+    workflow_json: &str,
+    options: &ShellExecutionOptions,
+) -> Result<ShellRunResult, String> {
+    let plan_text = parse_json_payload(plan_json)?;
+    let workflow_text = parse_json_payload(workflow_json)?;
+    let verified =
+        verify_approved_gene_isoform_assay_study_workflow(&plan_text, &workflow_text, plan_json)?;
+    let feasibility =
+        preflight_approved_transcript_assay_operations(engine, &verified.workflow.ops, plan_json)?;
+
+    let execution = execute_parsed_workflow_command(engine, verified.workflow, options)?;
+    Ok(ShellRunResult {
+        state_changed: execution.state_changed,
+        output: json!({
+            "schema": "gentle.gene_isoform_assay_study_workflow_execution.v1",
+            "plan_id": verified.plan.plan_id,
+            "approved_workflow_sha256": verified.workflow_sha256,
+            "operation_batch_sha256": verified.operation_batch_sha256,
+            "workflow_verified": true,
+            "endpoint_feasibility": feasibility,
+            "execution": execution.output,
+        }),
+    })
+}
+
+fn read_exact_json_file(path: &str, label: &str) -> Result<(String, String, String), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err(format!("{label} path must not be empty"));
+    }
+    let resolved = fs::canonicalize(trimmed)
+        .map_err(|error| format!("Could not resolve {label} '{trimmed}': {error}"))?;
+    if !resolved.is_file() {
+        return Err(format!(
+            "Resolved {label} '{}' is not a regular file",
+            resolved.display()
+        ));
+    }
+    let bytes = fs::read(&resolved)
+        .map_err(|error| format!("Could not read {label} '{}': {error}", resolved.display()))?;
+    let text = String::from_utf8(bytes).map_err(|error| {
+        format!(
+            "{label} '{}' is not valid UTF-8 JSON: {error}",
+            resolved.display()
+        )
+    })?;
+    let sha256 = crate::digest_utils::sha256_prefixed_bytes(text.as_bytes());
+    Ok((resolved.to_string_lossy().to_string(), text, sha256))
+}
+
+fn gene_isoform_assay_study_workflow_batch_basis_sha256(
+    batch: &GeneIsoformAssayStudyWorkflowBatch,
+) -> Result<String, String> {
+    let mut basis = batch.clone();
+    basis.batch_basis_sha256.clear();
+    let bytes = serde_json::to_vec(&basis)
+        .map_err(|error| format!("Could not hash gene isoform study workflow batch: {error}"))?;
+    Ok(crate::digest_utils::sha256_prefixed_bytes(&bytes))
+}
+
+fn compose_gene_isoform_assay_study_workflow_batch(
+    request_json: &str,
+) -> Result<ShellRunResult, String> {
+    let request_text = parse_json_payload(request_json)?;
+    let request: GeneIsoformAssayStudyWorkflowBatchRequest =
+        serde_json::from_str(&request_text).map_err(|error| {
+            format!(
+                "Could not parse gene isoform assay workflow batch request from '{request_json}': {error}"
+            )
+        })?;
+    if request.schema != GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_REQUEST_SCHEMA {
+        return Err(format!(
+            "Gene isoform assay workflow batch request uses unsupported schema '{}'; expected '{}'",
+            request.schema, GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_REQUEST_SCHEMA
+        ));
+    }
+    let batch_id = request.batch_id.trim();
+    if batch_id.is_empty() {
+        return Err("Gene isoform assay workflow batch request requires batch_id".to_string());
+    }
+    if request.entries.is_empty() {
+        return Err(
+            "Gene isoform assay workflow batch request requires at least one plan/workflow entry"
+                .to_string(),
+        );
+    }
+
+    let mut entries = Vec::with_capacity(request.entries.len());
+    let mut combined_operations = vec![];
+    let mut seen_plan_ids = HashSet::new();
+    for (index, source) in request.entries.iter().enumerate() {
+        let (plan_path, plan_text, plan_sha256) =
+            read_exact_json_file(&source.plan_path, "study plan")?;
+        let (workflow_path, workflow_text, workflow_sha256) =
+            read_exact_json_file(&source.workflow_path, "study workflow")?;
+        let verified = verify_approved_gene_isoform_assay_study_workflow(
+            &plan_text,
+            &workflow_text,
+            &plan_path,
+        )?;
+        if !seen_plan_ids.insert(verified.plan.plan_id.clone()) {
+            return Err(format!(
+                "Gene isoform assay workflow batch contains duplicate plan_id '{}'",
+                verified.plan.plan_id
+            ));
+        }
+        combined_operations.extend(verified.workflow.ops.iter().cloned());
+        entries.push(GeneIsoformAssayStudyWorkflowBatchEntry {
+            ordinal: index.saturating_add(1),
+            plan_id: verified.plan.plan_id,
+            plan_path,
+            plan_sha256,
+            workflow_path,
+            workflow_sha256,
+            workflow_run_id: verified.workflow.run_id.clone(),
+            operation_batch_sha256: verified.operation_batch_sha256,
+            operation_count: verified.workflow.ops.len(),
+        });
+    }
+    let combined_operation_batch_sha256 = crate::digest_utils::sha256_prefixed_bytes(
+        &serde_json::to_vec(&combined_operations)
+            .map_err(|error| format!("Could not hash combined operation batch: {error}"))?,
+    );
+    let mut batch = GeneIsoformAssayStudyWorkflowBatch {
+        schema: GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_SCHEMA.to_string(),
+        batch_id: batch_id.to_string(),
+        total_operation_count: combined_operations.len(),
+        combined_operation_batch_sha256,
+        entries,
+        batch_basis_sha256: String::new(),
+    };
+    batch.batch_basis_sha256 = gene_isoform_assay_study_workflow_batch_basis_sha256(&batch)?;
+    Ok(ShellRunResult {
+        state_changed: false,
+        output: json!(batch),
+    })
+}
+
+#[derive(Clone)]
+struct ApprovedStudyBatchOperation {
+    binding: GeneIsoformAssayStudyCheckpointOperation,
+    operation: Operation,
+}
+
+struct VerifiedApprovedStudyBatch {
+    batch: GeneIsoformAssayStudyWorkflowBatch,
+    entries: Vec<VerifiedGeneIsoformAssayStudyWorkflow>,
+    operations: Vec<ApprovedStudyBatchOperation>,
+    endpoint_feasibility: Vec<TranscriptAssayPanelFeasibilityReport>,
+}
+
+fn canonical_json_sha256<T: Serialize>(value: &T, label: &str) -> Result<String, String> {
+    let value = serde_json::to_value(value)
+        .map_err(|error| format!("Could not serialize {label} for hashing: {error}"))?;
+    let bytes = serde_json::to_vec(&value)
+        .map_err(|error| format!("Could not canonicalize {label} for hashing: {error}"))?;
+    Ok(crate::digest_utils::sha256_prefixed_bytes(&bytes))
+}
+
+fn current_gene_isoform_study_runtime_identity(
+    engine: &GentleEngine,
+) -> Result<GeneIsoformAssayStudyRuntimeIdentity, String> {
+    let executable = std::env::current_exe()
+        .map_err(|error| format!("Could not resolve the running GENtle executable: {error}"))?;
+    let executable = fs::canonicalize(&executable).unwrap_or(executable);
+    let executable_sha256 = crate::digest_utils::sha256_file_hex(&executable).map_err(|error| {
+        format!(
+            "Could not fingerprint GENtle executable '{}': {error}",
+            executable.display()
+        )
+    })?;
+    let backend = engine.state().parameters.primer_design_backend;
+    let primer3 = (backend != PrimerDesignBackend::Internal)
+        .then(|| engine.primer3_preflight_report(Some(backend), None));
+    let primer3_executable_path = primer3
+        .as_ref()
+        .and_then(|report| report.resolved_path.clone());
+    let primer3_executable_sha256 = primer3_executable_path
+        .as_deref()
+        .map(Path::new)
+        .filter(|path| path.is_file())
+        .map(|path| {
+            crate::digest_utils::sha256_file_hex(path)
+                .map(|digest| format!("sha256:{digest}"))
+                .map_err(|error| {
+                    format!(
+                        "Could not fingerprint Primer3 executable '{}': {error}",
+                        path.display()
+                    )
+                })
+        })
+        .transpose()?;
+    Ok(GeneIsoformAssayStudyRuntimeIdentity {
+        gentle_package_version: crate::about::GENTLE_PACKAGE_VERSION.to_string(),
+        gentle_build: crate::about::GENTLE_BUILD_N.to_string(),
+        executable_path: executable.to_string_lossy().to_string(),
+        executable_sha256: format!("sha256:{executable_sha256}"),
+        primer_backend: backend.as_str().to_string(),
+        primer3_executable_path,
+        primer3_executable_sha256,
+        primer3_version: primer3.as_ref().and_then(|report| report.version.clone()),
+        primer3_version_probe_ok: primer3
+            .as_ref()
+            .is_some_and(|report| report.version_probe_ok),
+    })
+}
+
+fn verify_approved_gene_isoform_assay_study_workflow_batch(
+    engine: &GentleEngine,
+    batch_json: &str,
+) -> Result<VerifiedApprovedStudyBatch, String> {
+    let batch_text = parse_json_payload(batch_json)?;
+    let batch: GeneIsoformAssayStudyWorkflowBatch =
+        serde_json::from_str(&batch_text).map_err(|error| {
+            format!(
+                "Could not parse gene isoform assay workflow batch from '{batch_json}': {error}"
+            )
+        })?;
+    if batch.schema != GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_SCHEMA {
+        return Err(format!(
+            "Gene isoform assay workflow batch '{}' uses unsupported schema '{}'; expected '{}'",
+            batch.batch_id, batch.schema, GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_SCHEMA
+        ));
+    }
+    if batch.entries.is_empty() {
+        return Err(format!(
+            "Gene isoform assay workflow batch '{}' contains no entries",
+            batch.batch_id
+        ));
+    }
+    let observed_batch_basis_sha256 = gene_isoform_assay_study_workflow_batch_basis_sha256(&batch)?;
+    if observed_batch_basis_sha256 != batch.batch_basis_sha256 {
+        return Err(format!(
+            "Gene isoform assay workflow batch '{}' basis digest mismatch: expected '{}', observed '{}'; no operations were executed",
+            batch.batch_id, batch.batch_basis_sha256, observed_batch_basis_sha256
+        ));
+    }
+
+    let mut entries = Vec::with_capacity(batch.entries.len());
+    let mut operations = vec![];
+    let mut combined_operations = vec![];
+    let mut seen_plan_ids = HashSet::new();
+    let mut global_operation_ordinal = 0usize;
+    for (index, entry) in batch.entries.iter().enumerate() {
+        let expected_ordinal = index.saturating_add(1);
+        if entry.ordinal != expected_ordinal {
+            return Err(format!(
+                "Gene isoform assay workflow batch '{}' entry {} records ordinal {}; no operations were executed",
+                batch.batch_id, expected_ordinal, entry.ordinal
+            ));
+        }
+        let (_, plan_text, observed_plan_sha256) =
+            read_exact_json_file(&entry.plan_path, "study plan")?;
+        if observed_plan_sha256 != entry.plan_sha256 {
+            return Err(format!(
+                "Study plan file digest mismatch for batch '{}' entry {}: expected '{}', observed '{}'; no operations were executed",
+                batch.batch_id, entry.ordinal, entry.plan_sha256, observed_plan_sha256
+            ));
+        }
+        let (_, workflow_text, observed_workflow_file_sha256) =
+            read_exact_json_file(&entry.workflow_path, "study workflow")?;
+        if observed_workflow_file_sha256 != entry.workflow_sha256 {
+            return Err(format!(
+                "Study workflow file digest mismatch for batch '{}' entry {}: expected '{}', observed '{}'; no operations were executed",
+                batch.batch_id, entry.ordinal, entry.workflow_sha256, observed_workflow_file_sha256
+            ));
+        }
+        let verified = verify_approved_gene_isoform_assay_study_workflow(
+            &plan_text,
+            &workflow_text,
+            &entry.plan_path,
+        )?;
+        if verified.plan.plan_id != entry.plan_id {
+            return Err(format!(
+                "Study plan identity mismatch for batch '{}' entry {}: expected '{}', observed '{}'; no operations were executed",
+                batch.batch_id, entry.ordinal, entry.plan_id, verified.plan.plan_id
+            ));
+        }
+        if !seen_plan_ids.insert(entry.plan_id.clone()) {
+            return Err(format!(
+                "Gene isoform assay workflow batch '{}' repeats plan_id '{}'; no operations were executed",
+                batch.batch_id, entry.plan_id
+            ));
+        }
+        if verified.workflow_sha256 != entry.workflow_sha256
+            || verified.workflow.run_id != entry.workflow_run_id
+            || verified.operation_batch_sha256 != entry.operation_batch_sha256
+            || verified.workflow.ops.len() != entry.operation_count
+        {
+            return Err(format!(
+                "Study workflow metadata mismatch for batch '{}' entry {}; no operations were executed",
+                batch.batch_id, entry.ordinal
+            ));
+        }
+        for (operation_index, operation) in verified.workflow.ops.iter().enumerate() {
+            global_operation_ordinal = global_operation_ordinal.saturating_add(1);
+            let operation_sha256 = canonical_json_sha256(operation, "approved operation")?;
+            operations.push(ApprovedStudyBatchOperation {
+                binding: GeneIsoformAssayStudyCheckpointOperation {
+                    global_operation_ordinal,
+                    workflow_ordinal: entry.ordinal,
+                    workflow_operation_ordinal: operation_index.saturating_add(1),
+                    plan_id: verified.plan.plan_id.clone(),
+                    plan_sha256: entry.plan_sha256.clone(),
+                    gene_symbol: verified.plan.gene_symbol.clone(),
+                    workflow_run_id: verified.workflow.run_id.clone(),
+                    workflow_sha256: verified.workflow_sha256.clone(),
+                    operation_sha256,
+                },
+                operation: operation.clone(),
+            });
+        }
+        combined_operations.extend(verified.workflow.ops.iter().cloned());
+        entries.push(verified);
+    }
+    if combined_operations.len() != batch.total_operation_count {
+        return Err(format!(
+            "Gene isoform assay workflow batch '{}' operation count mismatch: expected {}, observed {}; no operations were executed",
+            batch.batch_id,
+            batch.total_operation_count,
+            combined_operations.len()
+        ));
+    }
+    let observed_combined_operation_batch_sha256 = crate::digest_utils::sha256_prefixed_bytes(
+        &serde_json::to_vec(&combined_operations)
+            .map_err(|error| format!("Could not hash combined operation batch: {error}"))?,
+    );
+    if observed_combined_operation_batch_sha256 != batch.combined_operation_batch_sha256 {
+        return Err(format!(
+            "Gene isoform assay workflow batch '{}' combined operation digest mismatch: expected '{}', observed '{}'; no operations were executed",
+            batch.batch_id,
+            batch.combined_operation_batch_sha256,
+            observed_combined_operation_batch_sha256
+        ));
+    }
+    let endpoint_feasibility = preflight_approved_transcript_assay_operations(
+        engine,
+        &combined_operations,
+        &format!("approved batch {}", batch.batch_id),
+    )?;
+    Ok(VerifiedApprovedStudyBatch {
+        batch,
+        entries,
+        operations,
+        endpoint_feasibility,
+    })
+}
+
+fn completed_workflow_count(
+    batch: &GeneIsoformAssayStudyWorkflowBatch,
+    completed_operation_count: usize,
+) -> usize {
+    let mut seen = 0usize;
+    batch
+        .entries
+        .iter()
+        .take_while(|entry| {
+            seen = seen.saturating_add(entry.operation_count);
+            seen <= completed_operation_count
+        })
+        .count()
+}
+
+/// Count genes whose every approved operation completed.
+///
+/// `completed_workflow_count` assumes the completed set is a contiguous
+/// prefix, which holds for checkpoints but not once a gene has been rolled
+/// back and later genes have run.
+fn fully_completed_workflow_count(
+    batch: &GeneIsoformAssayStudyWorkflowBatch,
+    completed: &[GeneIsoformAssayStudyCheckpointOperation],
+) -> usize {
+    let mut completed_per_workflow = BTreeMap::<usize, usize>::new();
+    for binding in completed {
+        *completed_per_workflow
+            .entry(binding.workflow_ordinal)
+            .or_default() += 1;
+    }
+    batch
+        .entries
+        .iter()
+        .enumerate()
+        .filter(|(index, entry)| {
+            completed_per_workflow
+                .get(&index.saturating_add(1))
+                .copied()
+                .unwrap_or_default()
+                == entry.operation_count
+        })
+        .count()
+}
+
+fn approved_study_batch_progress_detail(
+    batch_id: &str,
+    binding: &GeneIsoformAssayStudyCheckpointOperation,
+    workflow_count: usize,
+    operation_count: usize,
+    completed_workflows: usize,
+    failed_workflows: usize,
+) -> String {
+    format!(
+        "batch={} gene={} plan={} workflow={}/{} operation={}/{} workflow_operation={} completed_genes={}/{} failed_genes={} remaining_genes={} completed_operations={}/{}",
+        batch_id,
+        if binding.gene_symbol.trim().is_empty() {
+            "unspecified"
+        } else {
+            binding.gene_symbol.as_str()
+        },
+        binding.plan_id,
+        binding.workflow_ordinal,
+        workflow_count,
+        binding.global_operation_ordinal,
+        operation_count,
+        binding.workflow_operation_ordinal,
+        completed_workflows,
+        workflow_count,
+        failed_workflows,
+        workflow_count
+            .saturating_sub(completed_workflows)
+            .saturating_sub(failed_workflows),
+        binding.global_operation_ordinal.saturating_sub(1),
+        operation_count
+    )
+}
+
+fn checkpoint_basis_sha256(checkpoint: &GeneIsoformAssayStudyCheckpoint) -> Result<String, String> {
+    let mut basis = checkpoint.clone();
+    basis.checkpoint_id.clear();
+    canonical_json_sha256(&basis, "gene isoform assay checkpoint basis")
+}
+
+fn write_gene_isoform_assay_checkpoint(
+    root: &Path,
+    detached: &crate::engine::DetachedEngineExecution,
+    verified: &VerifiedApprovedStudyBatch,
+    runtime: &GeneIsoformAssayStudyRuntimeIdentity,
+    baseline_state_sha256: &str,
+    completed_operations: &[GeneIsoformAssayStudyCheckpointOperation],
+    operation_results: &[crate::engine::OpResult],
+) -> Result<PathBuf, String> {
+    fs::create_dir_all(root).map_err(|error| {
+        format!(
+            "Could not create study checkpoint directory '{}': {error}",
+            root.display()
+        )
+    })?;
+    let engine_bytes = serde_json::to_vec(detached.engine())
+        .map_err(|error| format!("Could not serialize detached GENtle checkpoint: {error}"))?;
+    let engine_sha256 = crate::digest_utils::sha256_prefixed_bytes(&engine_bytes);
+    let completed_operation_count = completed_operations.len();
+    let current = completed_operations.last().ok_or_else(|| {
+        "Cannot write a study checkpoint before an operation has completed".to_string()
+    })?;
+    let mut checkpoint = GeneIsoformAssayStudyCheckpoint {
+        schema: GENE_ISOFORM_ASSAY_STUDY_CHECKPOINT_SCHEMA.to_string(),
+        checkpoint_id: String::new(),
+        source_batch_id: verified.batch.batch_id.clone(),
+        source_batch_basis_sha256: verified.batch.batch_basis_sha256.clone(),
+        baseline_state_sha256: baseline_state_sha256.to_string(),
+        runtime: runtime.clone(),
+        completed_operations: completed_operations.to_vec(),
+        completed_operation_count,
+        completed_workflow_count: completed_workflow_count(
+            &verified.batch,
+            completed_operation_count,
+        ),
+        current_workflow_ordinal: current.workflow_ordinal,
+        current_plan_id: current.plan_id.clone(),
+        current_gene_symbol: current.gene_symbol.clone(),
+        engine_path: "engine.json".to_string(),
+        engine_sha256,
+        engine_journal_len: detached.engine().journal_len(),
+        operation_results: operation_results.to_vec(),
+    };
+    let checkpoint_basis = checkpoint_basis_sha256(&checkpoint)?;
+    checkpoint.checkpoint_id = format!(
+        "study_checkpoint_{}",
+        checkpoint_basis
+            .strip_prefix("sha256:")
+            .unwrap_or(&checkpoint_basis)[..16]
+            .to_string()
+    );
+    let checkpoint_dir = root.join(&checkpoint.checkpoint_id);
+    fs::create_dir_all(&checkpoint_dir).map_err(|error| {
+        format!(
+            "Could not create content-bound checkpoint '{}': {error}",
+            checkpoint_dir.display()
+        )
+    })?;
+    let engine_path = checkpoint_dir.join(&checkpoint.engine_path);
+    fs::write(&engine_path, &engine_bytes).map_err(|error| {
+        format!(
+            "Could not write checkpoint engine '{}': {error}",
+            engine_path.display()
+        )
+    })?;
+    let manifest_path = checkpoint_dir.join("manifest.json");
+    let manifest_bytes = serde_json::to_vec_pretty(&checkpoint)
+        .map_err(|error| format!("Could not serialize checkpoint manifest: {error}"))?;
+    fs::write(&manifest_path, manifest_bytes).map_err(|error| {
+        format!(
+            "Could not write checkpoint manifest '{}': {error}",
+            manifest_path.display()
+        )
+    })?;
+    Ok(manifest_path)
+}
+
+fn proposal_basis_sha256(proposal: &GeneIsoformAssayStudyReuseProposal) -> Result<String, String> {
+    let mut basis = proposal.clone();
+    basis.proposal_id.clear();
+    basis.proposal_sha256.clear();
+    canonical_json_sha256(&basis, "gene isoform assay reuse proposal")
+}
+
+fn checkpoint_matches_batch_prefix(
+    checkpoint: &GeneIsoformAssayStudyCheckpoint,
+    verified: &VerifiedApprovedStudyBatch,
+) -> bool {
+    checkpoint.completed_operation_count > 0
+        && checkpoint.completed_operation_count <= verified.operations.len()
+        && checkpoint.completed_operations.len() == checkpoint.completed_operation_count
+        && checkpoint
+            .completed_operations
+            .iter()
+            .zip(verified.operations.iter())
+            .all(|(cached, target)| cached == &target.binding)
+}
+
+fn read_checkpoint_manifest(
+    manifest_path: &Path,
+) -> Result<(GeneIsoformAssayStudyCheckpoint, String), String> {
+    let bytes = fs::read(manifest_path).map_err(|error| {
+        format!(
+            "Could not read checkpoint manifest '{}': {error}",
+            manifest_path.display()
+        )
+    })?;
+    let sha256 = crate::digest_utils::sha256_prefixed_bytes(&bytes);
+    let checkpoint =
+        serde_json::from_slice::<GeneIsoformAssayStudyCheckpoint>(&bytes).map_err(|error| {
+            format!(
+                "Could not parse checkpoint manifest '{}': {error}",
+                manifest_path.display()
+            )
+        })?;
+    if checkpoint.schema != GENE_ISOFORM_ASSAY_STUDY_CHECKPOINT_SCHEMA {
+        return Err(format!(
+            "Checkpoint '{}' uses unsupported schema '{}'",
+            manifest_path.display(),
+            checkpoint.schema
+        ));
+    }
+    let expected_id = checkpoint_basis_sha256(&checkpoint)?;
+    let expected_id = format!(
+        "study_checkpoint_{}",
+        &expected_id.strip_prefix("sha256:").unwrap_or(&expected_id)[..16]
+    );
+    if checkpoint.checkpoint_id != expected_id {
+        return Err(format!(
+            "Checkpoint '{}' has a content identity mismatch",
+            manifest_path.display()
+        ));
+    }
+    Ok((checkpoint, sha256))
+}
+
+fn validate_checkpoint_engine(
+    manifest_path: &Path,
+    checkpoint: &GeneIsoformAssayStudyCheckpoint,
+) -> Result<GentleEngine, String> {
+    let engine_path = manifest_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(&checkpoint.engine_path);
+    let bytes = fs::read(&engine_path).map_err(|error| {
+        format!(
+            "Could not read checkpoint engine '{}': {error}",
+            engine_path.display()
+        )
+    })?;
+    let observed_sha256 = crate::digest_utils::sha256_prefixed_bytes(&bytes);
+    if observed_sha256 != checkpoint.engine_sha256 {
+        return Err(format!(
+            "Checkpoint engine digest mismatch for '{}': expected '{}', observed '{}'",
+            engine_path.display(),
+            checkpoint.engine_sha256,
+            observed_sha256
+        ));
+    }
+    let checkpoint_engine = serde_json::from_slice::<GentleEngine>(&bytes).map_err(|error| {
+        format!(
+            "Could not parse checkpoint engine '{}': {error}",
+            engine_path.display()
+        )
+    })?;
+    if checkpoint_engine.journal_len() != checkpoint.engine_journal_len {
+        return Err(format!(
+            "Checkpoint engine journal length mismatch for '{}': expected {}, observed {}",
+            engine_path.display(),
+            checkpoint.engine_journal_len,
+            checkpoint_engine.journal_len()
+        ));
+    }
+    Ok(checkpoint_engine)
+}
+
+fn inspect_gene_isoform_assay_study_reuse(
+    engine: &GentleEngine,
+    batch_json: &str,
+    checkpoint_dir: &str,
+    output_path: Option<&str>,
+) -> Result<ShellRunResult, String> {
+    let verified = verify_approved_gene_isoform_assay_study_workflow_batch(engine, batch_json)?;
+    let baseline_state_sha256 = canonical_json_sha256(engine.snapshot(), "project baseline")?;
+    let runtime = current_gene_isoform_study_runtime_identity(engine)?;
+    let root = Path::new(checkpoint_dir);
+    let mut candidates = vec![];
+    if root.is_dir() {
+        for entry in fs::read_dir(root).map_err(|error| {
+            format!(
+                "Could not inspect checkpoint directory '{}': {error}",
+                root.display()
+            )
+        })? {
+            let Ok(entry) = entry else { continue };
+            let manifest_path = entry.path().join("manifest.json");
+            if !manifest_path.is_file() {
+                continue;
+            }
+            let Ok((checkpoint, manifest_sha256)) = read_checkpoint_manifest(&manifest_path) else {
+                continue;
+            };
+            if checkpoint.baseline_state_sha256 != baseline_state_sha256
+                || checkpoint.runtime != runtime
+                || !checkpoint_matches_batch_prefix(&checkpoint, &verified)
+                || validate_checkpoint_engine(&manifest_path, &checkpoint).is_err()
+            {
+                continue;
+            }
+            candidates.push((checkpoint, manifest_path, manifest_sha256));
+        }
+    }
+    candidates.sort_by(|left, right| {
+        right
+            .0
+            .completed_operation_count
+            .cmp(&left.0.completed_operation_count)
+            .then(left.0.checkpoint_id.cmp(&right.0.checkpoint_id))
+    });
+    let Some((checkpoint, manifest_path, manifest_sha256)) = candidates.into_iter().next() else {
+        let mut proposal = GeneIsoformAssayStudyReuseProposal {
+            schema: GENE_ISOFORM_ASSAY_STUDY_REUSE_PROPOSAL_SCHEMA.to_string(),
+            target_batch_id: verified.batch.batch_id,
+            target_batch_basis_sha256: verified.batch.batch_basis_sha256,
+            baseline_state_sha256,
+            runtime,
+            remaining_operation_count: verified.operations.len(),
+            remaining_workflow_count: verified.entries.len(),
+            approval_required: false,
+            warnings: vec![
+                "No checkpoint matched the current project baseline, GENtle executable, and exact approved operation prefix; execute the batch without reuse or create fresh checkpoints."
+                    .to_string(),
+            ],
+            ..GeneIsoformAssayStudyReuseProposal::default()
+        };
+        proposal.proposal_sha256 = proposal_basis_sha256(&proposal)?;
+        proposal.proposal_id = format!(
+            "study_reuse_{}",
+            &proposal
+                .proposal_sha256
+                .strip_prefix("sha256:")
+                .unwrap_or(&proposal.proposal_sha256)[..16]
+        );
+        if let Some(path) = output_path {
+            fs::write(
+                path,
+                serde_json::to_vec_pretty(&proposal).map_err(|e| e.to_string())?,
+            )
+            .map_err(|error| format!("Could not write reuse proposal '{path}': {error}"))?;
+        }
+        return Ok(ShellRunResult {
+            state_changed: false,
+            output: json!(proposal),
+        });
+    };
+    let reusable_operation_count = checkpoint.completed_operation_count;
+    let reusable_workflow_count = checkpoint.completed_workflow_count;
+    let mut proposal = GeneIsoformAssayStudyReuseProposal {
+        schema: GENE_ISOFORM_ASSAY_STUDY_REUSE_PROPOSAL_SCHEMA.to_string(),
+        target_batch_id: verified.batch.batch_id.clone(),
+        target_batch_basis_sha256: verified.batch.batch_basis_sha256.clone(),
+        baseline_state_sha256,
+        runtime,
+        checkpoint_manifest_path: fs::canonicalize(&manifest_path)
+            .unwrap_or(manifest_path)
+            .to_string_lossy()
+            .to_string(),
+        checkpoint_manifest_sha256: manifest_sha256,
+        checkpoint_id: checkpoint.checkpoint_id,
+        reusable_operation_count,
+        reusable_workflow_count,
+        remaining_operation_count: verified
+            .operations
+            .len()
+            .saturating_sub(reusable_operation_count),
+        remaining_workflow_count: verified
+            .entries
+            .len()
+            .saturating_sub(reusable_workflow_count),
+        reusable_operations: checkpoint.completed_operations,
+        approval_required: true,
+        warnings: vec![
+            "Approval authorizes import of the named checkpoint only; it does not validate primer biology or permit GENtle/runtime/input mismatches."
+                .to_string(),
+        ],
+        ..GeneIsoformAssayStudyReuseProposal::default()
+    };
+    proposal.proposal_sha256 = proposal_basis_sha256(&proposal)?;
+    proposal.proposal_id = format!(
+        "study_reuse_{}",
+        &proposal
+            .proposal_sha256
+            .strip_prefix("sha256:")
+            .unwrap_or(&proposal.proposal_sha256)[..16]
+    );
+    if let Some(path) = output_path {
+        fs::write(
+            path,
+            serde_json::to_vec_pretty(&proposal).map_err(|e| e.to_string())?,
+        )
+        .map_err(|error| format!("Could not write reuse proposal '{path}': {error}"))?;
+    }
+    Ok(ShellRunResult {
+        state_changed: false,
+        output: json!(proposal),
+    })
+}
+
+fn execute_approved_gene_isoform_assay_study_workflow_batch_with_reuse(
+    engine: &mut GentleEngine,
+    batch_json: &str,
+    checkpoint_dir: Option<&str>,
+    reuse_proposal_json: Option<&str>,
+    approve_reuse_sha256: Option<&str>,
+    on_gene_failure: GeneIsoformAssayStudyGeneFailurePolicy,
+    options: &ShellExecutionOptions,
+) -> Result<ShellRunResult, String> {
+    let verified = verify_approved_gene_isoform_assay_study_workflow_batch(engine, batch_json)?;
+    if on_gene_failure == GeneIsoformAssayStudyGeneFailurePolicy::Continue {
+        let mut external_output_paths = verified
+            .operations
+            .iter()
+            .flat_map(|approved| GentleEngine::collect_run_bundle_export_paths(&approved.operation))
+            .collect::<Vec<_>>();
+        external_output_paths.sort();
+        external_output_paths.dedup();
+        if !external_output_paths.is_empty() {
+            return Err(format!(
+                "Approved batch '{}' cannot use --on-gene-failure continue because its operations declare external output path(s) that cannot participate in the in-memory per-gene rollback: {}. Remove those output paths or execute with --on-gene-failure abort; no operations were executed",
+                verified.batch.batch_id,
+                external_output_paths.join(", ")
+            ));
+        }
+    }
+    let baseline_state_sha256 = canonical_json_sha256(engine.snapshot(), "project baseline")?;
+    let runtime = current_gene_isoform_study_runtime_identity(engine)?;
+    let mut detached = engine.fork_detached_execution();
+    let mut completed_bindings = Vec::<GeneIsoformAssayStudyCheckpointOperation>::new();
+    let mut operation_results = Vec::<crate::engine::OpResult>::new();
+    let mut reused_operation_count = 0usize;
+    let mut reused_workflow_count = 0usize;
+    let mut reused_checkpoint_id = None::<String>;
+
+    if let Some(proposal_json) = reuse_proposal_json {
+        let approved = approve_reuse_sha256
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                "Checkpoint reuse requires --approve-reuse-sha256 with the exact proposal digest"
+                    .to_string()
+            })?;
+        let proposal_text = parse_json_payload(proposal_json)?;
+        let proposal: GeneIsoformAssayStudyReuseProposal = serde_json::from_str(&proposal_text)
+            .map_err(|error| {
+                format!(
+                    "Could not parse gene isoform assay reuse proposal from '{proposal_json}': {error}"
+                )
+            })?;
+        if proposal.schema != GENE_ISOFORM_ASSAY_STUDY_REUSE_PROPOSAL_SCHEMA {
+            return Err(format!(
+                "Reuse proposal '{}' uses unsupported schema '{}'",
+                proposal.proposal_id, proposal.schema
+            ));
+        }
+        let observed_proposal_sha256 = proposal_basis_sha256(&proposal)?;
+        if observed_proposal_sha256 != proposal.proposal_sha256
+            || approved != proposal.proposal_sha256
+        {
+            return Err(format!(
+                "Reuse approval digest mismatch: proposal records '{}', observed '{}', approved '{}'; no checkpoint was imported and no operations were executed",
+                proposal.proposal_sha256, observed_proposal_sha256, approved
+            ));
+        }
+        if !proposal.approval_required || proposal.reusable_operation_count == 0 {
+            return Err(
+                "Reuse proposal does not authorize any checkpoint import; execute without --reuse-proposal"
+                    .to_string(),
+            );
+        }
+        if proposal.target_batch_id != verified.batch.batch_id
+            || proposal.target_batch_basis_sha256 != verified.batch.batch_basis_sha256
+            || proposal.baseline_state_sha256 != baseline_state_sha256
+            || proposal.runtime != runtime
+        {
+            return Err(
+                "Reuse proposal no longer matches the target batch, project baseline, or running GENtle executable; inspect reuse again"
+                    .to_string(),
+            );
+        }
+        let manifest_path = PathBuf::from(&proposal.checkpoint_manifest_path);
+        let (checkpoint, observed_manifest_sha256) = read_checkpoint_manifest(&manifest_path)?;
+        if observed_manifest_sha256 != proposal.checkpoint_manifest_sha256
+            || checkpoint.checkpoint_id != proposal.checkpoint_id
+            || checkpoint.baseline_state_sha256 != baseline_state_sha256
+            || checkpoint.runtime != runtime
+            || checkpoint.completed_operation_count != proposal.reusable_operation_count
+            || checkpoint.completed_operations != proposal.reusable_operations
+            || !checkpoint_matches_batch_prefix(&checkpoint, &verified)
+        {
+            return Err(
+                "Approved reuse checkpoint no longer matches its proposal or the exact target operation prefix; no checkpoint was imported"
+                    .to_string(),
+            );
+        }
+        if checkpoint.operation_results.len() != checkpoint.completed_operation_count {
+            return Err(format!(
+                "Checkpoint '{}' contains {} result(s) for {} completed operation(s)",
+                checkpoint.checkpoint_id,
+                checkpoint.operation_results.len(),
+                checkpoint.completed_operation_count
+            ));
+        }
+        let checkpoint_engine = validate_checkpoint_engine(&manifest_path, &checkpoint)?;
+        detached.import_checkpoint_engine(checkpoint_engine);
+        reused_operation_count = checkpoint.completed_operation_count;
+        reused_workflow_count = checkpoint.completed_workflow_count;
+        reused_checkpoint_id = Some(checkpoint.checkpoint_id.clone());
+        completed_bindings = checkpoint.completed_operations;
+        operation_results = checkpoint.operation_results;
+    }
+
+    let workflow_count = verified.entries.len();
+    let operation_count = verified.operations.len();
+    let batch_frame = runtime_status_registry().push_with_detail(
+        RuntimeStatusFrameKind::ForegroundOperation,
+        "approved gene isoform assay workflow batch",
+        Some(format!(
+            "batch={} completed_genes={}/{} failed_genes=0 remaining_genes={} completed_operations={}/{}",
+            verified.batch.batch_id,
+            reused_workflow_count,
+            workflow_count,
+            workflow_count.saturating_sub(reused_workflow_count),
+            reused_operation_count,
+            operation_count
+        )),
+    );
+    batch_frame.update_phase("execute_approved_operations");
+    let checkpoint_root = checkpoint_dir
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+    let mut last_checkpoint_manifest = None::<PathBuf>;
+    let mut gene_failures = Vec::<serde_json::Value>::new();
+    let mut warnings = Vec::<String>::new();
+    let mut skipped_operation_count = 0usize;
+    let mut skipping_workflow_ordinal = None::<usize>;
+    let mut gene_boundary = None::<(usize, crate::engine::GentleEngine, usize, Option<PathBuf>)>;
+    let mut reuse_checkpoint_frozen_at = None::<usize>;
+
+    // Per-gene continuation rolls a failing gene back to the boundary at which
+    // it started. A reused prefix that stops in the middle of a gene leaves no
+    // such boundary in memory, so refuse rather than commit a half-applied gene.
+    if on_gene_failure == GeneIsoformAssayStudyGeneFailurePolicy::Continue
+        && reused_operation_count > 0
+        && verified
+            .batch
+            .entries
+            .iter()
+            .take(reused_workflow_count)
+            .map(|entry| entry.operation_count)
+            .sum::<usize>()
+            != reused_operation_count
+    {
+        let message = format!(
+            "Approved batch '{}' cannot use --on-gene-failure continue with a reuse prefix that ends inside gene {} instead of on a gene boundary; re-inspect reuse for a whole-gene prefix or execute with --on-gene-failure abort. No operations were executed",
+            verified.batch.batch_id,
+            reused_workflow_count.saturating_add(1)
+        );
+        batch_frame.fail(&message);
+        return Err(message);
+    }
+
+    for approved_operation in verified.operations.iter().skip(reused_operation_count) {
+        let binding = &approved_operation.binding;
+        if skipping_workflow_ordinal == Some(binding.workflow_ordinal) {
+            skipped_operation_count = skipped_operation_count.saturating_add(1);
+            continue;
+        }
+        // Snapshot the detached engine when a gene starts so that a failure
+        // inside it can be undone without discarding the genes that already
+        // finished.
+        if on_gene_failure == GeneIsoformAssayStudyGeneFailurePolicy::Continue
+            && gene_boundary
+                .as_ref()
+                .map(|(ordinal, _, _, _)| *ordinal)
+                .is_none_or(|ordinal| ordinal != binding.workflow_ordinal)
+        {
+            gene_boundary = Some((
+                binding.workflow_ordinal,
+                detached.engine().clone_without_history(),
+                completed_bindings.len(),
+                last_checkpoint_manifest.clone(),
+            ));
+        }
+        let completed_workflows = completed_workflow_count(
+            &verified.batch,
+            binding.global_operation_ordinal.saturating_sub(1),
+        );
+        let detail = approved_study_batch_progress_detail(
+            &verified.batch.batch_id,
+            binding,
+            workflow_count,
+            operation_count,
+            completed_workflows,
+            gene_failures.len(),
+        );
+        batch_frame.update_detail(detail);
+        batch_frame.update_progress(Some(
+            100.0 * binding.global_operation_ordinal.saturating_sub(1) as f64
+                / operation_count.max(1) as f64,
+        ));
+        let one_operation_workflow = Workflow {
+            run_id: binding.workflow_run_id.clone(),
+            ops: vec![approved_operation.operation.clone()],
+        };
+        let mut progress_error = None::<String>;
+        let result = detached.engine_mut().apply_workflow_with_progress(
+            one_operation_workflow,
+            |progress| match forward_shell_progress(options, progress) {
+                Ok(keep_running) => keep_running,
+                Err(error) => {
+                    progress_error = Some(error);
+                    false
+                }
+            },
+        );
+        if let Some(error) = progress_error {
+            batch_frame.fail(&error);
+            return Err(error);
+        }
+        let mut results = match result {
+            Ok(results) => results,
+            Err(error) if on_gene_failure == GeneIsoformAssayStudyGeneFailurePolicy::Continue => {
+                // Undo this gene entirely, keep the genes that already
+                // succeeded, and carry on with the remaining precomputed ones.
+                let (
+                    _,
+                    boundary_engine,
+                    boundary_completed_operations,
+                    boundary_checkpoint_manifest,
+                ) =
+                    gene_boundary.take().ok_or_else(|| {
+                        format!(
+                            "Approved batch '{}' lost the gene boundary snapshot for gene '{}'; no operation was committed",
+                            verified.batch.batch_id, binding.gene_symbol
+                        )
+                    })?;
+                let rolled_back_operation_count = completed_bindings
+                    .len()
+                    .saturating_sub(boundary_completed_operations);
+                detached.restore_boundary_engine(boundary_engine);
+                completed_bindings.truncate(boundary_completed_operations);
+                operation_results.truncate(boundary_completed_operations);
+                last_checkpoint_manifest = boundary_checkpoint_manifest;
+                if reuse_checkpoint_frozen_at.is_none() {
+                    reuse_checkpoint_frozen_at = Some(completed_bindings.len());
+                }
+                gene_failures.push(json!({
+                    "ordinal": binding.workflow_ordinal,
+                    "plan_id": binding.plan_id,
+                    "gene_symbol": binding.gene_symbol,
+                    "workflow_run_id": binding.workflow_run_id,
+                    "failed_global_operation_ordinal": binding.global_operation_ordinal,
+                    "failed_workflow_operation_ordinal": binding.workflow_operation_ordinal,
+                    "reason_code": "approved_operation_failed",
+                    "detail": error.to_string(),
+                    "rolled_back_to_gene_boundary": true,
+                    "rolled_back_operation_count": rolled_back_operation_count,
+                }));
+                warnings.push(format!(
+                    "Gene '{}' (plan '{}') was rolled back to its own boundary after operation {}/{} failed: {}. GENtle continued with the other precomputed genes in batch '{}'; the requested coverage policy is unchanged and this gene has no designed assay in the committed project.",
+                    binding.gene_symbol,
+                    binding.plan_id,
+                    binding.workflow_operation_ordinal,
+                    verified
+                        .batch
+                        .entries
+                        .get(binding.workflow_ordinal.saturating_sub(1))
+                        .map(|entry| entry.operation_count)
+                        .unwrap_or_default(),
+                    error,
+                    verified.batch.batch_id
+                ));
+                skipping_workflow_ordinal = Some(binding.workflow_ordinal);
+                batch_frame.update_detail(approved_study_batch_progress_detail(
+                    &verified.batch.batch_id,
+                    binding,
+                    workflow_count,
+                    operation_count,
+                    fully_completed_workflow_count(&verified.batch, &completed_bindings),
+                    gene_failures.len(),
+                ));
+                continue;
+            }
+            Err(error) => {
+                let receipt = last_checkpoint_manifest
+                    .as_ref()
+                    .map(|path| {
+                        format!(
+                            "; last successful checkpoint='{}' completed_operations={} completed_genes={}",
+                            path.display(),
+                            completed_bindings.len(),
+                            completed_workflow_count(&verified.batch, completed_bindings.len())
+                        )
+                    })
+                    .unwrap_or_default();
+                let message = format!(
+                    "Approved batch '{}' failed at gene '{}' plan '{}' workflow {}/{} operation {}/{}: {}{}. Live project state was not changed",
+                    verified.batch.batch_id,
+                    binding.gene_symbol,
+                    binding.plan_id,
+                    binding.workflow_ordinal,
+                    workflow_count,
+                    binding.global_operation_ordinal,
+                    operation_count,
+                    error,
+                    receipt
+                );
+                batch_frame.fail(&message);
+                return Err(message);
+            }
+        };
+        let result = results.pop().ok_or_else(|| {
+            "Approved one-operation workflow returned no operation result".to_string()
+        })?;
+        operation_results.push(result);
+        completed_bindings.push(binding.clone());
+        // Reuse imports an exact contiguous operation prefix. Continue-mode
+        // rollback is gene-atomic, so it must never persist a checkpoint for a
+        // partial gene that could later be rediscovered after that gene is
+        // rolled back. Abort mode retains per-operation recovery points.
+        let completed_gene_boundary = verified
+            .batch
+            .entries
+            .get(binding.workflow_ordinal.saturating_sub(1))
+            .is_some_and(|entry| binding.workflow_operation_ordinal == entry.operation_count);
+        let checkpoint_due = on_gene_failure == GeneIsoformAssayStudyGeneFailurePolicy::Abort
+            || completed_gene_boundary;
+        // Once a gene has been skipped the completed set has a hole, so the
+        // checkpoint stops advancing rather than describing a prefix that no
+        // longer exists.
+        if let Some(root) = checkpoint_root.as_deref()
+            && reuse_checkpoint_frozen_at.is_none()
+            && checkpoint_due
+        {
+            last_checkpoint_manifest = Some(write_gene_isoform_assay_checkpoint(
+                root,
+                &detached,
+                &verified,
+                &runtime,
+                &baseline_state_sha256,
+                &completed_bindings,
+                &operation_results,
+            )?);
+        }
+    }
+
+    let completed_workflows = fully_completed_workflow_count(&verified.batch, &completed_bindings);
+    let failed_workflow_count = gene_failures.len();
+    if failed_workflow_count > 0 && completed_bindings.is_empty() {
+        let message = format!(
+            "Approved batch '{}' completed no gene: all {} gene(s) failed under --on-gene-failure continue. Live project state was not changed. Per-gene detail: {}",
+            verified.batch.batch_id,
+            failed_workflow_count,
+            serde_json::to_string(&gene_failures).map_err(|error| error.to_string())?
+        );
+        batch_frame.fail(&message);
+        return Err(message);
+    }
+    if failed_workflow_count > 0 {
+        warnings.push(format!(
+            "Batch '{}' is partial: {}/{} gene(s) completed and {} failed. The requested coverage policy was not weakened; compose a new batch for the failed gene(s) against the committed baseline rather than reusing this run's checkpoint.",
+            verified.batch.batch_id,
+            completed_workflows,
+            workflow_count,
+            failed_workflow_count
+        ));
+    }
+
+    let final_state_sha256 =
+        canonical_json_sha256(detached.engine().snapshot(), "completed project state")?;
+    let state_changed = final_state_sha256 != baseline_state_sha256;
+    let prior_engine = engine
+        .commit_detached_execution(&mut detached)
+        .map_err(|error| error.to_string())?;
+    drop(prior_engine);
+    batch_frame.update_progress(Some(100.0));
+    batch_frame.update_detail(format!(
+        "batch={} completed_genes={}/{} failed_genes={} remaining_genes=0 completed_operations={}/{} committed=true",
+        verified.batch.batch_id,
+        completed_workflows,
+        workflow_count,
+        failed_workflow_count,
+        completed_bindings.len(),
+        operation_count
+    ));
+    batch_frame.update_state(crate::runtime_status::RuntimeStatusFrameState::Completed);
+
+    // Group results by the gene that produced them. A rolled-back gene
+    // contributes none, so results can no longer be sliced by cumulative
+    // operation offsets.
+    let mut results_by_workflow_ordinal = BTreeMap::<usize, Vec<crate::engine::OpResult>>::new();
+    for (binding, result) in completed_bindings.iter().zip(operation_results.iter()) {
+        results_by_workflow_ordinal
+            .entry(binding.workflow_ordinal)
+            .or_default()
+            .push(result.clone());
+    }
+    let failure_by_workflow_ordinal = gene_failures
+        .iter()
+        .filter_map(|failure| {
+            failure
+                .get("ordinal")
+                .and_then(serde_json::Value::as_u64)
+                .map(|ordinal| (ordinal as usize, failure))
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    let mut executions = vec![];
+    let mut operation_offset = 0usize;
+    for (index, entry) in verified.entries.iter().enumerate() {
+        let ordinal = index.saturating_add(1);
+        let results = results_by_workflow_ordinal
+            .get(&ordinal)
+            .cloned()
+            .unwrap_or_default();
+        let reused_in_workflow = reused_operation_count
+            .saturating_sub(operation_offset)
+            .min(entry.workflow.ops.len());
+        let failure = failure_by_workflow_ordinal.get(&ordinal).copied();
+        executions.push(json!({
+            "ordinal": ordinal,
+            "plan_id": entry.plan.plan_id,
+            "gene_symbol": entry.plan.gene_symbol,
+            "approved_workflow_sha256": entry.workflow_sha256,
+            "operation_batch_sha256": entry.operation_batch_sha256,
+            "operation_count": entry.workflow.ops.len(),
+            "reused_operation_count": reused_in_workflow,
+            "status": if failure.is_some() { "failed" } else { "completed" },
+            "failure": failure,
+            "execution": {
+                "results": results,
+            },
+        }));
+        operation_offset = operation_offset.saturating_add(entry.workflow.ops.len());
+    }
+    Ok(ShellRunResult {
+        state_changed,
+        output: json!({
+            "schema": GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_EXECUTION_SCHEMA,
+            "batch_id": verified.batch.batch_id,
+            "batch_basis_sha256": verified.batch.batch_basis_sha256,
+            "combined_operation_batch_sha256": verified.batch.combined_operation_batch_sha256,
+            "total_operation_count": operation_count,
+            "workflow_count": workflow_count,
+            "batch_verified_before_execution": true,
+            "atomic_detached_execution": failed_workflow_count == 0,
+            "execution_atomicity": if failed_workflow_count == 0 { "batch" } else { "per_gene" },
+            "gene_failure_policy": on_gene_failure.as_str(),
+            "batch_complete": failed_workflow_count == 0,
+            "completed_workflow_count": completed_workflows,
+            "failed_workflow_count": failed_workflow_count,
+            "completed_operation_count": completed_bindings.len(),
+            "skipped_operation_count": skipped_operation_count,
+            "gene_failures": gene_failures,
+            "baseline_state_sha256": baseline_state_sha256,
+            "final_state_sha256": final_state_sha256,
+            "runtime": runtime,
+            "endpoint_feasibility": verified.endpoint_feasibility,
+            "reuse": {
+                "approved": reused_operation_count > 0,
+                "checkpoint_id": reused_checkpoint_id,
+                "reused_operation_count": reused_operation_count,
+                "reused_workflow_count": reused_workflow_count,
+            },
+            "reuse_checkpoint": {
+                "frozen": reuse_checkpoint_frozen_at.is_some(),
+                "frozen_at_completed_operation_count": reuse_checkpoint_frozen_at,
+                "reason_code": reuse_checkpoint_frozen_at
+                    .map(|_| "gene_failure_broke_exact_prefix"),
+            },
+            "last_checkpoint_manifest": last_checkpoint_manifest,
+            "warnings": warnings,
+            "executions": executions,
+        }),
     })
 }
 
@@ -54077,7 +67524,16 @@ fn execute_ui_command(
                         "ui open TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]",
                         "ui focus TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]",
                         "ui close TARGET",
+                        "ui open recent-project ITEM_ID",
+                        "ui open tutorial-project CHAPTER_ID",
+                        "ui open tutorial-guide TUTORIAL_ID",
+                        "ui open configuration [SECTION]",
+                        "ui focus configuration [SECTION]",
+                        "ui close configuration",
                         "ui open sequence-window SEQ_ID",
+                        "ui open|focus|close splicing-expert SEQ_ID FEATURE_ID",
+                        "ui open|focus|close tss-view --collection COLLECTION_ID",
+                        "ui open|focus tss-view --report REPORT_JSON",
                         "ui focus sequence-window SEQ_ID",
                         "ui close sequence-window SEQ_ID",
                         "ui selection sequence-window SEQ_ID [--range START..END]",
@@ -54088,6 +67544,10 @@ fn execute_ui_command(
                         "UI intent commands are host-application intents and require GUI host integration to apply.",
                         "CLI execution returns deterministic intent/query payloads for agents/automation.",
                         "prepared-references target accepts query flags to resolve selected_genome_id; explicit --genome-id overrides query selection.",
+                        "recent-project ITEM_ID values are opaque GUI-host tokens; CLI/MCP can record the intent but cannot discover private recent-project paths.",
+                        "tutorial-project CHAPTER_ID values come from the GUI-host tutorial catalog.",
+                        "tutorial-guide TUTORIAL_ID values come from the GUI-host tutorial guide/reference catalog.",
+                        "configuration SECTION values are external-applications, agent-systems, microarrays, graphics, or language.",
                         "target_details rows carry stable titles, menu paths, keywords, and optional arguments for discoverability surfaces such as the GUI command palette and MCP clients.",
                         "target_metadata is retained as a compatibility alias for older command-catalog clients."
                     ]
@@ -54117,6 +67577,137 @@ fn execute_ui_command(
             *latest,
             options,
         ),
+        ShellCommand::UiRecentProject { item_id } => Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "schema": "gentle.ui_recent_project_intent.v1",
+                "ui_intent": {
+                    "action": "open",
+                    "target": "recent-project",
+                    "item_id": item_id
+                },
+                "applied": false,
+                "message": "UI intent recorded; resolving an opaque recent-project id requires GUI host integration."
+            }),
+        }),
+        ShellCommand::UiTutorialProject { chapter_id } => Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "schema": "gentle.ui_tutorial_project_intent.v1",
+                "ui_intent": {
+                    "action": "open",
+                    "target": "tutorial-project",
+                    "chapter_id": chapter_id
+                },
+                "applied": false,
+                "message": "UI intent recorded; building a tutorial project requires GUI host integration."
+            }),
+        }),
+        ShellCommand::UiTutorialGuide { tutorial_id } => Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "schema": "gentle.ui_tutorial_guide_intent.v1",
+                "ui_intent": {
+                    "action": "open",
+                    "target": "tutorial-guide",
+                    "tutorial_id": tutorial_id
+                },
+                "applied": false,
+                "message": "UI intent recorded; opening a tutorial guide requires GUI host integration."
+            }),
+        }),
+        ShellCommand::UiConfiguration { action, section } => {
+            let message = if matches!(action, UiIntentAction::Close) {
+                "UI intent recorded; closing Configuration requires GUI host integration."
+            } else {
+                "UI intent recorded; opening or focusing Configuration requires GUI host integration."
+            };
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.ui_configuration_intent.v1",
+                    "ui_intent": {
+                        "action": action.as_str(),
+                        "target": "configuration",
+                        "section": section.as_str()
+                    },
+                    "applied": false,
+                    "message": message
+                }),
+            })
+        }
+        ShellCommand::UiTssCollection {
+            action,
+            collection_id,
+        } => {
+            let report = engine
+                .get_tss_collection(collection_id)
+                .map_err(|e| e.to_string())?;
+            if report.members.len() > 32 {
+                return Err("Opening a TSS collection is limited to 32 windows; materialize a smaller selection".into());
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.ui_tss_collection_intent.v1", "applied": false,
+                    "ui_intent": { "target": "tss-view", "action": action.as_str(), "collection_id": collection_id },
+                    "members": report.members.iter().map(|m| json!({"seq_id":m.tss.output_seq_id,"status":"host_pending"})).collect::<Vec<_>>(),
+                    "message": "Validated collection; window opening/focus/closing requires a GUI host. Sequences are not deleted."
+                }),
+            })
+        }
+        ShellCommand::UiTssProfile {
+            action,
+            report_path,
+        } => Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "schema": "gentle.ui_tss_profile_intent.v1",
+                "applied": false,
+                "ui_intent": {
+                    "target": "tss-view",
+                    "action": action.as_str(),
+                    "report_path": report_path
+                },
+                "message": "UI intent recorded; the active annotated TSS viewer must validate and attach this report. No scoring or database query is performed."
+            }),
+        }),
+        ShellCommand::UiTssLocalScore {
+            action,
+            matrix_ids,
+            score_kind,
+            clip_negative,
+        } => Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "schema": "gentle.ui_tss_local_score_intent.v1",
+                "applied": false,
+                "ui_intent": {
+                    "target": "tss-view",
+                    "action": action.as_str(),
+                    "matrix_ids": matrix_ids,
+                    "score_kind": score_kind.as_str(),
+                    "clip_negative": clip_negative
+                },
+                "message": "UI intent recorded; the active annotated TSS viewer computes these curves on its own worker with its own settings. Locally computed lanes never replace an attached report or imported evidence. For a headless result use promoters tss-view-svg SEQ_ID OUTPUT.svg --motif ACCESSION instead."
+            }),
+        }),
+        ShellCommand::UiSplicingExpert {
+            action,
+            seq_id,
+            feature_id,
+        } => Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "schema": "gentle.ui_splicing_expert_intent.v1",
+                "ui_intent": {
+                    "action": action.as_str(), "target": "splicing-expert",
+                    "seq_id": seq_id, "feature_id": feature_id
+                },
+                "applied": false,
+                "message": "UI intent recorded; a GUI host must resolve the loaded sequence/feature and open, focus or close its Splicing Expert. No sequence, feature or report is deleted. For headless inspection use inspect-feature-expert SEQ_ID splicing FEATURE_ID."
+            }),
+        }),
         ShellCommand::UiSequenceWindow { action, seq_id } => Ok(ShellRunResult {
             state_changed: false,
             output: json!({
@@ -54296,10 +67887,19 @@ fn execute_shell_command_with_options_on_expanded_stack(
     let engine_ptr = engine as *mut GentleEngine as usize;
     let command = command.clone();
     let options = options.clone();
+    let runtime_parent = crate::runtime_status::RuntimeParentScope::capture();
+    #[cfg(test)]
+    let scoped_tool_overrides = crate::tool_overrides::scoped_tool_overrides_snapshot();
     let worker = thread::Builder::new()
         .name("gentle-shell-command".to_string())
-        .stack_size(SHELL_EXPANDED_STACK_SIZE)
+        .stack_size(SHELL_COMMAND_STACK_SIZE)
         .spawn(move || {
+            let _runtime_parent = crate::runtime_status::RuntimeParentScope::enter(runtime_parent);
+            #[cfg(test)]
+            let _scoped_tool_overrides =
+                crate::tool_overrides::ScopedToolOverridesSnapshotGuard::install(
+                    scoped_tool_overrides,
+                );
             SHELL_EXPANDED_STACK_ACTIVE.with(|active| {
                 let was_active = active.replace(true);
                 // SAFETY: the caller synchronously joins this worker before
@@ -54332,8 +67932,47 @@ fn execute_shell_command_with_options_dispatch(
     command: &ShellCommand,
     options: &ShellExecutionOptions,
 ) -> Result<ShellRunResult, String> {
+    let preview = command.preview();
+    let frame = runtime_status_registry().push_with_detail(
+        RuntimeStatusFrameKind::ShellCommand,
+        "shared shell command",
+        Some(preview.clone()),
+    );
+    frame.update_phase("dispatch");
+    let result = execute_shell_command_with_options_dispatch_inner(engine, command, options);
+    if let Err(error) = &result {
+        frame.fail(error);
+    }
+    result
+}
+
+#[inline(never)]
+fn execute_shell_command_with_options_dispatch_inner(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+    options: &ShellExecutionOptions,
+) -> Result<ShellRunResult, String> {
     if matches!(command, ShellCommand::Help { .. }) {
         return execute_help_command(engine, command);
+    }
+    if let ShellCommand::ReferencePrepare {
+        helper_mode,
+        genome_id,
+        catalog_path,
+        cache_dir,
+        timeout_seconds,
+    } = command
+    {
+        return execute_prepare_genome_operation(
+            engine,
+            Operation::PrepareGenome {
+                genome_id: genome_id.clone(),
+                catalog_path: operation_catalog_path(catalog_path, *helper_mode),
+                cache_dir: cache_dir.clone(),
+                timeout_seconds: *timeout_seconds,
+            },
+            options,
+        );
     }
     if let Some(result) = execute_stack_safe_reference_command(engine, command) {
         return result;
@@ -54351,6 +67990,7 @@ fn execute_shell_command_with_options_dispatch(
         max_response_bytes,
         include_state_summary,
         allow_auto_exec,
+        allow_web_research,
         execute_all,
         execute_indices,
     } = command
@@ -54369,6 +68009,7 @@ fn execute_shell_command_with_options_dispatch(
             *max_response_bytes,
             *include_state_summary,
             *allow_auto_exec,
+            *allow_web_research,
             *execute_all,
             execute_indices,
             options,
@@ -54434,6 +68075,7 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::IntrospectCapabilities { .. }
             | ShellCommand::IntrospectReadiness { .. }
             | ShellCommand::IntrospectVerifyEffects { .. }
+            | ShellCommand::IntrospectRuntime
             | ShellCommand::IntrospectAll { .. }
     ) {
         return execute_agent_meta_command(engine, command);
@@ -54577,6 +68219,7 @@ fn execute_shell_command_with_options_dispatch(
     if matches!(
         command,
         ShellCommand::ExportPool { .. }
+            | ShellCommand::CollectionsRunExportPool { .. }
             | ShellCommand::ExportRunBundle { .. }
             | ShellCommand::ExportLabInstructions { .. }
             | ShellCommand::ImportPool { .. }
@@ -54603,6 +68246,12 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::ResourcesInstallUcscRmsk { .. }
             | ShellCommand::ResourcesPrepareUcscRmskIndex { .. }
             | ShellCommand::ResourcesSuggestUcscRmskIndex { .. }
+            | ShellCommand::ResourcesListEncodeCcreSources { .. }
+            | ShellCommand::ResourcesInstallEncodeCcres { .. }
+            | ShellCommand::ResourcesPrepareEncodeCcreIndex { .. }
+            | ShellCommand::ResourcesListEnsemblRegulationSources { .. }
+            | ShellCommand::ResourcesInstallEnsemblRegulatoryFeatures { .. }
+            | ShellCommand::ResourcesPrepareEnsemblRegulationIndex { .. }
             | ShellCommand::ResourcesSyncJasparRemoteMetadata { .. }
             | ShellCommand::ResourcesBenchmarkJaspar { .. }
             | ShellCommand::ResourcesListJaspar { .. }
@@ -54613,21 +68262,33 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::GeneGroupsDoctor { .. }
             | ShellCommand::GeneGroupsDraft { .. }
             | ShellCommand::GeneSetsResolve { .. }
+            | ShellCommand::GeneSetsCreatePool { .. }
             | ShellCommand::GeneSetsProduceDirectList { .. }
             | ShellCommand::GeneSetsProduceOntologyAssignment { .. }
             | ShellCommand::GeneSetsProduceCoRegulatedCohort { .. }
             | ShellCommand::GeneSetsPromoterCohort { .. }
+            | ShellCommand::GeneSetsRegulatoryPartnerScreen { .. }
             | ShellCommand::OrthologsResolvePromoterCohort { .. }
             | ShellCommand::OrthologsPromoterComparison { .. }
+            | ShellCommand::OrthologsConservationComparison { .. }
             | ShellCommand::ReportersList { .. }
             | ShellCommand::ReportersRecommend { .. }
             | ShellCommand::ReportersExportCorpus { .. }
+            | ShellCommand::PromotersCompareArchitectures { .. }
+            | ShellCommand::PromotersComposeStudy { .. }
+            | ShellCommand::PromotersPanelPlan { .. }
+            | ShellCommand::PromotersFragmentCandidates { .. }
+            | ShellCommand::PromotersRegulatoryPanelPlan { .. }
+            | ShellCommand::PromotersRegulatoryPanelRender { .. }
+            | ShellCommand::PromotersPanelReadiness { .. }
+            | ShellCommand::PromotersPanelMaterialize { .. }
             | ShellCommand::ResourcesListPublicationDatasets { .. }
             | ShellCommand::ResourcesPublicationDatasetStatus { .. }
             | ShellCommand::ResourcesPreparePublicationDataset { .. }
             | ShellCommand::ResourcesInspectJaspar { .. }
             | ShellCommand::ResourcesSummarizeJaspar { .. }
             | ShellCommand::ResourcesSyncAttract { .. }
+            | ShellCommand::ResourcesSyncMaxent { .. }
     ) {
         return execute_export_import_and_resource_command(engine, command);
     }
@@ -54722,12 +68383,40 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::PrimersSeedFromSplicing { .. }
             | ShellCommand::PrimersSeedQpcrFromFeature { .. }
             | ShellCommand::PrimersSeedQpcrFromSplicing { .. }
+            | ShellCommand::PrimersPrimerBankSearch { .. }
+            | ShellCommand::PrimersPrimerBankTestCdna { .. }
             | ShellCommand::PrimersDesign { .. }
+            | ShellCommand::PrimersDesignTerminalExonRtPool { .. }
             | ShellCommand::PrimersDesignQpcr { .. }
             | ShellCommand::PrimersSpecificity { .. }
+            | ShellCommand::CollectionsRunPrimerSpecificity { .. }
+            | ShellCommand::CollectionsRunRestrictionScan { .. }
+            | ShellCommand::CollectionsRunConstructReasoningInspection { .. }
+            | ShellCommand::CollectionsRunTfbsScan { .. }
+            | ShellCommand::CollectionsRunDigest { .. }
+            | ShellCommand::PrimersSpecificityPlan { .. }
+            | ShellCommand::PrimersSpecificityImport { .. }
+            | ShellCommand::PrimersSpecificityAlignmentHtml { .. }
+            | ShellCommand::PrimersTranscriptAssaySpecificityPlan { .. }
+            | ShellCommand::PrimersTranscriptAssaySpecificityFinalize { .. }
+            | ShellCommand::PrimersTranscriptAssaySpecificityRedesign { .. }
+            | ShellCommand::PrimersImportExternalPairs { .. }
+            | ShellCommand::PrimersScreenVariants { .. }
             | ShellCommand::PrimersTestCdnaPcr { .. }
             | ShellCommand::PrimersTestCdnaQpcr { .. }
             | ShellCommand::PrimersTranscriptQpcrPanel { .. }
+            | ShellCommand::PrimersBuildTranscriptAssayCdnaSimilarityMap { .. }
+            | ShellCommand::PrimersDesignGroupTarget { .. }
+            | ShellCommand::PrimersDesignTranscriptAssayPanel { .. }
+            | ShellCommand::PrimersDesignTranscriptAssayPanelRequest { .. }
+            | ShellCommand::PrimersInspectTranscriptAssayFeasibility { .. }
+            | ShellCommand::PrimersPlanGeneIsoformAssayStudy { .. }
+            | ShellCommand::PrimersExecuteGeneIsoformAssayStudyWorkflow { .. }
+            | ShellCommand::PrimersComposeGeneIsoformAssayStudyWorkflowBatch { .. }
+            | ShellCommand::PrimersInspectGeneIsoformAssayStudyReuse { .. }
+            | ShellCommand::PrimersExecuteGeneIsoformAssayStudyWorkflowBatch { .. }
+            | ShellCommand::PrimersPublishGeneIsoformAssayStudy { .. }
+            | ShellCommand::PrimersComposeGeneTranscriptAssayRoutine { .. }
             | ShellCommand::PrimersTestCdnaQpcrFasta { .. }
             | ShellCommand::PrimersPrepareRestrictionCloning { .. }
             | ShellCommand::PrimersSeedRestrictionCloningHandoff { .. }
@@ -54742,9 +68431,17 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::PrimersListQpcrReports
             | ShellCommand::PrimersShowQpcrReport { .. }
             | ShellCommand::PrimersExportQpcrReport { .. }
+            | ShellCommand::PrimersListTranscriptAssayPanels
+            | ShellCommand::PrimersShowTranscriptAssayPanel { .. }
+            | ShellCommand::PrimersExportTranscriptAssayPanel { .. }
+            | ShellCommand::PrimersListTranscriptAssayFallbacks
+            | ShellCommand::PrimersShowTranscriptAssayFallback { .. }
+            | ShellCommand::PrimersExportTranscriptAssayFallback { .. }
+            | ShellCommand::PrimersExperimentalHandoff { .. }
             | ShellCommand::PrimersOligoOrderCreate { .. }
             | ShellCommand::PrimersOligoOrderFromPrimerReport { .. }
             | ShellCommand::PrimersOligoOrderFromQpcrReport { .. }
+            | ShellCommand::PrimersOligoOrderFromExperimentalHandoff { .. }
             | ShellCommand::PrimersOligoOrderList
             | ShellCommand::PrimersOligoOrderShow { .. }
             | ShellCommand::PrimersOligoOrderExport { .. }
@@ -54754,11 +68451,20 @@ fn execute_shell_command_with_options_dispatch(
     ) {
         return execute_primers_command(engine, command, options);
     }
+    if matches!(command, ShellCommand::GenomicRegions { .. }) {
+        return execute_genomic_regions_command(engine, command);
+    }
     if matches!(
         command,
         ShellCommand::InspectFeatureExpert { .. }
             | ShellCommand::InspectSplicingAttract { .. }
+            | ShellCommand::SplicingCrypticScreen { .. }
+            | ShellCommand::SplicingCrypticRender { .. }
+            | ShellCommand::SplicingCrypticExport { .. }
+            | ShellCommand::SplicingCrypticOverlay { .. }
+            | ShellCommand::SplicingCrypticProtein { .. }
             | ShellCommand::RenderFeatureExpertSvg { .. }
+            | ShellCommand::PrepareGeneLocusEvidence { .. }
             | ShellCommand::PanelsImportIsoform { .. }
             | ShellCommand::PanelsInspectIsoform { .. }
             | ShellCommand::PanelsRenderIsoformSvg { .. }
@@ -54772,6 +68478,11 @@ fn execute_shell_command_with_options_dispatch(
     if matches!(
         command,
         ShellCommand::FeaturesResolveFormula { .. }
+            | ShellCommand::FeaturesEditLocation { .. }
+            | ShellCommand::FeaturesCreate { .. }
+            | ShellCommand::FeaturesDelete { .. }
+            | ShellCommand::FeaturesSplit { .. }
+            | ShellCommand::FeaturesMerge { .. }
             | ShellCommand::FeaturesQuery { .. }
             | ShellCommand::FeaturesExportBed { .. }
             | ShellCommand::FeaturesTfbsSummary { .. }
@@ -54779,9 +68490,15 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::FeaturesTfbsTrackSimilarity { .. }
             | ShellCommand::FeaturesTfbsScoreTrackCorrelationSvg { .. }
             | ShellCommand::FeaturesTfbsScan { .. }
+            | ShellCommand::FeaturesGenomicMotifEvidence { .. }
+            | ShellCommand::FeaturesPromoterCofactors { .. }
             | ShellCommand::FeaturesRepeatQuery { .. }
             | ShellCommand::FeaturesRepeatOverlaps { .. }
             | ShellCommand::FeaturesMaterializeRepeats { .. }
+            | ShellCommand::FeaturesEncodeCcreOverlaps { .. }
+            | ShellCommand::FeaturesMaterializeEncodeCcres { .. }
+            | ShellCommand::FeaturesEnsemblRegulationOverlaps { .. }
+            | ShellCommand::FeaturesMaterializeEnsemblRegulation { .. }
             | ShellCommand::FeaturesRepeatCohort { .. }
             | ShellCommand::FeaturesWindowCohortTfbs { .. }
             | ShellCommand::FeaturesPromoterEvidenceMatrix { .. }
@@ -54856,6 +68573,7 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::UniprotTranscriptAccounting { .. }
             | ShellCommand::UniprotCompareEnsemblExons { .. }
             | ShellCommand::UniprotCompareEnsemblPeptide { .. }
+            | ShellCommand::UniprotBuildLinkedTranscriptInventory { .. }
             | ShellCommand::UniprotAuditProjection { .. }
             | ShellCommand::UniprotAuditParity { .. }
             | ShellCommand::UniprotAuditList { .. }
@@ -54894,6 +68612,7 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::RnaReadsInspectAlignments { .. }
             | ShellCommand::RnaReadsInspectConcatemers { .. }
             | ShellCommand::RnaReadsBuildTranscriptIndex { .. }
+            | ShellCommand::RnaReadsAlleleHashScreen { .. }
             | ShellCommand::RnaReadsMaterializeHits { .. }
             | ShellCommand::RnaReadsExportReport { .. }
             | ShellCommand::RnaReadsExportHitsFasta { .. }
@@ -54901,6 +68620,9 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::RnaReadsExportTargetQuality { .. }
             | ShellCommand::RnaReadsExportExonPathsTsv { .. }
             | ShellCommand::RnaReadsExportExonAbundanceTsv { .. }
+            | ShellCommand::RnaReadsExportDexseqAnnotationGff { .. }
+            | ShellCommand::RnaReadsExportDexseqCountsTsv { .. }
+            | ShellCommand::RnaReadsVerifyDexseq { .. }
             | ShellCommand::RnaReadsExportScoreDensitySvg { .. }
             | ShellCommand::RnaReadsExportAlignmentsTsv { .. }
             | ShellCommand::RnaReadsExportIsoformTriageTsv { .. }
@@ -54930,7 +68652,15 @@ fn execute_shell_command_with_options_dispatch(
         command,
         ShellCommand::UiListIntents
             | ShellCommand::UiIntent { .. }
+            | ShellCommand::UiRecentProject { .. }
+            | ShellCommand::UiTutorialProject { .. }
+            | ShellCommand::UiTutorialGuide { .. }
+            | ShellCommand::UiConfiguration { .. }
             | ShellCommand::UiSequenceWindow { .. }
+            | ShellCommand::UiSplicingExpert { .. }
+            | ShellCommand::UiTssCollection { .. }
+            | ShellCommand::UiTssProfile { .. }
+            | ShellCommand::UiTssLocalScore { .. }
             | ShellCommand::UiSequenceSelection { .. }
             | ShellCommand::UiPreparedGenomes { .. }
             | ShellCommand::UiLatestPrepared { .. }
@@ -54938,10 +68668,10 @@ fn execute_shell_command_with_options_dispatch(
         return execute_ui_command(engine, command, options);
     }
     if let ShellCommand::Op { payload } = command {
-        return execute_op_command(engine, payload);
+        return execute_op_command(engine, payload, options);
     }
     if let ShellCommand::Workflow { payload } = command {
-        return execute_workflow_command(engine, payload);
+        return execute_workflow_command(engine, payload, options);
     }
     execute_shell_command_with_options_inner(engine, command, options)
 }
@@ -54967,6 +68697,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::IntrospectCapabilities { .. }
         | ShellCommand::IntrospectReadiness { .. }
         | ShellCommand::IntrospectVerifyEffects { .. }
+        | ShellCommand::IntrospectRuntime
         | ShellCommand::IntrospectAll { .. } => execute_agent_meta_command(engine, command)?,
         ShellCommand::HistoryStatus | ShellCommand::HistoryUndo | ShellCommand::HistoryRedo => {
             execute_history_command(engine, command)?
@@ -55077,18 +68808,34 @@ fn execute_shell_command_with_options_inner(
             }
         }
         ShellCommand::InspectFeatureExpert { .. }
+        | ShellCommand::GenomicRegions { .. }
         | ShellCommand::InspectSplicingAttract { .. }
+        | ShellCommand::SplicingCrypticScreen { .. }
+        | ShellCommand::SplicingCrypticRender { .. }
+        | ShellCommand::SplicingCrypticExport { .. }
+        | ShellCommand::SplicingCrypticOverlay { .. }
+        | ShellCommand::SplicingCrypticProtein { .. }
         | ShellCommand::RenderFeatureExpertSvg { .. }
+        | ShellCommand::PrepareGeneLocusEvidence { .. }
         | ShellCommand::PanelsImportIsoform { .. }
         | ShellCommand::PanelsInspectIsoform { .. }
         | ShellCommand::PanelsRenderIsoformSvg { .. }
         | ShellCommand::PanelsValidateIsoform { .. } => {
-            execute_feature_expert_command(engine, command)?
+            if matches!(command, ShellCommand::GenomicRegions { .. }) {
+                execute_genomic_regions_command(engine, command)?
+            } else {
+                execute_feature_expert_command(engine, command)?
+            }
         }
         ShellCommand::FeaturesRestrictionScan { .. } => {
             execute_features_restriction_scan_command(engine, command)?
         }
         ShellCommand::FeaturesResolveFormula { .. }
+        | ShellCommand::FeaturesEditLocation { .. }
+        | ShellCommand::FeaturesCreate { .. }
+        | ShellCommand::FeaturesDelete { .. }
+        | ShellCommand::FeaturesSplit { .. }
+        | ShellCommand::FeaturesMerge { .. }
         | ShellCommand::FeaturesQuery { .. }
         | ShellCommand::FeaturesExportBed { .. }
         | ShellCommand::FeaturesTfbsSummary { .. }
@@ -55096,9 +68843,15 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::FeaturesTfbsTrackSimilarity { .. }
         | ShellCommand::FeaturesTfbsScoreTrackCorrelationSvg { .. }
         | ShellCommand::FeaturesTfbsScan { .. }
+        | ShellCommand::FeaturesGenomicMotifEvidence { .. }
+        | ShellCommand::FeaturesPromoterCofactors { .. }
         | ShellCommand::FeaturesRepeatQuery { .. }
         | ShellCommand::FeaturesRepeatOverlaps { .. }
         | ShellCommand::FeaturesMaterializeRepeats { .. }
+        | ShellCommand::FeaturesEncodeCcreOverlaps { .. }
+        | ShellCommand::FeaturesMaterializeEncodeCcres { .. }
+        | ShellCommand::FeaturesEnsemblRegulationOverlaps { .. }
+        | ShellCommand::FeaturesMaterializeEnsemblRegulation { .. }
         | ShellCommand::FeaturesRepeatCohort { .. }
         | ShellCommand::FeaturesWindowCohortTfbs { .. }
         | ShellCommand::FeaturesPromoterEvidenceMatrix { .. }
@@ -55150,6 +68903,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::UniprotTranscriptAccounting { .. }
         | ShellCommand::UniprotCompareEnsemblExons { .. }
         | ShellCommand::UniprotCompareEnsemblPeptide { .. }
+        | ShellCommand::UniprotBuildLinkedTranscriptInventory { .. }
         | ShellCommand::UniprotAuditProjection { .. }
         | ShellCommand::UniprotAuditParity { .. }
         | ShellCommand::UniprotAuditList { .. }
@@ -55215,6 +68969,26 @@ fn execute_shell_command_with_options_inner(
         }
         ShellCommand::GibsonPreview { .. } | ShellCommand::GibsonApply { .. } => {
             execute_gibson_command(engine, command)?
+        }
+        ShellCommand::Digest {
+            input,
+            enzymes,
+            output_prefix,
+        } => {
+            let op_result = engine
+                .apply(Operation::Digest {
+                    input: input.clone(),
+                    enzymes: enzymes.clone(),
+                    output_prefix: output_prefix.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            ShellRunResult {
+                state_changed: !op_result.created_seq_ids.is_empty(),
+                output: json!({
+                    "schema": "gentle.digest_command.v1",
+                    "result": op_result,
+                }),
+            }
         }
         ShellCommand::CacheInspect { .. } | ShellCommand::CacheClear { .. } => {
             execute_cache_command(engine, command)?
@@ -55293,6 +69067,7 @@ fn execute_shell_command_with_options_inner(
             execute_pool_gel_and_ladder_command(engine, command)?
         }
         ShellCommand::ExportPool { .. }
+        | ShellCommand::CollectionsRunExportPool { .. }
         | ShellCommand::ExportRunBundle { .. }
         | ShellCommand::ExportLabInstructions { .. }
         | ShellCommand::ImportPool { .. }
@@ -55319,6 +69094,12 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ResourcesInstallUcscRmsk { .. }
         | ShellCommand::ResourcesPrepareUcscRmskIndex { .. }
         | ShellCommand::ResourcesSuggestUcscRmskIndex { .. }
+        | ShellCommand::ResourcesListEncodeCcreSources { .. }
+        | ShellCommand::ResourcesInstallEncodeCcres { .. }
+        | ShellCommand::ResourcesPrepareEncodeCcreIndex { .. }
+        | ShellCommand::ResourcesListEnsemblRegulationSources { .. }
+        | ShellCommand::ResourcesInstallEnsemblRegulatoryFeatures { .. }
+        | ShellCommand::ResourcesPrepareEnsemblRegulationIndex { .. }
         | ShellCommand::ResourcesSyncJasparRemoteMetadata { .. }
         | ShellCommand::ResourcesBenchmarkJaspar { .. }
         | ShellCommand::ResourcesListJaspar { .. }
@@ -55329,21 +69110,33 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::GeneGroupsDoctor { .. }
         | ShellCommand::GeneGroupsDraft { .. }
         | ShellCommand::GeneSetsResolve { .. }
+        | ShellCommand::GeneSetsCreatePool { .. }
         | ShellCommand::GeneSetsProduceDirectList { .. }
         | ShellCommand::GeneSetsProduceOntologyAssignment { .. }
         | ShellCommand::GeneSetsProduceCoRegulatedCohort { .. }
         | ShellCommand::GeneSetsPromoterCohort { .. }
+        | ShellCommand::GeneSetsRegulatoryPartnerScreen { .. }
         | ShellCommand::OrthologsResolvePromoterCohort { .. }
         | ShellCommand::OrthologsPromoterComparison { .. }
+        | ShellCommand::OrthologsConservationComparison { .. }
         | ShellCommand::ReportersList { .. }
         | ShellCommand::ReportersRecommend { .. }
         | ShellCommand::ReportersExportCorpus { .. }
+        | ShellCommand::PromotersCompareArchitectures { .. }
+        | ShellCommand::PromotersComposeStudy { .. }
+        | ShellCommand::PromotersPanelPlan { .. }
+        | ShellCommand::PromotersFragmentCandidates { .. }
+        | ShellCommand::PromotersRegulatoryPanelPlan { .. }
+        | ShellCommand::PromotersRegulatoryPanelRender { .. }
+        | ShellCommand::PromotersPanelReadiness { .. }
+        | ShellCommand::PromotersPanelMaterialize { .. }
         | ShellCommand::ResourcesListPublicationDatasets { .. }
         | ShellCommand::ResourcesPublicationDatasetStatus { .. }
         | ShellCommand::ResourcesPreparePublicationDataset { .. }
         | ShellCommand::ResourcesInspectJaspar { .. }
         | ShellCommand::ResourcesSummarizeJaspar { .. }
-        | ShellCommand::ResourcesSyncAttract { .. } => {
+        | ShellCommand::ResourcesSyncAttract { .. }
+        | ShellCommand::ResourcesSyncMaxent { .. } => {
             execute_export_import_and_resource_command(engine, command)?
         }
         ShellCommand::RoutinesList { .. }
@@ -55377,6 +69170,7 @@ fn execute_shell_command_with_options_inner(
             max_response_bytes,
             include_state_summary,
             allow_auto_exec,
+            allow_web_research,
             execute_all,
             execute_indices,
         } => {
@@ -55386,8 +69180,15 @@ fn execute_shell_command_with_options_inner(
                         .to_string(),
                 );
             }
-            let state_summary = if *include_state_summary {
-                Some(engine.summarize_state())
+            let request_context = if *include_state_summary {
+                Some((
+                    engine.summarize_state(),
+                    build_agent_introspection_context_for_request(
+                        &engine.project_fact_graph(),
+                        prompt,
+                        None,
+                    ),
+                ))
             } else {
                 None
             };
@@ -55435,11 +69236,18 @@ fn execute_shell_command_with_options_inner(
                     max_response_bytes.to_string(),
                 );
             }
-            let invocation = invoke_agent_support_with_env_overrides(
+            if *allow_web_research {
+                env_overrides.insert(AGENT_ALLOW_WEB_RESEARCH_ENV.to_string(), "1".to_string());
+            }
+            let invocation = invoke_agent_support_with_request_context(
                 catalog_path.as_deref(),
                 system_id,
                 prompt,
-                state_summary.as_ref(),
+                request_context.as_ref().map(|(summary, _)| summary),
+                request_context
+                    .as_ref()
+                    .map(|(_, introspection)| introspection),
+                None,
                 if env_overrides.is_empty() {
                     None
                 } else {
@@ -55460,7 +69268,7 @@ fn execute_shell_command_with_options_inner(
                 .copied()
                 .filter(|idx| *idx >= 1 && *idx <= suggested_count)
                 .collect::<BTreeSet<_>>();
-            let (state_changed, execution_reports) = execute_agent_suggested_commands(
+            let (state_changed, mut execution_reports) = execute_agent_suggested_commands(
                 engine,
                 &suggested,
                 *execute_all,
@@ -55468,6 +69276,8 @@ fn execute_shell_command_with_options_inner(
                 *allow_auto_exec,
                 options,
             );
+            let execution_status_counts =
+                bind_agent_execution_reports(&invocation, &mut execution_reports);
             let executed_count = execution_reports.iter().filter(|row| row.executed).count();
             let executed_error_count = execution_reports
                 .iter()
@@ -55485,6 +69295,7 @@ fn execute_shell_command_with_options_inner(
                     "request": {
                         "include_state_summary": include_state_summary,
                         "allow_auto_exec": allow_auto_exec,
+                        "allow_web_research": allow_web_research,
                         "execute_all": execute_all,
                         "execute_indices": execute_indices,
                         "base_url_override": base_url_override,
@@ -55501,6 +69312,7 @@ fn execute_shell_command_with_options_inner(
                         "auto_suggestion_count": auto_suggestion_count,
                         "executed_count": executed_count,
                         "executed_error_count": executed_error_count,
+                        "execution_status_counts": execution_status_counts,
                     },
                     "executions": execution_reports
                 }),
@@ -55549,7 +69361,15 @@ fn execute_shell_command_with_options_inner(
         )?,
         ShellCommand::UiListIntents
         | ShellCommand::UiIntent { .. }
+        | ShellCommand::UiRecentProject { .. }
+        | ShellCommand::UiTutorialProject { .. }
+        | ShellCommand::UiTutorialGuide { .. }
+        | ShellCommand::UiConfiguration { .. }
         | ShellCommand::UiSequenceWindow { .. }
+        | ShellCommand::UiSplicingExpert { .. }
+        | ShellCommand::UiTssCollection { .. }
+        | ShellCommand::UiTssProfile { .. }
+        | ShellCommand::UiTssLocalScore { .. }
         | ShellCommand::UiSequenceSelection { .. }
         | ShellCommand::UiPreparedGenomes { .. }
         | ShellCommand::UiLatestPrepared { .. } => execute_ui_command(engine, command, options)?,
@@ -55579,6 +69399,9 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ReferenceStatus { .. }
         | ShellCommand::ReferenceGenes { .. }
         | ShellCommand::ReferencePrepare { .. }
+        | ShellCommand::ReferencePrepareBlastResource { .. }
+        | ShellCommand::ReferenceAdoptBlastResource { .. }
+        | ShellCommand::ReferenceInspectBlastResource { .. }
         | ShellCommand::ReferenceRemovePrepared { .. }
         | ShellCommand::ReferenceRemoveCatalogEntry { .. }
         | ShellCommand::ReferenceBlast { .. }
@@ -56428,12 +70251,40 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersSeedFromSplicing { .. }
         | ShellCommand::PrimersSeedQpcrFromFeature { .. }
         | ShellCommand::PrimersSeedQpcrFromSplicing { .. }
+        | ShellCommand::PrimersPrimerBankSearch { .. }
+        | ShellCommand::PrimersPrimerBankTestCdna { .. }
         | ShellCommand::PrimersDesign { .. }
+        | ShellCommand::PrimersDesignTerminalExonRtPool { .. }
         | ShellCommand::PrimersDesignQpcr { .. }
         | ShellCommand::PrimersSpecificity { .. }
+        | ShellCommand::CollectionsRunPrimerSpecificity { .. }
+        | ShellCommand::CollectionsRunRestrictionScan { .. }
+        | ShellCommand::CollectionsRunConstructReasoningInspection { .. }
+        | ShellCommand::CollectionsRunTfbsScan { .. }
+        | ShellCommand::CollectionsRunDigest { .. }
+        | ShellCommand::PrimersSpecificityPlan { .. }
+        | ShellCommand::PrimersSpecificityImport { .. }
+        | ShellCommand::PrimersSpecificityAlignmentHtml { .. }
+        | ShellCommand::PrimersTranscriptAssaySpecificityPlan { .. }
+        | ShellCommand::PrimersTranscriptAssaySpecificityFinalize { .. }
+        | ShellCommand::PrimersTranscriptAssaySpecificityRedesign { .. }
+        | ShellCommand::PrimersImportExternalPairs { .. }
+        | ShellCommand::PrimersScreenVariants { .. }
         | ShellCommand::PrimersTestCdnaPcr { .. }
         | ShellCommand::PrimersTestCdnaQpcr { .. }
         | ShellCommand::PrimersTranscriptQpcrPanel { .. }
+        | ShellCommand::PrimersBuildTranscriptAssayCdnaSimilarityMap { .. }
+        | ShellCommand::PrimersDesignGroupTarget { .. }
+        | ShellCommand::PrimersDesignTranscriptAssayPanel { .. }
+        | ShellCommand::PrimersDesignTranscriptAssayPanelRequest { .. }
+        | ShellCommand::PrimersInspectTranscriptAssayFeasibility { .. }
+        | ShellCommand::PrimersPlanGeneIsoformAssayStudy { .. }
+        | ShellCommand::PrimersExecuteGeneIsoformAssayStudyWorkflow { .. }
+        | ShellCommand::PrimersComposeGeneIsoformAssayStudyWorkflowBatch { .. }
+        | ShellCommand::PrimersInspectGeneIsoformAssayStudyReuse { .. }
+        | ShellCommand::PrimersExecuteGeneIsoformAssayStudyWorkflowBatch { .. }
+        | ShellCommand::PrimersPublishGeneIsoformAssayStudy { .. }
+        | ShellCommand::PrimersComposeGeneTranscriptAssayRoutine { .. }
         | ShellCommand::PrimersTestCdnaQpcrFasta { .. }
         | ShellCommand::PrimersPrepareRestrictionCloning { .. }
         | ShellCommand::PrimersSeedRestrictionCloningHandoff { .. }
@@ -56448,9 +70299,17 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersListQpcrReports
         | ShellCommand::PrimersShowQpcrReport { .. }
         | ShellCommand::PrimersExportQpcrReport { .. }
+        | ShellCommand::PrimersListTranscriptAssayPanels
+        | ShellCommand::PrimersShowTranscriptAssayPanel { .. }
+        | ShellCommand::PrimersExportTranscriptAssayPanel { .. }
+        | ShellCommand::PrimersListTranscriptAssayFallbacks
+        | ShellCommand::PrimersShowTranscriptAssayFallback { .. }
+        | ShellCommand::PrimersExportTranscriptAssayFallback { .. }
+        | ShellCommand::PrimersExperimentalHandoff { .. }
         | ShellCommand::PrimersOligoOrderCreate { .. }
         | ShellCommand::PrimersOligoOrderFromPrimerReport { .. }
         | ShellCommand::PrimersOligoOrderFromQpcrReport { .. }
+        | ShellCommand::PrimersOligoOrderFromExperimentalHandoff { .. }
         | ShellCommand::PrimersOligoOrderList
         | ShellCommand::PrimersOligoOrderShow { .. }
         | ShellCommand::PrimersOligoOrderExport { .. }
@@ -56487,6 +70346,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::RnaReadsInspectAlignments { .. }
         | ShellCommand::RnaReadsInspectConcatemers { .. }
         | ShellCommand::RnaReadsBuildTranscriptIndex { .. }
+        | ShellCommand::RnaReadsAlleleHashScreen { .. }
         | ShellCommand::RnaReadsMaterializeHits { .. }
         | ShellCommand::RnaReadsExportReport { .. }
         | ShellCommand::RnaReadsExportHitsFasta { .. }
@@ -56494,6 +70354,9 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::RnaReadsExportTargetQuality { .. }
         | ShellCommand::RnaReadsExportExonPathsTsv { .. }
         | ShellCommand::RnaReadsExportExonAbundanceTsv { .. }
+        | ShellCommand::RnaReadsExportDexseqAnnotationGff { .. }
+        | ShellCommand::RnaReadsExportDexseqCountsTsv { .. }
+        | ShellCommand::RnaReadsVerifyDexseq { .. }
         | ShellCommand::RnaReadsExportScoreDensitySvg { .. }
         | ShellCommand::RnaReadsExportAlignmentsTsv { .. }
         | ShellCommand::RnaReadsExportIsoformTriageTsv { .. }
@@ -56506,8 +70369,8 @@ fn execute_shell_command_with_options_inner(
         ShellCommand::SetParameter { .. } | ShellCommand::DisplayVisibility { .. } => {
             execute_configuration_command(engine, command)?
         }
-        ShellCommand::Op { payload } => execute_op_command(engine, payload)?,
-        ShellCommand::Workflow { payload } => execute_workflow_command(engine, payload)?,
+        ShellCommand::Op { payload } => execute_op_command(engine, payload, options)?,
+        ShellCommand::Workflow { payload } => execute_workflow_command(engine, payload, options)?,
     };
     Ok(result)
 }

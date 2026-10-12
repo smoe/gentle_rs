@@ -2,6 +2,29 @@
   "schema": "gentle.tutorial_source.v4",
   "id": "load_branch_reverse_complement_pgex_fasta",
   "title": "Load FASTA, branch, and reverse-complement",
+  "graphics": [
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/branch.context.svg",
+      "caption": "Interaction context for creating a branch while preserving the original sequence.",
+      "illustrates_step": 2,
+      "capture_date": "2026-09-08"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/reverse_complement.orientation.svg",
+      "caption": "Whole-screen orientation for the reverse-complement action in the DNA viewer.",
+      "illustrates_step": 3,
+      "capture_date": "2026-09-08"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/reverse_complement.context.svg",
+      "caption": "Focused reverse-complement control and nearby sequence context.",
+      "illustrates_step": 3,
+      "capture_date": "2026-09-08"
+    }
+  ],
   "catalog": {
     "order": 24,
     "path": "docs/tutorial/generated/chapters/02-01_load_branch_reverse_complement_pgex_fasta.md",
@@ -13,7 +36,13 @@
       "cli_first",
       "contributors"
     ],
-    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+    "notes": "Machine-checked generated chapter with typed GUI acceptance and retained Branch/ReverseComplement screenshots. Inner-agent prompts are review-first; the outer-agent replay uses explicit disposable state.",
+    "interfaces": [
+      "native GUI",
+      "CLI / shared shell",
+      "Agent Assistant (inner, review-first)",
+      "MCP / ClawBio outer agent"
+    ],
     "group": "02",
     "group_position": 1
   },
@@ -28,15 +57,148 @@
       "You need a reverse-complemented working copy but want to preserve the original sequence identity.",
       "You are onboarding to GENtle and need to understand how derived IDs are created and reused."
     ],
+    "gui_acceptance": {
+      "schema": "gentle.tutorial_gui_acceptance.v1",
+      "profile": "smoke",
+      "network": "offline",
+      "starter": {
+        "example_id": "branch_gui_starter"
+      },
+      "oracle": {
+        "example_id": "branch_gui_oracle"
+      },
+      "completion_condition": {
+        "fact": "sequence.exists",
+        "subject": {
+          "kind": "sequence",
+          "id": "pgex_fasta_branch_revcomp"
+        }
+      },
+      "steps": [
+        {
+          "id": "open_sequence",
+          "prose_step": 1,
+          "window": "window.main",
+          "target": "main.project.sequence.open",
+          "subject": {
+            "sequence": "pgex_fasta"
+          },
+          "interaction": {
+            "kind": "double_click"
+          },
+          "timeout_class": "io",
+          "persists_project_state": false,
+          "scientific_effect": false,
+          "verifiers": [
+            {
+              "kind": "visible_claim",
+              "semantic_id": "window.dna_viewer",
+              "visible": true,
+              "enabled": true
+            }
+          ],
+          "evidence": {
+            "screenshot": "required",
+            "snapshot": "required"
+          }
+        },
+        {
+          "id": "branch",
+          "prose_step": 2,
+          "window": "window.dna_viewer",
+          "target": "dna.sequence.branch",
+          "interaction": {
+            "kind": "click"
+          },
+          "timeout_class": "interactive",
+          "persists_project_state": true,
+          "scientific_effect": true,
+          "verifiers": [
+            {
+              "kind": "state",
+              "seq_ids": [
+                "pgex_fasta",
+                "pgex_fasta_branch"
+              ],
+              "compare_with_oracle": true
+            }
+          ],
+          "evidence": {
+            "screenshot": "required",
+            "snapshot": "required"
+          },
+          "before": {
+            "fact": "sequence.exists",
+            "subject": {
+              "kind": "sequence",
+              "id": "pgex_fasta_branch"
+            }
+          },
+          "after": {
+            "fact": "sequence.exists",
+            "subject": {
+              "kind": "sequence",
+              "id": "pgex_fasta_branch"
+            }
+          }
+        },
+        {
+          "id": "reverse_complement",
+          "prose_step": 3,
+          "window": "window.dna_viewer",
+          "target": "dna.sequence.reverse_complement",
+          "interaction": {
+            "kind": "click"
+          },
+          "timeout_class": "interactive",
+          "persists_project_state": true,
+          "scientific_effect": true,
+          "verifiers": [
+            {
+              "kind": "state",
+              "seq_ids": [
+                "pgex_fasta",
+                "pgex_fasta_branch",
+                "pgex_fasta_branch_revcomp"
+              ],
+              "compare_with_oracle": true
+            }
+          ],
+          "evidence": {
+            "screenshot": "required",
+            "snapshot": "required"
+          },
+          "before": {
+            "fact": "sequence.exists",
+            "subject": {
+              "kind": "sequence",
+              "id": "pgex_fasta_branch_revcomp"
+            }
+          },
+          "after": {
+            "fact": "sequence.exists",
+            "subject": {
+              "kind": "sequence",
+              "id": "pgex_fasta_branch_revcomp"
+            }
+          }
+        }
+      ]
+    },
     "gui_steps": [
       "Open GENtle and load `test_files/pGEX_3X.fa` via `File -> Open`.",
       "In the DNA window, create a branch copy from the loaded sequence (Branch action).",
-      "Apply reverse-complement to the branch and confirm a new sequence entry appears in lineage/table views."
+      "Apply reverse-complement to the branch and confirm a new sequence entry appears in lineage/table views. The GUI uses the suffix _revcomp; the scripted example below explicitly chooses _rc instead."
     ],
     "cli_steps": [
       "cargo run --bin gentle_cli -- op '{\"LoadFile\":{\"path\":\"test_files/pGEX_3X.fa\",\"as_id\":\"pgex_fasta\"}}'",
       "cargo run --bin gentle_cli -- op '{\"Branch\":{\"input\":\"pgex_fasta\",\"output_id\":\"pgex_fasta_branch\"}}'",
       "cargo run --bin gentle_cli -- op '{\"ReverseComplement\":{\"input\":\"pgex_fasta_branch\",\"output_id\":\"pgex_fasta_branch_rc\"}}'"
+    ],
+    "agent_steps": [
+      "Check whether `test_files/pGEX_3X.fa` is available, then propose the exact `LoadFile` operation that would load it as `pgex_fasta`. State the project context and expected provenance fields. Do not execute it until I approve.",
+      "Verify that `pgex_fasta` exists in the current project, then propose a `Branch` operation producing `pgex_fasta_branch` while preserving the source record. Show the expected lineage edge and do not execute it until I approve.",
+      "Verify that `pgex_fasta_branch` exists, then propose a `ReverseComplement` operation producing `pgex_fasta_branch_rc`. Explain that the GUI auto-suffix `_revcomp` differs from this explicit scripted ID, and do not execute it until I approve."
     ],
     "step_expectations": [
       "The project state contains the loaded source sequence `pgex_fasta` while preserving its file provenance.",

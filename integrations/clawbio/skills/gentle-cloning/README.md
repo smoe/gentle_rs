@@ -73,6 +73,8 @@ table.
   shared Roboterri/Discord planners once `gentle-cloning` is registered in
   ClawBio's `SKILLS`
 - `gentle_cloning.py`: wrapper executable
+- `discussion_moderation_handoff.py`: optional post-run, hash-verifying intake
+  packet adapter; it never opens or mutates a ledger
 - `gentle_local_checkout_cli.sh`: local-checkout launcher for `cargo run --bin gentle_cli --`
 - `gentle_apptainer_cli.sh`: Apptainer/Singularity launcher for `gentle_cli`
 - `catalog_entry.json`: ready-to-paste object for ClawBio `skills/catalog.json`
@@ -80,6 +82,20 @@ table.
   inline-sequence scans, extract/BLAST, planning, external-service handoff,
   and graphics flows
 - `tests/test_gentle_cloning.py`: minimal wrapper tests
+
+### Wrapper Test Fixtures
+
+Run `pytest integrations/clawbio/skills/gentle-cloning/tests/ -q` from the GENtle
+checkout. The workflow argument, PCR summary and protein-gel summary tests
+generate hand-written synthetic Python CLI fixtures in pytest's temporary
+directory. Their SVG text and fixed one-pixel PNG are transport/presentation
+fixtures, not biological results or a rendering-quality check. Re-running those
+tests recreates them deterministically from the inline source.
+
+These fixtures use native Python on Windows as well as POSIX, preserving literal
+`@workflow-file` arguments and native paths without MSYS/Bash interpretation.
+The separate real `gentle_cli svg-png` tests remain rendering checks; the POSIX
+launcher/signal tests retain their explicit platform restrictions.
 
 ## Positioning for OpenClaw
 
@@ -605,6 +621,29 @@ Alternative runtimes:
 - `--gentle-cli "<command>"`
 - repository-local `cargo run --quiet --bin gentle_cli --`
 
+The Python adapter supervises each delegated CLI invocation as a child-owned
+execution group. On supported POSIX systems, status-only `SIGUSR1` is forwarded
+once to the exact active GENtle child PID; GENtle remains responsible for any
+subsequent Primer3 status request. `SIGUSR1` never targets the whole process
+group, and a request received while no child is active is a harmless
+orchestration-level no-op. `SIGINT` and `SIGTERM` request graceful shutdown of
+the child execution group and escalate after a bounded grace period. The
+wrapper deliberately does not appropriate `SIGHUP`, `SIGUSR2`, or unrelated
+signals.
+
+Timeout and interruption receipts fail closed even when a child handles the
+shutdown signal and exits with status zero. They retain both the wrapper's
+effective non-zero exit code and the child's actual exit code, signal
+provenance, escalation outcome, complete captured stdout/stderr, byte counts,
+and SHA-256 hashes. Signal records are orchestration provenance only and never
+become `[gentle]` scientific claims. Windows retains child-process supervision
+and bounded termination using the signals available on that platform; it does
+not claim POSIX-only `SIGUSR1` support or POSIX process-tree semantics.
+
+Compatibility hints inspect GENtle's arguments separately from the launcher
+prefix, including when Python, Cargo or a container launcher precedes them.
+Failure receipts continue to retain the full executed command.
+
 ## Request schema
 
 - `schema`: `gentle.clawbio_skill_request.v1`
@@ -612,6 +651,57 @@ Alternative runtimes:
   `request_skill_info.json` or `request_intents_runtime.json` to inspect the
   installed list
 - optional: `state_path`, `timeout_secs`, `ensure_reference_prepared`
+- optional provenance/presentation controls:
+  - `claim_attribution_mode: "strict"` prefixes human-facing statements by
+    source and writes `gentle.clawbio_claim_ledger.v1`;
+  - `input_claims: ["..."]` records explicit caller assumptions as `[input]`
+    rows in `report.md` and `claim_ledger.input_claims[]`; these statements
+    never become GENtle findings;
+  - `presentation_profile: "pcr_primer_design"` requests PCR-specific
+    graphical assembly without moving scientific calculations into the wrapper;
+  - `input_bindings[]` content-binds additional caller-declared input files and
+    may require an expected SHA-256 before execution;
+  - `delegation` carries a descriptor-only source skill/version/intent/plan-step
+    identity. The wrapper verifies the co-deployed descriptor, catalog, and
+    exact delegate contract before invoking GENtle
+
+Confirmation-gated delegated routes do not invoke GENtle immediately. Their
+first invocation writes `gentle.clawbio_execution_proposal.v1` and returns
+`approval_required`. A later
+`gentle.clawbio_approved_execution_request.v1` must reference that proposal and
+carry a caller-attested approval of its exact digest. The runner then reloads
+the normalized request from the proposal and fails if the route, command,
+runtime, material environment, state, inputs, paths, or pinned backend changed.
+See
+[`references/execution_approval.md`](references/execution_approval.md).
+For this gated path, the included local Cargo launcher is converted to the
+already-built, hash-bound `gentle_cli` executable before approval; OCI
+execution requires a digest-addressed image rather than a mutable tag.
+Because the wrapper itself is content-bound, updating its supervision logic
+also invalidates proposals approved against the previous wrapper hash; create
+and review a fresh proposal rather than attempting to reuse the old approval.
+
+The caller/OpenClaw control plane owns approver identity and authorization.
+The GENtle wrapper verifies the digest and execution bindings; it cannot prove
+that a human reviewed them. Direct structured `gentle-cloning` requests remain
+backward compatible.
+
+Every invocation writes the provider-owned
+`gentle.clawbio_execution_manifest.v1` receipt to
+`reproducibility/execution_manifest.json`. It binds the normalized request,
+known input files, state before/after, wrapper and runtime files, command steps,
+native JSON result, native status fields, and output artifacts. It deliberately
+does not contain discussion topics, permissions, votes, freshness, or caller
+interpretation. See
+[`references/execution_manifest.md`](references/execution_manifest.md) for the
+schema and delegated-skill compatibility contract.
+
+For an explicitly caller-selected discussion-moderation evidence collection,
+the optional post-run `discussion_moderation_handoff.py` helper verifies the
+provider bundle and produces a hash-joined typed-evidence/analysis-run intake
+packet. It never opens or writes a ledger. See
+[`references/discussion_moderation_handoff.md`](references/discussion_moderation_handoff.md)
+for the bounded context schema, command, status rules, and recording order.
 
 Mode-specific fields:
 

@@ -762,6 +762,19 @@ impl GentleEngine {
         } else {
             "supported_genome_id_alias_matches_anchor"
         };
+        let (projection_method, projection_status) = projection
+            .map(|projection| (projection.method.as_str(), projection.status.as_str()))
+            .unwrap_or_else(|| {
+                if manifest
+                    .coordinate_system
+                    .trim()
+                    .eq_ignore_ascii_case(anchor.genome_id.trim())
+                {
+                    ("direct_anchor_overlap", "mapped_same_coordinate_system")
+                } else {
+                    ("direct_anchor_overlap", "mapped_supported_genome_alias")
+                }
+            });
         let mut qualifiers = vec![
             ("label".into(), Some(label)),
             (
@@ -825,6 +838,14 @@ impl GentleEngine {
                 "gentle_array_assembly_check".into(),
                 Some(assembly_check.to_string()),
             ),
+            (
+                "gentle_array_projection_method".into(),
+                Some(projection_method.to_string()),
+            ),
+            (
+                "gentle_array_projection_status".into(),
+                Some(projection_status.to_string()),
+            ),
             ("gentle_array_contrast".into(), Some(contrast.to_string())),
             ("gentle_array_level".into(), Some(level.to_string())),
             ("chromosome".into(), Some(row.chromosome.clone())),
@@ -851,16 +872,6 @@ impl GentleEngine {
                 Some(native_row.end_1based.to_string()),
             ),
         ];
-        if let Some(projection) = projection {
-            qualifiers.push((
-                "gentle_array_projection_method".into(),
-                Some(projection.method.clone()),
-            ));
-            qualifiers.push((
-                "gentle_array_projection_status".into(),
-                Some(projection.status.clone()),
-            ));
-        }
         if let Some(strand) = native_row.strand {
             qualifiers.push(("array_strand".into(), Some(strand.to_string())));
         }

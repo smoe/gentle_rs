@@ -27,12 +27,30 @@
     "relationship": "co_regulated"
   },
   "ortholog_resource_label": "Synthetic TP73 promoter ortholog tutorial resource",
+  "contexts": [
+    {
+      "context_id": "ortholog_homosapiens_humanpromotertoy",
+      "organism": "Homo sapiens",
+      "genome_id": "HumanPromoterToy"
+    },
+    {
+      "context_id": "ortholog_musmusculus_mousepromotertoy",
+      "organism": "Mus musculus",
+      "genome_id": "MousePromoterToy"
+    },
+    {
+      "context_id": "ortholog_rattusnorvegicus_ratpromotertoy",
+      "organism": "Rattus norvegicus",
+      "genome_id": "RatPromoterToy"
+    }
+  ],
   "resolved_promoter_count": 3,
   "unresolved_count": 0,
   "rows": [
     {
       "species": "Homo sapiens",
       "genome_id": "HumanPromoterToy",
+      "context_id": "ortholog_homosapiens_humanpromotertoy",
       "role": "anchor",
       "gene_query": "TP73",
       "gene_symbol": "TP73",
@@ -55,6 +73,7 @@
     {
       "species": "Mus musculus",
       "genome_id": "MousePromoterToy",
+      "context_id": "ortholog_musmusculus_mousepromotertoy",
       "role": "target",
       "gene_query": "Trp73",
       "gene_symbol": "Trp73",
@@ -73,6 +92,8 @@
       "promoter_sequence": "ATATATATATATATATATATATATATATATATATATATATATATATATATA",
       "orthology_type": "synthetic_ortholog",
       "confidence": "tutorial",
+      "orthology_source_context_id": "ortholog_homosapiens_humanpromotertoy",
+      "orthology_target_context_id": "ortholog_musmusculus_mousepromotertoy",
       "orthology_source": "hand-crafted offline tutorial fixture",
       "orthology_evidence": [
         "synthetic mapping for deterministic promoter comparison"
@@ -82,6 +103,7 @@
     {
       "species": "Rattus norvegicus",
       "genome_id": "RatPromoterToy",
+      "context_id": "ortholog_rattusnorvegicus_ratpromotertoy",
       "role": "target",
       "gene_query": "Tp73",
       "gene_symbol": "Tp73",
@@ -100,6 +122,8 @@
       "promoter_sequence": "GGGGCGGGGTTTGGGGCGGGGTTTGGGGCGGGGTTTGGGGCGGGGAAAAAA",
       "orthology_type": "synthetic_ortholog",
       "confidence": "tutorial",
+      "orthology_source_context_id": "ortholog_homosapiens_humanpromotertoy",
+      "orthology_target_context_id": "ortholog_rattusnorvegicus_ratpromotertoy",
       "orthology_source": "hand-crafted offline tutorial fixture",
       "orthology_evidence": [
         "synthetic mapping for deterministic promoter comparison"

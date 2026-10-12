@@ -1,0 +1,378 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "regulatory_fragment_panel_planning_offline",
+  "title": "Exact regulatory-fragment panel planning (offline SERPINE1 tutorial)",
+  "summary": "Loads one pinned offline locus, imports three exact ROIs, and plans a bounded A/B reporter comparison with only the declared order, orientation, and spacing variants.",
+  "test_mode": "always",
+  "required_files": [
+    "test_files/fixtures/genomic_regions/serpine1_offline/ensembl_116_serpine1_entry.json",
+    "test_files/fixtures/reporter_vectors/synthetic_mcs_backbone.gb",
+    "docs/examples/assets/promoter_reporter_panel_demo_helper_vectors.json",
+    "docs/examples/assets/regulatory_fragment_panel_demo_regions.json"
+  ],
+  "tags": [
+    "tutorial",
+    "offline",
+    "regulatory-fragment",
+    "promoter-reporter",
+    "genomic-regions",
+    "approval-digest"
+  ],
+  "workflow": {
+    "run_id": "example_regulatory_fragment_panel_planning_offline",
+    "ops": [
+      {
+        "PrepareGeneLocusEvidence": {
+          "request": {
+            "schema": "gentle.gene_locus_evidence_preparation_request.v1",
+            "gene_query": "ENSG00000106366",
+            "species": "homo_sapiens",
+            "assembly": "GRCh38",
+            "allow_ensembl_network": false,
+            "ensembl_entry_path": "test_files/fixtures/genomic_regions/serpine1_offline/ensembl_116_serpine1_entry.json",
+            "flank_5prime_bp": 1000,
+            "flank_3prime_bp": 0,
+            "output_seq_id": "regulatory_panel_locus",
+            "output_panel_id": "regulatory_panel_locus_panel",
+            "annotation_release": "Ensembl 116 pinned public fixture",
+            "display_upstream_bp": 1000,
+            "display_downstream_bp": 0,
+            "scale_bar": {
+              "mode": "fixed",
+              "length_bp": 1000
+            },
+            "svg_path": "artifacts/regulatory_fragment_panel.prepare.svg"
+          }
+        }
+      },
+      {
+        "ImportGenomicRegionSet": {
+          "request": {
+            "path": "docs/examples/assets/regulatory_fragment_panel_demo_regions.json",
+            "format": "json",
+            "collision_policy": "reject",
+            "max_bytes": 10485760,
+            "max_rows": 100000
+          }
+        }
+      },
+      {
+        "LoadFile": {
+          "path": "test_files/fixtures/reporter_vectors/synthetic_mcs_backbone.gb",
+          "as_id": "regulatory_panel_vector"
+        }
+      },
+      {
+        "RenderFeatureExpertSvg": {
+          "seq_id": "regulatory_panel_locus",
+          "target": {
+            "gene_locus_evidence": {
+              "request": {
+                "isoform_evidence": {
+                  "panel_id": "regulatory_panel_locus_panel",
+                  "annotation_release": "Ensembl 116 pinned public fixture"
+                },
+                "upstream_bp": 1000,
+                "downstream_bp": 0,
+                "region_set_ids": [
+                  "regulatory_panel_regions"
+                ],
+                "scale_bar": {
+                  "mode": "fixed",
+                  "length_bp": 1000
+                }
+              }
+            }
+          },
+          "path": "artifacts/regulatory_fragment_panel.locus.svg"
+        }
+      },
+      {
+        "PlanRegulatoryFragmentPanel": {
+          "request": {
+            "schema": "gentle.regulatory_fragment_panel_request.v1",
+            "plan_id": "serpine1_regulatory_fragment_tutorial",
+            "vector_seq_id": "regulatory_panel_vector",
+            "vector_catalog_id": "Synthetic panel vector",
+            "helper_catalog_path": "docs/examples/assets/promoter_reporter_panel_demo_helper_vectors.json",
+            "insertion_context_feature_id": "multiple_cloning_region",
+            "fragments": [
+              {
+                "fragment_id": "candidate_a",
+                "declared_order": 0,
+                "role": "candidate",
+                "region_set_id": "regulatory_panel_regions",
+                "region_set_content_sha256": "sha256:855b8b5afb460b2f85774dbd4cbb426e34a9125c9b61aefaba4cdefd7e843220",
+                "reference_release": "Ensembl 116 pinned public fixture",
+                "region": {
+                  "schema": "gentle.genomic_region_of_interest.v1",
+                  "region_id": "candidate_a_roi",
+                  "label": "Candidate A tutorial span",
+                  "description": "Caller-selected span for deterministic panel-planning instruction; no regulatory activity is implied.",
+                  "interval": {
+                    "reference": {
+                      "species_scientific_name": "Homo sapiens",
+                      "taxon_id": 9606,
+                      "assembly_name": "GRCh38",
+                      "assembly_accession": "GCA_000001405.15",
+                      "contig_name": "7",
+                      "contig_accession": "NC_000007.14",
+                      "contig_aliases": [
+                        "chr7"
+                      ]
+                    },
+                    "start_0based": 101121657,
+                    "end_0based_exclusive": 101121807,
+                    "strand": "plus",
+                    "coordinate_convention": "zero_based_half_open"
+                  },
+                  "local_projection": {
+                    "seq_id": "regulatory_panel_locus",
+                    "sequence_sha256": "sha256:440d6b10a5affeda66358d2d4c102ebc0b0a8a68a79eedfcb94748a02b6297e0",
+                    "source_genome_id": "GRCh38",
+                    "anchor_start_1based": 101121158,
+                    "anchor_end_1based": 101139263,
+                    "anchor_strand": "plus",
+                    "local_start_0based": 500,
+                    "local_end_0based_exclusive": 650,
+                    "local_strand": "plus",
+                    "status": "current"
+                  },
+                  "purpose": "reporter_candidate",
+                  "selection_method": "manual_span",
+                  "created_at_unix_ms": 1706000000000,
+                  "notes": [
+                    "Tutorial selection only; this span is not classified as an enhancer or silencer."
+                  ],
+                  "identity_sha256": "sha256:d15ea6945985aaf1726a37f596c4c69ac80dcd3e0413eae61873ed94efe67a65",
+                  "content_sha256": "sha256:aef5422887eaaf71a6167b0424f7c7f2f698eacbfa3fb937097e79f325ee1622"
+                }
+              },
+              {
+                "fragment_id": "partner_b",
+                "declared_order": 1,
+                "role": "partner",
+                "region_set_id": "regulatory_panel_regions",
+                "region_set_content_sha256": "sha256:855b8b5afb460b2f85774dbd4cbb426e34a9125c9b61aefaba4cdefd7e843220",
+                "reference_release": "Ensembl 116 pinned public fixture",
+                "region": {
+                  "schema": "gentle.genomic_region_of_interest.v1",
+                  "region_id": "partner_b_roi",
+                  "label": "Partner B tutorial span",
+                  "description": "Second caller-declared span used to make a partner-dependence comparison identifiable; no partnership is inferred.",
+                  "interval": {
+                    "reference": {
+                      "species_scientific_name": "Homo sapiens",
+                      "taxon_id": 9606,
+                      "assembly_name": "GRCh38",
+                      "assembly_accession": "GCA_000001405.15",
+                      "contig_name": "7",
+                      "contig_accession": "NC_000007.14",
+                      "contig_aliases": [
+                        "chr7"
+                      ]
+                    },
+                    "start_0based": 101123899,
+                    "end_0based_exclusive": 101124080,
+                    "strand": "plus",
+                    "coordinate_convention": "zero_based_half_open"
+                  },
+                  "local_projection": {
+                    "seq_id": "regulatory_panel_locus",
+                    "sequence_sha256": "sha256:440d6b10a5affeda66358d2d4c102ebc0b0a8a68a79eedfcb94748a02b6297e0",
+                    "source_genome_id": "GRCh38",
+                    "anchor_start_1based": 101121158,
+                    "anchor_end_1based": 101139263,
+                    "anchor_strand": "plus",
+                    "local_start_0based": 2742,
+                    "local_end_0based_exclusive": 2923,
+                    "local_strand": "plus",
+                    "status": "current"
+                  },
+                  "purpose": "candidate_cis_regulatory_region",
+                  "selection_method": "manual_span",
+                  "created_at_unix_ms": 1706000000000,
+                  "notes": [
+                    "Tutorial declaration only; GENtle does not infer this partner from sequence or annotation."
+                  ],
+                  "identity_sha256": "sha256:fe6e70a297c38d1e7bd9378b53857c36ff3a7a6c1b359a15aeb28e98f07c4821",
+                  "content_sha256": "sha256:5f9e87a4d51ed75a828816cc08a195409581ddbbdb91e69bf8b86960dd87a3f5"
+                }
+              },
+              {
+                "fragment_id": "minimal_promoter",
+                "declared_order": 2,
+                "role": "minimal_promoter",
+                "region_set_id": "regulatory_panel_regions",
+                "region_set_content_sha256": "sha256:855b8b5afb460b2f85774dbd4cbb426e34a9125c9b61aefaba4cdefd7e843220",
+                "reference_release": "Ensembl 116 pinned public fixture",
+                "region": {
+                  "schema": "gentle.genomic_region_of_interest.v1",
+                  "region_id": "minimal_promoter_roi",
+                  "label": "Minimal promoter-context tutorial span",
+                  "description": "Explicit promoter-context control used only to make the planned comparisons interpretable.",
+                  "interval": {
+                    "reference": {
+                      "species_scientific_name": "Homo sapiens",
+                      "taxon_id": 9606,
+                      "assembly_name": "GRCh38",
+                      "assembly_accession": "GCA_000001405.15",
+                      "contig_name": "7",
+                      "contig_accession": "NC_000007.14",
+                      "contig_aliases": [
+                        "chr7"
+                      ]
+                    },
+                    "start_0based": 101124080,
+                    "end_0based_exclusive": 101124200,
+                    "strand": "plus",
+                    "coordinate_convention": "zero_based_half_open"
+                  },
+                  "local_projection": {
+                    "seq_id": "regulatory_panel_locus",
+                    "sequence_sha256": "sha256:440d6b10a5affeda66358d2d4c102ebc0b0a8a68a79eedfcb94748a02b6297e0",
+                    "source_genome_id": "GRCh38",
+                    "anchor_start_1based": 101121158,
+                    "anchor_end_1based": 101139263,
+                    "anchor_strand": "plus",
+                    "local_start_0based": 2923,
+                    "local_end_0based_exclusive": 3043,
+                    "local_strand": "plus",
+                    "status": "current"
+                  },
+                  "purpose": "promoter_region",
+                  "selection_method": "manual_span",
+                  "created_at_unix_ms": 1706000000000,
+                  "notes": [
+                    "Tutorial control span; its presence does not establish endogenous promoter function."
+                  ],
+                  "identity_sha256": "sha256:4d218302cf70592ca2f1d1e15ced3760adb08876561fd46cce2a06e32bf03767",
+                  "content_sha256": "sha256:9fd4b66c608c58cb427684dd8d03a7beacc15b7ae5b2808744554a95f53b712a"
+                }
+              }
+            ],
+            "questions": [
+              "standalone_candidate",
+              "partner_dependence",
+              "order_dependence",
+              "orientation_dependence",
+              "spacing_dependence"
+            ],
+            "reference_combination": {
+              "variant_id": "reference_a_b_minimal",
+              "declared_order": 0,
+              "kind": "reference_combination",
+              "instances": [
+                {
+                  "fragment_id": "candidate_a",
+                  "orientation": "forward",
+                  "spacer_before": ""
+                },
+                {
+                  "fragment_id": "partner_b",
+                  "orientation": "forward",
+                  "spacer_before": ""
+                },
+                {
+                  "fragment_id": "minimal_promoter",
+                  "orientation": "forward",
+                  "spacer_before": ""
+                }
+              ]
+            },
+            "requested_variants": [
+              {
+                "variant_id": "reverse_order_b_a",
+                "declared_order": 1,
+                "kind": "reversed_order",
+                "instances": [
+                  {
+                    "fragment_id": "partner_b",
+                    "orientation": "forward",
+                    "spacer_before": ""
+                  },
+                  {
+                    "fragment_id": "candidate_a",
+                    "orientation": "forward",
+                    "spacer_before": ""
+                  },
+                  {
+                    "fragment_id": "minimal_promoter",
+                    "orientation": "forward",
+                    "spacer_before": ""
+                  }
+                ]
+              },
+              {
+                "variant_id": "reverse_partner_orientation",
+                "declared_order": 2,
+                "kind": "reversed_orientation",
+                "instances": [
+                  {
+                    "fragment_id": "candidate_a",
+                    "orientation": "forward",
+                    "spacer_before": ""
+                  },
+                  {
+                    "fragment_id": "partner_b",
+                    "orientation": "reverse_complement",
+                    "spacer_before": ""
+                  },
+                  {
+                    "fragment_id": "minimal_promoter",
+                    "orientation": "forward",
+                    "spacer_before": ""
+                  }
+                ]
+              },
+              {
+                "variant_id": "six_bp_partner_spacing",
+                "declared_order": 3,
+                "kind": "controlled_spacing",
+                "instances": [
+                  {
+                    "fragment_id": "candidate_a",
+                    "orientation": "forward",
+                    "spacer_before": ""
+                  },
+                  {
+                    "fragment_id": "partner_b",
+                    "orientation": "forward",
+                    "spacer_before": "GCGCGC"
+                  },
+                  {
+                    "fragment_id": "minimal_promoter",
+                    "orientation": "forward",
+                    "spacer_before": ""
+                  }
+                ]
+              }
+            ],
+            "mutation_policy": "native_only_v1",
+            "evidence_bindings": [],
+            "max_panel_members": 8,
+            "max_construct_length_bp": 1000,
+            "policy": {
+              "include_promoterless_control": true,
+              "include_minimal_promoter_control": true,
+              "include_reference_control_when_bound": true,
+              "high_similarity_identity_fraction": 0.95,
+              "high_similarity_coverage_fraction": 0.9,
+              "vector_context_flank_bp": 24,
+              "max_candidate_constructs": 20,
+              "sequence_word_size_bp": 12,
+              "near_exact_max_mismatches": 1,
+              "junction_flank_bp": 16,
+              "max_evidence_observations_per_dimension": 512
+            },
+            "scientific_caveats": [
+              "Tutorial geometry only; candidate and partner roles are caller-declared and are not inferred biological conclusions.",
+              "Sequence-context and cloning evidence support review but do not establish regulatory sufficiency or partner dependence."
+            ]
+          },
+          "path": "artifacts/regulatory_fragment_panel.plan.json"
+        }
+      }
+    ]
+  }
+}

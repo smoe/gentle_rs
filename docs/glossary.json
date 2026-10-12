@@ -1,6 +1,62 @@
 {
    "commands": [
       {
+         "aliases": [],
+         "engine_operations": ["ComputeTssTfbsProfiles"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "features tss-tfbs-profiles",
+         "summary": "Validate a pinned TSS FASTA bundle and exact JASPAR panel, score both orientations, and publish a new audited profile directory.",
+         "usage": "features tss-tfbs-profiles --manifest FILE --panel FILE --expected-genome-id ID --output-dir DIR [--fasta FILE ...] [--selection FILE] [--expected-assembly ID] [--expected-annotation-release ID] [--expected-dataset-id ID] [--context-manifest FILE] [--formats svg,png,pdf,genbank] [--scale-mode independent|shared] [--panels-per-page N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["ExportTssTfbsProfiles"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "features tss-tfbs-profiles-export",
+         "summary": "Re-render a portable TSS profile without rescoring, optionally attaching sequence-verified locus/CUT&RUN/TATA context.",
+         "usage": "features tss-tfbs-profiles-export --report FILE --output-dir DIR [--context-manifest FILE] [--formats svg,png,pdf,genbank] [--scale-mode independent|shared] [--panels-per-page N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["SaveGelImageDraft"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "gel-image save-draft",
+         "summary": "Save incomplete manual gel assignments in the project without claiming validated measurements.",
+         "usage": "gel-image save-draft REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["ImportGelImage"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "gel-image import",
+         "summary": "Import a measured PNG/JPEG/TIFF gel image, preserving original bytes and pixel-coordinate provenance.",
+         "usage": "gel-image import REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["AnalyzeGelImage"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "gel-image analyze",
+         "summary": "Size manually confirmed sample bands against a confirmed adjacent ladder in bp or apparent kDa, without extrapolation.",
+         "usage": "gel-image analyze REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["InspectGelImageAnalysis"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "gel-image inspect",
+         "summary": "Inspect a saved measured-gel calibration and band-size report.",
+         "usage": "gel-image inspect REPORT_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["ExportGelImageAnalysis"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "gel-image export",
+         "summary": "Export a validated measured-gel report as JSON, TSV or annotated SVG without overwriting an existing file.",
+         "usage": "gel-image export REQUEST_JSON_OR_@FILE"
+      },
+      {
          "aliases": [
             "-h",
             "--help"
@@ -14,6 +70,291 @@
          "path": "help",
          "summary": "Show full command help catalog or help for one command path.",
          "usage": "help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|gui-menu|js|lua|mcp]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PrepareGeneLocusEvidence"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "gene-locus prepare",
+         "summary": "Prepare an Ensembl-anchored locus, declared evidence tracks, normalized TF score tracks, and SVG/PNG/PDF artifacts with a digest-bound receipt.",
+         "usage": "gene-locus prepare REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "CreateGenomicRegion"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "regions create",
+         "summary": "Create one explicitly assembly-bound, 0-based half-open genomic region of interest.",
+         "usage": "regions create REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "CaptureGenomicRegion"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "regions capture",
+         "summary": "Capture a sequence selection, feature, CUT&RUN support window, or Ensembl regulatory feature with exact source provenance.",
+         "usage": "regions capture REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["PreviewGenomicRegionFeature"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
+         "path": "regions preview-feature",
+         "summary": "Preview a saved cofactor motif as a DNA feature, verifying the exact prepared local reference without mutation or downloads.",
+         "usage": "regions preview-feature REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["MaterializeGenomicRegionFeature"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
+         "path": "regions materialize-feature",
+         "summary": "Explicitly attach a saved cofactor motif to verified DNA using the fresh approval digest from preview.",
+         "usage": "regions materialize-feature REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ListGenomicRegions"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "regions list",
+         "summary": "List saved genomic region sets without mutating the project.",
+         "usage": "regions list [REQUEST_JSON_OR_@FILE]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "InspectGenomicRegion"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "regions inspect",
+         "summary": "Inspect one saved ROI, its evidence, copy forms, and current local-projection availability.",
+         "usage": "regions inspect REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "UpdateGenomicRegionPresentation"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "regions update",
+         "summary": "Update only the label, description, notes, and display colour of a saved ROI without changing its coordinate/evidence identity.",
+         "usage": "regions update REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "DeriveGenomicRegion"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "regions derive",
+         "summary": "Create an explicit union, intersection, or hull from content-bound parent ROIs.",
+         "usage": "regions derive REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ImportGenomicRegionSet"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "regions import",
+         "summary": "Import a digest-validated JSON region set or BED input carrying an explicit reference or bound manifest.",
+         "usage": "regions import REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportGenomicRegionSet"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "regions export",
+         "summary": "Export lossless canonical JSON and/or BED6 plus a content-bound sidecar manifest.",
+         "usage": "regions export REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ScreenGenomicRegionHomology"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "regions homology-screen",
+         "summary": "Compare one saved genomic region with validated local genomic-DNA indexes and emit a query-referenced, content-bound homology report.",
+         "usage": "regions homology-screen REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "RenderGenomicRegionHomologySvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "regions render-homology-svg",
+         "summary": "Render a validated genomic-region homology report as a deterministic query-referenced SVG.",
+         "usage": "regions render-homology-svg REPORT_JSON_OR_@FILE OUTPUT.svg"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "AssessPromoterConservedModules"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "promoters assess-conserved-modules",
+         "summary": "Combine a content-bound region-homology report with independently selected evidence spans and emit a traceable reporter-module hypothesis.",
+         "usage": "promoters assess-conserved-modules REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PreviewFeatureLocationEdit",
+            "EditFeatureLocation"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct"
+         ],
+         "path": "features edit-location",
+         "summary": "Preview or apply one exact simple boundary edit or one segment edit in a supported flat Join/Order compound.",
+         "usage": "features edit-location SEQ_ID FEATURE_INDEX [--segment-index INDEX] --start-1based N --end-1based-inclusive M [--dry-run] [--expected-feature-fingerprint-sha256 SHA] [--path OUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PreviewFeatureRecordCuration",
+            "ApplyFeatureRecordCuration"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct"
+         ],
+         "path": "features create",
+         "summary": "Preview or append one exact simple feature record with ordered GenBank qualifiers.",
+         "usage": "features create SEQ_ID --kind KIND --start-1based N --end-1based-inclusive M [--strand forward|reverse] [--qualifier KEY[=VALUE] ...] [--dry-run] [--expected-annotation-state-fingerprint-sha256 SHA] [--path OUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PreviewFeatureRecordCuration",
+            "ApplyFeatureRecordCuration"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct"
+         ],
+         "path": "features delete",
+         "summary": "Preview or delete one complete feature record of any existing location shape.",
+         "usage": "features delete SEQ_ID FEATURE_INDEX [--dry-run] [--expected-feature-fingerprint-sha256 SHA] [--expected-annotation-state-fingerprint-sha256 SHA] [--path OUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PreviewFeatureRecordCuration",
+            "ApplyFeatureRecordCuration"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct"
+         ],
+         "path": "features split",
+         "summary": "Preview or split one exact simple feature at an internal base boundary.",
+         "usage": "features split SEQ_ID FEATURE_INDEX --split-before-1based N [--dry-run] [--expected-feature-fingerprint-sha256 SHA] [--expected-annotation-state-fingerprint-sha256 SHA] [--path OUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PreviewFeatureRecordCuration",
+            "ApplyFeatureRecordCuration"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct"
+         ],
+         "path": "features merge",
+         "summary": "Preview or merge two exactly touching simple features with matching record semantics.",
+         "usage": "features merge SEQ_ID FIRST_FEATURE_INDEX SECOND_FEATURE_INDEX [--dry-run] [--expected-first-feature-fingerprint-sha256 SHA] [--expected-second-feature-fingerprint-sha256 SHA] [--expected-annotation-state-fingerprint-sha256 SHA] [--path OUT.json]"
       },
       {
          "aliases": [],
@@ -38,6 +379,102 @@
          "path": "state-summary",
          "summary": "Summarize loaded state (sequences, containers, metadata).",
          "usage": "state-summary"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "facts graph",
+         "summary": "Return the deterministic project fact graph, optionally enriched with explicit evidence files.",
+         "usage": "facts graph [--evidence SCAN.json ...]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "facts eval",
+         "summary": "Evaluate one fact expression against the current project fact graph and explicit evidence files.",
+         "usage": "facts eval FACT_EXPR_JSON_OR_@FILE [--evidence SCAN.json ...]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "introspect facts",
+         "summary": "Return deterministic fact read-back grouped by project, view, host, and config domains.",
+         "usage": "introspect facts [--domain project|view|host|config] [--seq-id SEQ_ID] [--evidence SCAN.json ...] [--ui-host true|false]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "introspect capabilities",
+         "summary": "Return the shared capability registry plus fact-annotated introspection descriptors where available.",
+         "usage": "introspect capabilities [--kind operation|view_intent|host_config]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "introspect readiness",
+         "summary": "Evaluate unbound or bound readiness for one or more introspection-complete capabilities.",
+         "usage": "introspect readiness [CAPABILITY_ID] [--arg NAME=VALUE ...] [--seq-id SEQ_ID] [--readiness ready|blocked|unknown] [--evidence SCAN.json ...] [--ui-host true|false]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "introspect verify-effects",
+         "summary": "Verify fact-annotated must-on-success effects against the current project fact graph and supplied evidence.",
+         "usage": "introspect verify-effects CAPABILITY_ID [--arg NAME=VALUE ...] [--seq-id SEQ_ID] [--evidence SCAN.json ...] [--ui-host true|false]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "introspect all",
+         "summary": "Return fact read-back, registry-backed capability descriptors, and catalog-mode readiness in one payload.",
+         "usage": "introspect all [--evidence SCAN.json ...] [--ui-host true|false]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "introspect runtime",
+         "summary": "Return the process-local live runtime activity stack for the current GENtle process.",
+         "usage": "introspect runtime"
       },
       {
          "aliases": [],
@@ -93,7 +530,7 @@
          ],
          "path": "introspect capabilities",
          "summary": "Inspect annotated capability metadata and fact-readiness contracts.",
-         "usage": "introspect capabilities [--kind KIND]"
+         "usage": "introspect capabilities [--kind operation|view_intent|host_config]"
       },
       {
          "aliases": [],
@@ -127,6 +564,17 @@
          "path": "introspect all",
          "summary": "Emit the complete deterministic introspection bundle for adapters and agents.",
          "usage": "introspect all [--ui-host true|false] [--evidence SCAN.json ...]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "introspect runtime",
+         "summary": "Inspect the live process-local activity stack for the current GENtle process.",
+         "usage": "introspect runtime"
       },
       {
          "aliases": [],
@@ -244,8 +692,8 @@
             "cli-direct"
          ],
          "path": "inspect-feature-expert",
-         "summary": "Inspect TFBS, restriction-site, splicing, isoform, or transcript/protein expert details as JSON.",
-         "usage": "inspect-feature-expert SEQ_ID tfbs FEATURE_ID | inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | inspect-feature-expert SEQ_ID splicing FEATURE_ID | inspect-feature-expert SEQ_ID isoform PANEL_ID | inspect-feature-expert SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... | inspect-feature-expert SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]..."
+         "summary": "Inspect TFBS, restriction-site, splicing, isoform architecture/evidence, composed gene-locus evidence, or transcript/protein expert details as JSON.",
+         "usage": "inspect-feature-expert SEQ_ID tfbs FEATURE_ID | inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | inspect-feature-expert SEQ_ID splicing FEATURE_ID | inspect-feature-expert SEQ_ID isoform PANEL_ID | inspect-feature-expert SEQ_ID isoform-evidence PANEL_ID [--annotation-release LABEL] [--rna-read-report-id ID]... [--probe-evidence PATH]... [--cdna-est-resource PATH]... [--expression-tsv PATH] [--occupancy-track NAME]... [--qpcr-report-id ID]... | inspect-feature-expert SEQ_ID gene-locus-evidence PANEL_ID [--annotation-release LABEL] [--rna-read-report-id ID]... [--probe-evidence PATH]... [--cdna-est-resource PATH]... [--expression-tsv PATH] [--qpcr-report-id ID]... [--probe-effect-table PATH]... [--probe-effect-contrast TOKEN]... [--probe-effect-coordinate-system ID] [--upstream-bp N] [--downstream-bp N] [--occupancy-layout JSON_OR_@FILE | --occupancy-track NAME]... [--motif TOKEN]... [--score-kind KIND] [--motif-threshold N] [--motif-top-hits N] [--regulatory-score-tracks JSON_OR_@FILE] [--scale-bar hidden|auto|fixed] [--scale-bar-bp N] [--include-local-source-paths] [--allow-negative] | inspect-feature-expert SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... | inspect-feature-expert SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]..."
       },
       {
          "aliases": [],
@@ -258,8 +706,80 @@
             "cli-direct"
          ],
          "path": "render-feature-expert-svg",
-         "summary": "Render TFBS, restriction-site, splicing, isoform, or transcript/protein expert visualization as SVG.",
-         "usage": "render-feature-expert-svg SEQ_ID tfbs FEATURE_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] OUTPUT.svg | render-feature-expert-svg SEQ_ID splicing FEATURE_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID isoform PANEL_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... OUTPUT.svg | render-feature-expert-svg SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]... OUTPUT.svg"
+         "summary": "Render TFBS, restriction-site, splicing, isoform architecture/evidence, composed gene-locus evidence, or transcript/protein expert visualization as SVG.",
+         "usage": "render-feature-expert-svg SEQ_ID tfbs FEATURE_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] OUTPUT.svg | render-feature-expert-svg SEQ_ID splicing FEATURE_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID isoform PANEL_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID isoform-evidence PANEL_ID [--annotation-release LABEL] [--rna-read-report-id ID]... [--probe-evidence PATH]... [--cdna-est-resource PATH]... [--expression-tsv PATH] [--occupancy-track NAME]... [--qpcr-report-id ID]... OUTPUT.svg | render-feature-expert-svg SEQ_ID gene-locus-evidence PANEL_ID [--annotation-release LABEL] [--rna-read-report-id ID]... [--probe-evidence PATH]... [--cdna-est-resource PATH]... [--expression-tsv PATH] [--qpcr-report-id ID]... [--probe-effect-table PATH]... [--probe-effect-contrast TOKEN]... [--probe-effect-coordinate-system ID] [--upstream-bp N] [--downstream-bp N] [--occupancy-layout JSON_OR_@FILE | --occupancy-track NAME]... [--motif TOKEN]... [--score-kind KIND] [--motif-threshold N] [--motif-top-hits N] [--regulatory-score-tracks JSON_OR_@FILE] [--scale-bar hidden|auto|fixed] [--scale-bar-bp N] [--include-local-source-paths] [--allow-negative] OUTPUT.svg | render-feature-expert-svg SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... OUTPUT.svg | render-feature-expert-svg SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]... OUTPUT.svg"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "InspectCrypticSplicingScreen"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct"
+         ],
+         "path": "splicing cryptic-screen",
+         "summary": "Screen a bounded loaded-sequence span for structural GT-AG cryptic-splicing candidates without treating candidates as observed splicing.",
+         "usage": "splicing cryptic-screen REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "RenderCrypticSplicingScreenSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct"
+         ],
+         "path": "splicing cryptic-render",
+         "summary": "Compute the same bounded cryptic-splicing structural screen and render its typed report as SVG.",
+         "usage": "splicing cryptic-render REQUEST_JSON_OR_@FILE OUTPUT.svg"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "InspectCrypticSplicingScreen"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "splicing cryptic-export",
+         "summary": "Compute the bounded cryptic-splicing screen and export its typed report as JSON.",
+         "usage": "splicing cryptic-export REQUEST_JSON_OR_@FILE OUTPUT.json"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "InspectCrypticSplicingEvidenceOverlay"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "splicing cryptic-overlay",
+         "summary": "Join structural candidates with content-bound RNA junction evidence while preserving exact, nearby, no-retained-support, and not-assessable states.",
+         "usage": "splicing cryptic-overlay REQUEST_JSON_OR_@FILE [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "InspectCrypticSplicingProteinProjection"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "splicing cryptic-protein",
+         "summary": "Project candidate removals onto a digest-bound UniProt feature projection as a separate annotation-evidence layer.",
+         "usage": "splicing cryptic-protein REQUEST_JSON_OR_@FILE [--output OUTPUT.json]"
       },
       {
          "aliases": [
@@ -507,7 +1027,7 @@
          ],
          "path": "render-pool-gel-svg",
          "summary": "Render serial gel SVG from sequence ids, containers, or an arrangement with optional explicit ladders.",
-         "usage": "render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]"
+         "usage": "render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID] [--lane-label-layout auto|horizontal|wrapped|staggered|angled] [--band-label-layout auto|inline|panel] [--isoform-markers auto|off]"
       },
       {
          "aliases": [],
@@ -964,7 +1484,7 @@
          ],
          "path": "agents ask",
          "summary": "Send prompt to one agent system and optionally execute suggested shared-shell commands.",
-         "usage": "agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]"
+         "usage": "agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--allow-web-research] [--execute-all] [--execute-index N ...] [--no-state-summary]"
       },
       {
          "aliases": [],
@@ -1116,7 +1636,7 @@
          ],
          "path": "variant annotate-promoters",
          "summary": "Derive transcript-TSS-centered promoter windows and write them back as generated promoter features.",
-         "usage": "variant annotate-promoters SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--upstream-bp N] [--downstream-bp N] [--collapse transcript|gene]"
+         "usage": "variant annotate-promoters SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--upstream-bp N] [--downstream-bp N] [--collapse transcript|gene|tss-cluster[:TOLERANCE_BP]]"
       },
       {
          "aliases": [],
@@ -1158,7 +1678,7 @@
          ],
          "path": "variant materialize-allele",
          "summary": "Create one reference or alternate single-allele sequence from a promoter fragment carrying a single-nucleotide variant.",
-         "usage": "variant materialize-allele SEQ_ID --allele reference|alternate [--variant ID] [--output-id ID]"
+         "usage": "variant materialize-allele SEQ_ID --allele reference|alternate [--alternate-base BASE] [--variant ID] [--output-id ID]"
       },
       {
          "aliases": [],
@@ -1309,6 +1829,20 @@
       {
          "aliases": [],
          "engine_operations": [
+            "BuildUniprotLinkedTranscriptInventory"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot build-linked-transcript-inventory",
+         "summary": "Build a deterministic, content-bound UniProt isoform to mature-cDNA inventory from explicit links and transcript FASTA resources.",
+         "usage": "uniprot build-linked-transcript-inventory REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "AuditUniprotProjectionConsistency"
          ],
          "interfaces": [
@@ -1417,8 +1951,8 @@
             "cli-direct"
          ],
          "path": "ensembl-gene fetch",
-         "summary": "Fetch one Ensembl gene lookup record from Ensembl REST by HGNC-approved gene symbol or stable Ensembl gene id (for example FUS or ENSG00000089280); --species should be an Ensembl species name such as homo_sapiens; --entry-id names the local GENtle metadata entry. HGNC:n identifiers are nomenclature ids and may need resolution before use.",
-         "usage": "ensembl-gene fetch QUERY [--species NAME] [--entry-id ID]"
+         "summary": "Fetch one Ensembl gene lookup record from Ensembl REST by approved gene symbol or stable Ensembl gene id; --species uses an Ensembl species name, --assembly verifies the resolved build, and flank options request strand-aware genomic context; --entry-id names the local GENtle metadata entry.",
+         "usage": "ensembl-gene fetch QUERY [--species NAME] [--assembly NAME] [--flank-bp N|--flank-5p-bp N --flank-3p-bp N] [--entry-id ID]"
       },
       {
          "aliases": [],
@@ -1560,6 +2094,18 @@
             "gui-shell",
             "cli-direct"
          ],
+         "path": "resources sync-maxent",
+         "summary": "Normalize user-supplied MaxEntScan tables into a provenance-bound local splice-model snapshot without bundling or redistributing the tables.",
+         "usage": "resources sync-maxent INPUT.directory_or_zip [OUTPUT.json] [--source-url URL] [--retrieved-on YYYY-MM-DD] [--redistribution-status STATUS]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
          "path": "resources sync-ucsc-rmsk",
          "summary": "Normalize a UCSC RepeatMasker rmsk table into a GENtle resource snapshot with repeat display/index metadata.",
          "usage": "resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]"
@@ -1641,6 +2187,84 @@
          "usage": "resources suggest-ucsc-rmsk-index [--assembly DB] [--output OUTPUT.json]"
       },
       {
+         "aliases": [
+            "resources list-screen-ccre-sources"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources list-encode-ccre-sources",
+         "summary": "List built-in species- and assembly-bound ENCODE SCREEN Registry V4 ELS sources without downloading them.",
+         "usage": "resources list-encode-ccre-sources [--assembly GRCh38|hg38|GRCm38|mm10] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "resources install-screen-ccres"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources install-encode-ccres",
+         "summary": "Explicitly download or copy a selected SCREEN Registry V4 ELS BED and build its content-bound sparse interval index.",
+         "usage": "resources install-encode-ccres SOURCE_ID [--input PATH_OR_URL] [--bed-output PATH] [--index-output PATH]"
+      },
+      {
+         "aliases": [
+            "resources index-encode-ccres"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources prepare-encode-ccre-index",
+         "summary": "Build a deterministic sparse interval index for an existing local SCREEN Registry V4 ELS BED.",
+         "usage": "resources prepare-encode-ccre-index SOURCE_ID BED_PATH [--output INDEX.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources list-ensembl-regulation-sources",
+         "summary": "List pinned species-, assembly-, and release-bound Ensembl Regulation annotation sources without downloading them.",
+         "usage": "resources list-ensembl-regulation-sources [--assembly GRCh38|hg38|GRCm39|mm39] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources install-ensembl-regulatory-features",
+         "summary": "Explicitly retrieve or import a complete pinned Ensembl Regulation API snapshot and build its content-bound sparse interval index.",
+         "usage": "resources install-ensembl-regulatory-features SOURCE_ID [--input COMPLETE_API_RESPONSE.json] [--intervals-output PATH] [--index-output PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources prepare-ensembl-regulation-index",
+         "summary": "Build a deterministic sparse interval index for a normalized, release-bound Ensembl Regulation interval snapshot.",
+         "usage": "resources prepare-ensembl-regulation-index SOURCE_ID INTERVALS_PATH [--output INDEX.json]"
+      },
+      {
          "aliases": [],
          "engine_operations": [
             "SyncJasparRemoteMetadata"
@@ -1667,6 +2291,216 @@
          "path": "resources summarize-jaspar",
          "summary": "Present selected or all local JASPAR entries with max/min motif strings and deterministic random-background score summaries.",
          "usage": "resources summarize-jaspar [--motif TOKEN ...] [--motifs CSV] [--all] [--random-length N] [--seed N] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ComposeRegulatoryReporterStudy"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "promoters compose-study",
+         "summary": "Resolve a gene list or evidence-derived cohort against a prepared genome, extract transcript-bound promoter loci, and emit per-gene candidate sets plus a panel request with context-bound readiness.",
+         "usage": "promoters compose-study REQUEST_JSON_OR_@FILE [--path REPORT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ComparePromoterReporterArchitectures"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "promoters compare-architectures",
+         "summary": "Compare transcript-aware TSS-proximal, spliced-leader, genomic-leader, and explicitly requested ATG-fusion reporter models without materializing constructs or conflating occupancy with promoter use.",
+         "usage": "promoters compare-architectures REQUEST_JSON_OR_@FILE [--path REPORT.json] [--svg-path FIGURE.svg]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "InspectPromoterReporterPanelReadiness"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "promoters panel-readiness",
+         "summary": "Recompute request, exact-vector, candidate/TSS, evidence, proposal-currency, and approval readiness without changing project state.",
+         "usage": "promoters panel-readiness request REQUEST_JSON_OR_@FILE | proposal PROPOSAL_JSON_OR_@FILE [--approve DIGEST] [--path REPORT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PlanPromoterReporterPanel"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "promoters panel-plan",
+         "summary": "Build a read-only, content-addressed proposal for selected promoter fragments, their stated-rule mutants, shared cloning strategy, exact products, primers, and exports.",
+         "usage": "promoters panel-plan REQUEST_JSON_OR_@FILE [--path PROPOSAL.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "MaterializePromoterReporterPanel"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "promoters panel-materialize",
+         "summary": "Recompute and materialize an unchanged promoter-reporter panel proposal after exact digest approval, refusing input drift and artifact overwrites.",
+         "usage": "promoters panel-materialize PROPOSAL_JSON_OR_@FILE --approve DIGEST"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PlanRegulatoryFragmentPanel"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "promoters regulatory-panel-plan",
+         "summary": "Build a deterministic read-only reporter contrast plan from exact persisted genomic regions, declared multi-fragment geometry, vector identity, and separate evidence lanes.",
+         "usage": "promoters regulatory-panel-plan REQUEST_JSON_OR_@FILE [--path PLAN.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["PlanEvidenceGuidedFragmentCandidates"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp"],
+         "path": "promoters fragment-candidates",
+         "summary": "Propose evidence-guided reporter boundaries, explicit human adjustments and validated-MCS restriction alternatives without saving regions or constructs.",
+         "usage": "promoters fragment-candidates REQUEST_JSON_OR_@FILE [--path REPORT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "RenderRegulatoryFragmentPanelSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "promoters regulatory-panel-render",
+         "summary": "Render a passive review SVG from an unchanged, digest-valid regulatory-fragment panel plan.",
+         "usage": "promoters regulatory-panel-render PLAN_JSON_OR_@FILE --path FIGURE.svg"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PlanRegulatoryFragmentMaterialization"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "promoters regulatory-products-plan",
+         "summary": "Prepare a separately approved exact multi-fragment design, including vector-context replacement, source instances, spacers and preserved annotations. No cloning success is implied.",
+         "usage": "promoters regulatory-products-plan PLAN_JSON_OR_@FILE --output-prefix PREFIX"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["PlanDnaSequenceDesign"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "sequence-design plan",
+         "summary": "Preview bounded synonymous motif removal for an explicitly synthetic coding insert, preserving supplied translation, frozen flanks, start/stop and protected bases. No source changes; not full DNA Chisel compatibility.",
+         "usage": "sequence-design plan REQUEST_JSON_OR_@FILE [--path PREVIEW.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["ApplyDnaSequenceDesign"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "sequence-design apply",
+         "summary": "Create exactly approved synonymous synthetic DNA after source/table/output checks without rerunning optimization. Requires explicit digest approval; original sequence remains unchanged and stale source annotations are omitted.",
+         "usage": "sequence-design apply PREVIEW_JSON_OR_@FILE --approve DIGEST"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "MaterializeRegulatoryFragmentPanel"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp-op"
+         ],
+         "path": "promoters regulatory-products-materialize",
+         "summary": "Atomically materialize exact design products after digest approval, refusing stale sources and output collisions; retains a receipt without declaring experimental QA passed.",
+         "usage": "promoters regulatory-products-materialize PROPOSAL_JSON_OR_@FILE --approve DIGEST"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["ScreenTataBoxes"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
+         "path": "promoters tata-screen",
+         "summary": "Inspect source TATA annotations, optional EPD promoter classifications and TSS-aware exact-version TBP predictions without modifying the sequence.",
+         "usage": "promoters tata-screen REQUEST_JSON_OR_@FILE [--output REPORT.json]"
+      },
+      {
+         "aliases": [], "engine_operations": ["InspectTssInventory"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
+         "path": "promoters tss-inventory",
+         "summary": "Preview all exact annotated starts for a gene on a loaded anchored locus, preserving shared transcript membership and refusing clipped flanks.",
+         "usage": "promoters tss-inventory REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [], "engine_operations": ["MaterializeTssWindows"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
+         "path": "promoters tss-materialize",
+         "summary": "Derive selected, preview-approved TSS windows into a named project collection atomically; no overwrites or biological coordinate guessing.",
+         "usage": "promoters tss-materialize REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [], "engine_operations": ["ListTssCollections"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
+         "path": "promoters tss-list",
+         "summary": "List stored TSS collection metadata, including legacy/invalid records, without validating members; not checked is never pass.",
+         "usage": "promoters tss-list"
+      },
+      {
+         "aliases": [], "engine_operations": ["GetTssCollection"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
+         "path": "promoters tss-collection",
+         "summary": "Validate a persisted TSS collection and its typed TssCollection subject for optional collection scans.",
+         "usage": "promoters tss-collection COLLECTION_ID"
+      },
+      {
+         "aliases": [], "engine_operations": ["ForgetTssCollection"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
+         "path": "promoters tss-forget",
+         "summary": "Forget collection metadata only, retaining member sequences and lineage, including for stale or legacy collections.",
+         "usage": "promoters tss-forget COLLECTION_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["MaterializeTataBoxFeatures"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
+         "path": "promoters tata-materialize",
+         "summary": "Explicitly add selected TATA evidence to the DNA map after verifying the exact reviewed report digest; EPD rows are TSS classification markers.",
+         "usage": "promoters tata-materialize REQUEST_JSON_OR_@FILE"
       },
       {
          "aliases": [],
@@ -1838,6 +2672,7 @@
          ],
          "interfaces": [
             "cli-shell",
+            "gui-menu",
             "gui-shell",
             "cli-direct"
          ],
@@ -1862,6 +2697,45 @@
          "path": "gene-sets promoter-cohort",
          "summary": "Build strand-aware promoter windows for a resolved gene set using the shared promoter/TSS resolver and default 1000 bp upstream / 200 bp downstream geometry.",
          "usage": "gene-sets promoter-cohort GENOME_ID [--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN|--neighbors GENE --flank-genes N|--random-size N --seed N] [--relationship manual|co-regulated|anti-co-regulated] [--upstream-bp N] [--downstream-bp N] [--catalog PATH] [--genome-catalog PATH] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "gene_sets regulatory-partner-screen",
+            "genesets regulatory-partner-screen",
+            "gene-sets regulatory_partner_screen",
+            "gene-sets regulatory-partners"
+         ],
+         "engine_operations": [
+            "InspectRegulatoryPartnerScreen"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct"
+         ],
+         "path": "gene-sets regulatory-partner-screen",
+         "summary": "Enumerate exact anchor-plus-partner motif tuples in resolved promoter sequences and return a replayable evidence decision tree linked to gene and DNA views.",
+         "usage": "gene-sets regulatory-partner-screen GENOME_ID --resolution RESOLUTION.json --anchor-motif MOTIF [--anchor-motif MOTIF ...] --partner-motif MOTIF [--partner-motif MOTIF ...] [--min-llr-bits BITS] [--motif-threshold MOTIF=BITS] [--max-distance-bp N] [--anchor-mode occupancy-preferred|motif-only] [--cutrun-support SUPPORT.json] [--upstream-bp N] [--downstream-bp N] [--genome-catalog PATH] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "gene_sets create-pool",
+            "genesets create-pool",
+            "gene-sets create_pool"
+         ],
+         "engine_operations": [
+            "CreateGeneSetPool"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "gui-menu"
+         ],
+         "path": "gene-sets create-pool",
+         "summary": "Preview or apply explicit physical pooling of a complete resolved gene set from one exclusive singleton source container per member.",
+         "usage": "gene-sets create-pool RESOLUTION_ID --member-container MEMBER_ID=CONTAINER_ID [--member-container MEMBER_ID=CONTAINER_ID ...] [--output-prefix PREFIX] [--container-name NAME] [--preview | --apply --expected-plan-fingerprint-sha256 SHA256] [--path REPORT.json]"
       },
       {
          "aliases": [
@@ -1896,7 +2770,7 @@
             "cli-direct"
          ],
          "path": "gene-sets produce ontology-assignment",
-         "summary": "Produce a gene-set resolution report from a local ontology assignment JSON/TSV cache, selecting members by term and evidence/filter metadata before resolving them through the existing explicit-member resolver.",
+         "summary": "Produce a gene-set resolution report from a local ontology assignment JSON/TSV cache, selecting genes assigned to a term by that provider/cache; unlike ExternalMapping, this does not select reviewed local catalog groups that cite the term.",
          "usage": "gene-sets produce ontology-assignment --cache CACHE.json_or_tsv --term GO:NNNNNNN [--ontology-namespace GO] [--evidence-code CODE] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--cache-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--filter FIELD=VALUE] [--output OUTPUT.json]"
       },
       {
@@ -1933,7 +2807,7 @@
          ],
          "path": "orthologs resolve-promoter-cohort",
          "summary": "Resolve an offline local ortholog mapping resource into strand-aware cross-species promoter windows using prepared genome catalogs.",
-         "usage": "orthologs resolve-promoter-cohort --anchor-species SPECIES --anchor-genome GENOME_ID --anchor-gene QUERY --target-species SPECIES [--target-species SPECIES ...] [--target-genome SPECIES=GENOME_ID] [--transcript SPECIES=TRANSCRIPT_ID] --orthologs ORTHOLOG_RESOURCE.json [--relationship manual|co-regulated|anti-co-regulated] [--upstream-bp N] [--downstream-bp N] [--ambiguity-policy reject|first] [--catalog GENOMES.json] [--cache-dir PATH] [--path OUTPUT.json]"
+         "usage": "orthologs resolve-promoter-cohort --anchor-species SPECIES --anchor-genome GENOME_ID --anchor-gene QUERY --target-species SPECIES [--target-species SPECIES ...] [--target-genome SPECIES=GENOME_ID] [--transcript SPECIES=TRANSCRIPT_ID] --orthologs ORTHOLOG_RESOURCE.json [--relationship manual|co-regulated|anti-co-regulated] [--upstream-bp N] [--downstream-bp N] [--ambiguity-policy reject|first|preserve] [--catalog GENOMES.json] [--cache-dir PATH] [--path OUTPUT.json]"
       },
       {
          "aliases": [
@@ -1950,7 +2824,21 @@
          ],
          "path": "orthologs promoter-comparison",
          "summary": "Compare a resolved ortholog promoter cohort across sequence identity, TFBS score-track similarity, optional expression rows, and explicit CUT&RUN comparability states.",
-         "usage": "orthologs promoter-comparison --cohort COHORT.json --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--score-kind KIND] [--allow-negative] [--relationship manual|co-regulated|anti-co-regulated] [--expression-json JSON] [--expression-source-label LABEL] [--cutrun-dataset-id ID] [--cutrun-read-report-id ID] [--path OUTPUT.json]"
+         "usage": "orthologs promoter-comparison --cohort COHORT.json --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--score-kind KIND] [--allow-negative] [--relationship manual|co-regulated|anti-co-regulated] [--expression-json JSON] [--expression-source-label LABEL] [--cutrun-dataset-id ID] [--cutrun-read-report-id ID] [--cutrun-normalization-json JSON_OR_@FILE] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "orthologs compare-conservation"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "orthologs conservation-comparison",
+         "summary": "Globally align every resolved target promoter to the cohort anchor and report exact conserved intervals in anchor-relative and genomic coordinates.",
+         "usage": "orthologs conservation-comparison --cohort COHORT.json [--min-conserved-bp N] [--path OUTPUT.json]"
       },
       {
          "aliases": [
@@ -2225,6 +3113,44 @@
          "path": "genomes prepare",
          "summary": "Prepare/index one reference genome locally.",
          "usage": "genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]"
+      },
+      {
+         "aliases": [
+            "genomes import-blast-resource"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes prepare-blast-resource",
+         "summary": "Prepare or import a catalog-declared sequence-only transcriptome-cDNA BLAST resource without inventing genome annotation artifacts.",
+         "usage": "genomes prepare-blast-resource RESOURCE_ID [--catalog PATH] [--cache-dir PATH] [--force-rebuild]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes adopt-blast-resource",
+         "summary": "Validate and register an existing transcriptome-cDNA BLAST database against corrected catalog metadata without rebuilding or deleting index files.",
+         "usage": "genomes adopt-blast-resource RESOURCE_ID --sequence-path PREPARED.fa --blast-db-prefix PREFIX --expected-content-fingerprint sha256:... [--expected-sequence-sha1 SHA1] [--verify-source-identities] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes inspect-blast-resource",
+         "summary": "Inspect the type, reference release, masking, sequence count, BLAST validation, fingerprint, and compatible operations of one prepared sequence-only resource.",
+         "usage": "genomes inspect-blast-resource RESOURCE_ID [--catalog PATH] [--cache-dir PATH]"
       },
       {
          "aliases": [],
@@ -2840,7 +3766,7 @@
          ],
          "path": "cutrun inspect-regulatory-support",
          "summary": "Aggregate CUT&RUN ROI evidence into support windows, confirmed/unconfirmed TFBS rows, and motif-context summaries.",
-         "usage": "cutrun inspect-regulatory-support SEQ_ID [--dataset DATASET_ID]... [--read-report REPORT_ID]... [--promoter-search-start N] [--promoter-search-end N] [--neighbor-window-bp N] [--species-filter NAME]... [--path OUTPUT.json]"
+         "usage": "cutrun inspect-regulatory-support SEQ_ID [--dataset DATASET_ID]... [--read-report REPORT_ID]... [--catalog PATH] [--cache-dir PATH] [--promoter-search-start N] [--promoter-search-end N] [--neighbor-window-bp N] [--species-filter NAME]... [--path OUTPUT.json]"
       },
       {
          "aliases": [
@@ -3003,7 +3929,7 @@
          ],
          "path": "arrays probe-regions",
          "summary": "Preflight chromosome-ordered Affymetrix CEL probe/probeset-region inspection without running summarization.",
-         "usage": "arrays probe-regions (--cel PATH ... | --dataset ID) (--gene SYMBOL|--genes CSV|--locus LOCUS|--loci CSV|--transcript-cluster-id ID|--probeset-id ID ...) [--metadata PATH] [--platform NAME] [--annotation-library PATH] [--condition-column NAME] [--sample-column NAME] [--block-column NAME] [--paired-by-replicate-suffix] [--normalization rma|quantile-feature|none] [--plot] [--output DIR] [--cache-dir DIR] [--dry-run]"
+         "usage": "arrays probe-regions (--cel PATH ... | --dataset ID) (--gene SYMBOL|--genes CSV|--locus LOCUS|--loci CSV|--transcript-cluster-id ID|--probeset-id ID ...) [--metadata PATH] [--platform NAME] [--annotation-library PATH] [--r-library-path PATH ...] [--condition-column NAME] [--sample-column NAME] [--block-column NAME] [--paired-by-replicate-suffix] [--normalization rma|quantile-feature|none] [--plot] [--output DIR] [--cache-dir DIR] [--dry-run]"
       },
       {
          "aliases": [],
@@ -3266,6 +4192,28 @@
       {
          "aliases": [],
          "engine_operations": [
+            "DesignTerminalExonRtPrimerPool"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers design-terminal-exon-rt-pool",
+         "summary": "Compose annotated mature-transcript geometry and shared oligo metrics into a persisted ordered fixed-adapter RT-primer pool near explicit terminal-exon starts.",
+         "usage": "primers design-terminal-exon-rt-pool REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["DesignTranscriptCapturePool"],
+         "interfaces": ["cli-shell", "gui-shell", "mcp-op"],
+         "path": "primers design-transcript-capture-pool",
+         "summary": "Discover exact transcript-binding sense/antisense oligos with explicit UTR/range windows, shared-target budgets, retained isoform information and stage-aware fixed-oligo pool diagnostics; specificity and order readiness remain unassessed.",
+         "usage": "primers design-transcript-capture-pool REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "DesignQpcrAssays"
          ],
          "interfaces": [
@@ -3277,6 +4225,507 @@
          "path": "primers design-qpcr",
          "summary": "Generate and persist a ranked qPCR assay report from a DesignQpcrAssays operation payload.",
          "usage": "primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "DesignPrimerGroupTarget"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers design-group-target",
+         "summary": "Design one bounded common primer pair across two or more related loaded sequences and test every retained pair against every member.",
+         "usage": "primers design-group-target REQUEST_JSON_OR_@FILE [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "DesignTranscriptAssayPanel",
+            "DesignTranscriptAssayPanelWithFallback"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct"
+         ],
+         "path": "primers design-transcript-assay-panel",
+         "summary": "Design and persist an exact-cDNA-equivalence-aware endpoint RT-PCR, SYBR qPCR, or TaqMan qPCR transcript assay panel, optionally with an approval-bound informative partial fallback after typed strict coverage infeasibility.",
+         "usage": "primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|maximally-informative-panel|isoform-end-matrix] [--coverage-policy require-all|best-effort] [--coverage-universe JSON_OR_@FILE] [--assay-tier routine-common-region-screen|isoform-discrimination|long-range-structure-discovery] [--preferred-min-amplicon-bp N --preferred-max-amplicon-bp N] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--oligo-dt-5prime-risk-threshold-bp N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH] | primers design-transcript-assay-panel OPERATION_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "BuildTranscriptAssayCdnaSimilarityMap"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers build-transcript-assay-cdna-similarity-map",
+         "summary": "Build a content-bound advisory cDNA-similarity interval map from a prepared transcriptome BLAST resource.",
+         "usage": "primers build-transcript-assay-cdna-similarity-map REQUEST_JSON_OR_@FILE [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportPrimerSpecificityAlignmentHtml"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers specificity-alignment-html",
+         "summary": "Render complete primer alignments already stored in a specificity report without rerunning BLAST.",
+         "usage": "primers specificity-alignment-html REPORT_ID OUTPUT.html"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "RedesignTranscriptAssaySpecificityFailures"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers transcript-assay-specificity-redesign",
+         "summary": "Propose content-bound replacements or constrained infeasibility dispositions for assays rejected by complete specificity QA.",
+         "usage": "primers transcript-assay-specificity-redesign REQUEST_JSON_OR_@FILE [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "mcp",
+            "cli-direct"
+         ],
+         "path": "primers inspect-transcript-assay-feasibility",
+         "summary": "Inspect endpoint isoform-matrix annotation and primer-window feasibility for an exact operation without running Primer3.",
+         "usage": "primers inspect-transcript-assay-feasibility OPERATION_JSON_OR_@FILE [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PlanGeneIsoformAssayStudy"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "mcp",
+            "cli-direct"
+         ],
+         "path": "primers plan-gene-isoform-study",
+         "summary": "Normalize and content-bind a gene isoform-assay study request, then recommend a transparent study profile and emit exact ordered transcript-assay operation payloads without executing them.",
+         "usage": "primers plan-gene-isoform-study REQUEST_JSON_OR_@FILE [--normalize-only] [--normalized-request OUTPUT.json] [--path PLAN.json] [--workflow WORKFLOW.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers execute-gene-isoform-study-workflow",
+         "summary": "Verify exact workflow bytes and the ordered operation digest against an approved gene isoform-assay study plan, then execute that unchanged batch.",
+         "usage": "primers execute-gene-isoform-study-workflow PLAN_JSON_OR_@FILE WORKFLOW_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers compose-gene-isoform-study-workflow-batch",
+         "summary": "Prevalidate an ordered set of approved gene isoform-assay plans and workflows and emit one content-bound multi-study second-stage approval basis without executing operations.",
+         "usage": "primers compose-gene-isoform-study-workflow-batch REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers inspect-gene-isoform-study-reuse",
+         "summary": "Inspect private approved-operation checkpoints and emit a content-bound, explicitly approvable exact-prefix reuse proposal without importing state or running Primer3.",
+         "usage": "primers inspect-gene-isoform-study-reuse BATCH_JSON_OR_@FILE --checkpoint-dir DIR [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers execute-gene-isoform-study-workflow-batch",
+         "summary": "Revalidate an approved multi-study batch, execute it against a detached engine, optionally checkpoint successful operations, optionally import one separately approved exact-prefix checkpoint, and commit project state only after complete success or, with --on-gene-failure continue, after rolling each failing gene back to its own boundary.",
+         "usage": "primers execute-gene-isoform-study-workflow-batch BATCH_JSON_OR_@FILE [--checkpoint-dir DIR] [--reuse-proposal PROPOSAL_JSON_OR_@FILE --approve-reuse-sha256 SHA256] [--on-gene-failure abort|continue]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "mcp",
+            "cli-direct"
+         ],
+         "path": "primers publish-gene-isoform-study",
+         "summary": "Render content-addressed approved study plans, experimental handoffs, and readiness-bound order forms into one meta-page, one HTML page per gene, print HTML, optional browser PDF, and a projection receipt.",
+         "usage": "primers publish-gene-isoform-study REQUEST.json OUTPUT_DIR [--profile ID] [--blocks ID,ID] [--pdf]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ComposeGeneTranscriptAssayRoutine"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "mcp",
+            "cli-direct"
+         ],
+         "path": "primers compose-gene-assay-routine",
+         "summary": "Compose one exported gene isoform-evidence ledger and persisted transcript-assay panels into a deterministic, digest-backed experimental review manifest without rerunning design or specificity.",
+         "usage": "primers compose-gene-assay-routine REQUEST_JSON_OR_@FILE [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "FindRestrictionSites"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "features restriction-scan",
+         "summary": "Scan one loaded sequence for restriction-enzyme recognition and cut sites using configured preferred enzymes or explicit enzyme names.",
+         "usage": "features restriction-scan SEQ_ID [--enzyme NAME]... [--max-sites-per-enzyme N] [--no-cut-geometry] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ScanTfbsHits"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "features tfbs-scan",
+         "summary": "Scan one loaded or inline DNA sequence for retained TFBS/PSSM hits using explicit motif queries and transparent likelihood thresholds.",
+         "usage": "features tfbs-scan SEQ_ID --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "QueryGenomicMotifEvidence"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "mcp",
+            "cli-direct"
+         ],
+         "path": "features genomic-motif-evidence",
+         "summary": "Query bounded genomic intervals from an optional finalized jaspar-mapping DuckDB/Parquet package, returning typed unavailable evidence when the package or DuckDB is absent.",
+         "usage": "features genomic-motif-evidence SEQ_ID --motif MOTIF_ID [--motif MOTIF_ID ...] [--range START..END] [--package DIR] [--database FILE] [--duckdb FILE] [--genome-id ID] [--min-score VALUE] [--min-pwm-relative-score VALUE] [--max-rows N] [--max-payload-files N] [--timeout-seconds N] [--path OUTPUT.json] | features genomic-motif-evidence --region-set ID --motif MOTIF_ID [--motif MOTIF_ID ...] [OPTIONS] | features genomic-motif-evidence --region [ID=]CHR:START..END [--region [ID=]CHR:START..END ...] --motif MOTIF_ID [--motif MOTIF_ID ...] [--package DIR] [--database FILE] [--duckdb FILE] [--genome-id ID] [--min-score VALUE] [--min-pwm-relative-score VALUE] [--max-rows N] [--max-payload-files N] [--timeout-seconds N] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["QueryPromoterCofactors"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "mcp", "cli-direct"],
+         "path": "features promoter-cofactors",
+         "summary": "Browse validated reduced promoter-cofactor packages: cohort rankings, availability, anchors, strongest-per-band evidence and promoter ownership. No complete scan or site-level significance claim.",
+         "usage": "features promoter-cofactors REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "BuildExperimentalAssayHandoff"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct"
+         ],
+         "path": "primers experimental-handoff",
+         "summary": "Project a persisted transcript assay panel into deterministic per-pair assay cards and an order/readiness table, running the shared cDNA assay test for every selected pair.",
+         "usage": "primers experimental-handoff PANEL_REPORT_ID [--policy JSON_OR_@FILE] [--variant-evidence PATH ...] [--order-form-id ID] [--path OUTPUT.json] [--order-table OUTPUT.tsv] [--gel-svg OUTPUT.svg] [--gel-ladder NAME ...]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "AssessPrimerPairSpecificity"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers specificity",
+         "summary": "Run local BLAST specificity interpretation for one persisted or explicit primer pair against a prepared genomic-DNA or transcriptome-cDNA resource.",
+         "usage": "primers specificity REPORT_ID --pair-rank N --target-genome GENOME_ID [--readiness-max-amplicon-bp N] [--exploratory-max-amplicon-bp N] [--report-detail compact|full] [--full-alignment disabled|best-effort|required] [--reviewed-off-target-allowlist JSON_ARRAY_OR_@FILE] [--catalog PATH] [--cache-dir DIR] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "AssessPrimerPairSpecificityCollection"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "gui-menu"
+         ],
+         "path": "collections run primer-specificity",
+         "summary": "Map GENtle's existing local-BLAST primer specificity assessment over project sequences or a persisted gene-set resolution, retaining per-member failures and produced report IDs.",
+         "usage": "collections run primer-specificity [GENE_SET_REPORT_ID | --seq-ids SEQ_ID,... | --tss-collection COLLECTION_ID] [--member-report MEMBER_ID=PRIMER_REPORT_ID]... (--pair-rank N | --pair-index N) --target-genome GENOME_ID [--policy JSON_OR_@FILE] [--catalog PATH] [--cache-dir DIR] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "FindRestrictionSitesCollection"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "gui-menu"
+         ],
+         "path": "collections run restriction-scan",
+         "summary": "Map the shared restriction-site scanner over loaded project sequences or explicitly sequence-bound members of a persisted gene-set resolution.",
+         "usage": "collections run restriction-scan [GENE_SET_REPORT_ID | --seq-ids SEQ_ID,... | --tss-collection COLLECTION_ID] [--member-sequence MEMBER_ID=SEQ_ID]... [--enzyme NAME]... [--max-sites-per-enzyme N] [--no-cut-geometry] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "InspectConstructReasoningCollection"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "collections run construct-reasoning-inspection",
+         "summary": "Build fresh non-persisted construct-reasoning snapshots for project sequences or explicitly sequence-bound gene-set members and list each member's recommended inspection actions.",
+         "usage": "collections run construct-reasoning-inspection [GENE_SET_REPORT_ID | --seq-ids SEQ_ID,...] [--member-sequence MEMBER_ID=SEQ_ID]... [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ScanTfbsHitsCollection"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "gui-menu"
+         ],
+         "path": "collections run tfbs-scan",
+         "summary": "Map the shared non-mutating TFBS hit scanner over loaded project sequences, snapshot-validated TSS collections, or explicitly sequence-bound gene-set members, with explicit aggregate completeness.",
+         "usage": "collections run tfbs-scan [GENE_SET_REPORT_ID | --seq-ids SEQ_ID,... | --tss-collection COLLECTION_ID] [--member-sequence MEMBER_ID=SEQ_ID]... --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "DigestCollection"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "gui-menu"
+         ],
+         "path": "collections run digest",
+         "summary": "Preview or apply the shared restriction digest over loaded project sequences or explicitly sequence-bound members of a persisted gene-set resolution.",
+         "usage": "collections run digest [GENE_SET_REPORT_ID | --seq-ids SEQ_ID,... | --tss-collection COLLECTION_ID] [--member-sequence MEMBER_ID=SEQ_ID]... --enzyme NAME [--enzyme NAME ...] [--enzymes CSV] [--output-prefix PREFIX] [--dry-run | --apply --expected-plan-fingerprint-sha256 SHA256] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportPoolCollection"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "gui-menu"
+         ],
+         "path": "collections run export-pool",
+         "summary": "Atomically combine one exclusive physical container into the existing GENtle pool JSON artifact with a portable collection report.",
+         "usage": "collections run export-pool CONTAINER_ID --path OUTPUT.pool.gentle.json [--pool-id POOL_ID] [--human-id HUMAN_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PreparePrimerPairSpecificityHandoff"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers specificity-plan",
+         "summary": "Prepare a non-executing, provenance-bound two-command BLAST handoff for one primer pair so an outer scheduler can run the declared searches.",
+         "usage": "primers specificity-plan REPORT_ID --pair-rank N --target-genome GENOME_ID --output-dir DIR [--readiness-max-amplicon-bp N] [--exploratory-max-amplicon-bp N] [--report-detail compact|full] [--full-alignment disabled|best-effort|required] [--reviewed-off-target-allowlist JSON_ARRAY_OR_@FILE] [--catalog PATH] [--cache-dir DIR]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ImportPrimerPairSpecificityHandoff"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers specificity-import",
+         "summary": "Validate and interpret completed raw BLAST TSV outputs from one GENtle specificity handoff without treating process completion as a biological pass.",
+         "usage": "primers specificity-import HANDOFF.json [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["PreparePrimerPairMultiReferenceSpecificityHandoff"],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "primers specificity-multi-handoff",
+         "summary": "Prepare a standalone non-executing handoff for one pair against 1-8 explicitly selected references; required unavailable indexes stop before files are written.",
+         "usage": "primers specificity-multi-handoff REQUEST_JSON_OR_@FILE OUTPUT_DIR"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["ImportPrimerPairMultiReferenceSpecificity"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp"],
+         "path": "primers specificity-multi-import",
+         "summary": "Validate retained external outputs and persist a standalone content-derived summary with independent genomic and transcriptome verdicts; no readiness attachment.",
+         "usage": "primers specificity-multi-import HANDOFF_PATH MANIFEST_PATH"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["GetPrimerPairMultiReferenceSpecificitySummary"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp"],
+         "path": "primers specificity-multi-show",
+         "summary": "Inspect immutable historical specificity evidence without expensive database probes; applicability was checked at import.",
+         "usage": "primers specificity-multi-show SUMMARY_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["ListPrimerPairMultiReferenceSpecificitySummaries"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp"],
+         "path": "primers specificity-multi-list",
+         "summary": "List stored standalone multi-reference specificity summaries in stable content-ID order.",
+         "usage": "primers specificity-multi-list"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct"],
+         "path": "primers transcript-assay-specificity-plan",
+         "summary": "Prepare one atomic external BLAST handoff for every selected assay in a persisted transcript panel, inheriting its ordinary amplicon ceiling unless explicitly overridden.",
+         "usage": "primers transcript-assay-specificity-plan PANEL_REPORT_ID --target-genome GENOME_ID --output-dir DIR [--readiness-max-amplicon-bp N] [--exploratory-max-amplicon-bp N] [--report-detail compact|full] [--full-alignment disabled|best-effort|required] [--reviewed-off-target-allowlist JSON_ARRAY_OR_@FILE] [--catalog PATH] [--cache-dir DIR]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers transcript-assay-specificity-finalize",
+         "summary": "Atomically validate a panel handoff execution manifest and classify complete evidence as pass, biological specificity failure, not assessed, or incomplete.",
+         "usage": "primers transcript-assay-specificity-finalize HANDOFF.json EXECUTION_MANIFEST_JSON_OR_@FILE [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SearchPrimerBank"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers primerbank search",
+         "summary": "Search individual PrimerBank primer-pair records by gene, accession, NCBI id, PrimerBank id, or keyword and return a typed provenance report.",
+         "usage": "primers primerbank search QUERY [--by gene-symbol|gene-id|genbank|protein|primerbank-id|keyword] [--species human|mouse|all] [--html SAVED.html] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SearchPrimerBank"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers primerbank show",
+         "summary": "Retrieve one PrimerBank primer-pair record by its PrimerBank id through the typed search adapter.",
+         "usage": "primers primerbank show PRIMERBANK_ID [--species human|mouse|all] [--html SAVED.html] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "TestCdnaPcr"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers primerbank test-cdna",
+         "summary": "Retrieve one PrimerBank pair, cross-check its species against the request and annotated target sequence, and test it against GENtle transcript-derived cDNA models without treating catalog presence as validation.",
+         "usage": "primers primerbank test-cdna SEQ_ID FEATURE_ID PRIMERBANK_ID --species human|mouse [--html SAVED.html] [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--path OUTPUT.json] [--svg OUTPUT.svg]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ImportExternalPrimerPairs"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers import-external-pairs",
+         "summary": "Import provenance-bearing external primer pairs from JSON or TSV, assign sequence-derived identities, and evaluate them through GENtle's shared cDNA, oligo-QC, genomic-carryover, optional specificity, transcript-map, and product-gel paths.",
+         "usage": "primers import-external-pairs INPUT.json|tsv SEQ_ID FEATURE_ID [--format auto|json|tsv] [--report-id ID] [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--specificity-target-genome GENOME_ID] [--specificity-catalog PATH] [--specificity-cache-dir DIR] [--artifact-output-dir DIR] [--materialize-products] [--product-gel-ladder NAME]... [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ScreenPrimerVariants"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers screen-variants",
+         "summary": "Screen explicit assembly-aware primer and probe binding geometry against one local VCF, VCF.gz, or prepared manifest, preserving source attribution and conservative unknown-frequency semantics.",
+         "usage": "primers screen-variants REQUEST_JSON_OR_@FILE [--path OUTPUT.json] [--evidence-dir DIR]"
       },
       {
          "aliases": [],
@@ -3441,7 +4890,7 @@
             "cli-direct"
          ],
          "path": "primers list-reports",
-         "summary": "List persisted primer-design reports.",
+         "summary": "List persisted primer-design, terminal-exon RT-primer-pool, and primer-specificity reports.",
          "usage": "primers list-reports"
       },
       {
@@ -3453,7 +4902,7 @@
             "cli-direct"
          ],
          "path": "primers show-report",
-         "summary": "Inspect one persisted primer-design report by report ID.",
+         "summary": "Inspect one persisted primer-design, terminal-exon RT-primer-pool, or primer-specificity report by report ID.",
          "usage": "primers show-report REPORT_ID"
       },
       {
@@ -3465,7 +4914,7 @@
             "cli-direct"
          ],
          "path": "primers export-report",
-         "summary": "Write one persisted primer-design report to JSON.",
+         "summary": "Write one persisted primer-design, terminal-exon RT-primer-pool, or primer-specificity report to JSON.",
          "usage": "primers export-report REPORT_ID OUTPUT.json"
       },
       {
@@ -3503,6 +4952,78 @@
          "path": "primers export-qpcr-report",
          "summary": "Write one persisted qPCR assay report to JSON.",
          "usage": "primers export-qpcr-report REPORT_ID OUTPUT.json"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers list-transcript-assay-panels",
+         "summary": "List persisted transcript assay panel reports.",
+         "usage": "primers list-transcript-assay-panels"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers show-transcript-assay-panel",
+         "summary": "Inspect one persisted transcript assay panel report, including canonical primer-pair communication summaries, by report ID.",
+         "usage": "primers show-transcript-assay-panel REPORT_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers export-transcript-assay-panel",
+         "summary": "Write one persisted transcript assay panel report, including canonical primer-pair communication summaries, to JSON.",
+         "usage": "primers export-transcript-assay-panel REPORT_ID OUTPUT.json"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers list-transcript-assay-fallbacks",
+         "summary": "List persisted strict transcript-panel outcomes and their separately approved informative fallback attempts.",
+         "usage": "primers list-transcript-assay-fallbacks"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers show-transcript-assay-fallback",
+         "summary": "Inspect one digest-linked strict failure or success and its optional informative partial fallback.",
+         "usage": "primers show-transcript-assay-fallback EXECUTION_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers export-transcript-assay-fallback",
+         "summary": "Export one persisted strict/fallback transcript-panel execution audit to JSON.",
+         "usage": "primers export-transcript-assay-fallback EXECUTION_ID OUTPUT.json"
       },
       {
          "aliases": [],
@@ -3562,6 +5083,66 @@
          "path": "features materialize-repeats",
          "summary": "Materialize prepared UCSC rmsk overlaps as ordinary generated repeat_region features on one genome-anchored sequence.",
          "usage": "features materialize-repeats SEQ_ID --index RMSK_INTERVAL_INDEX.json [--max-features N] [--append] [--path FILE.json]"
+      },
+      {
+         "aliases": [
+            "features screen-ccre-overlaps"
+         ],
+         "engine_operations": [
+            "QueryEncodeCcreOverlaps"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "features encode-ccre-overlaps",
+         "summary": "Query content-bound local SCREEN Registry V4 ELS overlaps for one genome-anchored sequence, with strict species and assembly matching.",
+         "usage": "features encode-ccre-overlaps SEQ_ID --index INDEX.json [--bed BED] [--range START..END] [--class pELS|dELS] [--limit N] [--path FILE.json]"
+      },
+      {
+         "aliases": [
+            "features materialize-screen-ccres"
+         ],
+         "engine_operations": [
+            "MaterializeEncodeCcreFeatures"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "features materialize-encode-ccres",
+         "summary": "Materialize verified SCREEN Registry V4 ELS overlaps as generated regulatory_region features on one genome-anchored sequence.",
+         "usage": "features materialize-encode-ccres SEQ_ID --index INDEX.json [--bed BED] [--class pELS|dELS] [--max-features N] [--append] [--path FILE.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "QueryEnsemblRegulationOverlaps"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "features ensembl-regulation-overlaps",
+         "summary": "Query a content-bound Ensembl Regulation annotation snapshot for one genome-anchored sequence with strict species, assembly, and release provenance.",
+         "usage": "features ensembl-regulation-overlaps SEQ_ID --index INDEX.json [--intervals PATH] [--range START..END] [--feature-type TYPE] [--limit N] [--path FILE.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "MaterializeEnsemblRegulationFeatures"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "features materialize-ensembl-regulation",
+         "summary": "Materialize verified Ensembl Regulation overlaps as generated regulatory_region features on one genome-anchored sequence.",
+         "usage": "features materialize-ensembl-regulation SEQ_ID --index INDEX.json [--intervals PATH] [--feature-type TYPE] [--max-features N] [--append] [--path FILE.json]"
       },
       {
          "aliases": [],
@@ -4358,6 +5939,18 @@
       },
       {
          "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads allele-hash-screen",
+         "summary": "Run a deterministic allele-aware RNA-read k-mer screen with depth-aware sequence-representation verdicts.",
+         "usage": "rna-reads allele-hash-screen --gene GENE --transcript-fasta PATH (--variant-table PATH | --vcf PATH --transcript-map PATH [--vcf-sample SAMPLE]) [--from-rna-report REPORT_ID] [--read-file PATH ...] [--read-pair R1,R2 ...] [--salmon-unmapped-names PATH] [--salmon-mappings-sam PATH] [--read-id-allowlist PATH] [--kmer-len N] [--min-unique-kmer-hits N] [--min-informative-reads N] [--balanced-band-lo F] [--balanced-band-hi F] [--max-inline-read-calls N] --out OUT_DIR"
+      },
+      {
+         "aliases": [],
          "engine_operations": [
             "MaterializeRnaReadHitSequences"
          ],
@@ -4453,6 +6046,48 @@
          "path": "rna-reads export-abundance-tsv",
          "summary": "Export exon/junction abundance tables from one RNA-read report.",
          "usage": "rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRnaReadDexseqAnnotationGff"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads export-dexseq-annotation-gff",
+         "summary": "Export the persisted disjoint exonic-part partition as a DEXSeq flattened-annotation GFF.",
+         "usage": "rna-reads export-dexseq-annotation-gff REPORT_ID OUTPUT.gff"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRnaReadDexseqCountsTsv"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads export-dexseq-counts-tsv",
+         "summary": "Export selected RNA-read exonic-part counts as a two-column DEXSeq/HTSeq table.",
+         "usage": "rna-reads export-dexseq-counts-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "VerifyRnaReadDexseqExports"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads verify-dexseq",
+         "summary": "Export a matched DEXSeq GFF/count pair and verify it with the real DEXSeqDataSetFromHTSeq contract when local R dependencies are present.",
+         "usage": "rna-reads verify-dexseq REPORT_ID OUTPUT.gff OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT] [--r-library-path PATH ...]"
       },
       {
          "aliases": [],
@@ -4859,8 +6494,8 @@
             "gui-shell"
          ],
          "path": "planning protein-expression-handoff",
-         "summary": "Return a read-only protein-expression handoff for high-yield requests, including chassis/route candidates, missing questions, and a GeneArt preflight scaffold.",
-         "usage": "planning protein-expression-handoff [--seq-id SEQ_ID] [--objective JSON_OR_@FILE] [--profile-scope effective] [--format json|text]"
+         "summary": "Return a read-only protein-expression handoff for high-yield requests, including reviewed requirements, chassis/route candidates, missing questions, and a readiness-gated GeneArt preflight scaffold.",
+         "usage": "planning protein-expression-handoff [--seq-id SEQ_ID] [--objective JSON_OR_@FILE] [--requirements JSON_OR_@FILE] [--profile-scope effective] [--format json|text]"
       },
       {
          "aliases": [],
@@ -5237,11 +6872,14 @@
             "Digest"
          ],
          "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
             "js"
          ],
          "path": "digest",
-         "summary": "Apply Digest operation using comma-separated enzyme names.",
-         "usage": "digest(state, input, enzymes_csv, [output_prefix])"
+         "summary": "Digest one loaded sequence with known restriction enzymes and create fragment sequences.",
+         "usage": "digest SEQ_ID --enzyme NAME [--enzyme NAME ...] [--enzymes CSV] [--output-prefix PREFIX]"
       },
       {
          "aliases": [],

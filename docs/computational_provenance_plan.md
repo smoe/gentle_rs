@@ -1,6 +1,6 @@
 ## Computational Provenance Parity
 
-Last updated: 2026-04-14
+Last updated: 2026-07-31
 
 This note turns GENtle's general provenance principle into a concrete rollout
 plan for persisted computational contributions.
@@ -71,12 +71,50 @@ Shipped baseline:
   sequence
 - lineage can reopen the PCR Designer on the selected report
 - lineage details expose backend provenance plus pair/assay counts
+- primer-specificity assessment and handoff import now persist the existing
+  specificity report family as first-class computational artifacts rather than
+  creating a second primer evaluator
+- specificity artifacts carry stable ids, operation/run provenance, sequence
+  links, database/external-input fingerprints, request/effective-setting
+  summaries, and explicit independent `pass|fail|incomplete|not_run`
+  characterization dimensions
+- specificity artifacts cite a persisted primer-design decision when one
+  exists and explicitly mark design-selection provenance unavailable for raw
+  primer pairs
+- cited design pairs are content-fingerprinted independently against the
+  normalized oligos actually assessed, making citation drift a first-class
+  failed provenance state rather than trusting an artifact id alone
+- explicit per-target-space expected products now support separate
+  intended-isoform-coverage and junction/genomic-carryover characterization
+  rows without conflating transcript intent with genomic geometry
+- project facts, CLI report inspection/export, and GUI lineage expose and
+  reopen the same persisted specificity artifact
+- primer-design reports retain exact additive score terms plus a configurable,
+  hard-bounded deterministic subset of evaluated pair-level rejections without
+  changing selection, rank, or score
+- each primer-design report links a content-fingerprinted construct-reasoning
+  graph whose weighted selection decisions cite report/op/run provenance and
+  whose bounded rejected intervals reach the existing linear overlay as
+  non-verdict context evidence
+- capture completeness remains explicit: internal search ceilings and
+  Primer3-hidden rejection space are never represented as evaluated rows
+- qPCR reports now carry the same descriptive selection-provenance shape:
+  exact `gentle_qpcr_assay_rank_v1` score terms, bounded evaluated
+  pair/probe near misses, and a report-fingerprinted reasoning graph
+- transcript-aware qPCR capture is explicitly incomplete where rejected
+  transcript-local coordinates cannot be projected back to source sequence
+- the existing PCR Designer caches and displays report-owned score/capture
+  provenance and focuses the linked graph without recomputing biology locally
+- new primer/qPCR reports record unconsulted region-level exclusion analysis as
+  `not_run`; no repeat, variant, or paralogue interval is fabricated
 
 Expected next step:
 
-- extend the same artifact contract to richer primer-adjacent outputs such as
-  backend-equivalence audits, nested-PCR follow-ons, or future batch summary
-  artifacts when those become persisted review objects
+- add a separately versioned, bounded excluded-region analysis only when the
+  selector actually consumes repeat, common-variant, low-complexity, or
+  paralogue evidence; current graph absence means not run, not checked clear
+- treat multiplex cross-dimer/cross-product characterization as a separate
+  panel-level artifact rather than widening the one-pair specificity schema
 
 ### 2. Projection/annotation analysis artifacts
 
@@ -173,13 +211,24 @@ Shipped baseline:
   - preserved / relaxed constraints
   - translation-table / speed-profile / speed-mark context
   - provenance-oriented ranking summary and next-step recommendations
+- graph-owned inspection actions make the recommended follow-up and its
+  rationale, source records, driving evidence ids, mode, and resolved focus
+  range portable rather than GUI-local
+- reasoning-guided dotplots retain a typed
+  `gentle.dotplot_inspection_provenance_citation.v1` citation to the graph and
+  action that requested them; engine verification records `pass`, `fail`, or
+  `unknown`, while an absent citation remains manual/not-recorded and is never
+  presented as a failed citation
+- GUI and headless lineage projection link each cited dotplot analysis node to
+  its recommending construct-reasoning graph; lineage details expose the
+  citation status, rationale, action id, driving evidence ids, and verification
+  reasons without recomputing provenance in the GUI
+- run bundles retain inspection actions in the full reasoning graph and the
+  citation in the journaled `ComputeDotplot` operation; the compact graph
+  summary intentionally does not duplicate those records
 
 Expected next step:
 
-- reasoning graphs and planning/decision traces should be inspectable as
-  sample-linked computational artifacts rather than only side-channel metadata
-- users should be able to tell not only what ran, but why a route or
-  interpretation was preferred
 - extend the same artifact pattern to self-translation planning outputs and
   broader protein-side reasoning once those engine objects exist
 

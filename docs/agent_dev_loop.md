@@ -96,6 +96,20 @@ stdout files under `/tmp/gentle-dev` when comparing prior calls.
 
 ## Extend From Inside The Loop
 
+For a biological variation, do not begin by adding a command or GUI control.
+Read [`biological_extension_guide.md`](biological_extension_guide.md), then
+classify the request as:
+
+1. an existing operation parameter;
+2. a composition of existing engine services;
+3. a missing deterministic biological primitive.
+
+Write down orientation/coordinates, fixed versus adjustable policy, ambiguity
+behavior, provenance, and explicit non-claims. Inspect private source-level
+composition seams with `cargo doc --document-private-items --no-deps` when
+helpful. Promote only the stable decision to a versioned operation/report, and
+keep every adapter on that one path.
+
 After each source edit, run:
 
 ```sh

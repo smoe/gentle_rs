@@ -302,12 +302,10 @@ impl GentleEngine {
                     message: format!(
                         "Could not fetch JASPAR metadata URL '{path_or_url}': networking backend panicked"
                     ),
-                
                     cause_chain: vec![],})?
                 .map_err(|e| EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("Could not fetch JASPAR metadata URL '{path_or_url}': {e}"),
-                
                     cause_chain: vec![],})?;
             if !response.status().is_success() {
                 return Err(EngineError {
@@ -936,7 +934,6 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "SummarizeJasparEntries requires at least one motif or a non-empty local JASPAR registry".to_string(),
-            
                 cause_chain: vec![],});
         }
 

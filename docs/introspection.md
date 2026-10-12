@@ -1,6 +1,6 @@
 # GENtle Introspection Contract
 
-Last updated: 2026-06-28
+Last updated: 2026-07-05
 
 Status: implemented for `introspect facts`, `introspect capabilities`,
 `introspect readiness`, `introspect verify-effects`, and `introspect all`. The
@@ -11,7 +11,7 @@ can prove every supplied sequence or container id before execution.
 
 Revision note: incorporates the first Codex review (argument binding, fact
 domains, effect modality, subroutes, narrowed "lossless", explicit host fact).
-Where this draft keeps a different mechanism than the review literally proposed,
+Where this contract keeps a different mechanism than the review literally proposed,
 the divergence is called out inline as "Reconciliation".
 
 Related shared documents:
@@ -86,6 +86,13 @@ Both halves already partially exist. Introspection binds them and fills the gaps
 without forking any execution path: it composes the existing `capabilities`,
 `ui ...` discovery, `facts graph`, and the fact evaluator. **Composition, not
 duplication** — it must not become a parallel command surface.
+
+Runtime introspection describes stable executable capabilities, not private
+Rust helper functions. When a biological adjustment is not yet executable, the
+inner agent should report that gap and prepare an implementation brief. Coding
+agents use `docs/biological_extension_guide.md` and private-item Rust
+documentation to find reusable source-level seams without turning those names
+into a protocol compatibility promise.
 
 ## 3. Routes and payload
 
@@ -518,8 +525,11 @@ Consequently there are two readiness modes:
   "what *could* I do?" and is cheap to compute for the whole catalog.
 - **Bound readiness** — caller supplies argument values; the engine substitutes
   each `{"arg":...}` with the concrete subject, then runs the existing evaluator.
-  Answers "is this command ready for *these* inputs?" This is the EDITtoTrEMBL
-  discipline: the precondition binds to the actual input, not to the catalog.
+  Answers "is this command ready for *these* inputs?" This follows the
+  precondition/capability discipline of
+  [Möller et al. (1999), *EDITtoTrEMBL: a distributed approach to high-quality
+  automated protein sequence annotation*](https://doi.org/10.1093/bioinformatics/15.3.219):
+  the precondition binds to the actual input, not merely to the catalog.
 
 Instantiation is a deterministic pre-pass over `FactExpression`; the tri-state
 evaluator and `FactTruth` are reused unchanged.
@@ -531,7 +541,9 @@ Not all effects are guaranteed. Each effect carries an `effect_kind`:
 - `must_on_success` — the effect must hold if the command succeeds. **Only these
   are asserted by post-run verification** through
   `introspect verify-effects`. The verifier evaluates declared hard effects
-  against the current fact graph plus supplied evidence.
+  against the current fact graph plus supplied evidence. Hard effects may be
+  full fact expressions; delete routes use `not(...)` over closed-world
+  `*.exists` facts to assert absence after successful deletion.
 - `may_on_success` — conditional/optional; not asserted.
 - `external_handoff` — an external/provider action, not a local state change.
   Aligns with the existing `mutating: "external"` posture.
@@ -602,7 +614,7 @@ Implemented fact domains include:
 | `guide_set.exists` | project | closed | no | persisted guide-design set; subject id is the guide-set id |
 | `guide_filter_report.exists` | project | closed | no | persisted practical guide-filter report; subject id is the guide-set id |
 | `guide_oligo_set.exists` | project | closed | no | persisted guide-oligo output set; subject id is the oligo-set id |
-| `config.param` | config | closed | no | engine-owned `SetParameter` values; subject id is the parameter name, `value` is the JSON value |
+| `config.param` | config | closed | no | engine/display `SetParameter` values; subject id is the parameter name or accepted alias, `value` is the JSON value |
 | `host.tool_available` | host | closed | no | e.g. primer3/blastn resolvable; see Reconciliation below |
 | `artifact.written` | host | open | yes | external file/handoff artifact written outside saved project state |
 
@@ -638,12 +650,16 @@ as project and view facts.
 
 The implemented config fact keeps the fact registry finite:
 `config.param` uses `subject.kind = "other"` and `subject.id = PARAM_NAME`
-instead of minting a new fact name for every parameter. The first projection is
-limited to `EngineParameters` (`max_fragments_per_container`,
-`require_verified_genome_anchor_for_extension`,
-`genome_anchor_prepared_fallback_policy`, `primer_design_backend`, and
-`primer3_executable`). Display-specific `set-param` aliases can be folded into
-the same pattern later when their canonical names are normalized.
+instead of minting a new fact name for every parameter. The projection covers
+engine-owned `EngineParameters`, persisted display settings, metadata-backed
+BLAST option parameters, and accepted compatibility aliases for the same stored
+values. Aliases project the same JSON value as their canonical parameter so
+bound readiness/effect checks can use either spelling.
+
+Compatibility-only display knobs that are accepted as deprecated no-ops remain
+observable through their stored display-setting defaults. They do not imply that
+setting the deprecated name changes renderer behavior; adaptive renderer state
+is still controlled by the canonical display parameters.
 
 `set-param` is fact-annotated as a `host_config` capability with no project
 preconditions and a `must_on_success` effect:
@@ -704,14 +720,14 @@ on semantic glyphs.
 - **Reuse, don't fork.** `facts`, vocabulary, `readiness`, and capability
   metadata come from existing sources.
 
-## 10. First slice (review tweak adopted)
+## 10. Implemented Coverage (review tweak adopted)
 
 1. Add the `domain` discriminator and the `view` domain, including
    `ui.host_available` projected as `false` in headless contexts (implemented).
 2. Add `introspect facts` and `introspect capabilities` as separate subroutes
    (implemented; `introspect readiness` and `introspect all` are also present).
 3. Attach engine-owned bound self-description (`args`, `reads`, `effects` with
-   `effect_kind`, `precondition_expr`) to the first fact-annotated capabilities:
+   `effect_kind`, `precondition_expr`) to all current fact-annotated capabilities:
    `help`, `capabilities`, `state-summary`, `state_summary`,
    `history status`, `history undo`, `history redo`,
    `load-project`, `load_project`, `save-project`, `save_project`,
@@ -982,13 +998,14 @@ on semantic glyphs.
 5. Complete current shared-registry fact annotation (implemented).
 6. Add list-bound/foreach readiness atoms for list-valued pool/container rows
    (implemented).
-7. Defer: glossary-as-projection inversion and any visualization-interpretation
+7. Deferred: glossary-as-projection inversion and any visualization-interpretation
    work.
 
 ## 11. Resolved decisions
 
-These were open questions in the prior draft; the review and implemented first
-slice resolved them. The non-negotiables are promoted into `docs/decisions.md`.
+These were open questions in the prior draft; the review and implemented
+contract resolved them. The non-negotiables are promoted into
+`docs/decisions.md`.
 
 - **Routes:** subroutes + aggregate, not one scoped route (section 3).
 - **Domains:** additive `domain` field; landed facts unchanged (section 5).

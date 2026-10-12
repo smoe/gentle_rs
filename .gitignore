@@ -18,3 +18,5 @@ data/publication_resources/*/*
 TFS-Assets_LSG_Support-Files_*.zip
 data/resources/affymetrix/clariom_d_human_na36_hg38/*
 !data/resources/affymetrix/clariom_d_human_na36_hg38/README.md
+data/resources/cutandrun_20250602_noDuplicates/*
+!data/resources/cutandrun_20250602_noDuplicates/README.md

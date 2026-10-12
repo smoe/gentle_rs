@@ -35,39 +35,141 @@ impl UiIntentAction {
     }
 }
 
+/// Stable subsection vocabulary for GENtle's global Configuration window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum UiConfigurationSection {
+    #[default]
+    ExternalApplications,
+    AgentSystems,
+    Microarrays,
+    Graphics,
+    Language,
+}
+
+const UI_CONFIGURATION_SECTIONS: [UiConfigurationSection; UiConfigurationSection::COUNT] = [
+    UiConfigurationSection::ExternalApplications,
+    UiConfigurationSection::AgentSystems,
+    UiConfigurationSection::Microarrays,
+    UiConfigurationSection::Graphics,
+    UiConfigurationSection::Language,
+];
+
+impl UiConfigurationSection {
+    /// Number of stable global configuration sections.
+    pub const COUNT: usize = 5;
+
+    /// Stable section order shared by GUI and agent discoverability.
+    pub fn all() -> &'static [Self] {
+        &UI_CONFIGURATION_SECTIONS
+    }
+
+    /// Parse stable shell spellings and common user-facing aliases.
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "external-applications" | "external_applications" | "applications" | "tools" => {
+                Some(Self::ExternalApplications)
+            }
+            "agent-systems" | "agent_systems" | "agents" | "providers" => Some(Self::AgentSystems),
+            "microarrays" | "microarray" | "arrays" => Some(Self::Microarrays),
+            "graphics" | "display" => Some(Self::Graphics),
+            "language" | "locale" => Some(Self::Language),
+            _ => None,
+        }
+    }
+
+    /// Stable machine-readable spelling used in shell commands and payloads.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ExternalApplications => "external-applications",
+            Self::AgentSystems => "agent-systems",
+            Self::Microarrays => "microarrays",
+            Self::Graphics => "graphics",
+            Self::Language => "language",
+        }
+    }
+
+    /// Short human-facing section title.
+    pub fn title(self) -> &'static str {
+        match self {
+            Self::ExternalApplications => "External Applications",
+            Self::AgentSystems => "Agent Systems",
+            Self::Microarrays => "Microarrays",
+            Self::Graphics => "Graphics",
+            Self::Language => "Language",
+        }
+    }
+
+    /// Bounded help text suitable for agent and command-catalog contexts.
+    pub fn detail(self) -> &'static str {
+        match self {
+            Self::ExternalApplications => {
+                "Configure external executables used by local analysis workflows."
+            }
+            Self::AgentSystems => {
+                "Configure agent providers, endpoints, credentials, models, and runtime limits."
+            }
+            Self::Microarrays => {
+                "Configure microarray annotation libraries and local analysis defaults."
+            }
+            Self::Graphics => "Configure display, track, and window appearance defaults.",
+            Self::Language => "Choose the visible GENtle interface language.",
+        }
+    }
+}
+
 /// GUI-facing UI-intent destination understood by adapter shells.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UiIntentTarget {
     OpenSequence,
+    RecentProject,
+    TutorialProject,
+    TutorialGuide,
+    Configuration,
     PreparedReferences,
     PrepareReferenceGenome,
     RetrieveGenomeSequence,
     BlastGenomeSequence,
     ImportGenomeTrack,
+    FeatureLocationEditor,
+    SavedGenomicRegions,
     PcrDesign,
     SequencingConfirmation,
     AgentAssistant,
     PrepareHelperGenome,
     RetrieveHelperSequence,
     BlastHelperSequence,
+    GelImageEditor,
+    TssView,
+    SplicingExpert,
 }
 
 const UI_INTENT_TARGETS: [UiIntentTarget; UiIntentTarget::COUNT] = [
     UiIntentTarget::OpenSequence,
+    UiIntentTarget::RecentProject,
+    UiIntentTarget::TutorialProject,
+    UiIntentTarget::TutorialGuide,
+    UiIntentTarget::Configuration,
     UiIntentTarget::PreparedReferences,
     UiIntentTarget::PrepareReferenceGenome,
     UiIntentTarget::RetrieveGenomeSequence,
     UiIntentTarget::BlastGenomeSequence,
     UiIntentTarget::ImportGenomeTrack,
+    UiIntentTarget::FeatureLocationEditor,
+    UiIntentTarget::SavedGenomicRegions,
     UiIntentTarget::PcrDesign,
     UiIntentTarget::SequencingConfirmation,
     UiIntentTarget::AgentAssistant,
     UiIntentTarget::PrepareHelperGenome,
     UiIntentTarget::RetrieveHelperSequence,
     UiIntentTarget::BlastHelperSequence,
+    UiIntentTarget::GelImageEditor,
+    UiIntentTarget::TssView,
+    UiIntentTarget::SplicingExpert,
 ];
 
 const UI_INTENT_ACTION_NAMES: [&str; 3] = ["open", "focus", "close"];
+const UI_INTENT_OPEN_ACTION_NAMES: [&str; 1] = ["open"];
 const UI_INTENT_FILE_PICKER_ACTION_NAMES: [&str; 2] = ["open", "focus"];
 const UI_INTENT_ARGUMENT_GENOME_ID: UiIntentArgument = UiIntentArgument {
     name: "genome_id",
@@ -104,7 +206,25 @@ const UI_INTENT_ARGUMENT_LATEST: UiIntentArgument = UiIntentArgument {
     required: false,
     detail: "Prefer the latest matching prepared reference when deterministic selection is available.",
 };
+const UI_INTENT_ARGUMENT_RECENT_OR_CHAPTER_ID: UiIntentArgument = UiIntentArgument {
+    name: "item_id",
+    required: true,
+    detail: "Opaque recent-project id or stable tutorial chapter id supplied by the GUI host context.",
+};
+const UI_INTENT_ARGUMENT_TUTORIAL_ID: UiIntentArgument = UiIntentArgument {
+    name: "item_id",
+    required: true,
+    detail: "Stable tutorial catalog id supplied by the GUI host context.",
+};
+const UI_INTENT_ARGUMENT_CONFIGURATION_SECTION: UiIntentArgument = UiIntentArgument {
+    name: "section",
+    required: false,
+    detail: "Configuration section: external-applications, agent-systems, microarrays, graphics, or language.",
+};
 const UI_INTENT_OPTIONAL_ARGUMENTS_DEFAULT: [&str; 1] = ["genome_id"];
+const UI_INTENT_OPTIONAL_ARGUMENTS_NONE: [&str; 0] = [];
+const UI_INTENT_OPTIONAL_ARGUMENTS_TSS: [&str; 3] = ["collection_id", "report_path", "matrix_ids"];
+const UI_INTENT_OPTIONAL_ARGUMENTS_CONFIGURATION: [&str; 1] = ["section"];
 const UI_INTENT_OPTIONAL_ARGUMENTS_PREPARED_REFERENCES: [&str; 7] = [
     "genome_id",
     "helpers",
@@ -115,6 +235,41 @@ const UI_INTENT_OPTIONAL_ARGUMENTS_PREPARED_REFERENCES: [&str; 7] = [
     "latest",
 ];
 const UI_INTENT_ARGUMENTS_DEFAULT: [UiIntentArgument; 1] = [UI_INTENT_ARGUMENT_GENOME_ID];
+const UI_INTENT_ARGUMENTS_NONE: [UiIntentArgument; 0] = [];
+const UI_INTENT_ARGUMENTS_SPLICING: [UiIntentArgument; 2] = [
+    UiIntentArgument {
+        name: "seq_id",
+        required: true,
+        detail: "Loaded annotated sequence id; never infer from the active window.",
+    },
+    UiIntentArgument {
+        name: "feature_id",
+        required: true,
+        detail: "Zero-based feature id from features query; selects the same splicing group as inspect-feature-expert SEQ_ID splicing FEATURE_ID.",
+    },
+];
+const UI_INTENT_ARGUMENTS_TSS: [UiIntentArgument; 3] = [
+    UiIntentArgument {
+        name: "collection_id",
+        required: false,
+        detail: "Use --collection COLLECTION_ID for a materialized TSS collection; opens/focuses/closes up to 32 explicit member windows instead of using the active viewer.",
+    },
+    UiIntentArgument {
+        name: "report_path",
+        required: false,
+        detail: "Use --report REPORT_JSON with open/focus to attach the same bound TSS profile report as the GUI file-picker path. The active annotated TSS viewer validates reference, geometry and sequence hash; no rescoring or database query is performed.",
+    },
+    UiIntentArgument {
+        name: "matrix_ids",
+        required: false,
+        detail: "Use --local-score ACCESSION[,ACCESSION...] with open/focus, optionally --score-kind KIND and --keep-negative, to compute locally scored curves for exact full-PFM accessions on the displayed window. Aliases, ALL and consensus fallback are refused. Locally computed lanes stay separate from an attached report and from imported evidence; for a headless file use promoters tss-view-svg instead.",
+    },
+];
+const UI_INTENT_ARGUMENTS_RECENT_OR_CHAPTER_ID: [UiIntentArgument; 1] =
+    [UI_INTENT_ARGUMENT_RECENT_OR_CHAPTER_ID];
+const UI_INTENT_ARGUMENTS_TUTORIAL_ID: [UiIntentArgument; 1] = [UI_INTENT_ARGUMENT_TUTORIAL_ID];
+const UI_INTENT_ARGUMENTS_CONFIGURATION: [UiIntentArgument; 1] =
+    [UI_INTENT_ARGUMENT_CONFIGURATION_SECTION];
 const UI_INTENT_ARGUMENTS_PREPARED_REFERENCES: [UiIntentArgument; 7] = [
     UI_INTENT_ARGUMENT_GENOME_ID,
     UI_INTENT_ARGUMENT_HELPERS,
@@ -150,7 +305,7 @@ pub struct UiIntentTargetCatalogRow {
 
 impl UiIntentTarget {
     /// Number of stable UI-intent destinations.
-    pub const COUNT: usize = 12;
+    pub const COUNT: usize = 21;
 
     /// Stable catalog order used by shell, MCP, and GUI discoverability.
     pub fn all() -> &'static [Self] {
@@ -160,9 +315,20 @@ impl UiIntentTarget {
     /// Parse stable shell spellings and common aliases.
     pub fn parse(raw: &str) -> Option<Self> {
         match raw.trim().to_ascii_lowercase().as_str() {
+            "gel-image-editor" | "gel_image_editor" => Some(Self::GelImageEditor),
+            "tss-view" | "tss_view" => Some(Self::TssView),
+            "splicing-expert" | "splicing_expert" => Some(Self::SplicingExpert),
             "open-sequence" | "open_sequence" | "sequence-file" | "sequence_file" => {
                 Some(Self::OpenSequence)
             }
+            "recent-project" | "recent_project" | "previous-project" | "previous_project" => {
+                Some(Self::RecentProject)
+            }
+            "tutorial-project" | "tutorial_project" | "tutorial" => Some(Self::TutorialProject),
+            "tutorial-guide" | "tutorial_guide" | "tutorial-doc" | "tutorial_doc" => {
+                Some(Self::TutorialGuide)
+            }
+            "configuration" | "settings" | "preferences" => Some(Self::Configuration),
             "prepared-references" | "prepared_references" | "prepared" => {
                 Some(Self::PreparedReferences)
             }
@@ -180,6 +346,15 @@ impl UiIntentTarget {
             "import-genome-track" | "import_genome_track" | "genome-track" | "tracks-import" => {
                 Some(Self::ImportGenomeTrack)
             }
+            "feature-location-editor"
+            | "feature_location_editor"
+            | "edit-feature-location"
+            | "edit_feature_location" => Some(Self::FeatureLocationEditor),
+            "saved-genomic-regions"
+            | "saved_genomic_regions"
+            | "genomic-regions"
+            | "genomic_regions"
+            | "regions" => Some(Self::SavedGenomicRegions),
             "pcr-design" | "pcr_design" | "pcr" | "pcr-designer" | "pcr_designer" => {
                 Some(Self::PcrDesign)
             }
@@ -207,12 +382,21 @@ impl UiIntentTarget {
     /// Stable machine-readable spelling used in shell output payloads.
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::GelImageEditor => "gel-image-editor",
+            Self::TssView => "tss-view",
+            Self::SplicingExpert => "splicing-expert",
             Self::OpenSequence => "open-sequence",
+            Self::RecentProject => "recent-project",
+            Self::TutorialProject => "tutorial-project",
+            Self::TutorialGuide => "tutorial-guide",
+            Self::Configuration => "configuration",
             Self::PreparedReferences => "prepared-references",
             Self::PrepareReferenceGenome => "prepare-reference-genome",
             Self::RetrieveGenomeSequence => "retrieve-genome-sequence",
             Self::BlastGenomeSequence => "blast-genome-sequence",
             Self::ImportGenomeTrack => "import-genome-track",
+            Self::FeatureLocationEditor => "feature-location-editor",
+            Self::SavedGenomicRegions => "saved-genomic-regions",
             Self::PcrDesign => "pcr-design",
             Self::SequencingConfirmation => "sequencing-confirmation",
             Self::AgentAssistant => "agent-assistant",
@@ -225,12 +409,21 @@ impl UiIntentTarget {
     /// Stable human-facing title reused by UI-intent discovery surfaces.
     pub fn discoverability_title(self) -> &'static str {
         match self {
+            Self::GelImageEditor => "Gel Image Analysis",
+            Self::TssView => "TSS / Regulatory View",
+            Self::SplicingExpert => "Splicing Expert",
             Self::OpenSequence => "Open Sequence",
+            Self::RecentProject => "Open Recent Project",
+            Self::TutorialProject => "Open Tutorial Project",
+            Self::TutorialGuide => "Open Tutorial Guide",
+            Self::Configuration => "Configuration",
             Self::PreparedReferences => "Prepared References",
             Self::PrepareReferenceGenome => "Prepare Reference Genome",
             Self::RetrieveGenomeSequence => "Retrieve Genomic Sequence",
             Self::BlastGenomeSequence => "BLAST Genome Sequence",
             Self::ImportGenomeTrack => "Import Genome Track",
+            Self::FeatureLocationEditor => "Feature Location Editor",
+            Self::SavedGenomicRegions => "Saved Genomic Regions",
             Self::PcrDesign => "PCR Designer",
             Self::SequencingConfirmation => "Sequencing Confirmation",
             Self::AgentAssistant => "Agent Assistant",
@@ -248,7 +441,24 @@ impl UiIntentTarget {
     /// Short discoverability copy for command palettes, agent helpers, and MCP.
     pub fn discoverability_detail(self) -> &'static str {
         match self {
+            Self::SplicingExpert => {
+                "Open/focus/close the Splicing Expert for explicit SEQ_ID FEATURE_ID. Inspect annotated isoforms, exon/junction evidence and primer/qPCR seeds. Closing retains project data; headless hosts only record the intent."
+            }
+            Self::GelImageEditor => {
+                "Mark imported gel lanes and bands, confirm ladder sizes, and export measured results."
+            }
+            Self::TssView => {
+                "Inspect the active annotated TSS DNA window, use --report REPORT_JSON to attach its bound score/evidence profile, or use --collection ID to open/focus/close up to 32 materialized TSS windows without active-viewer dependence. Argument-free close returns to Standard map; collection-close retains sequence records; report attachment does no rescoring."
+            }
             Self::OpenSequence => "Open a FASTA, GenBank, EMBL, SnapGene, or XML sequence file.",
+            Self::RecentProject => {
+                "Open one project from the GUI host's bounded recent-project list."
+            }
+            Self::TutorialProject => "Build and open one chapter from GENtle's tutorial catalog.",
+            Self::TutorialGuide => {
+                "Open one guided walkthrough or reference page from GENtle's tutorial catalog."
+            }
+            Self::Configuration => "Open or focus a specific global Configuration section.",
             Self::PreparedReferences => "Inspect prepared reference/helper genome installations.",
             Self::PrepareReferenceGenome => "Download/index the selected reference genome.",
             Self::RetrieveGenomeSequence => {
@@ -256,6 +466,12 @@ impl UiIntentTarget {
             }
             Self::BlastGenomeSequence => "Run BLAST against prepared reference genome indices.",
             Self::ImportGenomeTrack => "Import BED/BigWig/VCF tracks onto anchored sequences.",
+            Self::FeatureLocationEditor => {
+                "Preview and apply exact simple feature-boundary edits with stale-state protection."
+            }
+            Self::SavedGenomicRegions => {
+                "Save, inspect, recolour, and interchange assembly-bound genomic regions of interest."
+            }
             Self::PcrDesign => "Paint-first pair-PCR specialist with queue and live geometry.",
             Self::SequencingConfirmation => {
                 "Confirm an expected construct from reads or imported traces."
@@ -277,12 +493,31 @@ impl UiIntentTarget {
     /// Search keywords shared across UI-intent discoverability surfaces.
     pub fn discoverability_keywords(self) -> &'static str {
         match self {
+            Self::SplicingExpert => {
+                "splicing isoform transcript exon junction primer pair qpcr assay evidence"
+            }
+            Self::GelImageEditor => "gel image agarose western SDS ladder band sizing bp kDa",
+            Self::TssView => {
+                "tss transcript starts collection promoter regulatory cutrun chromatin motif profile report annotated sequence viewer Transkriptionsstartstellen"
+            }
             Self::OpenSequence => "open sequence import file fasta genbank snapgene embl xml",
+            Self::RecentProject => "open recent previous saved project continue",
+            Self::TutorialProject => "open tutorial example demo chapter project",
+            Self::TutorialGuide => "open tutorial guide walkthrough reference learn help",
+            Self::Configuration => {
+                "configuration settings preferences tools agents arrays graphics language"
+            }
             Self::PreparedReferences => "genome prepared references helpers inspector",
             Self::PrepareReferenceGenome => "genome prepare reference",
             Self::RetrieveGenomeSequence => "genome retrieve extract anchor region gene",
             Self::BlastGenomeSequence => "genome blast reference",
             Self::ImportGenomeTrack => "genome track tracks bed bigwig vcf import anchored",
+            Self::FeatureLocationEditor => {
+                "feature annotation location boundary start end edit preview"
+            }
+            Self::SavedGenomicRegions => {
+                "regions roi genomic saved set bed export import assembly coordinates colour"
+            }
             Self::PcrDesign => "pcr primer pair roi paint queue designer",
             Self::SequencingConfirmation => {
                 "sequencing confirmation sanger construct reads trace junction"
@@ -299,16 +534,24 @@ impl UiIntentTarget {
         self.discoverability_keywords()
     }
 
-    /// Primary GUI menu location for the target.
+    /// Primary GUI location: application menu or a named, context-only viewer.
     pub fn menu_path(self) -> &'static str {
         match self {
-            Self::OpenSequence | Self::AgentAssistant => "File",
-            Self::PcrDesign | Self::SequencingConfirmation => "Patterns",
+            Self::OpenSequence
+            | Self::RecentProject
+            | Self::TutorialProject
+            | Self::AgentAssistant => "File",
+            Self::TutorialGuide => "Help",
+            Self::Configuration => "Settings",
+            Self::FeatureLocationEditor => "Edit",
+            Self::TssView | Self::SplicingExpert => "DNA viewer",
+            Self::PcrDesign | Self::SequencingConfirmation | Self::GelImageEditor => "Patterns",
             Self::PreparedReferences
             | Self::PrepareReferenceGenome
             | Self::RetrieveGenomeSequence
             | Self::BlastGenomeSequence
             | Self::ImportGenomeTrack
+            | Self::SavedGenomicRegions
             | Self::PrepareHelperGenome
             | Self::RetrieveHelperSequence
             | Self::BlastHelperSequence => "Genome",
@@ -319,11 +562,19 @@ impl UiIntentTarget {
     pub fn actions(self) -> &'static [&'static str] {
         match self {
             Self::OpenSequence => &UI_INTENT_FILE_PICKER_ACTION_NAMES,
+            Self::RecentProject | Self::TutorialProject | Self::TutorialGuide => {
+                &UI_INTENT_OPEN_ACTION_NAMES
+            }
+            Self::Configuration | Self::GelImageEditor | Self::TssView | Self::SplicingExpert => {
+                &UI_INTENT_ACTION_NAMES
+            }
             Self::PreparedReferences
             | Self::PrepareReferenceGenome
             | Self::RetrieveGenomeSequence
             | Self::BlastGenomeSequence
             | Self::ImportGenomeTrack
+            | Self::FeatureLocationEditor
+            | Self::SavedGenomicRegions
             | Self::PcrDesign
             | Self::SequencingConfirmation
             | Self::AgentAssistant
@@ -336,7 +587,17 @@ impl UiIntentTarget {
     /// Stable optional arguments accepted by the target's discoverability contract.
     pub fn optional_arguments(self) -> &'static [&'static str] {
         match self {
+            Self::SplicingExpert => &UI_INTENT_OPTIONAL_ARGUMENTS_NONE,
+            Self::TssView => &UI_INTENT_OPTIONAL_ARGUMENTS_TSS,
             Self::PreparedReferences => &UI_INTENT_OPTIONAL_ARGUMENTS_PREPARED_REFERENCES,
+            Self::Configuration => &UI_INTENT_OPTIONAL_ARGUMENTS_CONFIGURATION,
+            Self::RecentProject
+            | Self::TutorialProject
+            | Self::TutorialGuide
+            | Self::GelImageEditor => &UI_INTENT_OPTIONAL_ARGUMENTS_NONE,
+            Self::FeatureLocationEditor | Self::SavedGenomicRegions => {
+                &UI_INTENT_OPTIONAL_ARGUMENTS_NONE
+            }
             _ => &UI_INTENT_OPTIONAL_ARGUMENTS_DEFAULT,
         }
     }
@@ -344,7 +605,17 @@ impl UiIntentTarget {
     /// Structured argument contract accepted by this target.
     pub fn arguments(self) -> &'static [UiIntentArgument] {
         match self {
+            Self::SplicingExpert => &UI_INTENT_ARGUMENTS_SPLICING,
+            Self::TssView => &UI_INTENT_ARGUMENTS_TSS,
             Self::PreparedReferences => &UI_INTENT_ARGUMENTS_PREPARED_REFERENCES,
+            Self::RecentProject | Self::TutorialProject => {
+                &UI_INTENT_ARGUMENTS_RECENT_OR_CHAPTER_ID
+            }
+            Self::TutorialGuide => &UI_INTENT_ARGUMENTS_TUTORIAL_ID,
+            Self::Configuration => &UI_INTENT_ARGUMENTS_CONFIGURATION,
+            Self::FeatureLocationEditor | Self::SavedGenomicRegions | Self::GelImageEditor => {
+                &UI_INTENT_ARGUMENTS_NONE
+            }
             Self::OpenSequence
             | Self::PrepareReferenceGenome
             | Self::RetrieveGenomeSequence
@@ -390,9 +661,21 @@ mod tests {
 
     const TARGET_ALIAS_CASES: &[(&str, UiIntentTarget)] = &[
         ("open-sequence", UiIntentTarget::OpenSequence),
+        ("splicing-expert", UiIntentTarget::SplicingExpert),
+        ("splicing_expert", UiIntentTarget::SplicingExpert),
         ("open_sequence", UiIntentTarget::OpenSequence),
         ("sequence-file", UiIntentTarget::OpenSequence),
         ("sequence_file", UiIntentTarget::OpenSequence),
+        ("recent-project", UiIntentTarget::RecentProject),
+        ("previous_project", UiIntentTarget::RecentProject),
+        ("tutorial-project", UiIntentTarget::TutorialProject),
+        ("tutorial", UiIntentTarget::TutorialProject),
+        ("tutorial-guide", UiIntentTarget::TutorialGuide),
+        ("tutorial_guide", UiIntentTarget::TutorialGuide),
+        ("tutorial-doc", UiIntentTarget::TutorialGuide),
+        ("tutorial_doc", UiIntentTarget::TutorialGuide),
+        ("configuration", UiIntentTarget::Configuration),
+        ("settings", UiIntentTarget::Configuration),
         ("prepared-references", UiIntentTarget::PreparedReferences),
         ("prepared_references", UiIntentTarget::PreparedReferences),
         ("prepared", UiIntentTarget::PreparedReferences),
@@ -424,6 +707,27 @@ mod tests {
         ("import_genome_track", UiIntentTarget::ImportGenomeTrack),
         ("genome-track", UiIntentTarget::ImportGenomeTrack),
         ("tracks-import", UiIntentTarget::ImportGenomeTrack),
+        (
+            "feature-location-editor",
+            UiIntentTarget::FeatureLocationEditor,
+        ),
+        (
+            "feature_location_editor",
+            UiIntentTarget::FeatureLocationEditor,
+        ),
+        (
+            "edit-feature-location",
+            UiIntentTarget::FeatureLocationEditor,
+        ),
+        (
+            "edit_feature_location",
+            UiIntentTarget::FeatureLocationEditor,
+        ),
+        ("saved-genomic-regions", UiIntentTarget::SavedGenomicRegions),
+        ("saved_genomic_regions", UiIntentTarget::SavedGenomicRegions),
+        ("genomic-regions", UiIntentTarget::SavedGenomicRegions),
+        ("genomic_regions", UiIntentTarget::SavedGenomicRegions),
+        ("regions", UiIntentTarget::SavedGenomicRegions),
         ("pcr-design", UiIntentTarget::PcrDesign),
         ("pcr_design", UiIntentTarget::PcrDesign),
         ("pcr", UiIntentTarget::PcrDesign),
@@ -480,12 +784,21 @@ mod tests {
 
     fn assert_exhaustive_target_match(target: UiIntentTarget) {
         match target {
-            UiIntentTarget::OpenSequence
+            UiIntentTarget::GelImageEditor
+            | UiIntentTarget::TssView
+            | UiIntentTarget::SplicingExpert
+            | UiIntentTarget::OpenSequence
+            | UiIntentTarget::RecentProject
+            | UiIntentTarget::TutorialProject
+            | UiIntentTarget::TutorialGuide
+            | UiIntentTarget::Configuration
             | UiIntentTarget::PreparedReferences
             | UiIntentTarget::PrepareReferenceGenome
             | UiIntentTarget::RetrieveGenomeSequence
             | UiIntentTarget::BlastGenomeSequence
             | UiIntentTarget::ImportGenomeTrack
+            | UiIntentTarget::FeatureLocationEditor
+            | UiIntentTarget::SavedGenomicRegions
             | UiIntentTarget::PcrDesign
             | UiIntentTarget::SequencingConfirmation
             | UiIntentTarget::AgentAssistant
@@ -514,17 +827,26 @@ mod tests {
     fn ui_intent_targets_match_explicit_variant_list() {
         let expected = [
             UiIntentTarget::OpenSequence,
+            UiIntentTarget::RecentProject,
+            UiIntentTarget::TutorialProject,
+            UiIntentTarget::TutorialGuide,
+            UiIntentTarget::Configuration,
             UiIntentTarget::PreparedReferences,
             UiIntentTarget::PrepareReferenceGenome,
             UiIntentTarget::RetrieveGenomeSequence,
             UiIntentTarget::BlastGenomeSequence,
             UiIntentTarget::ImportGenomeTrack,
+            UiIntentTarget::FeatureLocationEditor,
+            UiIntentTarget::SavedGenomicRegions,
             UiIntentTarget::PcrDesign,
             UiIntentTarget::SequencingConfirmation,
             UiIntentTarget::AgentAssistant,
             UiIntentTarget::PrepareHelperGenome,
             UiIntentTarget::RetrieveHelperSequence,
             UiIntentTarget::BlastHelperSequence,
+            UiIntentTarget::GelImageEditor,
+            UiIntentTarget::TssView,
+            UiIntentTarget::SplicingExpert,
         ];
         assert_eq!(UiIntentTarget::COUNT, expected.len());
         assert_eq!(UiIntentTarget::all(), expected.as_slice());
@@ -573,17 +895,42 @@ mod tests {
 
     #[test]
     fn ui_intent_catalog_rows_are_complete() {
-        let known_menus = BTreeSet::from(["File", "Genome", "Patterns"]);
+        let known_menus =
+            BTreeSet::from(["Edit", "File", "Genome", "Help", "Patterns", "Settings"]);
         for target in UiIntentTarget::all() {
             let row = target.catalog_row();
             assert!(!row.title.trim().is_empty());
             assert!(!row.detail.trim().is_empty());
             assert!(!row.keywords.trim().is_empty());
-            assert!(
-                known_menus.contains(row.menu_path),
-                "unexpected menu path {}",
-                row.menu_path
-            );
+            if *target == UiIntentTarget::SplicingExpert {
+                assert_eq!(row.menu_path, "DNA viewer");
+                assert_eq!(row.actions, ["open", "focus", "close"]);
+                assert_eq!(row.arguments.len(), 2);
+                assert!(row.arguments.iter().all(|argument| argument.required));
+                assert_eq!(row.arguments[0].name, "seq_id");
+                assert_eq!(row.arguments[1].name, "feature_id");
+            } else if *target == UiIntentTarget::TssView {
+                // A display-mode transition lives in the DNA toolbar, not a new global menu.
+                assert_eq!(row.menu_path, "DNA viewer");
+                assert_eq!(row.actions, ["open", "focus", "close"]);
+                assert_eq!(
+                    row.arguments
+                        .iter()
+                        .map(|argument| (argument.name, argument.required))
+                        .collect::<Vec<_>>(),
+                    vec![
+                        ("collection_id", false),
+                        ("report_path", false),
+                        ("matrix_ids", false),
+                    ]
+                );
+            } else {
+                assert!(
+                    known_menus.contains(row.menu_path),
+                    "unexpected menu path {}",
+                    row.menu_path
+                );
+            }
             assert!(!row.actions.is_empty());
             for action in row.actions {
                 assert!(
@@ -591,13 +938,42 @@ mod tests {
                     "unknown action {action}"
                 );
             }
-            assert_eq!(row.optional_arguments.len(), row.arguments.len());
-            for (optional_name, argument) in row.optional_arguments.iter().zip(row.arguments) {
-                assert_eq!(*optional_name, argument.name);
+            let optional_names = row
+                .optional_arguments
+                .iter()
+                .copied()
+                .collect::<BTreeSet<_>>();
+            for argument in row.arguments {
                 assert!(!argument.name.trim().is_empty());
                 assert!(!argument.detail.trim().is_empty());
-                assert!(!argument.required);
+                assert_eq!(
+                    optional_names.contains(argument.name),
+                    !argument.required,
+                    "optional argument compatibility metadata disagrees for {}.{}",
+                    row.target,
+                    argument.name
+                );
             }
         }
+    }
+
+    #[test]
+    fn configuration_sections_round_trip() {
+        for section in UiConfigurationSection::all() {
+            assert_eq!(
+                UiConfigurationSection::parse(section.as_str()),
+                Some(*section)
+            );
+            assert!(!section.title().trim().is_empty());
+            assert!(!section.detail().trim().is_empty());
+        }
+        assert_eq!(
+            UiConfigurationSection::parse("providers"),
+            Some(UiConfigurationSection::AgentSystems)
+        );
+        assert_eq!(
+            UiConfigurationSection::parse("arrays"),
+            Some(UiConfigurationSection::Microarrays)
+        );
     }
 }

@@ -1,0 +1,23 @@
+{
+  "schema": "gentle.external_primer_pair_batch.v1",
+  "batch_id": "synthetic_cdna_assay_primer_pair",
+  "pairs": [
+    {
+      "source_kind": "laboratory",
+      "provider": "Synthetic GENtle fixture",
+      "catalogue_id": "",
+      "source_url": "",
+      "claimed_accession": "TX1",
+      "aliases": [
+        "synthetic_TX1_pair"
+      ],
+      "forward_sequence_5_to_3": "AAACCC",
+      "reverse_sequence_5_to_3": "CCCAAA",
+      "claimed_target": "Synthetic TX1 cDNA tutorial target",
+      "validation_claims": [],
+      "annotations": {
+        "fixture_status": "synthetic_only"
+      }
+    }
+  ]
+}

@@ -42,6 +42,12 @@ impl Window {
         }
     }
 
+    pub(crate) fn open_window_registry_signature(&self) -> Option<u64> {
+        match self {
+            Self::Dna(window) => window.open_window_registry_signature(),
+        }
+    }
+
     pub fn set_pool_context(&mut self, pool_seq_ids: Vec<String>) {
         match self {
             Self::Dna(window) => window.set_pool_context(pool_seq_ids),
@@ -66,9 +72,89 @@ impl Window {
         }
     }
 
+    pub fn focus_cryptic_splicing_screen(&mut self) {
+        match self {
+            Self::Dna(window) => window.focus_cryptic_splicing_screen(),
+        }
+    }
+
+    pub fn focus_genomic_region_manager(&mut self) {
+        match self {
+            Self::Dna(window) => window.focus_genomic_region_manager(),
+        }
+    }
+
+    pub(crate) fn apply_splicing_expert_intent(
+        &mut self,
+        action: crate::engine_shell::UiIntentAction,
+        feature_id: usize,
+    ) -> Result<String, String> {
+        match self {
+            Self::Dna(window) => window.apply_splicing_expert_intent(action, feature_id),
+        }
+    }
+
+    pub(crate) fn set_tss_view(&mut self, enabled: bool) -> Result<(), String> {
+        match self {
+            Self::Dna(window) => window.set_tss_view(enabled),
+        }
+    }
+
+    pub(crate) fn queue_tss_profile(&mut self, path: std::path::PathBuf) -> Result<(), String> {
+        match self {
+            Self::Dna(window) => window.queue_tss_profile(path),
+        }
+    }
+
+    pub(crate) fn queue_tss_local_score(
+        &mut self,
+        request: crate::tss_sequence_view::TssLocalScoreRequest,
+    ) -> Result<(), String> {
+        match self {
+            Self::Dna(window) => window.queue_tss_local_score(request),
+        }
+    }
+
+    pub(crate) fn focus_tata_boxes(&mut self) {
+        match self {
+            Self::Dna(window) => window.focus_tata_boxes(),
+        }
+    }
+    pub(crate) fn focus_tss_view(&mut self) {
+        match self {
+            Self::Dna(window) => window.focus_tss_view(),
+        }
+    }
+
+    pub(crate) fn focus_tss_inventory(&mut self) {
+        match self {
+            Self::Dna(window) => window.focus_tss_inventory(),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn tss_inventory_workspace_open_or_pending(&self) -> bool {
+        match self {
+            Self::Dna(window) => window.tss_inventory_workspace_open_or_pending(),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn tata_workspace_open_or_pending(&self) -> bool {
+        match self {
+            Self::Dna(window) => window.tata_workspace_open_or_pending(),
+        }
+    }
+
     pub fn focus_primer_design_report(&mut self, report_id: &str) {
         match self {
             Self::Dna(window) => window.focus_primer_design_report(report_id),
+        }
+    }
+
+    pub fn focus_primer_specificity_report(&mut self, report_id: &str) {
+        match self {
+            Self::Dna(window) => window.focus_primer_specificity_report(report_id),
         }
     }
 
@@ -141,9 +227,70 @@ impl Window {
         }
     }
 
+    pub fn is_sequence_opening(&self) -> bool {
+        match self {
+            Self::Dna(window) => window.is_opening(),
+        }
+    }
+
+    pub fn sequence_opening_phase(&self) -> &'static str {
+        match self {
+            Self::Dna(window) => window.opening_phase(),
+        }
+    }
+
+    pub fn sequence_open_error(&self) -> Option<&str> {
+        match self {
+            Self::Dna(window) => window.deferred_load_error(),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn mark_sequence_first_content_painted_for_tests(&mut self) {
+        match self {
+            Self::Dna(window) => window.mark_first_content_painted_for_tests(),
+        }
+    }
+
     pub fn selection_range_0based(&self) -> Option<(usize, usize)> {
         match self {
             Self::Dna(window) => window.selection_range_0based(),
+        }
+    }
+
+    pub fn focus_feature_location_editor(&mut self, feature_index: Option<usize>) {
+        match self {
+            Self::Dna(window) => window.focus_feature_location_editor(feature_index),
+        }
+    }
+
+    pub fn close_feature_location_editor(&mut self) -> bool {
+        match self {
+            Self::Dna(window) => window.close_feature_location_editor(),
+        }
+    }
+
+    pub fn close_genomic_region_manager(&mut self) -> bool {
+        match self {
+            Self::Dna(window) => window.close_genomic_region_manager(),
+        }
+    }
+
+    pub fn genomic_region_manager_is_open(&self) -> bool {
+        match self {
+            Self::Dna(window) => window.genomic_region_manager_is_open(),
+        }
+    }
+
+    pub fn genomic_region_manager_focus_is_pending(&self) -> bool {
+        match self {
+            Self::Dna(window) => window.genomic_region_manager_focus_is_pending(),
+        }
+    }
+
+    pub fn feature_location_editor_is_open(&self) -> bool {
+        match self {
+            Self::Dna(window) => window.feature_location_editor_is_open(),
         }
     }
 

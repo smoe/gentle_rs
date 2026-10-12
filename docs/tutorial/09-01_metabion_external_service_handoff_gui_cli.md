@@ -24,6 +24,12 @@ prepare clear, inspectable, vendor-reviewable artifacts:
 
 ## Safety Boundary
 
+This is an offline rehearsal: no network access, email sending, portal opening,
+or ordering is needed. `eligible` and `handoff_ready` mean that GENtle's local
+request checks passed, not that Metabion accepted a sequence, issued a price,
+approved biosafety, or guaranteed synthesis. Provider wording is the bundled
+catalog's representation, not a live statement of vendor policy.
+
 GENtle does not do any of these in this tutorial:
 
 - scrape Metabion WOP,
@@ -56,13 +62,45 @@ See the example overlay:
 
 - [`docs/examples/catalogs/external_service_providers_project_overlay.json`](../examples/catalogs/external_service_providers_project_overlay.json)
 
+## Before You Start
+
+Run Bash commands from the repository root. Links above are relative to this
+Markdown file; command paths below are relative to the repository root.
+Use an already-built CLI from this checkout, or set `GENTLE_CLI` to its absolute
+path. Stop if the executable check fails; this walkthrough does not build it.
+
+```bash
+GENTLE_CLI="${GENTLE_CLI:-$PWD/target/debug/gentle_cli}"
+test -x "$GENTLE_CLI"
+RUN_DIR=$(mktemp -d "${TMPDIR:-/tmp}/gentle-metabion.XXXXXX") || exit 1
+STATE="$RUN_DIR/tutorial.gentle.json"
+printf 'Tutorial files: %s\n' "$RUN_DIR"
+```
+
+Keep this shell open. Each run gets new state and output paths; do not delete
+an existing state to restart. The export command can overwrite files in an
+existing directory, so use the fresh subdirectories below.
+
+For reproducible CLI results, isolate catalog discovery from lab overlays:
+
+```bash
+export GENTLE_ASSET_ROOT="$PWD"
+export GENTLE_SYSTEM_CONFIG_ROOT="$RUN_DIR/system-config"
+export XDG_CONFIG_HOME="$RUN_DIR/user-config"
+export GENTLE_PROJECT_ROOT="$RUN_DIR/project"
+```
+
+These variables affect this shell and processes launched from it only. A GUI
+started elsewhere may still use lab overlays; compare its doctor source rows
+before expecting identical results.
+
 ## Step 1: Check Provider Config Health
 
 Run the doctor first. It validates the active provider config chain and reports
 source provenance.
 
 ```bash
-cargo run --quiet --bin gentle_cli -- services providers doctor
+"$GENTLE_CLI" --state "$STATE" services providers doctor
 ```
 
 Expected outcome:
@@ -75,14 +113,14 @@ Expected outcome:
 For a pinned built-in check:
 
 ```bash
-cargo run --quiet --bin gentle_cli -- services providers doctor \
+"$GENTLE_CLI" --state "$STATE" services providers doctor \
   --catalog assets/external_service_providers.json
 ```
 
 ## Step 2: List Provider Capabilities
 
 ```bash
-cargo run --quiet --bin gentle_cli -- services providers list
+"$GENTLE_CLI" --state "$STATE" services providers list
 ```
 
 Expected Metabion rows:
@@ -98,7 +136,7 @@ This is the same catalog the GUI provider picker consumes.
 ## Step 3: Preflight the Oligo Example
 
 ```bash
-cargo run --quiet --bin gentle_cli -- services project-preflight \
+"$GENTLE_CLI" --state "$STATE" services project-preflight \
   @docs/examples/external_services/metabion_oligo_single_tube_request.json
 ```
 
@@ -118,7 +156,7 @@ or `source_target.line_items`.
 ## Step 4: Prepare the Oligo Quote Handoff
 
 ```bash
-cargo run --quiet --bin gentle_cli -- services project-quote \
+"$GENTLE_CLI" --state "$STATE" services project-quote \
   @docs/examples/external_services/metabion_oligo_single_tube_request.json
 ```
 
@@ -141,14 +179,13 @@ usable with explicit human review.
 
 ## Step 5: Export the Oligo Handoff Bundle
 
-When the preview looks sensible, write the same handoff payloads as files. The
-example path is under ignored `artifacts/` so a tutorial run does not dirty the
-repository.
+When the preview looks sensible, write the same handoff payloads into a fresh
+subdirectory of `RUN_DIR`. These files stay outside the repository.
 
 ```bash
-cargo run --quiet --bin gentle_cli -- services project-quote \
+"$GENTLE_CLI" --state "$STATE" services project-quote \
   @docs/examples/external_services/metabion_oligo_single_tube_request.json \
-  --output-dir artifacts/external_services/metabion_oligo_demo
+  --output-dir "$RUN_DIR/metabion_oligo_demo"
 ```
 
 Expected files:
@@ -167,12 +204,12 @@ The returned quote report should also list those files in
 ## Step 6: Preflight and Quote the m-block Example
 
 ```bash
-cargo run --quiet --bin gentle_cli -- services project-preflight \
+"$GENTLE_CLI" --state "$STATE" services project-preflight \
   @docs/examples/external_services/metabion_mblock_request.json
 
-cargo run --quiet --bin gentle_cli -- services project-quote \
+"$GENTLE_CLI" --state "$STATE" services project-quote \
   @docs/examples/external_services/metabion_mblock_request.json \
-  --output-dir artifacts/external_services/metabion_mblock_demo
+  --output-dir "$RUN_DIR/metabion_mblock_demo"
 ```
 
 Expected difference from the oligo example:
@@ -185,26 +222,28 @@ Expected difference from the oligo example:
 
 ## Step 7: Repeat the Same Review in the GUI
 
-Open GENtle and use the shared GUI inspector:
-
-```bash
-cargo run --bin gentle
-```
+Open an already-built GENtle GUI and use the shared inspector. Do not open
+vendor links or send the generated email draft during this rehearsal.
 
 Then:
 
 1. Open `Services -> External Services...`.
 2. Press `Refresh Providers`.
+   Press `Provider Config Doctor` and inspect the catalog sources as well.
 3. Confirm Metabion appears in the provider picker.
 4. Select `metabion` and `dna_oligo_single_tube`.
-5. Press `Use Selected Template`, or paste the oligo request JSON into the
-   request editor.
+5. Paste the complete bundled oligo request JSON into the request editor after
+   selecting the provider and service. `Use Selected Template` is a starter,
+   not this exact fixture; changing the selection replaces the editor contents.
 6. Press `Preflight`.
 7. Press `Prepare Quote Handoff`.
 8. Inspect the payload previews and warnings.
-9. Leave or edit the `Output dir` field.
+9. Set `Output dir` to the printed absolute `RUN_DIR` path plus a new
+   `/metabion_oligo_gui` subdirectory. Do not paste the literal `$RUN_DIR`:
+   this GUI field does not expand shell variables.
 10. Press `Export Handoff Bundle`.
-11. Confirm the generated files are listed under `Bundle files`.
+11. Confirm the generated files are listed under `Bundle files`. Repeat with
+    `dna_fragment`, the m-block request, and a fresh output subdirectory.
 
 The GUI should not contain provider-specific business logic. If the GUI and CLI
 disagree, treat that as a bug in shared-shell plumbing or presentation, not as
@@ -214,13 +253,13 @@ a vendor-specific GUI feature to patch separately.
 
 Provider behavior is meant to be locally maintainable without changing the
 GENtle source tree. To rehearse that path, copy the example overlay into a
-project-local catalog directory:
+temporary project-local catalog directory, not your real project's policy:
 
 ```bash
-mkdir -p .gentle/catalogs/external_service_providers.d
+mkdir -p "$GENTLE_PROJECT_ROOT/.gentle/catalogs/external_service_providers.d"
 cp docs/examples/catalogs/external_service_providers_project_overlay.json \
-  .gentle/catalogs/external_service_providers.d/metabion_local_policy.json
-cargo run --quiet --bin gentle_cli -- services providers doctor
+  "$GENTLE_PROJECT_ROOT/.gentle/catalogs/external_service_providers.d/metabion_local_policy.json"
+"$GENTLE_CLI" --state "$STATE" services providers doctor
 ```
 
 Expected outcome:
@@ -229,7 +268,8 @@ Expected outcome:
 - later provider ids override earlier provider ids,
 - GUI and CLI provider rows update from the same catalog result.
 
-Remove or adapt the overlay before real use if it is not your lab policy.
+This disposable overlay is not a recommendation to change lab policy. A GUI
+must use the same project-root override to see it.
 
 ## Step 9: What to Send to Metabion Later
 

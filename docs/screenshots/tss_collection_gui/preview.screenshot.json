@@ -1,0 +1,120 @@
+{
+  "acceptance_contract_sha256": "f6f939279fb0632ddcd3320718d3e9d4e66995b497a4bdcad0dd622dd58a2f9f",
+  "capture": {
+    "backend": "scrot",
+    "backend_version": {
+      "argv": [
+        "/home/clawbio/.local/opt/gentle-xvfb-tools-a38ae2e3/root/usr/bin/scrot",
+        "--version"
+      ],
+      "available": true,
+      "exit_code": 0,
+      "output": "scrot version 2.0.0"
+    },
+    "captured_at_unix_ms": 1790688834579,
+    "display": ":104",
+    "gui_process_pid": 1294316,
+    "raw": {
+      "height_px": 1080,
+      "path": "/tmp/gentle-tutorial-round2-product-1fcee6c0-r2/tss_collection_gui/checkpoints/preview.raw.png",
+      "sha256": "0000a4d2df201ae24869ad0d48ad76b30f3dfc2286df85cce4a3200b61979817",
+      "width_px": 1920
+    },
+    "scope": "x11_root"
+  },
+  "chapter_id": "tss_collection_gui",
+  "derived_views": [
+    {
+      "annotation": "Numbered outline derived from the semantic focus rectangle",
+      "crop_physical_pixels": {
+        "max_x": 1920,
+        "max_y": 1080,
+        "min_x": 0,
+        "min_y": 0
+      },
+      "path": "/tmp/gentle-tutorial-round2-product-1fcee6c0-r2/tss_collection_gui/checkpoints/preview.orientation.svg",
+      "role": "orientation",
+      "sha256": "cb49b1adac494406757b9030803491b5b1895e911f337f3eddf71dfef99deeed"
+    },
+    {
+      "annotation": "Padded crop around the same semantic focus rectangle",
+      "crop_physical_pixels": {
+        "max_x": 329,
+        "max_y": 373,
+        "min_x": 0,
+        "min_y": 115
+      },
+      "path": "/tmp/gentle-tutorial-round2-product-1fcee6c0-r2/tss_collection_gui/checkpoints/preview.context.svg",
+      "role": "interaction_context",
+      "sha256": "2b1550ab4a8da001bc0f4f665eee7e565bce1457596c8660b3b077fd697311ca"
+    }
+  ],
+  "gentle_binary_sha256": "441734d68a9aad736e24cf3b1b91324e45d2af6c7a9ba74087c79a71b3adf612",
+  "project_state": {
+    "path": "/tmp/gentle-tutorial-round2-product-1fcee6c0-r2/tss_collection_gui/starter.project.gentle.json",
+    "sha256": "f5d77f965baa6b26a7e2c36c6a2b97d370e781bea5a4ff4fe2a6a0ab39ef4954"
+  },
+  "prose_step": 3,
+  "requested_target": {
+    "semantic_id": "tss.preview",
+    "subject_scope": "subject-d5d56e660296e866e6a0c16f7deed261",
+    "window_id": "window.tss_workspace"
+  },
+  "requirement": "required",
+  "schema": "gentle.tutorial_gui_screenshot_evidence.v1",
+  "semantic_snapshot": {
+    "canonical_sha256": "be4a1d292f45a5ecb1ef30a3abe4c78015567b024d362782a3d3b7b73624c47f",
+    "generation": 203,
+    "retained_file_sha256": "1111b7e46124271b45292f9a0f1b52e64cdc892dd24419804a6cb61b5992b75e",
+    "retained_path": "/tmp/gentle-tutorial-round2-product-1fcee6c0-r2/tss_collection_gui/checkpoints/preview.snapshot.json",
+    "schema": "gentle.gui_semantic_snapshot.v2",
+    "settled": true
+  },
+  "source_revision": "1fcee6c078c913b6720f7f84437111fa7482f7ca",
+  "step_id": "preview",
+  "step_sha256": "1a0bdbc6e505641c2ec3dd1921b37d613730c31049086137f4a8f8dceae4ac54",
+  "tutorial_manifest_sha256": "0e864f07df88369c315e77532299e0e54553c6ab331d84bf795dc461c2eb07fc",
+  "visual_focus": {
+    "native_window_binding": {
+      "coordinate_transform": "root_screen_px = native_client_origin_px + (target_logical - semantic_window_logical_origin) * pixels_per_point",
+      "egui_viewport_id": "\"0122\"",
+      "native_client_geometry": {
+        "height": 860,
+        "root_x": 1,
+        "root_y": 20,
+        "width": 1200
+      },
+      "native_owner_semantic_window_id": "window.dna_viewer",
+      "screen_rect_physical_pixels": {
+        "max_x": 149,
+        "max_y": 253,
+        "min_x": 52,
+        "min_y": 235
+      },
+      "semantic_window_id": "window.tss_workspace",
+      "semantic_window_rect_logical_points": {
+        "max_x": 1200.0,
+        "max_y": 860.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "x11_client_window_id": 4194363
+    },
+    "pixels_per_point": 1.0,
+    "rect_logical_points": {
+      "max_x": 147.75,
+      "max_y": 233.0,
+      "min_x": 51.0,
+      "min_y": 215.0
+    },
+    "rect_physical_pixels": {
+      "max_x": 149,
+      "max_y": 253,
+      "min_x": 52,
+      "min_y": 235
+    },
+    "semantic_id": "tss.select_available",
+    "subject_scope": "subject-d5d56e660296e866e6a0c16f7deed261",
+    "window_id": "window.tss_workspace"
+  }
+}

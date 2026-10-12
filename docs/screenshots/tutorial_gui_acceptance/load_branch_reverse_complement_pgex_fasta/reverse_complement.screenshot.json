@@ -1,0 +1,120 @@
+{
+  "acceptance_contract_sha256": "7696f59185eaffd1dd6ac28d508e729db0ba4da0d1d9671070234398449d76f4",
+  "capture": {
+    "backend": "scrot",
+    "backend_version": {
+      "argv": [
+        "/home/clawbio/.local/opt/gentle-xvfb-tools-a38ae2e3/root/usr/bin/scrot",
+        "--version"
+      ],
+      "available": true,
+      "exit_code": 0,
+      "output": "scrot version 2.0.0"
+    },
+    "captured_at_unix_ms": 1788889318638,
+    "display": ":104",
+    "gui_process_pid": 3871310,
+    "raw": {
+      "height_px": 1000,
+      "path": "/home/clawbio/GENtle-private/tutorial-gui-three-profile-3de4803a/load_branch_reverse_complement_pgex_fasta/checkpoints/reverse_complement.raw.png",
+      "sha256": "9c021204b7fcfef6748fe080c9fbc9b8fa9f7359f46526f00d12cbcaf029e75c",
+      "width_px": 1600
+    },
+    "scope": "x11_root"
+  },
+  "chapter_id": "load_branch_reverse_complement_pgex_fasta",
+  "derived_views": [
+    {
+      "annotation": "Numbered outline derived from the semantic focus rectangle",
+      "crop_physical_pixels": {
+        "max_x": 1600,
+        "max_y": 1000,
+        "min_x": 0,
+        "min_y": 0
+      },
+      "path": "/home/clawbio/GENtle-private/tutorial-gui-three-profile-3de4803a/load_branch_reverse_complement_pgex_fasta/checkpoints/reverse_complement.orientation.svg",
+      "role": "orientation",
+      "sha256": "a12ccf355590c898f42e8671ce69fabd163e00e27e38edc0a62aefdd056b4fb2"
+    },
+    {
+      "annotation": "Padded crop around the same semantic focus rectangle",
+      "crop_physical_pixels": {
+        "max_x": 332,
+        "max_y": 362,
+        "min_x": 0,
+        "min_y": 104
+      },
+      "path": "/home/clawbio/GENtle-private/tutorial-gui-three-profile-3de4803a/load_branch_reverse_complement_pgex_fasta/checkpoints/reverse_complement.context.svg",
+      "role": "interaction_context",
+      "sha256": "1e56e96b64640a39b181f1e2d5e394ec4619100c4be49eec8b42e192bb0ce185"
+    }
+  ],
+  "gentle_binary_sha256": "9550cdfa298903ea674974fa64e6119ee71fa1ac0b3668d01847933c0d38d37d",
+  "project_state": {
+    "path": "/home/clawbio/GENtle-private/tutorial-gui-three-profile-3de4803a/load_branch_reverse_complement_pgex_fasta/starter.project.gentle.json",
+    "sha256": "d32c71f47e7de7b5c9f6073f3033494ed5ac5b55bca3990a9cc2600e30b61e67"
+  },
+  "prose_step": 3,
+  "requested_target": {
+    "semantic_id": "dna.sequence.reverse_complement",
+    "subject_scope": null,
+    "window_id": "window.dna_viewer"
+  },
+  "requirement": "required",
+  "schema": "gentle.tutorial_gui_screenshot_evidence.v1",
+  "semantic_snapshot": {
+    "canonical_sha256": "a47150370f6c2637e1921ee1453fcfb287c4f9a9342cc300643d914336584ae9",
+    "generation": 183,
+    "retained_file_sha256": "b2ec2a67a634ba527082c282470dc48bc1c825a833d7795b1f867ec98334b0e4",
+    "retained_path": "/home/clawbio/GENtle-private/tutorial-gui-three-profile-3de4803a/load_branch_reverse_complement_pgex_fasta/checkpoints/reverse_complement.snapshot.json",
+    "schema": "gentle.gui_semantic_snapshot.v2",
+    "settled": true
+  },
+  "source_revision": "3de4803aa7cd4f960b01f71af8a7b4b272b7d576",
+  "step_id": "reverse_complement",
+  "step_sha256": "9cfdb306345a0b1f7791f29a225845526a99359884c9848a07b91b54f58797d3",
+  "tutorial_manifest_sha256": "140684f592c7f7fff9d6e0c50b49e9d75984ccfc1d19c680f59e8aa7fc00a3a2",
+  "visual_focus": {
+    "native_window_binding": {
+      "coordinate_transform": "root_screen_px = native_client_origin_px + (target_logical - semantic_window_logical_origin) * pixels_per_point",
+      "egui_viewport_id": "\"0122\"",
+      "native_client_geometry": {
+        "height": 600,
+        "root_x": 1,
+        "root_y": 20,
+        "width": 800
+      },
+      "native_owner_semantic_window_id": "window.dna_viewer",
+      "screen_rect_physical_pixels": {
+        "max_x": 152,
+        "max_y": 242,
+        "min_x": 89,
+        "min_y": 224
+      },
+      "semantic_window_id": "window.dna_viewer",
+      "semantic_window_rect_logical_points": {
+        "max_x": 800.0,
+        "max_y": 600.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "x11_client_window_id": 4194368
+    },
+    "pixels_per_point": 1.0,
+    "rect_logical_points": {
+      "max_x": 151.375,
+      "max_y": 222.0,
+      "min_x": 87.6875,
+      "min_y": 204.0
+    },
+    "rect_physical_pixels": {
+      "max_x": 152,
+      "max_y": 242,
+      "min_x": 89,
+      "min_y": 224
+    },
+    "semantic_id": "dna.sequence.reverse_complement",
+    "subject_scope": "subject-cb719c42454b7fc8e03e0c6e1cefc046",
+    "window_id": "window.dna_viewer"
+  }
+}

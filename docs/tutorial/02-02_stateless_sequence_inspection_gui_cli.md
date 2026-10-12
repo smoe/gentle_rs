@@ -35,6 +35,9 @@ Exact sequence:
 GAATTCCCGGGATCCGGGCGGGGCGCATGTGTAACAGGGGCGGGGC
 ```
 
+This fixture is **46 nt** long. GENtle therefore reports the complete
+zero-based half-open span as `0..46`.
+
 Why this sequence was chosen:
 
 - `GAATTC` gives one clear `EcoRI` site
@@ -47,15 +50,23 @@ Why this sequence was chosen:
 
 1. Open the tutorial FASTA:
    [`docs/tutorial/inputs/inline_sequence_inspection_demo.fa`](./inputs/inline_sequence_inspection_demo.fa)
-2. In the DNA window, open the `TFBS annotation (log-likelihood ratio)` panel.
+2. In the DNA window, press `Sequence tools...`, scroll to `TFBS annotation
+   (log-likelihood ratio)`, and expand that panel.
 3. Use these settings:
    - `Selected motifs = SP1,TP73`
    - `min llr_quantile = 0.95`
    - leave `min llr_bits` empty
    - in the score-track subsection choose `value kind = llr_background_tail_log10`
    - leave `clip negatives` off
+
+![TFBS/JASPAR settings for SP1 and TP73 on the 46 bp synthetic fixture](../screenshots/stateless_sequence_inspection_gui/01-tfbs-settings.raw.png)
+
+The screenshot is a native Linux/X11 capture from the publication-safe
+fixture. It shows the selected motifs, `0.95` LLR quantile, the
+`llr_background_tail_log10` score kind, and disabled negative clipping. It is
+manual/hybrid teaching evidence, not an automated GUI-acceptance verdict.
 4. Use the toolbar menu `RE scan -> whole sequence`.
-5. Open `Direct scan inspectors`.
+5. In the same `Sequence tools` window, open `Direct scan inspectors`.
    - Expected result: the `Restriction-site scan` card is no longer empty.
    - You should see at least `EcoRI`, `SmaI`, and `BamHI`.
    - Click one enzyme row.
@@ -70,14 +81,29 @@ Why this sequence was chosen:
    - Click one motif row.
      - Expected result: GENtle selects that TFBS match in the main DNA window
        and recenters the linear viewport onto it.
+
+![Restriction-site and TFBS hit inspectors populated from the shared engine reports](../screenshots/stateless_sequence_inspection_gui/02-direct-scan-inspectors.raw.png)
+
+This result capture shows the three expected restriction sites and three SP1
+hits. Both selected motifs were scanned; this short fixture has no retained
+TP73 row at the configured threshold, so the tutorial requires an SP1 **or**
+TP73 hit rather than inventing one for each motif.
 9. Press `Export cached TFBS hit scan JSON...` if you want the raw shared hit
    report.
 10. Use the toolbar menu `TFBS score tracks -> whole sequence`.
 11. Return to the `TFBS annotation` panel.
-   - Expected result: the cached score-track summary now shows `2 motif(s)`
-     across `0..47`.
+   - Intended result: the cached score-track summary shows `2 motif(s)` across
+     `0..46`.
 12. Press `Export cached TFBS score tracks SVG...` to confirm the shared
     rendering route.
+
+> **Known GUI blocker (2026-10-01):** on exact revision
+> `002de21230d5bb7dfbb8d78542e3961774a90628`, the whole-sequence score-track
+> toolbar action aborted two fresh Linux/Xvfb GUI processes with a native stack
+> overflow after the settings above were applied. The canonical offline
+> workflow still completed and produced its JSON/SVG artifacts, so this is a
+> GUI-path blocker, not evidence that the shared engine result is wrong. Treat
+> steps 10-12 as pending until that GUI defect is fixed and recaptured.
 
 What this should prove:
 
@@ -85,6 +111,23 @@ What this should prove:
   GUI rather than one rich view plus two status-only quick actions
 - the hit/score inspectors are driven by shared engine reports, not ad hoc
   window-local logic
+
+## Inner and Outer Agents
+
+The **inner Agent Assistant** can reason about the currently open GENtle
+project, but a suggestion is not execution permission. A bounded review prompt
+for the working GUI portion is:
+
+> In the current GENtle project, inspect the active 46 bp sequence and propose
+> the exact shared commands for a whole-sequence restriction-site scan and an
+> SP1/TP73 TFBS hit scan at `min_llr_quantile=0.95`. State the expected report
+> fields and do not execute anything until I approve. Do not claim to have seen
+> the GUI unless I explicitly approve and provide a screenshot.
+
+An **outer agent** does not inherit this unsaved GUI window. Give it the
+canonical workflow or the structured ClawBio request below; require the four
+artifacts and the reproducibility receipt. A successful outer replay verifies
+the shared operations, not the currently blocked GUI score-track gesture.
 
 ## CLI / Workflow Replay
 
@@ -138,10 +181,19 @@ Mark this tutorial successful if all of these are true:
 - the same section shows a populated TFBS hit table after `TFBS scan`
 - clicking rows in those two tables jumps back to the corresponding sequence
   span in the active DNA window
-- the score-track inspector and SVG export work after `TFBS score tracks`
 - the workflow example writes all four expected artifacts
 - the ClawBio request can replay that same workflow without requiring a
   separate state-preparation step
+
+Record the GUI portion as **partial / blocked** until the score-track action no
+longer aborts and its inspector plus SVG export can be recaptured. Do not turn a
+headless workflow pass into a GUI-pass claim.
+
+## Screenshot Evidence
+
+The capture environment, exact binary/input hashes, manual result, and
+score-track blocker reproduction are recorded in
+[`docs/screenshots/stateless_sequence_inspection_gui/evidence.json`](../screenshots/stateless_sequence_inspection_gui/evidence.json).
 
 ## Feedback
 

@@ -2,6 +2,22 @@
   "schema": "gentle.tutorial_source.v4",
   "id": "protein_reverse_translation_gui",
   "title": "Reverse Translate an Imported Protein and Audit the Result",
+  "graphics": [
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/protein_reverse_translation_gui/01-protein-evidence-before-fetch.png",
+      "caption": "The current native Protein Evidence window before online mutation, oriented at its upper evidence and coding-query controls. It is layout evidence only; the Ensembl route is lower in the same scrollable window.",
+      "illustrates_step": 2,
+      "capture_date": "2026-10-01"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/protein_reverse_translation_gui/02-ensembl-fetch-provider-failure.png",
+      "caption": "The actual Ensembl protein subsection after the patched worker survived the request but the provider path failed after 45.1 seconds. No recent Ensembl entry or first-class protein was created, so downstream reverse translation remains unaccepted.",
+      "illustrates_step": 2,
+      "capture_date": "2026-10-01"
+    }
+  ],
   "catalog": {
     "order": 20,
     "path": "docs/tutorial/06-01_protein_reverse_translation_gui.md",
@@ -13,7 +29,13 @@
       "sequence_analysis",
       "contributors"
     ],
-    "notes": "GUI-first manual check for Ensembl protein import, reverse translation, provenance inspection, and lineage reopen.",
+    "notes": "GUI-first manual check for Ensembl protein import, reverse translation, provenance inspection, and lineage reopen. Review-blocked on 2026-10-01: the corrected Ensembl action survived after a 16 MiB worker-stack fix but failed its provider request after 45.1 seconds; CLI provider calls were also unstable, so no successful downstream outcome is claimed.",
+    "interfaces": [
+      "native GUI",
+      "CLI / shared shell",
+      "Agent Assistant (inner, review-first)",
+      "ClawBio / outer agent"
+    ],
     "group": "06",
     "group_position": 1
   }

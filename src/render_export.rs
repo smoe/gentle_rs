@@ -1,16 +1,15 @@
 //! Shared export surfaces (SVG and snapshot pathways).
 
 use crate::{
-    dna_display::DnaDisplay,
     dna_sequence::DNAsequence,
     engine::DisplaySettings,
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     gc_contents::GcContents,
     repeat_features::{is_repeat_feature, repeat_feature_display},
-    restriction_enzyme::RestrictionEnzymeKey,
+    restriction_enzyme::{RestrictionEnzymeKey, restriction_group_matches_display_mode},
 };
 use gb_io::seq::Feature;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use svg::Document;
 use svg::node::element::path::Data;
 use svg::node::element::{Circle, Line, Path, Rectangle, Text};
@@ -31,6 +30,10 @@ const REGULATORY_LANE_PADDING: f32 = 2.0;
 const LINEAR_SVG_HEADER_HEIGHT: f32 = 44.0;
 const LINEAR_SVG_BOTTOM_PADDING: f32 = 28.0;
 const LINEAR_SVG_MIN_HEIGHT: f32 = 180.0;
+const LINEAR_SVG_LEGEND_TOP_PADDING: f32 = 22.0;
+const LINEAR_SVG_LEGEND_BOTTOM_PADDING: f32 = 18.0;
+const LINEAR_SVG_LEGEND_LINE_HEIGHT: f32 = 14.0;
+const LINEAR_SVG_LEGEND_MAX_CHARS: usize = 158;
 const SVG_TEXT_ASCENT: f32 = 10.0;
 const SVG_TEXT_DESCENT: f32 = 4.0;
 const VARIATION_MARKER_STROKE_WIDTH: f32 = 2.0;
@@ -66,18 +69,23 @@ struct FeatureVm {
     to: usize,
     label: String,
     legend_line: Option<String>,
-    color: &'static str,
+    color: String,
     kind_attr: String,
     kind_role: FeatureKindRole,
     is_gene: bool,
     is_promoter: bool,
     is_reverse: bool,
     is_pointy: bool,
+    is_tfbs: bool,
+    is_repeat: bool,
+    is_track: bool,
+    is_array_track: bool,
     is_regulatory: bool,
     is_variation: bool,
     has_transcription_direction: bool,
     is_fallback_label: bool,
     prefers_functional_host_anchor: bool,
+    evidence_group_label: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -99,6 +107,11 @@ struct LinearSvgFeatureLayout {
     regulatory_group_gap: f32,
     top_extent: f32,
     bottom_extent: f32,
+}
+
+#[derive(Clone, Debug)]
+struct LinearSvgLegend {
+    lines: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -399,6 +412,26 @@ fn feature_has_visible_export_label(feature: &FeatureVm) -> bool {
     !feature.label.trim().is_empty() && !feature.is_fallback_label
 }
 
+fn should_plot_linear_feature_label(feature: &FeatureVm, x1: f32, x2: f32) -> bool {
+    if !feature_has_visible_export_label(feature) {
+        return false;
+    }
+    if feature.is_gene {
+        return true;
+    }
+    if feature.is_tfbs {
+        return false;
+    }
+    if feature.is_track {
+        return false;
+    }
+    if feature.is_regulatory {
+        let label_width = estimate_text_width(&feature.label);
+        return label_width <= (x2 - x1).max(100.0) + 18.0;
+    }
+    true
+}
+
 fn should_skip_nearby_repeated_label(
     placed_labels: &[(String, f32)],
     label: &str,
@@ -497,7 +530,10 @@ fn circular_title_text(dna: &DNAsequence) -> String {
     }
 }
 
-fn feature_color(feature: &Feature) -> &'static str {
+fn feature_color(feature: &Feature) -> String {
+    if is_array_track_feature(feature) {
+        return array_feature_color(feature);
+    }
     if is_vcf_track_feature(feature) {
         let class = vcf_variant_class(feature)
             .unwrap_or_else(|| "OTHER".to_string())
@@ -508,20 +544,21 @@ fn feature_color(feature: &Feature) -> &'static str {
             "DEL" => "#b42d2d",
             "SV" => "#5a5a1e",
             _ => "#5a5a5a",
-        };
+        }
+        .to_string();
     }
     if let Some(repeat) = repeat_feature_display(feature) {
-        return repeat.class.color_hex();
+        return repeat.class.color_hex().to_string();
     }
     if is_regulatory_feature(feature) {
         let regulatory_class = feature_qualifier_text(feature, "regulatory_class")
             .unwrap_or_default()
             .to_ascii_lowercase();
         if regulatory_class.contains("silencer") || regulatory_class.contains("repressor") {
-            return "#be3232";
+            return "#be3232".to_string();
         }
         if regulatory_class.contains("enhancer") || regulatory_class.contains("activator") {
-            return "#2d9641";
+            return "#2d9641".to_string();
         }
     }
     match feature.kind.to_string().to_ascii_uppercase().as_str() {
@@ -532,6 +569,32 @@ fn feature_color(feature: &Feature) -> &'static str {
         "VARIATION" => "#e17f0f",
         "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND" => "#238023",
         _ => "#6e6e6e",
+    }
+    .to_string()
+}
+
+fn rgb_hex(r: u8, g: u8, b: u8) -> String {
+    format!("#{r:02x}{g:02x}{b:02x}")
+}
+
+fn array_feature_color(feature: &Feature) -> String {
+    let logfc = feature_qualifier_f64(feature, "logFC").unwrap_or(0.0);
+    let strength = (logfc.abs() / 3.0).clamp(0.0, 1.0);
+    let neutral = (1.0 - strength) * 158.0;
+    if logfc > 0.05 {
+        rgb_hex(
+            (neutral + strength * 220.0).round() as u8,
+            (neutral + strength * 38.0).round() as u8,
+            (neutral + strength * 38.0).round() as u8,
+        )
+    } else if logfc < -0.05 {
+        rgb_hex(
+            (neutral + strength * 37.0).round() as u8,
+            (neutral + strength * 99.0).round() as u8,
+            (neutral + strength * 235.0).round() as u8,
+        )
+    } else {
+        "#969696".to_string()
     }
 }
 
@@ -583,9 +646,32 @@ fn is_track_feature(feature: &Feature) -> bool {
     feature.qualifier_values("gentle_generated").any(|value| {
         matches!(
             value.trim().to_ascii_lowercase().as_str(),
-            "genome_bed_track" | "genome_bigwig_track" | "genome_vcf_track" | "blast_hit_track"
+            "genome_bed_track"
+                | "genome_bigwig_track"
+                | "genome_vcf_track"
+                | "blast_hit_track"
+                | "microarray_track_projection"
         )
     })
+}
+
+fn is_array_track_feature(feature: &Feature) -> bool {
+    feature
+        .qualifier_values("gentle_track_source")
+        .any(|value| value.trim().eq_ignore_ascii_case("Array"))
+        || feature.qualifier_values("gentle_generated").any(|value| {
+            value
+                .trim()
+                .eq_ignore_ascii_case("microarray_track_projection")
+        })
+}
+
+fn is_track_like_feature(feature: &Feature) -> bool {
+    is_track_feature(feature)
+        || is_array_track_feature(feature)
+        || feature
+            .qualifier_values("gentle_track_source")
+            .any(|value| !value.trim().is_empty())
 }
 
 fn is_vcf_track_feature(feature: &Feature) -> bool {
@@ -791,6 +877,284 @@ fn vcf_feature_passes_display_filter(feature: &Feature, display: &DisplaySetting
     true
 }
 
+fn basename_for_legend(path: &str) -> String {
+    path.rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(path)
+        .trim()
+        .to_string()
+}
+
+fn track_evidence_group_label(feature: &Feature) -> Option<String> {
+    if !is_track_like_feature(feature) {
+        return None;
+    }
+    let source = feature_qualifier_text(feature, "gentle_track_source")
+        .unwrap_or_else(|| "Track".to_string());
+    if source.eq_ignore_ascii_case("Array") {
+        let contrast = feature_qualifier_text(feature, "gentle_array_contrast")
+            .or_else(|| feature_qualifier_text(feature, "gentle_track_name"));
+        let dataset = feature_qualifier_text(feature, "gentle_array_dataset");
+        return Some(match (contrast, dataset) {
+            (Some(contrast), Some(dataset)) => format!("Array {dataset} {contrast}"),
+            (Some(contrast), None) => format!("Array {contrast}"),
+            (None, Some(dataset)) => format!("Array {dataset}"),
+            (None, None) => "Array projection".to_string(),
+        });
+    }
+    let track_name = feature_qualifier_text(feature, "gentle_track_name")
+        .or_else(|| feature_qualifier_text(feature, "name"))
+        .or_else(|| feature_qualifier_text(feature, "label"));
+    let file_name =
+        feature_qualifier_text(feature, "gentle_track_file").map(|path| basename_for_legend(&path));
+    Some(match (track_name, file_name) {
+        (Some(track), Some(file)) => format!("{source} {track} ({file})"),
+        (Some(track), None) => format!("{source} {track}"),
+        (None, Some(file)) => format!("{source} {file}"),
+        (None, None) => source,
+    })
+}
+
+fn compact_count_summary(counts: &BTreeMap<String, usize>, max_items: usize) -> String {
+    let mut parts = counts
+        .iter()
+        .take(max_items)
+        .map(|(label, count)| {
+            if *count == 1 {
+                label.clone()
+            } else {
+                format!("{label} x{count}")
+            }
+        })
+        .collect::<Vec<_>>();
+    let omitted = counts.len().saturating_sub(max_items);
+    if omitted > 0 {
+        parts.push(format!("... {omitted} more"));
+    }
+    parts.join(", ")
+}
+
+fn wrap_legend_line(line: &str) -> Vec<String> {
+    if line.chars().count() <= LINEAR_SVG_LEGEND_MAX_CHARS {
+        return vec![line.to_string()];
+    }
+    let mut ret = Vec::new();
+    let mut current = String::new();
+    for word in line.split_whitespace() {
+        let next_len = current
+            .chars()
+            .count()
+            .saturating_add(word.chars().count())
+            .saturating_add(usize::from(!current.is_empty()));
+        if next_len > LINEAR_SVG_LEGEND_MAX_CHARS && !current.is_empty() {
+            ret.push(current);
+            current = String::from("  ");
+        }
+        if !current.trim().is_empty() {
+            current.push(' ');
+        }
+        current.push_str(word);
+    }
+    if !current.trim().is_empty() {
+        ret.push(current);
+    }
+    ret
+}
+
+fn linear_svg_provenance_line(
+    dna: &DNAsequence,
+    viewport: LinearExportViewport,
+    len: usize,
+) -> String {
+    let sequence_name = dna
+        .name()
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("<no name>");
+    let accession = dna
+        .version()
+        .or_else(|| dna.accession())
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let source = match accession {
+        Some(accession) if accession != sequence_name => {
+            format!("{sequence_name} / {accession}")
+        }
+        _ => sequence_name.to_string(),
+    };
+    format!(
+        "Provenance: sequence {source}; local view {}..{} ({} bp of {} bp).",
+        viewport.start_bp.saturating_add(1),
+        viewport.end_bp_exclusive,
+        viewport.span_bp,
+        len
+    )
+}
+
+fn build_linear_svg_legend(
+    dna: &DNAsequence,
+    display: &DisplaySettings,
+    viewport: LinearExportViewport,
+    features: &[FeatureVm],
+) -> LinearSvgLegend {
+    let mut tfbs_counts: BTreeMap<String, usize> = BTreeMap::new();
+    let mut track_counts: BTreeMap<String, usize> = BTreeMap::new();
+    let mut repeat_counts: BTreeMap<String, usize> = BTreeMap::new();
+    let mut regulatory_counts: BTreeMap<String, usize> = BTreeMap::new();
+    let mut has_gene_or_cds = false;
+    let mut has_transcript = false;
+    let mut has_tss = false;
+    let mut has_variation = false;
+
+    for feature in features {
+        has_gene_or_cds |= matches!(
+            feature.kind_role,
+            FeatureKindRole::Gene | FeatureKindRole::Cds
+        );
+        has_transcript |= matches!(feature.kind_role, FeatureKindRole::Mrna)
+            || feature.is_promoter
+            || feature.kind_attr == "promoter";
+        has_tss |= feature.has_transcription_direction;
+        has_variation |= feature.is_variation;
+        if feature.is_tfbs {
+            if feature_has_visible_export_label(feature) {
+                *tfbs_counts.entry(feature.label.clone()).or_insert(0) += 1;
+            }
+        } else if feature.is_track {
+            let label = feature
+                .evidence_group_label
+                .clone()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| "external track".to_string());
+            *track_counts.entry(label).or_insert(0) += 1;
+        } else if feature.is_repeat {
+            if feature_has_visible_export_label(feature) {
+                *repeat_counts.entry(feature.label.clone()).or_insert(0) += 1;
+            }
+        } else if feature.is_regulatory && feature_has_visible_export_label(feature) {
+            *regulatory_counts.entry(feature.label.clone()).or_insert(0) += 1;
+        }
+    }
+
+    let mut lines = vec![
+        "Legend: blue gene/CDS span; orange transcript/promoter span; kinked arrow marks transcription start site and strand direction; black baseline is local DNA coordinate axis.".to_string(),
+    ];
+    if display.show_gc_contents {
+        lines.push("GC strip: green-to-brown band below/above the axis summarizes local GC content in fixed bins.".to_string());
+    }
+    if display.show_restriction_enzymes {
+        lines.push(
+            "Restriction sites: vertical ticks cross the axis; labels name the enzymes passing the current display filter.".to_string(),
+        );
+    }
+    if !tfbs_counts.is_empty() {
+        lines.push(format!(
+            "TFBS motif hits: thin green blocks; motif labels are summarized here to avoid collisions: {}.",
+            compact_count_summary(&tfbs_counts, 10)
+        ));
+    }
+    if !track_counts.is_empty() {
+        lines.push(format!(
+            "External evidence tracks: BED/other imported evidence is grey; array projections use logFC color (red positive, blue negative, grey near zero; stronger color for larger absolute logFC). Grouped provenance: {}.",
+            compact_count_summary(&track_counts, 8)
+        ));
+    }
+    if !repeat_counts.is_empty() {
+        lines.push(format!(
+            "Repeats: colored repeat blocks summarize RepeatMasker-style annotations: {}.",
+            compact_count_summary(&repeat_counts, 8)
+        ));
+    }
+    if !regulatory_counts.is_empty() {
+        lines.push(format!(
+            "Regulatory annotations: red/green/teal bars indicate annotated regulatory regions: {}.",
+            compact_count_summary(&regulatory_counts, 6)
+        ));
+    }
+    if has_variation {
+        lines.push(
+            "Variants: orange baseline lollipops mark sequence variants in the current view."
+                .to_string(),
+        );
+    }
+    if !has_gene_or_cds && !has_transcript && !has_tss {
+        lines.push(
+            "No gene, transcript, or transcription-start annotations are visible in this view."
+                .to_string(),
+        );
+    }
+    lines.push(linear_svg_provenance_line(dna, viewport, dna.len()));
+
+    let wrapped = lines
+        .into_iter()
+        .flat_map(|line| wrap_legend_line(&line))
+        .collect::<Vec<_>>();
+    LinearSvgLegend { lines: wrapped }
+}
+
+fn linear_svg_legend_height(legend: &LinearSvgLegend) -> f32 {
+    if legend.lines.is_empty() {
+        0.0
+    } else {
+        LINEAR_SVG_LEGEND_TOP_PADDING
+            + LINEAR_SVG_LEGEND_BOTTOM_PADDING
+            + LINEAR_SVG_LEGEND_LINE_HEIGHT * legend.lines.len() as f32
+    }
+}
+
+fn append_linear_svg_legend(
+    mut doc: Document,
+    legend: &LinearSvgLegend,
+    legend_top: f32,
+    canvas_height: f32,
+) -> Document {
+    if legend.lines.is_empty() {
+        return doc;
+    }
+    let panel_x = 18.0;
+    let panel_y = legend_top;
+    let panel_w = W - 36.0;
+    let panel_h = (canvas_height - legend_top - 8.0).max(0.0);
+    doc = doc.add(
+        Rectangle::new()
+            .set("x", panel_x)
+            .set("y", panel_y)
+            .set("width", panel_w)
+            .set("height", panel_h)
+            .set("rx", 8)
+            .set("ry", 8)
+            .set("fill", "#f8fafc")
+            .set("stroke", "#cbd5e1")
+            .set("stroke-width", 1)
+            .set("data-gentle-role", "linear-evidence-legend-panel"),
+    );
+    doc = doc.add(
+        Text::new("Figure legend")
+            .set("x", panel_x + 14.0)
+            .set("y", panel_y + 18.0)
+            .set("font-family", "monospace")
+            .set("font-size", 12)
+            .set("font-weight", "bold")
+            .set("fill", "#111827")
+            .set("data-gentle-role", "linear-evidence-legend-title"),
+    );
+    for (idx, line) in legend.lines.iter().enumerate() {
+        doc = doc.add(
+            Text::new(line.clone())
+                .set("x", panel_x + 14.0)
+                .set(
+                    "y",
+                    panel_y + 36.0 + LINEAR_SVG_LEGEND_LINE_HEIGHT * idx as f32,
+                )
+                .set("font-family", "monospace")
+                .set("font-size", 10)
+                .set("fill", "#334155")
+                .set("data-gentle-role", "linear-evidence-legend-line"),
+        );
+    }
+    doc
+}
+
 fn feature_max_view_span_bp(feature: &Feature, regulatory_max_view_span_bp: usize) -> usize {
     let kind = feature.kind.to_string().to_ascii_uppercase();
     if kind == "SOURCE" {
@@ -909,7 +1273,9 @@ fn orf_bounds_in_viewport(
     sequence_length: usize,
     viewport: LinearExportViewport,
 ) -> Option<(usize, usize)> {
-    clip_linear_bounds_to_viewport(from, to, sequence_length, viewport)
+    let start = from.max(viewport.start_bp);
+    let end = to.min(sequence_length).min(viewport.end_bp_exclusive);
+    (start < end).then_some((start, end))
 }
 
 fn collect_features(
@@ -942,6 +1308,9 @@ fn collect_features(
         if is_repeat_feature(feature) && !display.show_repeat_features {
             continue;
         }
+        if is_array_track_feature(feature) && !display.show_array_features {
+            continue;
+        }
         if is_tfbs_feature(feature) {
             if !display.show_tfbs {
                 continue;
@@ -958,8 +1327,13 @@ fn collect_features(
             continue;
         };
         let is_variation = is_variation_feature(feature);
+        let is_tfbs = is_tfbs_feature(feature);
+        let is_repeat = is_repeat_feature(feature);
+        let is_track = is_track_like_feature(feature);
+        let is_array_track = is_array_track_feature(feature);
         let (label, is_fallback_label) = feature_name(feature);
         let legend_line = feature_legend_line(feature, &label);
+        let evidence_group_label = track_evidence_group_label(feature);
         ret.push(FeatureVm {
             from,
             to,
@@ -972,12 +1346,17 @@ fn collect_features(
             is_promoter: is_promoter_feature(feature),
             is_reverse: feature_is_reverse(feature),
             is_pointy: feature_pointy(feature),
-            is_regulatory: is_regulatory_feature(feature),
+            is_tfbs,
+            is_repeat,
+            is_track,
+            is_array_track,
+            is_regulatory: is_regulatory_feature(feature) && !is_array_track,
             is_variation,
             has_transcription_direction: has_transcription_direction(feature)
                 && !suppress_transcription_direction_marker(feature),
             is_fallback_label,
             prefers_functional_host_anchor: feature_prefers_functional_host_anchor(feature),
+            evidence_group_label,
         });
     }
     ret.sort_by(|a, b| {
@@ -1007,6 +1386,10 @@ fn merge_equivalent_features(preferred: FeatureVm, other: &FeatureVm) -> Feature
         is_promoter: preferred.is_promoter || other.is_promoter,
         is_reverse: preferred.is_reverse,
         is_pointy: preferred.is_pointy || other.is_pointy,
+        is_tfbs: preferred.is_tfbs || other.is_tfbs,
+        is_repeat: preferred.is_repeat || other.is_repeat,
+        is_track: preferred.is_track || other.is_track,
+        is_array_track: preferred.is_array_track || other.is_array_track,
         is_regulatory: preferred.is_regulatory || other.is_regulatory,
         is_variation: preferred.is_variation || other.is_variation,
         has_transcription_direction: preferred.has_transcription_direction
@@ -1014,6 +1397,9 @@ fn merge_equivalent_features(preferred: FeatureVm, other: &FeatureVm) -> Feature
         is_fallback_label: preferred.is_fallback_label && other.is_fallback_label,
         prefers_functional_host_anchor: preferred.prefers_functional_host_anchor
             || other.prefers_functional_host_anchor,
+        evidence_group_label: preferred
+            .evidence_group_label
+            .or_else(|| other.evidence_group_label.clone()),
     }
 }
 
@@ -1083,7 +1469,7 @@ fn linear_transcription_direction_glyph(
     left: f32,
     right: f32,
     y: f32,
-) -> (Path, Path) {
+) -> (Path, Path, Path) {
     let tss_pos = if feature.is_promoter {
         if feature.is_reverse {
             feature.from
@@ -1123,10 +1509,19 @@ fn linear_transcription_direction_glyph(
         .line_to((x, stem_y))
         .quadratic_curve_to((x, hook_y, elbow_x, hook_y))
         .line_to((tip_x, hook_y));
+    let halo = Path::new()
+        .set("d", shaft.clone())
+        .set("fill", "none")
+        .set("stroke", "#ffffff")
+        .set("stroke-width", 5)
+        .set("stroke-linecap", "round")
+        .set("stroke-linejoin", "round")
+        .set("data-gentle-role", "linear-transcription-start-halo")
+        .set("data-gentle-feature-kind", feature.kind_attr.as_str());
     let tick = Path::new()
         .set("d", shaft)
         .set("fill", "none")
-        .set("stroke", feature.color)
+        .set("stroke", feature.color.as_str())
         .set("stroke-width", 2)
         .set("stroke-linecap", "round")
         .set("stroke-linejoin", "round")
@@ -1150,11 +1545,13 @@ fn linear_transcription_direction_glyph(
         .close();
     let arrow = Path::new()
         .set("d", tri)
-        .set("fill", feature.color)
-        .set("stroke", "none")
+        .set("fill", feature.color.as_str())
+        .set("stroke", "#ffffff")
+        .set("stroke-width", 1.2)
+        .set("paint-order", "stroke")
         .set("data-gentle-role", "linear-transcription-start-arrow")
         .set("data-gentle-feature-kind", feature.kind_attr.as_str());
-    (tick, arrow)
+    (halo, tick, arrow)
 }
 
 fn estimate_text_width(label: &str) -> f32 {
@@ -1209,7 +1606,7 @@ fn compute_linear_svg_feature_layout(
         .iter()
         .enumerate()
         .filter_map(|(idx, f)| {
-            if !f.is_reverse && !f.is_regulatory && !f.is_variation {
+            if (!f.is_reverse || f.is_array_track) && !f.is_regulatory && !f.is_variation {
                 Some(idx)
             } else {
                 None
@@ -1221,7 +1618,10 @@ fn compute_linear_svg_feature_layout(
         let fb = &features[*b];
         let span_a = fa.to.saturating_sub(fa.from).saturating_add(1);
         let span_b = fb.to.saturating_sub(fb.from).saturating_add(1);
-        fa.from.cmp(&fb.from).then(span_b.cmp(&span_a))
+        fa.is_array_track
+            .cmp(&fb.is_array_track)
+            .then(fa.from.cmp(&fb.from))
+            .then(span_b.cmp(&span_a))
     });
     for idx in top_order {
         let f = &features[idx];
@@ -1234,7 +1634,7 @@ fn compute_linear_svg_feature_layout(
         .iter()
         .enumerate()
         .filter_map(|(idx, f)| {
-            if f.is_reverse && !f.is_regulatory && !f.is_variation {
+            if f.is_reverse && !f.is_array_track && !f.is_regulatory && !f.is_variation {
                 Some(idx)
             } else {
                 None
@@ -1375,7 +1775,7 @@ fn compute_linear_svg_re_label_extents(
         .restriction_enzyme_groups()
         .iter()
         .filter_map(|(key, names)| {
-            DnaDisplay::restriction_group_matches_mode(
+            restriction_group_matches_display_mode(
                 display.restriction_enzyme_display_mode,
                 &display.preferred_restriction_enzymes,
                 key,
@@ -1470,7 +1870,18 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
     bottom_extent = bottom_extent.max(re_bottom_extent);
 
     let baseline = LINEAR_SVG_HEADER_HEIGHT + top_extent;
-    let canvas_height = (baseline + bottom_extent + LINEAR_SVG_BOTTOM_PADDING)
+    let legend = build_linear_svg_legend(
+        dna,
+        display,
+        viewport,
+        feature_layout
+            .as_ref()
+            .map(|layout| layout.features.as_slice())
+            .unwrap_or(&[]),
+    );
+    let legend_height = linear_svg_legend_height(&legend);
+    let legend_top = baseline + bottom_extent + LINEAR_SVG_BOTTOM_PADDING * 0.65;
+    let canvas_height = (baseline + bottom_extent + LINEAR_SVG_BOTTOM_PADDING + legend_height)
         .max(LINEAR_SVG_MIN_HEIGHT)
         .ceil();
 
@@ -1545,48 +1956,53 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
 
     if display.show_open_reading_frames {
         for orf in dna.open_reading_frames() {
-            let start = (orf.from().min(orf.to())).max(0) as usize;
-            let end = (orf.from().max(orf.to())).max(0) as usize;
-            let Some((view_start, view_end)) = orf_bounds_in_viewport(start, end, len, viewport)
-            else {
-                continue;
-            };
-            let x1 = absolute_bp_to_view_x(view_start, viewport, left, right);
-            let x2 = absolute_bp_to_view_x(view_end, viewport, left, right).max(x1 + 1.0);
-            let level = (orf.frame().unsigned_abs()) as f32;
-            let y = if orf.is_reverse() {
-                baseline + 10.0 + 7.0 * level
-            } else {
-                baseline - 10.0 - 7.0 * level
-            };
-            let color = match orf.frame() {
-                -1 => "#ff7777",
-                -2 => "#77cc77",
-                -3 => "#7777ff",
-                1 => "#8b0000",
-                2 => "#006400",
-                3 => "#00008b",
-                _ => "#444444",
-            };
-            doc = doc.add(
-                Rectangle::new()
-                    .set("x", x1)
-                    .set("y", y - 2.5)
-                    .set("width", x2 - x1)
-                    .set("height", 5.0)
-                    .set("fill", color),
-            );
-            let label = format!("ORF {}", orf.frame());
-            if (x2 - x1) >= estimate_text_width(&label) + 6.0 {
-                labels.push(
-                    Text::new(label)
-                        .set("x", (x1 + x2) / 2.0)
-                        .set("y", y + 3.0)
-                        .set("text-anchor", "middle")
-                        .set("font-family", "monospace")
-                        .set("font-size", 8)
-                        .set("fill", "#111111"),
+            for (start, end) in orf.spans_0based(len) {
+                let Some((view_start, view_end)) =
+                    orf_bounds_in_viewport(start, end, len, viewport)
+                else {
+                    continue;
+                };
+                let x1 = absolute_bp_to_view_x(view_start, viewport, left, right);
+                let x2 = absolute_bp_to_view_x(view_end, viewport, left, right).max(x1 + 1.0);
+                let level = (orf.frame().unsigned_abs()) as f32;
+                let y = if orf.is_reverse() {
+                    baseline + 10.0 + 7.0 * level
+                } else {
+                    baseline - 10.0 - 7.0 * level
+                };
+                let color = match orf.frame() {
+                    -1 => "#ff7777",
+                    -2 => "#77cc77",
+                    -3 => "#7777ff",
+                    1 => "#8b0000",
+                    2 => "#006400",
+                    3 => "#00008b",
+                    _ => "#444444",
+                };
+                doc = doc.add(
+                    Rectangle::new()
+                        .set("x", x1)
+                        .set("y", y - 2.5)
+                        .set("width", x2 - x1)
+                        .set("height", 5.0)
+                        .set("data-gentle-role", "orf")
+                        .set("data-start-0based", view_start)
+                        .set("data-end-0based-exclusive", view_end)
+                        .set("data-frame", orf.frame())
+                        .set("fill", color),
                 );
+                let label = format!("ORF {}", orf.frame());
+                if (x2 - x1) >= estimate_text_width(&label) + 6.0 {
+                    labels.push(
+                        Text::new(label)
+                            .set("x", (x1 + x2) / 2.0)
+                            .set("y", y + 3.0)
+                            .set("text-anchor", "middle")
+                            .set("font-family", "monospace")
+                            .set("font-size", 8)
+                            .set("fill", "#111111"),
+                    );
+                }
             }
         }
     }
@@ -1616,7 +2032,7 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
                         .set("y1", baseline - VARIATION_MARKER_OVERSHOOT_PX)
                         .set("x2", x)
                         .set("y2", baseline + VARIATION_MARKER_OVERSHOOT_PX)
-                        .set("stroke", f.color)
+                        .set("stroke", f.color.as_str())
                         .set("stroke-width", VARIATION_MARKER_STROKE_WIDTH)
                         .set("data-gentle-role", "variation-marker-line")
                         .set("data-gentle-feature-kind", f.kind_attr.as_str()),
@@ -1627,7 +2043,7 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
                         .set("cy", baseline)
                         .set("r", VARIATION_MARKER_RADIUS)
                         .set("fill", "#ffffff")
-                        .set("stroke", f.color)
+                        .set("stroke", f.color.as_str())
                         .set("stroke-width", 1.5)
                         .set("data-gentle-role", "variation-marker-dot")
                         .set("data-gentle-feature-kind", f.kind_attr.as_str()),
@@ -1679,16 +2095,20 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
                 (y, FEATURE_BLOCK_HEIGHT)
             };
             let half_height = block_height * 0.5;
-            doc = doc.add(
-                Rectangle::new()
-                    .set("x", x1)
-                    .set("y", y - half_height)
-                    .set("width", x2 - x1)
-                    .set("height", block_height)
-                    .set("fill", f.color)
-                    .set("data-gentle-role", "feature-block")
-                    .set("data-gentle-feature-kind", f.kind_attr.as_str()),
-            );
+            let mut feature_rect = Rectangle::new()
+                .set("x", x1)
+                .set("y", y - half_height)
+                .set("width", x2 - x1)
+                .set("height", block_height)
+                .set("fill", f.color.as_str())
+                .set("data-gentle-role", "feature-block")
+                .set("data-gentle-feature-kind", f.kind_attr.as_str());
+            if f.is_tfbs {
+                feature_rect = feature_rect
+                    .set("stroke", "#145214")
+                    .set("stroke-width", 0.8);
+            }
+            doc = doc.add(feature_rect);
 
             if f.is_pointy {
                 let arrow_dx = 6.0;
@@ -1708,20 +2128,21 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
                 doc = doc.add(
                     Path::new()
                         .set("d", data)
-                        .set("fill", f.color)
+                        .set("fill", f.color.as_str())
                         .set("data-gentle-role", "feature-direction-head")
                         .set("data-gentle-feature-kind", f.kind_attr.as_str()),
                 );
             }
 
             if f.has_transcription_direction {
-                let (tick, arrow) =
+                let (halo, tick, arrow) =
                     linear_transcription_direction_glyph(f, viewport, left, right, y);
+                doc = doc.add(halo);
                 doc = doc.add(tick);
                 doc = doc.add(arrow);
             }
 
-            if !feature_has_visible_export_label(f) {
+            if !should_plot_linear_feature_label(f, x1, x2) {
                 continue;
             }
             if f.is_gene {
@@ -1800,7 +2221,7 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
             .restriction_enzyme_groups()
             .iter()
             .filter_map(|(key, names)| {
-                DnaDisplay::restriction_group_matches_mode(
+                restriction_group_matches_display_mode(
                     display.restriction_enzyme_display_mode,
                     &display.preferred_restriction_enzymes,
                     key,
@@ -1905,6 +2326,7 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
     for label in labels {
         doc = doc.add(label);
     }
+    doc = append_linear_svg_legend(doc, &legend, legend_top, canvas_height);
 
     doc.to_string()
 }
@@ -2139,7 +2561,7 @@ fn circular_restriction_label_layout(
         .restriction_enzyme_groups()
         .iter()
         .filter_map(|(key, names)| {
-            DnaDisplay::restriction_group_matches_mode(
+            restriction_group_matches_display_mode(
                 display.restriction_enzyme_display_mode,
                 &display.preferred_restriction_enzymes,
                 key,
@@ -2421,7 +2843,7 @@ fn append_circular_narrative_legend(mut doc: Document, features: &[FeatureVm]) -
                 .set("y", y - 9.0)
                 .set("width", 10)
                 .set("height", 10)
-                .set("fill", feature.color),
+                .set("fill", feature.color.as_str()),
         );
         for (idx, chunk) in wrapped.iter().enumerate() {
             doc = doc.add(
@@ -2566,7 +2988,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                         .set("y1", inner_y)
                         .set("x2", outer_x)
                         .set("y2", outer_y)
-                        .set("stroke", f.color)
+                        .set("stroke", f.color.as_str())
                         .set("stroke-width", CIRCULAR_VARIATION_MARKER_STROKE_WIDTH)
                         .set("data-gentle-role", "variation-marker-line")
                         .set("data-gentle-feature-kind", f.kind_attr.as_str()),
@@ -2577,7 +2999,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                         .set("cy", outer_y)
                         .set("r", CIRCULAR_VARIATION_MARKER_RADIUS)
                         .set("fill", "#ffffff")
-                        .set("stroke", f.color)
+                        .set("stroke", f.color.as_str())
                         .set("stroke-width", 2)
                         .set("data-gentle-role", "variation-marker-dot")
                         .set("data-gentle-feature-kind", f.kind_attr.as_str()),
@@ -2602,7 +3024,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                     Path::new()
                         .set("d", path_d)
                         .set("fill", "none")
-                        .set("stroke", f.color)
+                        .set("stroke", f.color.as_str())
                         .set("stroke-width", CIRCULAR_FEATURE_STROKE_WIDTH)
                         .set("data-gentle-role", "feature-block")
                         .set("data-gentle-feature-kind", f.kind_attr.as_str()),
@@ -2626,7 +3048,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                     Path::new()
                         .set("d", shaft)
                         .set("fill", "none")
-                        .set("stroke", f.color)
+                        .set("stroke", f.color.as_str())
                         .set("stroke-width", 2)
                         .set("stroke-linecap", "round")
                         .set("stroke-linejoin", "round")
@@ -2651,7 +3073,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                 doc = doc.add(
                     Path::new()
                         .set("d", tri)
-                        .set("fill", f.color)
+                        .set("fill", f.color.as_str())
                         .set("stroke", "none")
                         .set("data-gentle-role", "transcription-start-arrow")
                         .set("data-gentle-feature-kind", f.kind_attr.as_str()),
@@ -2673,7 +3095,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                             .set("y1", leader_start_y)
                             .set("x2", leader_end_x)
                             .set("y2", leader_end_y)
-                            .set("stroke", f.color)
+                            .set("stroke", f.color.as_str())
                             .set("stroke-width", 2)
                             .set("data-gentle-role", "functional-annotation-leader")
                             .set("data-gentle-feature-kind", f.kind_attr.as_str()),
@@ -2707,8 +3129,9 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
 
     if display.show_open_reading_frames {
         for orf in dna.open_reading_frames() {
-            let start = (orf.from().min(orf.to())).max(0) as usize;
-            let end = (orf.from().max(orf.to())).max(0) as usize;
+            let Some((start, end)) = orf.unrolled_bounds_0based(len) else {
+                continue;
+            };
             let frame = orf.frame().unsigned_abs() as f32;
             let rr = if orf.is_reverse() {
                 r * (0.92 - 0.03 * frame)
@@ -2724,14 +3147,26 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                 3 => "#00008b",
                 _ => "#444444",
             };
-            if let Some(path_d) = circular_arc_path(start, end, len, cx, cy, rr) {
-                doc = doc.add(
-                    Path::new()
-                        .set("d", path_d)
-                        .set("fill", "none")
-                        .set("stroke", color)
-                        .set("stroke-width", 2),
-                );
+            // SVG needs two arcs for a full lap whose endpoints coincide.
+            let parts = if end - start == len {
+                [Some((start, start + len / 2)), Some((start + len / 2, end))]
+            } else {
+                [Some((start, end)), None]
+            };
+            for (part_start, part_end) in parts.into_iter().flatten() {
+                if let Some(path_d) = circular_arc_path(part_start, part_end, len, cx, cy, rr) {
+                    doc = doc.add(
+                        Path::new()
+                            .set("d", path_d)
+                            .set("data-gentle-role", "orf")
+                            .set("data-start-0based", start)
+                            .set("data-end-0based-exclusive", end)
+                            .set("data-frame", orf.frame())
+                            .set("fill", "none")
+                            .set("stroke", color)
+                            .set("stroke-width", 2),
+                    );
+                }
             }
         }
     }
@@ -2801,6 +3236,75 @@ mod tests {
     use gb_io::seq::Location;
     #[cfg(feature = "snapshot-tests")]
     use std::fs;
+
+    #[test]
+    fn circular_orf_svg_and_linear_projection_keep_origin_crossings() {
+        let mut sequence = format!("ATG{}TAACCCCCC", "CCC".repeat(105)).into_bytes();
+        sequence.rotate_left(10);
+        for reverse in [false, true] {
+            let sequence: String = if reverse {
+                sequence
+                    .iter()
+                    .rev()
+                    .map(|base| match base {
+                        b'A' => 'T',
+                        b'T' => 'A',
+                        b'C' => 'G',
+                        b'G' => 'C',
+                        _ => 'N',
+                    })
+                    .collect()
+            } else {
+                String::from_utf8(sequence.clone()).expect("ASCII fixture")
+            };
+            let mut dna = DNAsequence::from_sequence(&sequence).expect("synthetic DNA");
+            dna.set_circular(true);
+            dna.update_computed_features();
+            assert_eq!(dna.open_reading_frames().len(), 1);
+            let display = DisplaySettings {
+                show_open_reading_frames: true,
+                ..Default::default()
+            };
+            let before = dna.forward_bytes().to_vec();
+            let svg = export_circular_svg(&dna, &display);
+            let rows: Vec<_> = svg
+                .lines()
+                .filter(|line| line.contains("data-gentle-role=\"orf\""))
+                .collect();
+            assert_eq!(rows.len(), 1);
+            let (start, end) = if reverse { (16, 337) } else { (317, 638) };
+            assert!(rows[0].contains(&format!("data-start-0based=\"{start}\"")));
+            assert!(rows[0].contains(&format!("data-end-0based-exclusive=\"{end}\"")));
+            let linear = export_linear_svg(&dna, &display);
+            let rows: Vec<_> = linear
+                .lines()
+                .filter(|line| line.contains("data-gentle-role=\"orf\""))
+                .collect();
+            assert_eq!(rows.len(), 2);
+            assert!(rows[0].contains(&format!("data-start-0based=\"{start}\"")));
+            assert!(rows[0].contains("data-end-0based-exclusive=\"327\""));
+            assert!(rows[1].contains("data-start-0based=\"0\""));
+            assert!(rows[1].contains(&format!("data-end-0based-exclusive=\"{}\"", end - 327)));
+            assert_eq!(dna.forward_bytes(), before.as_slice());
+            assert_eq!(export_circular_svg(&dna, &display), svg);
+        }
+    }
+
+    #[test]
+    fn circular_orf_svg_renders_a_full_lap_as_two_arcs() {
+        let mut dna = DNAsequence::from_sequence(&format!("ATG{}TAA", "CCC".repeat(105)))
+            .expect("synthetic DNA");
+        dna.set_circular(true);
+        dna.update_computed_features();
+        let svg = export_circular_svg(
+            &dna,
+            &DisplaySettings {
+                show_open_reading_frames: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(svg.matches("data-gentle-role=\"orf\"").count(), 2);
+    }
 
     fn push_tfbs_feature(
         dna: &mut DNAsequence,
@@ -3144,6 +3648,11 @@ mod tests {
                 >= 2
         );
         assert!(
+            svg.matches("data-gentle-role=\"linear-transcription-start-halo\"")
+                .count()
+                >= 2
+        );
+        assert!(
             svg.matches("data-gentle-role=\"linear-transcription-start-arrow\"")
                 .count()
                 >= 2
@@ -3166,6 +3675,83 @@ mod tests {
         let svg = export_linear_svg(&dna, &display);
         assert!(!svg.contains("30..90"));
         assert_eq!(svg.matches("HNF4A").count(), 1);
+        let hnf4a_element = svg_text_element_for_label(
+            &svg,
+            "TFBS motif hits: thin green blocks; motif labels are summarized here to avoid collisions: HNF4A x2.",
+        );
+        assert!(hnf4a_element.contains("data-gentle-role=\"linear-evidence-legend-line\""));
+    }
+
+    #[test]
+    fn linear_svg_export_adds_evidence_legend_and_declutters_track_labels() {
+        let mut dna = DNAsequence::from_sequence(&"ATGC".repeat(400)).expect("sequence");
+        dna.set_name("NC_000001");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "gene".into(),
+            location: Location::simple_range(10, 300),
+            qualifiers: vec![("gene".into(), Some("TP73".to_string()))],
+        });
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "track".into(),
+            location: Location::simple_range(80, 140),
+            qualifiers: vec![
+                (
+                    "label".into(),
+                    Some("AdTAp73alpha-AdGFP PSR_TP73_0001".to_string()),
+                ),
+                (
+                    "gentle_generated".into(),
+                    Some("microarray_track_projection".to_string()),
+                ),
+                ("gentle_track_source".into(), Some("Array".to_string())),
+                (
+                    "gentle_array_dataset".into(),
+                    Some("E-MTAB-14704".to_string()),
+                ),
+                (
+                    "gentle_array_contrast".into(),
+                    Some("AdTAp73alpha-AdGFP".to_string()),
+                ),
+                ("logFC".into(), Some("1.5".to_string())),
+                ("adj_P_Val".into(), Some("0.02".to_string())),
+            ],
+        });
+        push_tfbs_feature(&mut dna, "TP73", 95, 105, 2.0);
+        push_tfbs_feature(&mut dna, "TP73", 110, 120, 2.0);
+
+        let mut display = DisplaySettings::default();
+        display.show_tfbs = true;
+        display.show_array_features = true;
+        display.linear_view_start_bp = 0;
+        display.linear_view_span_bp = 240;
+
+        let viewport = normalize_linear_export_viewport(&dna, &display);
+        let layout = compute_linear_svg_feature_layout(&dna, &display, viewport, 60.0, W - 60.0);
+        let gene_idx = layout
+            .features
+            .iter()
+            .position(|feature| feature.is_gene)
+            .expect("gene feature");
+        let array_idx = layout
+            .features
+            .iter()
+            .position(|feature| feature.is_array_track)
+            .expect("array feature");
+        assert!(!layout.features[array_idx].is_regulatory);
+        assert_eq!(layout.lane_top_by_idx[gene_idx], 0);
+        assert_eq!(layout.lane_top_by_idx[array_idx], 1);
+
+        let svg = export_linear_svg(&dna, &display);
+        assert!(svg.contains("data-gentle-role=\"linear-evidence-legend-panel\""));
+        assert!(svg.contains("Figure legend"));
+        assert!(svg.contains("kinked arrow marks transcription start site"));
+        assert!(svg.contains("TFBS motif hits: thin green blocks"));
+        assert!(svg.contains("TP73 x2"));
+        assert!(svg.contains("array projections use logFC color"));
+        assert!(svg.contains("#bd6262"));
+        assert!(svg.contains("Array E-MTAB-14704 AdTAp73alpha-AdGFP"));
+        assert!(svg.contains("Provenance: sequence NC_000001; local view 1..240"));
+        assert!(!svg.contains("AdTAp73alpha-AdGFP PSR_TP73_0001"));
     }
 
     #[test]

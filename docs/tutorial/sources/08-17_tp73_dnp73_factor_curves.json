@@ -1,0 +1,125 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "tp73_dnp73_factor_curves",
+  "title": "Compare E2F1, PATZ1 and TP73 motif curves at the human ΔNp73 TSS",
+  "graphics": [
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tp73_dnp73_factor_curves/01-tss-inventory.raw.png",
+      "caption": "The TP73 annotated-start inventory retains all five starts and marks the P1/TAp73 row missing_flanks instead of silently padding or hiding it.",
+      "illustrates_step": 2,
+      "capture_date": "2026-09-28"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tp73_dnp73_factor_curves/02-annotated-window.raw.png",
+      "caption": "The approved 701 bp DeltaNp73 window before scoring, with aligned local, genomic and TSS-relative rulers and transcript context but no local motif curves.",
+      "illustrates_step": 4,
+      "capture_date": "2026-09-28"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tp73_dnp73_factor_curves/03-local-factor-curves.raw.png",
+      "caption": "Locally computed TP73, E2F1 and PATZ1 motif-score lanes; each lane retains its own scale and score kind, so curve heights are not cross-factor rankings.",
+      "illustrates_step": 5,
+      "capture_date": "2026-09-28"
+    }
+  ],
+  "catalog": {
+    "order": 95,
+    "path": "docs/tutorial/08-17_tp73_dnp73_factor_curves.md",
+    "type": "gui_cli_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": [
+      "gui_first",
+      "cli_first",
+      "agent_users",
+      "regulatory_analysis",
+      "wet_lab_biologists"
+    ],
+    "notes": "Offline core walkthrough on the retained public TP73 RefSeq excerpt: recover the anchor, preview five annotated starts, retain P1 missing_flanks, approve the internal DeltaNp73 start and compute/export exact E2F1 MA0024.3, PATZ1 MA1961.2 and TP73 MA0861.2 curves. Inner Agent Assistant and explicit-state MCP/outer agents share derivation and export; GUI-hosted ui intents remain applied=false headless. Span-scoped scoring, top-three within-matrix raw positions, disclosed 128-title per-lane/strand hover cap and validated collection SVG/index/receipt export. Optional P1/P2 comparison requires an already prepared compatible reference, without implicit download or padding. Separate supplied lane scales, unavailable-not-zero bands, no occupancy or reporter claim. Retained Linux/X11 screenshots cover their recorded historical revision; new behavior, native Windows/macOS and human scientific approval remain pending.",
+    "estimated_minutes": 15,
+    "difficulty": "intermediate",
+    "network": "offline",
+    "interfaces": ["GUI", "Agent Assistant / inner agent", "CLI headless export", "MCP / outer agent"],
+    "starting_state": "Empty project and the retained public test_files/tp73.ncbi.gb RefSeq excerpt",
+    "produces": ["interactive native TSS evidence view", "deterministic native TSS view SVG", "ordered collection SVG index and hash receipt"],
+    "group": "08",
+    "group_position": 17,
+    "prerequisites": ["tss_regulatory_view_gui"]
+  },
+  "agent_parity": {
+    "schema": "gentle.tutorial_agent_parity.v1",
+    "cases": [
+      {
+        "id": "load_tp73_locus",
+        "command": "/open file test_files/tp73.ncbi.gb --id tp73_locus",
+        "execution": "ask",
+        "mutating": true
+      },
+      {
+        "id": "open_tp73_locus_window",
+        "command": "ui open sequence-window tp73_locus",
+        "execution": "ask",
+        "mutating": false
+      },
+      {
+        "id": "preview_tp73_starts",
+        "command": "promoters tss-inventory @tp73-inventory.json",
+        "parser_payload": {
+          "file": "tp73-inventory.json",
+          "template": "docs/examples/assets/tss_factor_curves_tutorial/inventory.template.json"
+        },
+        "execution": "ask",
+        "mutating": false
+      },
+      {
+        "id": "materialize_dnp73_start",
+        "command": "promoters tss-materialize @tp73-materialize.json",
+        "parser_payload": {
+          "file": "tp73-materialize.json",
+          "template": "docs/examples/assets/tss_factor_curves_tutorial/materialize.template.json"
+        },
+        "execution": "ask",
+        "mutating": true
+      },
+      {
+        "id": "open_materialized_tss_window",
+        "command": "ui open sequence-window TP73_WINDOW",
+        "execution": "ask",
+        "mutating": false
+      },
+      {
+        "id": "open_tp73_tss_collection",
+        "command": "ui open tss-view --collection tp73_tss",
+        "execution": "ask",
+        "mutating": false
+      },
+      {
+        "id": "compute_local_factor_curves",
+        "command": "ui open tss-view --local-score MA0861.2,MA0024.3,MA1961.2 --score-kind llr_background_tail_log10",
+        "execution": "ask",
+        "mutating": false
+      },
+      {
+        "id": "export_factor_curves",
+        "command": "promoters tss-view-svg TP73_WINDOW tp73-dnp73-factors.svg --motif MA0861.2,MA0024.3,MA1961.2 --score-kind llr_background_tail_log10",
+        "execution": "ask",
+        "mutating": false
+      },
+      {
+        "id": "export_proximal_factor_curves",
+        "command": "promoters tss-view-svg TP73_WINDOW tp73-dnp73-proximal.svg --motif MA0861.2,MA0024.3,MA1961.2 --score-kind llr_background_tail_log10 --span 401..701 --width 1600",
+        "execution": "ask",
+        "mutating": false
+      },
+      {
+        "id": "export_collection_factor_curves",
+        "command": "promoters tss-view-svg --collection tp73_tss tp73-tss-figures --motif MA0861.2,MA0024.3,MA1961.2 --score-kind llr_background_tail_log10",
+        "execution": "ask",
+        "mutating": false
+      }
+    ]
+  }
+}

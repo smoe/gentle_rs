@@ -1,0 +1,22 @@
+{
+  "schema": "gentle.terminal_exon_rt_primer_pool_request.v1",
+  "fixed_adapter_5prime": "ACTTGCCTGTCGCTCTATCTTC",
+  "variable_length_bp": 22,
+  "terminal_exon_search_window_bp": 40,
+  "max_candidates_per_target": 5,
+  "targets": [
+    {
+      "seq_id": "patz1_transcript_assay_demo",
+      "source_feature_id": 1,
+      "transcript_id": "PATZ1-201",
+      "label": "Synthetic first priority"
+    },
+    {
+      "seq_id": "patz1_transcript_assay_demo",
+      "source_feature_id": 1,
+      "transcript_id": "PATZ1-202",
+      "label": "Synthetic second priority"
+    }
+  ],
+  "report_id": "transcript_assay_followup_rt_pool"
+}

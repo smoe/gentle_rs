@@ -5,11 +5,36 @@
 //! the shared gel-figure renderers used by workflow-driven demos.
 
 mod feature_expert;
+/// Annotated measured-gel images; consumes engine-calibrated reports only.
+pub mod gel_image;
+mod gene_set_publication;
 pub mod pool_gel;
 pub mod protein_gel;
 pub mod protocol_cartoon;
+mod region_homology;
+mod regulatory_partners;
+/// One source-coherent geometry projection used in locus and detailed TSS pages.
+pub mod transcript_presentation;
+/// Paginated, report-only TSS profiles with matrix-specific scales and PFM logos.
+pub mod tss_profiles;
 
 pub use feature_expert::{
-    SplicingExonTransitionMatrix, compute_splicing_exon_transition_matrix,
-    render_feature_expert_svg,
+    GeneLocusEvidenceOverlay, GeneLocusEvidenceOverlayLegendItem, GeneLocusEvidenceOverlayRow,
+    GeneLocusEvidenceOverlaySchematicTail, GeneLocusEvidenceOverlaySegment,
+    GeneLocusEvidenceRenderedSvg, SplicingExonTransition, SplicingExonTransitionMatrix,
+    SvgUriLinkRectangle, compute_splicing_exon_transition_matrix,
+    compute_supported_splicing_exon_transitions, gene_locus_local_axis_decreases,
+    locus_regulatory_axis_label, locus_regulatory_display_bounds, render_cryptic_splicing_screen,
+    render_feature_expert_svg, render_gene_locus_evidence_with_overlay,
+    render_gene_locus_evidence_with_overlay_svg,
+};
+pub use gene_set_publication::{
+    render_gene_isoform_assay_publication_gene, render_gene_isoform_assay_publication_index,
+    render_gene_isoform_assay_publication_print, render_gene_set_publication_html,
+    render_gene_set_publication_markdown,
+};
+pub use region_homology::render_genomic_region_homology_svg;
+pub use regulatory_partners::{
+    REGULATORY_PARTNER_CANDIDATE_COLUMNS, RegulatoryPartnerCandidateRow,
+    regulatory_partner_candidate_rows, regulatory_partner_candidates_tsv,
 };

@@ -6,6 +6,9 @@
 //! across CLI, MCP, and external orchestrators.
 
 use crate::{
+    agent_feedback::{
+        AgentExecutionReceipt, AgentExecutionRevision, AgentExecutionStatus, new_agent_context_id,
+    },
     agent_planner::{AgentPlanCandidate, AgentPlanCandidateKind, AgentPlanResult},
     engine::GentleEngine,
     engine_shell::{
@@ -29,6 +32,15 @@ pub struct AgentExecutionResult {
     pub confirmed: bool,
     pub state_changed: bool,
     pub output: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feedback: Option<AgentExecutionReceipt>,
+}
+
+/// Both success and failure evidence without weakening the legacy fallible executor.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentPlanExecutionAttempt {
+    pub feedback: AgentExecutionReceipt,
+    pub result: Result<AgentExecutionResult, String>,
 }
 
 fn ui_intent_to_shell_command(value: &Value) -> Result<String, String> {
@@ -217,25 +229,86 @@ pub fn execute_agent_plan_candidate(
     confirm: bool,
     options: &ShellExecutionOptions,
 ) -> Result<AgentExecutionResult, String> {
-    plan.validate()?;
-    let selected = plan
-        .candidates
-        .iter()
-        .find(|candidate| candidate.candidate_id == candidate_id)
-        .ok_or_else(|| format!("planner candidate '{}' was not found", candidate_id))?;
-    selected.validate()?;
-    let run = execute_structured_candidate(engine, selected, confirm, options)?;
-    Ok(AgentExecutionResult {
-        schema: "gentle.agent_execution_result.v1".to_string(),
-        candidate_id: selected.candidate_id.clone(),
-        title: selected.title.clone(),
-        kind: selected.kind,
-        mutating: selected.mutating,
-        requires_confirmation: selected.requires_confirmation,
-        confirmed: confirm,
-        state_changed: run.state_changed,
-        output: run.output,
-    })
+    execute_agent_plan_candidate_with_feedback(engine, plan, candidate_id, confirm, options).result
+}
+
+/// Hosts needing failure receipts use this entry point; no receipt grants approval.
+pub fn execute_agent_plan_candidate_with_feedback(
+    engine: &mut GentleEngine,
+    plan: &AgentPlanResult,
+    candidate_id: &str,
+    confirm: bool,
+    options: &ShellExecutionOptions,
+) -> AgentPlanExecutionAttempt {
+    let before = Some(AgentExecutionRevision::capture(engine));
+    let mut status = AgentExecutionStatus::Blocked;
+    let binding = serde_json::to_string(&(plan, candidate_id, confirm)).unwrap_or_default();
+    let result = (|| {
+        plan.validate()?;
+        let selected = plan
+            .candidates
+            .iter()
+            .find(|candidate| candidate.candidate_id == candidate_id)
+            .ok_or_else(|| format!("planner candidate '{}' was not found", candidate_id))?;
+        selected.validate()?;
+        if (selected.mutating || selected.requires_confirmation)
+            && !confirm
+            && matches!(
+                selected.kind,
+                AgentPlanCandidateKind::Op | AgentPlanCandidateKind::Workflow
+            )
+        {
+            let kind = match selected.kind {
+                AgentPlanCandidateKind::Op => "operation",
+                _ => "workflow",
+            };
+            return Err(format!(
+                "Planner candidate '{}' requires explicit --confirm before {kind} execution",
+                selected.candidate_id
+            ));
+        }
+        if let Some(command) = shell_command_for_candidate(selected)? {
+            let parsed = parse_shell_line(&command).map_err(|err| {
+                format!(
+                    "Could not parse shell command for planner candidate '{}': {err}",
+                    selected.candidate_id
+                )
+            })?;
+            if command_is_blocked(&parsed) {
+                return Err(
+                    "Agent plan execution blocks nested agent assistant/planner commands"
+                        .to_string(),
+                );
+            }
+        }
+        status = AgentExecutionStatus::Failed;
+        let run = execute_structured_candidate(engine, selected, confirm, options)?;
+        status = AgentExecutionStatus::from_shell_output(&run.output);
+        Ok(AgentExecutionResult {
+            schema: "gentle.agent_execution_result.v1".to_string(),
+            candidate_id: selected.candidate_id.clone(),
+            title: selected.title.clone(),
+            kind: selected.kind,
+            mutating: selected.mutating,
+            requires_confirmation: selected.requires_confirmation,
+            confirmed: confirm,
+            state_changed: run.state_changed,
+            output: run.output,
+            feedback: None,
+        })
+    })();
+    let after = Some(AgentExecutionRevision::capture(engine));
+    let mut feedback = AgentExecutionReceipt::new(&binding, status, before, after);
+    feedback.session_id = new_agent_context_id();
+    let result = result.map(|mut result| {
+        feedback.bind_output(&result.output);
+        result.feedback = Some(feedback.clone());
+        result
+    });
+    if let Err(error) = &result {
+        feedback.bind_error(error);
+    }
+    AgentPlanExecutionAttempt { feedback, result }
 }
 
 #[cfg(test)]
@@ -301,5 +374,16 @@ mod tests {
         )
         .expect_err("confirm required");
         assert!(err.contains("--confirm"));
+        let attempt = execute_agent_plan_candidate_with_feedback(
+            &mut engine,
+            &plan,
+            "candidate-1",
+            false,
+            &ShellExecutionOptions::default(),
+        );
+        assert!(attempt.result.is_err());
+        assert_eq!(attempt.feedback.status, AgentExecutionStatus::Blocked);
+        assert_eq!(attempt.feedback.before, attempt.feedback.after);
+        assert!(attempt.feedback.error_sha256.is_some());
     }
 }

@@ -6,7 +6,6 @@
 //! download or dump SRA runs independently.
 
 use super::*;
-use sha1::{Digest, Sha1};
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
@@ -928,20 +927,8 @@ fn ensure_sra_at_expected_path(sra_dir: &Path, accession: &str) -> Result<PathBu
 }
 
 fn sha1_file(path: &Path) -> Result<String, EngineError> {
-    let mut file =
-        File::open(path).map_err(|e| read_acquisition_io_error(path, "open output for SHA1", e))?;
-    let mut hasher = Sha1::new();
-    let mut buffer = [0u8; 8192];
-    loop {
-        let bytes = file
-            .read(&mut buffer)
-            .map_err(|e| read_acquisition_io_error(path, "read output for SHA1", e))?;
-        if bytes == 0 {
-            break;
-        }
-        hasher.update(&buffer[..bytes]);
-    }
-    Ok(format!("{:x}", hasher.finalize()))
+    crate::digest_utils::sha256_file_hex(path)
+        .map_err(|e| read_acquisition_io_error(path, "read output for SHA256", e))
 }
 
 fn stats_from_lengths(lengths: &[usize]) -> ReadAcquisitionReadLengthStats {

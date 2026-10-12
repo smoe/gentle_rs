@@ -44,13 +44,20 @@
 #[path = "app/help_docs.rs"]
 mod help_docs;
 
+#[path = "app/tutorial_menus.rs"]
+mod tutorial_menus;
+
 #[path = "app/window_registry.rs"]
 mod window_registry;
 
+use window_registry::OpenWindowEntry;
 pub use window_registry::{GuiProminentGlossaryEntry, gui_prominent_glossary_entries};
 
 #[path = "app/jaspar_expert.rs"]
 mod jaspar_expert;
+#[path = "app/promoter_cofactors_ui.rs"]
+mod promoter_cofactors_ui;
+pub(crate) mod tss_collection_ui;
 
 #[path = "app/history_ui.rs"]
 mod history_ui;
@@ -97,15 +104,37 @@ mod main_lineage_ui;
 #[path = "app/rack_workspace_ui.rs"]
 mod rack_workspace_ui;
 
+#[path = "app/gel_image_ui.rs"]
+mod gel_image_ui;
+
 #[path = "app/gibson_ui.rs"]
 mod gibson_ui;
 
+#[path = "app/collection_operations_ui.rs"]
+mod collection_operations_ui;
+
+#[path = "app/pattern_catalog_ui.rs"]
+mod pattern_catalog_ui;
+
+#[path = "app/subject_selection.rs"]
+mod subject_selection;
+
+#[path = "app/action_readiness.rs"]
+mod action_readiness;
+use action_readiness::{ActionReadiness, LaunchContext};
+
+#[path = "app/grna_routine_ui.rs"]
+mod grna_routine_ui;
+
+#[path = "app/gene_set_ui.rs"]
+mod gene_set_ui;
+
 use std::{
     collections::hash_map::DefaultHasher,
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     env, fs,
     hash::{Hash, Hasher},
-    io::ErrorKind,
+    io::{Cursor, ErrorKind, Write},
     panic::{AssertUnwindSafe, catch_unwind},
     path::{Path, PathBuf},
     process::Command,
@@ -120,38 +149,50 @@ use std::{
 use crate::{
     about,
     agent_bridge::{
-        AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
-        AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV,
-        AGENT_TIMEOUT_SECS_ENV, ANTHROPIC_API_KEY_AUTH_HINT, ANTHROPIC_API_KEY_ENV,
-        AgentExecutionIntent, AgentInvocationOutcome, AgentResponse, AgentSystemSpec,
+        AGENT_ALLOW_WEB_RESEARCH_ENV, AGENT_ATTACHMENT_SCHEMA, AGENT_BASE_URL_ENV,
+        AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_GUI_TUTORIAL_GUIDE_LIMIT,
+        AGENT_GUI_TUTORIAL_PROJECT_LIMIT, AGENT_MAX_RESPONSE_BYTES_ENV, AGENT_MAX_RETRIES_ENV,
+        AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV,
+        ANTHROPIC_API_KEY_AUTH_HINT, ANTHROPIC_API_KEY_ENV, AgentAttachmentSummary,
+        AgentConversation, AgentConversationTurn, AgentExecutionIntent,
+        AgentGuiConfigurationSection, AgentGuiContext, AgentGuiRecentProject,
+        AgentGuiTutorialGuide, AgentGuiTutorialProject, AgentInvocationOutcome,
+        AgentRequestAttachment, AgentResponse, AgentScreenshotRequest, AgentSystemSpec,
         AgentSystemTransport, DEFAULT_AGENT_SYSTEM_CATALOG_PATH, MISTRAL_API_KEY_AUTH_HINT,
         MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV, OPENAI_BILLING_URL,
-        OPENAI_COMPAT_UNSPECIFIED_MODEL, OPENAI_USAGE_URL, agent_system_availability,
-        invoke_agent_support_with_env_overrides, load_agent_system_catalog,
+        OPENAI_COMPAT_UNSPECIFIED_MODEL, OPENAI_USAGE_URL, agent_explicit_local_document_paths,
+        agent_path_is_supported_local_document, agent_system_availability, agent_tutorial_query,
+        anthropic_api_key_kind_warning, build_agent_introspection_context_for_request,
+        invoke_agent_support_with_execution_feedback, is_pi_local_agent_system,
+        load_agent_system_catalog, rank_agent_gui_tutorials,
     },
+    agent_help::{AgentHelpCaptureEvent, AgentHelpCaptureFailure, take_capture_events},
     agent_transport::{
-        AgentLiveProbeStatusClass, AgentSystemPreflight, build_agent_system_preflight_with_live,
-        discover_models_for_agent_system,
+        AgentLiveProbeKind, AgentLiveProbeStatusClass, AgentSystemPreflight,
+        agent_system_supports_model_discovery, agent_system_supports_model_selection,
+        build_agent_system_preflight_with_live, discover_models_for_agent_system,
+        is_codex_local_agent_system,
     },
     dna_sequence::{self, DNAsequence},
     engine::{
-        BIGWIG_TO_BEDGRAPH_ENV_BIN, BlastHitFeatureInput, BlastInvocationProvenance,
-        ConstructReasoningGraph, DEFAULT_BIGWIG_TO_BEDGRAPH_BIN, DEFAULT_HOST_PROFILE_CATALOG_PATH,
-        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
+        ArrangementMode, BIGWIG_TO_BEDGRAPH_ENV_BIN, BlastHitFeatureInput,
+        BlastInvocationProvenance, ConstructReasoningGraph, DEFAULT_BIGWIG_TO_BEDGRAPH_BIN,
+        DEFAULT_HOST_PROFILE_CATALOG_PATH, DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP, DbSnpFetchProgress, DbSnpFetchStage,
-        DisplaySettings, DisplayTarget, Engine, EngineError, ErrorCode, FeatureExpertTarget,
+        DisplaySettings, DisplayTarget, DotplotInspectionProvenanceStatus, Engine, EngineError,
+        EngineHistorySummary, EngineStateSummary, ErrorCode, FeatureExpertTarget,
         GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackImportProgress, GenomeTrackSource,
         GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine, HostProfileRecord,
-        JasparCatalogReport, JasparEntryExpertView, LabAssistantInstructionsFormat,
-        LineageMacroPortBinding, LinearSequenceLetterLayoutMode, MacroTemplateSuggestion, OpResult,
-        Operation, OperationProgress, PlanningEstimate, PlanningObjective, PlanningProfile,
-        PlanningProfileScope, PlanningSuggestionStatus, ProjectState, ProteaseDigestReport,
-        ProteinToDnaHandoffRankingGoal, ROUTINE_DECISION_TRACE_SCHEMA,
-        ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY, Rack,
-        RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
-        RackOccupant, RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode,
-        RestrictionEnzymeDisplayMode, ReverseTranslationReport, RoutineDecisionTrace,
-        RoutineDecisionTraceCandidateScore, RoutineDecisionTraceComparison,
+        JasparCatalogReport, JasparCatalogRow, JasparEntryExpertView,
+        LabAssistantInstructionsFormat, LineageMacroPortBinding, LinearSequenceLetterLayoutMode,
+        MacroTemplateSuggestion, OpResult, Operation, OperationProgress, PlanningEstimate,
+        PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
+        ProjectState, ProteaseDigestReport, ProteinToDnaHandoffRankingGoal,
+        ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
+        ROUTINE_DECISION_TRACES_METADATA_KEY, Rack, RackAuthoringTemplate, RackCarrierLabelPreset,
+        RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
+        RackProfileKind, RenderSvgMode, RestrictionEnzymeDisplayMode, ReverseTranslationReport,
+        RoutineDecisionTrace, RoutineDecisionTraceCandidateScore, RoutineDecisionTraceComparison,
         RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
         RoutineDecisionTraceExportEvent, RoutineDecisionTracePreflightSnapshot,
         RoutineDecisionTraceStore, RoutinePreferenceContextRecord, SequenceGenomeAnchorSummary,
@@ -161,9 +202,10 @@ use crate::{
         UniprotProjectionAuditReport,
     },
     engine_shell::{
-        ShellCommand, ShellExecutionOptions, ShellRunResult, UiIntentAction, UiIntentTarget,
-        execute_shell_command_with_options, normalize_pasted_iupac_sequence, parse_shell_line,
-        split_shell_words,
+        AGENT_HISTORY_CONFIRMATION_REQUIRED, AGENT_MUTATION_CONFIRMATION_REQUIRED, ShellCommand,
+        ShellExecutionOptions, ShellRunResult, UiConfigurationSection, UiIntentAction,
+        UiIntentTarget, execute_shell_command_with_options, normalize_pasted_iupac_sequence,
+        parse_shell_line, split_shell_words,
     },
     ensembl_protein::{EnsemblProteinEntry, EnsemblProteinEntrySummary},
     enzymes,
@@ -188,7 +230,7 @@ use crate::{
         suggest_gibson_destination_openings,
     },
     i18n::{I18n, UiLanguage},
-    icons::APP_ICON,
+    icons::{APP_ICON, SPLASH_SCREEN},
     lineage_export::{
         LineageSvgEdge, LineageSvgNode, LineageSvgNodeKind, export_projected_lineage_svg,
     },
@@ -198,6 +240,10 @@ use crate::{
         resolve_protocol_cartoon_template_with_bindings,
     },
     resource_sync,
+    runtime_status::{
+        RuntimeStatusFrameKind, RuntimeStatusGuard, RuntimeStatusRegistry, RuntimeStatusSnapshot,
+        RuntimeStatusTrigger, runtime_status_registry,
+    },
     scroll_input_policy::{self, WheelIntent, ZoomDirection},
     shell_docs::{
         shell_help_markdown as render_shell_help_markdown,
@@ -220,13 +266,15 @@ use crate::{
     },
 };
 use agent_assistant_config::{
-    AGENT_PROMPT_TEMPLATE_DEFAULT_ID, agent_prompt_template_includes_state_summary_by_default,
+    AGENT_PROMPT_TEMPLATE_DEFAULT_ID, AgentTokenFileCredential, AgentTokenFileStatus,
+    agent_api_key_source, agent_prompt_template_includes_state_summary_by_default,
     agent_prompt_template_label, agent_prompt_template_options, agent_prompt_template_text,
     default_agent_connect_timeout_secs_string, default_agent_max_response_bytes_string,
     default_agent_max_retries_string, default_agent_read_timeout_secs_string,
-    default_agent_timeout_secs_string, normalize_agent_model_name,
-    preferred_anthropic_agent_system_id, preferred_local_agent_system_id,
-    preferred_mistral_agent_system_id, preferred_openai_agent_system_id,
+    default_agent_timeout_secs_string, load_agent_token_file_credentials,
+    normalize_agent_model_name, preferred_anthropic_agent_system_id,
+    preferred_local_agent_system_id, preferred_mistral_agent_system_id,
+    preferred_openai_agent_system_id,
 };
 use anyhow::{Result, anyhow};
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers, Pos2, Ui, Vec2, ViewportId};
@@ -238,7 +286,6 @@ use rack_workspace_ui::*;
 use regex::{Regex, RegexBuilder};
 use resvg::{self, tiny_skia, usvg};
 use serde::{Deserialize, Serialize};
-use sha1::{Digest, Sha1};
 
 const GUI_MANUAL_MD: &str = include_str!("../docs/gui.md");
 const CLI_MANUAL_MD: &str = include_str!("../docs/cli.md");
@@ -262,6 +309,7 @@ const BACKGROUND_JOBS_RETRY_CLEANUP_AUDIT_SCROLL_ID: &str =
 const OPERATION_HISTORY_SCROLL_ID: &str = "operation_history_scroll";
 const LINEAGE_GRAPH_WORKSPACE_METADATA_KEY: &str = "gui.lineage_graph.workspace";
 const RACK_WORKSPACE_METADATA_KEY: &str = "gui.rack.workspace";
+const AGENT_CONVERSATION_METADATA_KEY: &str = "gui.agent.conversation";
 const LINEAGE_NODE_OFFSETS_METADATA_KEY: &str = "gui.lineage_graph.node_offsets";
 const LINEAGE_NODE_GROUPS_METADATA_KEY: &str = "gui.lineage_graph.node_groups";
 const LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT: f32 = 180.0;
@@ -288,6 +336,10 @@ const WINDOW_OPEN_SLOW_THRESHOLD_MS: u128 = 400;
 // root window, while zero lets inner content fight the outer chrome.
 const EMBEDDED_SEQUENCE_WINDOW_DRAG_MARGIN_X_PX: f32 = 32.0;
 const EMBEDDED_SEQUENCE_WINDOW_DRAG_MARGIN_Y_PX: f32 = 32.0;
+const SEQUENCE_WINDOW_DEFAULT_WIDTH_PX: f32 = 1200.0;
+const SEQUENCE_WINDOW_DEFAULT_HEIGHT_PX: f32 = 860.0;
+const SEQUENCE_WINDOW_MIN_WIDTH_PX: f32 = 820.0;
+const SEQUENCE_WINDOW_MIN_HEIGHT_PX: f32 = 520.0;
 const HELP_MARKDOWN_REFLOW_DELTA_PX: f32 = 8.0;
 const HELP_BODY_MIN_WIDTH_PX: f32 = 120.0;
 const HELP_BODY_MIN_HEIGHT_PX: f32 = 180.0;
@@ -297,8 +349,10 @@ const MACOS_HOSTED_CHILD_VIEWPORTS_ENV: &str = "GENTLE_MACOS_HOSTED_CHILD_VIEWPO
 const MACOS_NATIVE_CHILD_VIEWPORTS_ENV: &str = "GENTLE_MACOS_NATIVE_CHILD_VIEWPORTS";
 static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_HELP_OPEN_REQUESTED_AT_MS: AtomicU64 = AtomicU64::new(0);
+static NATIVE_ABOUT_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_SETTINGS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_SETTINGS_OPEN_GRAPHICS_TAB_REQUESTED: AtomicBool = AtomicBool::new(false);
+static NATIVE_SETTINGS_OPEN_MICROARRAY_TAB_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_PCR_DESIGN_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_PCR_DESIGN_SEQ_ID_REQUESTED: Mutex<Option<String>> = Mutex::new(None);
 static NATIVE_JASPAR_EXPERT_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -307,6 +361,7 @@ static NATIVE_WINDOWS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 const NATIVE_WINDOW_FOCUS_KEY_NONE: u64 = u64::MAX;
 static NATIVE_WINDOWS_FOCUS_KEY_REQUESTED: AtomicU64 = AtomicU64::new(NATIVE_WINDOW_FOCUS_KEY_NONE);
 static ACTIVE_VIEWPORT_KEY_REPORTED: AtomicU64 = AtomicU64::new(NATIVE_WINDOW_FOCUS_KEY_NONE);
+static NEXT_TUTORIAL_CACHE_SCOPE_ID: AtomicU64 = AtomicU64::new(1);
 
 fn viewport_native_menu_key(viewport_id: ViewportId) -> u64 {
     let mut hasher = DefaultHasher::new();
@@ -338,13 +393,25 @@ pub fn request_open_help_from_native_menu() {
     NATIVE_HELP_OPEN_REQUESTED.store(true, Ordering::SeqCst);
 }
 
+pub fn request_open_about_from_native_menu() {
+    NATIVE_ABOUT_OPEN_REQUESTED.store(true, Ordering::SeqCst);
+}
+
 pub fn request_open_settings_from_native_menu() {
     NATIVE_SETTINGS_OPEN_GRAPHICS_TAB_REQUESTED.store(false, Ordering::SeqCst);
+    NATIVE_SETTINGS_OPEN_MICROARRAY_TAB_REQUESTED.store(false, Ordering::SeqCst);
     NATIVE_SETTINGS_OPEN_REQUESTED.store(true, Ordering::SeqCst);
 }
 
 pub fn request_open_graphics_settings_from_native_menu() {
     NATIVE_SETTINGS_OPEN_GRAPHICS_TAB_REQUESTED.store(true, Ordering::SeqCst);
+    NATIVE_SETTINGS_OPEN_MICROARRAY_TAB_REQUESTED.store(false, Ordering::SeqCst);
+    NATIVE_SETTINGS_OPEN_REQUESTED.store(true, Ordering::SeqCst);
+}
+
+pub fn request_open_microarray_settings_from_native_menu() {
+    NATIVE_SETTINGS_OPEN_GRAPHICS_TAB_REQUESTED.store(false, Ordering::SeqCst);
+    NATIVE_SETTINGS_OPEN_MICROARRAY_TAB_REQUESTED.store(true, Ordering::SeqCst);
     NATIVE_SETTINGS_OPEN_REQUESTED.store(true, Ordering::SeqCst);
 }
 
@@ -402,6 +469,7 @@ struct PersistedConfiguration {
     window_backdrops: WindowBackdropSettings,
     ui_language: UiLanguage,
     recent_projects: Vec<String>,
+    agent_system_id: String,
 }
 
 impl Default for PersistedConfiguration {
@@ -416,6 +484,7 @@ impl Default for PersistedConfiguration {
             window_backdrops: WindowBackdropSettings::default(),
             ui_language: UiLanguage::default(),
             recent_projects: vec![],
+            agent_system_id: String::new(),
         }
     }
 }
@@ -614,7 +683,7 @@ struct PrepareGenomeEtaBaseline {
 }
 
 #[derive(Debug, Clone)]
-struct PrepareGenomeFailureRecovery {
+struct GenomePrepareContext {
     genome_id: String,
     scope: GenomeDialogScope,
     catalog_path: String,
@@ -627,9 +696,46 @@ enum PreparedGenomeReinstallDialogHost {
     PrepareDialog,
 }
 
+#[derive(Debug, Default)]
+struct OpenWindowModel {
+    entries: Vec<OpenWindowEntry>,
+    native_entries: Vec<(u64, String)>,
+    native_key_to_viewport: HashMap<u64, ViewportId>,
+    auxiliary_titles: Vec<String>,
+}
+
+#[derive(Debug, Default)]
+struct OpenWindowModelCache {
+    signature: Option<u64>,
+    model: Arc<OpenWindowModel>,
+    hits: u64,
+    misses: u64,
+}
+
+#[derive(Debug, Default)]
+struct RootEngineSummaryCache {
+    engine_identity: usize,
+    execution_revision: Option<u64>,
+    structural_revision: u64,
+    history: EngineHistorySummary,
+    hits: u64,
+    misses: u64,
+}
+
+#[derive(Debug, Default)]
+struct RuntimeStatusSnapshotCache {
+    generation: Option<u64>,
+    snapshot: RuntimeStatusSnapshot,
+    hits: u64,
+    misses: u64,
+}
+
 pub struct GENtleApp {
     engine: Arc<RwLock<GentleEngine>>,
+    pattern_catalog: pattern_catalog_ui::PatternCatalogCache,
     new_windows: Vec<Window>,
+    tss_window_task: Option<tss_collection_ui::TssWindowTask>,
+    pending_sequence_focus_after_open: Option<String>,
     windows: HashMap<ViewportId, Arc<RwLock<Window>>>,
     detached_auxiliary_window_hosts: HashMap<ViewportId, Arc<RwLock<Window>>>,
     windows_to_close: Arc<RwLock<Vec<ViewportId>>>,
@@ -637,9 +743,11 @@ pub struct GENtleApp {
     pending_window_initial_positions: HashMap<ViewportId, Pos2>,
     viewport_id_counter: usize,
     update_has_run_before: bool,
+    window_backdrop_preload_dirty: bool,
     splash_started_at: Instant,
     splash_dismissed: bool,
     show_about_dialog: bool,
+    show_about_details_dialog: bool,
     show_help_dialog: bool,
     help_doc: HelpDoc,
     help_markdown_cache: CommonMarkCache,
@@ -702,6 +810,9 @@ pub struct GENtleApp {
     lineage_graph_offsets_synced_stamp: u64,
     lineage_cache_stamp: u64,
     lineage_cache_valid: bool,
+    lineage_projection_cache: Option<Arc<LineageGraphProjectionCache>>,
+    lineage_projection_cache_hits: u64,
+    lineage_projection_cache_misses: u64,
     lineage_rows: Vec<LineageRow>,
     lineage_edges: Vec<(String, String, String)>,
     lineage_op_label_by_id: HashMap<String, String>,
@@ -720,18 +831,18 @@ pub struct GENtleApp {
     lineage_containers: Vec<ContainerRow>,
     lineage_arrangements: Vec<ArrangementRow>,
     lineage_racks: Vec<RackRow>,
-    clean_state_fingerprint: u64,
-    dirty_cache_stamp: u64,
+    clean_state_revision: u64,
     last_display_sync_stamp: u64,
-    dirty_cache_valid: bool,
-    dirty_cache_value: bool,
-    dirty_cache_last_deep_check: Instant,
     last_applied_window_title: String,
     last_native_window_entries: Vec<(u64, String)>,
     last_native_active_window_key: Option<u64>,
     native_window_key_to_viewport: HashMap<u64, ViewportId>,
     active_window_menu_key: Option<u64>,
+    open_window_model_cache: OpenWindowModelCache,
+    root_engine_summary_cache: RootEngineSummaryCache,
+    runtime_status_snapshot_cache: RuntimeStatusSnapshotCache,
     pending_window_open_timestamps: HashMap<ViewportId, Instant>,
+    sequence_window_open_runtime_frames: HashMap<String, RuntimeStatusGuard>,
     pending_viewport_focus_timestamps: HashMap<ViewportId, Instant>,
     pending_project_action: Option<ProjectAction>,
     pending_app_quit: bool,
@@ -745,6 +856,9 @@ pub struct GENtleApp {
     show_reference_genome_retrieve_dialog: bool,
     show_reference_genome_blast_dialog: bool,
     show_reference_genome_inspector_dialog: bool,
+    prepared_genome_inspection_cache_key: Option<String>,
+    prepared_genome_inspection_cache:
+        Option<Result<(Vec<PreparedGenomeInspection>, Vec<String>), String>>,
     show_cache_cleanup_dialog: bool,
     show_new_sequence_dialog: bool,
     show_uniprot_dialog: bool,
@@ -761,9 +875,10 @@ pub struct GENtleApp {
     genome_catalog_error: String,
     genome_prepare_task: Option<GenomePrepareTask>,
     genome_prepare_progress: Option<PrepareGenomeProgress>,
+    genome_prepare_context: Option<GenomePrepareContext>,
     genome_prepare_steps: Vec<PrepareGenomeUiStepState>,
     genome_prepare_eta_baseline: Option<PrepareGenomeEtaBaseline>,
-    genome_prepare_failure_recovery: Option<PrepareGenomeFailureRecovery>,
+    genome_prepare_failure_recovery: Option<GenomePrepareContext>,
     genome_prepare_status: String,
     tutorial_project_task: Option<TutorialProjectTask>,
     tutorial_project_progress_fraction: Option<f32>,
@@ -849,6 +964,7 @@ pub struct GENtleApp {
     genbank_accession: String,
     genbank_as_id: String,
     genbank_status: String,
+    sequence_ingress_task: Option<SequenceIngressTask>,
     dbsnp_rs_id: String,
     dbsnp_genome_id: String,
     dbsnp_flank_bp: String,
@@ -892,6 +1008,7 @@ pub struct GENtleApp {
     show_routine_assistant_dialog: bool,
     show_agent_assistant_dialog: bool,
     show_jaspar_expert_dialog: bool,
+    cofactor_browser: promoter_cofactors_ui::CofactorBrowser,
     pcr_design_seq_id: String,
     sequencing_confirmation_seq_id: String,
     jaspar_expert_filter: String,
@@ -900,7 +1017,16 @@ pub struct GENtleApp {
     jaspar_expert_random_seed: String,
     jaspar_expert_fetch_remote_metadata: bool,
     jaspar_expert_status: String,
+    jaspar_background_task: Option<JasparBackgroundTask>,
     jaspar_catalog_report: Option<JasparCatalogReport>,
+    jaspar_catalog_generation: u64,
+    jaspar_catalog_sort_column: JasparCatalogSortColumn,
+    jaspar_catalog_sort_ascending: bool,
+    jaspar_auto_species_attempted_ids: BTreeSet<String>,
+    jaspar_filtered_cache_key: Option<(u64, String, JasparCatalogSortColumn, bool)>,
+    jaspar_filtered_cache_rows: Arc<Vec<JasparCatalogRow>>,
+    jaspar_filtered_cache_hits: u64,
+    jaspar_filtered_cache_misses: u64,
     jaspar_expert_view: Option<JasparEntryExpertView>,
     gibson_destination_seq_id: String,
     gibson_opening_mode: GibsonUiOpeningMode,
@@ -922,7 +1048,9 @@ pub struct GENtleApp {
     gibson_status: String,
     gibson_preview_output: Option<GibsonAssemblyPreview>,
     gibson_preview_svg_uri: String,
+    container_pool_export_task: Option<ContainerPoolExportTask>,
     arrangement_gel_preview: ArrangementGelPreviewState,
+    gel_image_editor: gel_image_ui::GelImageEditor,
     rack_labels_preview: RackLabelsPreviewState,
     rack_view_rack_id: String,
     rack_view_status: String,
@@ -961,14 +1089,20 @@ pub struct GENtleApp {
     genome_bed_track_subscriptions: Vec<GenomeTrackSubscription>,
     genome_track_subscription_filter: String,
     genome_track_autosync_status: String,
-    tracked_autosync_last_op_count: Option<usize>,
+    tracked_autosync_last_key: Option<GenomeTrackAutosyncKey>,
+    tracked_autosync_last_probe: Option<GenomeTrackAutosyncRevisionProbe>,
+    tracked_autosync_full_scan_count: u64,
     genome_blast_import_track_name: String,
     genome_blast_import_clear_existing: bool,
     show_command_palette_dialog: bool,
+    command_palette_subject: Option<subject_selection::PaletteSubject>,
+    agent_assistant_subject: Option<subject_selection::PaletteSubject>,
+    command_palette_dispatching: bool,
     command_palette_query: String,
     command_palette_selected: usize,
     command_palette_focus_query: bool,
     external_services_ui: ExternalServicesUiState,
+    gene_set_inspector: gene_set_ui::GeneSetInspectorUiState,
     clawbio_panel: clawbio_ui::ClawBioPanelState,
     mirna_panel: mirna_ui::MirnaTargetScanPanelState,
     evidence_preparation_panel: evidence_preparation_ui::EvidencePreparationPanelState,
@@ -989,6 +1123,7 @@ pub struct GENtleApp {
     routine_assistant_explain_output: Option<serde_json::Value>,
     routine_assistant_compare_output: Option<serde_json::Value>,
     routine_assistant_preflight_output: Option<serde_json::Value>,
+    grna_preflight_token: Option<grna_routine_ui::GrnaPreflightToken>,
     routine_assistant_execute_output: Option<serde_json::Value>,
     routine_assistant_status: String,
     routine_assistant_decision_trace: Option<RoutineDecisionTrace>,
@@ -1032,6 +1167,8 @@ pub struct GENtleApp {
     agent_systems: Vec<AgentSystemSpec>,
     agent_system_id: String,
     agent_openai_api_key: String,
+    agent_token_file_credentials: HashMap<String, AgentTokenFileCredential>,
+    agent_token_file_credentials_loaded: bool,
     agent_base_url_override: String,
     agent_model_override: String,
     agent_timeout_secs: String,
@@ -1049,11 +1186,22 @@ pub struct GENtleApp {
     agent_prompt: String,
     agent_include_state_summary: bool,
     agent_allow_auto_exec: bool,
+    agent_allow_web_research: bool,
     agent_status: String,
     agent_preflight_output: Option<AgentSystemPreflight>,
     agent_task: Option<AgentAskTask>,
     agent_last_invocation: Option<AgentInvocationOutcome>,
+    agent_conversation: AgentConversation,
     agent_execution_log: Vec<AgentCommandExecutionRecord>,
+    agent_execution_session_id: String,
+    agent_command_service: crate::command_execution::CommandExecutionService,
+    agent_pending_commands: Vec<routine_and_agent_assistant_ui::PendingAgentCommand>,
+    agent_last_command_output: Option<AgentCommandOutput>,
+    agent_pending_image_attachment: Option<AgentPendingImageAttachment>,
+    agent_help_capture_failure: Option<AgentHelpCaptureFailure>,
+    agent_screenshot_consent: Option<AgentScreenshotConsent>,
+    agent_screenshot_capture: Option<AgentScreenshotCapture>,
+    agent_discarded_screenshot_capture_ids: VecDeque<u64>,
 }
 
 #[derive(Clone)]
@@ -1082,6 +1230,12 @@ struct TutorialProjectEntry {
     human_reviewed_at: Option<String>,
     human_reviewer: Option<String>,
     review_stale: bool,
+    use_cases: Vec<String>,
+    learning_objectives: Vec<String>,
+    concepts: Vec<String>,
+    prerequisites: Vec<String>,
+    expected_outcomes: Vec<String>,
+    gui_acceptance_profile: Option<String>,
     tier: TutorialTier,
     example: WorkflowExample,
     repo_root: PathBuf,
@@ -1096,6 +1250,7 @@ struct TutorialCatalogRuntimePaths {
 
 #[derive(Clone, Debug)]
 struct HelpTutorialDocEntry {
+    tutorial_id: String,
     title: String,
     path: String,
     summary: String,
@@ -1104,6 +1259,8 @@ struct HelpTutorialDocEntry {
     group_order: Option<usize>,
     group_position: Option<usize>,
     decimal_id: Option<String>,
+    prerequisites: Vec<String>,
+    next_steps: Vec<String>,
     review_status: Option<String>,
     codex_reviewed_at: Option<String>,
     human_reviewed_at: Option<String>,
@@ -1170,6 +1327,8 @@ struct RenderedHelpMarkdownEntry {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ConfigurationTab {
     ExternalApplications,
+    AgentSystems,
+    Microarrays,
     Graphics,
     Language,
 }
@@ -1239,6 +1398,9 @@ enum BackgroundJobKind {
     TrackImport,
     OpenTutorialProject,
     AgentAssist,
+    CollectionOperation,
+    /// Legacy persisted job-history value retained for backwards compatibility.
+    PrimerSpecificityCollection,
 }
 
 impl BackgroundJobKind {
@@ -1249,7 +1411,13 @@ impl BackgroundJobKind {
             Self::TrackImport => "TrackImport",
             Self::OpenTutorialProject => "OpenTutorialProject",
             Self::AgentAssist => "AgentAssist",
+            Self::CollectionOperation => "CollectionOperation",
+            Self::PrimerSpecificityCollection => "PrimerSpecificityCollection",
         }
+    }
+
+    fn runtime_label(self, job_id: u64) -> String {
+        format!("{} #{job_id}", self.label())
     }
 }
 
@@ -1545,6 +1713,7 @@ struct GenomePrepareTask {
     job_id: u64,
     started: Instant,
     cancel_requested: Arc<AtomicBool>,
+    runtime_frame: RuntimeStatusGuard,
     timeout_seconds: Option<u64>,
     mode: GenomePrepareLaunchMode,
     genome_id: String,
@@ -1558,6 +1727,7 @@ struct TutorialProjectTask {
     job_id: u64,
     started: Instant,
     cancel_requested: Arc<AtomicBool>,
+    runtime_frame: RuntimeStatusGuard,
     chapter_id: String,
     chapter_title: String,
     receiver: mpsc::Receiver<TutorialProjectTaskMessage>,
@@ -1691,9 +1861,56 @@ impl CacheCleanupScope {
 
 struct GenomeTrackImportTask {
     job_id: u64,
+    kind: GenomeTrackTaskKind,
     started: Instant,
     cancel_requested: Arc<AtomicBool>,
+    runtime_frame: RuntimeStatusGuard,
     receiver: mpsc::Receiver<GenomeTrackImportTaskMessage>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct GenomeTrackAutosyncKey {
+    engine_identity: usize,
+    anchor_signature: String,
+    subscription_signature: String,
+    subscription_count: usize,
+    requires_bigwig_converter: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct GenomeTrackAutosyncRevisionProbe {
+    engine_identity: usize,
+    structural_revision: u64,
+    mutation_revision: u64,
+    subscription_count: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum GenomeTrackTaskKind {
+    SelectedImport,
+    AllAnchoredImport,
+    ReapplyTracked,
+    Autosync(GenomeTrackAutosyncKey),
+}
+
+impl GenomeTrackTaskKind {
+    fn supports_cooperative_cancel(&self) -> bool {
+        matches!(self, Self::SelectedImport)
+    }
+
+    fn label(&self) -> &'static str {
+        match self {
+            Self::SelectedImport => "selected track import",
+            Self::AllAnchoredImport => "all-anchored track import",
+            Self::ReapplyTracked => "tracked-file re-apply",
+            Self::Autosync(_) => "tracked-file auto-sync",
+        }
+    }
+}
+
+enum GenomeTrackTaskResult {
+    Operation(OpResult),
+    Sync(GenomeTrackSyncReport),
 }
 
 enum GenomeTrackImportTaskMessage {
@@ -1703,12 +1920,95 @@ enum GenomeTrackImportTaskMessage {
     },
     Done {
         job_id: u64,
+        result: Result<GenomeTrackTaskResult, EngineError>,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum SequenceIngressTaskKind {
+    GenBank { accession: String, fill_as_id: bool },
+    UniProt { query: String, fill_entry_id: bool },
+    EnsemblProtein { entry_id_override: Option<String> },
+    UniProtLinkedGenBank,
+}
+
+impl SequenceIngressTaskKind {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::GenBank { .. } => "GenBank accession fetch",
+            Self::UniProt { .. } => "UniProt fetch",
+            Self::EnsemblProtein { .. } => "Ensembl protein fetch",
+            Self::UniProtLinkedGenBank => "UniProt-linked GenBank fetch",
+        }
+    }
+
+    fn uses_genbank_status(&self) -> bool {
+        matches!(self, Self::GenBank { .. })
+    }
+}
+
+struct SequenceIngressTask {
+    job_id: u64,
+    kind: SequenceIngressTaskKind,
+    started: Instant,
+    cancel_requested: Arc<AtomicBool>,
+    _runtime_frame: RuntimeStatusGuard,
+    receiver: mpsc::Receiver<SequenceIngressTaskMessage>,
+}
+
+enum SequenceIngressTaskMessage {
+    Done {
+        job_id: u64,
+        result: Result<OpResult, EngineError>,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum JasparCatalogSortColumn {
+    MotifId,
+    Name,
+    Length,
+    Consensus,
+    Species,
+    Collection,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum JasparBackgroundTaskKind {
+    Catalog,
+    SyncVisibleMetadata,
+    Expert { motif: String },
+}
+
+impl JasparBackgroundTaskKind {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Catalog => "JASPAR remote catalog refresh",
+            Self::SyncVisibleMetadata => "JASPAR visible metadata sync",
+            Self::Expert { .. } => "JASPAR remote expert refresh",
+        }
+    }
+}
+
+struct JasparBackgroundTask {
+    job_id: u64,
+    kind: JasparBackgroundTaskKind,
+    started: Instant,
+    cancel_requested: Arc<AtomicBool>,
+    _runtime_frame: RuntimeStatusGuard,
+    receiver: mpsc::Receiver<JasparBackgroundTaskMessage>,
+}
+
+enum JasparBackgroundTaskMessage {
+    Done {
+        job_id: u64,
         result: Result<OpResult, EngineError>,
     },
 }
 
 struct DbSnpFetchTask {
     started: Instant,
+    runtime_frame: RuntimeStatusGuard,
     receiver: mpsc::Receiver<DbSnpFetchTaskMessage>,
 }
 
@@ -1785,6 +2085,7 @@ struct GenomeBlastTask {
     job_id: u64,
     started: Instant,
     cancel_requested: Arc<AtomicBool>,
+    runtime_frame: RuntimeStatusGuard,
     receiver: mpsc::Receiver<GenomeBlastTaskMessage>,
 }
 
@@ -1820,7 +2121,11 @@ struct GenomeBlastBatchResult {
 
 struct AgentAskTask {
     job_id: u64,
+    prompt: String,
+    attachment_summaries: Vec<AgentAttachmentSummary>,
+    _attachment_files: Vec<Arc<tempfile::NamedTempFile>>,
     started: Instant,
+    runtime_frame: RuntimeStatusGuard,
     receiver: mpsc::Receiver<AgentAskTaskMessage>,
 }
 
@@ -1838,6 +2143,7 @@ enum AgentAskTaskMessage {
 struct AgentModelDiscoveryTask {
     started: Instant,
     source_key: String,
+    runtime_frame: RuntimeStatusGuard,
     receiver: mpsc::Receiver<AgentModelDiscoveryTaskMessage>,
 }
 
@@ -1857,6 +2163,59 @@ struct AgentCommandExecutionRecord {
     state_changed: bool,
     summary: String,
     executed_at_unix_ms: u128,
+    feedback: Option<crate::agent_feedback::AgentExecutionReceipt>,
+}
+
+#[derive(Clone)]
+struct AgentCommandOutput {
+    command: String,
+    output: serde_json::Value,
+    state_changed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AgentObjectCommand {
+    label: &'static str,
+    detail: &'static str,
+    command: String,
+}
+
+#[derive(Clone)]
+struct AgentPendingImageAttachment {
+    request: AgentRequestAttachment,
+    png_bytes: Arc<[u8]>,
+    temp_file: Arc<tempfile::NamedTempFile>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct AgentScreenshotProjectGeneration {
+    engine_identity: usize,
+    structural_revision: u64,
+}
+
+#[derive(Clone, Debug)]
+struct AgentScreenshotConsent {
+    request: AgentScreenshotRequest,
+    system_id: String,
+    system_label: String,
+    response_completed_at_unix_ms: u128,
+    project_generation: AgentScreenshotProjectGeneration,
+    selected_window_key: Option<u64>,
+}
+
+#[derive(Clone, Debug)]
+struct AgentScreenshotCapture {
+    capture_request_id: u64,
+    agent_request_id: String,
+    system_id: String,
+    system_label: String,
+    response_completed_at_unix_ms: u128,
+    project_generation: AgentScreenshotProjectGeneration,
+    target_window_key: u64,
+    target_viewport_id: ViewportId,
+    capture_viewport_id: ViewportId,
+    source_window_title: String,
+    started: Instant,
 }
 
 #[derive(Clone)]
@@ -1932,6 +2291,7 @@ enum LineageAnalysisKind {
     FlexibilityTrack,
     RnaReadInterpretation,
     PrimerDesign,
+    PrimerSpecificity,
     QpcrDesign,
     RestrictionCloningPcrHandoff,
     ProteinDerivation,
@@ -1948,6 +2308,7 @@ impl LineageAnalysisKind {
             Self::FlexibilityTrack => "flexibility_track",
             Self::RnaReadInterpretation => "rna_read_interpretation",
             Self::PrimerDesign => "primer_design",
+            Self::PrimerSpecificity => "primer_specificity",
             Self::QpcrDesign => "qpcr_design",
             Self::RestrictionCloningPcrHandoff => "restriction_cloning_pcr_handoff",
             Self::ProteinDerivation => "protein_derivation",
@@ -2055,6 +2416,21 @@ struct LineageTableEntry {
     hidden_group_member_count: usize,
 }
 
+#[derive(Clone)]
+struct LineageGraphProjectionCache {
+    lineage_stamp: u64,
+    groups: Vec<PersistedLineageNodeGroup>,
+    source_rows: Vec<LineageRow>,
+    source_edges: Vec<(String, String, String)>,
+    source_op_label_by_id: HashMap<String, String>,
+    rows: Vec<LineageRow>,
+    edges: Vec<(String, String, String)>,
+    op_label_by_id: HashMap<String, String>,
+    layout_by_node: HashMap<String, (usize, usize)>,
+    layer_count: usize,
+    max_nodes_in_layer: usize,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct LineageGroupHiddenOpBadge {
     total_ops: usize,
@@ -2088,7 +2464,7 @@ struct ContainerRow {
 #[derive(Clone)]
 struct ArrangementRow {
     arrangement_id: String,
-    mode: String,
+    mode: ArrangementMode,
     name: String,
     created_by_op: String,
     created_at: u128,
@@ -2200,11 +2576,20 @@ enum CommandPaletteAction {
     OpenGenbank,
     OpenConfiguration,
     OpenExternalServices,
+    OpenGeneSetInspector,
     OpenGibson,
     OpenMirnaTargetScan,
+    OpenCrypticSplicingScreen,
+    OpenTataBoxes,
+    OpenTssInventory,
+    OpenPrecomputedGenomicMotifEvidence,
+    OpenPromoterCofactors,
+    OpenGenomicRegionConservation,
     OpenEvidencePreparation,
     OpenPlanning,
     OpenRoutineAssistant,
+    UseGrnaRoutine(grna_routine_ui::GrnaRoutine),
+    FocusProjectOverview(ProjectOverviewTarget),
     UiIntent(UiIntentTarget),
     OpenGuiManual,
     OpenCliManual,
@@ -2222,6 +2607,7 @@ enum CommandPaletteAction {
 
 #[derive(Clone)]
 struct CommandPaletteEntry {
+    readiness: ActionReadiness,
     title: String,
     detail: String,
     keywords: String,
@@ -2231,6 +2617,7 @@ struct CommandPaletteEntry {
 impl CommandPaletteEntry {
     fn ui_intent(target: UiIntentTarget) -> Self {
         Self {
+            readiness: ActionReadiness::Ready,
             title: target.discoverability_title().to_string(),
             detail: target.discoverability_detail().to_string(),
             keywords: format!(
@@ -2282,7 +2669,10 @@ impl Default for GENtleApp {
     fn default() -> Self {
         Self {
             engine: Arc::new(RwLock::new(GentleEngine::new())),
+            pattern_catalog: pattern_catalog_ui::PatternCatalogCache::default(),
             new_windows: vec![],
+            tss_window_task: None,
+            pending_sequence_focus_after_open: None,
             windows: HashMap::new(),
             detached_auxiliary_window_hosts: HashMap::new(),
             windows_to_close: Arc::new(RwLock::new(vec![])),
@@ -2290,9 +2680,11 @@ impl Default for GENtleApp {
             pending_window_initial_positions: HashMap::new(),
             viewport_id_counter: 0,
             update_has_run_before: false,
+            window_backdrop_preload_dirty: true,
             splash_started_at: Instant::now(),
             splash_dismissed: false,
             show_about_dialog: false,
+            show_about_details_dialog: false,
             show_help_dialog: false,
             help_doc: HelpDoc::Gui,
             help_markdown_cache: CommonMarkCache::default(),
@@ -2357,6 +2749,9 @@ impl Default for GENtleApp {
             lineage_graph_offsets_synced_stamp: 0,
             lineage_cache_stamp: 0,
             lineage_cache_valid: false,
+            lineage_projection_cache: None,
+            lineage_projection_cache_hits: 0,
+            lineage_projection_cache_misses: 0,
             lineage_rows: vec![],
             lineage_edges: vec![],
             lineage_op_label_by_id: HashMap::new(),
@@ -2375,18 +2770,18 @@ impl Default for GENtleApp {
             lineage_containers: vec![],
             lineage_arrangements: vec![],
             lineage_racks: vec![],
-            clean_state_fingerprint: 0,
-            dirty_cache_stamp: 0,
+            clean_state_revision: 0,
             last_display_sync_stamp: 0,
-            dirty_cache_valid: false,
-            dirty_cache_value: false,
-            dirty_cache_last_deep_check: Instant::now(),
             last_applied_window_title: String::new(),
             last_native_window_entries: vec![],
             last_native_active_window_key: Some(viewport_native_menu_key(ViewportId::ROOT)),
             native_window_key_to_viewport: HashMap::new(),
             active_window_menu_key: Some(viewport_native_menu_key(ViewportId::ROOT)),
+            open_window_model_cache: OpenWindowModelCache::default(),
+            root_engine_summary_cache: RootEngineSummaryCache::default(),
+            runtime_status_snapshot_cache: RuntimeStatusSnapshotCache::default(),
             pending_window_open_timestamps: HashMap::new(),
+            sequence_window_open_runtime_frames: HashMap::new(),
             pending_viewport_focus_timestamps: HashMap::new(),
             pending_project_action: None,
             pending_app_quit: false,
@@ -2400,6 +2795,8 @@ impl Default for GENtleApp {
             show_reference_genome_retrieve_dialog: false,
             show_reference_genome_blast_dialog: false,
             show_reference_genome_inspector_dialog: false,
+            prepared_genome_inspection_cache_key: None,
+            prepared_genome_inspection_cache: None,
             show_cache_cleanup_dialog: false,
             show_new_sequence_dialog: false,
             show_uniprot_dialog: false,
@@ -2416,6 +2813,7 @@ impl Default for GENtleApp {
             genome_catalog_error: String::new(),
             genome_prepare_task: None,
             genome_prepare_progress: None,
+            genome_prepare_context: None,
             genome_prepare_steps: vec![],
             genome_prepare_eta_baseline: None,
             genome_prepare_failure_recovery: None,
@@ -2504,6 +2902,7 @@ impl Default for GENtleApp {
             genbank_accession: String::new(),
             genbank_as_id: String::new(),
             genbank_status: String::new(),
+            sequence_ingress_task: None,
             dbsnp_rs_id: DEFAULT_DBSNP_TUTORIAL_RS_ID.to_string(),
             dbsnp_genome_id: "Human GRCh38 Ensembl 113".to_string(),
             dbsnp_flank_bp: "3000".to_string(),
@@ -2549,6 +2948,7 @@ impl Default for GENtleApp {
             show_routine_assistant_dialog: false,
             show_agent_assistant_dialog: false,
             show_jaspar_expert_dialog: false,
+            cofactor_browser: Default::default(),
             pcr_design_seq_id: String::new(),
             sequencing_confirmation_seq_id: String::new(),
             jaspar_expert_filter: String::new(),
@@ -2561,7 +2961,16 @@ impl Default for GENtleApp {
             jaspar_expert_random_seed: DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED.to_string(),
             jaspar_expert_fetch_remote_metadata: false,
             jaspar_expert_status: String::new(),
+            jaspar_background_task: None,
             jaspar_catalog_report: None,
+            jaspar_catalog_generation: 0,
+            jaspar_catalog_sort_column: JasparCatalogSortColumn::MotifId,
+            jaspar_catalog_sort_ascending: true,
+            jaspar_auto_species_attempted_ids: BTreeSet::new(),
+            jaspar_filtered_cache_key: None,
+            jaspar_filtered_cache_rows: Arc::new(vec![]),
+            jaspar_filtered_cache_hits: 0,
+            jaspar_filtered_cache_misses: 0,
             jaspar_expert_view: None,
             gibson_destination_seq_id: String::new(),
             gibson_opening_mode: GibsonUiOpeningMode::DefinedSite,
@@ -2583,7 +2992,9 @@ impl Default for GENtleApp {
             gibson_status: String::new(),
             gibson_preview_output: None,
             gibson_preview_svg_uri: String::new(),
+            container_pool_export_task: None,
             arrangement_gel_preview: ArrangementGelPreviewState::default(),
+            gel_image_editor: gel_image_ui::GelImageEditor::default(),
             rack_labels_preview: RackLabelsPreviewState::default(),
             rack_view_rack_id: String::new(),
             rack_view_status: String::new(),
@@ -2622,12 +3033,18 @@ impl Default for GENtleApp {
             genome_bed_track_subscriptions: vec![],
             genome_track_subscription_filter: String::new(),
             genome_track_autosync_status: String::new(),
-            tracked_autosync_last_op_count: None,
+            tracked_autosync_last_key: None,
+            tracked_autosync_last_probe: None,
+            tracked_autosync_full_scan_count: 0,
             show_command_palette_dialog: false,
+            command_palette_subject: None,
+            agent_assistant_subject: None,
+            command_palette_dispatching: false,
             command_palette_query: String::new(),
             command_palette_selected: 0,
             command_palette_focus_query: false,
             external_services_ui: ExternalServicesUiState::default(),
+            gene_set_inspector: gene_set_ui::GeneSetInspectorUiState::default(),
             clawbio_panel: clawbio_ui::ClawBioPanelState::default(),
             mirna_panel: mirna_ui::MirnaTargetScanPanelState::default(),
             evidence_preparation_panel:
@@ -2649,6 +3066,7 @@ impl Default for GENtleApp {
             routine_assistant_explain_output: None,
             routine_assistant_compare_output: None,
             routine_assistant_preflight_output: None,
+            grna_preflight_token: None,
             routine_assistant_execute_output: None,
             routine_assistant_status: String::new(),
             routine_assistant_decision_trace: None,
@@ -2692,6 +3110,8 @@ impl Default for GENtleApp {
             agent_systems: vec![],
             agent_system_id: "builtin_echo".to_string(),
             agent_openai_api_key: String::new(),
+            agent_token_file_credentials: HashMap::new(),
+            agent_token_file_credentials_loaded: false,
             agent_base_url_override: String::new(),
             agent_model_override: String::new(),
             agent_timeout_secs: default_agent_timeout_secs_string(),
@@ -2709,11 +3129,22 @@ impl Default for GENtleApp {
             agent_prompt: String::new(),
             agent_include_state_summary: true,
             agent_allow_auto_exec: false,
+            agent_allow_web_research: false,
             agent_status: String::new(),
             agent_preflight_output: None,
             agent_task: None,
             agent_last_invocation: None,
+            agent_conversation: AgentConversation::default(),
             agent_execution_log: vec![],
+            agent_execution_session_id: crate::agent_feedback::new_agent_context_id(),
+            agent_command_service: crate::command_execution::CommandExecutionService::default(),
+            agent_pending_commands: Vec::new(),
+            agent_last_command_output: None,
+            agent_pending_image_attachment: None,
+            agent_help_capture_failure: None,
+            agent_screenshot_consent: None,
+            agent_screenshot_capture: None,
+            agent_discarded_screenshot_capture_ids: VecDeque::new(),
         }
     }
 }
@@ -2853,6 +3284,24 @@ impl GENtleApp {
         ViewportId::from_hash_of("GENtle External Services Viewport")
     }
 
+    fn hosted_external_services_window_id() -> egui::Id {
+        egui::Id::new((
+            "hosted_external_services_window",
+            Self::external_services_viewport_id(),
+        ))
+    }
+
+    fn gene_set_inspector_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("GENtle Gene Set Inspector Viewport")
+    }
+
+    fn hosted_gene_set_inspector_window_id() -> egui::Id {
+        egui::Id::new((
+            "hosted_gene_set_inspector_window",
+            Self::gene_set_inspector_viewport_id(),
+        ))
+    }
+
     fn clawbio_viewport_id() -> ViewportId {
         ViewportId::from_hash_of("GENtle ClawBio Viewport")
     }
@@ -2924,6 +3373,10 @@ impl GENtleApp {
 
     fn read_persisted_configuration_from_disk() -> Option<PersistedConfiguration> {
         let path = Self::configuration_store_path();
+        Self::read_persisted_configuration_from_path(&path)
+    }
+
+    fn read_persisted_configuration_from_path(path: &Path) -> Option<PersistedConfiguration> {
         let text = fs::read_to_string(&path).ok()?;
         serde_json::from_str::<PersistedConfiguration>(&text).ok()
     }
@@ -2932,19 +3385,18 @@ impl GENtleApp {
         self.i18n.t(key)
     }
 
+    fn trf(&self, key: &str, values: &[(&str, &str)]) -> String {
+        self.i18n.tf(key, values)
+    }
+
     fn write_persisted_configuration_to_disk(&self) -> std::result::Result<(), String> {
         let path = Self::configuration_store_path();
-        if let Some(parent) = path.parent()
-            && !parent.as_os_str().is_empty()
-        {
-            fs::create_dir_all(parent).map_err(|e| {
-                format!(
-                    "Could not create configuration directory '{}': {e}",
-                    parent.display()
-                )
-            })?;
-        }
-        let payload = PersistedConfiguration {
+        let payload = self.persisted_configuration_snapshot();
+        Self::write_persisted_configuration_to_path(&path, &payload)
+    }
+
+    fn persisted_configuration_snapshot(&self) -> PersistedConfiguration {
+        PersistedConfiguration {
             schema_version: APP_CONFIGURATION_SCHEMA_VERSION,
             rnapkin_executable: self.configuration_rnapkin_executable.trim().to_string(),
             makeblastdb_executable: self.configuration_makeblastdb_executable.trim().to_string(),
@@ -2957,7 +3409,24 @@ impl GENtleApp {
             window_backdrops: self.window_backdrops.clone(),
             ui_language: self.ui_language,
             recent_projects: self.recent_project_paths.clone(),
-        };
+            agent_system_id: self.agent_system_id.trim().to_string(),
+        }
+    }
+
+    fn write_persisted_configuration_to_path(
+        path: &Path,
+        payload: &PersistedConfiguration,
+    ) -> std::result::Result<(), String> {
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            fs::create_dir_all(parent).map_err(|e| {
+                format!(
+                    "Could not create configuration directory '{}': {e}",
+                    parent.display()
+                )
+            })?;
+        }
         let json = serde_json::to_string_pretty(&payload)
             .map_err(|e| format!("Could not serialize GUI configuration: {e}"))?;
         fs::write(&path, json).map_err(|e| {
@@ -2966,6 +3435,22 @@ impl GENtleApp {
                 path.display()
             )
         })
+    }
+
+    fn persist_agent_system_selection_to_disk(&self) -> std::result::Result<(), String> {
+        let path = Self::configuration_store_path();
+        self.persist_agent_system_selection_to_path(&path)
+    }
+
+    fn persist_agent_system_selection_to_path(
+        &self,
+        path: &Path,
+    ) -> std::result::Result<(), String> {
+        let mut payload = Self::read_persisted_configuration_from_path(path)
+            .unwrap_or_else(|| self.persisted_configuration_snapshot());
+        payload.schema_version = APP_CONFIGURATION_SCHEMA_VERSION;
+        payload.agent_system_id = self.agent_system_id.trim().to_string();
+        Self::write_persisted_configuration_to_path(path, &payload)
     }
 
     fn normalize_project_path(path: &str) -> String {
@@ -3170,6 +3655,7 @@ impl GENtleApp {
         target.linear_view_start_bp = source.linear_view_start_bp;
         target.linear_view_span_bp = source.linear_view_span_bp;
         target.linear_view_vertical_offset_px = source.linear_view_vertical_offset_px;
+        target.linear_show_sequence_bases = source.linear_show_sequence_bases;
         target.linear_sequence_base_text_max_view_span_bp =
             source.linear_sequence_base_text_max_view_span_bp;
         target.linear_sequence_helical_letters_enabled =
@@ -3194,7 +3680,7 @@ impl GENtleApp {
 
     fn apply_configuration_graphics_to_engine_state(&mut self) {
         let mut guard = self.engine.write().expect("Engine lock poisoned");
-        let display = &mut guard.state_mut().display;
+        let display = guard.display_state_mut();
         Self::apply_graphics_settings_to_display(&self.configuration_graphics, display);
         self.configuration_graphics_dirty = false;
     }
@@ -3239,6 +3725,9 @@ impl GENtleApp {
         self.configuration_language_dirty = false;
         self.i18n.set_language(saved.ui_language);
         self.recent_project_paths = Self::normalize_recent_project_paths(saved.recent_projects);
+        if !saved.agent_system_id.trim().is_empty() {
+            self.agent_system_id = saved.agent_system_id.trim().to_string();
+        }
         self.configuration_graphics_dirty = false;
         self.configuration_rnapkin_validation_ok = None;
         self.configuration_rnapkin_validation_message.clear();
@@ -3418,17 +3907,25 @@ Error: `{err}`"
     }
 
     fn refresh_help_docs(&mut self) {
-        self.help_gui_markdown = Self::load_help_doc("docs/gui.md", GUI_MANUAL_MD);
-        self.help_cli_markdown = Self::load_help_doc("docs/cli.md", CLI_MANUAL_MD);
-        self.help_agent_interface_markdown =
-            Self::load_help_doc("docs/agent_interface.md", AGENT_INTERFACE_MD);
-        self.help_reviewer_preview_markdown =
-            Self::load_help_doc("docs/reviewer_preview.md", REVIEWER_PREVIEW_MD);
-        self.help_shell_markdown =
-            Self::generate_shell_help_markdown_for(self.help_shell_interface);
+        use crate::gui_profiler::startup_trace::{Phase, measure};
+        measure(Phase::HelpManuals, || {
+            self.help_gui_markdown = Self::load_help_doc("docs/gui.md", GUI_MANUAL_MD);
+            self.help_cli_markdown = Self::load_help_doc("docs/cli.md", CLI_MANUAL_MD);
+            self.help_agent_interface_markdown =
+                Self::load_help_doc("docs/agent_interface.md", AGENT_INTERFACE_MD);
+            self.help_reviewer_preview_markdown =
+                Self::load_help_doc("docs/reviewer_preview.md", REVIEWER_PREVIEW_MD);
+        });
+        self.help_shell_markdown = measure(Phase::HelpShellReference, || {
+            Self::generate_shell_help_markdown_for(self.help_shell_interface)
+        });
         self.help_rendered_markdown_cache.clear();
-        self.help_tutorial_entries = Self::discover_help_tutorial_entries();
-        self.set_help_tutorial_selected(self.help_tutorial_selected);
+        self.help_tutorial_entries = measure(Phase::HelpTutorialDiscovery, || {
+            Self::discover_help_tutorial_entries()
+        });
+        measure(Phase::HelpTutorialSelectedLoad, || {
+            self.set_help_tutorial_selected(self.help_tutorial_selected);
+        });
     }
 
     fn ensure_help_docs_loaded(&mut self) {
@@ -3454,11 +3951,27 @@ Error: `{err}`"
         }
     }
 
+    fn open_about_dialog(&mut self) {
+        self.dismiss_splash_screen();
+        self.show_about_details_dialog = false;
+        self.show_about_dialog = true;
+    }
+
+    fn consume_native_about_request(&mut self) {
+        if NATIVE_ABOUT_OPEN_REQUESTED.swap(false, Ordering::SeqCst) {
+            self.open_about_dialog();
+        }
+    }
+
     fn consume_native_settings_request(&mut self) {
         if NATIVE_SETTINGS_OPEN_REQUESTED.swap(false, Ordering::SeqCst) {
+            let microarray_tab_requested =
+                NATIVE_SETTINGS_OPEN_MICROARRAY_TAB_REQUESTED.swap(false, Ordering::SeqCst);
             let graphics_tab_requested =
                 NATIVE_SETTINGS_OPEN_GRAPHICS_TAB_REQUESTED.swap(false, Ordering::SeqCst);
-            if graphics_tab_requested {
+            if microarray_tab_requested {
+                self.open_configuration_microarray_dialog();
+            } else if graphics_tab_requested {
                 self.open_configuration_graphics_dialog();
             } else {
                 self.open_configuration_dialog();
@@ -3763,6 +4276,15 @@ Error: `{err}`"
         self.open_configuration_dialog_for_tab(ConfigurationTab::Graphics);
     }
 
+    fn open_configuration_microarray_dialog(&mut self) {
+        self.open_configuration_dialog_for_tab(ConfigurationTab::Microarrays);
+    }
+
+    fn open_configuration_agent_systems_dialog(&mut self) {
+        self.refresh_agent_token_file_credentials();
+        self.open_configuration_dialog_for_tab(ConfigurationTab::AgentSystems);
+    }
+
     pub(crate) fn consume_command_or_ctrl_shortcut(ctx: &egui::Context, key: Key) -> bool {
         let command_shortcut = KeyboardShortcut::new(Modifiers::COMMAND, key);
         let ctrl_shortcut = KeyboardShortcut::new(Modifiers::CTRL, key);
@@ -3781,6 +4303,9 @@ Error: `{err}`"
 
     fn open_command_palette_dialog(&mut self) {
         let was_open = self.show_command_palette_dialog;
+        if !was_open {
+            self.command_palette_subject = Some(self.capture_palette_subject());
+        }
         self.show_command_palette_dialog = true;
         self.command_palette_focus_query = true;
         self.mark_window_open_or_focus(Self::command_palette_viewport_id(), was_open);
@@ -3825,10 +4350,8 @@ Error: `{err}`"
             .unwrap_or_default()
     }
 
-    fn sha1_hex(value: &str) -> String {
-        let mut hasher = Sha1::new();
-        hasher.update(value.as_bytes());
-        format!("{:x}", hasher.finalize())
+    fn digest_hex(value: &str) -> String {
+        crate::digest_utils::sha256_hex_str(value)
     }
 
     fn current_prepare_retry_arguments(&self) -> serde_json::Value {
@@ -3857,7 +4380,7 @@ Error: `{err}`"
                     "manual_query_sha1": if query.is_empty() {
                         None
                     } else {
-                        Some(Self::sha1_hex(query))
+                        Some(Self::digest_hex(query))
                     }
                 })
             }
@@ -3970,11 +4493,12 @@ Error: `{err}`"
             "system_id": self.agent_system_id.trim(),
             "include_state_summary": self.agent_include_state_summary,
             "allow_auto_exec": self.agent_allow_auto_exec,
+            "allow_web_research": self.agent_allow_web_research,
             "prompt_length_chars": prompt.len(),
             "prompt_sha1": if prompt.is_empty() {
                 None
             } else {
-                Some(Self::sha1_hex(prompt))
+                Some(Self::digest_hex(prompt))
             },
             "prompt_preview": prompt_preview,
             "base_url_override": self.agent_base_url_override.trim(),
@@ -4408,6 +4932,8 @@ Error: `{err}`"
         let mut track_import = 0usize;
         let mut tutorial = 0usize;
         let mut agent = 0usize;
+        let mut collection_operation = 0usize;
+        let mut primer_specificity_collection = 0usize;
         let mut origin_counts: BTreeMap<String, usize> = BTreeMap::new();
         let mut min_snapshot_id = u64::MAX;
         let mut max_snapshot_id = 0u64;
@@ -4420,6 +4946,10 @@ Error: `{err}`"
                 BackgroundJobKind::TrackImport => track_import += 1,
                 BackgroundJobKind::OpenTutorialProject => tutorial += 1,
                 BackgroundJobKind::AgentAssist => agent += 1,
+                BackgroundJobKind::CollectionOperation => collection_operation += 1,
+                BackgroundJobKind::PrimerSpecificityCollection => {
+                    primer_specificity_collection += 1
+                }
             }
             let origin = if snapshot.origin.trim().is_empty() {
                 "-".to_string()
@@ -4452,13 +4982,15 @@ Error: `{err}`"
             }
         }
         format!(
-            "{} match(es) · kinds: PrepareGenome={} BlastGenome={} TrackImport={} OpenTutorialProject={} AgentAssist={} · origins: {} · ids #{}..#{} · captured_at {}..{}",
+            "{} match(es) · kinds: PrepareGenome={} BlastGenome={} TrackImport={} OpenTutorialProject={} AgentAssist={} CollectionOperation={} PrimerSpecificityCollection={} · origins: {} · ids #{}..#{} · captured_at {}..{}",
             snapshots.len(),
             prepare,
             blast,
             track_import,
             tutorial,
             agent,
+            collection_operation,
+            primer_specificity_collection,
             if origin_preview.is_empty() {
                 "-".to_string()
             } else {
@@ -4676,14 +5208,29 @@ Error: `{err}`"
         let Ok(value) = serde_json::to_value(payload) else {
             return;
         };
+        self.persist_project_metadata_values(&[(BACKGROUND_JOB_HISTORY_METADATA_KEY, Some(value))]);
+    }
+
+    fn persist_project_metadata_values(
+        &self,
+        updates: &[(&str, Option<serde_json::Value>)],
+    ) -> bool {
         let mut engine = self.engine.write().unwrap();
-        let state = engine.state_mut();
-        if state.metadata.get(BACKGROUND_JOB_HISTORY_METADATA_KEY) == Some(&value) {
-            return;
+        if updates
+            .iter()
+            .all(|(key, value)| engine.state().metadata.get(*key) == value.as_ref())
+        {
+            return false;
         }
-        state
-            .metadata
-            .insert(BACKGROUND_JOB_HISTORY_METADATA_KEY.to_string(), value);
+        let metadata = engine.auxiliary_metadata_mut();
+        for (key, value) in updates {
+            if let Some(value) = value {
+                metadata.insert((*key).to_string(), value.clone());
+            } else {
+                metadata.remove(*key);
+            }
+        }
+        true
     }
 
     fn push_job_event<S: Into<String>>(
@@ -4710,6 +5257,33 @@ Error: `{err}`"
             self.job_event_log.drain(0..drain_len);
         }
         self.persist_background_job_history_to_state();
+    }
+
+    fn push_runtime_background_job_frame(
+        kind: BackgroundJobKind,
+        job_id: u64,
+        detail: impl Into<String>,
+    ) -> RuntimeStatusGuard {
+        let frame = runtime_status_registry().push_with_detail(
+            RuntimeStatusFrameKind::BackgroundJob,
+            kind.runtime_label(job_id),
+            Some(detail.into()),
+        );
+        frame.update_phase("queued");
+        frame
+    }
+
+    fn push_runtime_external_tool_frame(
+        label: impl Into<String>,
+        detail: impl Into<String>,
+    ) -> RuntimeStatusGuard {
+        let frame = runtime_status_registry().push_with_detail(
+            RuntimeStatusFrameKind::ExternalTool,
+            label,
+            Some(detail.into()),
+        );
+        frame.update_phase("queued");
+        frame
     }
 
     fn request_prepare_task_cancel(&mut self, origin: &str) {
@@ -4740,11 +5314,14 @@ Error: `{err}`"
     }
 
     fn request_track_import_task_cancel(&mut self, origin: &str) {
-        let Some((job_id, already_requested)) =
+        let Some((job_id, already_requested, cooperative, label, autosync)) =
             self.genome_track_import_task.as_ref().map(|task| {
                 (
                     task.job_id,
                     task.cancel_requested.swap(true, Ordering::Relaxed),
+                    task.kind.supports_cooperative_cancel(),
+                    task.kind.label(),
+                    matches!(&task.kind, GenomeTrackTaskKind::Autosync(_)),
                 )
             })
         else {
@@ -4758,12 +5335,28 @@ Error: `{err}`"
             return;
         }
 
-        self.genome_track_status = "Cancellation requested for running track import".to_string();
+        if cooperative {
+            self.genome_track_status =
+                "Cancellation requested for running track import".to_string();
+        } else {
+            self.genome_track_import_task = None;
+            self.genome_track_import_progress = None;
+            let status = format!("Stopped waiting for {label}; any late result will be ignored.");
+            if autosync {
+                self.genome_track_autosync_status = status;
+            } else {
+                self.genome_track_status = status;
+            }
+        }
         self.push_job_event(
             BackgroundJobKind::TrackImport,
             BackgroundJobEventPhase::CancelRequested,
             Some(job_id),
-            format!("Cancellation requested from {origin}"),
+            if cooperative {
+                format!("Cancellation requested from {origin}")
+            } else {
+                format!("Stopped waiting from {origin}; late result will be ignored")
+            },
         );
     }
 
@@ -4828,13 +5421,13 @@ Error: `{err}`"
 
     fn request_agent_task_cancel(&mut self, origin: &str) {
         let Some(task) = self.agent_task.take() else {
-            self.agent_status = "No running agent request to stop".to_string();
+            self.agent_status = self.tr("agent.status.nothing_to_stop");
             return;
         };
         let elapsed = task.started.elapsed().as_secs_f64();
-        self.agent_status = format!(
-            "Agent request stopped after {:.1}s; any late response from this request will be ignored",
-            elapsed
+        self.agent_status = self.trf(
+            "agent.status.stopped",
+            &[("elapsed", &format!("{elapsed:.1}"))],
         );
         self.push_job_event(
             BackgroundJobKind::AgentAssist,
@@ -4848,8 +5441,14 @@ Error: `{err}`"
         self.genome_prepare_task.is_some()
             || self.genome_blast_task.is_some()
             || self.genome_track_import_task.is_some()
+            || self.sequence_ingress_task.is_some()
+            || self.jaspar_background_task.is_some()
             || self.tutorial_project_task.is_some()
             || self.agent_task.is_some()
+            || self.container_pool_export_task.is_some()
+            || self.has_active_gene_set_resolution_task()
+            || self.has_active_gene_set_collection_operation_task()
+            || self.has_active_regulatory_partner_screen_task()
     }
 
     fn refresh_sequence_windows_for_seq_ids(&mut self, seq_ids: &[String]) -> usize {
@@ -4887,6 +5486,7 @@ Error: `{err}`"
 
     fn handle_engine_state_after_history_transition(&mut self) {
         self.lineage_cache_valid = false;
+        self.lineage_projection_cache = None;
         self.lineage_rows.clear();
         self.lineage_edges.clear();
         self.lineage_op_label_by_id.clear();
@@ -4894,15 +5494,15 @@ Error: `{err}`"
         self.lineage_arrangements.clear();
         self.lineage_racks.clear();
         self.load_bed_track_subscriptions_from_state();
-        self.tracked_autosync_last_op_count = None;
+        self.tracked_autosync_last_key = None;
         self.genome_track_autosync_status.clear();
         self.refresh_sequence_windows_from_engine_state();
     }
 
-    fn undo_last_operation(&mut self) {
+    fn undo_last_operation(&mut self) -> bool {
         if self.has_active_background_jobs() {
             self.app_status = "Undo is disabled while background jobs are active.".to_string();
-            return;
+            return false;
         }
         let outcome = self
             .engine
@@ -4918,17 +5518,19 @@ Error: `{err}`"
             Ok(()) => {
                 self.handle_engine_state_after_history_transition();
                 self.app_status = "Undo applied".to_string();
+                true
             }
             Err(e) => {
                 self.app_status = format!("Undo unavailable: {}", e.message);
+                false
             }
         }
     }
 
-    fn redo_last_operation(&mut self) {
+    fn redo_last_operation(&mut self) -> bool {
         if self.has_active_background_jobs() {
             self.app_status = "Redo is disabled while background jobs are active.".to_string();
-            return;
+            return false;
         }
         let outcome = self
             .engine
@@ -4944,58 +5546,80 @@ Error: `{err}`"
             Ok(()) => {
                 self.handle_engine_state_after_history_transition();
                 self.app_status = "Redo applied".to_string();
+                true
             }
             Err(e) => {
                 self.app_status = format!("Redo unavailable: {}", e.message);
+                false
             }
         }
     }
 
-    fn collect_command_palette_entries(&self) -> Vec<CommandPaletteEntry> {
+    fn collect_command_palette_entries(&mut self) -> Vec<CommandPaletteEntry> {
         let mut entries = vec![
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "New Project".to_string(),
                 detail: "Create a new empty project".to_string(),
                 keywords: "file project new".to_string(),
                 action: CommandPaletteAction::NewProject,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Open Project".to_string(),
                 detail: "Open an existing project file".to_string(),
                 keywords: "file project open".to_string(),
                 action: CommandPaletteAction::OpenProject,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Save Project".to_string(),
                 detail: "Save current project state".to_string(),
                 keywords: "file project save".to_string(),
                 action: CommandPaletteAction::SaveProject,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
+                title: "Project Overview".to_string(),
+                detail: "Focus physical containers and collection actions in the project overview"
+                    .to_string(),
+                keywords:
+                    "project overview lineage containers arrangements pools collection export pool"
+                        .to_string(),
+                action: CommandPaletteAction::FocusProjectOverview(
+                    ProjectOverviewTarget::Containers,
+                ),
+            },
+            CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "New Sequence".to_string(),
                 detail: "Type or paste IUPAC DNA into a new project sequence".to_string(),
                 keywords: "sequence new paste clipboard type create".to_string(),
                 action: CommandPaletteAction::NewSequence,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "New Sequence from Clipboard".to_string(),
                 detail: "Read clipboard text into the new-sequence dialog".to_string(),
                 keywords: "sequence new paste clipboard create".to_string(),
                 action: CommandPaletteAction::NewSequenceFromClipboard,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Open Sequence".to_string(),
                 detail: "Import one or more sequence files into project".to_string(),
                 keywords: "sequence import load".to_string(),
                 action: CommandPaletteAction::OpenSequence,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Protein Evidence".to_string(),
                 detail: "Fetch/import UniProt or Ensembl protein evidence and compare it against transcript-native products".to_string(),
                 keywords: "uniprot swiss-prot ensembl protein map compare evidence".to_string(),
                 action: CommandPaletteAction::OpenUniprot,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "GenBank / dbSNP Fetch".to_string(),
                 detail: "Fetch GenBank accessions or rsID-anchored genome regions from NCBI"
                     .to_string(),
@@ -5003,24 +5627,28 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenGenbank,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Undo Last Operation".to_string(),
                 detail: "Restore previous project state".to_string(),
                 keywords: "undo history edit".to_string(),
                 action: CommandPaletteAction::Undo,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Redo Last Operation".to_string(),
                 detail: "Re-apply previously undone state".to_string(),
                 keywords: "redo history edit".to_string(),
                 action: CommandPaletteAction::Redo,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Configuration".to_string(),
                 detail: "Open global app configuration".to_string(),
                 keywords: "settings config preferences".to_string(),
                 action: CommandPaletteAction::OpenConfiguration,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "External Services".to_string(),
                 detail:
                     "Inspect providers, preflight service requests, and prepare quote handoff bundles"
@@ -5030,6 +5658,18 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenExternalServices,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
+                title: "Gene Set Inspector".to_string(),
+                detail:
+                    "Bind resolved gene-set members to exact primer reports and run shared collection specificity"
+                        .to_string(),
+                keywords:
+                    "gene set collection primer specificity binding blast assay inspector"
+                        .to_string(),
+                action: CommandPaletteAction::OpenGeneSetInspector,
+            },
+            CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Gibson".to_string(),
                 detail: "Plan one destination-first Gibson assembly with cartoon preview."
                     .to_string(),
@@ -5037,66 +5677,127 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenGibson,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "microRNA Target Scan".to_string(),
                 detail: "Scan transcript annotations for microRNA seed candidates and inspect graphical pairing evidence".to_string(),
                 keywords: "mirna microRNA target scan seed pairing transcript utr exon intron splice".to_string(),
                 action: CommandPaletteAction::OpenMirnaTargetScan,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
+                title: "Cryptic-splicing Structural Screen".to_string(),
+                detail: "Open structural-screen setup for selected DNA; inspect bounded GT-AG pseudo-intron candidates without changing annotations."
+                    .to_string(),
+                keywords:
+                    "splicing cryptic splice donor acceptor pseudo-intron cds structural screen"
+                        .to_string(),
+                action: CommandPaletteAction::OpenCrypticSplicingScreen,
+            },
+            CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
+                title: "TATA-box Evidence".to_string(),
+                detail: "Open evidence review for selected DNA; inspect annotations, EPD promoter classifications and TBP predictions before adding features.".into(),
+                keywords: "tata tbp promoter epd tss annotation motif".into(),
+                action: CommandPaletteAction::OpenTataBoxes,
+            },
+            CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
+                title: "Transcript Starts / TSS Windows".into(),
+                detail: "Preview annotated transcript starts on the selected locus; review and approve before creating windows".into(),
+                keywords: "promoter transcript starts tss inventory collection windows".into(),
+                action: CommandPaletteAction::OpenTssInventory,
+            },
+            CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
+                title: "Precomputed Genomic Motif Evidence".to_string(),
+                detail: "Open an anchored DNA sequence for optional precomputed JASPAR genome-scan queries"
+                    .to_string(),
+                keywords:
+                    "tfbs jaspar motif precomputed genomic evidence package duckdb parquet"
+                        .to_string(),
+                action: CommandPaletteAction::OpenPrecomputedGenomicMotifEvidence,
+            },
+            CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
+                title: "Promoter Cofactors".into(),
+                detail: "Inspect a local reduced JASPAR/TP73 collaborator package".into(),
+                keywords: "jaspar tp73 cofactor promoter odds ratio duckdb parquet".into(),
+                action: CommandPaletteAction::OpenPromoterCofactors,
+            },
+            CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
+                title: "Genomic Region Conservation".to_string(),
+                detail: "Choose a saved genomic region for local homology screening and conserved-module assessment"
+                    .to_string(),
+                keywords: "conservation homology blast promoter modules genomic regions"
+                    .to_string(),
+                action: CommandPaletteAction::OpenGenomicRegionConservation,
+            },
+            CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Evidence Preparation".to_string(),
                 detail: "Prepare the TP73 evidence-viewer proof material through shared GENtle operations and copyable handoff commands".to_string(),
                 keywords: "tp73 evidence preparation array clariom repeat rmsk cutrun bed tfbs proof".to_string(),
                 action: CommandPaletteAction::OpenEvidencePreparation,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Planning".to_string(),
                 detail: "Edit planning profiles/objectives and resolve suggestions".to_string(),
                 keywords: "planning profile objective suggestions sync meta-layer".to_string(),
                 action: CommandPaletteAction::OpenPlanning,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Routine Assistant".to_string(),
                 detail: "Compare routine families and run semantic preflight".to_string(),
                 keywords: "routine assistant cloning preflight".to_string(),
                 action: CommandPaletteAction::OpenRoutineAssistant,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "GUI Manual".to_string(),
                 detail: "Open in-app GUI help".to_string(),
                 keywords: "help gui manual docs".to_string(),
                 action: CommandPaletteAction::OpenGuiManual,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "CLI Manual".to_string(),
                 detail: "Open in-app CLI help".to_string(),
                 keywords: "help cli manual docs".to_string(),
                 action: CommandPaletteAction::OpenCliManual,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Agent Interface".to_string(),
                 detail: "Open in-app agent integration guide".to_string(),
                 keywords: "help agent interface mcp cli assistant prompt docs".to_string(),
                 action: CommandPaletteAction::OpenAgentInterfaceManual,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Reviewer Quickstart".to_string(),
                 detail: "Open internal preview quickstart and known limitations".to_string(),
                 keywords: "help reviewer quickstart preview internal limitations".to_string(),
                 action: CommandPaletteAction::OpenReviewerPreviewManual,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Shell Commands".to_string(),
                 detail: "Open in-app shell command reference".to_string(),
                 keywords: "help shell commands glossary docs".to_string(),
                 action: CommandPaletteAction::OpenShellManual,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Export DALG SVG".to_string(),
                 detail: "Export lineage graph as SVG".to_string(),
                 keywords: "export lineage svg".to_string(),
                 action: CommandPaletteAction::ExportLineageSvg,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Export Lab Assistant Report".to_string(),
                 detail: "Export bench-facing cloning handoff as ODT, DOCX, or Markdown"
                     .to_string(),
@@ -5104,12 +5805,14 @@ Error: `{err}`"
                 action: CommandPaletteAction::ExportLabAssistantReport,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Toggle Background Jobs Panel".to_string(),
                 detail: "Show or hide centralized jobs panel".to_string(),
                 keywords: "jobs progress background".to_string(),
                 action: CommandPaletteAction::ToggleJobsPanel,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Toggle History Panel".to_string(),
                 detail: "Show or hide operation history".to_string(),
                 keywords: "history undo redo".to_string(),
@@ -5120,20 +5823,58 @@ Error: `{err}`"
             UiIntentTarget::all()
                 .iter()
                 .copied()
+                .filter(|target| {
+                    !matches!(
+                        target,
+                        UiIntentTarget::RecentProject
+                            | UiIntentTarget::SplicingExpert
+                            | UiIntentTarget::TutorialProject
+                            | UiIntentTarget::TutorialGuide
+                    )
+                })
                 .map(CommandPaletteEntry::ui_intent),
         );
-        for entry in self.collect_open_window_entries() {
+        self.refresh_root_engine_summary_cache();
+        self.refresh_open_window_model_cache();
+        for entry in &self.open_window_model_cache.model.entries {
             entries.push(CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: format!("Focus: {}", entry.title),
-                detail: entry.detail,
+                detail: entry.detail.clone(),
                 keywords: "focus window".to_string(),
                 action: CommandPaletteAction::FocusViewport(entry.viewport_id),
             });
         }
+        let context = LaunchContext::capture(self, self.show_command_palette_dialog);
+        for entry in &mut entries {
+            entry.readiness = context.readiness(entry.action);
+        }
+        self.append_grna_palette_entries(&mut entries, &context);
         entries
     }
 
     fn execute_command_palette_action(
+        &mut self,
+        ctx: &egui::Context,
+        action: CommandPaletteAction,
+    ) -> bool {
+        let previous = self.command_palette_dispatching;
+        self.command_palette_dispatching = self.show_command_palette_dialog;
+        let readiness = self.palette_action_readiness(action);
+        if !readiness.is_ready() {
+            self.app_status = readiness
+                .detail()
+                .unwrap_or("Action unavailable")
+                .to_string();
+            self.command_palette_dispatching = previous;
+            return false;
+        }
+        self.execute_command_palette_action_bound(ctx, action);
+        self.command_palette_dispatching = previous;
+        true
+    }
+
+    fn execute_command_palette_action_bound(
         &mut self,
         ctx: &egui::Context,
         action: CommandPaletteAction,
@@ -5153,13 +5894,35 @@ Error: `{err}`"
             CommandPaletteAction::OpenGenbank => self.open_genbank_dialog(),
             CommandPaletteAction::OpenConfiguration => self.open_configuration_dialog(),
             CommandPaletteAction::OpenExternalServices => self.open_external_services_dialog(),
+            CommandPaletteAction::OpenGeneSetInspector => self.open_gene_set_inspector_dialog(),
             CommandPaletteAction::OpenGibson => self.open_gibson_dialog(),
             CommandPaletteAction::OpenMirnaTargetScan => self.open_mirna_target_scan_dialog(),
+            CommandPaletteAction::OpenCrypticSplicingScreen => self.open_cryptic_splicing_screen(),
+            CommandPaletteAction::OpenTataBoxes => self.open_tata_box_workspace(),
+            CommandPaletteAction::OpenTssInventory => self.open_tss_inventory_workspace(),
+            CommandPaletteAction::OpenPrecomputedGenomicMotifEvidence => {
+                self.open_precomputed_genomic_motif_evidence()
+            }
+            CommandPaletteAction::OpenPromoterCofactors => self.cofactor_browser.open = true,
+            CommandPaletteAction::OpenGenomicRegionConservation => {
+                self.open_genomic_region_conservation()
+            }
             CommandPaletteAction::OpenEvidencePreparation => {
                 self.open_evidence_preparation_dialog()
             }
             CommandPaletteAction::OpenPlanning => self.open_planning_dialog(),
             CommandPaletteAction::OpenRoutineAssistant => self.open_routine_assistant_dialog(),
+            CommandPaletteAction::UseGrnaRoutine(routine) => self.open_grna_routine(routine),
+            CommandPaletteAction::FocusProjectOverview(target) => {
+                self.focus_project_overview_target(target);
+                self.persist_lineage_graph_workspace_to_state();
+                let target_label = match target {
+                    ProjectOverviewTarget::Lineage => "lineage",
+                    ProjectOverviewTarget::Containers => "containers",
+                    ProjectOverviewTarget::Arrangements => "arrangements",
+                };
+                self.app_status = format!("Focused project overview: {target_label}");
+            }
             CommandPaletteAction::UiIntent(target) => {
                 let command = ShellCommand::UiIntent {
                     action: UiIntentAction::Open,
@@ -5195,8 +5958,12 @@ Error: `{err}`"
             CommandPaletteAction::ToggleHistoryPanel => {
                 self.history_ui.show_panel = !self.history_ui.show_panel;
             }
-            CommandPaletteAction::Undo => self.undo_last_operation(),
-            CommandPaletteAction::Redo => self.redo_last_operation(),
+            CommandPaletteAction::Undo => {
+                self.undo_last_operation();
+            }
+            CommandPaletteAction::Redo => {
+                self.redo_last_operation();
+            }
             CommandPaletteAction::FocusViewport(viewport_id) => {
                 self.focus_window_viewport(ctx, viewport_id);
             }
@@ -5212,6 +5979,9 @@ Error: `{err}`"
             self.queue_focus_viewport(Self::help_viewport_id());
             return;
         }
+        let trace = crate::gui_profiler::startup_trace::span_once(
+            crate::gui_profiler::startup_trace::Phase::HelpOpen,
+        );
         let opening_from_closed_state = !self.show_help_dialog;
         if !self.show_help_dialog {
             self.mark_viewport_open_requested(Self::help_viewport_id());
@@ -5227,6 +5997,7 @@ Error: `{err}`"
         self.help_focus_search_box = true;
         self.show_help_dialog = true;
         self.queue_focus_viewport(Self::help_viewport_id());
+        trace.finish(true);
     }
 
     fn active_help_title(&self) -> &str {
@@ -5486,12 +6257,22 @@ Error: `{err}`"
     }
 
     pub fn new() -> Self {
-        let mut app = Self::default();
+        use crate::gui_profiler::startup_trace::{Phase, measure, span};
+        let initialize = span(Phase::AppInitialize);
+        let mut app = measure(Phase::AppDefaults, Self::default);
         window_backdrop::set_window_backdrop_settings(app.window_backdrops.clone());
-        app.refresh_help_docs();
-        app.load_persisted_configuration(true);
-        app.load_bed_track_subscriptions_from_state();
-        app.mark_clean_snapshot();
+        measure(Phase::HelpPreparation, || app.refresh_help_docs());
+        measure(Phase::ConfigurationLoad, || {
+            app.load_persisted_configuration(true)
+        });
+        measure(Phase::CredentialRefresh, || {
+            app.refresh_agent_token_file_credentials()
+        });
+        measure(Phase::InitialStatePreparation, || {
+            app.load_bed_track_subscriptions_from_state();
+            app.mark_clean_snapshot();
+        });
+        initialize.finish(true);
         app
     }
 
@@ -5567,6 +6348,12 @@ Error: `{err}`"
                 .entry(viewport_id)
                 .or_insert_with(Instant::now);
         }
+    }
+
+    fn prioritize_focus_viewport(&mut self, viewport_id: ViewportId) {
+        self.pending_focus_viewports
+            .retain(|candidate| *candidate != viewport_id);
+        self.queue_focus_viewport(viewport_id);
     }
 
     fn mark_viewport_open_requested(&mut self, viewport_id: ViewportId) {
@@ -5699,36 +6486,49 @@ Error: `{err}`"
         seq_id: &str,
         compact_lane_layout: bool,
     ) {
-        if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
-            if compact_lane_layout
-                && let Some(window) = self.windows.get(&viewport_id)
-                && let Ok(mut window) = window.write()
-            {
-                window.enable_compact_lane_layout();
-            }
-            self.queue_focus_viewport(viewport_id);
-            return;
-        }
-        if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
-            if compact_lane_layout {
-                window.enable_compact_lane_layout();
-            }
-            return;
-        }
-        let exists = self
-            .engine
-            .read()
-            .unwrap()
-            .state()
-            .sequences
-            .contains_key(seq_id);
-        if exists {
-            let mut window = Window::new_dna_lazy(seq_id.to_string(), self.engine.clone());
-            if compact_lane_layout {
-                window.enable_compact_lane_layout();
-            }
-            self.new_windows.push(window);
-        }
+        crate::gui_profiler::startup_trace::measure(
+            crate::gui_profiler::startup_trace::Phase::DnaOpenDispatch,
+            || {
+                if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
+                    if compact_lane_layout
+                        && let Some(window) = self.windows.get(&viewport_id)
+                        && let Ok(mut window) = window.write()
+                    {
+                        window.enable_compact_lane_layout();
+                    }
+                    self.queue_focus_viewport(viewport_id);
+                    return;
+                }
+                if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
+                    if compact_lane_layout {
+                        window.enable_compact_lane_layout();
+                    }
+                    return;
+                }
+                let exists = self
+                    .engine
+                    .read()
+                    .unwrap()
+                    .state()
+                    .sequences
+                    .contains_key(seq_id);
+                if exists {
+                    let runtime_frame = runtime_status_registry().push_with_detail(
+                        RuntimeStatusFrameKind::GuiAction,
+                        "Opening DNA Sequence Viewer",
+                        Some(format!("Loading sequence '{seq_id}'")),
+                    );
+                    runtime_frame.update_phase("queued");
+                    self.sequence_window_open_runtime_frames
+                        .insert(seq_id.to_string(), runtime_frame);
+                    let mut window = Window::new_dna_lazy(seq_id.to_string(), self.engine.clone());
+                    if compact_lane_layout {
+                        window.enable_compact_lane_layout();
+                    }
+                    self.new_windows.push(window);
+                }
+            },
+        );
     }
 
     fn open_sequence_window(&mut self, seq_id: &str) {
@@ -6028,6 +6828,67 @@ Error: `{err}`"
         }
     }
 
+    fn open_sequence_window_for_primer_specificity_report(
+        &mut self,
+        seq_id: &str,
+        report_id: &str,
+    ) {
+        let report = self
+            .engine
+            .read()
+            .ok()
+            .and_then(|engine| engine.get_primer_specificity_report(report_id).ok());
+        let Some(report) = report else {
+            self.app_status = format!(
+                "Cannot reopen primer-specificity report '{}': persisted report not found",
+                report_id
+            );
+            return;
+        };
+        if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
+            if let Some(window) = self.windows.get(&viewport_id)
+                && let Ok(mut window) = window.write()
+            {
+                window.focus_primer_specificity_report(report_id);
+            }
+        } else if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
+            window.focus_primer_specificity_report(report_id);
+        } else {
+            let exists = self
+                .engine
+                .read()
+                .unwrap()
+                .state()
+                .sequences
+                .contains_key(seq_id);
+            if exists {
+                let mut window = Window::new_dna_lazy(seq_id.to_string(), self.engine.clone());
+                window.focus_primer_specificity_report(report_id);
+                self.new_windows.push(window);
+            }
+        }
+        if let Err(error) = self.open_pcr_design_dialog_for_seq_id(seq_id) {
+            self.app_status = format!(
+                "Cannot open PCR Designer for primer-specificity report '{}' on '{}': {}",
+                report_id, seq_id, error
+            );
+            return;
+        }
+        self.app_status = if let Some(primer_report_id) =
+            report.design_provenance.primer_report_id.as_deref()
+        {
+            format!(
+                "Opened persisted primer-specificity report '{}' with cited primer-design report '{}'",
+                report.report_id, primer_report_id
+            )
+        } else {
+            format!(
+                "Opened persisted primer-specificity report '{}'; design-selection provenance is not available",
+                report.report_id
+            )
+        };
+    }
+
     fn open_sequence_window_for_qpcr_design_report(&mut self, seq_id: &str, report_id: &str) {
         if !report_id.trim().is_empty() {
             if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
@@ -6149,6 +7010,9 @@ Error: `{err}`"
             }
             LineageAnalysisKind::PrimerDesign => {
                 self.open_sequence_window_for_primer_design_report(seq_id, artifact_id);
+            }
+            LineageAnalysisKind::PrimerSpecificity => {
+                self.open_sequence_window_for_primer_specificity_report(seq_id, artifact_id);
             }
             LineageAnalysisKind::QpcrDesign => {
                 self.open_sequence_window_for_qpcr_design_report(seq_id, artifact_id);
@@ -6489,193 +7353,33 @@ Error: `{err}`"
             .map_err(|e| anyhow!(e.to_string()))
     }
 
-    fn current_state_fingerprint(&self) -> u64 {
-        let state_json = {
-            let engine = self.engine.read().unwrap();
-            serde_json::to_vec(engine.state()).unwrap_or_default()
-        };
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        state_json.hash(&mut hasher);
-        hasher.finish()
-    }
-
     fn current_state_change_stamp(&self) -> u64 {
-        let engine = self.engine.read().unwrap();
-        let state = engine.state();
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        engine.operation_log().len().hash(&mut hasher);
-        state.sequences.len().hash(&mut hasher);
-        state.lineage.nodes.len().hash(&mut hasher);
-        state.lineage.edges.len().hash(&mut hasher);
-        state.container_state.containers.len().hash(&mut hasher);
-        state.container_state.arrangements.len().hash(&mut hasher);
-        state.container_state.racks.len().hash(&mut hasher);
-        state.metadata.len().hash(&mut hasher);
-
-        let mut metadata_keys: Vec<&String> = state.metadata.keys().collect();
-        metadata_keys.sort_unstable();
-        for key in metadata_keys {
-            key.hash(&mut hasher);
-        }
-
-        let display = &state.display;
-        display.show_sequence_panel.hash(&mut hasher);
-        display.show_linear_sequence_panel.hash(&mut hasher);
-        display.sequence_panel_max_text_length_bp.hash(&mut hasher);
-        display.show_map_panel.hash(&mut hasher);
-        display.show_cds_features.hash(&mut hasher);
-        display.show_gene_features.hash(&mut hasher);
-        display.show_mrna_features.hash(&mut hasher);
-        display.show_repeat_features.hash(&mut hasher);
-        display.show_array_features.hash(&mut hasher);
-        display.show_tfbs.hash(&mut hasher);
-        display.regulatory_tracks_near_baseline.hash(&mut hasher);
-        display
-            .regulatory_feature_max_view_span_bp
-            .hash(&mut hasher);
-        display.tfbs_display_use_llr_bits.hash(&mut hasher);
-        display
-            .tfbs_display_min_llr_bits
-            .to_bits()
-            .hash(&mut hasher);
-        display.tfbs_display_use_llr_quantile.hash(&mut hasher);
-        display
-            .tfbs_display_min_llr_quantile
-            .to_bits()
-            .hash(&mut hasher);
-        display
-            .tfbs_display_use_true_log_odds_bits
-            .hash(&mut hasher);
-        display
-            .tfbs_display_min_true_log_odds_bits
-            .to_bits()
-            .hash(&mut hasher);
-        display
-            .tfbs_display_use_true_log_odds_quantile
-            .hash(&mut hasher);
-        display
-            .tfbs_display_min_true_log_odds_quantile
-            .to_bits()
-            .hash(&mut hasher);
-        display.vcf_display_show_snp.hash(&mut hasher);
-        display.vcf_display_show_ins.hash(&mut hasher);
-        display.vcf_display_show_del.hash(&mut hasher);
-        display.vcf_display_show_sv.hash(&mut hasher);
-        display.vcf_display_show_other.hash(&mut hasher);
-        display.vcf_display_pass_only.hash(&mut hasher);
-        display.vcf_display_use_min_qual.hash(&mut hasher);
-        display.vcf_display_min_qual.to_bits().hash(&mut hasher);
-        display.vcf_display_use_max_qual.hash(&mut hasher);
-        display.vcf_display_max_qual.to_bits().hash(&mut hasher);
-        for key in &display.vcf_display_required_info_keys {
-            key.hash(&mut hasher);
-        }
-        display.show_restriction_enzymes.hash(&mut hasher);
-        display.restriction_enzyme_display_mode.hash(&mut hasher);
-        for name in &display.preferred_restriction_enzymes {
-            name.hash(&mut hasher);
-        }
-        display.show_gc_contents.hash(&mut hasher);
-        display.gc_content_bin_size_bp.hash(&mut hasher);
-        display.show_open_reading_frames.hash(&mut hasher);
-        display.show_methylation_sites.hash(&mut hasher);
-        display
-            .feature_details_font_size
-            .to_bits()
-            .hash(&mut hasher);
-        display
-            .linear_external_feature_label_font_size
-            .to_bits()
-            .hash(&mut hasher);
-        display
-            .linear_external_feature_label_background_opacity
-            .to_bits()
-            .hash(&mut hasher);
-        display
-            .auto_hide_sequence_panel_when_linear_bases_visible
-            .hash(&mut hasher);
-        display.linear_view_start_bp.hash(&mut hasher);
-        display.linear_view_span_bp.hash(&mut hasher);
-        display
-            .linear_view_vertical_offset_px
-            .to_bits()
-            .hash(&mut hasher);
-        display
-            .linear_sequence_base_text_max_view_span_bp
-            .hash(&mut hasher);
-        display
-            .linear_sequence_helical_letters_enabled
-            .hash(&mut hasher);
-        display
-            .linear_sequence_helical_max_view_span_bp
-            .hash(&mut hasher);
-        display
-            .linear_sequence_condensed_max_view_span_bp
-            .hash(&mut hasher);
-        display.linear_sequence_letter_layout_mode.hash(&mut hasher);
-        display
-            .linear_sequence_helical_phase_offset_bp
-            .hash(&mut hasher);
-        display.linear_show_double_strand_bases.hash(&mut hasher);
-        display.linear_helical_parallel_strands.hash(&mut hasher);
-        display
-            .linear_hide_backbone_when_sequence_bases_visible
-            .hash(&mut hasher);
-        display
-            .linear_reverse_strand_use_upside_down_letters
-            .hash(&mut hasher);
-        display
-            .reverse_strand_visual_opacity
-            .to_bits()
-            .hash(&mut hasher);
-
-        hasher.finish()
+        self.engine.read().unwrap().mutation_revision()
     }
 
     fn current_display_change_stamp(&self) -> u64 {
-        let display_bytes = {
-            let engine = self.engine.read().unwrap();
-            serde_json::to_vec(&engine.state().display).unwrap_or_default()
-        };
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        display_bytes.hash(&mut hasher);
-        hasher.finish()
+        self.current_state_change_stamp()
     }
 
     fn current_lineage_change_stamp(&self) -> u64 {
-        let engine = self.engine.read().unwrap();
-        let state = engine.state();
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        engine.operation_log().len().hash(&mut hasher);
-        state.sequences.len().hash(&mut hasher);
-        state.lineage.nodes.len().hash(&mut hasher);
-        state.lineage.edges.len().hash(&mut hasher);
-        state.lineage.macro_instances.len().hash(&mut hasher);
-        state.container_state.containers.len().hash(&mut hasher);
-        state.container_state.arrangements.len().hash(&mut hasher);
-        state.container_state.racks.len().hash(&mut hasher);
-        for report in GentleEngine::sequencing_confirmation_reports_from_state(state) {
-            report.report_id.hash(&mut hasher);
-            report.expected_seq_id.hash(&mut hasher);
-            report.baseline_seq_id.hash(&mut hasher);
-            report.overall_status.as_str().hash(&mut hasher);
-            report.generated_at_unix_ms.hash(&mut hasher);
-        }
-        hasher.finish()
-    }
-
-    fn current_operation_count(&self) -> usize {
-        self.engine.read().unwrap().operation_log().len()
+        self.engine.read().unwrap().structural_revision()
     }
 
     fn project_has_user_content(&self) -> bool {
         let engine = self.engine.read().unwrap();
         let state = engine.state();
         !state.sequences.is_empty()
+            || !state.gel_images.is_empty()
             || !state.lineage.nodes.is_empty()
             || !state.container_state.containers.is_empty()
             || !state.container_state.arrangements.is_empty()
             || !state.container_state.racks.is_empty()
+            || state
+                .metadata
+                .get(AGENT_CONVERSATION_METADATA_KEY)
+                .and_then(|value| value.get("turns"))
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|turns| !turns.is_empty())
     }
 
     fn can_close_project(&self) -> bool {
@@ -6683,39 +7387,22 @@ Error: `{err}`"
     }
 
     fn mark_clean_snapshot(&mut self) {
-        self.clean_state_fingerprint = self.current_state_fingerprint();
-        self.dirty_cache_stamp = self.current_state_change_stamp();
-        self.dirty_cache_valid = true;
-        self.dirty_cache_value = false;
-        self.dirty_cache_last_deep_check = Instant::now();
+        self.clean_state_revision = self.current_state_change_stamp();
     }
 
     fn is_project_dirty(&mut self) -> bool {
-        if !self.project_has_user_content() {
-            return false;
-        }
-        const DIRTY_DEEP_CHECK_INTERVAL: Duration = Duration::from_secs(2);
-        let now = Instant::now();
-        let stamp = self.current_state_change_stamp();
-        let stamp_changed = !self.dirty_cache_valid || stamp != self.dirty_cache_stamp;
-        if stamp_changed
-            || now.duration_since(self.dirty_cache_last_deep_check) >= DIRTY_DEEP_CHECK_INTERVAL
-        {
-            self.dirty_cache_value =
-                self.current_state_fingerprint() != self.clean_state_fingerprint;
-            self.dirty_cache_last_deep_check = now;
-        }
-        self.dirty_cache_stamp = stamp;
-        self.dirty_cache_valid = true;
-        self.dirty_cache_value
+        self.project_has_user_content()
+            && self.current_state_change_stamp() != self.clean_state_revision
     }
 
     fn reset_to_empty_project(&mut self) {
+        self.cancel_agent_commands_for_project_change();
         self.engine = Arc::new(RwLock::new(GentleEngine::new()));
         self.apply_configuration_graphics_to_engine_state();
         self.current_project_path = None;
         self.last_applied_window_title.clear();
         self.lineage_cache_valid = false;
+        self.lineage_projection_cache = None;
         self.lineage_rows.clear();
         self.lineage_edges.clear();
         self.lineage_op_label_by_id.clear();
@@ -6744,6 +7431,7 @@ Error: `{err}`"
         self.lineage_node_rename_text.clear();
         self.lineage_node_remove_target_id = None;
         self.new_windows.clear();
+        self.pending_sequence_focus_after_open = None;
         self.windows.clear();
         self.detached_auxiliary_window_hosts.clear();
         self.windows_to_close.write().unwrap().clear();
@@ -6820,7 +7508,10 @@ Error: `{err}`"
         self.genome_track_import_task = None;
         self.genome_track_import_progress = None;
         self.genome_track_autosync_status.clear();
-        self.tracked_autosync_last_op_count = None;
+        self.tracked_autosync_last_key = None;
+        self.tracked_autosync_last_probe = None;
+        self.sequence_ingress_task = None;
+        self.jaspar_background_task = None;
         self.tutorial_project_task = None;
         self.tutorial_project_progress_fraction = None;
         self.tutorial_project_progress_label.clear();
@@ -6830,12 +7521,21 @@ Error: `{err}`"
         self.agent_status.clear();
         self.agent_preflight_output = None;
         self.agent_last_invocation = None;
+        self.agent_conversation = AgentConversation::default();
         self.agent_execution_log.clear();
+        self.agent_execution_session_id = crate::agent_feedback::new_agent_context_id();
+        self.agent_last_command_output = None;
+        self.agent_pending_image_attachment = None;
+        self.agent_help_capture_failure = None;
+        self.agent_screenshot_consent = None;
+        self.agent_screenshot_capture = None;
+        self.agent_discarded_screenshot_capture_ids.clear();
         self.agent_discovered_models.clear();
         self.agent_discovered_model_pick.clear();
         self.agent_model_discovery_status.clear();
         self.agent_model_discovery_source_key.clear();
         self.agent_model_discovery_failed_source_key.clear();
+        self.load_agent_conversation_from_state();
         self.uniprot_status.clear();
         self.genbank_status.clear();
         self.load_bed_track_subscriptions_from_state();
@@ -6869,7 +7569,13 @@ Error: `{err}`"
     }
 
     fn tutorial_cache_root_dir() -> PathBuf {
-        env::temp_dir().join("gentle_tutorial_projects")
+        let scope_id = NEXT_TUTORIAL_CACHE_SCOPE_ID.fetch_add(1, Ordering::Relaxed);
+        env::temp_dir()
+            .join("gentle_tutorial_projects")
+            .join(format!(
+                "process-{}-invocation-{scope_id}",
+                std::process::id()
+            ))
     }
 
     fn detect_tutorial_repo_root() -> Option<PathBuf> {
@@ -6971,6 +7677,16 @@ Error: `{err}`"
                 )
             })?;
             let review_entry = review_by_id.get(&chapter.id);
+            let gui_acceptance_profile = chapter.gui_acceptance.as_ref().map(|acceptance| {
+                match acceptance.profile {
+                    crate::workflow_examples::TutorialGuiAcceptanceProfile::Smoke => "smoke",
+                    crate::workflow_examples::TutorialGuiAcceptanceProfile::OfflineCore => {
+                        "offline-core"
+                    }
+                    crate::workflow_examples::TutorialGuiAcceptanceProfile::Full => "full",
+                }
+                .to_string()
+            });
             entries.push(TutorialProjectEntry {
                 chapter_id: chapter.id,
                 chapter_order: chapter.order,
@@ -6988,6 +7704,12 @@ Error: `{err}`"
                 review_stale: review_entry
                     .map(|entry| entry.review_stale)
                     .unwrap_or(false),
+                use_cases: chapter.use_cases,
+                learning_objectives: chapter.learning_objectives,
+                concepts: chapter.concepts,
+                prerequisites: chapter.prerequisites,
+                expected_outcomes: chapter.step_expectations,
+                gui_acceptance_profile,
                 tier: chapter.tier,
                 example,
                 repo_root: repo_root.clone(),
@@ -7008,7 +7730,12 @@ Error: `{err}`"
     }
 
     fn tutorial_project_guided_walkthrough_entries() -> Vec<HelpTutorialDocEntry> {
-        Self::discover_guided_walkthrough_entries()
+        let trace = crate::gui_profiler::startup_trace::span_once(
+            crate::gui_profiler::startup_trace::Phase::HelpTutorialMenuDiscovery,
+        );
+        let entries = Self::discover_guided_walkthrough_entries();
+        trace.finish(true);
+        entries
     }
 
     fn tutorial_project_generated_chapter_path(entry: &TutorialProjectEntry) -> String {
@@ -7056,12 +7783,38 @@ Error: `{err}`"
         progress: &OperationProgress,
     ) -> TutorialProjectTaskProgress {
         let mut message = match progress {
+            OperationProgress::SequenceDesign {
+                evaluated_candidates,
+                requested_candidate_budget,
+            } => Self::tutorial_project_progress_message(
+                chapter_id,
+                chapter_title,
+                "sequence_design",
+                &format!(
+                    "Synthetic design candidates evaluated: {evaluated_candidates}; requested budget {requested_candidate_budget}"
+                ),
+                None,
+            ),
+            OperationProgress::Workflow { completed, total } => {
+                Self::tutorial_project_progress_message(
+                    chapter_id,
+                    chapter_title,
+                    "execute_workflow",
+                    &format!("Operations completed: {completed}/{total}"),
+                    None,
+                )
+            }
             OperationProgress::PrimerDesign(p) => {
-                let percent = match (p.pair_evaluated, p.pair_evaluation_limit) {
-                    (Some(done), Some(total)) if total > 0 => Some(done as f32 / total as f32),
-                    _ if p.done => Some(1.0),
-                    _ => None,
-                };
+                let percent = p
+                    .primer3_progress
+                    .as_ref()
+                    .and_then(|progress| progress.fraction())
+                    .map(|fraction| fraction as f32)
+                    .or_else(|| match (p.pair_evaluated, p.pair_evaluation_limit) {
+                        (Some(done), Some(total)) if total > 0 => Some(done as f32 / total as f32),
+                        _ if p.done => Some(1.0),
+                        _ => None,
+                    });
                 Self::tutorial_project_progress_message(
                     chapter_id,
                     chapter_title,
@@ -7137,6 +7890,22 @@ Error: `{err}`"
                     percent,
                 )
             }
+            OperationProgress::GenomicRegionHomology(p) => {
+                let percent = if p.target_count > 0 {
+                    Some(p.target_ordinal as f32 / p.target_count as f32)
+                } else if p.done {
+                    Some(1.0)
+                } else {
+                    None
+                };
+                Self::tutorial_project_progress_message(
+                    chapter_id,
+                    chapter_title,
+                    "execute_workflow",
+                    &format!("Region homology {}: {}", p.phase, p.detail),
+                    percent,
+                )
+            }
         };
         if message.phase == "execute_workflow" {
             message.percent = Self::tutorial_project_scale_workflow_percent(message.percent);
@@ -7185,10 +7954,16 @@ Error: `{err}`"
                 chapter_id_owned
             ),
         );
+        let runtime_frame = Self::push_runtime_background_job_frame(
+            BackgroundJobKind::OpenTutorialProject,
+            job_id,
+            format!("opening tutorial chapter '{chapter_id_owned}'"),
+        );
         self.tutorial_project_task = Some(TutorialProjectTask {
             job_id,
             started: Instant::now(),
             cancel_requested: cancel_requested.clone(),
+            runtime_frame,
             chapter_id: chapter_id_owned.clone(),
             chapter_title: chapter_id_owned.clone(),
             receiver: rx,
@@ -7414,20 +8189,6 @@ Error: `{err}`"
             .pick_files()
         {
             self.open_new_windows_from_files(&paths);
-        }
-    }
-
-    fn prompt_save_project(&mut self) {
-        if let Some(path) = rfd::FileDialog::new()
-            .set_file_name(self.default_project_save_file_name())
-            .add_filter("GENtle project", &["json"])
-            .save_file()
-        {
-            let path = path.display().to_string();
-            if self.save_project_to_file(&path).is_ok() {
-                self.set_current_project_path_and_track_recent(&path);
-                self.mark_clean_snapshot();
-            }
         }
     }
 
@@ -7806,11 +8567,56 @@ Error: `{err}`"
         self.open_retrieve_genome_dialog_for_scope(GenomeDialogScope::Reference);
     }
 
+    fn open_precomputed_genomic_motif_evidence(&mut self) {
+        let anchored_seq_ids = self
+            .engine
+            .read()
+            .map(|engine| engine.list_sequences_with_genome_anchor())
+            .unwrap_or_default();
+        let preferred_seq_id = anchored_seq_ids
+            .iter()
+            .find(|seq_id| self.find_open_sequence_viewport_id(seq_id).is_some())
+            .or_else(|| anchored_seq_ids.first())
+            .cloned();
+
+        if let Some(seq_id) = preferred_seq_id {
+            self.open_sequence_window(&seq_id);
+            self.app_status = format!(
+                "Opened anchored sequence '{seq_id}'; choose explicit motifs in the TFBS annotation panel, then use TFBS scan > Precomputed hits"
+            );
+        } else {
+            self.open_reference_genome_retrieve_dialog();
+            self.app_status = "Precomputed genomic motif evidence requires a genome-anchored sequence; retrieve one first"
+                .to_string();
+        }
+    }
+
+    fn open_genomic_region_conservation(&mut self) {
+        let Some(seq_id) = self.sequence_subject_for_action("Genomic Region Conservation", true)
+        else {
+            let empty = self
+                .engine
+                .try_read()
+                .is_ok_and(|engine| engine.state().sequences.is_empty());
+            if empty {
+                self.open_reference_genome_retrieve_dialog();
+                self.app_status = "Genomic Region Conservation requires a project sequence; retrieve one, then select it".into();
+            }
+            return;
+        };
+        self.open_saved_genomic_regions_for_sequence(&seq_id);
+        self.app_status = format!(
+            "Choose a saved genomic region in '{seq_id}', then select Conservation... to inspect local homology evidence"
+        );
+    }
+
     fn open_reference_genome_blast_dialog(&mut self) {
         self.open_blast_genome_dialog_for_scope(GenomeDialogScope::Reference);
     }
 
     fn open_reference_genome_inspector_dialog(&mut self) {
+        self.prepared_genome_inspection_cache_key = None;
+        self.prepared_genome_inspection_cache = None;
         self.show_reference_genome_inspector_dialog = true;
     }
 
@@ -8103,10 +8909,214 @@ Error: `{err}`"
 
     fn active_dna_window_context(&self) -> Option<(String, Option<(usize, usize)>)> {
         let active_key = self.active_window_menu_key?;
+        if active_key == Self::native_menu_key_for_viewport(Self::agent_assistant_viewport_id())
+            && let Some(subject) = &self.agent_assistant_subject
+            && subject.engine.ptr_eq(&Arc::downgrade(&self.engine))
+            && subject
+                .viewport
+                .is_none_or(|viewport| self.windows.contains_key(&viewport))
+        {
+            return subject.context.clone().ok();
+        }
         let viewport_id = *self.native_window_key_to_viewport.get(&active_key)?;
         let window = self.windows.get(&viewport_id)?;
         let guard = window.read().ok()?;
         Some((guard.sequence_id()?, guard.selection_range_0based()))
+    }
+
+    fn open_cryptic_splicing_screen(&mut self) {
+        let Some(seq_id) = self.sequence_subject_for_action("cryptic-splicing screen", true) else {
+            return;
+        };
+        if let Some(viewport_id) = self.find_open_sequence_viewport_id(&seq_id) {
+            let opened = self
+                .windows
+                .get(&viewport_id)
+                .cloned()
+                .and_then(|window| {
+                    let mut window = window.write().ok()?;
+                    window.focus_cryptic_splicing_screen();
+                    Some(())
+                })
+                .is_some();
+            if opened {
+                self.queue_focus_viewport(viewport_id);
+                self.app_status =
+                    format!("Opened cryptic-splicing structural screen for sequence '{seq_id}'");
+                return;
+            }
+        }
+        if let Some(window) = self.find_pending_sequence_window_mut(&seq_id) {
+            window.focus_cryptic_splicing_screen();
+            self.app_status =
+                format!("Queued cryptic-splicing structural screen for sequence '{seq_id}'");
+            return;
+        }
+        self.open_sequence_window(&seq_id);
+        if let Some(window) = self.find_pending_sequence_window_mut(&seq_id) {
+            window.focus_cryptic_splicing_screen();
+        }
+        self.app_status =
+            format!("Opening sequence '{seq_id}' for the cryptic-splicing structural screen");
+    }
+
+    fn open_tata_box_workspace(&mut self) {
+        let Some(seq_id) = self.sequence_subject_for_action("TATA-box evidence", true) else {
+            return;
+        };
+        if let Some(viewport_id) = self.find_open_sequence_viewport_id(&seq_id) {
+            let opened = self
+                .windows
+                .get(&viewport_id)
+                .cloned()
+                .and_then(|window| {
+                    window.write().ok()?.focus_tata_boxes();
+                    Some(())
+                })
+                .is_some();
+            if opened {
+                self.queue_focus_viewport(viewport_id);
+                self.app_status = format!("Opened TATA-box evidence for '{seq_id}'");
+                return;
+            }
+        }
+        if let Some(window) = self.find_pending_sequence_window_mut(&seq_id) {
+            window.focus_tata_boxes();
+        } else {
+            self.open_sequence_window(&seq_id);
+            if let Some(window) = self.find_pending_sequence_window_mut(&seq_id) {
+                window.focus_tata_boxes();
+            }
+        }
+        self.app_status = format!("Opening sequence '{seq_id}' for TATA-box evidence");
+    }
+
+    fn open_tss_inventory_workspace(&mut self) {
+        let Some(seq_id) =
+            self.sequence_subject_for_action("Transcript starts / TSS windows", true)
+        else {
+            return;
+        };
+        if let Some(viewport_id) = self.find_open_sequence_viewport_id(&seq_id) {
+            let opened = self
+                .windows
+                .get(&viewport_id)
+                .cloned()
+                .and_then(|window| {
+                    window.write().ok()?.focus_tss_inventory();
+                    Some(())
+                })
+                .is_some();
+            if opened {
+                self.queue_focus_viewport(viewport_id);
+                self.app_status = format!("Opened transcript starts / TSS windows for '{seq_id}'");
+                return;
+            }
+        }
+        if let Some(window) = self.find_pending_sequence_window_mut(&seq_id) {
+            window.focus_tss_inventory();
+        } else {
+            self.open_sequence_window(&seq_id);
+            if let Some(window) = self.find_pending_sequence_window_mut(&seq_id) {
+                window.focus_tss_inventory();
+            }
+        }
+        self.app_status =
+            format!("Opening sequence '{seq_id}' for transcript starts / TSS windows");
+    }
+
+    fn open_feature_location_editor(&mut self) {
+        let Some(seq_id) = self.sequence_subject_for_action("Feature Location Editor", false)
+        else {
+            return;
+        };
+        if let Some(viewport_id) = self.find_open_sequence_viewport_id(&seq_id) {
+            let opened = self
+                .windows
+                .get(&viewport_id)
+                .cloned()
+                .and_then(|window| {
+                    let mut window = window.write().ok()?;
+                    window.focus_feature_location_editor(None);
+                    Some(())
+                })
+                .is_some();
+            if opened {
+                self.queue_focus_viewport(viewport_id);
+                return;
+            }
+        }
+        if let Some(window) = self.find_pending_sequence_window_mut(&seq_id) {
+            window.focus_feature_location_editor(None);
+            return;
+        }
+        self.open_sequence_window(&seq_id);
+        if let Some(window) = self.find_pending_sequence_window_mut(&seq_id) {
+            window.focus_feature_location_editor(None);
+        }
+    }
+
+    fn open_saved_genomic_regions(&mut self) {
+        let Some(seq_id) = self.sequence_subject_for_action("Saved Genomic Regions", true) else {
+            return;
+        };
+        self.open_saved_genomic_regions_for_sequence(&seq_id);
+        self.app_status = format!("Opened saved genomic regions for '{seq_id}'");
+    }
+
+    fn open_saved_genomic_regions_for_sequence(&mut self, seq_id: &str) {
+        if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
+            let opened = self
+                .windows
+                .get(&viewport_id)
+                .cloned()
+                .and_then(|window| {
+                    let mut window = window.write().ok()?;
+                    window.focus_genomic_region_manager();
+                    Some(())
+                })
+                .is_some();
+            if opened {
+                self.queue_focus_viewport(viewport_id);
+                return;
+            }
+        }
+        if self
+            .find_pending_sequence_window_mut(seq_id)
+            .map(|window| window.focus_genomic_region_manager())
+            .is_none()
+        {
+            self.open_sequence_window(seq_id);
+            if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
+                window.focus_genomic_region_manager();
+            }
+        }
+    }
+
+    fn close_saved_genomic_regions(&mut self) -> bool {
+        let Some(active_key) = self.active_window_menu_key else {
+            return false;
+        };
+        let Some(viewport_id) = self.native_window_key_to_viewport.get(&active_key).copied() else {
+            return false;
+        };
+        self.windows
+            .get(&viewport_id)
+            .and_then(|window| window.write().ok())
+            .is_some_and(|mut window| window.close_genomic_region_manager())
+    }
+
+    fn close_feature_location_editor(&mut self) -> bool {
+        let Some(active_key) = self.active_window_menu_key else {
+            return false;
+        };
+        let Some(viewport_id) = self.native_window_key_to_viewport.get(&active_key).copied() else {
+            return false;
+        };
+        self.windows
+            .get(&viewport_id)
+            .and_then(|window| window.write().ok())
+            .is_some_and(|mut window| window.close_feature_location_editor())
     }
 
     fn gibson_ui_insert_rows(&self) -> Vec<GibsonUiInsertRow> {
@@ -8178,21 +9188,13 @@ Error: `{err}`"
     }
 
     fn prefill_gibson_from_active_context(&mut self) {
-        let active_context = self.active_dna_window_context();
-        if self.gibson_destination_seq_id.trim().is_empty() {
-            if let Some((seq_id, _)) = active_context.as_ref() {
-                self.gibson_destination_seq_id = seq_id.clone();
-            } else if let Some(seq_id) = self.project_sequence_ids_for_blast().first() {
-                self.gibson_destination_seq_id = seq_id.clone();
-            }
+        let active_context = self.selected_sequence_context(true).ok();
+        if self.gibson_destination_seq_id.trim().is_empty()
+            && let Some((seq_id, _)) = active_context.as_ref()
+        {
+            self.gibson_destination_seq_id = seq_id.clone();
         }
-        if self.gibson_insert_seq_id.trim().is_empty() {
-            self.gibson_insert_seq_id = self
-                .project_sequence_ids_for_blast()
-                .into_iter()
-                .find(|seq_id| seq_id != &self.gibson_destination_seq_id)
-                .unwrap_or_default();
-        }
+        // Inserts are chosen explicitly in the existing form, never by sort order.
         if let Some((active_seq_id, Some((start, end)))) = active_context
             && active_seq_id == self.gibson_destination_seq_id
             && self.gibson_opening_start_0based.trim().is_empty()
@@ -8215,16 +9217,19 @@ Error: `{err}`"
         if seq_id.is_empty() {
             return Err("sequence id is empty".to_string());
         }
-        let exists = self
+        let kind = self
             .engine
             .read()
             .map_err(|_| "could not read engine state".to_string())?
-            .state()
-            .sequences
-            .contains_key(seq_id);
-        if !exists {
+            .sequence_kind(seq_id);
+        let Some(kind) = kind else {
             return Err(format!(
                 "sequence '{seq_id}' was not found in the current project"
+            ));
+        };
+        if kind != "dna" {
+            return Err(format!(
+                "sequence '{seq_id}' is {kind}; PCR Designer requires DNA"
             ));
         }
         if self.find_open_sequence_viewport_id(seq_id).is_none()
@@ -8244,14 +9249,7 @@ Error: `{err}`"
             self.mark_window_open_or_focus(Self::pcr_design_viewport_id(), true);
             return;
         }
-        let target_seq_id = self
-            .active_dna_window_context()
-            .map(|(seq_id, _)| seq_id)
-            .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
-        let Some(seq_id) = target_seq_id else {
-            self.app_status =
-                "Cannot open PCR Designer: no active sequence window or project sequence"
-                    .to_string();
+        let Some(seq_id) = self.sequence_subject_for_action("PCR Designer", true) else {
             return;
         };
         if let Err(err) = self.open_pcr_design_dialog_for_seq_id(&seq_id) {
@@ -8264,12 +9262,7 @@ Error: `{err}`"
             self.mark_window_open_or_focus(Self::sequencing_confirmation_viewport_id(), true);
             return;
         }
-        let target_seq_id = self
-            .active_dna_window_context()
-            .map(|(seq_id, _)| seq_id)
-            .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
-        let Some(seq_id) = target_seq_id else {
-            self.app_status = "Cannot open Sequencing Confirmation: no active sequence window or project sequence".to_string();
+        let Some(seq_id) = self.sequence_subject_for_action("Sequencing Confirmation", true) else {
             return;
         };
         if self.find_open_sequence_viewport_id(&seq_id).is_none() {
@@ -9384,7 +10377,8 @@ Error: `{err}`"
             .unwrap()
             .list_genome_track_subscriptions();
         self.genome_bed_track_subscriptions = subscriptions;
-        self.tracked_autosync_last_op_count = None;
+        self.tracked_autosync_last_key = None;
+        self.tracked_autosync_last_probe = None;
     }
 
     fn parse_optional_score_field(raw: &str, label: &str) -> Result<Option<f64>> {
@@ -9488,6 +10482,8 @@ Error: `{err}`"
             return;
         }
         let op = Self::genome_track_import_operation(&seq_id, &subscription);
+        let bigwig_converter = (subscription.source == GenomeTrackSource::BigWig)
+            .then(|| self.resolved_bigwig_to_bedgraph_executable());
         let source_label = subscription.source.label().to_string();
         let path_label = subscription.path.clone();
         let job_id = self.alloc_background_job_id();
@@ -9507,10 +10503,17 @@ Error: `{err}`"
                 source_label, path_label, seq_id
             ),
         );
+        let runtime_frame = Self::push_runtime_background_job_frame(
+            BackgroundJobKind::TrackImport,
+            job_id,
+            format!("{source_label} '{path_label}' -> {seq_id}"),
+        );
         self.genome_track_import_task = Some(GenomeTrackImportTask {
             job_id,
+            kind: GenomeTrackTaskKind::SelectedImport,
             started: Instant::now(),
             cancel_requested: cancel_requested.clone(),
+            runtime_frame,
             receiver: rx,
         });
 
@@ -9518,19 +10521,24 @@ Error: `{err}`"
         std::thread::spawn(move || {
             let tx_progress = tx.clone();
             let cancel_flag = cancel_requested.clone();
-            let outcome = {
-                let mut guard = engine.write().expect("Engine lock poisoned");
-                guard.apply_with_progress(op, move |progress| match progress {
-                    OperationProgress::GenomeTrackImport(p) => {
-                        let _ = tx_progress.send(GenomeTrackImportTaskMessage::Progress {
-                            job_id,
-                            progress: p,
-                        });
-                        !cancel_flag.load(Ordering::Relaxed)
-                    }
-                    _ => true,
+            let outcome = (|| {
+                if let Some(executable) = bigwig_converter.as_deref() {
+                    Self::validate_bigwig_converter_in_background(executable)?;
+                }
+                crate::background_engine::execute_on_engine_snapshot(&engine, move |snapshot| {
+                    snapshot.apply_with_progress(op, move |progress| match progress {
+                        OperationProgress::GenomeTrackImport(p) => {
+                            let _ = tx_progress.send(GenomeTrackImportTaskMessage::Progress {
+                                job_id,
+                                progress: p,
+                            });
+                            !cancel_flag.load(Ordering::Relaxed)
+                        }
+                        _ => true,
+                    })
                 })
-            };
+                .map(GenomeTrackTaskResult::Operation)
+            })();
             let _ = tx.send(GenomeTrackImportTaskMessage::Done {
                 job_id,
                 result: outcome,
@@ -9538,35 +10546,90 @@ Error: `{err}`"
         });
     }
 
-    fn validate_bigwig_converter_available(&self) -> Result<String> {
-        let executable = self.resolved_bigwig_to_bedgraph_executable();
-        match Command::new(&executable).arg("-version").output() {
-            Ok(output) => {
-                let detail = Self::first_non_empty_output_line(&output.stdout, &output.stderr);
-                Ok(format!("{executable}: {detail}"))
-            }
-            Err(e) if e.kind() == ErrorKind::NotFound => Err(anyhow!(
-                "bigWigToBedGraph executable '{}' not found",
-                executable
-            )),
-            Err(e) => Err(anyhow!("Could not execute '{}': {}", executable, e)),
+    fn start_genome_track_sync_task<F>(
+        &mut self,
+        kind: GenomeTrackTaskKind,
+        detail: String,
+        bigwig_converter: Option<String>,
+        work: F,
+    ) where
+        F: FnOnce(&mut GentleEngine) -> Result<GenomeTrackSyncReport, EngineError> + Send + 'static,
+    {
+        if self.genome_track_import_task.is_some() {
+            self.genome_track_status =
+                "Another explicit track import or auto-sync is already running".to_string();
+            return;
         }
+        let job_id = self.alloc_background_job_id();
+        let label = kind.label();
+        let (tx, rx) = mpsc::channel::<GenomeTrackImportTaskMessage>();
+        let cancel_requested = Arc::new(AtomicBool::new(false));
+        let runtime_frame = Self::push_runtime_background_job_frame(
+            BackgroundJobKind::TrackImport,
+            job_id,
+            detail.clone(),
+        );
+        runtime_frame.update_phase("running");
+        self.genome_track_import_progress = None;
+        if matches!(kind, GenomeTrackTaskKind::Autosync(_)) {
+            self.genome_track_autosync_status = format!("{label} running: {detail}");
+        } else {
+            self.genome_track_status = format!("{label} running in background: {detail}");
+        }
+        self.push_job_event(
+            BackgroundJobKind::TrackImport,
+            BackgroundJobEventPhase::Started,
+            Some(job_id),
+            format!("{label} started: {detail}"),
+        );
+        self.genome_track_import_task = Some(GenomeTrackImportTask {
+            job_id,
+            kind,
+            started: Instant::now(),
+            cancel_requested: cancel_requested.clone(),
+            runtime_frame,
+            receiver: rx,
+        });
+
+        let engine = self.engine.clone();
+        std::thread::spawn(move || {
+            let worker_cancel = cancel_requested;
+            let result = (|| {
+                if let Some(executable) = bigwig_converter.as_deref() {
+                    Self::validate_bigwig_converter_in_background(executable)?;
+                }
+                crate::background_engine::execute_on_engine_snapshot(&engine, move |snapshot| {
+                    if worker_cancel.load(Ordering::Relaxed) {
+                        return Err(EngineError::invalid_input(
+                            "Track task was stopped before execution",
+                        ));
+                    }
+                    let report = work(snapshot)?;
+                    if worker_cancel.load(Ordering::Relaxed) {
+                        return Err(EngineError::invalid_input(
+                            "Track task finished after stop-waiting; result ignored",
+                        ));
+                    }
+                    Ok(GenomeTrackTaskResult::Sync(report))
+                })
+            })();
+            let _ = tx.send(GenomeTrackImportTaskMessage::Done { job_id, result });
+        });
     }
 
-    fn ensure_bigwig_converter_ready(&mut self, subscription: &GenomeTrackSubscription) -> bool {
-        if subscription.source != GenomeTrackSource::BigWig {
-            return true;
-        }
-        match self.validate_bigwig_converter_available() {
-            Ok(detail) => {
-                self.genome_track_status = format!("BigWig converter check: {detail}");
-                true
-            }
-            Err(e) => {
-                self.genome_track_status = format!("BigWig import preflight failed: {e}");
-                false
-            }
-        }
+    fn validate_bigwig_converter_in_background(executable: &str) -> Result<(), EngineError> {
+        Command::new(executable)
+            .arg("-version")
+            .output()
+            .map(|_| ())
+            .map_err(|error| {
+                let detail = if error.kind() == ErrorKind::NotFound {
+                    format!("bigWigToBedGraph executable '{executable}' not found")
+                } else {
+                    format!("Could not execute '{executable}': {error}")
+                };
+                EngineError::invalid_input(format!("BigWig import preflight failed: {detail}"))
+            })
     }
 
     fn format_track_sync_status(prefix: &str, report: &GenomeTrackSyncReport) -> String {
@@ -9611,9 +10674,6 @@ Error: `{err}`"
                 return;
             }
         };
-        if !self.ensure_bigwig_converter_ready(&subscription) {
-            return;
-        }
         self.start_genome_track_import_for_selected_sequence(seq_id, subscription);
     }
 
@@ -9629,64 +10689,26 @@ Error: `{err}`"
                 return;
             }
         };
-        if !self.ensure_bigwig_converter_ready(&subscription) {
-            return;
-        }
-
-        let sync_result = self
-            .engine
-            .write()
-            .unwrap()
-            .import_genome_track_to_all_anchored(subscription.clone(), track_subscription);
-        match sync_result {
-            Ok(report) => {
-                let tracked_note = if track_subscription {
-                    "tracked for auto-sync"
-                } else {
-                    "one-time import"
-                };
-                self.genome_track_status = format!(
-                    "{} ({})",
-                    Self::format_track_sync_status(
-                        &format!("{} import (all anchored)", subscription.source.label()),
-                        &report
-                    ),
-                    tracked_note
-                );
-                let refreshed = self.refresh_sequence_windows_from_engine_state();
-                if refreshed > 0 {
-                    self.genome_track_status.push_str(&format!(
-                        " | refreshed {} open sequence window(s)",
-                        refreshed
-                    ));
-                }
-                self.push_job_event(
-                    BackgroundJobKind::TrackImport,
-                    BackgroundJobEventPhase::Completed,
-                    None,
-                    format!(
-                        "{} import (all anchored): applied={}, failed={}",
-                        subscription.source.label(),
-                        report.applied_imports,
-                        report.failed_imports
-                    ),
-                );
-                self.load_bed_track_subscriptions_from_state();
+        let detail = format!(
+            "{} '{}' to all anchored sequences ({})",
+            subscription.source.label(),
+            subscription.path,
+            if track_subscription {
+                "tracked"
+            } else {
+                "one-time"
             }
-            Err(e) => {
-                self.genome_track_status = format!("Import track failed: {}", e.message);
-                self.push_job_event(
-                    BackgroundJobKind::TrackImport,
-                    BackgroundJobEventPhase::Failed,
-                    None,
-                    format!(
-                        "{} import (all anchored) failed: {}",
-                        subscription.source.label(),
-                        e.message
-                    ),
-                );
-            }
-        }
+        );
+        let bigwig_converter = (subscription.source == GenomeTrackSource::BigWig)
+            .then(|| self.resolved_bigwig_to_bedgraph_executable());
+        self.start_genome_track_sync_task(
+            GenomeTrackTaskKind::AllAnchoredImport,
+            detail,
+            bigwig_converter,
+            move |snapshot| {
+                snapshot.import_genome_track_to_all_anchored(subscription, track_subscription)
+            },
+        );
     }
 
     fn apply_tracked_bed_subscription_to_all_anchored(&mut self, index: usize) {
@@ -9697,55 +10719,69 @@ Error: `{err}`"
         let Some(subscription) = self.genome_bed_track_subscriptions.get(index).cloned() else {
             return;
         };
-        if !self.ensure_bigwig_converter_ready(&subscription) {
-            return;
-        }
+        let detail = format!(
+            "{} '{}' to all anchored sequences",
+            subscription.source.label(),
+            subscription.path
+        );
+        let bigwig_converter = (subscription.source == GenomeTrackSource::BigWig)
+            .then(|| self.resolved_bigwig_to_bedgraph_executable());
+        self.start_genome_track_sync_task(
+            GenomeTrackTaskKind::ReapplyTracked,
+            detail,
+            bigwig_converter,
+            move |snapshot| snapshot.apply_tracked_genome_track_subscription(index),
+        );
+    }
 
-        let sync_result = self
-            .engine
-            .write()
-            .unwrap()
-            .apply_tracked_genome_track_subscription(index);
-        match sync_result {
-            Ok(report) => {
-                self.genome_track_status = Self::format_track_sync_status(
-                    &format!(
-                        "Re-applied tracked {} '{}'",
-                        subscription.source.label(),
-                        subscription.path
-                    ),
-                    &report,
-                );
-                let refreshed = self.refresh_sequence_windows_from_engine_state();
-                if refreshed > 0 {
-                    self.genome_track_status.push_str(&format!(
-                        " | refreshed {} open sequence window(s)",
-                        refreshed
-                    ));
-                }
-                self.push_job_event(
-                    BackgroundJobKind::TrackImport,
-                    BackgroundJobEventPhase::Completed,
-                    None,
-                    format!(
-                        "Re-applied tracked {} '{}': applied={}, failed={}",
-                        subscription.source.label(),
-                        subscription.path,
-                        report.applied_imports,
-                        report.failed_imports
-                    ),
-                );
-            }
-            Err(e) => {
-                self.genome_track_status =
-                    format!("Could not re-apply tracked subscription: {}", e.message);
-                self.push_job_event(
-                    BackgroundJobKind::TrackImport,
-                    BackgroundJobEventPhase::Failed,
-                    None,
-                    format!("Tracked subscription apply failed: {}", e.message),
-                );
-            }
+    fn current_genome_track_autosync_revision_probe(
+        &self,
+    ) -> Option<GenomeTrackAutosyncRevisionProbe> {
+        let engine_identity = Arc::as_ptr(&self.engine) as usize;
+        let engine = self.engine.try_read().ok()?;
+        Some(GenomeTrackAutosyncRevisionProbe {
+            engine_identity,
+            structural_revision: engine.structural_revision(),
+            mutation_revision: engine.mutation_revision(),
+            subscription_count: engine.genome_track_subscription_count(),
+        })
+    }
+
+    fn inspect_current_genome_track_autosync_state(
+        &mut self,
+    ) -> Option<(GenomeTrackAutosyncRevisionProbe, GenomeTrackAutosyncKey)> {
+        let engine_identity = Arc::as_ptr(&self.engine) as usize;
+        let engine = self.engine.try_read().ok()?;
+        let probe = GenomeTrackAutosyncRevisionProbe {
+            engine_identity,
+            structural_revision: engine.structural_revision(),
+            mutation_revision: engine.mutation_revision(),
+            subscription_count: engine.genome_track_subscription_count(),
+        };
+        let anchors = engine.list_sequence_genome_anchor_summaries();
+        let subscriptions = engine.list_genome_track_subscriptions();
+        let key = GenomeTrackAutosyncKey {
+            engine_identity,
+            anchor_signature: serde_json::to_string(&anchors).unwrap_or_default(),
+            subscription_signature: serde_json::to_string(&subscriptions).unwrap_or_default(),
+            subscription_count: subscriptions.len(),
+            requires_bigwig_converter: subscriptions
+                .iter()
+                .any(|subscription| subscription.source == GenomeTrackSource::BigWig),
+        };
+        drop(engine);
+        self.tracked_autosync_full_scan_count =
+            self.tracked_autosync_full_scan_count.saturating_add(1);
+        Some((probe, key))
+    }
+
+    fn record_current_genome_track_autosync_state(&mut self) {
+        if let Some((probe, key)) = self.inspect_current_genome_track_autosync_state() {
+            self.tracked_autosync_last_probe = Some(probe);
+            self.tracked_autosync_last_key = Some(key);
+        } else {
+            self.tracked_autosync_last_probe = None;
+            self.tracked_autosync_last_key = None;
         }
     }
 
@@ -9753,50 +10789,33 @@ Error: `{err}`"
         if self.genome_track_import_task.is_some() {
             return;
         }
-        if self.genome_bed_track_subscriptions.is_empty() {
-            self.tracked_autosync_last_op_count = Some(self.current_operation_count());
+        let Some(probe) = self.current_genome_track_autosync_revision_probe() else {
             return;
-        }
-        let operation_count = self.current_operation_count();
-        if self.tracked_autosync_last_op_count == Some(operation_count) {
-            return;
-        }
-        self.tracked_autosync_last_op_count = Some(operation_count);
-        let sync_result = {
-            self.engine
-                .write()
-                .unwrap()
-                .sync_tracked_genome_track_subscriptions(true)
         };
-        match sync_result {
-            Ok(report) => {
-                if report.applied_imports > 0 || report.failed_imports > 0 {
-                    self.genome_track_autosync_status =
-                        Self::format_track_sync_status("Auto-sync", &report);
-                    self.push_job_event(
-                        BackgroundJobKind::TrackImport,
-                        BackgroundJobEventPhase::Completed,
-                        None,
-                        format!(
-                            "Auto-sync: applied={}, failed={}",
-                            report.applied_imports, report.failed_imports
-                        ),
-                    );
-                }
-                self.tracked_autosync_last_op_count = Some(self.current_operation_count());
-            }
-            Err(e) => {
-                self.genome_track_autosync_status =
-                    format!("Auto-sync failed unexpectedly: {}", e.message);
-                self.push_job_event(
-                    BackgroundJobKind::TrackImport,
-                    BackgroundJobEventPhase::Failed,
-                    None,
-                    format!("Auto-sync failed: {}", e.message),
-                );
-                self.tracked_autosync_last_op_count = Some(self.current_operation_count());
-            }
+        if self.tracked_autosync_last_probe == Some(probe) {
+            return;
         }
+        let Some((probe, key)) = self.inspect_current_genome_track_autosync_state() else {
+            return;
+        };
+        self.tracked_autosync_last_probe = Some(probe);
+        if key.subscription_count == 0 {
+            self.tracked_autosync_last_key = Some(key);
+            return;
+        }
+        if self.tracked_autosync_last_key.as_ref() == Some(&key) {
+            return;
+        }
+        self.tracked_autosync_last_key = Some(key.clone());
+        let bigwig_converter = key
+            .requires_bigwig_converter
+            .then(|| self.resolved_bigwig_to_bedgraph_executable());
+        self.start_genome_track_sync_task(
+            GenomeTrackTaskKind::Autosync(key),
+            "new or structurally changed genome anchors".to_string(),
+            bigwig_converter,
+            |snapshot| snapshot.sync_tracked_genome_track_subscriptions(true),
+        );
     }
 
     fn refresh_genome_catalog_list(&mut self) {
@@ -10715,6 +11734,9 @@ Error: `{err}`"
                 match task.receiver.try_recv() {
                     Ok(DbSnpFetchTaskMessage::Progress(progress)) => {
                         self.dbsnp_status = Self::format_dbsnp_progress_status(&progress);
+                        task.runtime_frame
+                            .update_phase(format!("{:?}", progress.stage));
+                        task.runtime_frame.update_detail(progress.detail.clone());
                     }
                     Ok(DbSnpFetchTaskMessage::Done(result)) => {
                         done = Some(result);
@@ -10866,6 +11888,7 @@ Error: `{err}`"
         if self.genome_prepare_task.is_none() {
             self.genome_prepare_steps.clear();
             self.genome_prepare_progress = None;
+            self.genome_prepare_context = None;
             self.genome_prepare_eta_baseline = None;
             self.genome_prepare_failure_recovery = None;
             self.genome_prepare_status.clear();
@@ -10923,16 +11946,14 @@ Error: `{err}`"
                     inspection.fasta_index_ready,
                     Some(inspection.fasta_index_path.clone()),
                 ),
-                (PrepareGenomeStepId::GeneIndex, Some(inspection)) => {
-                    let transcript_required = inspection.transcript_index_path.is_some();
-                    let completed = inspection.gene_index_ready
-                        && (!transcript_required || inspection.transcript_index_ready);
-                    let detail = inspection
-                        .transcript_index_path
-                        .clone()
-                        .unwrap_or_else(|| inspection.gene_index_path.clone());
-                    (completed, Some(detail))
-                }
+                (PrepareGenomeStepId::GeneIndex, Some(inspection)) => (
+                    inspection.gene_index_ready,
+                    Some(inspection.gene_index_path.clone()),
+                ),
+                (PrepareGenomeStepId::TranscriptIndex, Some(inspection)) => (
+                    inspection.transcript_index_ready,
+                    inspection.transcript_index_path.clone(),
+                ),
                 (PrepareGenomeStepId::BlastIndex, Some(inspection)) => (
                     inspection.blast_index_ready,
                     inspection.blast_db_prefix.clone(),
@@ -11294,6 +12315,12 @@ Error: `{err}`"
         self.reset_prepare_step_state_from_plan(prepare_plan);
         self.genome_prepare_eta_baseline = None;
         self.genome_prepare_failure_recovery = None;
+        self.genome_prepare_context = Some(GenomePrepareContext {
+            genome_id: genome_id.clone(),
+            scope,
+            catalog_path: self.genome_catalog_path.clone(),
+            cache_dir: self.genome_cache_dir.clone(),
+        });
         self.genome_prepare_progress = Some(PrepareGenomeProgress {
             genome_id: genome_id.clone(),
             phase: "queued".to_string(),
@@ -11324,10 +12351,16 @@ Error: `{err}`"
                 genome_id, makeblastdb_preflight
             ),
         );
+        let runtime_frame = Self::push_runtime_background_job_frame(
+            BackgroundJobKind::PrepareGenome,
+            job_id,
+            format!("{action_summary}: {genome_id}"),
+        );
         self.genome_prepare_task = Some(GenomePrepareTask {
             job_id,
             started: Instant::now(),
             cancel_requested: cancel_requested.clone(),
+            runtime_frame,
             timeout_seconds,
             mode,
             genome_id: genome_id.clone(),
@@ -11398,6 +12431,14 @@ Error: `{err}`"
                 }
             })
             .map(|report| OpResult {
+                dna_sequence_design: None,
+                dna_sequence_design_receipt: None,
+                primer_group_target_design: None,
+                cryptic_splicing_screen: None,
+                tata_box_screen: None,
+                cryptic_splicing_evidence_overlay: None,
+                cryptic_splicing_protein_projection: None,
+                gene_locus_evidence_preparation: None,
                 op_id: "background-prepare-genome".to_string(),
                 created_seq_ids: vec![],
                 changed_seq_ids: vec![],
@@ -11418,8 +12459,24 @@ Error: `{err}`"
                 exon_skip_materialization: None,
                 cdna_assay_test_report: None,
                 cdna_assay_product_materialization: None,
+                gene_transcript_assay_routine: None,
+                primerbank_search_report: None,
+                external_primer_pair_import_report: None,
+                terminal_exon_rt_primer_pool: None,
+                transcript_capture_pool: None,
+                primer_variant_screen: None,
+                transcript_assay_cdna_similarity_map: None,
+                transcript_assay_specificity_redesign: None,
+                primer_specificity_handoff: None,
+                primer_specificity_multi_handoff: None,
+                primer_specificity_multi_summary: None,
+                primer_specificity_multi_summaries: vec![],
                 primer_specificity_report: None,
                 transcript_qpcr_panel: None,
+                transcript_assay_panel: None,
+                transcript_assay_fallback_execution: None,
+                gene_isoform_assay_study_plan: None,
+                experimental_assay_handoff: None,
                 construct_reasoning_graph: None,
                 sequencing_confirmation_report: None,
                 sequencing_primer_overlay_report: None,
@@ -11434,7 +12491,15 @@ Error: `{err}`"
                 cutrun_regulatory_support: None,
                 gene_set_resolution: None,
                 gene_set_promoter_cohort: None,
+                collection_operation: None,
+                collection_restriction_site_scan: None,
+                collection_construct_reasoning_inspection: None,
+                collection_tfbs_hit_scan: None,
+                collection_digest: None,
+                collection_pool_export: None,
+                gene_set_pool_creation: None,
                 gene_set_cutrun_regulatory_support: None,
+                regulatory_partner_screen: None,
                 ortholog_promoter_cohort: None,
                 ortholog_promoter_comparison: None,
                 read_acquisition_report: None,
@@ -11447,6 +12512,7 @@ Error: `{err}`"
                 rna_read_target_quality_export: None,
                 rna_read_batch_map_report: None,
                 rna_read_isoform_preflight: None,
+                rna_read_dexseq_verification: None,
                 tfbs_region_summary: None,
                 tfbs_score_tracks: None,
                 tfbs_track_similarity: None,
@@ -11455,9 +12521,15 @@ Error: `{err}`"
                 repeat_annotation_query: None,
                 sequence_repeat_overlaps: None,
                 repeat_feature_materialization: None,
+                encode_ccre_overlaps: None,
+                encode_ccre_materialization: None,
+                ensembl_regulation_overlaps: None,
+                ensembl_regulation_materialization: None,
                 repeat_environment_cohort: None,
                 window_cohort_tfbs: None,
                 tfbs_hit_scan: None,
+                genomic_motif_evidence: None,
+                promoter_cofactors: None,
                 restriction_site_scan: None,
                 jaspar_remote_metadata_snapshot: None,
                 jaspar_catalog_report: None,
@@ -11468,6 +12540,7 @@ Error: `{err}`"
                 sequence_context_view: None,
                 sequence_context_bundle: None,
                 alternative_promoter_comparison: None,
+                promoter_reporter_architecture_comparison: None,
                 variant_promoter_context: None,
                 promoter_evidence_matrix: None,
                 isoform_promoter_comparison: None,
@@ -11478,9 +12551,33 @@ Error: `{err}`"
                 reporter_recommendation: None,
                 reporter_corpus_export: None,
                 reporter_construct_handoff: None,
+                reporter_vector_validation: None,
+                promoter_reporter_panel_proposal: None,
+                regulatory_reporter_study: None,
+                reporter_fragment_selection: None,
+                tss_window_geometry: None,
+                regulatory_fragment_panel_plan: None,
+                regulatory_fragment_materialization_proposal: None,
+                regulatory_fragment_materialization_receipt: None,
+                promoter_reporter_panel_readiness: None,
+                promoter_reporter_panel_receipt: None,
                 uniprot_projection_audit: None,
+                uniprot_linked_transcript_inventory: None,
                 uniprot_projection_audit_parity: None,
                 lab_assistant_instructions: None,
+                genomic_region_operation: None,
+                genomic_region_homology: None,
+                promoter_module_assessment: None,
+                feature_location_edit_report: None,
+                feature_record_curation_report: None,
+                tss_inventory: None,
+                tss_collection: None,
+                tss_collection_list: None,
+                tss_view_svg_export: None,
+                tss_tfbs_profiles: None,
+                tss_tfbs_profile_receipt: None,
+                gel_image: None,
+                gel_image_analysis: None,
             });
             let _ = tx.send(GenomePrepareTaskMessage::Done {
                 job_id,
@@ -11558,6 +12655,15 @@ Error: `{err}`"
                     ""
                 }
             );
+            if let Some(task) = self.genome_prepare_task.as_ref() {
+                task.runtime_frame.update_from_progress(
+                    progress.phase.clone(),
+                    progress.item.clone(),
+                    progress.bytes_done,
+                    progress.bytes_total,
+                    progress.percent,
+                );
+            }
         }
         for stale_job_id in stale_job_ids {
             self.push_job_event(
@@ -11577,7 +12683,7 @@ Error: `{err}`"
                         task.cancel_requested.load(Ordering::Relaxed),
                         task.timeout_seconds,
                         task.mode,
-                        PrepareGenomeFailureRecovery {
+                        GenomePrepareContext {
                             genome_id: task.genome_id.clone(),
                             scope: task.scope,
                             catalog_path: task.catalog_path.clone(),
@@ -11590,13 +12696,14 @@ Error: `{err}`"
                     false,
                     None,
                     GenomePrepareLaunchMode::Prepare,
-                    PrepareGenomeFailureRecovery {
+                    GenomePrepareContext {
                         genome_id: self.genome_id.clone(),
                         scope: self.genome_dialog_scope,
                         catalog_path: self.genome_catalog_path.clone(),
                         cache_dir: self.genome_cache_dir.clone(),
                     },
                 ));
+            self.genome_prepare_context = Some(failure_recovery.clone());
             self.genome_prepare_task = None;
             self.genome_prepare_eta_baseline = None;
             match outcome {
@@ -11716,6 +12823,13 @@ Error: `{err}`"
             }
             self.app_status = self.tutorial_project_status.clone();
             if let Some(task) = self.tutorial_project_task.as_mut() {
+                task.runtime_frame.update_from_progress(
+                    progress.phase.clone(),
+                    progress.item.clone(),
+                    0,
+                    None,
+                    progress.percent.map(|value| value as f64),
+                );
                 task.chapter_id = progress.chapter_id.clone();
                 task.chapter_title = progress.chapter_title.clone();
             }
@@ -11862,7 +12976,7 @@ Error: `{err}`"
             return;
         }
         ctx.request_repaint_after(Duration::from_millis(100));
-        let mut done: Option<(u64, Result<OpResult, EngineError>)> = None;
+        let mut done: Option<(u64, Result<GenomeTrackTaskResult, EngineError>)> = None;
         let mut stale_job_ids: Vec<u64> = vec![];
         if let Some(task) = &self.genome_track_import_task {
             let active_job_id = task.job_id;
@@ -11890,6 +13004,20 @@ Error: `{err}`"
                             } else {
                                 ""
                             }
+                        );
+                        task.runtime_frame.update_from_progress(
+                            "import_track",
+                            format!(
+                                "{} -> {}; parsed={}, imported={}, skipped={}",
+                                progress.source,
+                                progress.seq_id,
+                                progress.parsed_records,
+                                progress.imported_features,
+                                progress.skipped_records
+                            ),
+                            progress.imported_features as u64,
+                            Some(progress.parsed_records as u64),
+                            None,
                         );
                     }
                     Ok(GenomeTrackImportTaskMessage::Done { job_id, result }) => {
@@ -11928,20 +13056,15 @@ Error: `{err}`"
         }
 
         if let Some((job_id, outcome)) = done {
-            let elapsed = self
-                .genome_track_import_task
-                .as_ref()
-                .map(|task| task.started.elapsed().as_secs_f64())
-                .unwrap_or(0.0);
-            let cancellation_requested = self
-                .genome_track_import_task
-                .as_ref()
-                .map(|task| task.cancel_requested.load(Ordering::Relaxed))
-                .unwrap_or(false);
-            self.genome_track_import_task = None;
+            let Some(task) = self.genome_track_import_task.take() else {
+                return;
+            };
+            let elapsed = task.started.elapsed().as_secs_f64();
+            let cancellation_requested = task.cancel_requested.load(Ordering::Relaxed);
+            let task_kind = task.kind;
             self.genome_track_import_progress = None;
             match outcome {
-                Ok(result) => {
+                Ok(GenomeTrackTaskResult::Operation(result)) => {
                     let prefix = if cancellation_requested {
                         "Import track finished after cancellation request"
                     } else {
@@ -11976,14 +13099,72 @@ Error: `{err}`"
                         format!("{prefix} in {:.1}s", elapsed),
                     );
                 }
-                Err(e) => {
-                    self.genome_track_status =
-                        format!("Import track failed after {:.1}s: {}", elapsed, e.message);
+                Ok(GenomeTrackTaskResult::Sync(report)) => {
+                    let prefix = match &task_kind {
+                        GenomeTrackTaskKind::AllAnchoredImport => "All-anchored import",
+                        GenomeTrackTaskKind::ReapplyTracked => "Tracked-file re-apply",
+                        GenomeTrackTaskKind::Autosync(_) => "Auto-sync",
+                        GenomeTrackTaskKind::SelectedImport => "Track import",
+                    };
+                    let mut status = Self::format_track_sync_status(prefix, &report);
+                    status.push_str(&format!(" | completed in {elapsed:.1}s"));
+                    let refreshed_windows = self.refresh_sequence_windows_from_engine_state();
+                    if refreshed_windows > 0 {
+                        status.push_str(&format!(
+                            " | refreshed {} open sequence window(s)",
+                            refreshed_windows
+                        ));
+                        ctx.request_repaint();
+                    }
+                    self.load_bed_track_subscriptions_from_state();
+                    self.record_current_genome_track_autosync_state();
+                    if matches!(task_kind, GenomeTrackTaskKind::Autosync(_)) {
+                        self.genome_track_autosync_status = status;
+                    } else {
+                        self.genome_track_status = status;
+                    }
                     self.push_job_event(
                         BackgroundJobKind::TrackImport,
-                        BackgroundJobEventPhase::Failed,
+                        BackgroundJobEventPhase::Completed,
                         Some(job_id),
-                        format!("Track import failed in {:.1}s: {}", elapsed, e.message),
+                        format!(
+                            "{prefix} completed in {elapsed:.1}s: applied={}, failed={}",
+                            report.applied_imports, report.failed_imports
+                        ),
+                    );
+                }
+                Err(e) => {
+                    let stale = e.message.contains("became stale");
+                    let label = task_kind.label();
+                    let status = if stale {
+                        format!(
+                            "{label} produced a stale result after {elapsed:.1}s; project state was not changed."
+                        )
+                    } else if cancellation_requested {
+                        format!("{label} cancelled after {elapsed:.1}s: {}", e.message)
+                    } else {
+                        format!("{label} failed after {elapsed:.1}s: {}", e.message)
+                    };
+                    if matches!(task_kind, GenomeTrackTaskKind::Autosync(_)) {
+                        self.genome_track_autosync_status = status;
+                        if stale {
+                            self.tracked_autosync_last_key = None;
+                            self.tracked_autosync_last_probe = None;
+                        } else {
+                            self.record_current_genome_track_autosync_state();
+                        }
+                    } else {
+                        self.genome_track_status = status;
+                    }
+                    self.push_job_event(
+                        BackgroundJobKind::TrackImport,
+                        if stale {
+                            BackgroundJobEventPhase::IgnoredStale
+                        } else {
+                            BackgroundJobEventPhase::Failed
+                        },
+                        Some(job_id),
+                        format!("{label} failed in {:.1}s: {}", elapsed, e.message),
                     );
                 }
             }
@@ -12329,10 +13510,19 @@ Error: `{err}`"
                 makeblastdb_preflight
             ),
         );
+        let runtime_frame = Self::push_runtime_background_job_frame(
+            BackgroundJobKind::BlastGenome,
+            job_id,
+            format!(
+                "genome='{}', queries={}, task='{}'",
+                genome_id, total_queries, resolved_preview.task
+            ),
+        );
         self.genome_blast_task = Some(GenomeBlastTask {
             job_id,
             started: Instant::now(),
             cancel_requested: cancel_requested.clone(),
+            runtime_frame,
             receiver: rx,
         });
         std::thread::spawn(move || {
@@ -12548,6 +13738,13 @@ Error: `{err}`"
                             "{done_queries} / {total_queries} ({current_query_label}){}",
                             if canceling { " [cancel requested]" } else { "" }
                         );
+                        task.runtime_frame.update_from_progress(
+                            "blast_queries",
+                            current_query_label,
+                            done_queries as u64,
+                            Some(total_queries as u64),
+                            Some(fraction as f64 * 100.0),
+                        );
                     }
                     Ok(GenomeBlastTaskMessage::Status { job_id, status }) => {
                         if job_id != active_job_id {
@@ -12556,6 +13753,8 @@ Error: `{err}`"
                             }
                             continue;
                         }
+                        task.runtime_frame.update_phase("blast_status");
+                        task.runtime_frame.update_detail(status.clone());
                         self.genome_blast_status = status;
                     }
                     Ok(GenomeBlastTaskMessage::Done { job_id, result }) => {
@@ -12779,6 +13978,8 @@ Error: `{err}`"
                 task: result.report.task.clone(),
                 blastn_executable: result.report.blastn_executable.clone(),
                 blast_db_prefix: result.report.blast_db_prefix.clone(),
+                blast_database_content_fingerprint: None,
+                blast_database_index_kind: None,
                 command: result.report.command.clone(),
                 command_line: Self::format_blast_command_line(
                     &result.report.blastn_executable,
@@ -13688,6 +14889,32 @@ Error: `{err}`"
         self.show_rack_labels_preview_dialog = open;
     }
 
+    #[cfg(feature = "gui-test-support")]
+    fn pcr_design_semantic_state(content_ready: bool) -> (bool, &'static str) {
+        if content_ready {
+            (true, "ready")
+        } else {
+            (false, "blocked")
+        }
+    }
+
+    #[cfg(feature = "gui-test-support")]
+    fn register_pcr_design_semantic_window(ui: &Ui, ctx: &egui::Context, content_ready: bool) {
+        let (enabled, outcome_role) = Self::pcr_design_semantic_state(content_ready);
+        crate::gui_test_support::register_rect(
+            ctx.clone(),
+            crate::tutorial_gui_semantics::WINDOW_PCR_DESIGN,
+            crate::tutorial_gui_semantics::WINDOW_PCR_DESIGN,
+            None,
+            crate::gui_test_support::GuiTestWidgetKind::Window,
+            ui.max_rect(),
+            true,
+            enabled,
+            true,
+            Some(outcome_role),
+        );
+    }
+
     fn render_pcr_design_contents(&mut self, ui: &mut Ui, ctx: &egui::Context) -> bool {
         let mut close_requested = false;
         let close_hover = Self::specialist_window_close_hover_text("PCR Designer");
@@ -13696,19 +14923,12 @@ Error: `{err}`"
         }
         ui.label("Selection-first pair-PCR specialist. Paint ROI/windows on the map and run deterministic primer-pair design queue operations.");
         if self.pcr_design_seq_id.trim().is_empty() {
-            let target = self
-                .active_dna_window_context()
-                .map(|(seq_id, _)| seq_id)
-                .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
-            if let Some(seq_id) = target {
-                self.pcr_design_seq_id = seq_id;
-            }
-        }
-        if self.pcr_design_seq_id.trim().is_empty() {
             ui.colored_label(
                 egui::Color32::from_rgb(190, 70, 70),
-                "No sequence is available. Load/open one sequence window first.",
+                "No DNA target selected. Select a sequence in the project graph or its viewer, then reopen this tool.",
             );
+            #[cfg(feature = "gui-test-support")]
+            Self::register_pcr_design_semantic_window(ui, ctx, false);
             return close_requested;
         }
         let seq_id = self.pcr_design_seq_id.trim().to_string();
@@ -13724,6 +14944,8 @@ Error: `{err}`"
                 "Target sequence window '{}' is not open yet.",
                 seq_id
             ));
+            #[cfg(feature = "gui-test-support")]
+            Self::register_pcr_design_semantic_window(ui, ctx, false);
             return close_requested;
         }
         let mut rendered = false;
@@ -13746,6 +14968,8 @@ Error: `{err}`"
                 ),
             );
         }
+        #[cfg(feature = "gui-test-support")]
+        Self::register_pcr_design_semantic_window(ui, ctx, rendered);
         close_requested
     }
 
@@ -13838,18 +15062,9 @@ Error: `{err}`"
         }
         ui.label("Construct-confirmation specialist. Review persisted sequencing-confirmation reports or run a new confirmation pass against the current expected construct sequence using called reads and/or imported sequencing traces.");
         if self.sequencing_confirmation_seq_id.trim().is_empty() {
-            let target = self
-                .active_dna_window_context()
-                .map(|(seq_id, _)| seq_id)
-                .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
-            if let Some(seq_id) = target {
-                self.sequencing_confirmation_seq_id = seq_id;
-            }
-        }
-        if self.sequencing_confirmation_seq_id.trim().is_empty() {
             ui.colored_label(
                 egui::Color32::from_rgb(190, 70, 70),
-                "No sequence is available. Load/open one sequence window first.",
+                "No DNA target selected. Select a sequence in the project graph or its viewer, then reopen this tool.",
             );
             return close_requested;
         }
@@ -14612,6 +15827,9 @@ Error: `{err}`"
             ) {
                 Ok(report) => {
                     tf_motifs::reload();
+                    self.jaspar_catalog_generation = self.jaspar_catalog_generation.wrapping_add(1);
+                    self.jaspar_catalog_report = None;
+                    self.jaspar_filtered_cache_key = None;
                     println!(
                         "Imported JASPAR from '{}' ({} motifs) to '{}'",
                         report.source, report.item_count, report.output
@@ -14673,6 +15891,19 @@ Error: `{err}`"
         let normalized = raw.replace(['_', '-'], " ");
         let mut out_words = vec![];
         for word in normalized.split_whitespace() {
+            let acronym = match word.to_ascii_lowercase().as_str() {
+                "grna" => Some("gRNA"),
+                "crispr" => Some("CRISPR"),
+                "pcr" => Some("PCR"),
+                "dna" => Some("DNA"),
+                "rna" => Some("RNA"),
+                "tfbs" => Some("TFBS"),
+                _ => None,
+            };
+            if let Some(acronym) = acronym {
+                out_words.push(acronym.to_string());
+                continue;
+            }
             let mut chars = word.chars();
             let Some(first) = chars.next() else {
                 continue;
@@ -14709,11 +15940,19 @@ Error: `{err}`"
         let mut out = vec![];
         let mut entries = fs::read_dir(dir)
             .map_err(|e| format!("Could not read catalog directory '{}': {e}", dir.display()))?
-            .filter_map(|entry| entry.ok())
-            .collect::<Vec<_>>();
+            .collect::<std::io::Result<Vec<_>>>()
+            .map_err(|e| format!("Could not list catalog directory '{}': {e}", dir.display()))?;
         entries.sort_by_key(|entry| entry.file_name().to_string_lossy().to_string());
         for entry in entries {
             let path = entry.path();
+            // Do not follow recursive symlinks during background catalog discovery.
+            if entry
+                .file_type()
+                .map_err(|err| err.to_string())?
+                .is_symlink()
+            {
+                continue;
+            }
             if path.is_dir() {
                 let children = Self::collect_cloning_pattern_catalog_entries_from_dir(&path)?;
                 if children.is_empty() {
@@ -14758,8 +15997,8 @@ Error: `{err}`"
         for entry in entries {
             if entry.is_file {
                 let response = ui
-                    .button(entry.label.clone())
-                    .on_hover_text(format!("Import macro template(s) from {}", entry.path));
+                    .button(format!("Import {} template", entry.label))
+                    .on_hover_text(format!("Import macro template(s) from {}; does not execute a workflow and does not require selected DNA", entry.path));
                 if response.clicked() {
                     *selected_path = Some(entry.path.clone());
                 }
@@ -14798,7 +16037,7 @@ Error: `{err}`"
         status_message: &mut Option<String>,
     ) {
         for routine in routines {
-            let label = format!("{} [{}]", routine.title, routine.status);
+            let label = format!("Import {} template [{}]", routine.title, routine.status);
             let tags = if routine.vocabulary_tags.is_empty() {
                 "-".to_string()
             } else {
@@ -14829,7 +16068,10 @@ Error: `{err}`"
                 tags,
                 routine.summary.as_deref().unwrap_or("No summary")
             );
-            let response = ui.button(label).on_hover_text(hover);
+            let response = ui
+                .add_enabled(template_path != "-", egui::Button::new(label))
+                .on_disabled_hover_text("No importable template path is provided for this routine")
+                .on_hover_text(hover);
             if response.clicked() {
                 if let Some(path) = routine
                     .template_path
@@ -14907,11 +16149,26 @@ Error: `{err}`"
     }
 
     fn load_project_from_file_with_recent(&mut self, path: &str, track_recent: bool) -> Result<()> {
-        let state = ProjectState::load_from_path(path).map_err(|e| anyhow!(e.to_string()))?;
+        use crate::gui_profiler::startup_trace::{Phase, context};
+        let trace = context().child();
+        let load = trace.span(Phase::ProjectLoad);
+        let decode = trace.span(Phase::ProjectReadDecode);
+        let result = ProjectState::load_from_path(path).map_err(|e| anyhow!(e.to_string()));
+        decode.finish(result.is_ok());
+        let state = match result {
+            Ok(state) => state,
+            Err(error) => {
+                load.finish(false);
+                return Err(error);
+            }
+        };
 
+        let install = trace.span(Phase::ProjectInstall);
+        self.cancel_agent_commands_for_project_change();
         self.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
         self.set_current_project_path(path, track_recent);
         self.lineage_cache_valid = false;
+        self.lineage_projection_cache = None;
         self.lineage_rows.clear();
         self.lineage_edges.clear();
         self.lineage_op_label_by_id.clear();
@@ -14936,12 +16193,18 @@ Error: `{err}`"
         self.lineage_graph_node_offsets.clear();
         self.lineage_graph_drag_origin = None;
         self.lineage_graph_offsets_synced_stamp = 0;
-        self.tracked_autosync_last_op_count = None;
+        self.tracked_autosync_last_key = None;
+        self.tracked_autosync_last_probe = None;
+        self.genome_track_import_task = None;
+        self.genome_track_import_progress = None;
+        self.sequence_ingress_task = None;
+        self.jaspar_background_task = None;
         self.tutorial_project_task = None;
         self.tutorial_project_progress_fraction = None;
         self.tutorial_project_progress_label.clear();
         self.tutorial_project_status.clear();
         self.new_windows.clear();
+        self.pending_sequence_focus_after_open = None;
         self.windows.clear();
         self.detached_auxiliary_window_hosts.clear();
         self.windows_to_close.write().unwrap().clear();
@@ -14996,18 +16259,29 @@ Error: `{err}`"
         self.agent_status.clear();
         self.agent_preflight_output = None;
         self.agent_last_invocation = None;
+        self.agent_conversation = AgentConversation::default();
         self.agent_execution_log.clear();
+        self.agent_execution_session_id = crate::agent_feedback::new_agent_context_id();
+        self.agent_last_command_output = None;
+        self.agent_pending_image_attachment = None;
+        self.agent_help_capture_failure = None;
+        self.agent_screenshot_consent = None;
+        self.agent_screenshot_capture = None;
+        self.agent_discarded_screenshot_capture_ids.clear();
         self.agent_discovered_models.clear();
         self.agent_discovered_model_pick.clear();
         self.agent_model_discovery_status.clear();
         self.agent_model_discovery_source_key.clear();
         self.agent_model_discovery_failed_source_key.clear();
+        self.load_agent_conversation_from_state();
         self.load_bed_track_subscriptions_from_state();
         self.load_lineage_graph_workspace_from_state();
         self.load_rack_workspace_from_state();
         self.load_background_job_history_from_state();
 
         self.mark_clean_snapshot();
+        install.finish(true);
+        load.finish(true);
         Ok(())
     }
 
@@ -15257,36 +16531,20 @@ Error: `{err}`"
             && workspace.node_offsets.is_empty()
             && workspace.node_groups.is_empty();
 
-        let mut engine = self.engine.write().unwrap();
-        let state = engine.state_mut();
-        if workspace_is_default {
-            state.metadata.remove(LINEAGE_GRAPH_WORKSPACE_METADATA_KEY);
-        } else if let Ok(value) = serde_json::to_value(&workspace)
-            && state.metadata.get(LINEAGE_GRAPH_WORKSPACE_METADATA_KEY) != Some(&value)
-        {
-            state
-                .metadata
-                .insert(LINEAGE_GRAPH_WORKSPACE_METADATA_KEY.to_string(), value);
-        }
-
-        if raw.is_empty() {
-            state.metadata.remove(LINEAGE_NODE_OFFSETS_METADATA_KEY);
-        } else if let Ok(value) = serde_json::to_value(raw)
-            && state.metadata.get(LINEAGE_NODE_OFFSETS_METADATA_KEY) != Some(&value)
-        {
-            state
-                .metadata
-                .insert(LINEAGE_NODE_OFFSETS_METADATA_KEY.to_string(), value);
-        }
-        if self.lineage_node_groups.is_empty() {
-            state.metadata.remove(LINEAGE_NODE_GROUPS_METADATA_KEY);
-        } else if let Ok(value) = serde_json::to_value(&self.lineage_node_groups)
-            && state.metadata.get(LINEAGE_NODE_GROUPS_METADATA_KEY) != Some(&value)
-        {
-            state
-                .metadata
-                .insert(LINEAGE_NODE_GROUPS_METADATA_KEY.to_string(), value);
-        }
+        let workspace_value = (!workspace_is_default)
+            .then(|| serde_json::to_value(&workspace).ok())
+            .flatten();
+        let offsets_value = (!raw.is_empty())
+            .then(|| serde_json::to_value(raw).ok())
+            .flatten();
+        let groups_value = (!self.lineage_node_groups.is_empty())
+            .then(|| serde_json::to_value(&self.lineage_node_groups).ok())
+            .flatten();
+        self.persist_project_metadata_values(&[
+            (LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, workspace_value),
+            (LINEAGE_NODE_OFFSETS_METADATA_KEY, offsets_value),
+            (LINEAGE_NODE_GROUPS_METADATA_KEY, groups_value),
+        ]);
     }
 
     fn persist_rack_workspace_to_state(&mut self) {
@@ -15296,21 +16554,16 @@ Error: `{err}`"
             help_strip_successful_move_count: self.rack_help_strip_successful_move_count,
             help_strip_auto_minimized: self.rack_help_strip_auto_minimized,
         };
-        let mut engine = self.engine.write().unwrap();
-        let state = engine.state_mut();
-        if !workspace.help_strip_collapsed
+        let workspace_value = if !workspace.help_strip_collapsed
             && !workspace.help_strip_pinned_open
             && workspace.help_strip_successful_move_count == 0
             && !workspace.help_strip_auto_minimized
         {
-            state.metadata.remove(RACK_WORKSPACE_METADATA_KEY);
-        } else if let Ok(value) = serde_json::to_value(&workspace)
-            && state.metadata.get(RACK_WORKSPACE_METADATA_KEY) != Some(&value)
-        {
-            state
-                .metadata
-                .insert(RACK_WORKSPACE_METADATA_KEY.to_string(), value);
-        }
+            None
+        } else {
+            serde_json::to_value(&workspace).ok()
+        };
+        self.persist_project_metadata_values(&[(RACK_WORKSPACE_METADATA_KEY, workspace_value)]);
     }
 
     fn specialist_window_close_hover_text(window_title: &str) -> String {
@@ -15327,6 +16580,15 @@ Error: `{err}`"
         close_button: Option<(&str, &str)>,
     ) -> bool {
         let mut close_requested = false;
+        let viewport_id = ui.ctx().viewport_id();
+        let agent_help_window_title = self
+            .open_window_model_cache
+            .model
+            .entries
+            .iter()
+            .find(|entry| entry.viewport_id == viewport_id)
+            .map(|entry| entry.title.clone())
+            .unwrap_or_else(|| "GENtle specialist window".to_string());
         ui.horizontal(|ui| {
             if ui
                 .button(self.tr("button.help"))
@@ -15342,6 +16604,11 @@ Error: `{err}`"
             {
                 self.queue_focus_viewport(ViewportId::ROOT);
             }
+            crate::agent_help::render_agent_help_button(
+                ui,
+                agent_help_window_title.clone(),
+                "window.specialist",
+            );
             if let Some((label, hover_text)) = close_button
                 && ui.button(label).on_hover_text(hover_text).clicked()
             {
@@ -15353,24 +16620,18 @@ Error: `{err}`"
     }
 
     pub fn render_menu_bar(&mut self, ui: &mut Ui) {
-        let open_window_entries = self.collect_open_window_entries();
-        self.native_window_key_to_viewport = open_window_entries
-            .iter()
-            .map(|entry| (entry.native_menu_key, entry.viewport_id))
-            .collect();
-        let native_window_entries = open_window_entries
-            .iter()
-            .map(|entry| (entry.native_menu_key, entry.title.clone()))
-            .collect::<Vec<_>>();
+        let open_window_model = self.open_window_model_cache.model.clone();
+        let open_window_entries = &open_window_model.entries;
+        let native_window_entries = &open_window_model.native_entries;
         let active_window_key = self
             .active_window_menu_key
             .or_else(|| Some(Self::native_menu_key_for_viewport(ViewportId::ROOT)));
-        if (self.last_native_window_entries != native_window_entries
+        if (self.last_native_window_entries != *native_window_entries
             || self.last_native_active_window_key != active_window_key)
             && !self.native_window_menu_sync_blocked_by_open_probe()
         {
             let sync_started = Instant::now();
-            about::sync_native_open_windows_menu(&native_window_entries, active_window_key);
+            about::sync_native_open_windows_menu(native_window_entries, active_window_key);
             let sync_elapsed_ms = sync_started.elapsed().as_millis();
             if sync_elapsed_ms >= WINDOW_OPEN_SLOW_THRESHOLD_MS {
                 self.app_status = format!(
@@ -15378,17 +16639,9 @@ Error: `{err}`"
                     native_window_entries.len()
                 );
             }
-            self.last_native_window_entries = native_window_entries;
+            self.last_native_window_entries = native_window_entries.clone();
             self.last_native_active_window_key = active_window_key;
         }
-        let history_summary = self
-            .engine
-            .read()
-            .map(|engine| engine.history_summary())
-            .unwrap_or_default();
-        let undo_count = history_summary.undo_count;
-        let redo_count = history_summary.redo_count;
-        let history_ops_enabled = !self.has_active_background_jobs();
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button(self.tr("menu.file"), |ui| {
                 if ui
@@ -15449,7 +16702,7 @@ Error: `{err}`"
                         ui.close();
                     }
                 });
-                ui.menu_button(self.tr("menu.file.open_tutorial_project"), |ui| {
+                tutorial_menus::submenu(ui, self.tr("menu.file.open_tutorial_project"), |ui| {
                     if let Some(task) = &self.tutorial_project_task {
                         let mut cancel_tutorial_clicked = false;
                         let mut show_jobs_clicked = false;
@@ -15493,140 +16746,124 @@ Error: `{err}`"
                         return;
                     }
 
-                    let guided_entries = Self::tutorial_project_guided_walkthrough_entries();
-                    let mut selected_guided_tutorial: Option<HelpTutorialDocEntry> = None;
-                    if !guided_entries.is_empty() {
-                        ui.menu_button(
-                            format!(
-                                "{} ({})",
-                                self.tr("menu.file.guided_walkthroughs"),
+                    tutorial_menus::scroll(ui, |ui| {
+                        let guided_entries = Self::tutorial_project_guided_walkthrough_entries();
+                        let mut selected_guided_tutorial: Option<HelpTutorialDocEntry> = None;
+                        if !guided_entries.is_empty() {
+                            ui.menu_button(
+                                format!(
+                                    "{} ({})",
+                                    self.tr("menu.file.guided_walkthroughs"),
                                 guided_entries.len()
-                            ),
-                            |ui| {
-                                ui.small(self.tr("menu.file.guided_walkthroughs.note"));
-                                ui.separator();
-                                let mut by_group: BTreeMap<
-                                    (usize, String),
-                                    Vec<&HelpTutorialDocEntry>,
-                                > =
-                                    BTreeMap::new();
-                                for entry in &guided_entries {
-                                    let group = Self::tutorial_audience_group_label(entry);
-                                    by_group
-                                        .entry((
-                                            entry.group_order.unwrap_or(usize::MAX),
-                                            group,
-                                        ))
-                                        .or_default()
-                                        .push(entry);
-                                }
-                                for ((_group_order, group), rows) in by_group {
-                                    ui.menu_button(format!("{group} ({})", rows.len()), |ui| {
-                                        for entry in rows {
-                                            let label = Self::tutorial_display_label(
-                                                entry.decimal_id.as_deref(),
-                                                None,
-                                                &entry.title,
-                                            );
-                                            if ui
-                                                .button(label)
-                                                .on_hover_text(format!(
-                                                    "Open this tutorial guide in Help\n{}\n{}",
-                                                    Self::help_tutorial_review_label(entry),
-                                                    entry.summary
-                                                ))
-                                                .clicked()
-                                            {
-                                                selected_guided_tutorial = Some(entry.clone());
-                                            }
-                                        }
-                                    });
-                                }
-                            },
-                        );
-                        ui.separator();
-                    }
-                    if let Some(entry) = selected_guided_tutorial {
-                        if let Err(err) =
-                            self.open_help_tutorial_path(&entry.path, &entry.title, &entry.summary)
-                        {
-                            self.app_status = err;
+                                ),
+                                |ui| {
+                                    if let Some(index) = tutorial_menus::help_entries(ui, &guided_entries) {
+                                        selected_guided_tutorial = Some(guided_entries[index].clone());
+                                    }
+                                },
+                            ).response.on_hover_text(self.tr("menu.file.guided_walkthroughs.note"));
+                            ui.separator();
                         }
-                        ui.close();
-                        return;
-                    }
-
-                    let entries = match Self::load_tutorial_project_entries() {
-                        Ok(entries) => entries,
-                        Err(err) => {
-                            ui.label(self.tr("menu.file.executable_catalog_unavailable"));
-                            ui.small(err);
+                        if let Some(entry) = selected_guided_tutorial {
+                            if let Err(err) =
+                                self.open_help_tutorial_path(&entry.path, &entry.title, &entry.summary)
+                            {
+                                self.app_status = err;
+                            }
+                            ui.close();
                             return;
                         }
-                    };
-                    if entries.is_empty() {
-                        ui.add_enabled(
-                            false,
-                            egui::Button::new(self.tr("menu.file.no_tutorial_chapters")),
-                        );
-                        return;
-                    }
 
-                    let mut selected_chapter_id: Option<String> = None;
-                    let mut by_group: BTreeMap<(usize, String), Vec<&TutorialProjectEntry>> =
-                        BTreeMap::new();
-                    for entry in &entries {
-                        let group = entry
-                            .group_label
-                            .clone()
-                            .unwrap_or_else(|| entry.tier.as_str().to_string());
-                        by_group
-                            .entry((entry.group_order.unwrap_or(usize::MAX), group))
-                            .or_default()
-                            .push(entry);
-                    }
-                    for ((_group_order, group), group_entries) in by_group {
-                        ui.menu_button(format!("{group} ({})", group_entries.len()), |ui| {
-                            for entry in group_entries {
-                                let mut label = Self::tutorial_display_label(
-                                    entry.decimal_id.as_deref(),
-                                    Some(entry.chapter_order),
-                                    &entry.chapter_title,
-                                );
-                                if entry.example.test_mode == ExampleTestMode::Online {
-                                    label.push_str(" [online]");
-                                }
-                                let hover = format!(
-                                    "chapter_id: {}\nexample_id: {}\ntier: {}\ngroup: {}\n{}\n{}",
-                                    entry.chapter_id,
-                                    entry.example.id,
-                                    entry.tier.as_str(),
-                                    group,
-                                    crate::workflow_examples::tutorial_review_badge_label(
-                                        entry.review_status.as_deref(),
-                                        entry.review_stale,
-                                        entry.codex_reviewed_at.as_deref(),
-                                        entry.human_reviewed_at.as_deref(),
-                                        entry.human_reviewer.as_deref(),
-                                    ),
-                                    if entry.chapter_summary.trim().is_empty() {
-                                        "No summary provided."
-                                    } else {
-                                        entry.chapter_summary.trim()
-                                    }
-                                );
-                                if ui.button(label).on_hover_text(hover).clicked() {
-                                    selected_chapter_id = Some(entry.chapter_id.clone());
-                                }
+                        let entries = match Self::load_tutorial_project_entries() {
+                            Ok(entries) => entries,
+                            Err(err) => {
+                                ui.label(self.tr("menu.file.executable_catalog_unavailable"));
+                                ui.small(err);
+                                return;
                             }
-                        });
-                    }
+                        };
+                        if entries.is_empty() {
+                            ui.add_enabled(
+                                false,
+                                egui::Button::new(self.tr("menu.file.no_tutorial_chapters")),
+                            );
+                            return;
+                        }
 
-                    if let Some(chapter_id) = selected_chapter_id {
-                        self.request_project_action(ProjectAction::OpenTutorialChapter(chapter_id));
-                        ui.close();
-                    }
+                        let mut selected_chapter_id: Option<String> = None;
+                        let mut by_group: BTreeMap<(usize, String), Vec<&TutorialProjectEntry>> =
+                            BTreeMap::new();
+                        for entry in &entries {
+                            let group = entry
+                                .group_label
+                                .clone()
+                                .unwrap_or_else(|| entry.tier.as_str().to_string());
+                            by_group
+                                .entry((entry.group_order.unwrap_or(usize::MAX), group))
+                                .or_default()
+                                .push(entry);
+                        }
+                        for ((_group_order, group), group_entries) in by_group {
+                            ui.menu_button(format!("{group} ({})", group_entries.len()), |ui| {
+                                tutorial_menus::scroll(ui, |ui| {
+                                    for entry in group_entries {
+                                        let mut label = Self::tutorial_display_label(
+                                            entry.decimal_id.as_deref(),
+                                            Some(entry.chapter_order),
+                                            &entry.chapter_title,
+                                        );
+                                        if entry.example.test_mode == ExampleTestMode::Online {
+                                            label.push_str(" [online]");
+                                        }
+                                        let hover = format!(
+                                            "chapter_id: {}\nexample_id: {}\ntier: {}\ngroup: {}\n{}\n{}",
+                                            entry.chapter_id,
+                                            entry.example.id,
+                                            entry.tier.as_str(),
+                                            group,
+                                            crate::workflow_examples::tutorial_review_badge_label(
+                                                entry.review_status.as_deref(),
+                                                entry.review_stale,
+                                                entry.codex_reviewed_at.as_deref(),
+                                                entry.human_reviewed_at.as_deref(),
+                                                entry.human_reviewer.as_deref(),
+                                            ),
+                                            if entry.chapter_summary.trim().is_empty() {
+                                                "No summary provided."
+                                            } else {
+                                                entry.chapter_summary.trim()
+                                            }
+                                        );
+                                        if ui.add(egui::Button::new(label).wrap()).on_hover_text(hover).clicked() {
+                                            selected_chapter_id = Some(entry.chapter_id.clone());
+                                        }
+                                    }
+                                });
+                            });
+                        }
+
+                        if let Some(chapter_id) = selected_chapter_id {
+                            self.request_project_action(ProjectAction::OpenTutorialChapter(chapter_id));
+                            ui.close();
+                        }
+                    });
                 });
+                let save_response = ui
+                    .button(self.tr("menu.file.save_project"))
+                    .on_hover_text(self.tr("menu.file.save_project.hover"));
+                #[cfg(feature = "gui-test-support")]
+                crate::gui_test_support::register_response(
+                    &save_response,
+                    "main.project.save",
+                    "window.main",
+                    None,
+                    crate::gui_test_support::GuiTestWidgetKind::Button,
+                    false,
+                );
+                if save_response.clicked() {
+                    let _ = self.save_current_project();
+                    ui.close();
+                }
                 if ui
                     .add_enabled(
                         self.can_close_project(),
@@ -15721,12 +16958,8 @@ Error: `{err}`"
                     self.open_jaspar_expert_dialog();
                     ui.close();
                 }
-                if ui
-                    .button(self.tr("menu.file.save_project"))
-                    .on_hover_text(self.tr("menu.file.save_project.hover"))
-                    .clicked()
-                {
-                    self.prompt_save_project();
+                if ui.button("Promoter Cofactors...").clicked() {
+                    self.cofactor_browser.open = true;
                     ui.close();
                 }
                 if ui
@@ -15755,39 +16988,38 @@ Error: `{err}`"
                     ui.close();
                 }
             });
-            ui.menu_button(self.tr("menu.edit"), |ui| {
+            let _edit_menu = ui.menu_button(self.tr("menu.edit"), |ui| {
+                let launch = LaunchContext::capture(self, false);
                 let undo_resp = self.track_hover_status(
-                    ui.add_enabled(
-                        history_ops_enabled && undo_count > 0,
-                        egui::Button::new(self.tr("menu.edit.undo")),
-                    )
-                    .on_hover_text("Undo the most recent operation-level state change"),
+                    launch.readiness(CommandPaletteAction::Undo)
+                        .button(ui, self.tr("menu.edit.undo"))
+                        .on_hover_text("Undo the most recent operation-level state change"),
                     "Edit > Undo",
                 );
+                #[cfg(feature = "gui-test-support")]
+                crate::gui_test_support::register_response(
+                    &undo_resp,
+                    crate::tutorial_gui_semantics::MAIN_UNDO,
+                    crate::tutorial_gui_semantics::WINDOW_MAIN,
+                    None,
+                    crate::gui_test_support::GuiTestWidgetKind::Button,
+                    false,
+                );
                 if undo_resp.clicked() {
-                    self.undo_last_operation();
+                    self.execute_command_palette_action(ui.ctx(), CommandPaletteAction::Undo);
                     ui.close();
                 }
                 let redo_resp = self.track_hover_status(
-                    ui.add_enabled(
-                        history_ops_enabled && redo_count > 0,
-                        egui::Button::new(self.tr("menu.edit.redo")),
-                    )
-                    .on_hover_text("Redo the most recently undone operation"),
+                    launch.readiness(CommandPaletteAction::Redo)
+                        .button(ui, self.tr("menu.edit.redo"))
+                        .on_hover_text("Redo the most recently undone operation"),
                     "Edit > Redo",
                 );
                 if redo_resp.clicked() {
-                    self.redo_last_operation();
+                    self.execute_command_palette_action(ui.ctx(), CommandPaletteAction::Redo);
                     ui.close();
                 }
-                if !history_ops_enabled {
-                    ui.small("Undo/redo disabled while background jobs are running.");
-                } else {
-                    ui.small(format!(
-                        "Undo {undo_count} | Redo {redo_count} | limit {}",
-                        history_summary.history_limit
-                    ));
-                }
+                ui.small(launch.history_summary_label());
                 ui.separator();
                 let palette_resp = self.track_hover_status(
                     ui.button(self.tr("menu.edit.command_palette"))
@@ -15808,6 +17040,15 @@ Error: `{err}`"
                     ui.close();
                 }
             });
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &_edit_menu.response,
+                crate::tutorial_gui_semantics::MAIN_EDIT_MENU,
+                crate::tutorial_gui_semantics::WINDOW_MAIN,
+                None,
+                crate::gui_test_support::GuiTestWidgetKind::Button,
+                false,
+            );
             ui.menu_button(self.tr("menu.settings"), |ui| {
                 if ui
                     .button(self.tr("menu.file.configuration"))
@@ -15819,8 +17060,9 @@ Error: `{err}`"
                 }
             });
             ui.menu_button(self.tr("menu.genome"), |ui| {
+                let launch = LaunchContext::capture(self, false);
                 if ui
-                    .button("Prepare Reference Genome...")
+                    .button(self.tr("menu.genome.prepare_reference"))
                     .on_hover_text(
                         "Download/index a reference genome for local extraction and BLAST",
                     )
@@ -15830,7 +17072,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("Prepared References...")
+                    .button(self.tr("menu.genome.prepared_references"))
                     .on_hover_text("Inspect prepared reference/helper genome installations")
                     .clicked()
                 {
@@ -15838,7 +17080,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("Clear Caches...")
+                    .button(self.tr("menu.genome.clear_caches"))
                     .on_hover_text(
                         "Inspect and conservatively remove prepared genome/helper cache artifacts",
                     )
@@ -15848,7 +17090,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("Retrieve Genomic Sequence...")
+                    .button(self.tr("menu.genome.retrieve_genomic"))
                     .on_hover_text(
                         "Extract anchored region/gene sequence from a prepared reference",
                     )
@@ -15858,7 +17100,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("BLAST Genome Sequence...")
+                    .button(self.tr("menu.genome.blast_genome"))
                     .on_hover_text("Run BLAST against prepared reference genome indices")
                     .clicked()
                 {
@@ -15866,16 +17108,36 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("Import Genome Track...")
+                    .button(self.tr("menu.genome.import_track"))
                     .on_hover_text("Import BED/BigWig/VCF tracks onto anchored sequences")
                     .clicked()
                 {
                     self.open_genome_bed_track_dialog();
                     ui.close();
                 }
+                if launch.readiness(CommandPaletteAction::UiIntent(UiIntentTarget::SavedGenomicRegions))
+                    .button(ui, self.tr("menu.genome.saved_genomic_regions"))
+                    .on_hover_text(
+                        "Save, inspect, recolour, and interchange assembly-bound genomic regions of interest",
+                    )
+                    .clicked()
+                {
+                    self.open_saved_genomic_regions();
+                    ui.close();
+                }
+                if ui
+                    .button(self.tr("menu.genome.gene_set_inspector"))
+                    .on_hover_text(
+                        "Inspect persisted gene sets, bind exact primer reports, and run collection specificity",
+                    )
+                    .clicked()
+                {
+                    self.open_gene_set_inspector_dialog();
+                    ui.close();
+                }
                 ui.separator();
                 if ui
-                    .button("Prepare Helper Genome...")
+                    .button(self.tr("menu.genome.prepare_helper"))
                     .on_hover_text("Prepare helper catalog genomes for extraction and BLAST")
                     .clicked()
                 {
@@ -15883,7 +17145,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("Retrieve Helper Sequence...")
+                    .button(self.tr("menu.genome.retrieve_helper"))
                     .on_hover_text("Extract sequence from prepared helper genomes")
                     .clicked()
                 {
@@ -15891,7 +17153,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("BLAST Helper Sequence...")
+                    .button(self.tr("menu.genome.blast_helper"))
                     .on_hover_text("Run BLAST against prepared helper genome indices")
                     .clicked()
                 {
@@ -15900,8 +17162,13 @@ Error: `{err}`"
                 }
             });
             ui.menu_button(self.tr("menu.patterns"), |ui| {
+                let launch = LaunchContext::capture(self, false);
+                if ui.button("Gel Image Analysis...").clicked() {
+                    self.open_gel_image_editor();
+                    ui.close();
+                }
                 if ui
-                    .button("Import Pattern File...")
+                    .button(self.tr("menu.patterns.import_file"))
                     .on_hover_text("Import workflow macro templates from one JSON pattern file")
                     .clicked()
                 {
@@ -15909,7 +17176,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("Import Pattern Folder...")
+                    .button(self.tr("menu.patterns.import_folder"))
                     .on_hover_text(
                         "Import workflow macro templates from all JSON files in one folder tree",
                     )
@@ -15919,59 +17186,22 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("Import Built-in Legacy Pack")
+                    .button(self.tr("menu.patterns.import_legacy_pack"))
                     .on_hover_text("Import templates from assets/cloning_patterns.json")
                     .clicked()
                 {
                     self.import_workflow_macro_templates_from_path(
-                        DEFAULT_CLONING_PATTERN_PACK_PATH,
+                        &crate::runtime_assets::resolve_runtime_asset_path(DEFAULT_CLONING_PATTERN_PACK_PATH).to_string_lossy(),
                     );
                     ui.close();
                 }
                 ui.separator();
 
-                let catalog_root = Path::new(DEFAULT_CLONING_PATTERN_CATALOG_DIR);
-                match Self::collect_cloning_pattern_catalog_entries(catalog_root) {
-                    Ok(entries) => {
-                        if entries.is_empty() {
-                            ui.add_enabled(false, egui::Button::new("Catalog is empty"));
-                        } else {
-                            if ui
-                                .button("Import Full Catalog")
-                                .on_hover_text(format!(
-                                    "Import all catalog templates from {}",
-                                    catalog_root.display()
-                                ))
-                                .clicked()
-                            {
-                                self.import_workflow_macro_templates_from_path(
-                                    &catalog_root.display().to_string(),
-                                );
-                                ui.close();
-                            }
-                            ui.separator();
-                            ui.small("Catalog hierarchy");
-                            let mut selected_path: Option<String> = None;
-                            Self::render_cloning_pattern_catalog_menu_entries(
-                                ui,
-                                &entries,
-                                &mut selected_path,
-                            );
-                            if let Some(path) = selected_path {
-                                self.import_workflow_macro_templates_from_path(&path);
-                                ui.close();
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        ui.add_enabled(false, egui::Button::new("Catalog unavailable"));
-                        ui.small(err);
-                    }
-                }
-
+                self.render_pattern_template_catalog_menu(ui);
+                self.render_grna_use_menu(ui, &launch);
                 ui.separator();
                 if ui
-                    .button("Gibson...")
+                    .button(self.tr("menu.patterns.gibson"))
                     .on_hover_text(
                         "Open destination-first Gibson specialist window with overlap, primer, and cartoon preview",
                     )
@@ -15980,20 +17210,20 @@ Error: `{err}`"
                     self.open_gibson_dialog();
                     ui.close();
                 }
-                if ui
-                    .button("PCR Designer...")
+                if launch.readiness(CommandPaletteAction::UiIntent(UiIntentTarget::PcrDesign))
+                    .button(ui, self.tr("menu.patterns.pcr_designer"))
                     .on_hover_text(
-                        "Open paint-first pair-PCR specialist window (ROI + primer windows + queue)",
+                        "Open PCR Designer setup for selected DNA (target region and primer windows); no design runs automatically",
                     )
                     .clicked()
                 {
                     self.open_pcr_design_dialog();
                     ui.close();
                 }
-                if ui
-                    .button("Sequencing Confirmation...")
+                if launch.readiness(CommandPaletteAction::UiIntent(UiIntentTarget::SequencingConfirmation))
+                    .button(ui, self.tr("menu.patterns.sequencing_confirmation"))
                     .on_hover_text(
-                        "Open construct-confirmation specialist window for called sequencing reads",
+                        "Open sequencing-confirmation setup for selected DNA; choose reads before analysis",
                     )
                     .clicked()
                 {
@@ -16001,7 +17231,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("microRNA Target Scan...")
+                    .button(self.tr("menu.patterns.mirna_target_scan"))
                     .on_hover_text(
                         "Scan transcript annotations for microRNA seed candidates and inspect graphical pairing evidence",
                     )
@@ -16011,7 +17241,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("Routine Assistant...")
+                    .button(self.tr("menu.patterns.routine_assistant"))
                     .on_hover_text(
                         "Open staged routine-selection workflow (goal, compare, parameters, preflight, run, export)",
                     )
@@ -16021,7 +17251,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("Planning...")
+                    .button(self.tr("menu.patterns.planning"))
                     .on_hover_text(
                         "Open planning profiles/objective editor and suggestion resolution view",
                     )
@@ -16031,100 +17261,11 @@ Error: `{err}`"
                     ui.close();
                 }
                 ui.separator();
-                ui.small("Routine catalog");
-                match self.list_cloning_routines(None, None, None) {
-                    Ok(mut routines) => {
-                        if routines.is_empty() {
-                            ui.add_enabled(false, egui::Button::new("No routines found"));
-                        } else {
-                            routines.sort_by(|left, right| {
-                                left.family
-                                    .to_ascii_lowercase()
-                                    .cmp(&right.family.to_ascii_lowercase())
-                                    .then(
-                                        left.title
-                                            .to_ascii_lowercase()
-                                            .cmp(&right.title.to_ascii_lowercase()),
-                                    )
-                            });
-                            if ui
-                                .button("Show Routine Catalog Summary")
-                                .on_hover_text(
-                                    "Show current routine catalog location and routine count",
-                                )
-                                .clicked()
-                            {
-                                self.app_status = format!(
-                                    "Loaded {} routine(s) from '{}'",
-                                    routines.len(),
-                                    DEFAULT_CLONING_ROUTINE_CATALOG_PATH
-                                );
-                                ui.close();
-                            }
-
-                            let mut selected_template_path: Option<String> = None;
-                            let mut status_message: Option<String> = None;
-                            let mut by_family: BTreeMap<String, Vec<CloningRoutineCatalogRow>> =
-                                BTreeMap::new();
-                            let mut by_status: BTreeMap<String, Vec<CloningRoutineCatalogRow>> =
-                                BTreeMap::new();
-                            for routine in routines {
-                                by_family
-                                    .entry(routine.family.clone())
-                                    .or_default()
-                                    .push(routine.clone());
-                                by_status
-                                    .entry(routine.status.clone())
-                                    .or_default()
-                                    .push(routine);
-                            }
-
-                            ui.menu_button("Browse by Family", |ui| {
-                                for (family, rows) in &by_family {
-                                    ui.menu_button(format!("{family} ({})", rows.len()), |ui| {
-                                        Self::render_cloning_routine_menu_entries(
-                                            ui,
-                                            rows,
-                                            &mut selected_template_path,
-                                            &mut status_message,
-                                        );
-                                    });
-                                }
-                            });
-                            ui.menu_button("Browse by Status", |ui| {
-                                for (status, rows) in &by_status {
-                                    ui.menu_button(format!("{status} ({})", rows.len()), |ui| {
-                                        Self::render_cloning_routine_menu_entries(
-                                            ui,
-                                            rows,
-                                            &mut selected_template_path,
-                                            &mut status_message,
-                                        );
-                                    });
-                                }
-                            });
-
-                            if let Some(path) = selected_template_path {
-                                self.import_workflow_macro_templates_from_path(&path);
-                                if let Some(message) = status_message {
-                                    self.app_status = message;
-                                }
-                                ui.close();
-                            } else if let Some(message) = status_message {
-                                self.app_status = message;
-                                ui.close();
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        ui.add_enabled(false, egui::Button::new("Routine catalog unavailable"));
-                        ui.small(err);
-                    }
-                }
+                self.render_pattern_routine_catalog_menu(ui);
             });
             ui.menu_button(self.tr("menu.services"), |ui| {
                 if ui
-                    .button("External Services...")
+                    .button(self.tr("menu.services.external_services"))
                     .on_hover_text(
                         "Inspect provider catalog, validate service requests, and prepare quote handoff bundles",
                     )
@@ -16134,14 +17275,14 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("ClawBio...")
+                    .button(self.tr("menu.services.clawbio"))
                     .on_hover_text("Send the current sequence/selection context to ClawBio")
                     .clicked()
                 {
                     self.open_clawbio_dialog();
                     ui.close();
                 }
-                ui.small("Shared shell routes: services providers/preflight/quote");
+                ui.small(self.tr("menu.services.shared_shell_routes"));
             });
             ui.menu_button(self.tr("menu.windows"), |ui| {
                 let jobs_panel_resp = self.track_hover_status(
@@ -16171,7 +17312,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 ui.separator();
-                for entry in &open_window_entries {
+                for entry in open_window_entries {
                     let label = if entry.viewport_id == ViewportId::ROOT {
                         format!("Main: {}", entry.title)
                     } else {
@@ -16205,8 +17346,8 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("Agent Interface")
-                    .on_hover_text("Open the agent interface guide (CLI, MCP, and Agent Assistant)")
+                    .button(self.tr("agent.ui.interface"))
+                    .on_hover_text(self.tr("agent.ui.interface_hover"))
                     .clicked()
                 {
                     self.open_help_doc(HelpDoc::AgentInterface);
@@ -16228,7 +17369,7 @@ Error: `{err}`"
                     self.open_help_doc(HelpDoc::Shell);
                     ui.close();
                 }
-                ui.menu_button("Tutorials", |ui| {
+                tutorial_menus::submenu(ui, "Tutorials", |ui| {
                     if self.help_tutorial_entries.is_empty() {
                         self.help_tutorial_entries = Self::discover_help_tutorial_entries();
                         self.set_help_tutorial_selected(self.help_tutorial_selected);
@@ -16237,16 +17378,7 @@ Error: `{err}`"
                         ui.add_enabled(false, egui::Button::new("No tutorial docs found"));
                         return;
                     }
-                    let mut selected_tutorial: Option<usize> = None;
-                    for (index, entry) in self.help_tutorial_entries.iter().enumerate() {
-                        if ui
-                            .button(entry.title.as_str())
-                            .on_hover_text(format!("Open {}\n{}", entry.title, entry.summary))
-                            .clicked()
-                        {
-                            selected_tutorial = Some(index);
-                        }
-                    }
+                    let selected_tutorial = tutorial_menus::help_entries(ui, &self.help_tutorial_entries);
                     if let Some(index) = selected_tutorial {
                         self.open_help_tutorial_doc(index);
                         ui.close();
@@ -16254,14 +17386,19 @@ Error: `{err}`"
                 });
                 ui.separator();
                 if ui
-                    .button("About GENtle")
-                    .on_hover_text("Show version and build information")
+                    .button(self.tr("menu.help.about"))
+                    .on_hover_text(self.tr("menu.help.about.hover"))
                     .clicked()
                 {
-                    self.show_about_dialog = !about::show_native_about_panel();
+                    self.open_about_dialog();
                     ui.close();
                 }
             });
+            crate::agent_help::render_agent_help_button(
+                ui,
+                "Main project window",
+                "window.main",
+            );
         });
     }
 
@@ -16355,6 +17492,11 @@ Error: `{err}`"
         for window in new_windows.drain(..) {
             self.register_window(window);
         }
+        if let Some(seq_id) = self.pending_sequence_focus_after_open.take()
+            && let Some(viewport_id) = self.find_open_sequence_viewport_id(&seq_id)
+        {
+            self.prioritize_focus_viewport(viewport_id);
+        }
     }
 
     fn sequence_window_accepts_native_close_request() -> bool {
@@ -16372,6 +17514,16 @@ Error: `{err}`"
             .unwrap_or(false)
     }
 
+    fn sequence_viewport_builder(window_title: &str) -> egui::ViewportBuilder {
+        egui::ViewportBuilder::default()
+            .with_title(window_title)
+            .with_inner_size([
+                SEQUENCE_WINDOW_DEFAULT_WIDTH_PX,
+                SEQUENCE_WINDOW_DEFAULT_HEIGHT_PX,
+            ])
+            .with_min_inner_size([SEQUENCE_WINDOW_MIN_WIDTH_PX, SEQUENCE_WINDOW_MIN_HEIGHT_PX])
+    }
+
     fn show_window(
         &mut self,
         ctx: &egui::Context,
@@ -16385,7 +17537,7 @@ Error: `{err}`"
             .map(|w| w.name())
             .unwrap_or_else(|_| "GENtle".to_string());
         let render_hosted_sequence_in_foreground = self.viewport_foreground_requested(id);
-        let builder = egui::ViewportBuilder::default().with_title(window_title.clone());
+        let builder = Self::sequence_viewport_builder(&window_title);
         let initial_commands = Self::deferred_window_initial_commands(initial_position);
         if ctx.embed_viewports() {
             let update_result = catch_unwind(AssertUnwindSafe(|| {
@@ -16397,7 +17549,10 @@ Error: `{err}`"
                         // Versioned to drop stale persisted egui Resize state
                         // from pre-fix embedded sequence shells.
                         egui::Id::new(("hosted_sequence_window_v2", id)),
-                        Vec2::new(1200.0, 860.0),
+                        Vec2::new(
+                            SEQUENCE_WINDOW_DEFAULT_WIDTH_PX,
+                            SEQUENCE_WINDOW_DEFAULT_HEIGHT_PX,
+                        ),
                         min_size,
                     )
                     .initial_pos(initial_position)
@@ -16410,7 +17565,14 @@ Error: `{err}`"
                     crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
                         w.update_embedded(ui);
                     });
-                    self.clear_viewport_foreground_request_after_render(id);
+                    // egui 0.36 makes a newly sized area non-interactable for its
+                    // first pass. Keep the one-shot foreground request until the
+                    // hosted window can actually receive focus and pointer input.
+                    if egui::containers::AreaState::load(ctx, spec.stable_id)
+                        .is_some_and(|state| state.interactable)
+                    {
+                        self.clear_viewport_foreground_request_after_render(id);
+                    }
                     w.update_auxiliary_windows_only(ctx);
                     if !open {
                         w.take_close_requested();
@@ -16543,6 +17705,102 @@ Error: `{err}`"
         }
     }
 
+    fn append_arrangement_lineage_rows(
+        rows: &mut Vec<LineageRow>,
+        edges: &mut Vec<(String, String, String)>,
+        op_label_by_id: &mut HashMap<String, String>,
+        containers: &[ContainerRow],
+        arrangements: &[ArrangementRow],
+    ) {
+        let seq_node_by_seq_id: HashMap<String, String> = rows
+            .iter()
+            .filter(|row| row.kind == LineageNodeKind::Sequence)
+            .map(|row| (row.seq_id.clone(), row.node_id.clone()))
+            .collect();
+        let container_members_by_id: HashMap<String, Vec<String>> = containers
+            .iter()
+            .map(|row| (row.container_id.clone(), row.members.clone()))
+            .collect();
+        for arrangement in arrangements {
+            let arrangement_node_id = format!("arr:{}", arrangement.arrangement_id);
+            let arrangement_edge_op_id = format!(
+                "{}::arrangement:{}",
+                arrangement.created_by_op, arrangement.arrangement_id
+            );
+            let mut source_node_ids = Vec::new();
+            let mut seen_sources = HashSet::new();
+            for container_id in &arrangement.lane_container_ids {
+                if let Some(members) = container_members_by_id.get(container_id) {
+                    for seq_id in members {
+                        if let Some(source_node_id) = seq_node_by_seq_id.get(seq_id).cloned()
+                            && seen_sources.insert(source_node_id.clone())
+                        {
+                            source_node_ids.push(source_node_id.clone());
+                            edges.push((
+                                source_node_id,
+                                arrangement_node_id.clone(),
+                                arrangement_edge_op_id.clone(),
+                            ));
+                        }
+                    }
+                }
+            }
+            op_label_by_id
+                .entry(arrangement_edge_op_id)
+                .or_insert_with(|| "Arrange serial lanes".to_string());
+            rows.push(LineageRow {
+                kind: LineageNodeKind::Arrangement,
+                node_id: arrangement_node_id,
+                seq_id: arrangement.arrangement_id.clone(),
+                display_name: if arrangement.name.trim().is_empty() {
+                    arrangement.arrangement_id.clone()
+                } else {
+                    arrangement.name.clone()
+                },
+                origin: "Arrangement".to_string(),
+                created_by_op: arrangement.created_by_op.clone(),
+                created_at: arrangement.created_at,
+                parents: source_node_ids,
+                length: 0,
+                circular: false,
+                pool_size: 1,
+                pool_members: vec![],
+                arrangement_id: Some(arrangement.arrangement_id.clone()),
+                arrangement_mode: Some(format!("{:?}", arrangement.mode)),
+                lane_container_ids: arrangement.lane_container_ids.clone(),
+                ladders: arrangement.ladders.clone(),
+                genome_anchor_summary: None,
+                genome_anchor_display: None,
+                is_full_genome_sequence: false,
+                retrieval_descriptor: None,
+                analysis_kind: None,
+                analysis_artifact_id: None,
+                analysis_reference_seq_id: None,
+                analysis_mode: None,
+                analysis_status: None,
+                analysis_point_count: None,
+                analysis_bin_count: None,
+                analysis_read_count: None,
+                analysis_trace_count: None,
+                analysis_target_count: None,
+                analysis_variant_count: None,
+                macro_instance_id: None,
+                macro_routine_id: None,
+                macro_template_name: None,
+                macro_status: None,
+                macro_status_message: None,
+                macro_op_ids: vec![],
+                macro_inputs: vec![],
+                macro_outputs: vec![],
+            });
+        }
+        rows.sort_by(|a, b| {
+            a.created_at
+                .cmp(&b.created_at)
+                .then(a.node_id.cmp(&b.node_id))
+        });
+    }
+
     fn refresh_lineage_cache_if_needed(&mut self) {
         let stamp = self.current_lineage_change_stamp();
         if self.lineage_cache_valid && self.lineage_cache_stamp == stamp {
@@ -16550,9 +17808,9 @@ Error: `{err}`"
         }
 
         let (
-            rows,
-            lineage_edges,
-            op_label_by_id,
+            mut rows,
+            mut lineage_edges,
+            mut op_label_by_id,
             reopenable_gibson_op_ids,
             reopenable_pcr_op_seq_ids,
             containers,
@@ -17091,6 +18349,12 @@ Error: `{err}`"
                 });
             }
 
+            let construct_reasoning_summaries =
+                engine.list_construct_reasoning_graph_summaries(None);
+            let construct_reasoning_node_ids = construct_reasoning_summaries
+                .iter()
+                .map(|summary| format!("analysis:construct_reasoning:{}", summary.graph_id))
+                .collect::<HashSet<_>>();
             let dotplot_summaries = engine.list_dotplot_views(None);
             for summary in dotplot_summaries {
                 let node_id = format!("analysis:dotplot:{}", summary.dotplot_id);
@@ -17119,6 +18383,9 @@ Error: `{err}`"
                 {
                     parents.push(reference_seq_id.clone());
                 }
+                if let Some(citation) = summary.inspection_provenance.as_ref() {
+                    parents.push(format!("reasoning graph {}", citation.graph_id));
+                }
                 out.push(LineageRow {
                     kind: LineageNodeKind::Analysis,
                     node_id: node_id.clone(),
@@ -17144,7 +18411,13 @@ Error: `{err}`"
                     analysis_artifact_id: Some(summary.dotplot_id.clone()),
                     analysis_reference_seq_id: reference_seq_id.clone(),
                     analysis_mode: Some(summary.mode.as_str().to_string()),
-                    analysis_status: None,
+                    analysis_status: Some(
+                        summary
+                            .inspection_provenance
+                            .as_ref()
+                            .map(|citation| citation.status.as_str().to_string())
+                            .unwrap_or_else(|| "manual (no reasoning citation)".to_string()),
+                    ),
                     analysis_point_count: Some(summary.point_count),
                     analysis_bin_count: None,
                     analysis_read_count: None,
@@ -17173,6 +18446,26 @@ Error: `{err}`"
                             source_node_id.clone(),
                             node_id.clone(),
                             edge_op_id.clone(),
+                        ));
+                    }
+                }
+                if let Some(citation) = summary.inspection_provenance.as_ref() {
+                    let reasoning_node_id =
+                        format!("analysis:construct_reasoning:{}", citation.graph_id);
+                    if construct_reasoning_node_ids.contains(&reasoning_node_id) {
+                        let inspection_edge_id = format!(
+                            "inspection:{}:{}:{}",
+                            citation.graph_id, citation.action_id, summary.dotplot_id
+                        );
+                        op_label_by_id
+                            .entry(inspection_edge_id.clone())
+                            .or_insert_with(|| {
+                                format!("Reasoning recommendation ({})", citation.status.as_str())
+                            });
+                        lineage_edges.push((
+                            reasoning_node_id,
+                            node_id.clone(),
+                            inspection_edge_id,
                         ));
                     }
                 }
@@ -17308,6 +18601,70 @@ Error: `{err}`"
                         node_id.clone(),
                         edge_op_id.clone(),
                     ));
+                }
+            }
+
+            let primer_specificity_summaries = engine.list_primer_specificity_reports();
+            for summary in primer_specificity_summaries {
+                let Some(seq_id) = summary.primary_seq_id.clone() else {
+                    continue;
+                };
+                let node_id = format!("analysis:primer_specificity:{}", summary.report_id);
+                let created_by_op = summary.op_id.clone().unwrap_or_else(|| "-".to_string());
+                let edge_op_id = if created_by_op == "-" {
+                    format!("analysis:primer_specificity:{}", summary.report_id)
+                } else {
+                    created_by_op.clone()
+                };
+                op_label_by_id.entry(edge_op_id.clone()).or_insert_with(|| {
+                    format!(
+                        "Assess primer specificity: report_id={}, target={}",
+                        summary.report_id, summary.target_genome_id
+                    )
+                });
+                out.push(LineageRow {
+                    kind: LineageNodeKind::Analysis,
+                    node_id: node_id.clone(),
+                    seq_id: seq_id.clone(),
+                    display_name: summary.report_id.clone(),
+                    origin: "PrimerSpecificity".to_string(),
+                    created_by_op,
+                    created_at: summary.generated_at_unix_ms,
+                    parents: vec![seq_id.clone()],
+                    length: 0,
+                    circular: false,
+                    pool_size: 0,
+                    pool_members: vec![],
+                    arrangement_id: None,
+                    arrangement_mode: None,
+                    lane_container_ids: vec![],
+                    ladders: vec![],
+                    genome_anchor_summary: None,
+                    genome_anchor_display: None,
+                    is_full_genome_sequence: false,
+                    retrieval_descriptor: None,
+                    analysis_kind: Some(LineageAnalysisKind::PrimerSpecificity),
+                    analysis_artifact_id: Some(summary.report_id.clone()),
+                    analysis_reference_seq_id: Some(summary.target_genome_id.clone()),
+                    analysis_mode: Some(summary.target_kind.clone()),
+                    analysis_status: Some(summary.status.clone()),
+                    analysis_point_count: Some(summary.amplicon_count),
+                    analysis_bin_count: None,
+                    analysis_read_count: None,
+                    analysis_trace_count: None,
+                    analysis_target_count: Some(1),
+                    analysis_variant_count: Some(summary.failing_unintended_amplicon_count),
+                    macro_instance_id: None,
+                    macro_routine_id: None,
+                    macro_template_name: None,
+                    macro_status: None,
+                    macro_status_message: None,
+                    macro_op_ids: vec![],
+                    macro_inputs: vec![],
+                    macro_outputs: vec![],
+                });
+                if let Some(source_node_id) = state.lineage.seq_to_node.get(&seq_id) {
+                    lineage_edges.push((source_node_id.clone(), node_id, edge_op_id));
                 }
             }
 
@@ -17575,8 +18932,6 @@ Error: `{err}`"
                 }
             }
 
-            let construct_reasoning_summaries =
-                engine.list_construct_reasoning_graph_summaries(None);
             for summary in construct_reasoning_summaries {
                 let node_id = format!("analysis:construct_reasoning:{}", summary.graph_id);
                 let created_by_op = summary.op_id.clone().unwrap_or_else(|| "-".to_string());
@@ -17974,7 +19329,7 @@ Error: `{err}`"
                 .iter()
                 .map(|(id, arrangement)| ArrangementRow {
                     arrangement_id: id.clone(),
-                    mode: format!("{:?}", arrangement.mode),
+                    mode: arrangement.mode.clone(),
                     name: arrangement.name.clone().unwrap_or_default(),
                     created_by_op: arrangement
                         .created_by_op
@@ -18023,6 +19378,14 @@ Error: `{err}`"
             )
         };
 
+        Self::append_arrangement_lineage_rows(
+            &mut rows,
+            &mut lineage_edges,
+            &mut op_label_by_id,
+            &containers,
+            &arrangements,
+        );
+        self.lineage_projection_cache = None;
         self.lineage_rows = rows;
         self.lineage_edges = lineage_edges;
         self.lineage_op_label_by_id = op_label_by_id;
@@ -18249,25 +19612,72 @@ Error: `{err}`"
         }
 
         let mut layout_by_node: HashMap<String, (usize, usize)> = HashMap::new();
-        let mut max_rank_seen = 0usize;
+        let mut max_nodes_in_layer = 1usize;
         for (layer, nodes) in &order_by_layer {
-            for node_id in nodes {
-                let rank = row_index.get(node_id).copied().unwrap_or(0);
-                max_rank_seen = max_rank_seen.max(rank);
+            max_nodes_in_layer = max_nodes_in_layer.max(nodes.len());
+            for (rank, node_id) in nodes.iter().enumerate() {
                 layout_by_node.insert(node_id.clone(), (*layer, rank));
             }
         }
 
         for row in rows {
-            let fallback_rank = row_index.get(&row.node_id).copied().unwrap_or(0);
-            max_rank_seen = max_rank_seen.max(fallback_rank);
             layout_by_node
                 .entry(row.node_id.clone())
-                .or_insert((0, fallback_rank));
+                .or_insert_with(|| {
+                    let rank = max_nodes_in_layer;
+                    max_nodes_in_layer = max_nodes_in_layer.saturating_add(1);
+                    (0, rank)
+                });
         }
 
-        let max_nodes_in_layer = max_rank_seen.saturating_add(1);
         (layout_by_node, max_layer + 1, max_nodes_in_layer)
+    }
+
+    fn cached_lineage_graph_projection(
+        &mut self,
+        groups: &[PersistedLineageNodeGroup],
+    ) -> Arc<LineageGraphProjectionCache> {
+        crate::gentle_gui_profile_scope!("GENtleApp::lineage_graph_projection");
+        if let Some(cache) = self
+            .lineage_projection_cache
+            .as_ref()
+            .filter(|cache| {
+                cache.lineage_stamp == self.lineage_cache_stamp && cache.groups == groups
+            })
+            .cloned()
+        {
+            self.lineage_projection_cache_hits =
+                self.lineage_projection_cache_hits.saturating_add(1);
+            return cache;
+        }
+
+        let (projected_rows, projected_edges) =
+            Self::project_lineage_graph_by_groups(&self.lineage_rows, &self.lineage_edges, groups);
+        let (rows, edges, op_label_by_id) = Self::project_lineage_graph_operation_hubs(
+            &projected_rows,
+            &projected_edges,
+            &self.lineage_op_label_by_id,
+            &self.lineage_reopenable_gibson_op_ids,
+        );
+        let (layout_by_node, layer_count, max_nodes_in_layer) =
+            Self::compute_lineage_dag_layout(&rows, &edges);
+        let cache = Arc::new(LineageGraphProjectionCache {
+            lineage_stamp: self.lineage_cache_stamp,
+            groups: groups.to_vec(),
+            source_rows: self.lineage_rows.clone(),
+            source_edges: self.lineage_edges.clone(),
+            source_op_label_by_id: self.lineage_op_label_by_id.clone(),
+            rows,
+            edges,
+            op_label_by_id,
+            layout_by_node,
+            layer_count,
+            max_nodes_in_layer,
+        });
+        self.lineage_projection_cache = Some(cache.clone());
+        self.lineage_projection_cache_misses =
+            self.lineage_projection_cache_misses.saturating_add(1);
+        cache
     }
 
     fn compact_lineage_node_label(raw: &str, max_chars: usize) -> String {
@@ -18945,110 +20355,18 @@ Error: `{err}`"
     ) {
         self.refresh_lineage_cache_if_needed();
 
-        let mut graph_rows = self.lineage_rows.clone();
-        let mut graph_edges = self.lineage_edges.clone();
-        let mut graph_op_label_by_id = self.lineage_op_label_by_id.clone();
-        let seq_node_by_seq_id: HashMap<String, String> = self
+        let valid_lineage_node_ids: HashSet<String> = self
             .lineage_rows
             .iter()
-            .filter(|row| row.kind == LineageNodeKind::Sequence)
-            .map(|row| (row.seq_id.clone(), row.node_id.clone()))
+            .map(|row| row.node_id.clone())
             .collect();
-        let container_members_by_id: HashMap<String, Vec<String>> = self
-            .lineage_containers
-            .iter()
-            .map(|row| (row.container_id.clone(), row.members.clone()))
-            .collect();
-        for arrangement in &self.lineage_arrangements {
-            let arrangement_node_id = format!("arr:{}", arrangement.arrangement_id);
-            let arrangement_edge_op_id = format!(
-                "{}::arrangement:{}",
-                arrangement.created_by_op, arrangement.arrangement_id
-            );
-            let mut source_node_ids: Vec<String> = vec![];
-            let mut seen_sources: HashSet<String> = HashSet::new();
-            for container_id in &arrangement.lane_container_ids {
-                if let Some(members) = container_members_by_id.get(container_id) {
-                    for seq_id in members {
-                        if let Some(source_node_id) = seq_node_by_seq_id.get(seq_id).cloned()
-                            && seen_sources.insert(source_node_id.clone())
-                        {
-                            source_node_ids.push(source_node_id.clone());
-                            graph_edges.push((
-                                source_node_id,
-                                arrangement_node_id.clone(),
-                                arrangement_edge_op_id.clone(),
-                            ));
-                        }
-                    }
-                }
-            }
-            graph_op_label_by_id
-                .entry(arrangement_edge_op_id)
-                .or_insert_with(|| "Arrange serial lanes".to_string());
-            graph_rows.push(LineageRow {
-                kind: LineageNodeKind::Arrangement,
-                node_id: arrangement_node_id,
-                seq_id: arrangement.arrangement_id.clone(),
-                display_name: if arrangement.name.trim().is_empty() {
-                    arrangement.arrangement_id.clone()
-                } else {
-                    arrangement.name.clone()
-                },
-                origin: "Arrangement".to_string(),
-                created_by_op: arrangement.created_by_op.clone(),
-                created_at: arrangement.created_at,
-                parents: source_node_ids,
-                length: 0,
-                circular: false,
-                pool_size: 1,
-                pool_members: vec![],
-                arrangement_id: Some(arrangement.arrangement_id.clone()),
-                arrangement_mode: Some(arrangement.mode.clone()),
-                lane_container_ids: arrangement.lane_container_ids.clone(),
-                ladders: arrangement.ladders.clone(),
-                genome_anchor_summary: None,
-                genome_anchor_display: None,
-                is_full_genome_sequence: false,
-                retrieval_descriptor: None,
-                analysis_kind: None,
-                analysis_artifact_id: None,
-                analysis_reference_seq_id: None,
-                analysis_mode: None,
-                analysis_status: None,
-                analysis_point_count: None,
-                analysis_bin_count: None,
-                analysis_read_count: None,
-                analysis_trace_count: None,
-                analysis_target_count: None,
-                analysis_variant_count: None,
-                macro_instance_id: None,
-                macro_routine_id: None,
-                macro_template_name: None,
-                macro_status: None,
-                macro_status_message: None,
-                macro_op_ids: vec![],
-                macro_inputs: vec![],
-                macro_outputs: vec![],
-            });
-        }
-        graph_rows.sort_by(|a, b| {
-            a.created_at
-                .cmp(&b.created_at)
-                .then(a.node_id.cmp(&b.node_id))
-        });
-
-        let valid_lineage_node_ids: HashSet<String> =
-            graph_rows.iter().map(|row| row.node_id.clone()).collect();
         let sanitized_groups =
             Self::sanitize_lineage_node_groups(&self.lineage_node_groups, &valid_lineage_node_ids);
-        let (projected_graph_rows, projected_graph_edges) =
-            Self::project_lineage_graph_by_groups(&graph_rows, &graph_edges, &sanitized_groups);
-        Self::project_lineage_graph_operation_hubs(
-            &projected_graph_rows,
-            &projected_graph_edges,
-            &graph_op_label_by_id,
-            &self.lineage_reopenable_gibson_op_ids,
+        let cache = self.cached_lineage_graph_projection(&sanitized_groups);
+        (
+            cache.rows.clone(),
+            cache.edges.clone(),
+            cache.op_label_by_id.clone(),
         )
     }
 
@@ -19573,7 +20891,11 @@ Error: `{err}`"
         valid_node_ids: &HashSet<String>,
         persist_workspace_after_frame: &mut bool,
     ) {
-        ui.label(format!("Node: {node_id}"));
+        if let Some(row) = context_row {
+            self.render_lineage_item_context_actions(ui, row);
+        } else {
+            ui.label(format!("Node: {node_id}"));
+        }
         ui.separator();
         if let Some(row) = context_row {
             for kind in [
@@ -19938,19 +21260,46 @@ Error: `{err}`"
                         },
                     );
                     ui.separator();
-                    if project_dirty {
-                        ui.label(Self::project_footer_status_text(
-                            ui.ctx(),
-                            &self.tr("project.status"),
-                            &self.tr("project.status.unsaved_changes"),
-                        ));
+                    let project_status = if project_dirty {
+                        self.tr("project.status.unsaved_changes")
                     } else {
-                        ui.label(Self::project_footer_status_text(
-                            ui.ctx(),
-                            &self.tr("project.status"),
-                            &self.tr("project.status.saved"),
-                        ));
-                    }
+                        self.tr("project.status.saved")
+                    };
+                    let project_status = if self.sequence_window_open_in_progress() {
+                        format!("{project_status} | {}", self.tr("sequence.window.opening"))
+                    } else {
+                        project_status
+                    };
+                    #[cfg(feature = "gui-test-support")]
+                    let save_state = if self.current_project_path.is_none()
+                        && !self.project_has_user_content()
+                    {
+                        "no_project"
+                    } else if project_dirty {
+                        "unsaved"
+                    } else {
+                        "saved"
+                    };
+                    let status_response = ui.label(Self::project_footer_status_text(
+                        ui.ctx(),
+                        &self.tr("project.status"),
+                        &project_status,
+                    ));
+                    #[cfg(feature = "gui-test-support")]
+                    crate::gui_test_support::register_rect(
+                        status_response.ctx.clone(),
+                        crate::tutorial_gui_semantics::MAIN_PROJECT_SAVE_STATE,
+                        crate::tutorial_gui_semantics::WINDOW_MAIN,
+                        None,
+                        crate::gui_test_support::GuiTestWidgetKind::Status,
+                        status_response.rect,
+                        true,
+                        true,
+                        false,
+                        Some(save_state),
+                    );
+                    #[cfg(not(feature = "gui-test-support"))]
+                    let _ = status_response;
                 },
             );
         });
@@ -20136,6 +21485,8 @@ Error: `{err}`"
         self.configuration_graphics.linear_view_span_bp = defaults.linear_view_span_bp;
         self.configuration_graphics.linear_view_vertical_offset_px =
             defaults.linear_view_vertical_offset_px;
+        self.configuration_graphics.linear_show_sequence_bases =
+            defaults.linear_show_sequence_bases;
         self.configuration_graphics
             .linear_sequence_base_text_max_view_span_bp =
             defaults.linear_sequence_base_text_max_view_span_bp;
@@ -20171,6 +21522,7 @@ Error: `{err}`"
     fn apply_configuration_window_backdrops(&mut self) {
         self.window_backdrops = self.configuration_window_backdrops.clone();
         window_backdrop::set_window_backdrop_settings(self.window_backdrops.clone());
+        self.window_backdrop_preload_dirty = true;
         self.window_backdrop_path_status_cache.clear();
         self.configuration_window_backdrops_dirty = false;
         self.configuration_status = "Window styling settings applied".to_string();
@@ -20189,6 +21541,7 @@ Error: `{err}`"
     fn apply_configuration_language(&mut self) {
         self.ui_language = self.configuration_ui_language;
         self.i18n.set_language(self.ui_language);
+        about::install_native_about_menu_bridge();
         self.configuration_language_dirty = false;
         self.configuration_status =
             format!("Interface language applied ({})", self.ui_language.label());
@@ -20717,6 +22070,15 @@ Error: `{err}`"
 
         ui.separator();
         ui.heading(self.tr("configuration.graphics.linear_dna_base_rendering"));
+        changed |= ui
+            .checkbox(
+                &mut self.configuration_graphics.linear_show_sequence_bases,
+                crate::i18n::tr("sequence.show_sequence_letters"),
+            )
+            .on_hover_text(
+                "Hide or show DNA base letters in the linear map while keeping feature tracks and the backbone visible.",
+            )
+            .changed();
         changed |= ui
             .checkbox(
                 &mut self.configuration_graphics.linear_show_double_strand_bases,
@@ -21321,29 +22683,209 @@ Error: `{err}`"
             return;
         }
         let mut open = self.show_about_dialog;
+        let mut show_details = false;
+        let mut close_requested = false;
         let spec = crate::egui_compat::ModalWindowSpec::new(
-            "About GENtle",
+            self.tr("about.title"),
             egui::Id::new("about_gentle_modal"),
-        );
+        )
+        .default_size(Vec2::new(460.0, 520.0))
+        .min_size(Vec2::new(420.0, 460.0));
         crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
-            ui.vertical_centered(|ui| {
-                ui.add(APP_ICON.clone().fit_to_exact_size(Vec2::new(96.0, 96.0)));
-                for line in about::version_cli_text().lines() {
-                    if line.starts_with("GENtle ") {
-                        ui.heading(line);
-                    } else {
-                        ui.label(line);
-                    }
+            crate::agent_help::render_agent_help_button(ui, self.tr("about.title"), "window.about");
+            ui.separator();
+            ui.set_min_width(390.0);
+            let dark_mode = ui.visuals().dark_mode;
+            let card_fill = if dark_mode {
+                egui::Color32::from_rgb(29, 36, 43)
+            } else {
+                egui::Color32::from_rgb(244, 247, 246)
+            };
+            egui::Frame::group(ui.style())
+                .fill(card_fill)
+                .corner_radius(14.0)
+                .inner_margin(egui::Margin::same(20))
+                .show(ui, |ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.add(APP_ICON.clone().fit_to_exact_size(Vec2::new(112.0, 112.0)));
+                        ui.add_space(8.0);
+                        ui.label(egui::RichText::new("GENtle").size(30.0).strong());
+                        ui.label(
+                            egui::RichText::new(self.tr("about.subtitle"))
+                                .size(15.0)
+                                .color(ui.visuals().weak_text_color()),
+                        );
+                        ui.add_space(10.0);
+                        let status_fill = if dark_mode {
+                            egui::Color32::from_rgb(80, 64, 35)
+                        } else {
+                            egui::Color32::from_rgb(244, 225, 181)
+                        };
+                        egui::Frame::NONE
+                            .fill(status_fill)
+                            .corner_radius(10.0)
+                            .inner_margin(egui::Margin::symmetric(9, 3))
+                            .show(ui, |ui| {
+                                ui.small(egui::RichText::new(self.tr("about.status")).strong());
+                            });
+                        ui.add_space(14.0);
+                        ui.label(format!(
+                            "{} {}",
+                            self.tr("about.version"),
+                            about::GENTLE_PACKAGE_VERSION
+                        ));
+                        ui.small(format!(
+                            "{} {}",
+                            self.tr("about.build"),
+                            about::GENTLE_BUILD_N
+                        ));
+                        ui.add_space(14.0);
+                        ui.add(
+                            egui::Label::new(self.tr("about.summary"))
+                                .wrap()
+                                .halign(egui::Align::Center),
+                        );
+                        ui.add_space(12.0);
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(self.tr("about.created_by")).small(),
+                            )
+                            .wrap()
+                            .halign(egui::Align::Center),
+                        );
+                        ui.small(self.tr("about.license"));
+                    });
+                });
+            ui.add_space(12.0);
+            ui.horizontal(|ui| {
+                if ui
+                    .button(self.tr("about.more_info"))
+                    .on_hover_text(self.tr("about.more_info.hover"))
+                    .clicked()
+                {
+                    show_details = true;
                 }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button(self.tr("about.close")).clicked() {
+                        close_requested = true;
+                    }
+                });
             });
         });
-        self.show_about_dialog = open;
+        self.show_about_dialog = open && !show_details && !close_requested;
+        if show_details {
+            self.show_about_details_dialog = true;
+        }
+    }
+
+    fn render_about_details_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_about_details_dialog {
+            return;
+        }
+        let mut open = self.show_about_details_dialog;
+        let mut back_requested = false;
+        let mut close_requested = false;
+        let spec = crate::egui_compat::ModalWindowSpec::new(
+            self.tr("about.details.title"),
+            egui::Id::new("about_gentle_details_modal"),
+        )
+        .default_size(Vec2::new(760.0, 560.0))
+        .min_size(Vec2::new(620.0, 460.0))
+        .resizable(true);
+        crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
+            crate::agent_help::render_agent_help_button(
+                ui,
+                self.tr("about.details.title"),
+                "window.about_details",
+            );
+            ui.separator();
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.columns(2, |columns| {
+                    columns[0].vertical_centered(|ui| {
+                        ui.add_space(18.0);
+                        ui.add(
+                            SPLASH_SCREEN
+                                .clone()
+                                .fit_to_exact_size(Vec2::new(280.0, 245.0)),
+                        );
+                        ui.add_space(6.0);
+                        ui.label(egui::RichText::new("GENtle").size(25.0).strong());
+                        ui.small(format!(
+                            "{} {} · {} {}",
+                            self.tr("about.version"),
+                            about::GENTLE_PACKAGE_VERSION,
+                            self.tr("about.build"),
+                            about::GENTLE_BUILD_N
+                        ));
+                    });
+                    columns[1].vertical(|ui| {
+                        ui.heading(self.tr("about.details.heading"));
+                        ui.add_space(6.0);
+                        ui.add(egui::Label::new(self.tr("about.details.body")).wrap());
+                        ui.add_space(14.0);
+                        egui::Frame::group(ui.style()).show(ui, |ui| {
+                            ui.add(egui::Label::new(self.tr("about.preview_note")).wrap());
+                        });
+                        ui.add_space(16.0);
+                        egui::Grid::new("about_gentle_metadata")
+                            .num_columns(2)
+                            .spacing([12.0, 7.0])
+                            .show(ui, |ui| {
+                                ui.strong(self.tr("about.version"));
+                                ui.label(about::GENTLE_PACKAGE_VERSION);
+                                ui.end_row();
+                                ui.strong(self.tr("about.build"));
+                                ui.label(about::GENTLE_BUILD_N);
+                                ui.end_row();
+                                ui.strong(self.tr("about.license.label"));
+                                ui.label(about::GENTLE_LICENSE);
+                                ui.end_row();
+                            });
+                        ui.add_space(16.0);
+                        ui.hyperlink_to(self.tr("about.repository"), about::GENTLE_REPOSITORY_URL);
+                        ui.hyperlink_to(
+                            self.tr("about.documentation"),
+                            about::GENTLE_DOCUMENTATION_URL,
+                        );
+                        ui.hyperlink_to(
+                            self.tr("about.acknowledgements"),
+                            about::GENTLE_ACKNOWLEDGEMENTS_URL,
+                        );
+                        ui.add_space(12.0);
+                        if ui
+                            .button(self.tr("about.copy_build"))
+                            .on_hover_text(self.tr("about.copy_build.hover"))
+                            .clicked()
+                        {
+                            ui.ctx().copy_text(about::about_clipboard_text());
+                        }
+                    });
+                });
+            });
+            ui.separator();
+            ui.horizontal(|ui| {
+                if ui.button(self.tr("about.back")).clicked() {
+                    back_requested = true;
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button(self.tr("about.close")).clicked() {
+                        close_requested = true;
+                    }
+                });
+            });
+        });
+        self.show_about_details_dialog = open && !back_requested && !close_requested;
+        if back_requested {
+            self.show_about_dialog = true;
+        }
     }
 
     fn render_command_palette_dialog(&mut self, ctx: &egui::Context) {
         if !self.show_command_palette_dialog {
             return;
         }
+
+        self.pattern_catalog.ensure_started(ctx);
 
         let mut entries = self.collect_command_palette_entries();
         let query = self.command_palette_query.trim().to_ascii_lowercase();
@@ -21370,63 +22912,7 @@ Error: `{err}`"
             .with_min_inner_size([500.0, 320.0]);
         if ctx.embed_viewports() {
             let mut render_contents = |ui: &mut Ui| {
-                ui.label("Search actions, settings, and help topics");
-                let input_id = ui.make_persistent_id("gentle_command_palette_search");
-                let search_response = ui.add(
-                    egui::TextEdit::singleline(&mut self.command_palette_query)
-                        .id(input_id)
-                        .desired_width(f32::INFINITY)
-                        .hint_text("Type action name (Cmd/Ctrl+K)"),
-                );
-                if self.command_palette_focus_query {
-                    search_response.request_focus();
-                    self.command_palette_focus_query = false;
-                }
-                if ui.input(|i| i.key_pressed(Key::ArrowDown)) && !entries.is_empty() {
-                    self.command_palette_selected =
-                        (self.command_palette_selected + 1) % entries.len();
-                }
-                if ui.input(|i| i.key_pressed(Key::ArrowUp)) && !entries.is_empty() {
-                    if self.command_palette_selected == 0 {
-                        self.command_palette_selected = entries.len() - 1;
-                    } else {
-                        self.command_palette_selected -= 1;
-                    }
-                }
-                if ui.input(|i| i.key_pressed(Key::Enter))
-                    && !entries.is_empty()
-                    && self.command_palette_selected < entries.len()
-                {
-                    execute_action = Some(entries[self.command_palette_selected].action);
-                }
-
-                ui.separator();
-                if entries.is_empty() {
-                    ui.small("No matching commands");
-                } else {
-                    egui::ScrollArea::vertical()
-                        .id_salt("command_palette_results_scroll")
-                        .max_height(400.0)
-                        .show(ui, |ui| {
-                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                                ui,
-                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                            );
-                            for (idx, entry) in entries.iter().enumerate() {
-                                let selected = self.command_palette_selected == idx;
-                                let label = format!("{} — {}", entry.title, entry.detail);
-                                let response = ui.selectable_label(selected, label);
-                                if response.hovered() {
-                                    self.command_palette_selected = idx;
-                                    self.hover_status_name =
-                                        format!("Command palette: {}", entry.title);
-                                }
-                                if response.clicked() {
-                                    execute_action = Some(entry.action);
-                                }
-                            }
-                        });
-                }
+                execute_action = self.render_command_palette_contents(ui, &entries);
             };
             let spec = crate::egui_compat::HostedWindowSpec::new(
                 "Command Palette",
@@ -21439,8 +22925,7 @@ Error: `{err}`"
             self.clear_viewport_foreground_request_after_render(viewport_id);
 
             if let Some(action) = execute_action {
-                self.execute_command_palette_action(ctx, action);
-                open = false;
+                open = !self.execute_command_palette_action(ctx, action);
             }
 
             if ctx.input(|i| i.key_pressed(Key::Escape)) {
@@ -21453,63 +22938,7 @@ Error: `{err}`"
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);
             let mut render_contents = |ui: &mut Ui| {
-                ui.label("Search actions, settings, and help topics");
-                let input_id = ui.make_persistent_id("gentle_command_palette_search");
-                let search_response = ui.add(
-                    egui::TextEdit::singleline(&mut self.command_palette_query)
-                        .id(input_id)
-                        .desired_width(f32::INFINITY)
-                        .hint_text("Type action name (Cmd/Ctrl+K)"),
-                );
-                if self.command_palette_focus_query {
-                    search_response.request_focus();
-                    self.command_palette_focus_query = false;
-                }
-                if ui.input(|i| i.key_pressed(Key::ArrowDown)) && !entries.is_empty() {
-                    self.command_palette_selected =
-                        (self.command_palette_selected + 1) % entries.len();
-                }
-                if ui.input(|i| i.key_pressed(Key::ArrowUp)) && !entries.is_empty() {
-                    if self.command_palette_selected == 0 {
-                        self.command_palette_selected = entries.len() - 1;
-                    } else {
-                        self.command_palette_selected -= 1;
-                    }
-                }
-                if ui.input(|i| i.key_pressed(Key::Enter))
-                    && !entries.is_empty()
-                    && self.command_palette_selected < entries.len()
-                {
-                    execute_action = Some(entries[self.command_palette_selected].action);
-                }
-
-                ui.separator();
-                if entries.is_empty() {
-                    ui.small("No matching commands");
-                } else {
-                    egui::ScrollArea::vertical()
-                        .id_salt("command_palette_results_scroll")
-                        .max_height(400.0)
-                        .show(ui, |ui| {
-                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                                ui,
-                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                            );
-                            for (idx, entry) in entries.iter().enumerate() {
-                                let selected = self.command_palette_selected == idx;
-                                let label = format!("{} — {}", entry.title, entry.detail);
-                                let response = ui.selectable_label(selected, label);
-                                if response.hovered() {
-                                    self.command_palette_selected = idx;
-                                    self.hover_status_name =
-                                        format!("Command palette: {}", entry.title);
-                                }
-                                if response.clicked() {
-                                    execute_action = Some(entry.action);
-                                }
-                            }
-                        });
-                }
+                execute_action = self.render_command_palette_contents(ui, &entries);
             };
 
             if class == egui::ViewportClass::EmbeddedWindow {
@@ -21538,8 +22967,7 @@ Error: `{err}`"
         });
 
         if let Some(action) = execute_action {
-            self.execute_command_palette_action(ctx, action);
-            open = false;
+            open = !self.execute_command_palette_action(ctx, action);
         }
 
         if ctx.input(|i| i.key_pressed(Key::Escape)) {
@@ -21563,24 +22991,30 @@ Error: `{err}`"
             Vec2::new(520.0, 320.0),
         );
         crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+            crate::agent_help::render_agent_help_button(
+                ui,
+                "Background Jobs",
+                "window.background_jobs",
+            );
+            ui.separator();
             ui.label("Centralized progress, cancellation, and completion summaries");
             ui.separator();
 
             ui.strong("Prepare Genome");
+            if self.genome_prepare_task.is_none()
+                && let Some(context) = &self.genome_prepare_context
+            {
+                ui.small(format!("Last task: '{}'", context.genome_id));
+            }
             let mut cancel_prepare_clicked = false;
             if self.genome_prepare_task.is_some() {
                 if let Some(task) = &self.genome_prepare_task {
                     ui.horizontal(|ui| {
                         ui.add(egui::Spinner::new());
-                        let genome_label = self
-                            .genome_prepare_progress
-                            .as_ref()
-                            .map(|progress| progress.genome_id.clone())
-                            .unwrap_or_else(|| self.genome_id.clone());
                         ui.label(format!(
                             "{} '{}' ({:.1}s)",
                             task.mode.progress_label(),
-                            genome_label,
+                            task.genome_id,
                             task.started.elapsed().as_secs_f32()
                         ));
                         if ui
@@ -21726,7 +23160,9 @@ Error: `{err}`"
             ui.separator();
             ui.strong("Genome Track Import");
             let mut cancel_track_import_clicked = false;
-            if self.genome_track_import_task.is_some() {
+            if let Some(task) = self.genome_track_import_task.as_ref() {
+                let cooperative_cancel = task.kind.supports_cooperative_cancel();
+                let task_label = task.kind.label();
                 ui.horizontal(|ui| {
                     ui.add(egui::Spinner::new());
                     if let Some(progress) = &self.genome_track_import_progress {
@@ -21739,11 +23175,19 @@ Error: `{err}`"
                             progress.skipped_records
                         ));
                     } else {
-                        ui.label("Running...");
+                        ui.label(format!("Running {task_label}..."));
                     }
                     if ui
-                        .button("Cancel")
-                        .on_hover_text("Request cancellation of running track-import job")
+                        .button(if cooperative_cancel {
+                            "Cancel"
+                        } else {
+                            "Stop waiting"
+                        })
+                        .on_hover_text(if cooperative_cancel {
+                            "Request cancellation of running track-import job"
+                        } else {
+                            "Stop waiting and ignore the late result; this operation has no cooperative cancellation hook"
+                        })
                         .clicked()
                     {
                         cancel_track_import_clicked = true;
@@ -21824,18 +23268,21 @@ Error: `{err}`"
             }
 
             ui.separator();
-            ui.strong("Agent Assistant");
+            ui.strong(self.tr("agent.title"));
             let mut cancel_agent_clicked = false;
             if let Some(task) = &self.agent_task {
                 ui.horizontal(|ui| {
                     ui.add(egui::Spinner::new());
-                    ui.label(format!(
-                        "Running ({:.1}s)",
-                        task.started.elapsed().as_secs_f32()
+                    ui.label(self.trf(
+                        "agent.display.running",
+                        &[(
+                            "elapsed",
+                            &format!("{:.1}", task.started.elapsed().as_secs_f32()),
+                        )],
                     ));
                     if ui
-                        .button("Stop")
-                        .on_hover_text("Stop waiting for the current agent request")
+                        .button(self.tr("agent.ui.stop"))
+                        .on_hover_text(self.tr("agent.ui.stop_hover"))
                         .clicked()
                     {
                         cancel_agent_clicked = true;
@@ -21843,11 +23290,11 @@ Error: `{err}`"
                 });
             } else {
                 ui.horizontal(|ui| {
-                    ui.small("Idle");
+                    ui.small(self.tr("agent.ui.idle"));
                     if ui
-                        .button("Retry")
+                        .button(self.tr("agent.ui.retry"))
                         .on_hover_text(
-                            "Run the agent assistant request again with current prompt/settings",
+                            self.tr("agent.ui.retry_hover"),
                         )
                         .clicked()
                     {
@@ -21874,6 +23321,8 @@ Error: `{err}`"
             if !self.agent_status.trim().is_empty() {
                 self.render_agent_status_message(ui, &self.agent_status, false);
             }
+
+            self.render_gene_set_collection_operation_background_job(ui);
 
             ui.separator();
             ui.strong("Recent job events");
@@ -22404,12 +23853,63 @@ Error: `{err}`"
         self.show_jobs_panel = open;
     }
 
+    fn refresh_root_engine_summary_cache(&mut self) {
+        let engine_identity = Arc::as_ptr(&self.engine) as usize;
+        let Ok(engine) = self.engine.read() else {
+            return;
+        };
+        let execution_revision = engine.execution_revision();
+        if self.root_engine_summary_cache.engine_identity == engine_identity
+            && self.root_engine_summary_cache.execution_revision == Some(execution_revision)
+        {
+            self.root_engine_summary_cache.hits =
+                self.root_engine_summary_cache.hits.saturating_add(1);
+            return;
+        }
+        self.root_engine_summary_cache.engine_identity = engine_identity;
+        self.root_engine_summary_cache.execution_revision = Some(execution_revision);
+        self.root_engine_summary_cache.structural_revision = engine.structural_revision();
+        self.root_engine_summary_cache.history = engine.history_summary();
+        self.root_engine_summary_cache.misses =
+            self.root_engine_summary_cache.misses.saturating_add(1);
+    }
+
+    fn refresh_runtime_status_snapshot_cache(&mut self) {
+        self.refresh_runtime_status_snapshot_cache_from(runtime_status_registry());
+    }
+
+    fn refresh_runtime_status_snapshot_cache_from(&mut self, registry: &RuntimeStatusRegistry) {
+        let generation = registry.generation();
+        if self.runtime_status_snapshot_cache.generation == Some(generation) {
+            self.runtime_status_snapshot_cache.hits =
+                self.runtime_status_snapshot_cache.hits.saturating_add(1);
+            return;
+        }
+        let (generation, snapshot) =
+            registry.snapshot_with_generation(RuntimeStatusTrigger::Manual);
+        self.runtime_status_snapshot_cache.generation = Some(generation);
+        self.runtime_status_snapshot_cache.snapshot = snapshot;
+        self.runtime_status_snapshot_cache.misses =
+            self.runtime_status_snapshot_cache.misses.saturating_add(1);
+    }
+
+    fn refresh_root_frame_presentation_caches(&mut self) {
+        self.refresh_root_engine_summary_cache();
+        self.refresh_open_window_model_cache();
+        self.refresh_runtime_status_snapshot_cache();
+    }
+
+    fn take_root_initialization_request(&mut self) -> bool {
+        !std::mem::replace(&mut self.update_has_run_before, true)
+    }
+
+    fn take_window_backdrop_preload_request(&mut self) -> bool {
+        std::mem::take(&mut self.window_backdrop_preload_dirty)
+    }
+
     fn render_status_bar(&mut self, ctx: &egui::Context) {
-        let history_summary = self
-            .engine
-            .read()
-            .map(|engine| engine.history_summary())
-            .unwrap_or_default();
+        let history_summary = &self.root_engine_summary_cache.history;
+        let runtime_snapshot = &self.runtime_status_snapshot_cache.snapshot;
         crate::egui_compat::show_bottom_panel(
             ctx,
             egui::Id::new("gentle_status_bar"),
@@ -22427,6 +23927,16 @@ Error: `{err}`"
                         "Undo {} / Redo {}",
                         history_summary.undo_count, history_summary.redo_count
                     ));
+                    if !runtime_snapshot.frames.is_empty() {
+                        ui.separator();
+                        let tooltip = runtime_snapshot.summary_lines.join("\n");
+                        ui.small(format!("Runtime: {} active", runtime_snapshot.frames.len()))
+                            .on_hover_text(if tooltip.trim().is_empty() {
+                                "Process-local runtime activity stack".to_string()
+                            } else {
+                                tooltip
+                            });
+                    }
                     if !self.app_status.trim().is_empty() {
                         ui.separator();
                         ui.small(self.app_status.clone());
@@ -22440,6 +23950,46 @@ Error: `{err}`"
                 });
             },
         );
+    }
+
+    fn sequence_window_open_in_progress(&self) -> bool {
+        !self.new_windows.is_empty()
+            || self.windows.values().any(|window| {
+                window
+                    .read()
+                    .is_ok_and(|window| window.is_sequence_opening())
+            })
+    }
+
+    fn reconcile_sequence_window_open_state(
+        &mut self,
+        viewport_id: ViewportId,
+        window: &Arc<RwLock<Window>>,
+    ) {
+        let opening_state = window.read().ok().and_then(|window| {
+            window.sequence_id().map(|seq_id| {
+                (
+                    seq_id,
+                    window.sequence_opening_phase(),
+                    window.sequence_open_error().map(ToString::to_string),
+                )
+            })
+        });
+        let Some((seq_id, phase, error)) = opening_state else {
+            return;
+        };
+        if let Some(frame) = self.sequence_window_open_runtime_frames.get(&seq_id) {
+            frame.update_phase(phase);
+            if let Some(error) = error.as_deref() {
+                frame.fail(error);
+            }
+        }
+        if matches!(phase, "ready" | "failed") {
+            // Runtime introspection reports active opens only; a terminal load
+            // error remains visible in the sequence window itself.
+            self.sequence_window_open_runtime_frames.remove(&seq_id);
+            self.finalize_viewport_open_probe(viewport_id, "Sequence");
+        }
     }
 
     fn help_content_width_requires_relayout(previous_width: f32, current_width: f32) -> bool {
@@ -22614,6 +24164,12 @@ Error: `{err}`"
             &self.window_backdrops,
         );
         with_window_content_inset(ui, |ui| {
+            crate::agent_help::render_agent_help_button(
+                ui,
+                format!("Help - {}", self.active_help_title()),
+                "window.help",
+            );
+            ui.separator();
             let find_shortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::F);
             if ui.ctx().input_mut(|i| i.consume_shortcut(&find_shortcut)) {
                 self.help_focus_search_box = true;
@@ -22636,7 +24192,7 @@ Error: `{err}`"
                     active_doc_changed = true;
                 }
                 if ui
-                    .selectable_label(self.help_doc == HelpDoc::AgentInterface, "Agent Interface")
+                    .selectable_label(self.help_doc == HelpDoc::AgentInterface, self.tr("agent.ui.interface"))
                     .clicked()
                 {
                     self.help_doc = HelpDoc::AgentInterface;
@@ -22869,6 +24425,44 @@ Error: `{err}`"
                     ));
                 }
             });
+
+            if self.help_doc == HelpDoc::Tutorial {
+                let (prerequisite_ids, next_step_ids) = self
+                    .help_tutorial_entries
+                    .get(self.help_tutorial_selected)
+                    .map(|entry| (entry.prerequisites.clone(), entry.next_steps.clone()))
+                    .unwrap_or_default();
+                let prerequisite_targets = self.help_tutorial_navigation_targets(&prerequisite_ids);
+                let next_step_targets = self.help_tutorial_navigation_targets(&next_step_ids);
+                if !prerequisite_targets.is_empty() || !next_step_targets.is_empty() {
+                    let mut navigation_selection = None;
+                    ui.horizontal_wrapped(|ui| {
+                        if !prerequisite_targets.is_empty() {
+                            ui.strong("Prerequisite:");
+                            for (index, label, summary) in &prerequisite_targets {
+                                if ui.small_button(label).on_hover_text(summary).clicked() {
+                                    navigation_selection = Some(*index);
+                                }
+                            }
+                        }
+                        if !next_step_targets.is_empty() {
+                            if !prerequisite_targets.is_empty() {
+                                ui.separator();
+                            }
+                            ui.strong("Continue with:");
+                            for (index, label, summary) in &next_step_targets {
+                                if ui.small_button(label).on_hover_text(summary).clicked() {
+                                    navigation_selection = Some(*index);
+                                }
+                            }
+                        }
+                    });
+                    if let Some(index) = navigation_selection {
+                        self.set_help_tutorial_selected(index);
+                        active_doc_changed = true;
+                    }
+                }
+            }
 
             if active_doc_changed {
                 self.help_markdown_cache = CommonMarkCache::default();
@@ -23229,6 +24823,7 @@ Error: `{err}`"
                 max_mismatches,
                 tile_bp,
                 store_as,
+                ..
             } => format!(
                 "Compute dotplot: seq_id={}, reference_seq_id={}, mode={}, query_span={}..{}, reference_span={}..{}, word={}, step={}, mismatches={}, tile_bp={}, store_as={}",
                 seq_id,
@@ -23489,8 +25084,9 @@ Error: `{err}`"
                 container_ids,
                 arrangement_id,
                 conditions,
+                render_options,
             } => format!(
-                "Render serial gel SVG: inputs={}, container_ids={}, arrangement_id={}, path={}, ladders={}, conditions={}",
+                "Render serial gel SVG: inputs={}, container_ids={}, arrangement_id={}, path={}, ladders={}, conditions={}, lane_labels={}, band_labels={}, isoform_markers={}",
                 inputs.join(", "),
                 container_ids
                     .as_ref()
@@ -23511,7 +25107,19 @@ Error: `{err}`"
                 conditions
                     .as_ref()
                     .map(crate::engine::GelRunConditions::describe)
-                    .unwrap_or_else(|| crate::engine::GelRunConditions::default().describe())
+                    .unwrap_or_else(|| crate::engine::GelRunConditions::default().describe()),
+                render_options
+                    .as_ref()
+                    .map(|options| options.lane_label_layout.as_str())
+                    .unwrap_or("auto"),
+                render_options
+                    .as_ref()
+                    .map(|options| options.band_label_layout.as_str())
+                    .unwrap_or("auto"),
+                render_options
+                    .as_ref()
+                    .map(|options| options.isoform_marker_mode.as_str())
+                    .unwrap_or("auto")
             ),
             Operation::CreateArrangementSerial {
                 container_ids,
@@ -24026,21 +25634,42 @@ impl eframe::App for GENtleApp {
 impl GENtleApp {
     fn render_root_ui(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         crate::gui_profiler::begin_frame();
+        #[cfg(feature = "gui-test-support")]
+        {
+            crate::gui_test_support::begin_frame(ctx);
+            crate::gui_test_support::register_rect(
+                ctx.clone(),
+                crate::tutorial_gui_semantics::WINDOW_MAIN,
+                crate::tutorial_gui_semantics::WINDOW_MAIN,
+                None,
+                crate::gui_test_support::GuiTestWidgetKind::Window,
+                ctx.content_rect(),
+                true,
+                true,
+                true,
+                Some("ready"),
+            );
+        }
+        let mut workspace_rendered = false;
         let update_result = catch_unwind(AssertUnwindSafe(|| {
             crate::gentle_gui_profile_scope!("GENtleApp::render_root_ui");
             Self::configure_platform_viewport_mode(ctx);
-            if !self.update_has_run_before {
+            if self.take_root_initialization_request() {
                 egui_extras::install_image_loaders(ctx);
-                self.update_has_run_before = true;
+                about::install_native_about_menu_bridge();
+                about::install_native_help_menu_bridge();
+                about::install_native_settings_menu_bridge();
+                about::install_native_windows_menu_bridge();
+                about::install_native_app_windows_menu_bridge();
             }
-            window_backdrop::preload_window_backdrop_images(ctx, &self.window_backdrops);
-            about::install_native_help_menu_bridge();
-            about::install_native_settings_menu_bridge();
-            about::install_native_windows_menu_bridge();
-            about::install_native_app_windows_menu_bridge();
+            if self.take_window_backdrop_preload_request() {
+                window_backdrop::preload_window_backdrop_images(ctx, &self.window_backdrops);
+            }
             self.consume_native_help_request();
+            self.consume_native_about_request();
             self.consume_native_settings_request();
             self.consume_native_pcr_design_request();
+            self.poll_tss_collection_intent(ctx);
             self.consume_native_jaspar_expert_request();
             self.consume_native_windows_request();
             self.consume_active_viewport_report();
@@ -24068,12 +25697,21 @@ impl GENtleApp {
             self.poll_tutorial_project_task(ctx);
             self.poll_reference_genome_blast_task(ctx);
             self.poll_genome_track_import_task(ctx);
+            self.poll_sequence_ingress_task(ctx);
             self.poll_dbsnp_fetch_task(ctx);
+            self.poll_jaspar_background_task(ctx);
             self.poll_agent_assistant_task(ctx);
+            self.poll_agent_commands(ctx);
+            self.poll_agent_help_capture_events(ctx);
             self.poll_agent_model_discovery_task(ctx);
             self.poll_clawbio_task(ctx);
+            self.poll_container_pool_export_task(ctx);
+            self.poll_gene_set_resolution_task(ctx);
+            self.poll_gene_set_collection_operation_task(ctx);
+            self.poll_regulatory_partner_screen_task(ctx);
             self.sync_tracked_bed_tracks_for_new_anchors();
             self.sync_open_windows_if_display_changed(ctx);
+            self.refresh_root_frame_presentation_caches();
             self.reset_root_auxiliary_areas_if_legacy_title_layers_visible(ctx);
 
             if self.show_help_dialog {
@@ -24099,6 +25737,7 @@ impl GENtleApp {
             } else {
                 self.dismiss_splash_screen();
                 self.render_root_workspace(ctx, project_dirty);
+                workspace_rendered = true;
                 self.render_reference_genome_prepare_dialog(ctx);
                 self.render_reference_genome_retrieve_dialog(ctx);
                 self.render_new_sequence_dialog(ctx);
@@ -24119,22 +25758,26 @@ impl GENtleApp {
                 self.render_genome_bed_track_dialog(ctx);
                 self.render_gibson_dialog(ctx);
                 self.render_arrangement_gel_preview_dialog(ctx);
+                self.render_gel_image_editor(ctx);
                 self.render_rack_labels_preview_dialog(ctx);
                 self.render_place_arrangement_on_rack_dialog(ctx);
                 self.render_rack_dialog(ctx);
                 self.render_pcr_design_dialog(ctx);
                 self.render_sequencing_confirmation_dialog(ctx);
                 self.render_jaspar_expert_dialog(ctx);
+                self.render_promoter_cofactor_browser(ctx);
                 self.render_planning_dialog(ctx);
                 self.render_routine_assistant_dialog(ctx);
                 self.render_agent_assistant_dialog(ctx);
                 self.render_external_services_dialog(ctx);
+                self.render_gene_set_inspector_dialog(ctx);
                 self.render_clawbio_dialog(ctx);
                 self.render_mirna_target_scan_dialog(ctx);
                 self.render_evidence_preparation_dialog(ctx);
                 self.render_configuration_dialog(ctx);
                 self.render_help_dialog(ctx);
                 self.render_about_dialog(ctx);
+                self.render_about_details_dialog(ctx);
                 self.render_command_palette_dialog(ctx);
                 self.render_jobs_panel(ctx);
                 self.render_history_panel(ctx);
@@ -24166,8 +25809,8 @@ impl GENtleApp {
                 })
                 .collect::<Vec<_>>();
             for (id, window, initial_position) in windows_to_show {
-                self.show_window(ctx, id, window, initial_position);
-                self.finalize_viewport_open_probe(id, "Sequence");
+                self.show_window(ctx, id, window.clone(), initial_position);
+                self.reconcile_sequence_window_open_state(id, &window);
             }
 
             self.render_detached_auxiliary_window_hosts(ctx);
@@ -24181,6 +25824,16 @@ impl GENtleApp {
         }));
         if update_result.is_err() {
             eprintln!("E GENtleApp: recovered from panic in app update");
+        } else {
+            use crate::gui_profiler::startup_trace::{Phase, checkpoint};
+            checkpoint(Phase::RootFirstFrame);
+            if workspace_rendered {
+                checkpoint(Phase::RootWorkspaceFrame);
+            }
+        }
+        #[cfg(feature = "gui-test-support")]
+        if let Err(error) = crate::gui_test_support::finish_frame(ctx) {
+            eprintln!("W GENtleApp: {error}");
         }
     }
 }
@@ -24188,3 +25841,7 @@ impl GENtleApp {
 #[cfg(test)]
 #[path = "app/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "app/startup_trace_tests.rs"]
+mod startup_trace_tests;

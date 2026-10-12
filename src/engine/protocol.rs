@@ -12,7 +12,22 @@
 //! - state-summary structs that should remain slower-changing than
 //!   `src/engine.rs`
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+
+#[path = "protocol/reporter_fragment_selection.rs"]
+mod reporter_fragment_selection;
+pub use reporter_fragment_selection::*;
+
+#[path = "protocol/transcript_capture.rs"]
+mod transcript_capture;
+pub use transcript_capture::*;
+
+#[path = "protocol/primer_specificity_multi.rs"]
+mod primer_specificity_multi;
+pub use primer_specificity_multi::*;
+
+use crate::genomes::{BlastDatabaseInspectionReport, BlastSubjectAnnotation};
+use crate::primerbank::PrimerBankSearchReport;
 
 pub use gentle_protocol::{
     ANNOTATION_CANDIDATE_SCHEMA, ANNOTATION_CANDIDATE_SUMMARY_SCHEMA,
@@ -21,15 +36,24 @@ pub use gentle_protocol::{
     AnnotationCandidateSummary, AnnotationCandidateWriteback, AttractPwmMappingPolicy,
     AttractRegionClass, AttractSpeciesMatchMode, AttractSplicingEvidenceHitRow,
     AttractSplicingEvidencePolicySummary, AttractSplicingEvidenceSettings,
-    AttractSplicingEvidenceSummaryRow, AttractSplicingEvidenceView, CONSTRUCT_CANDIDATE_SCHEMA,
-    CONSTRUCT_OBJECTIVE_SCHEMA, CONSTRUCT_REASONING_GRAPH_SCHEMA, CONSTRUCT_REASONING_STORE_SCHEMA,
-    CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
-    CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
-    CandidateSetOperator, CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, Capabilities,
+    AttractSplicingEvidenceSummaryRow, AttractSplicingEvidenceView, BiologicalContext,
+    BiologicalContextRegistry, BiologicalContextResolutionError,
+    COLLECTION_MEMBERSHIP_FINGERPRINT_ALGORITHM, COLLECTION_OPERATION_REPORT_SCHEMA,
+    CONSTRUCT_CANDIDATE_SCHEMA, CONSTRUCT_OBJECTIVE_SCHEMA, CONSTRUCT_REASONING_GRAPH_SCHEMA,
+    CONSTRUCT_REASONING_STORE_SCHEMA, CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode,
+    CandidateFeatureStrandRelation, CandidateMacroTemplateParam, CandidateObjectiveDirection,
+    CandidateObjectiveSpec, CandidateSetOperator, CandidateTieBreakPolicy,
+    CandidateWeightedObjectiveTerm, Capabilities, CapabilitySource,
     CdnaAssayMaterializedProductRow, CdnaAssayProductGelBandRow, CdnaAssayProductMaterialization,
-    CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder, ConstructCandidate,
-    ConstructObjective, ConstructReasoningGraph, ConstructReasoningStore, ConstructRole,
-    ContainerId, ContainerKind, CutRunAlignConfig, CutRunCatalogEntry, CutRunCatalogListEntry,
+    CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder, CollectionContextRequirement,
+    CollectionContextValidationError, CollectionLiftRejectionReason, CollectionLiftSupport,
+    CollectionLiftingMode, CollectionMemberOutcome, CollectionMemberRef, CollectionMemberStatusRow,
+    CollectionOperationReport, CollectionSubjectKind, CollectionSubjectRef, ConstructCandidate,
+    ConstructObjective, ConstructReasoningGraph, ConstructReasoningGraphFreshness,
+    ConstructReasoningInputFingerprint, ConstructReasoningInspectionAction,
+    ConstructReasoningStore, ConstructRole, ContainerId, ContainerKind,
+    CrypticSplicingEvidenceOverlayReport, CrypticSplicingProteinProjectionReport,
+    CrypticSplicingScreenView, CutRunAlignConfig, CutRunCatalogEntry, CutRunCatalogListEntry,
     CutRunCoverageKind, CutRunDatasetListReport, CutRunDatasetProjectionReport,
     CutRunDatasetStatus, CutRunFragmentSpan, CutRunInputFormat,
     CutRunMotifAbsentOccupancyInterpretation, CutRunMotifAbsentSupportWindow,
@@ -40,48 +64,90 @@ pub use gentle_protocol::{
     CutRunReadUnitStatus, CutRunRegulatoryEvidenceSourceKind, CutRunRegulatoryEvidenceSourceRef,
     CutRunRegulatorySupportReport, CutRunRegulatoryTfbsConfirmationStatus, CutRunRegulatoryTfbsRow,
     CutRunSeedFilterConfig, CutRunSupportCluster, CutRunSupportStrength, CutRunSupportWindowRecord,
-    DESIGN_DECISION_NODE_SCHEMA, DESIGN_EVIDENCE_SCHEMA, DESIGN_FACT_SCHEMA, DecisionMethod,
-    DesignDecisionNode, DesignEvidence, DesignFact, DotplotBoxplotBin, DotplotMatchPoint,
-    DotplotMode, DotplotOverlayAnchorExon, DotplotOverlayAnchorExonRef,
-    DotplotOverlayAnchorSeriesSupport, DotplotOverlayQuerySpec, DotplotOverlayResolvedAnchorSeries,
-    DotplotOverlayXAxisMode, DotplotQuerySeries, DotplotReferenceAnnotationInterval,
-    DotplotReferenceAnnotationTrack, DotplotView, DotplotViewSummary,
-    EXON_SKIP_MATERIALIZATION_SCHEMA, EXON_SKIP_SELECTION_PLAN_SCHEMA, EditableStatus, EngineError,
-    ErrorCode, EvidenceClass, EvidenceScope, ExonSkipCandidateExon, ExonSkipMaterializationReport,
+    DEFAULT_BIOLOGICAL_CONTEXT_ID, DESIGN_DECISION_NODE_SCHEMA, DESIGN_EVIDENCE_SCHEMA,
+    DESIGN_FACT_SCHEMA, DecisionMethod, DesignDecisionNode, DesignEvidence, DesignFact,
+    DotplotBoxplotBin, DotplotMatchPoint, DotplotMode, DotplotOverlayAnchorExon,
+    DotplotOverlayAnchorExonRef, DotplotOverlayAnchorSeriesSupport, DotplotOverlayQuerySpec,
+    DotplotOverlayResolvedAnchorSeries, DotplotOverlayXAxisMode, DotplotQuerySeries,
+    DotplotReferenceAnnotationInterval, DotplotReferenceAnnotationTrack, DotplotView,
+    DotplotViewSummary, ENCODE_CCRE_MATERIALIZATION_SCHEMA, ENCODE_CCRE_OVERLAP_SCHEMA,
+    ENSEMBL_REGULATION_MATERIALIZATION_SCHEMA, ENSEMBL_REGULATION_OVERLAP_SCHEMA,
+    EXON_SKIP_MATERIALIZATION_SCHEMA, EXON_SKIP_SELECTION_PLAN_SCHEMA, EditableStatus,
+    EncodeCcreClassSummary, EncodeCcreGenomeAnchor, EncodeCcreInterval,
+    EncodeCcreMaterializationReport, EncodeCcreOverlapReport, EncodeCcreOverlapRow, EngineError,
+    EnsemblRegulationMaterializationReport, EnsemblRegulationOverlapReport, ErrorCode,
+    EvidenceClass, EvidenceScope, ExonSkipCandidateExon, ExonSkipMaterializationReport,
     ExonSkipReturnKind, ExonSkipReturnPayload, ExonSkipSelectionCriterion, ExonSkipSelectionPlan,
-    FeatureBedCoordinateMode, FlexibilityModel, GENE_SET_CO_REGULATED_CACHE_SCHEMA,
-    GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA, GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
-    GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA, GENE_SET_PROMOTER_COHORT_SCHEMA,
-    GENE_SET_RESOLUTION_SCHEMA, GeneSetCoRegulatedProducerMetadata, GeneSetCohortRelationship,
-    GeneSetCohortRelationshipFlag, GeneSetCutRunEvaluationState, GeneSetCutRunMemberSupport,
-    GeneSetCutRunRegulatorySupportReport, GeneSetCutRunSupportAggregate, GeneSetProducerFilter,
-    GeneSetProducerKind, GeneSetProducerProvenance, GeneSetProducerQueryMetadata,
-    GeneSetPromoterCohortReport, GeneSetPromoterWindow, GeneSetProvenanceRow,
-    GeneSetRandomProvenance, GeneSetRequest, GeneSetResolutionReport,
-    GeneSetResolutionReviewStatus, GeneSetResolvedMember, GeneSetUnresolvedMember,
-    GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackImportProgress,
-    GenomeTrackSource, GenomeTrackSubscription, HOST_PROFILE_CATALOG_SCHEMA,
-    HelperConstructProfile, HostLifecycleRole, HostProfileCatalog, HostProfileRecord,
-    HostRouteStep, ORTHOLOG_PROMOTER_COHORT_SCHEMA, ORTHOLOG_PROMOTER_COMPARISON_SCHEMA,
-    ORTHOLOG_RESOURCE_SCHEMA, OrthologAmbiguityPolicy, OrthologCutRunSupportRow,
-    OrthologCutRunSupportStatus, OrthologExpressionAssignment, OrthologMappingRow,
-    OrthologPairwiseTfbsSimilarity, OrthologPromoterCohortReport, OrthologPromoterCohortRequest,
-    OrthologPromoterComparisonReport, OrthologPromoterRole, OrthologPromoterRow, OrthologResource,
-    OrthologSequenceSimilarityRow, OrthologSpeciesAlias, OrthologTfbsPeakSummary,
-    OrthologTfbsSummaryRow, OrthologUnresolvedRow, PairwiseAlignmentMode, PortBindingStatus,
+    FEATURE_ANNOTATION_STATE_FINGERPRINT_ALGORITHM, FEATURE_LOCATION_EDIT_SCHEMA,
+    FEATURE_LOCATION_EDIT_SCHEMA_V2, FEATURE_LOCATION_FINGERPRINT_ALGORITHM,
+    FEATURE_RECORD_CURATION_SCHEMA, FEATURE_RECORD_CURATION_SCHEMA_V1, FeatureBedCoordinateMode,
+    FeatureLocationCompoundContext, FeatureLocationCompoundKind, FeatureLocationCompoundWarning,
+    FeatureLocationEditReport, FeatureLocationEditRequest, FeatureLocationEditStrand,
+    FeatureLocationEditTargetScope, FeatureLocationIntervalBoundaryRole, FeatureLocationSnapshot,
+    FeatureLocationStoredDirection, FeatureRecordCreateRequest, FeatureRecordCurationKind,
+    FeatureRecordCurationOutcome, FeatureRecordCurationReport, FeatureRecordCurationRequest,
+    FeatureRecordDeleteRequest, FeatureRecordMergeRequest, FeatureRecordQualifier,
+    FeatureRecordReviewCandidate, FeatureRecordReviewEvidence, FeatureRecordSnapshot,
+    FeatureRecordSplitRequest, FlexibilityModel, GENE_LOCUS_ENSEMBL_REGULATION_EVIDENCE_SCHEMA,
+    GENE_SET_CO_REGULATED_CACHE_SCHEMA, GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA,
+    GENE_SET_DIRECT_LIST_CACHE_SCHEMA, GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA,
+    GENE_SET_PROMOTER_COHORT_SCHEMA, GENE_SET_RESOLUTION_SCHEMA, GeneIsoformExonFamilyRow,
+    GeneIsoformJunctionRow, GeneLocusEnsemblRegulationAvailability,
+    GeneLocusEnsemblRegulationAvailabilityPolicy, GeneLocusEnsemblRegulationEvidence,
+    GeneLocusEnsemblRegulationFeatureRow, GeneLocusEnsemblRegulationRequest,
+    GeneLocusEnsemblRegulationSourceBinding, GeneLocusEvidenceDisplayReport,
+    GeneLocusEvidenceDisplayRequest, GeneLocusLocalAxisDirection, GeneLocusOccupancyLaneState,
+    GeneLocusOccupancyLayout, GeneLocusRegulatoryCalibrationState,
+    GeneLocusRegulatoryScoreProviderKind, GeneLocusRegulatoryScoreTrackRequest,
+    GeneLocusScaleBarPolicy, GeneLocusTranscriptMetrics, GeneSetCoRegulatedProducerMetadata,
+    GeneSetCohortRelationship, GeneSetCohortRelationshipFlag, GeneSetCutRunEvaluationState,
+    GeneSetCutRunMemberSupport, GeneSetCutRunRegulatorySupportReport,
+    GeneSetCutRunSupportAggregate, GeneSetProducerFilter, GeneSetProducerKind,
+    GeneSetProducerProvenance, GeneSetProducerQueryMetadata, GeneSetPromoterCohortReport,
+    GeneSetPromoterWindow, GeneSetProvenanceRow, GeneSetRandomProvenance, GeneSetRequest,
+    GeneSetResolutionReport, GeneSetResolutionReviewStatus, GeneSetResolvedMember,
+    GeneSetUnresolvedMember, GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode,
+    GenomeTrackImportProgress, GenomeTrackSource, GenomeTrackSubscription,
+    GenomicMotifEvidenceAvailability, GenomicMotifEvidenceCompatibilityStatus,
+    GenomicMotifEvidenceCoverageStatus, GenomicMotifEvidenceHit, GenomicMotifEvidenceInterval,
+    GenomicMotifEvidenceMotifCoverage, GenomicMotifEvidencePayloadProvenance,
+    GenomicMotifEvidenceProviderProvenance, GenomicMotifEvidenceReport,
+    GenomicMotifEvidenceRequest, GenomicMotifEvidenceResolvedRegion, GenomicMotifEvidenceTarget,
+    HOST_PROFILE_CATALOG_SCHEMA, HelperConstructProfile, HostLifecycleRole, HostProfileCatalog,
+    HostProfileRecord, HostRouteStep, LEGACY_BIOLOGICAL_CONTEXT_ID,
+    ORTHOLOG_PROMOTER_COHORT_SCHEMA, ORTHOLOG_PROMOTER_COMPARISON_SCHEMA, ORTHOLOG_RESOURCE_SCHEMA,
+    OrthologAmbiguityCandidate, OrthologAmbiguityPolicy, OrthologConfidence,
+    OrthologConfidenceLevel, OrthologCutRunSupportRow, OrthologCutRunSupportStatus,
+    OrthologExpressionAssignment, OrthologMappingRow, OrthologPairwiseTfbsSimilarity,
+    OrthologPromoterCohortReport, OrthologPromoterCohortRequest, OrthologPromoterComparisonReport,
+    OrthologPromoterRole, OrthologPromoterRow, OrthologResource, OrthologSequenceSimilarityRow,
+    OrthologSpeciesAlias, OrthologTfbsPeakSummary, OrthologTfbsSummaryRow, OrthologUnresolvedRow,
+    OrthologyCardinality, OrthologyType, PairwiseAlignmentMode, PortBindingStatus,
     PreparedCacheCleanupMode, PreparedCacheCleanupRequest, PrimerDesignBackend,
-    PrimerSpecificityCheckMode, PrimerSpecificityPolicy, ProteinResidueGenomicCoordinateBase,
+    PrimerSpecificityAmpliconCeilingSource, PrimerSpecificityCheckMode,
+    PrimerSpecificityFullAlignmentMode, PrimerSpecificityFullAlignmentPolicy,
+    PrimerSpecificityPolicy, PrimerSpecificityReportDetailMode,
+    PrimerSpecificityReviewedOffTargetAllowance, ProteinResidueGenomicCoordinateBase,
     ProteinResidueGenomicCoordinateMatch, ProteinResidueGenomicCoordinateReport,
     ProteinToDnaHandoffCandidate, ProteinToDnaHandoffCoverage, ProteinToDnaHandoffRankingGoal,
     ProteinToDnaHandoffStrategy, ProtocolCartoonKind, QpcrTranscriptSpecificityEvidence,
-    QpcrTranscriptTargetingMode, READ_ACQUISITION_REPORT_SCHEMA, REPORTER_CATALOG_REPORT_SCHEMA,
+    QpcrTranscriptTargetingMode, READ_ACQUISITION_REPORT_SCHEMA,
+    REGULATORY_PARTNER_DECISION_TREE_SCHEMA, REGULATORY_PARTNER_SCREEN_SCHEMA,
+    REGULATORY_PARTNER_TUPLE_LEDGER_SCHEMA, REPORTER_CATALOG_REPORT_SCHEMA,
     REPORTER_CATALOG_SCHEMA, REPORTER_CONSTRUCT_HANDOFF_SCHEMA, REPORTER_CORPUS_EXPORT_SCHEMA,
-    REPORTER_RECOMMENDATION_SCHEMA, RNA_READ_ALIGNMENT_DISPLAY_BATCH_SCHEMA,
-    RNA_READ_BATCH_MAP_REPORT_SCHEMA, RNA_READ_GENE_SCREEN_SUMMARY_SCHEMA,
-    RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA, ReadAcquisitionAnalysisFormat,
-    ReadAcquisitionCommandProvenance, ReadAcquisitionManifestRow, ReadAcquisitionOutputPath,
-    ReadAcquisitionReadLayout, ReadAcquisitionReadLengthStats, ReadAcquisitionReport,
-    ReadAcquisitionRunReport, RenderSvgMode, ReporterAnnotatedRecord, ReporterBackboneResolution,
+    REPORTER_RECOMMENDATION_SCHEMA, REPORTER_VECTOR_VALIDATION_SCHEMA,
+    RNA_READ_ALIGNMENT_DISPLAY_BATCH_SCHEMA, RNA_READ_BATCH_MAP_REPORT_SCHEMA,
+    RNA_READ_GENE_SCREEN_SUMMARY_SCHEMA, RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA,
+    ReadAcquisitionAnalysisFormat, ReadAcquisitionCommandProvenance, ReadAcquisitionManifestRow,
+    ReadAcquisitionOutputPath, ReadAcquisitionReadLayout, ReadAcquisitionReadLengthStats,
+    ReadAcquisitionReport, ReadAcquisitionRunReport, RegulatoryPartnerAnchorMode,
+    RegulatoryPartnerDecisionEdge, RegulatoryPartnerDecisionNode, RegulatoryPartnerDecisionOutcome,
+    RegulatoryPartnerDecisionTraceStep, RegulatoryPartnerDecisionTree, RegulatoryPartnerGeneRow,
+    RegulatoryPartnerIntervalRelation, RegulatoryPartnerMotifHit, RegulatoryPartnerMotifRole,
+    RegulatoryPartnerMotifThreshold, RegulatoryPartnerOrientation, RegulatoryPartnerScreenReport,
+    RegulatoryPartnerScreenRequest, RegulatoryPartnerSourceReportRef, RegulatoryPartnerTupleLedger,
+    RegulatoryPartnerTupleRow, RelatedFeatureBoundaryCandidate, RelatedFeatureBoundaryReason,
+    RenderSvgMode, ReporterAnnotatedRecord, ReporterBackboneResolution,
     ReporterBackboneResolutionStatus, ReporterCatalog, ReporterCatalogReport,
     ReporterComputedAnnotation, ReporterConstraints, ReporterConstructHandoffCommand,
     ReporterConstructHandoffPlan, ReporterConstructHandoffProvenance, ReporterConstructPortBinding,
@@ -89,6 +155,7 @@ pub use gentle_protocol::{
     ReporterCorpusExportFormat, ReporterPreferenceWeights, ReporterQuarantinedRecord,
     ReporterRecommendation, ReporterRecommendationResult, ReporterRecord,
     ReporterRejectedCandidate, ReporterSourceRef, ReporterSpectralProfile,
+    ReporterVectorValidationCheck, ReporterVectorValidationReport, ReporterVectorValidationStatus,
     RestrictionCloningPcrHandoffMode, RnaReadAlignConfig, RnaReadAlignmentBackend,
     RnaReadAlignmentDisplay, RnaReadAlignmentDotplotSvgExport, RnaReadAlignmentEffect,
     RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
@@ -99,8 +166,9 @@ pub use gentle_protocol::{
     RnaReadConcatemerAdapterHit, RnaReadConcatemerFragmentOrigin, RnaReadConcatemerInspection,
     RnaReadConcatemerInspectionSettings, RnaReadConcatemerPartnerGeneSummary,
     RnaReadConcatemerPartnerTranscriptSummary, RnaReadConcatemerSuspicionLevel,
-    RnaReadConcatemerSuspicionRow, RnaReadExonAbundanceExport, RnaReadExonPathsExport,
-    RnaReadExonSupportFrequency, RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretProgress,
+    RnaReadConcatemerSuspicionRow, RnaReadDexseqAnnotationGffExport, RnaReadDexseqCountsTsvExport,
+    RnaReadExonAbundanceExport, RnaReadExonPathsExport, RnaReadExonSupportFrequency,
+    RnaReadExonicPartBin, RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretProgress,
     RnaReadInterpretationHit, RnaReadInterpretationProfile, RnaReadInterpretationReport,
     RnaReadInterpretationReportSummary, RnaReadIsoformPreflightControlSummary,
     RnaReadIsoformPreflightReport, RnaReadIsoformPreflightScore,
@@ -121,24 +189,29 @@ pub use gentle_protocol::{
     SequencingPrimerProblemGuidanceRow, SequencingPrimerProblemKind, SequencingPrimerProposalRow,
     SequencingTraceChannelData, SequencingTraceChannelSummary, SequencingTraceFormat,
     SequencingTraceImportReport, SequencingTraceRecord, SequencingTraceSummary,
-    SharedAssetActivityStatus, SplicingScopePreset, TfThresholdOverride, TfbsProgress,
-    TranscriptProteinDerivation, TranscriptProteinDerivationMode,
-    TranscriptProteinTranslationTableSource, TranslationSpeedMark, TranslationSpeedProfile,
-    TranslationSpeedProfileSource, UniprotFeatureCodingDnaExonPair,
-    UniprotFeatureCodingDnaExonSpan, UniprotFeatureCodingDnaMatch,
+    SharedAssetActivityStatus, SplicingScopePreset, SplicingUniprotReferenceEvidence,
+    SplicingUniprotReferenceSource, SplicingUniprotReferenceStatus, TfThresholdOverride,
+    TfbsProgress, TranscriptAssaySpecificityRequest, TranscriptProteinDerivation,
+    TranscriptProteinDerivationMode, TranscriptProteinTranslationTableSource, TranslationSpeedMark,
+    TranslationSpeedProfile, TranslationSpeedProfileSource, UniprotEnsemblLinkedXref,
+    UniprotFeatureCodingDnaExonPair, UniprotFeatureCodingDnaExonSpan, UniprotFeatureCodingDnaMatch,
     UniprotFeatureCodingDnaQueryMode, UniprotFeatureCodingDnaQueryReport,
-    UniprotFeatureCodingDnaSegment,
+    UniprotFeatureCodingDnaSegment, canonical_collection_membership_json, collection_lift_policy,
+    homogeneous_collection_biological_context, validate_collection_context_target_genome,
 };
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
-use std::collections::BTreeMap;
 
 use crate::enzymes::default_preferred_restriction_enzyme_names;
 use crate::genomes::BlastExternalBinaryPreflightReport;
 
 use super::{
-    CLONING_MACRO_TEMPLATE_SCHEMA, OpId, Operation, PrepareGenomeProgress,
-    ProtocolCartoonTemplateBindings, RunId, SeqId,
+    CLONING_MACRO_TEMPLATE_SCHEMA, OpId, Operation, PROMOTER_REPORTER_ARCHITECTURE_REQUEST_SCHEMA,
+    PROMOTER_REPORTER_PANEL_READINESS_REQUEST_SCHEMA, PrepareGenomeProgress,
+    ProtocolCartoonTemplateBindings, REGULATORY_REPORTER_STUDY_REQUEST_SCHEMA, RunId, SeqId,
+    default_promoter_reporter_max_candidates,
+    default_promoter_reporter_retain_downstream_from_tss_bp, default_promoter_window_downstream_bp,
+    default_promoter_window_upstream_bp,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -917,7 +990,9 @@ pub struct TfbsTrackSimilarityReport {
 ///
 /// `forward_scores[i]` and `reverse_scores[i]` correspond to the motif window
 /// that starts at `track_start_0based + i`. Scores may be clipped to `0.0`
-/// when the parent report requests positive-only display.
+/// when the parent report requests positive-only display. Numeric slots whose
+/// validity mask is false are placeholders, NOT zero scores. A missing/malformed
+/// mask in legacy input means validity is unknown; use `score_at` to read values.
 pub struct TfbsScoreTrackRow {
     pub tf_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -927,7 +1002,9 @@ pub struct TfbsScoreTrackRow {
     pub motif_logo_columns: Vec<JasparExpertColumn>,
     pub track_start_0based: usize,
     pub scored_window_count: usize,
+    /// Historical non-negative peak summary, not a substitute for score validity.
     pub max_score: f64,
+    /// Location of the positive maximum; evaluated zero/negative tracks have none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_position_0based: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -940,6 +1017,54 @@ pub struct TfbsScoreTrackRow {
     pub forward_scores: Vec<f64>,
     #[serde(default)]
     pub reverse_scores: Vec<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score_validity: Option<TfbsScoreTrackValidity>,
+}
+
+/// Per-strand evaluability at the original motif-window starts; no gap compaction.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TfbsScoreTrackValidity {
+    pub forward: Vec<bool>,
+    pub reverse: Vec<bool>,
+}
+
+impl TfbsScoreTrackRow {
+    pub fn score_at(&self, index: usize, reverse: bool) -> Option<f64> {
+        let validity = self.score_validity.as_ref()?;
+        if self.forward_scores.len() != self.scored_window_count
+            || self.reverse_scores.len() != self.scored_window_count
+            || validity.forward.len() != self.scored_window_count
+            || validity.reverse.len() != self.scored_window_count
+        {
+            return None;
+        }
+        let (values, mask) = if reverse {
+            (&self.reverse_scores, &validity.reverse)
+        } else {
+            (&self.forward_scores, &validity.forward)
+        };
+        let score = *values.get(index)?;
+        (mask.get(index) == Some(&true) && score.is_finite()).then_some(score)
+    }
+
+    pub fn fully_evaluated(&self) -> bool {
+        self.score_validity.as_ref().is_some_and(|v| {
+            v.forward.len() == self.scored_window_count
+                && v.reverse.len() == self.scored_window_count
+                && self.forward_scores.len() == self.scored_window_count
+                && self.reverse_scores.len() == self.scored_window_count
+        }) && (0..self.scored_window_count)
+            .all(|i| self.score_at(i, false).is_some() && self.score_at(i, true).is_some())
+    }
+
+    pub fn evaluated_strand_windows(&self) -> usize {
+        (0..self.scored_window_count)
+            .map(|i| {
+                usize::from(self.score_at(i, false).is_some())
+                    + usize::from(self.score_at(i, true).is_some())
+            })
+            .sum()
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -1030,6 +1155,8 @@ pub struct TfbsScoreTrackOverlayTrack {
     pub track_name: String,
     pub display_label: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_file_name: Option<String>,
     pub interval_count: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1077,6 +1204,29 @@ pub struct TfbsScoreTrackReport {
     pub cross_strand_correlation_summary: Option<TfbsScoreTrackCrossStrandCorrelationSummary>,
     #[serde(default)]
     pub tracks: Vec<TfbsScoreTrackRow>,
+    /// Actual scorer inputs, not a claim that a locally resolved motif matches an external panel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scoring_provenance: Option<TfbsScoreTrackProvenance>,
+}
+
+/// Content identity of the matrices actually consumed by the shared scorer.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TfbsScoreTrackMatrixBinding {
+    pub matrix_id: String,
+    pub matrix_name: Option<String>,
+    /// SHA-256 of JSON (resolved ID, declared name, ordered A/C/G/T count columns).
+    pub matrix_sha256: String,
+}
+
+/// Additive provenance; absent legacy values cannot authorize sequence-bound local lanes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TfbsScoreTrackProvenance {
+    pub scorer: String,
+    /// Uppercase DNA in the scored span, in scan orientation, without annotations.
+    pub sequence_sha256: String,
+    pub background_length_bp: usize,
+    pub background_seed: u64,
+    pub matrices: Vec<TfbsScoreTrackMatrixBinding>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -1755,6 +1905,240 @@ pub struct RestrictionSiteScanReport {
     pub rows: Vec<RestrictionSiteScanHit>,
 }
 
+pub const COLLECTION_RESTRICTION_SITE_SCAN_REPORT_SCHEMA: &str =
+    "gentle.collection_restriction_site_scan.v1";
+
+/// Explicitly binds one logical collection member to one loaded DNA sequence.
+///
+/// Resolved gene-set members identify genes, not materialized sequence records,
+/// so collection restriction scans must not infer this association from a
+/// symbol or coordinate label.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct RestrictionSiteScanCollectionMemberBinding {
+    pub stable_member_id: String,
+    pub seq_id: String,
+}
+
+/// One successful wrapper-owned child restriction-site scan.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CollectionRestrictionSiteScanMemberReport {
+    pub stable_member_id: String,
+    pub seq_id: String,
+    pub report: RestrictionSiteScanReport,
+}
+
+/// Domain result for mapping restriction-site inspection over a collection.
+///
+/// Restriction-site scan reports do not currently have a persisted report
+/// store. Successful child reports therefore live in this wrapper and generic
+/// `per_member_status[].produced_report_ids` remains empty.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CollectionRestrictionSiteScanReport {
+    pub schema: String,
+    pub collection_operation: CollectionOperationReport,
+    #[serde(default)]
+    pub requested_enzymes: Vec<String>,
+    #[serde(default)]
+    pub effective_enzymes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_sites_per_enzyme: Option<usize>,
+    pub include_cut_geometry: bool,
+    #[serde(default)]
+    pub member_reports: Vec<CollectionRestrictionSiteScanMemberReport>,
+    pub total_matched_site_count: usize,
+    #[serde(default)]
+    pub matched_site_counts_by_enzyme: BTreeMap<String, usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
+pub const COLLECTION_CONSTRUCT_REASONING_INSPECTION_REPORT_SCHEMA: &str =
+    "gentle.collection_construct_reasoning_inspection.v1";
+
+/// Explicitly binds one logical collection member to one loaded DNA sequence.
+///
+/// Gene-set members describe genes rather than materialized sequence records,
+/// so collection reasoning inspection never guesses this association from a
+/// symbol or coordinate label.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct ConstructReasoningCollectionMemberBinding {
+    pub stable_member_id: String,
+    pub seq_id: String,
+}
+
+/// One successful, wrapper-owned construct-reasoning inspection snapshot.
+///
+/// The graph is assembled on a cloned engine and is deliberately not persisted
+/// into project metadata. The input fingerprint and complete portable actions
+/// make the snapshot auditable without advertising a dangling report id.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct CollectionConstructReasoningInspectionMemberReport {
+    pub stable_member_id: String,
+    pub seq_id: String,
+    pub graph_id: String,
+    pub graph_persisted: bool,
+    pub objective_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_fingerprint: Option<ConstructReasoningInputFingerprint>,
+    #[serde(default)]
+    pub inspection_actions: Vec<ConstructReasoningInspectionAction>,
+}
+
+/// Non-mutating map of construct-reasoning inspection actions over a collection.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct CollectionConstructReasoningInspectionReport {
+    pub schema: String,
+    pub collection_operation: CollectionOperationReport,
+    #[serde(default)]
+    pub member_reports: Vec<CollectionConstructReasoningInspectionMemberReport>,
+    pub total_inspection_action_count: usize,
+    pub member_count_with_actions: usize,
+    #[serde(default)]
+    pub member_ids_without_actions: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
+pub const COLLECTION_DIGEST_REPORT_SCHEMA: &str = "gentle.collection_digest.v1";
+pub const COLLECTION_DIGEST_PLAN_FINGERPRINT_ALGORITHM: &str = "sha256_collection_digest_plan_v1";
+
+pub const COLLECTION_POOL_EXPORT_REPORT_SCHEMA: &str = "gentle.collection_pool_export.v1";
+
+pub const GENE_SET_POOL_CREATION_REPORT_SCHEMA: &str = "gentle.gene_set_pool_creation.v1";
+pub const GENE_SET_POOL_PLAN_FINGERPRINT_ALGORITHM: &str = "sha256_gene_set_pool_plan_v1";
+
+/// Explicitly binds one resolved gene-set member to one physical source tube.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct GeneSetPoolMemberBinding {
+    pub stable_member_id: String,
+    pub source_container_id: String,
+}
+
+/// Provenance and reserved output for one member of a gene-set pool plan.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneSetPoolMemberReport {
+    pub stable_member_id: String,
+    pub source_container_id: String,
+    pub source_seq_id: String,
+    pub source_sequence_snapshot_sha256: String,
+    pub output_seq_id: String,
+    pub materialized: bool,
+}
+
+/// Preview or applied result for explicitly combining a resolved gene set into a pool.
+///
+/// Source singleton containers are retained. Apply clones each bound source
+/// sequence into a derived sequence id and places only those derived aliquots
+/// in the new physical pool container.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GeneSetPoolCreationReport {
+    pub schema: String,
+    pub collection_operation: CollectionOperationReport,
+    pub source_gene_set_resolution_id: String,
+    pub effective_output_prefix: String,
+    pub container_name: String,
+    pub plan_fingerprint_algorithm: String,
+    pub plan_fingerprint_sha256: String,
+    pub planned_container_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_container_id: Option<String>,
+    pub source_containers_retained: bool,
+    #[serde(default)]
+    pub member_reports: Vec<GeneSetPoolMemberReport>,
+    pub planned_member_count: usize,
+    pub materialized_member_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
+/// Atomic export of one exclusive physical container to a pool artifact.
+///
+/// The exported `gentle.pool.v1` file is the single combined artifact. The
+/// nested collection report preserves which physical container and members
+/// produced it without changing the existing pool-artifact schema.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct CollectionPoolExportReport {
+    pub schema: String,
+    pub collection_operation: CollectionOperationReport,
+    pub artifact_schema: String,
+    pub artifact_path: String,
+    pub pool_id: String,
+    pub human_id: String,
+    pub member_count: usize,
+    pub source_container_id: String,
+    pub source_container_declared_contents_exclusive: bool,
+}
+
+/// Explicitly binds one logical collection member to one loaded DNA sequence.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct DigestCollectionMemberBinding {
+    pub stable_member_id: String,
+    pub seq_id: String,
+}
+
+/// One fragment planned or materialized by a lifted restriction digest.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct CollectionDigestFragmentRow {
+    pub seq_id: String,
+    pub length_bp: usize,
+    pub circular: bool,
+    pub sequence_snapshot_sha256: String,
+    pub materialized: bool,
+}
+
+/// Digest products and source lock for one successful collection member.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct CollectionDigestMemberReport {
+    pub stable_member_id: String,
+    pub source_seq_id: String,
+    pub source_sequence_snapshot_sha256: String,
+    pub effective_output_prefix: String,
+    #[serde(default)]
+    pub fragments: Vec<CollectionDigestFragmentRow>,
+}
+
+/// Preview or applied result for mapping restriction digestion over a collection.
+///
+/// The collection membership fingerprint locks identity/order only. The plan
+/// fingerprint additionally binds exact source-sequence snapshots, effective
+/// enzymes, output naming, and the sequentially reserved fragment ids.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CollectionDigestReport {
+    pub schema: String,
+    pub collection_operation: CollectionOperationReport,
+    #[serde(default)]
+    pub requested_enzymes: Vec<String>,
+    #[serde(default)]
+    pub effective_enzymes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_prefix: Option<String>,
+    pub plan_fingerprint_algorithm: String,
+    pub plan_fingerprint_sha256: String,
+    #[serde(default)]
+    pub member_reports: Vec<CollectionDigestMemberReport>,
+    pub total_planned_fragment_count: usize,
+    pub total_created_fragment_count: usize,
+    pub aggregate_counts_complete: bool,
+    #[serde(default)]
+    pub incomplete_member_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
 pub const PROJECT_FACT_GRAPH_SCHEMA: &str = "gentle.project_fact_graph.v1";
 pub const FACT_EXPRESSION_SCHEMA: &str = "gentle.fact_expression.v1";
 pub const FACT_EVALUATION_SCHEMA: &str = "gentle.fact_evaluation.v1";
@@ -1885,6 +2269,14 @@ const PROJECT_FACT_TYPE_SPECS: &[ProjectFactTypeSpec] = &[
         description: "An explicit proof/report artifact is available as evidence.",
     },
     ProjectFactTypeSpec {
+        name: "primer_design_report.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Report,
+        description: "A persisted primer-design report with this id exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
         name: "dotplot.exists",
         domain: ProjectFactDomain::Project,
         world: ProjectFactWorld::ClosedWorld,
@@ -1963,6 +2355,14 @@ const PROJECT_FACT_TYPE_SPECS: &[ProjectFactTypeSpec] = &[
         requires_basis: false,
         subject_kind: FactSubjectKind::Other,
         description: "A persisted workflow macro template with this name exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
+        name: "tss_collection.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A materialized TSS collection is stored in this project; member freshness is validated at execution.",
     },
     ProjectFactTypeSpec {
         name: "candidate_macro_template.exists",
@@ -2348,6 +2748,50 @@ pub enum FactTruth {
     Unsatisfied,
 }
 
+impl FactTruth {
+    /// Shared Kleene conjunction, short-circuiting on a known false operand.
+    pub(crate) fn all(truths: impl IntoIterator<Item = Self>) -> Self {
+        let mut saw_unknown = false;
+        for truth in truths {
+            match truth {
+                Self::Unsatisfied => return Self::Unsatisfied,
+                Self::Unknown => saw_unknown = true,
+                Self::Satisfied => {}
+            }
+        }
+        if saw_unknown {
+            Self::Unknown
+        } else {
+            Self::Satisfied
+        }
+    }
+
+    /// Shared Kleene disjunction, short-circuiting on a known true operand.
+    pub(crate) fn any(truths: impl IntoIterator<Item = Self>) -> Self {
+        let mut saw_unknown = false;
+        for truth in truths {
+            match truth {
+                Self::Satisfied => return Self::Satisfied,
+                Self::Unknown => saw_unknown = true,
+                Self::Unsatisfied => {}
+            }
+        }
+        if saw_unknown {
+            Self::Unknown
+        } else {
+            Self::Unsatisfied
+        }
+    }
+
+    pub(crate) fn negated(self) -> Self {
+        match self {
+            Self::Satisfied => Self::Unsatisfied,
+            Self::Unsatisfied => Self::Satisfied,
+            Self::Unknown => Self::Unknown,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(default)]
 /// Deterministic result of evaluating one fact expression against a fact graph.
@@ -2420,6 +2864,65 @@ pub struct TfbsHitScanReport {
     pub path: Option<String>,
     #[serde(default)]
     pub rows: Vec<TfbsHitScanRow>,
+}
+
+pub const COLLECTION_TFBS_HIT_SCAN_REPORT_SCHEMA: &str = "gentle.collection_tfbs_hit_scan.v1";
+
+/// Explicitly binds one logical collection member to one loaded DNA sequence.
+///
+/// Resolved gene-set members identify genes, not materialized sequence records,
+/// so collection TFBS scans must not infer this association from a symbol or
+/// coordinate label.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct TfbsHitScanCollectionMemberBinding {
+    pub stable_member_id: String,
+    pub seq_id: String,
+}
+
+/// One successful wrapper-owned child TFBS hit scan.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CollectionTfbsHitScanMemberReport {
+    pub stable_member_id: String,
+    pub seq_id: String,
+    pub report: TfbsHitScanReport,
+}
+
+/// Domain result for mapping non-mutating TFBS hit inspection over a collection.
+///
+/// `total_retained_hit_count` and `retained_hit_counts_by_tf_id` summarize rows
+/// actually retained by child reports. They are complete only when
+/// `aggregate_counts_complete` is true: a child cap can stop motif iteration,
+/// and motifs longer than a member sequence are not scanned.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CollectionTfbsHitScanReport {
+    pub schema: String,
+    pub collection_operation: CollectionOperationReport,
+    #[serde(default)]
+    pub requested_motifs: Vec<String>,
+    #[serde(default)]
+    pub effective_motif_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_min_llr_bits: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_min_llr_quantile: Option<f64>,
+    #[serde(default)]
+    pub per_tf_thresholds: Vec<TfThresholdOverride>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_hits_per_member: Option<usize>,
+    #[serde(default)]
+    pub member_reports: Vec<CollectionTfbsHitScanMemberReport>,
+    pub total_retained_hit_count: usize,
+    #[serde(default)]
+    pub retained_hit_counts_by_tf_id: BTreeMap<String, usize>,
+    pub aggregate_counts_complete: bool,
+    #[serde(default)]
+    pub incomplete_member_ids: Vec<String>,
+    pub truncated_member_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -2952,6 +3455,9 @@ pub enum PromoterWindowCollapseMode {
     #[default]
     Transcript,
     Gene,
+    TssCluster {
+        tolerance_bp: usize,
+    },
 }
 
 impl PromoterWindowCollapseMode {
@@ -2959,7 +3465,12 @@ impl PromoterWindowCollapseMode {
         match self {
             Self::Transcript => "transcript",
             Self::Gene => "gene",
+            Self::TssCluster { .. } => "tss_cluster",
         }
+    }
+
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
     }
 }
 
@@ -3000,6 +3511,16 @@ pub struct PromoterWindowRecord {
     pub upstream_bp: usize,
     pub downstream_bp: usize,
     pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_class_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grouping_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tss_cluster_tolerance_bp: Option<usize>,
+    #[serde(skip)]
+    pub first_exon_start_0based: Option<usize>,
+    #[serde(skip)]
+    pub first_exon_end_0based_exclusive: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -3059,7 +3580,7 @@ pub struct AlternativePromoterComparisonReport {
     pub warnings: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
 /// One evidence item attached to a promoter candidate in the conservative
 /// promoter-evidence ledger.
@@ -3373,6 +3894,7 @@ pub struct PromoterExpressionEvidenceReport {
 pub struct PromoterArtifactManifestEntry {
     pub artifact_id: String,
     pub artifact_kind: String,
+    /// Absolute path, or a path relative to the output manifest's directory.
     pub path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub schema_hint: Option<String>,
@@ -3498,10 +4020,143 @@ pub struct VariantPromoterContextReport {
     pub rationale: String,
 }
 
+/// Typed anchor kinds accepted by promoter-reporter fragment planning.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PromoterReporterAnchorKind {
+    #[default]
+    Variant,
+    MotifHit,
+    TranscriptionStartSite,
+    ExplicitInterval,
+}
+
+impl PromoterReporterAnchorKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Variant => "variant",
+            Self::MotifHit => "motif_hit",
+            Self::TranscriptionStartSite => "transcription_start_site",
+            Self::ExplicitInterval => "explicit_interval",
+        }
+    }
+}
+
+fn promoter_reporter_default_occurrence() -> usize {
+    1
+}
+
+fn promoter_reporter_occurrence_is_one(value: &usize) -> bool {
+    *value == 1
+}
+
+/// Anchor selection supplied to the existing promoter-reporter candidate
+/// operation. Motif hits resolve only against local sequence annotations.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PromoterReporterAnchorRequest {
+    Variant {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label_or_id: Option<String>,
+    },
+    MotifHit {
+        label_or_id: String,
+        #[serde(
+            default = "promoter_reporter_default_occurrence",
+            skip_serializing_if = "promoter_reporter_occurrence_is_one"
+        )]
+        occurrence: usize,
+    },
+    TranscriptionStartSite,
+    ExplicitInterval {
+        label: String,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+    },
+}
+
+/// Resolved, provenance-bearing anchor copied into non-legacy candidate
+/// reports. A motif annotation is sequence evidence, not occupancy evidence.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(default)]
+pub struct PromoterReporterAnchor {
+    pub kind: PromoterReporterAnchorKind,
+    pub label: String,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_feature_id: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strand: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motif_id: Option<String>,
+    pub evidence_kind: String,
+    #[serde(default)]
+    pub interpretation_tags: Vec<String>,
+}
+
+/// Additive policy for generalizing the legacy variant-anchored fragment
+/// operation without changing default VKORC1 request bytes or behavior.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct PromoterReporterFragmentPolicy {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<PromoterReporterAnchorRequest>,
+    #[serde(
+        default,
+        skip_serializing_if = "PromoterWindowCollapseMode::is_default"
+    )]
+    pub collapse_mode: PromoterWindowCollapseMode,
+    pub promoter_upstream_baseline_bp: usize,
+    pub anchor_flank_bp: usize,
+    pub max_fragment_length_bp: usize,
+}
+
+impl PromoterReporterFragmentPolicy {
+    pub const DEFAULT_PROMOTER_UPSTREAM_BASELINE_BP: usize = 500;
+    pub const DEFAULT_ANCHOR_FLANK_BP: usize = 150;
+    pub const DEFAULT_MAX_FRAGMENT_LENGTH_BP: usize = 5_000;
+    pub const DEFAULT_TSS_CLUSTER_TOLERANCE_BP: usize = 50;
+
+    pub fn is_default(&self) -> bool {
+        self == &Self::default()
+    }
+}
+
+impl Default for PromoterReporterFragmentPolicy {
+    fn default() -> Self {
+        Self {
+            anchor: None,
+            collapse_mode: PromoterWindowCollapseMode::Transcript,
+            promoter_upstream_baseline_bp: Self::DEFAULT_PROMOTER_UPSTREAM_BASELINE_BP,
+            anchor_flank_bp: Self::DEFAULT_ANCHOR_FLANK_BP,
+            max_fragment_length_bp: Self::DEFAULT_MAX_FRAGMENT_LENGTH_BP,
+        }
+    }
+}
+
+/// One fragment geometry rejected by the explicit maximum-length policy.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(default)]
+pub struct PromoterReporterFragmentRejection {
+    pub candidate_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_class_id: Option<String>,
+    #[serde(default)]
+    pub transcript_ids: Vec<String>,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub length_bp: usize,
+    pub max_fragment_length_bp: usize,
+    pub reason_kind: String,
+    pub detail: String,
+}
+
+/// One deterministic promoter-reporter fragment candidate derived from one
+/// transcript/TSS class and one variant, motif hit, transcription start site,
+/// or explicit interval.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
-/// One deterministic promoter-reporter fragment candidate derived from one
-/// transcript/TSS and one variant.
 pub struct PromoterReporterFragmentCandidate {
     pub candidate_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -3510,6 +4165,23 @@ pub struct PromoterReporterFragmentCandidate {
     pub transcript_label: String,
     pub strand: String,
     pub tss_local_0based: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_class_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_count: Option<usize>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transcript_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grouping_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<PromoterReporterAnchor>,
+    /// Coordinate-overlapping evidence retained separately from the anchor.
+    /// A motif row remains sequence evidence unless an independent occupancy
+    /// source is present.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence: Vec<PromoterEvidenceItem>,
+    /// Legacy coordinate aliases retained for v1 consumers. For non-variant
+    /// reports they carry the resolved anchor interval.
     pub variant_start_0based: usize,
     pub variant_end_0based_exclusive: usize,
     pub start_0based: usize,
@@ -3527,7 +4199,7 @@ pub struct PromoterReporterFragmentCandidate {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 /// Portable candidate set for promoter-fragment suggestions that can be turned
-/// into luciferase reporter inserts.
+/// into inserts for a validated reporter backbone.
 pub struct PromoterReporterCandidateSet {
     pub schema: String,
     pub seq_id: String,
@@ -3537,6 +4209,13 @@ pub struct PromoterReporterCandidateSet {
     pub op_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<PromoterReporterAnchor>,
+    #[serde(
+        default,
+        skip_serializing_if = "PromoterReporterFragmentPolicy::is_default"
+    )]
+    pub fragment_policy: PromoterReporterFragmentPolicy,
     pub variant_label: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chosen_gene_label: Option<String>,
@@ -3553,6 +4232,194 @@ pub struct PromoterReporterCandidateSet {
     pub suggested_assay_ids: Vec<String>,
     #[serde(default)]
     pub candidates: Vec<PromoterReporterFragmentCandidate>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rejected_candidates: Vec<PromoterReporterFragmentRejection>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// How a regulatory-reporter study chooses one transcript TSS per gene.
+pub enum RegulatoryReporterTssSelection {
+    #[default]
+    OutermostFivePrime,
+    ExplicitPerMember,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Transcript-selection policy for a regulatory-reporter study.
+///
+/// Map keys may be resolved-member dedup keys, gene symbols, or gene ids. In
+/// `explicit_per_member` mode every resolved member must have one binding.
+pub struct RegulatoryReporterTssPolicy {
+    pub selection: RegulatoryReporterTssSelection,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub transcript_ids_by_member: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Exact evidence-kind gate applied before a study emits a panel request.
+///
+/// Kinds are compared case-insensitively against candidate annotations and
+/// member evidence. Empty means preserve available evidence without requiring
+/// a specific evidence class.
+pub struct RegulatoryReporterEvidencePolicy {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_kinds_per_member: Vec<String>,
+}
+
+fn regulatory_reporter_study_request_schema_default() -> String {
+    REGULATORY_REPORTER_STUDY_REQUEST_SCHEMA.to_string()
+}
+
+fn regulatory_reporter_study_default_fragment_policy() -> PromoterReporterFragmentPolicy {
+    PromoterReporterFragmentPolicy {
+        anchor: Some(PromoterReporterAnchorRequest::TranscriptionStartSite),
+        ..PromoterReporterFragmentPolicy::default()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+/// Front-half orchestration request for an evidence-guided reporter study.
+///
+/// Exactly one of `source` and `resolution` must be supplied. The operation
+/// resolves one transcript-derived promoter locus per gene, writes candidate
+/// sets and a panel request, and delegates terminal readiness to the existing
+/// context-bound panel inspector.
+pub struct RegulatoryReporterStudyRequest {
+    #[serde(default = "regulatory_reporter_study_request_schema_default")]
+    pub schema: String,
+    pub study_id: String,
+    pub genome_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<GeneSetRequest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolution: Option<Box<GeneSetResolutionReport>>,
+    #[serde(default)]
+    pub relationship: GeneSetCohortRelationship,
+    #[serde(default)]
+    pub tss_policy: RegulatoryReporterTssPolicy,
+    #[serde(default)]
+    pub evidence_policy: RegulatoryReporterEvidencePolicy,
+    /// Additional evidence keyed by member dedup key, symbol, or gene id.
+    /// Coordinates, when present, are local to the extracted promoter locus.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub evidence_by_member: BTreeMap<String, Vec<PromoterEvidenceItem>>,
+    #[serde(default = "default_promoter_window_upstream_bp")]
+    pub locus_upstream_bp: usize,
+    #[serde(default = "default_promoter_window_downstream_bp")]
+    pub locus_downstream_bp: usize,
+    #[serde(default = "default_promoter_reporter_retain_downstream_from_tss_bp")]
+    pub retain_downstream_from_tss_bp: usize,
+    #[serde(default = "default_promoter_reporter_max_candidates")]
+    pub max_candidates_per_gene: usize,
+    #[serde(default = "regulatory_reporter_study_default_fragment_policy")]
+    pub fragment_policy: PromoterReporterFragmentPolicy,
+    pub vector_seq_id: String,
+    pub vector_catalog_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub helper_catalog_path: Option<String>,
+    #[serde(default = "regulatory_reporter_study_default_mutation_policy")]
+    pub mutation_policy: PromoterReporterPanelMutationPolicy,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scientific_caveats: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_group_catalog_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genome_catalog_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<String>,
+    #[serde(default)]
+    pub allow_draft: bool,
+    #[serde(default)]
+    pub allow_deprecated: bool,
+    #[serde(default)]
+    pub allow_partial_gene_set: bool,
+    #[serde(default)]
+    pub allow_fuzzy_gene_matches: bool,
+    pub output_dir: String,
+}
+
+fn regulatory_reporter_study_default_mutation_policy() -> PromoterReporterPanelMutationPolicy {
+    PromoterReporterPanelMutationPolicy::NativeOnlyV1
+}
+
+impl Default for RegulatoryReporterStudyRequest {
+    fn default() -> Self {
+        Self {
+            schema: regulatory_reporter_study_request_schema_default(),
+            study_id: String::new(),
+            genome_id: String::new(),
+            source: None,
+            resolution: None,
+            relationship: GeneSetCohortRelationship::Unspecified,
+            tss_policy: RegulatoryReporterTssPolicy::default(),
+            evidence_policy: RegulatoryReporterEvidencePolicy::default(),
+            evidence_by_member: BTreeMap::new(),
+            locus_upstream_bp: default_promoter_window_upstream_bp(),
+            locus_downstream_bp: default_promoter_window_downstream_bp(),
+            retain_downstream_from_tss_bp: default_promoter_reporter_retain_downstream_from_tss_bp(
+            ),
+            max_candidates_per_gene: default_promoter_reporter_max_candidates(),
+            fragment_policy: regulatory_reporter_study_default_fragment_policy(),
+            vector_seq_id: String::new(),
+            vector_catalog_id: String::new(),
+            helper_catalog_path: None,
+            mutation_policy: regulatory_reporter_study_default_mutation_policy(),
+            scientific_caveats: Vec::new(),
+            gene_group_catalog_path: None,
+            genome_catalog_path: None,
+            cache_dir: None,
+            allow_draft: false,
+            allow_deprecated: false,
+            allow_partial_gene_set: false,
+            allow_fuzzy_gene_matches: false,
+            output_dir: String::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One content-bound promoter candidate artifact emitted by a study composer.
+pub struct RegulatoryReporterStudyCandidateArtifact {
+    pub member_dedup_key: String,
+    pub gene_symbol: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_id: Option<String>,
+    pub transcript_id: String,
+    pub source_seq_id: String,
+    pub candidate_set_path: String,
+    pub candidate_set_sha256: String,
+    pub recommended_candidate_id: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence_kinds: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Portable result of composing the front half of a regulatory-reporter study.
+pub struct RegulatoryReporterStudyReport {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub request: RegulatoryReporterStudyRequest,
+    pub promoter_cohort: GeneSetPromoterCohortReport,
+    #[serde(default)]
+    pub candidate_artifacts: Vec<RegulatoryReporterStudyCandidateArtifact>,
+    pub panel_request_path: String,
+    pub panel_request_sha256: String,
+    pub panel_request: PromoterReporterPanelRequest,
+    pub readiness: PromoterReporterPanelReadinessReport,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
+    pub nonclaims: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -4103,6 +4970,228 @@ pub struct SequenceGenomeAnchorSummary {
     pub anchor_verified: Option<bool>,
 }
 
+pub const GENE_LOCUS_EVIDENCE_PREPARATION_REQUEST_SCHEMA: &str =
+    "gentle.gene_locus_evidence_preparation_request.v1";
+pub const GENE_LOCUS_EVIDENCE_PREPARATION_RECEIPT_SCHEMA: &str =
+    "gentle.gene_locus_evidence_preparation_receipt.v1";
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneLocusEvidenceTrackSourceKind {
+    #[default]
+    Bed,
+    BigWig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// One explicit local evidence source imported before locus composition.
+pub struct GeneLocusEvidenceTrackSource {
+    pub source_kind: GeneLocusEvidenceTrackSourceKind,
+    pub path: String,
+    pub track_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assembly: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assay: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mark: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub factor: Option<String>,
+    pub min_score: Option<f64>,
+    pub max_score: Option<f64>,
+    pub clear_existing: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+/// One typed end-to-end preparation request for an arbitrary Ensembl locus.
+pub struct GeneLocusEvidencePreparationRequest {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transcript_annotation_sources:
+        Vec<gentle_protocol::transcript_presentation::TranscriptAnnotationSource>,
+    pub schema: String,
+    pub gene_query: String,
+    pub species: String,
+    pub assembly: String,
+    /// Explicit consent for Ensembl REST access. False resolves stored entries only.
+    pub allow_ensembl_network: bool,
+    /// Optional offline `gentle.ensembl_gene_entry.v1` resource. Mutually
+    /// exclusive with `allow_ensembl_network=true`.
+    pub ensembl_entry_path: Option<String>,
+    pub flank_5prime_bp: usize,
+    pub flank_3prime_bp: usize,
+    pub output_seq_id: Option<String>,
+    pub output_panel_id: Option<String>,
+    pub annotation_release: Option<String>,
+    pub display_upstream_bp: usize,
+    pub display_downstream_bp: usize,
+    pub local_tracks: Vec<GeneLocusEvidenceTrackSource>,
+    pub occupancy_layout: GeneLocusOccupancyLayout,
+    pub regulatory_score_tracks: Vec<GeneLocusRegulatoryScoreTrackRequest>,
+    pub scale_bar: GeneLocusScaleBarPolicy,
+    /// Optional saved genomic-region sets to include in the composed report.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub region_set_ids: Vec<String>,
+    /// Optional source-bound Ensembl Regulation annotation layer. No resource
+    /// is opened when this field is absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ensembl_regulation: Option<GeneLocusEnsemblRegulationRequest>,
+    /// Optional canonical reporter comparison to compose with the normalized
+    /// locus evidence. The preparation workflow binds its sequence and locus
+    /// request; callers must leave those nested fields empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reporter_architecture_request: Option<PromoterReporterArchitectureComparisonRequest>,
+    pub svg_path: String,
+    pub png_path: Option<String>,
+    pub pdf_path: Option<String>,
+    pub display_report_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reporter_report_path: Option<String>,
+    pub receipt_path: Option<String>,
+    pub png_scale: f32,
+    /// Preserve local input/output paths in portable report metadata and the
+    /// preparation receipt. Disabled by default for shareable artifacts.
+    pub include_local_source_paths: bool,
+}
+
+impl Default for GeneLocusEvidencePreparationRequest {
+    fn default() -> Self {
+        Self {
+            schema: GENE_LOCUS_EVIDENCE_PREPARATION_REQUEST_SCHEMA.to_string(),
+            transcript_annotation_sources: vec![],
+            gene_query: String::new(),
+            species: String::new(),
+            assembly: String::new(),
+            allow_ensembl_network: false,
+            ensembl_entry_path: None,
+            flank_5prime_bp: 5_000,
+            flank_3prime_bp: 1_000,
+            output_seq_id: None,
+            output_panel_id: None,
+            annotation_release: None,
+            display_upstream_bp: 5_000,
+            display_downstream_bp: 1_000,
+            local_tracks: vec![],
+            occupancy_layout: GeneLocusOccupancyLayout::default(),
+            regulatory_score_tracks: vec![],
+            scale_bar: GeneLocusScaleBarPolicy::default(),
+            region_set_ids: vec![],
+            ensembl_regulation: None,
+            reporter_architecture_request: None,
+            svg_path: String::new(),
+            png_path: None,
+            pdf_path: None,
+            display_report_path: None,
+            reporter_report_path: None,
+            receipt_path: None,
+            png_scale: 1.0,
+            include_local_source_paths: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneLocusEvidencePreparedTrack {
+    pub source_kind: String,
+    pub track_name: String,
+    pub source_id: String,
+    pub state: GeneLocusOccupancyLaneState,
+    pub assembly: Option<String>,
+    pub assay: Option<String>,
+    pub mark: Option<String>,
+    pub factor: Option<String>,
+    pub path: Option<String>,
+    pub sha256: String,
+    pub imported_feature_count: usize,
+    pub skipped_record_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneLocusEvidenceOutputArtifact {
+    pub kind: String,
+    pub path: String,
+    pub sha256: String,
+    pub size_bytes: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Provenance binding for one normalized regulatory-score track in a receipt.
+pub struct GeneLocusEvidenceRegulatoryBinding {
+    pub track_id: String,
+    pub provider_kind: GeneLocusRegulatoryScoreProviderKind,
+    pub provider_id: String,
+    pub provider_version: Option<String>,
+    pub source_ids: Vec<String>,
+    pub score_kind: String,
+    pub calibration_status: String,
+    pub calibration_state: GeneLocusRegulatoryCalibrationState,
+    pub calibration_id: Option<String>,
+    pub calibration_sha256: Option<String>,
+    pub request_sha256: Option<String>,
+    pub source_sha256: Option<String>,
+    pub output_sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Receipt-level identity for an explicitly requested Ensembl Regulation layer.
+pub struct GeneLocusEvidenceEnsemblRegulationBinding {
+    pub availability: GeneLocusEnsemblRegulationAvailability,
+    pub requested_source_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<gentle_protocol::EnsemblRegulationSourceDescriptor>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unavailable_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_binding: Option<GeneLocusEnsemblRegulationSourceBinding>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Machine-readable receipt for the composed preparation operation.
+pub struct GeneLocusEvidencePreparationReceipt {
+    pub schema: String,
+    pub request_schema: String,
+    pub request_sha256: String,
+    pub gentle_revision: String,
+    pub ensembl_network_used: bool,
+    pub ensembl_entry_source_path: Option<String>,
+    pub ensembl_entry_source_sha256: Option<String>,
+    pub resolved_entry_id: String,
+    pub resolved_gene_id: String,
+    pub resolved_gene_version: Option<usize>,
+    pub resolved_gene_symbol: String,
+    pub resolved_species: String,
+    pub resolved_assembly: String,
+    pub sequence_id: String,
+    pub sequence_sha256: String,
+    pub panel_id: String,
+    pub transcript_ids: Vec<String>,
+    pub genome_anchor: Option<SequenceGenomeAnchorSummary>,
+    pub imported_tracks: Vec<GeneLocusEvidencePreparedTrack>,
+    pub occupancy_layout: GeneLocusOccupancyLayout,
+    pub regulatory_track_ids: Vec<String>,
+    pub regulatory_provider_bindings: Vec<String>,
+    pub regulatory_source_sha256: Vec<String>,
+    pub regulatory_bindings: Vec<GeneLocusEvidenceRegulatoryBinding>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ensembl_regulation: Option<GeneLocusEvidenceEnsemblRegulationBinding>,
+    pub scale_bar: gentle_protocol::GeneLocusScaleBar,
+    pub display_report_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reporter_architecture_report_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reporter_architecture_ids: Vec<String>,
+    pub artifacts: Vec<GeneLocusEvidenceOutputArtifact>,
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SequenceAnchorPreparedGenomeOptionsSummary {
     pub seq_id: String,
@@ -4262,6 +5351,8 @@ pub struct DisplaySettings {
     pub linear_view_start_bp: usize,
     pub linear_view_span_bp: usize,
     pub linear_view_vertical_offset_px: f32,
+    #[serde(default = "DisplaySettings::default_linear_show_sequence_bases")]
+    pub linear_show_sequence_bases: bool,
     pub linear_sequence_base_text_max_view_span_bp: usize,
     pub linear_sequence_helical_letters_enabled: bool,
     pub linear_sequence_helical_max_view_span_bp: usize,
@@ -4305,6 +5396,10 @@ impl DisplaySettings {
 
     pub const fn default_linear_sequence_condensed_max_view_span_bp() -> usize {
         1500
+    }
+
+    pub const fn default_linear_show_sequence_bases() -> bool {
+        true
     }
 
     pub const fn default_linear_helical_parallel_strands() -> bool {
@@ -4367,6 +5462,7 @@ impl Default for DisplaySettings {
             linear_view_start_bp: 0,
             linear_view_span_bp: 0,
             linear_view_vertical_offset_px: 0.0,
+            linear_show_sequence_bases: Self::default_linear_show_sequence_bases(),
             linear_sequence_base_text_max_view_span_bp: 500,
             linear_sequence_helical_letters_enabled: true,
             linear_sequence_helical_max_view_span_bp: 2000,
@@ -4404,6 +5500,27 @@ pub struct Workflow {
 /// `created_seq_ids` and `changed_seq_ids` are the stable adapter-facing hint
 /// for which sequence windows/views may need refresh after an operation.
 pub struct OpResult {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dna_sequence_design: Option<Box<gentle_protocol::sequence_design::DnaSequenceDesignReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dna_sequence_design_receipt:
+        Option<gentle_protocol::sequence_design::DnaSequenceDesignReceipt>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tss_inventory: Option<Box<gentle_protocol::tss_workspace::TssInventoryReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tss_collection: Option<Box<gentle_protocol::tss_workspace::TssCollectionReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tss_collection_list: Option<Box<gentle_protocol::tss_workspace::TssCollectionListReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tss_view_svg_export: Option<Box<gentle_protocol::tss_workspace::TssViewSvgExportReceipt>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tss_tfbs_profiles: Option<Box<gentle_protocol::tss_profiles::TssProfileReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tss_tfbs_profile_receipt: Option<Box<gentle_protocol::tss_profiles::TssProfileReceipt>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gel_image: Option<gentle_protocol::gel_image::GelImageDescriptor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gel_image_analysis: Option<Box<gentle_protocol::gel_image::GelImageAnalysisReport>>,
     pub op_id: OpId,
     pub created_seq_ids: Vec<SeqId>,
     pub changed_seq_ids: Vec<SeqId>,
@@ -4432,7 +5549,42 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cdna_assay_product_materialization: Option<Box<CdnaAssayProductMaterialization>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primerbank_search_report: Option<PrimerBankSearchReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_primer_pair_import_report: Option<Box<ExternalPrimerPairImportReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_exon_rt_primer_pool: Option<Box<TerminalExonRtPrimerPoolReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_capture_pool: Option<Box<TranscriptCapturePoolReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer_variant_screen: Option<Box<PrimerVariantScreenReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer_group_target_design: Option<Box<PrimerGroupTargetDesignReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_qpcr_panel: Option<Box<TranscriptQpcrPanelReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_assay_panel: Option<Box<TranscriptAssayPanelReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_assay_fallback_execution: Option<Box<TranscriptAssayFallbackExecutionReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_assay_cdna_similarity_map: Option<Box<TranscriptAssayCdnaSimilarityMap>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_assay_specificity_redesign:
+        Option<Box<TranscriptAssaySpecificityRedesignReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_isoform_assay_study_plan: Option<Box<GeneIsoformAssayStudyPlanReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_transcript_assay_routine: Option<Box<GeneTranscriptAssayRoutineReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub experimental_assay_handoff: Option<Box<ExperimentalAssayHandoffReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer_specificity_handoff: Option<Box<PrimerSpecificityHandoff>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer_specificity_multi_handoff: Option<Box<PrimerSpecificityMultiHandoff>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer_specificity_multi_summary: Option<Box<PrimerSpecificityMultiSummary>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub primer_specificity_multi_summaries: Vec<PrimerSpecificityMultiSummary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub primer_specificity_report: Option<Box<PrimerSpecificityReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -4466,7 +5618,26 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gene_set_promoter_cohort: Option<GeneSetPromoterCohortReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_locus_evidence_preparation: Option<Box<GeneLocusEvidencePreparationReceipt>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collection_operation: Option<CollectionOperationReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collection_restriction_site_scan: Option<CollectionRestrictionSiteScanReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collection_construct_reasoning_inspection:
+        Option<CollectionConstructReasoningInspectionReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collection_tfbs_hit_scan: Option<CollectionTfbsHitScanReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collection_digest: Option<CollectionDigestReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collection_pool_export: Option<CollectionPoolExportReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_set_pool_creation: Option<GeneSetPoolCreationReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gene_set_cutrun_regulatory_support: Option<GeneSetCutRunRegulatorySupportReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub regulatory_partner_screen: Option<Box<RegulatoryPartnerScreenReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ortholog_promoter_cohort: Option<OrthologPromoterCohortReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -4490,6 +5661,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_read_isoform_preflight: Option<RnaReadIsoformPreflightReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rna_read_dexseq_verification: Option<RnaReadDexseqVerification>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tfbs_region_summary: Option<TfbsRegionSummary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tfbs_score_tracks: Option<TfbsScoreTrackReport>,
@@ -4506,11 +5679,29 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repeat_feature_materialization: Option<RepeatFeatureMaterializationReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encode_ccre_overlaps: Option<EncodeCcreOverlapReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encode_ccre_materialization: Option<EncodeCcreMaterializationReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ensembl_regulation_overlaps: Option<EnsemblRegulationOverlapReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ensembl_regulation_materialization: Option<EnsemblRegulationMaterializationReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_region_operation: Option<Box<gentle_protocol::GenomicRegionOperationReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_region_homology: Option<Box<gentle_protocol::GenomicRegionHomologyScreenReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_module_assessment: Option<Box<gentle_protocol::PromoterModuleAssessmentReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repeat_environment_cohort: Option<RepeatEnvironmentCohortReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub window_cohort_tfbs: Option<WindowCohortTfbsReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tfbs_hit_scan: Option<TfbsHitScanReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_motif_evidence: Option<GenomicMotifEvidenceReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_cofactors: Option<gentle_protocol::promoter_cofactors::PromoterCofactorReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub restriction_site_scan: Option<RestrictionSiteScanReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -4527,11 +5718,22 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequence_context_view: Option<SequenceContextViewReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cryptic_splicing_screen: Option<Box<CrypticSplicingScreenView>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tata_box_screen: Option<Box<gentle_protocol::tata_boxes::TataBoxScreenReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cryptic_splicing_evidence_overlay: Option<Box<CrypticSplicingEvidenceOverlayReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cryptic_splicing_protein_projection: Option<Box<CrypticSplicingProteinProjectionReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequence_context_bundle: Option<SequenceContextBundleExport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub variant_promoter_context: Option<VariantPromoterContextReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub alternative_promoter_comparison: Option<AlternativePromoterComparisonReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_reporter_architecture_comparison:
+        Option<Box<PromoterReporterArchitectureComparisonReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promoter_evidence_matrix: Option<PromoterEvidenceMatrixReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -4551,11 +5753,40 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reporter_construct_handoff: Option<ReporterConstructHandoffPlan>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reporter_vector_validation: Option<ReporterVectorValidationReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_reporter_panel_proposal: Option<Box<PromoterReporterPanelProposal>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub regulatory_reporter_study: Option<Box<RegulatoryReporterStudyReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reporter_fragment_selection: Option<Box<FragmentSelectionReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tss_window_geometry:
+        Option<Box<gentle_protocol::tss_window_geometry::TssWindowGeometryReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub regulatory_fragment_panel_plan: Option<Box<RegulatoryFragmentPanelPlan>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub regulatory_fragment_materialization_proposal:
+        Option<Box<RegulatoryFragmentMaterializationProposal>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub regulatory_fragment_materialization_receipt:
+        Option<Box<RegulatoryFragmentMaterializationReceipt>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_reporter_panel_readiness: Option<Box<PromoterReporterPanelReadinessReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_reporter_panel_receipt: Option<Box<PromoterReporterPanelReceipt>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uniprot_projection_audit: Option<Box<UniprotProjectionAuditReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uniprot_linked_transcript_inventory: Option<Box<UniprotLinkedTranscriptInventory>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uniprot_projection_audit_parity: Option<Box<UniprotProjectionAuditParityReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lab_assistant_instructions: Option<Box<LabAssistantInstructionsExport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feature_location_edit_report: Option<Box<FeatureLocationEditReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feature_record_curation_report: Option<Box<FeatureRecordCurationReport>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -4613,6 +5844,8 @@ pub struct ProbeRegionRequest {
     pub platform: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub annotation_library_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub r_library_paths: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub condition_column: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -4698,6 +5931,32 @@ pub struct ProbeRegionPlatformPlan {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub staging_directory: Option<String>,
     pub confidence: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Result of exporting and checking one matched DEXSeq GFF/count-file pair.
+///
+/// The dependency rows are inspection evidence, while `verifier_status`
+/// records whether the real `DEXSeqDataSetFromHTSeq()` construction ran and
+/// accepted the pair. GENtle never installs missing R packages.
+pub struct RnaReadDexseqVerification {
+    pub schema: String,
+    pub report_id: String,
+    pub annotation_export: RnaReadDexseqAnnotationGffExport,
+    pub counts_export: RnaReadDexseqCountsTsvExport,
+    #[serde(default)]
+    pub dependency_checks: Vec<ProbeRegionDependencyCheck>,
+    #[serde(default)]
+    pub r_library_paths_requested: Vec<String>,
+    #[serde(default)]
+    pub r_library_paths_checked: Vec<String>,
+    pub command: String,
+    pub verifier_status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verifier_stdout_summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verifier_detail: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -4788,6 +6047,8 @@ pub struct ProbeRegionPlan {
     pub annotation_source: ProbeRegionAnnotationSourcePlan,
     pub platform: ProbeRegionPlatformPlan,
     pub dependencies: Vec<ProbeRegionDependencyCheck>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub r_library_paths_checked: Vec<String>,
     pub backend_candidates: Vec<ProbeRegionBackendCandidate>,
     pub contrasts: Vec<ProbeRegionContrastPlan>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -4839,6 +6100,22 @@ pub struct ProbeRegionOutputPreviewRow {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
+/// Stable identity metadata for one input consumed by a probe-region backend.
+pub struct ProbeRegionInputFingerprint {
+    pub path: String,
+    pub role: String,
+    pub exists: bool,
+    pub is_file: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modified_unix_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
 /// Read-only inspection of a completed `probe_regions_oligo.R` output folder.
 pub struct ProbeRegionOutputInspection {
     pub schema: String,
@@ -4861,6 +6138,18 @@ pub struct ProbeRegionOutputInspection {
     pub platform_package: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub normalization: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub r_version: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub package_versions: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub r_library_paths_requested: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub r_library_paths_checked: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub analysis_method_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub input_fingerprints: Vec<ProbeRegionInputFingerprint>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub coordinate_system: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -4971,6 +6260,16 @@ pub struct ProbeRegionEvidenceInterpretationReport {
     pub coordinate_chromosome: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_abs_logfc: Option<f64>,
+    /// Human/machine-readable origin of the effective threshold. Missing on
+    /// legacy and ad-hoc unthresholded interpretations.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threshold_source: Option<String>,
+    /// Digest of the policy that supplied the threshold, when applicable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_sha256: Option<String>,
+    /// Digest over the normalized interpretation inputs and effective gate.
+    #[serde(default)]
+    pub interpretation_request_sha256: String,
     pub array_feature_count: usize,
     pub transcript_count: usize,
     pub evidence_rows: Vec<ProbeRegionEvidenceMappingRow>,
@@ -4985,6 +6284,10 @@ pub struct ProbeRegionEvidenceMappingRow {
     pub evidence_id: String,
     pub level: String,
     pub feature_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platform: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contrast: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_feature_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -5219,6 +6522,71 @@ pub struct DbSnpFetchProgress {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+/// Primer3's bounded, per-input-record search-work counters.
+///
+/// `completed` never decreases and `bound` never increases within one record.
+/// The counters measure instrumented candidate evaluations, not elapsed time.
+/// GENtle may attach a separately labelled, uncertain wall-clock projection;
+/// consumers must not present the raw work fraction itself as an ETA.
+pub struct Primer3Progress {
+    pub record: u64,
+    pub completed: u64,
+    pub bound: u64,
+    /// GENtle bounded-record identity. Native Primer3 does not emit these
+    /// fields; the transcript-assay adapter attaches them before forwarding.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_target_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_record_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bounded_record_ordinal: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bounded_record_count: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bounded_candidate_pair_upper_bound: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bounded_candidate_pair_total_upper_bound: Option<usize>,
+    /// Wall-clock observation attached by GENtle, never emitted by Primer3.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub elapsed_ms: Option<u128>,
+    /// Remaining deterministic candidate-work units.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_remaining: Option<u64>,
+    /// Uncertain linear wall-clock projection, kept separate from work units.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub projected_total_ms: Option<u128>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_assessment: Option<String>,
+}
+
+impl Default for Primer3Progress {
+    fn default() -> Self {
+        Self {
+            record: 0,
+            completed: 0,
+            bound: 0,
+            search_target_id: None,
+            search_record_id: None,
+            bounded_record_ordinal: None,
+            bounded_record_count: None,
+            bounded_candidate_pair_upper_bound: None,
+            bounded_candidate_pair_total_upper_bound: None,
+            elapsed_ms: None,
+            work_remaining: None,
+            projected_total_ms: None,
+            runtime_assessment: None,
+        }
+    }
+}
+
+impl Primer3Progress {
+    pub fn fraction(&self) -> Option<f64> {
+        (self.bound > 0).then(|| (self.completed as f64 / self.bound as f64).clamp(0.0, 1.0))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 /// Progress snapshot for shared primer-pair / qPCR design operations.
 pub struct PrimerDesignProgress {
     pub seq_id: String,
@@ -5240,13 +6608,41 @@ pub struct PrimerDesignProgress {
     pub assay_candidate_combinations: Option<usize>,
     pub assays_evaluated: Option<usize>,
     pub accepted_assay_count: Option<usize>,
+    /// Bounded candidate-work counters when the selected Primer3 advertises
+    /// and emits its progress extension.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer3_progress: Option<Primer3Progress>,
     pub max_output: usize,
+    pub done: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Progress snapshot for a local genomic-region homology screen.
+pub struct GenomicRegionHomologyProgress {
+    pub set_id: String,
+    pub region_id: String,
+    pub phase: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_genome_id: Option<String>,
+    pub target_ordinal: usize,
+    pub target_count: usize,
+    pub detail: String,
     pub done: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Union of long-running operation progress events.
 pub enum OperationProgress {
+    SequenceDesign {
+        evaluated_candidates: u64,
+        requested_candidate_budget: u64,
+    },
+    /// Completed operation count, not an estimate of remaining wall-clock time.
+    Workflow {
+        completed: usize,
+        total: usize,
+    },
     PrimerDesign(PrimerDesignProgress),
     Tfbs(TfbsProgress),
     GenomePrepare(PrepareGenomeProgress),
@@ -5254,6 +6650,7 @@ pub enum OperationProgress {
     DbSnpFetch(DbSnpFetchProgress),
     ReadAcquisition(SharedAssetActivityStatus),
     RnaReadInterpret(RnaReadInterpretProgress),
+    GenomicRegionHomology(GenomicRegionHomologyProgress),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -5355,6 +6752,10 @@ pub struct BlastInvocationProvenance {
     pub task: String,
     pub blastn_executable: String,
     pub blast_db_prefix: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blast_database_content_fingerprint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blast_database_index_kind: Option<String>,
     pub command: Vec<String>,
     pub command_line: String,
     pub catalog_path: Option<String>,
@@ -5424,6 +6825,8 @@ pub enum LigationProtocol {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ExportFormat {
     GenBank,
+    #[serde(alias = "EMBL", alias = "embl")]
+    Embl,
     Fasta,
 }
 
@@ -5468,6 +6871,10 @@ pub struct PrimerDesignPairConstraint {
     pub forbidden_amplicon_motifs: Vec<String>,
     pub fixed_amplicon_start_0based: Option<usize>,
     pub fixed_amplicon_end_0based_exclusive: Option<usize>,
+    /// Maximum evaluated pair-level rejection rows retained for selection
+    /// provenance. `None` uses the engine default; `Some(0)` disables capture.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rejected_near_miss_limit: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -5525,11 +6932,27 @@ pub struct PrimerDesignPairRuleFlags {
     pub reverse_three_prime_gc_clamp: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// One exact additive term in GENtle's primer-pair ranking score.
+///
+/// `contribution` equals `raw_value * weight`; contributions, including the
+/// explicit baseline, sum to the enclosing pair's existing `score`.
+pub struct PrimerDesignScoreTerm {
+    pub term: String,
+    pub raw_value: f64,
+    pub weight: f64,
+    pub contribution: f64,
+    pub detail: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct PrimerDesignPairRecord {
     pub rank: usize,
     pub score: f64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub score_terms: Vec<PrimerDesignScoreTerm>,
     pub forward: PrimerDesignPrimerRecord,
     pub reverse: PrimerDesignPrimerRecord,
     pub amplicon_start_0based: usize,
@@ -5539,6 +6962,851 @@ pub struct PrimerDesignPairRecord {
     pub primer_pair_complementary_run_bp: usize,
     pub primer_pair_3prime_complementary_run_bp: usize,
     pub rule_flags: PrimerDesignPairRuleFlags,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One primer in a communication-oriented pair summary. Values are copied
+/// from the canonical design record; no thermodynamic value is recalculated.
+pub struct PrimerPairSummaryOligo {
+    /// Sequence-derived identity. Display names and aliases never replace it.
+    pub primer_id: String,
+    pub role: String,
+    pub display_label: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub origin: PrimerPairSummaryOrigin,
+    pub sequence_5_to_3: String,
+    pub length_nt: usize,
+    pub anneal_length_nt: usize,
+    pub tm_c: f64,
+    pub gc_fraction: f64,
+    /// Unrounded convenience projection of `gc_fraction * 100.0`.
+    pub gc_percent: f64,
+    pub anneal_hit_count: usize,
+    /// Strand-agnostic footprint on the design-transcript cDNA. For a reverse
+    /// primer this is not the 5'-to-3' ordering of `sequence_5_to_3`.
+    pub binding_start_0based: usize,
+    pub binding_end_0based_exclusive: usize,
+    #[serde(default)]
+    pub exon_ordinals: Vec<usize>,
+    pub primer_spans_junction: bool,
+    pub three_prime_base: String,
+    pub three_prime_gc_clamp: bool,
+    pub longest_homopolymer_run_bp: usize,
+    pub self_complementary_run_bp: usize,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// How a primer sequence entered the selected assay.
+pub enum PrimerPairSummaryOrigin {
+    /// Retained for reports that predate structured origin tracking.
+    #[default]
+    Unknown,
+    DeNovo,
+    LegacyLiterature,
+    LegacyLab,
+    /// Sequence supplied by an external source without an explicit commercial
+    /// catalogue classification.
+    ImportedExternal,
+    /// Sequence supplied from an explicitly identified commercial catalogue.
+    ImportedCommercial,
+}
+
+pub const EXTERNAL_PRIMER_PAIR_BATCH_SCHEMA: &str = "gentle.external_primer_pair_batch.v1";
+pub const EXTERNAL_PRIMER_PAIR_IMPORT_REPORT_SCHEMA: &str =
+    "gentle.external_primer_pair_import_report.v1";
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Declared origin class for an externally supplied primer pair.
+pub enum ExternalPrimerPairSourceKind {
+    /// External sequence with no stronger origin classification.
+    #[default]
+    External,
+    CommercialCatalogue,
+    Literature,
+    Laboratory,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// One source row in an externally supplied primer-pair batch.
+pub struct ExternalPrimerPairInput {
+    #[serde(default)]
+    pub source_kind: ExternalPrimerPairSourceKind,
+    pub provider: String,
+    #[serde(alias = "catalog_id")]
+    pub catalogue_id: String,
+    pub source_url: String,
+    pub claimed_accession: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    pub forward_sequence_5_to_3: String,
+    pub reverse_sequence_5_to_3: String,
+    /// Provider-supplied target wording. This is retained as a claim and is
+    /// never used as transcript-coverage or specificity evidence.
+    pub claimed_target: String,
+    #[serde(default)]
+    pub validation_claims: Vec<String>,
+    /// Additional source annotations retained verbatim for round trips.
+    #[serde(default)]
+    pub annotations: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Portable JSON batch accepted by the external primer-pair importer.
+pub struct ExternalPrimerPairBatch {
+    pub schema: String,
+    pub batch_id: String,
+    #[serde(default)]
+    pub pairs: Vec<ExternalPrimerPairInput>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// File/payload provenance attached by the importer, not trusted from a vendor
+/// claim inside the input rows.
+pub struct ExternalPrimerPairBatchProvenance {
+    pub input_format: String,
+    pub source_path: String,
+    pub source_sha256: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// One retained source record attached to a canonical sequence-derived pair.
+pub struct ExternalPrimerPairSourceProvenance {
+    pub source_record_id: String,
+    pub input_row_number: usize,
+    #[serde(default)]
+    pub source_kind: ExternalPrimerPairSourceKind,
+    pub provider: String,
+    pub catalogue_id: String,
+    pub source_url: String,
+    pub claimed_accession: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    pub claimed_target: String,
+    #[serde(default)]
+    pub validation_claims: Vec<String>,
+    #[serde(default)]
+    pub annotations: BTreeMap<String, String>,
+    pub input_format: String,
+    pub source_path: String,
+    pub source_sha256: String,
+    /// Always states that source claims are provenance only.
+    pub claim_evidence_status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// GENtle-computed communication metrics for one imported oligo.
+pub struct ExternalPrimerOligoAssessment {
+    pub primer_id: String,
+    pub role: String,
+    #[serde(default)]
+    pub origin: PrimerPairSummaryOrigin,
+    pub sequence_5_to_3: String,
+    pub length_nt: usize,
+    pub anneal_length_nt: usize,
+    pub tm_c: f64,
+    pub tm_method: String,
+    pub tm_assumptions: String,
+    pub gc_fraction: f64,
+    pub gc_percent: f64,
+    pub cdna_anneal_hit_count: usize,
+    pub three_prime_base: String,
+    pub three_prime_gc_clamp: bool,
+    pub longest_homopolymer_run_bp: usize,
+    pub self_complementary_run_bp: usize,
+    pub self_3prime_complementary_run_bp: usize,
+    pub qc_status: String,
+    #[serde(default)]
+    pub qc_warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Prepared-target specificity outcome for one imported pair. `not_run`
+/// remains distinct from a pass.
+pub struct ExternalPrimerPairSpecificityAssessment {
+    pub status: String,
+    pub reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report: Option<Box<PrimerSpecificityReport>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Artifact paths produced while evaluating one imported pair.
+pub struct ExternalPrimerPairArtifacts {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cdna_report_json_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_map_svg_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub product_gel_svg_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Canonical assessment for one unique oriented forward/reverse sequence pair.
+pub struct ExternalPrimerPairAssessment {
+    pub pair_id: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub origins: Vec<PrimerPairSummaryOrigin>,
+    #[serde(default)]
+    pub sources: Vec<ExternalPrimerPairSourceProvenance>,
+    pub duplicate_source_record_count: usize,
+    pub forward: ExternalPrimerOligoAssessment,
+    pub reverse: ExternalPrimerOligoAssessment,
+    pub tm_delta_c: f64,
+    #[serde(default)]
+    pub oligo_qc: OligoQcReport,
+    #[serde(default)]
+    pub cdna_assay: CdnaAssayTestReport,
+    #[serde(default)]
+    pub specificity: ExternalPrimerPairSpecificityAssessment,
+    #[serde(default)]
+    pub artifacts: ExternalPrimerPairArtifacts,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub product_materialization: Option<CdnaAssayProductMaterialization>,
+    /// False by contract: imported targeting/validation claims are not used as
+    /// evidence by GENtle's assay or specificity calculations.
+    pub vendor_claims_used_as_biological_evidence: bool,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Optional prepared BLAST-target specificity request applied to every unique
+/// pair.
+pub struct ExternalPrimerPairSpecificityRequest {
+    pub target_genome_id: String,
+    #[serde(default)]
+    pub policy: PrimerSpecificityPolicy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Shared engine request for importing and evaluating an external primer batch.
+pub struct ExternalPrimerPairImportRequest {
+    pub report_id: String,
+    pub seq_id: String,
+    pub source_feature_id: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_amplicon_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_amplicon_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_mismatches: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub require_3prime_exact_bases: Option<usize>,
+    #[serde(default)]
+    pub transcript_order: CdnaAssayTranscriptOrder,
+    #[serde(default)]
+    pub transcript_map_coordinate_mode: CdnaAssayTranscriptMapCoordinateMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub specificity: Option<ExternalPrimerPairSpecificityRequest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_output_dir: Option<String>,
+    #[serde(default)]
+    pub materialize_products: bool,
+    #[serde(default)]
+    pub product_gel_ladders: Vec<String>,
+    #[serde(default)]
+    pub batch: ExternalPrimerPairBatch,
+    #[serde(default)]
+    pub input_provenance: ExternalPrimerPairBatchProvenance,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Persisted result for one external primer-pair batch import.
+pub struct ExternalPrimerPairImportReport {
+    pub schema: String,
+    pub report_id: String,
+    pub batch_id: String,
+    /// Digest of normalized source semantics, independent of input row order
+    /// and sequence whitespace/position-number formatting.
+    pub normalized_batch_sha256: String,
+    pub generated_at_unix_ms: u128,
+    pub seq_id: String,
+    pub source_feature_id: usize,
+    #[serde(default)]
+    pub input_provenance: ExternalPrimerPairBatchProvenance,
+    pub source_record_count: usize,
+    pub unique_pair_count: usize,
+    pub duplicate_source_record_count: usize,
+    #[serde(default)]
+    pub pairs: Vec<ExternalPrimerPairAssessment>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Optional role assigned to a selected pair by an upstream planning workflow.
+pub enum PrimerPairSelectionRole {
+    Anchor,
+    Companion,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// How external probe evidence influenced assay selection.
+pub enum PrimerPairSelectionInfluence {
+    #[default]
+    ProbeRegionInfluenced,
+    ProbeSequenceReused,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Weight assigned to one external selection-evidence row.
+pub enum PrimerPairEvidenceRequirement {
+    Required,
+    Preferred,
+    #[default]
+    Contextual,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Machine-readable category for one pair-selection reason.
+pub enum PrimerPairSelectionReasonCode {
+    #[default]
+    DesignObjective,
+    PredictedProductCoverage,
+    EndReactionCoverage,
+    JunctionEvidence,
+    /// A required junction was retained because a caller-supplied contrast
+    /// and absolute-effect threshold identified it for differential-response
+    /// validation. This does not assert statistical significance.
+    DifferentialJunctionEvidence,
+    EvidenceDisposition,
+    IncompleteProvenance,
+    CommonRegionAnnotationConfirmed,
+    RoutinePracticalityPreferred,
+    AllowedNonpreferredProduct,
+    LongRangeFallbackRequired,
+    PsrEvidenceSupport,
+    LegacyProvenanceUnavailable,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Whether a junction-evidence row passed an explicit differential-effect gate.
+pub enum PrimerPairDifferentialEvidenceEligibility {
+    /// No complete contrast + threshold + measurement gate was supplied.
+    #[default]
+    NotAssessed,
+    Eligible,
+    BelowThreshold,
+    MissingContrast,
+    MissingMeasurement,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Normalized decision role of one external assay-selection observation.
+pub enum PrimerPairEvidenceDisposition {
+    #[default]
+    Contextual,
+    PreferredGeometry,
+    PreferredDifferential,
+    RequiredValidationObligation,
+    IneligibleBelowThreshold,
+    IncompleteMissingThreshold,
+    IncompleteMissingContrast,
+    IncompleteMissingMeasurement,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Whether marginal selection values were actually computed.
+pub enum PrimerPairSelectionAuditStatus {
+    #[default]
+    NotComputedLegacy,
+    Computed,
+    IncompleteProvenance,
+}
+
+impl PrimerPairSelectionAuditStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NotComputedLegacy => "not_computed_legacy",
+            Self::Computed => "computed",
+            Self::IncompleteProvenance => "incomplete_provenance",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct PrimerPairSelectionAuditTargetPair {
+    pub left_target_id: String,
+    pub right_target_id: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Probe-evidence geometry retained with one primer-pair selection record.
+pub enum PrimerPairSelectionEvidenceKind {
+    #[default]
+    Unspecified,
+    /// Exon/probeset-region evidence. This can support a selected region but
+    /// cannot establish that the region is common across transcript models.
+    Psr,
+    /// Junction-probeset evidence used to request or prefer a spanning primer.
+    Juc,
+}
+
+impl PrimerPairSelectionEvidenceKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unspecified => "unspecified",
+            Self::Psr => "psr",
+            Self::Juc => "juc",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One structured explanation for why a primer pair was selected.
+pub struct PrimerPairSelectionReason {
+    #[serde(default)]
+    pub code: PrimerPairSelectionReasonCode,
+    pub message: String,
+    #[serde(default)]
+    pub related_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// One structured reason why external evidence influenced a selected pair.
+///
+/// Probe-region geometry and exact probe-sequence reuse are intentionally
+/// separate influence values. A projected array interval must never be
+/// promoted to sequence reuse without an actual sequence match.
+pub struct PrimerPairSelectionEvidence {
+    pub evidence_id: String,
+    #[serde(default)]
+    pub evidence_kind: PrimerPairSelectionEvidenceKind,
+    pub junction_id: String,
+    #[serde(default)]
+    pub influence: PrimerPairSelectionInfluence,
+    #[serde(default)]
+    pub applies_to: Vec<String>,
+    #[serde(default)]
+    pub requirement: PrimerPairEvidenceRequirement,
+    pub source_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platform: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feature_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chromosome: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub region_start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub region_end_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_start_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_end_0based_exclusive: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strand: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_exon_ordinal: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_exon_ordinal: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contrast: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub measured_statistic: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub measured_value: Option<f64>,
+    /// Absolute-effect threshold declared by the upstream interpretation
+    /// report. Absence means differential eligibility was not assessed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub absolute_effect_threshold: Option<f64>,
+    #[serde(default)]
+    pub differential_eligibility: PrimerPairDifferentialEvidenceEligibility,
+    #[serde(default)]
+    pub disposition: PrimerPairEvidenceDisposition,
+    /// Digest of the complete interpretation report carrying this observation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interpretation_report_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threshold_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intensity_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_schema: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_sha256: Option<String>,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Comparable dimensions retained for one accepted primer-pair alternative.
+///
+/// Optional dimensions are absent when the enclosing design did not evaluate
+/// a group/transcript objective. Hard constraints are applied before this
+/// projection; the frontier is an explanation surface, not a way to rescue a
+/// rejected pair.
+pub struct PrimerPairParetoMetrics {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub single_product_target_count: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub multiple_product_target_count: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub no_product_target_count: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub common_region_confirmed: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub practicality_rank: Option<u8>,
+    pub existing_candidate_score: f64,
+    pub tm_delta_c: f64,
+    pub primer_pair_complementary_run_bp: usize,
+    pub primer_pair_3prime_complementary_run_bp: usize,
+    pub amplicon_length_bp: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// One non-dominated accepted primer-pair alternative.
+pub struct PrimerPairParetoAlternative {
+    pub pair_id: String,
+    pub source_candidate_id: String,
+    pub design_template_id: String,
+    pub selected: bool,
+    pub metrics: PrimerPairParetoMetrics,
+    pub tradeoff_summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Deterministic bounded projection of accepted non-dominated primer pairs.
+pub struct PrimerPairParetoFrontier {
+    pub status: String,
+    #[serde(default)]
+    pub objective_directions: Vec<String>,
+    pub accepted_candidate_count: usize,
+    /// Candidates compared pairwise after a deterministic resource cap. This
+    /// equals `accepted_candidate_count` unless `truncated` is true.
+    pub evaluated_candidate_count: usize,
+    pub non_dominated_candidate_count: usize,
+    pub retained_candidate_count: usize,
+    pub truncated: bool,
+    #[serde(default)]
+    pub alternatives: Vec<PrimerPairParetoAlternative>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Experimental purpose recorded independently of the panel-selection objective.
+pub enum TranscriptAssayUseTier {
+    #[default]
+    Unspecified,
+    RoutineCommonRegionScreen,
+    IsoformDiscrimination,
+    LongRangeStructureDiscovery,
+}
+
+impl TranscriptAssayUseTier {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unspecified => "unspecified",
+            Self::RoutineCommonRegionScreen => "routine_common_region_screen",
+            Self::IsoformDiscrimination => "isoform_discrimination",
+            Self::LongRangeStructureDiscovery => "long_range_structure_discovery",
+        }
+    }
+
+    pub fn is_unspecified(value: &Self) -> bool {
+        *value == Self::Unspecified
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Inclusive configured product-length range in base pairs.
+pub struct TranscriptAssayAmpliconRange {
+    pub min_bp: usize,
+    pub max_bp: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Structured product-length priorities for one transcript-panel design run.
+///
+/// The allowed range is a hard generation boundary. The preferred range is a
+/// secondary practicality preference applied only after required biological
+/// coverage/specificity criteria.
+pub struct TranscriptAssayPracticalityPolicy {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preferred_amplicon_bp: Option<TranscriptAssayAmpliconRange>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allowed_amplicon_bp: Option<TranscriptAssayAmpliconRange>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Product-length practicality assigned to one considered primer pair.
+pub enum TranscriptAssayPracticalityClassification {
+    #[default]
+    Unspecified,
+    Routine,
+    AllowedNonpreferred,
+    LongRangeFallback,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Annotation-only common-region conclusion for one candidate amplicon.
+pub enum TranscriptAssayCommonRegionStatus {
+    #[default]
+    Unspecified,
+    Confirmed,
+    NotCommon,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Annotation-derived evidence that one designed amplicon region is present
+/// contiguously in every intended transcript model.
+pub struct TranscriptAssayCommonRegionEvidence {
+    #[serde(default)]
+    pub status: TranscriptAssayCommonRegionStatus,
+    pub basis: String,
+    #[serde(default)]
+    pub intended_transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub source_ranges_0based: Vec<SequenceRange0Based>,
+    #[serde(default)]
+    pub supporting_psr_evidence_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Bounded audit row for a primer pair considered but not selected ahead of
+/// the retained pair.
+pub struct TranscriptAssayConsideredAlternative {
+    pub assay_id: String,
+    pub design_transcript_id: String,
+    pub design_amplicon_length_bp: usize,
+    #[serde(default)]
+    pub practicality_classification: TranscriptAssayPracticalityClassification,
+    #[serde(default)]
+    pub common_region_status: TranscriptAssayCommonRegionStatus,
+    pub existing_candidate_score: f64,
+    #[serde(default)]
+    pub on_pareto_frontier: bool,
+    #[serde(default)]
+    pub pareto_metrics: PrimerPairParetoMetrics,
+    pub disposition: String,
+    pub explanation: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Predicted products for one primer pair on one transcript/isoform model.
+pub struct PrimerPairSummaryProduct {
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub equivalence_group_id: String,
+    #[serde(default)]
+    pub detection_status: TranscriptAssayDetectionStatus,
+    pub detail_status: String,
+    pub product_count: usize,
+    #[serde(default)]
+    pub amplicon_lengths_bp: Vec<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Tool/backend provenance copied into a primer-pair summary so the summary
+/// remains interpretable when extracted from its enclosing report.
+pub struct PrimerPairSummaryProvenance {
+    pub source_report_schema: String,
+    /// GENtle version that generated this communication projection. Older
+    /// source reports do not necessarily record the version that designed the
+    /// primer pair.
+    pub gentle_version: String,
+    pub primer_backend_requested: String,
+    pub primer_backend_used: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer3_version: Option<String>,
+    /// Annotation release used while constructing the transcript models.
+    /// `None` is kept visible in the enclosing summary as missing provenance.
+    #[serde(default)]
+    pub annotation_release: Option<String>,
+    pub exon_numbering_reference_transcript_id: String,
+    pub exon_numbering_basis: String,
+    pub exon_numbering_status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Concise QC interpretation copied from the selected pair's stored rule
+/// flags and metrics. This block does not rerun sequence or thermodynamic
+/// analysis while rendering or exporting a report.
+pub struct PrimerPairSummaryQc {
+    pub status: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
+    pub rule_flags: PrimerDesignPairRuleFlags,
+    pub primer_pair_complementary_run_bp: usize,
+    pub primer_pair_3prime_complementary_run_bp: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Assay-neutral communication view of one selected primer pair. This is a
+/// redundant projection of canonical report fields for safer downstream
+/// report generation; it is not a second primer-design calculation.
+pub struct PrimerPairCommunicationSummary {
+    pub schema: String,
+    pub assay_id: String,
+    /// Canonical ordered forward/reverse physical-sequence identity. Existing
+    /// `assay_id` values remain backward-compatible display/report identities.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub pair_id: String,
+    pub pair_rank: usize,
+    pub design_transcript_id: String,
+    pub design_equivalence_group_id: String,
+    pub display_label: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub selection_role: Option<PrimerPairSelectionRole>,
+    #[serde(
+        default,
+        skip_serializing_if = "TranscriptAssayUseTier::is_unspecified"
+    )]
+    pub assay_tier: TranscriptAssayUseTier,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub practicality_policy: Option<TranscriptAssayPracticalityPolicy>,
+    #[serde(default)]
+    pub practicality_classification: TranscriptAssayPracticalityClassification,
+    #[serde(default)]
+    pub common_region_evidence: TranscriptAssayCommonRegionEvidence,
+    #[serde(default)]
+    pub considered_alternatives: Vec<TranscriptAssayConsideredAlternative>,
+    pub satisfied_design_objective: String,
+    #[serde(default)]
+    pub selection_reasons: Vec<PrimerPairSelectionReason>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub selection_explanation: String,
+    pub selection_provenance_status: String,
+    pub binding_coordinate_system: String,
+    pub forward: PrimerPairSummaryOligo,
+    pub reverse: PrimerPairSummaryOligo,
+    /// Internal hydrolysis probe for TaqMan assays. Endpoint and SYBR assays
+    /// retain `None` and never fabricate a probe.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe: Option<PrimerPairSummaryOligo>,
+    /// Canonical designed amplicon geometry on `design_transcript_id`, copied
+    /// verbatim from the selected `PrimerDesignPairRecord`.
+    pub design_amplicon_start_0based: usize,
+    pub design_amplicon_end_0based_exclusive: usize,
+    pub design_amplicon_length_bp: usize,
+    pub tm_delta_c: f64,
+    /// Deduplicated product lengths observed in the cross-transcript detection
+    /// matrix. This can be empty even when the canonical design amplicon above
+    /// is present.
+    #[serde(default)]
+    pub predicted_amplicon_lengths_bp: Vec<usize>,
+    #[serde(default)]
+    pub predicted_products: Vec<PrimerPairSummaryProduct>,
+    #[serde(default)]
+    pub oligo_qc: PrimerPairSummaryQc,
+    pub amplicon_spans_junction: bool,
+    pub selected_because_of_junction_evidence: bool,
+    /// True only for required JUC evidence that passed an explicit
+    /// contrast/effect threshold. This is narrower than the legacy geometry-
+    /// level junction-evidence flag above.
+    #[serde(default)]
+    pub retained_because_of_differential_junction_evidence: bool,
+    /// Number of previously unresolved exact-cDNA class pairs separated by
+    /// this assay's binary product/no-product signature at its panel rank.
+    #[serde(default)]
+    pub incremental_binary_distinction_count: usize,
+    /// Binary class-pair distinctions that would be lost if this assay alone
+    /// were removed from the completed selected panel.
+    #[serde(default)]
+    pub exclusive_binary_distinction_count: usize,
+    /// Exact class pairs newly separated at this panel rank.
+    #[serde(default)]
+    pub newly_separated_equivalence_group_pairs: Vec<TranscriptAssayUnresolvedPair>,
+    #[serde(default)]
+    pub newly_separated_target_pairs: Vec<PrimerPairSelectionAuditTargetPair>,
+    /// Earlier selected assays with the same exact-cDNA product/no-product
+    /// signature. Equality here does not imply identical primer chemistry.
+    #[serde(default)]
+    pub binary_redundant_with_assay_ids: Vec<String>,
+    /// Explicitly calls out an evidence obligation retained despite adding no
+    /// new binary transcript distinction at this panel rank.
+    #[serde(default)]
+    pub retained_despite_zero_marginal_discrimination: bool,
+    #[serde(default)]
+    pub selection_audit_status: PrimerPairSelectionAuditStatus,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub selection_audit_method: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub selection_audit_generator_revision: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub selection_audit_target_kind: String,
+    /// Digest of the normalized panel-design operation that produced this
+    /// selected assay. Empty on legacy reports that did not persist it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub selection_operation_sha256: String,
+    /// Distinct measured source observations represented in selection_evidence.
+    #[serde(default)]
+    pub selection_evidence_observation_count: usize,
+    /// Transcript/junction projections retained as evidence references.
+    #[serde(default)]
+    pub selection_evidence_projection_count: usize,
+    /// Projected targets actually matched by this selected assay.
+    #[serde(default)]
+    pub selection_evidence_matched_target_count: usize,
+    #[serde(default)]
+    pub selection_evidence: Vec<PrimerPairSelectionEvidence>,
+    pub junction_spanning_status: String,
+    #[serde(default)]
+    pub junction_matches: Vec<TranscriptAssayJunctionMatch>,
+    pub genomic_carryover_status: String,
+    pub genomic_carryover_rationale: String,
+    pub whole_genome_specificity_status: String,
+    #[serde(default)]
+    pub provenance: PrimerPairSummaryProvenance,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -5615,6 +7883,44 @@ pub struct PrimerSpecificityInputPrimer {
     pub non_annealing_5prime_tail_bp: usize,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// End-to-end primer alignment against a BLAST-seeded subject window.
+///
+/// BLAST remains the exhaustive locus finder. This record captures the
+/// subsequent full-query evidence used to count terminal and internal
+/// differences without treating a partial local HSP as a complete primer
+/// binding site. New handoffs can supply a complete BLAST qseq/sseq alignment;
+/// partial and legacy HSPs retain semiglobal subject-window realignment.
+pub struct PrimerSpecificityFullAlignment {
+    pub status: String,
+    pub algorithm: String,
+    pub match_score: i32,
+    pub mismatch_score: i32,
+    pub gap_open_score: i32,
+    pub gap_extend_score: i32,
+    pub score: i32,
+    pub subject_window_start_1based: usize,
+    pub subject_window_end_1based: usize,
+    pub aligned_subject_start_1based: usize,
+    pub aligned_subject_end_1based: usize,
+    pub strand: String,
+    pub query_alignment: String,
+    pub relation_alignment: String,
+    pub subject_alignment: String,
+    pub cigar: String,
+    pub matches: usize,
+    pub mismatches: usize,
+    pub insertions: usize,
+    pub deletions: usize,
+    pub effective_mismatches: usize,
+    pub three_prime_window_bp: usize,
+    pub three_prime_mismatches: usize,
+    pub subject_window_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 /// One primer BLAST hit normalized into genomic coordinates and primer-end
@@ -5622,10 +7928,23 @@ pub struct PrimerSpecificityInputPrimer {
 pub struct PrimerSpecificityPrimerHit {
     pub hit_index: usize,
     pub role: PrimerSpecificityPrimerRole,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_subject_id: Option<String>,
     pub subject_id: String,
+    /// Descriptive identity from the prepared reference. It never participates
+    /// in intended-product matching.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject_annotation: Option<BlastSubjectAnnotation>,
     pub identity_percent: f64,
     pub alignment_length_bp: usize,
+    /// Mismatches reported inside the aligned HSP.
     pub mismatches: usize,
+    /// Primer query bases outside this HSP.
+    #[serde(default)]
+    pub unaligned_query_bases: usize,
+    /// Aligned mismatches plus unaligned query bases.
+    #[serde(default)]
+    pub effective_mismatches: usize,
     pub gap_opens: usize,
     pub query_start_1based: usize,
     pub query_end_1based: usize,
@@ -5639,9 +7958,102 @@ pub struct PrimerSpecificityPrimerHit {
     pub query_coverage_fraction: f64,
     pub three_prime_window_bp: usize,
     pub three_prime_mismatches: usize,
+    /// Full-query binding interval derived from `full_alignment`. Older
+    /// reports omit these fields and retain the local-HSP interval above.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binding_start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binding_end_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub full_alignment: Option<PrimerSpecificityFullAlignment>,
     pub accepted_by_policy: bool,
     #[serde(default)]
     pub rejection_reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// How GENtle knows the intended target of one specificity assessment.
+pub enum PrimerSpecificityIntendedTargetModel {
+    #[default]
+    Unknown,
+    GenomicInterval,
+    JunctionSpanning,
+    /// One assay is intended to amplify a declared set of transcript subjects.
+    TranscriptSet,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One closed, one-based interval on the BLAST subject sequence.
+pub struct PrimerSpecificitySubjectRange {
+    pub start_1based: usize,
+    pub end_1based: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One expected product in a specific BLAST target space.
+pub struct PrimerSpecificityExpectedProduct {
+    /// `genomic_dna` or `transcriptome_cdna`.
+    pub target_space: String,
+    pub subject_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_product_range: Option<PrimerSpecificitySubjectRange>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_transcript_id: Option<String>,
+}
+
+fn primer_specificity_bool_is_false(value: &bool) -> bool {
+    !*value
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Explicit intended-target geometry; never inferred from cDNA product length.
+pub struct PrimerSpecificityIntendedTarget {
+    /// Original coordinate context. Missing legacy identity is not a mapping.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_reference: Option<PrimerSpecificitySourceReference>,
+    /// Exact searched reference to which this geometry was admitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_binding: Option<PrimerSpecificityReferenceIdentity>,
+    pub model: PrimerSpecificityIntendedTargetModel,
+    pub subject_id: Option<String>,
+    #[serde(default)]
+    pub forward_binding_ranges: Vec<PrimerSpecificitySubjectRange>,
+    #[serde(default)]
+    pub reverse_binding_ranges: Vec<PrimerSpecificitySubjectRange>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_product_range: Option<PrimerSpecificitySubjectRange>,
+    /// Target-space-specific expected products. The legacy singular subject
+    /// and product range above remain populated when the projection is unique.
+    /// Whether GENtle resolved enough source geometry to decide if the intended
+    /// transcript product should exist contiguously in genomic DNA.
+    #[serde(default, skip_serializing_if = "primer_specificity_bool_is_false")]
+    pub genomic_target_geometry_known: bool,
+    pub contiguous_genomic_product_expected: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub expected_products: Vec<PrimerSpecificityExpectedProduct>,
+    pub source: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One target-space interpretation kept separate from the legacy aggregate.
+pub struct PrimerSpecificityTargetAssessment {
+    pub target_space: String,
+    pub status: String,
+    pub intended_target_model: PrimerSpecificityIntendedTargetModel,
+    pub contiguous_intended_product_expected: bool,
+    pub intended_product_observed: bool,
+    pub expected_intended_product_count: usize,
+    pub observed_intended_product_count: usize,
+    pub compatible_product_count: usize,
+    pub failing_off_target_product_count: usize,
+    pub summary: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -5650,6 +8062,10 @@ pub struct PrimerSpecificityPrimerHit {
 pub struct PrimerSpecificityAmplicon {
     pub kind: PrimerSpecificityAmpliconKind,
     pub subject_id: String,
+    /// Descriptive identity from the prepared reference. Transcript subject
+    /// identity remains authoritative for intended/unintended classification.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject_annotation: Option<BlastSubjectAnnotation>,
     pub left_role: PrimerSpecificityPrimerRole,
     pub left_hit_index: usize,
     pub right_role: PrimerSpecificityPrimerRole,
@@ -5660,12 +8076,151 @@ pub struct PrimerSpecificityAmplicon {
     pub combined_mismatches: usize,
     pub max_three_prime_mismatches: usize,
     pub terminal_policy_pass: bool,
+    /// True when the product lies inside the ordinary assay/readiness ceiling.
+    #[serde(default = "primer_specificity_bool_is_true")]
+    pub within_readiness_amplicon_range: bool,
+    /// Product is outside the readiness ceiling but remains inside the broader
+    /// exploratory product window.
+    #[serde(default)]
+    pub long_product_warning: bool,
     pub intended: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intended_reason: Option<String>,
     pub specificity_failure: bool,
     #[serde(default)]
+    pub reviewed_allowlisted: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reviewed_allowance_id: Option<String>,
+    #[serde(default)]
     pub failure_reasons: Vec<String>,
+}
+
+fn primer_specificity_bool_is_true() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+/// Evidence that every database subject was eligible to appear in the BLAST
+/// output. A biological specificity pass is withheld unless `complete` is true.
+pub struct PrimerSpecificitySearchCompleteness {
+    pub complete: bool,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub database_sequence_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_max_target_seqs: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_min_max_target_seqs: Option<u64>,
+    pub command_count: usize,
+    pub reason: String,
+}
+
+impl Default for PrimerSpecificitySearchCompleteness {
+    fn default() -> Self {
+        Self {
+            complete: false,
+            status: "incomplete".to_string(),
+            database_sequence_count: None,
+            required_max_target_seqs: None,
+            observed_min_max_target_seqs: None,
+            command_count: 0,
+            reason: "Search completeness was not recorded; regenerate the specificity report."
+                .to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Four-state verdict used by independent primer-pair characterization dimensions.
+pub enum PrimerPairCharacterizationStatus {
+    Pass,
+    Fail,
+    Incomplete,
+    #[default]
+    NotRun,
+}
+
+impl PrimerPairCharacterizationStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pass => "pass",
+            Self::Fail => "fail",
+            Self::Incomplete => "incomplete",
+            Self::NotRun => "not_run",
+        }
+    }
+
+    pub fn is_not_run(value: &Self) -> bool {
+        *value == Self::NotRun
+    }
+}
+
+pub const PRIMER_DESIGN_PAIR_CONTENT_FINGERPRINT_ALGORITHM: &str =
+    "sha256_canonical_forward_reverse_full_sequence_json_v1";
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One non-sequence input bound to a persisted computational artifact.
+pub struct ComputationalArtifactExternalInput {
+    pub source_kind: String,
+    pub source_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checksum: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checksum_algorithm: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Citation from a primer-specificity artifact back to the design decision that
+/// selected the assessed primer pair.
+pub struct PrimerDesignProvenanceCitation {
+    pub status: PrimerPairCharacterizationStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer_report_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pair_rank: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pair_index: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_seq_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_report_schema: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_generated_at_unix_ms: Option<u128>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backend_used: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pair_content_fingerprint_algorithm: Option<String>,
+    /// Digest computed independently from the selected pair in the cited
+    /// primer-design report.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_pair_content_sha256: Option<String>,
+    /// Digest computed from the normalized primers actually assessed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assessed_pair_content_sha256: Option<String>,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Independent, explicit status for one characterization dimension.
+pub struct PrimerPairCharacterizationDimension {
+    pub dimension: String,
+    pub status: PrimerPairCharacterizationStatus,
+    pub summary: String,
+    #[serde(default)]
+    pub evidence_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -5680,7 +8235,43 @@ pub struct PrimerSpecificitySummary {
     pub intended_amplicon_count: usize,
     pub unintended_amplicon_count: usize,
     pub failing_unintended_amplicon_count: usize,
+    pub long_product_warning_count: usize,
     pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Deterministic accounting for detail omitted from a compact specificity report.
+pub struct PrimerSpecificityReportCompaction {
+    pub detail_mode: PrimerSpecificityReportDetailMode,
+    pub raw_forward_hit_count: usize,
+    pub retained_forward_hit_count: usize,
+    pub raw_reverse_hit_count: usize,
+    pub retained_reverse_hit_count: usize,
+    pub raw_amplicon_count: usize,
+    pub retained_amplicon_count: usize,
+    pub pairing_candidate_comparison_count: usize,
+}
+
+/// Explicitly binds one collection member to one persisted primer-design report.
+///
+/// Logical gene-set members do not themselves carry a project sequence or
+/// primer report. Collection specificity therefore requires this auditable
+/// binding instead of guessing from a gene symbol. Project-sequence
+/// collections may omit a binding when exactly one stored primer-design report
+/// targets that sequence.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct PrimerSpecificityCollectionMemberBinding {
+    pub stable_member_id: String,
+    pub primer_report_id: String,
+}
+
+fn primer_specificity_legacy_full_compaction() -> PrimerSpecificityReportCompaction {
+    PrimerSpecificityReportCompaction {
+        detail_mode: PrimerSpecificityReportDetailMode::Full,
+        ..PrimerSpecificityReportCompaction::default()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -5689,7 +8280,26 @@ pub struct PrimerSpecificitySummary {
 /// prepared genome BLAST database.
 pub struct PrimerSpecificityReport {
     pub schema: String,
+    pub report_id: String,
     pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_seq_id: Option<String>,
+    #[serde(default)]
+    pub related_seq_ids: Vec<String>,
+    #[serde(default)]
+    pub external_inputs: Vec<ComputationalArtifactExternalInput>,
+    #[serde(default)]
+    pub request_summary: BTreeMap<String, Value>,
+    #[serde(default)]
+    pub effective_settings_summary: BTreeMap<String, Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reopen_hint: Option<String>,
+    #[serde(default)]
+    pub export_kinds: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub primer_report_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -5698,6 +8308,10 @@ pub struct PrimerSpecificityReport {
     pub pair_index: Option<usize>,
     pub target_kind: String,
     pub target_genome_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blast_database: Option<BlastDatabaseInspectionReport>,
+    #[serde(default)]
+    pub intended_target: PrimerSpecificityIntendedTarget,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub catalog_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -5716,8 +8330,378 @@ pub struct PrimerSpecificityReport {
     pub reverse_hits: Vec<PrimerSpecificityPrimerHit>,
     #[serde(default)]
     pub amplicons: Vec<PrimerSpecificityAmplicon>,
+    #[serde(default = "primer_specificity_legacy_full_compaction")]
+    pub compaction: PrimerSpecificityReportCompaction,
+    #[serde(default)]
+    pub raw_detail_artifacts: Vec<ComputationalArtifactExternalInput>,
+    #[serde(default)]
+    pub search_completeness: PrimerSpecificitySearchCompleteness,
     #[serde(default)]
     pub summary: PrimerSpecificitySummary,
+    #[serde(default)]
+    pub genomic_specificity: PrimerSpecificityTargetAssessment,
+    #[serde(default)]
+    pub transcriptome_specificity: PrimerSpecificityTargetAssessment,
+    #[serde(default)]
+    pub design_provenance: PrimerDesignProvenanceCitation,
+    #[serde(default)]
+    pub characterization_dimensions: Vec<PrimerPairCharacterizationDimension>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Compact row for listing persisted primer-specificity artifacts.
+pub struct PrimerSpecificityReportSummary {
+    pub report_id: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_seq_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer_report_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pair_rank: Option<usize>,
+    pub target_kind: String,
+    pub target_genome_id: String,
+    pub status: String,
+    pub specificity_pass: bool,
+    pub amplicon_count: usize,
+    pub failing_unintended_amplicon_count: usize,
+    pub design_provenance_status: PrimerPairCharacterizationStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One externally runnable BLAST command in a primer-specificity handoff.
+///
+/// `program` and `args` are authoritative. `command_line` is a copy/paste
+/// convenience and must not be reparsed by adapters when dispatching the job.
+pub struct PrimerSpecificityHandoffCommand {
+    pub command_id: String,
+    pub role: PrimerSpecificityPrimerRole,
+    pub query_label: String,
+    pub query_length_bp: usize,
+    pub query_fasta_path: String,
+    pub output_tsv_path: String,
+    pub program: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    pub command_line: String,
+    #[serde(default)]
+    pub success_exit_codes: Vec<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Deterministic, non-executing handoff for local primer BLAST searches.
+///
+/// An outer scheduler runs every structured command and invokes
+/// `primers specificity-import` only after each process exits successfully.
+pub struct PrimerSpecificityHandoff {
+    pub schema: String,
+    pub handoff_id: String,
+    pub bundle_dir: String,
+    pub handoff_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_seq_id: Option<String>,
+    #[serde(default)]
+    pub related_seq_ids: Vec<String>,
+    #[serde(default)]
+    pub design_provenance: PrimerDesignProvenanceCitation,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer_report_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pair_rank: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pair_index: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_amplicon_length_bp: Option<usize>,
+    pub requested_target_genome_id: String,
+    pub resolved_target_genome_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<String>,
+    #[serde(default)]
+    pub policy: PrimerSpecificityPolicy,
+    #[serde(default)]
+    pub primers: Vec<PrimerSpecificityInputPrimer>,
+    #[serde(default)]
+    pub blast_preflight: BlastExternalBinaryPreflightReport,
+    pub blast_db_prefix: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blast_database: Option<BlastDatabaseInspectionReport>,
+    #[serde(default)]
+    pub intended_target: PrimerSpecificityIntendedTarget,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effective_blast_options: Option<BlastResolvedOptions>,
+    #[serde(default)]
+    pub commands: Vec<PrimerSpecificityHandoffCommand>,
+    #[serde(default)]
+    pub search_completeness: PrimerSpecificitySearchCompleteness,
+    /// Import readiness requires every command to finish with one of its
+    /// declared successful exit codes.
+    pub completion_policy: String,
+    #[serde(default)]
+    pub import_command: Vec<String>,
+    pub import_command_line: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Binding between one selected transcript assay and its externally runnable
+/// primer-specificity handoff.
+pub struct TranscriptAssayPanelSpecificityHandoffAssay {
+    pub assay_id: String,
+    pub assay_rank: usize,
+    pub primer_pair_digest: String,
+    pub forward_annealing_sequence: String,
+    pub reverse_annealing_sequence: String,
+    pub handoff: PrimerSpecificityHandoff,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Deterministic non-executing specificity bundle for every selected assay in
+/// one transcript assay panel.
+pub struct TranscriptAssayPanelSpecificityHandoff {
+    pub schema: String,
+    pub handoff_id: String,
+    pub handoff_path: String,
+    pub bundle_dir: String,
+    pub panel_report_id: String,
+    pub panel_digest: String,
+    pub source_seq_id: String,
+    pub source_feature_id: usize,
+    pub selected_assay_count: usize,
+    pub requested_target_genome_id: String,
+    pub resolved_target_genome_id: String,
+    pub policy_schema: String,
+    #[serde(default)]
+    pub policy: PrimerSpecificityPolicy,
+    #[serde(default)]
+    pub assays: Vec<TranscriptAssayPanelSpecificityHandoffAssay>,
+    pub completion_policy: String,
+    pub execution_manifest_schema: String,
+    pub execution_manifest_template_path: String,
+    #[serde(default)]
+    pub finalize_command: Vec<String>,
+    pub finalize_command_line: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Wrapper-reported process facts for one command declared by a panel
+/// specificity handoff.
+pub struct TranscriptAssayPanelSpecificityCommandExecution {
+    pub command_id: String,
+    pub assay_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    pub output_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_size_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Execution evidence returned by a mechanical outer scheduler. This record
+/// describes process completion only and makes no biological decision.
+pub struct TranscriptAssayPanelSpecificityExecutionManifest {
+    pub schema: String,
+    pub handoff_id: String,
+    pub panel_digest: String,
+    #[serde(default)]
+    pub executions: Vec<TranscriptAssayPanelSpecificityCommandExecution>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Aggregate result after validating execution evidence and interpreting all
+/// selected assays.
+pub enum TranscriptAssayPanelSpecificityAcceptanceStatus {
+    Pass,
+    SpecificityFail,
+    /// Every external command completed, but at least one assay lacked enough
+    /// intended-target geometry for a biological verdict.
+    NotAssessed,
+    #[default]
+    Incomplete,
+}
+
+impl TranscriptAssayPanelSpecificityAcceptanceStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pass => "pass",
+            Self::SpecificityFail => "specificity_fail",
+            Self::NotAssessed => "not_assessed",
+            Self::Incomplete => "incomplete",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One structural, execution, or provenance problem preventing aggregate
+/// panel acceptance.
+pub struct TranscriptAssayPanelSpecificityAcceptanceIssue {
+    pub code: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assay_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command_id: Option<String>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Atomic whole-panel specificity decision. Only `pass` is eligible for
+/// attachment to the persisted panel as accepted evidence.
+pub struct TranscriptAssayPanelSpecificityAcceptance {
+    pub schema: String,
+    pub acceptance_id: String,
+    pub generated_at_unix_ms: u128,
+    pub handoff_id: String,
+    pub panel_report_id: String,
+    pub panel_digest: String,
+    #[serde(default)]
+    pub status: TranscriptAssayPanelSpecificityAcceptanceStatus,
+    pub accepted: bool,
+    pub requested_target_genome_id: String,
+    pub resolved_target_genome_id: String,
+    pub policy_schema: String,
+    #[serde(default)]
+    pub policy: PrimerSpecificityPolicy,
+    pub expected_assay_count: usize,
+    pub assessed_assay_count: usize,
+    #[serde(default)]
+    pub passing_assay_ids: Vec<String>,
+    #[serde(default)]
+    pub failing_assay_ids: Vec<String>,
+    #[serde(default)]
+    pub not_assessed_assay_ids: Vec<String>,
+    #[serde(default)]
+    pub incomplete_assay_ids: Vec<String>,
+    #[serde(default)]
+    pub execution_failed_assay_ids: Vec<String>,
+    #[serde(default)]
+    pub assessments: Vec<TranscriptAssayGenomicSpecificityAssessment>,
+    #[serde(default)]
+    pub issues: Vec<TranscriptAssayPanelSpecificityAcceptanceIssue>,
+    #[serde(default)]
+    pub execution_manifest: TranscriptAssayPanelSpecificityExecutionManifest,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+/// Content-bound request to replace assays rejected by complete specificity QA.
+///
+/// The original design operation remains authoritative for biological scope.
+/// GENtle only adds hard exclusions for the rejected pair footprints and does
+/// not weaken coverage, objective, junction, or product-length constraints.
+pub struct TranscriptAssaySpecificityRedesignRequest {
+    pub panel_report_id: String,
+    pub expected_panel_digest: String,
+    pub acceptance_path: String,
+    pub expected_acceptance_sha256: String,
+    /// Exact serialized `Operation::DesignTranscriptAssayPanel` payload that
+    /// produced the panel. A `Value` avoids recursively embedding `Operation`
+    /// in the operation enum while retaining exact request bytes semantically.
+    pub design_operation: Value,
+    pub expected_design_operation_sha256: String,
+    pub attempt_number: usize,
+    pub max_replacements_per_failed_assay: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backend: Option<PrimerDesignBackend>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer3_executable: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TranscriptAssaySpecificityRedesignDispositionStatus {
+    SubstituteProposed,
+    InfeasibleUnderApprovedConstraints,
+    #[default]
+    NotEvaluated,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One proposed replacement that must pass the same specificity gates before
+/// it can supersede the rejected assay.
+pub struct TranscriptAssaySpecificityReplacementCandidate {
+    pub replaces_assay_id: String,
+    pub replacement_assay_id: String,
+    pub rejected_primer_pair_digest: String,
+    pub replacement_primer_pair_digest: String,
+    pub failure_acceptance_id: String,
+    pub failure_report_id: String,
+    #[serde(default)]
+    pub off_target_causes: Vec<String>,
+    #[serde(default)]
+    pub changed_design_decisions: Vec<String>,
+    pub backend: String,
+    pub attempt_number: usize,
+    #[serde(default)]
+    pub required_next_gates: Vec<String>,
+    pub assay: TranscriptAssayPanelAssay,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Replacement or constrained-infeasibility decision for one rejected assay.
+pub struct TranscriptAssaySpecificityRedesignDisposition {
+    pub replaces_assay_id: String,
+    pub rejected_primer_pair_digest: String,
+    pub failure_acceptance_id: String,
+    pub failure_report_id: String,
+    #[serde(default)]
+    pub off_target_causes: Vec<String>,
+    pub biological_target_binding: String,
+    #[serde(default)]
+    pub status: TranscriptAssaySpecificityRedesignDispositionStatus,
+    #[serde(default)]
+    pub substitutes: Vec<TranscriptAssaySpecificityReplacementCandidate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub infeasibility_statement: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Pure-read report retaining passing assays and proposing content-bound
+/// replacements for failed assays without mutating the approved project state.
+pub struct TranscriptAssaySpecificityRedesignReport {
+    pub schema: String,
+    pub redesign_id: String,
+    pub request_sha256: String,
+    pub panel_report_id: String,
+    pub panel_digest: String,
+    pub acceptance_id: String,
+    pub acceptance_sha256: String,
+    pub original_design_operation_sha256: String,
+    pub redesigned_operation_sha256: String,
+    pub attempt_number: usize,
+    #[serde(default)]
+    pub retained_passing_assay_ids: Vec<String>,
+    #[serde(default)]
+    pub dispositions: Vec<TranscriptAssaySpecificityRedesignDisposition>,
+    pub replacement_candidate_count: usize,
+    pub unresolved_failure_count: usize,
+    pub redesigned_panel_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub redesigned_panel: Option<Box<TranscriptAssayPanelReport>>,
     #[serde(default)]
     pub warnings: Vec<String>,
 }
@@ -5890,6 +8874,266 @@ pub struct PrimerDesignRejectionSummary {
     pub pair_evaluation_limit_skipped: usize,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+/// Stable rejection-census vocabulary.
+///
+/// The legacy census intentionally mixes single-primer counts, evaluated-pair
+/// counts, and skipped-combination counts. Pair-level near misses only use the
+/// pair-valued variants; skipped combinations are never represented as
+/// evaluated candidates.
+pub enum PrimerDesignRejectionReason {
+    OutOfWindow,
+    GcOrTmOutOfBounds,
+    NonUniqueAnneal,
+    #[default]
+    AmpliconOrRoiFailure,
+    PrimerConstraintFailure,
+    PairConstraintFailure,
+    PairEvaluationLimitSkipped,
+}
+
+impl PrimerDesignRejectionReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::OutOfWindow => "out_of_window",
+            Self::GcOrTmOutOfBounds => "gc_or_tm_out_of_bounds",
+            Self::NonUniqueAnneal => "non_unique_anneal",
+            Self::AmpliconOrRoiFailure => "amplicon_or_roi_failure",
+            Self::PrimerConstraintFailure => "primer_constraint_failure",
+            Self::PairConstraintFailure => "pair_constraint_failure",
+            Self::PairEvaluationLimitSkipped => "pair_evaluation_limit_skipped",
+        }
+    }
+}
+
+impl PrimerDesignRejectionSummary {
+    pub fn count_for_reason(&self, reason: PrimerDesignRejectionReason) -> usize {
+        match reason {
+            PrimerDesignRejectionReason::OutOfWindow => self.out_of_window,
+            PrimerDesignRejectionReason::GcOrTmOutOfBounds => self.gc_or_tm_out_of_bounds,
+            PrimerDesignRejectionReason::NonUniqueAnneal => self.non_unique_anneal,
+            PrimerDesignRejectionReason::AmpliconOrRoiFailure => self.amplicon_or_roi_failure,
+            PrimerDesignRejectionReason::PrimerConstraintFailure => self.primer_constraint_failure,
+            PrimerDesignRejectionReason::PairConstraintFailure => self.pair_constraint_failure,
+            PrimerDesignRejectionReason::PairEvaluationLimitSkipped => {
+                self.pair_evaluation_limit_skipped
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One bounded, evaluated primer-pair candidate rejected before report
+/// selection. Single-primer census failures and unevaluated combinations are
+/// deliberately not promoted into this pair-shaped record.
+pub struct PrimerDesignRejectedCandidate {
+    pub forward: PrimerDesignPrimerRecord,
+    pub reverse: PrimerDesignPrimerRecord,
+    pub amplicon_start_0based: usize,
+    pub amplicon_end_0based_exclusive: usize,
+    pub score: Option<f64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reasons: Vec<PrimerDesignRejectionReason>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failed_checks: Vec<String>,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Completeness and bounded-work accounting for rejected pair retention.
+pub struct PrimerDesignNearMissCapture {
+    pub status: PrimerPairCharacterizationStatus,
+    pub scope: String,
+    pub reason: String,
+    pub requested_limit: usize,
+    pub effective_limit: usize,
+    pub eligible_candidate_count: usize,
+    pub retained_candidate_count: usize,
+    pub omitted_candidate_count: usize,
+    pub candidate_comparison_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Request to design one primer pair shared by a group of related loaded
+/// sequences.
+///
+/// GENtle chooses the longest member as representative unless
+/// `representative_seq_id` is supplied. Exact conserved intervals are derived
+/// by global alignment before Primer3 is invoked. `target_*` remains optional:
+/// without it, every bounded conserved left/right interval combination is a
+/// possible assay location.
+pub struct PrimerGroupTargetDesignRequest {
+    #[serde(default)]
+    pub template_seq_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub representative_seq_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_start_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_end_0based_exclusive: Option<usize>,
+    #[serde(default)]
+    pub forward: PrimerDesignSideConstraint,
+    #[serde(default)]
+    pub reverse: PrimerDesignSideConstraint,
+    #[serde(default)]
+    pub pair_constraints: PrimerDesignPairConstraint,
+    pub min_amplicon_bp: usize,
+    pub max_amplicon_bp: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tm_delta_c: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_pairs: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_search_records: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_alignment_cells: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_mismatches: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub require_3prime_exact_bases: Option<usize>,
+    #[serde(default)]
+    pub coverage_policy: TranscriptAssayCoveragePolicy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_policy: Option<TranscriptAssayPrimerSearchPolicy>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Content identity for one member of a group-target design.
+pub struct PrimerGroupTargetMember {
+    pub seq_id: String,
+    pub length_bp: usize,
+    pub sequence_sha256: String,
+    pub representative: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Exact conserved reference interval eligible to contain a primer binding
+/// sequence. Coordinates are zero-based half-open on the representative.
+pub struct PrimerGroupTargetCommonInterval {
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub length_bp: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Pairwise alignment used to derive group-common reference intervals.
+pub struct PrimerGroupTargetAlignment {
+    pub member_seq_id: String,
+    pub alignment: SequenceAlignmentReport,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One bounded representative-template Primer3/internal-backend record.
+pub struct PrimerGroupTargetSearchRecord {
+    pub search_record_id: String,
+    pub left_interval_0based: SequenceRange0Based,
+    pub right_interval_0based: SequenceRange0Based,
+    pub roi_start_0based: usize,
+    pub roi_end_0based_exclusive: usize,
+    pub candidate_pair_upper_bound: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One template result for one proposed group-common primer pair.
+pub struct PrimerGroupTargetMemberProduct {
+    pub pair_id: String,
+    pub template_seq_id: String,
+    #[serde(default)]
+    pub status: TranscriptAssayDetectionStatus,
+    pub detail_status: String,
+    pub product_count: usize,
+    #[serde(default)]
+    pub amplicon_lengths_bp: Vec<usize>,
+    pub exact_negative_prefiltered: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Group-level evaluation of one accepted representative-template candidate.
+pub struct PrimerGroupTargetPairEvaluation {
+    pub pair_id: String,
+    pub source_pair_rank: usize,
+    pub retained_pair_rank: Option<usize>,
+    pub complete_group_pair: bool,
+    pub single_product_template_count: usize,
+    pub multiple_product_template_count: usize,
+    pub no_product_template_count: usize,
+    #[serde(default)]
+    pub uncovered_template_seq_ids: Vec<String>,
+    #[serde(default)]
+    pub member_products: Vec<PrimerGroupTargetMemberProduct>,
+    #[serde(default)]
+    pub pareto_metrics: PrimerPairParetoMetrics,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Whether one related-sequence group has a single shared retained pair.
+pub enum PrimerGroupTargetCompletionStatus {
+    Complete,
+    #[default]
+    Partial,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Machine-readable result of a bounded related-sequence common-primer design.
+pub struct PrimerGroupTargetDesignReport {
+    pub schema: String,
+    pub report_id: String,
+    pub request_sha256: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub representative_seq_id: String,
+    pub representative_sequence_sha256: String,
+    #[serde(default)]
+    pub members: Vec<PrimerGroupTargetMember>,
+    #[serde(default)]
+    pub alignments: Vec<PrimerGroupTargetAlignment>,
+    #[serde(default)]
+    pub common_intervals_0based: Vec<PrimerGroupTargetCommonInterval>,
+    #[serde(default)]
+    pub search_records: Vec<PrimerGroupTargetSearchRecord>,
+    pub max_alignment_cells: u64,
+    pub estimated_alignment_cells: u64,
+    pub max_search_records: usize,
+    pub generated_candidate_count: usize,
+    pub deduplicated_candidate_count: usize,
+    pub retained_pair_count: usize,
+    pub complete_group_pair_count: usize,
+    pub maximum_single_pair_coverage_count: usize,
+    #[serde(default)]
+    pub completion_status: PrimerGroupTargetCompletionStatus,
+    #[serde(default)]
+    pub coverage_policy: TranscriptAssayCoveragePolicy,
+    pub max_mismatches: usize,
+    pub require_3prime_exact_bases: usize,
+    #[serde(default)]
+    pub pairs: Vec<PrimerDesignPairRecord>,
+    #[serde(default)]
+    pub pair_evaluations: Vec<PrimerGroupTargetPairEvaluation>,
+    #[serde(default)]
+    pub pareto_frontier: PrimerPairParetoFrontier,
+    #[serde(default)]
+    pub backend_runs: Vec<PrimerDesignBackendInfo>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct PrimerDesignReport {
@@ -5916,10 +9160,33 @@ pub struct PrimerDesignReport {
     pub pairs: Vec<PrimerDesignPairRecord>,
     #[serde(default)]
     pub rejection_summary: PrimerDesignRejectionSummary,
+    #[serde(
+        default,
+        skip_serializing_if = "PrimerPairCharacterizationStatus::is_not_run"
+    )]
+    pub score_decomposition_status: PrimerPairCharacterizationStatus,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub score_decomposition_reason: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub score_model: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub score_direction: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rejected_near_misses: Vec<PrimerDesignRejectedCandidate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub near_miss_capture: Option<PrimerDesignNearMissCapture>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub excluded_region_analysis_status: Option<PrimerPairCharacterizationStatus>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub excluded_region_analysis_reason: String,
     #[serde(default)]
     pub backend: PrimerDesignBackendInfo,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub construct_reasoning_graph_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub insertion_context: Option<PrimerInsertionContextReport>,
+    #[serde(default)]
+    pub pareto_frontier: PrimerPairParetoFrontier,
 }
 
 impl PrimerDesignReport {
@@ -5966,11 +9233,39 @@ pub struct Primer3PreflightReport {
     pub working_directory: Option<String>,
     pub reachable: bool,
     pub version_probe_ok: bool,
+    /// `Some(true)` when `--help` advertises `--progress`, `Some(false)` when
+    /// help is readable but omits it, and `None` when probing was unavailable.
+    pub progress_supported: Option<bool>,
     pub status_code: Option<i32>,
     pub version: Option<String>,
     pub detail: Option<String>,
     pub error: Option<String>,
     pub probe_time_ms: u128,
+    /// Every `PATH` candidate considered when the configured executable was a
+    /// bare name, in `PATH` order. Empty when an explicit path was configured
+    /// or only one candidate exists, because no choice was made.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub candidates: Vec<Primer3CandidateSummary>,
+    /// Why this executable was chosen over the other candidates.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One Primer3 build discovered on `PATH` while selecting which to run.
+pub struct Primer3CandidateSummary {
+    pub path: String,
+    /// `Some(true)` when `--help` advertises `--progress`, `Some(false)` when
+    /// help is readable but omits it, and `None` when probing was unavailable.
+    pub progress_supported: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// Filesystem creation time, falling back to the modification time where
+    /// the platform or filesystem records no birth time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_unix_ms: Option<u128>,
+    pub selected: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -5990,6 +9285,266 @@ pub struct PrimerDesignReportSummary {
     pub backend_used: String,
 }
 
+pub const TERMINAL_EXON_RT_PRIMER_POOL_REQUEST_SCHEMA: &str =
+    "gentle.terminal_exon_rt_primer_pool_request.v1";
+pub const TERMINAL_EXON_RT_PRIMER_POOL_REPORT_SCHEMA: &str =
+    "gentle.terminal_exon_rt_primer_pool.v1";
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// One transcript target in an ordered, multiplexed reverse-transcription
+/// primer request. Array order is the explicit biological selection priority.
+pub struct TerminalExonRtPrimerTarget {
+    pub seq_id: String,
+    pub source_feature_id: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Request for one fixed-adapter pool whose variable 3' segments bind near the
+/// transcript-oriented starts of explicitly resolved terminal exons.
+pub struct TerminalExonRtPrimerPoolRequest {
+    pub schema: String,
+    pub fixed_adapter_5prime: String,
+    pub variable_length_bp: usize,
+    pub terminal_exon_search_window_bp: usize,
+    pub max_candidates_per_target: usize,
+    pub targets: Vec<TerminalExonRtPrimerTarget>,
+    /// Optional exhaustive genomic-DNA specificity check for every selected
+    /// variable primer segment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_specificity: Option<TerminalExonRtPrimerPoolGenomicSpecificityRequest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_id: Option<String>,
+}
+
+impl Default for TerminalExonRtPrimerPoolRequest {
+    fn default() -> Self {
+        Self {
+            schema: TERMINAL_EXON_RT_PRIMER_POOL_REQUEST_SCHEMA.to_string(),
+            fixed_adapter_5prime: String::new(),
+            variable_length_bp: 22,
+            terminal_exon_search_window_bp: 250,
+            max_candidates_per_target: 10,
+            targets: vec![],
+            genomic_specificity: None,
+            report_id: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Prepared genomic-DNA reference used to check selected RT-primer segments.
+pub struct TerminalExonRtPrimerPoolGenomicSpecificityRequest {
+    pub target_genome_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<String>,
+    pub hit_warning_threshold: usize,
+}
+
+impl Default for TerminalExonRtPrimerPoolGenomicSpecificityRequest {
+    fn default() -> Self {
+        Self {
+            target_genome_id: String::new(),
+            catalog_path: None,
+            cache_dir: None,
+            hit_warning_threshold: 20_000,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Deterministic lexicographic ranking terms for one variable RT-primer
+/// candidate. Lower values are preferred in the field order shown here.
+pub struct TerminalExonRtPrimerCandidateRanking {
+    pub variable_3prime_to_adapter_complementary_run_bp: usize,
+    pub adapter_variable_complementary_run_bp: usize,
+    pub full_oligo_self_3prime_complementary_run_bp: usize,
+    pub max_prior_pool_3prime_complementary_run_bp: usize,
+    pub full_oligo_self_complementary_run_bp: usize,
+    pub max_prior_pool_complementary_run_bp: usize,
+    pub distance_from_terminal_exon_start_bp: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// One evaluated sequence-specific 3' segment and its complete adapter-bearing
+/// oligo. Coordinates refer to the transcript cDNA and source DNA sequence.
+pub struct TerminalExonRtPrimerCandidate {
+    pub candidate_id: String,
+    pub rank: usize,
+    pub selected: bool,
+    pub transcript_local_start_0based: usize,
+    pub transcript_local_end_0based_exclusive: usize,
+    pub source_start_0based: usize,
+    pub source_end_0based_exclusive: usize,
+    pub distance_from_terminal_exon_start_bp: usize,
+    pub target_segment_5_to_3: String,
+    pub variable_primer_5_to_3: String,
+    pub full_oligo_5_to_3: String,
+    pub variable_length_bp: usize,
+    pub variable_gc_fraction: f64,
+    pub variable_tm_c: f64,
+    pub variable_three_prime_base: String,
+    pub variable_three_prime_gc_clamp: bool,
+    pub variable_longest_homopolymer_run_bp: usize,
+    pub variable_self_complementary_run_bp: usize,
+    pub variable_self_3prime_complementary_run_bp: usize,
+    #[serde(default)]
+    pub ranking: TerminalExonRtPrimerCandidateRanking,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Resolution and bounded candidate list for one requested transcript target.
+pub struct TerminalExonRtPrimerTargetResult {
+    pub priority_1based: usize,
+    pub requested: TerminalExonRtPrimerTarget,
+    pub resolved_transcript_feature_id: usize,
+    pub resolved_transcript_id: String,
+    pub resolved_transcript_label: String,
+    pub strand: String,
+    pub terminal_exon_source_start_0based: usize,
+    pub terminal_exon_source_end_0based_exclusive: usize,
+    pub terminal_exon_transcript_start_0based: usize,
+    pub terminal_exon_transcript_end_0based_exclusive: usize,
+    pub terminal_exon_length_bp: usize,
+    pub evaluated_candidate_count: usize,
+    pub ambiguous_candidate_count: usize,
+    #[serde(default)]
+    pub candidates: Vec<TerminalExonRtPrimerCandidate>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Pairwise complementarity between two selected pool members. Variable-only
+/// and complete-oligo values are both retained because every oligo shares the
+/// same fixed 5' adapter.
+pub struct TerminalExonRtPrimerPoolInteraction {
+    pub left_priority_1based: usize,
+    pub right_priority_1based: usize,
+    pub left_candidate_id: String,
+    pub right_candidate_id: String,
+    pub variable_max_complementary_run_bp: usize,
+    pub variable_max_3prime_complementary_run_bp: usize,
+    pub full_oligo_max_complementary_run_bp: usize,
+    pub full_oligo_max_3prime_complementary_run_bp: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One perfect, full-length genomic match of a selected variable primer.
+pub struct TerminalExonRtPrimerGenomicExactHit {
+    pub subject_id: String,
+    pub start_1based: usize,
+    pub end_1based: usize,
+    pub strand: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Exhaustive genomic-DNA BLAST result for one selected pool member.
+pub struct TerminalExonRtPrimerGenomicSpecificityResult {
+    pub priority_1based: usize,
+    pub candidate_id: String,
+    pub variable_primer_5_to_3: String,
+    pub raw_hsp_count: usize,
+    pub exact_full_length_hit_count: usize,
+    pub unique_exact_genomic_match: bool,
+    pub expected_subject_id: Option<String>,
+    pub expected_start_1based: Option<usize>,
+    pub expected_end_1based: Option<usize>,
+    pub intended_locus_status: String,
+    #[serde(default)]
+    pub exact_full_length_hits: Vec<TerminalExonRtPrimerGenomicExactHit>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Database-identity-bound genomic specificity evidence for the selected pool.
+pub struct TerminalExonRtPrimerPoolGenomicSpecificityReport {
+    pub status: String,
+    pub target_genome_id: String,
+    pub index_kind: String,
+    pub source_assembly: Option<String>,
+    pub source_release: Option<String>,
+    pub masking: String,
+    pub database_prefix: String,
+    pub blast_database_version: Option<String>,
+    pub database_sequence_count: Option<u64>,
+    pub database_total_bases: Option<u64>,
+    pub database_content_fingerprint: Option<String>,
+    pub blastn_executable: String,
+    pub inspection_tool_executable: String,
+    pub inspection_tool_version: Option<String>,
+    pub hit_warning_threshold: usize,
+    #[serde(default)]
+    pub results: Vec<TerminalExonRtPrimerGenomicSpecificityResult>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Persisted, provenance-bearing outcome for terminal-exon RT-primer pool
+/// design. Tm is descriptive only; the exact ranking policy is recorded.
+pub struct TerminalExonRtPrimerPoolReport {
+    pub schema: String,
+    pub report_id: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub request_sha256: String,
+    pub fixed_adapter_5prime: String,
+    pub variable_length_bp: usize,
+    pub terminal_exon_search_window_bp: usize,
+    pub max_candidates_per_target: usize,
+    pub ranking_policy: String,
+    /// Deterministic policy used to choose one candidate per target after the
+    /// per-target candidate lists have been retained.
+    #[serde(default)]
+    pub pool_selection_policy: String,
+    /// Number of complete or partial pool states scored by the bounded
+    /// deterministic selector.
+    #[serde(default)]
+    pub pool_selection_states_evaluated: usize,
+    pub tm_policy: String,
+    #[serde(default)]
+    pub targets: Vec<TerminalExonRtPrimerTargetResult>,
+    #[serde(default)]
+    pub selected_pool_interactions: Vec<TerminalExonRtPrimerPoolInteraction>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_specificity: Option<TerminalExonRtPrimerPoolGenomicSpecificityReport>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct TerminalExonRtPrimerPoolReportSummary {
+    pub report_id: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub target_count: usize,
+    pub selected_oligo_count: usize,
+    pub fixed_adapter_5prime: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 /// Source trace for one oligo-order line item.
@@ -5997,6 +9552,8 @@ pub struct OligoOrderLineProvenance {
     pub source_kind: String,
     pub report_id: String,
     pub report_schema: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_sha256: Option<String>,
     pub template: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub op_id: Option<String>,
@@ -6007,6 +9564,22 @@ pub struct OligoOrderLineProvenance {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assay_rank: Option<usize>,
     pub role: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assay_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pair_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oligo_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readiness_policy_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readiness_policy_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readiness_card_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readiness_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readiness_row: Option<ExperimentalAssayOrderReadinessRow>,
     #[serde(default)]
     pub source_coordinates_0based: Vec<SequenceRange0Based>,
 }
@@ -6160,6 +9733,1693 @@ pub struct RestrictionCloningVectorEnzymeSuggestions {
     pub recommended_single_site: Vec<RestrictionCloningSingleSiteSuggestion>,
     #[serde(default)]
     pub recommended_directed_pairs: Vec<RestrictionCloningDirectedPairSuggestion>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Panel-wide cloning route selected after checking every insert.
+pub enum PromoterReporterPanelCloningStrategy {
+    #[default]
+    DirectionalRestriction,
+    Gibson,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Internal restriction-site counts for one prospective panel insert.
+pub struct PromoterReporterPanelInsertSiteSummary {
+    pub insert_seq_id: String,
+    pub insert_length_bp: usize,
+    pub site_count_by_enzyme: BTreeMap<String, usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One insert/enzyme conflict that prevents a shared directional pair.
+pub struct PromoterReporterPanelCloningBlocker {
+    pub insert_seq_id: String,
+    pub enzyme: String,
+    pub site_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One vector-ranked directional pair evaluated against the full panel.
+pub struct PromoterReporterPanelPairEvaluation {
+    pub rank_1based: usize,
+    pub pair: RestrictionCloningDirectedPairSuggestion,
+    pub compatible: bool,
+    pub blockers: Vec<PromoterReporterPanelCloningBlocker>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Deterministic shared-cloning decision for a promoter-reporter panel.
+pub struct PromoterReporterPanelCloningStrategyReport {
+    pub schema: String,
+    pub destination_vector_seq_id: String,
+    pub insert_seq_ids: Vec<String>,
+    pub vector_suggestions: RestrictionCloningVectorEnzymeSuggestions,
+    pub insert_site_summaries: Vec<PromoterReporterPanelInsertSiteSummary>,
+    pub pair_evaluations: Vec<PromoterReporterPanelPairEvaluation>,
+    pub strategy: PromoterReporterPanelCloningStrategy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_pair: Option<RestrictionCloningDirectedPairSuggestion>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_reason: Option<String>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One stated-rule nucleotide substitution in a p53-family response element.
+pub struct P53FamilyMotifBaseChange {
+    pub source_position_0based: usize,
+    pub oriented_position_0based: usize,
+    pub half_site_index_1based: usize,
+    pub original_base: char,
+    pub replacement_base: char,
+    pub rule: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// JASPAR score comparison around the bases changed by the stated rule.
+pub struct P53FamilyMotifPwmAudit {
+    pub tf_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tf_name: Option<String>,
+    pub windows_compared: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wild_type_max_llr_bits: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mutant_max_llr_bits: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_llr_delta_bits: Option<f64>,
+    pub stronger_mutant_window_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(default)]
+/// Zero-based half-open restriction-site interval.
+pub struct P53FamilyRestrictionSiteInterval {
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Before/after restriction-site inventory for one selected enzyme.
+pub struct P53FamilyRestrictionSiteAudit {
+    pub enzyme: String,
+    pub wild_type_site_count: usize,
+    pub mutant_site_count: usize,
+    pub newly_created_sites: Vec<P53FamilyRestrictionSiteInterval>,
+    pub lost_sites: Vec<P53FamilyRestrictionSiteInterval>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Auditable sequence-only p53-family motif-disruption proposal.
+pub struct P53FamilyMotifDisruptionReport {
+    pub schema: String,
+    pub stated_rule: String,
+    pub source_sequence_sha256: String,
+    pub motif_start_0based: usize,
+    pub motif_end_0based_exclusive: usize,
+    pub motif_forward_strand: bool,
+    pub original_motif_source: String,
+    pub original_motif_oriented: String,
+    pub mutant_motif_source: String,
+    pub mutant_motif_oriented: String,
+    pub mutant_sequence: String,
+    pub changes: Vec<P53FamilyMotifBaseChange>,
+    pub length_preserved: bool,
+    pub pwm_audits: Vec<P53FamilyMotifPwmAudit>,
+    pub no_stronger_p53_family_hit_near_edit: bool,
+    pub restriction_site_audits: Vec<P53FamilyRestrictionSiteAudit>,
+    pub creates_selected_restriction_site: bool,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Experimental role of one selected promoter fragment in a panel.
+pub enum PromoterReporterPanelFragmentRole {
+    #[default]
+    Core,
+    Extended,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Explicit sequence-edit policy for a promoter-reporter panel.
+///
+/// `Unspecified` exists so omitted policy fails validation instead of silently
+/// applying mutation biology to an unrelated promoter panel. Native-only
+/// members retain the source regulatory sequence without an engineered control.
+pub enum PromoterReporterPanelMutationPolicy {
+    #[default]
+    Unspecified,
+    NativeOnlyV1,
+    P53FamilyCoreDisruptionV1,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Transcript-derived boundary used for an extended promoter fragment.
+pub enum PromoterReporterPanelExtendedBoundaryKind {
+    #[default]
+    CanonicalCdsStartCodon,
+    /// Retain the complete annotated 5' UTR while excluding every genomic base
+    /// that supplies the canonical start codon.
+    CanonicalCdsStartExclusive,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Explicit transcript selection for deriving an extended fragment boundary.
+pub struct PromoterReporterPanelExtendedBoundaryPolicy {
+    pub kind: PromoterReporterPanelExtendedBoundaryKind,
+    pub transcript_id: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Inspectable warning produced while interpreting a transcript's 5' UTR.
+pub enum PromoterReporterPanelExtendedWarningKind {
+    #[default]
+    UpstreamAtg,
+    UpstreamOrf,
+    FivePrimeUtrIntron,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// One transcript-aware caveat for an extended promoter fragment.
+pub struct PromoterReporterPanelExtendedWarning {
+    pub kind: PromoterReporterPanelExtendedWarningKind,
+    pub transcript_id: String,
+    pub detail: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transcript_positions_0based: Vec<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Deterministic basis used to place an extended promoter-fragment boundary
+/// relative to its selected transcript's annotated translation-start codon.
+pub struct PromoterReporterPanelExtendedBoundaryAudit {
+    pub policy: PromoterReporterPanelExtendedBoundaryPolicy,
+    pub strand: String,
+    /// Transcript-ordered genomic ranges supplying the three coding bases.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cds_start_codon_source_ranges_0based: Vec<(usize, usize)>,
+    /// Inclusive outer genomic span start for the codon ranges.
+    pub cds_start_codon_source_start_0based: usize,
+    /// Exclusive outer genomic span end for the codon ranges.
+    pub cds_start_codon_source_end_0based_exclusive: usize,
+    pub cds_start_codon_5prime_to_3prime: String,
+    #[serde(default)]
+    pub five_prime_utr_exon_ranges_0based: Vec<(usize, usize)>,
+    pub five_prime_utr_spliced_length_bp: usize,
+    /// Introns between 5' UTR exons, ordered in transcript 5'-to-3'
+    /// orientation while each interval remains genomic ascending.
+    #[serde(default)]
+    pub five_prime_utr_intron_ranges_0based: Vec<(usize, usize)>,
+    pub five_prime_utr_total_intron_bp: usize,
+    pub five_prime_utr_max_intron_bp: usize,
+    /// Transcript-oriented sequence around the annotated start codon when the
+    /// loaded locus contains enough flanking exonic sequence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kozak_context_5prime_to_3prime: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kozak_context_class: Option<String>,
+    #[serde(default)]
+    pub warnings: Vec<PromoterReporterPanelExtendedWarning>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Reporter architecture compared without creating a construct.
+pub enum PromoterReporterArchitectureKind {
+    #[default]
+    TssProximalTranscriptional,
+    #[serde(alias = "spliced_5utr_luc_atg_replacement")]
+    Spliced5utrLucAtgReplacement,
+    #[serde(alias = "genomic_5utr_luc_atg_replacement")]
+    Genomic5utrLucAtgReplacement,
+    EndogenousAtgRetainedFusion,
+}
+
+impl PromoterReporterArchitectureKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::TssProximalTranscriptional => "tss_proximal_transcriptional",
+            Self::Spliced5utrLucAtgReplacement => "spliced_5utr_luc_atg_replacement",
+            Self::Genomic5utrLucAtgReplacement => "genomic_5utr_luc_atg_replacement",
+            Self::EndogenousAtgRetainedFusion => "endogenous_atg_retained_fusion",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Fate of the endogenous and vector luciferase start codons.
+pub enum PromoterReporterAtgDisposition {
+    #[default]
+    EndogenousExcludedVectorLuciferaseRetained,
+    EndogenousReplacedByLuciferase,
+    EndogenousRetainedVectorLuciferaseRemoved,
+    EndogenousRetainedExtraUpstreamOfVectorLuciferase,
+}
+
+impl PromoterReporterAtgDisposition {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::EndogenousExcludedVectorLuciferaseRetained => {
+                "endogenous_excluded_vector_luciferase_retained"
+            }
+            Self::EndogenousReplacedByLuciferase => "endogenous_replaced_by_luciferase",
+            Self::EndogenousRetainedVectorLuciferaseRemoved => {
+                "endogenous_retained_vector_luciferase_removed"
+            }
+            Self::EndogenousRetainedExtraUpstreamOfVectorLuciferase => {
+                "endogenous_retained_extra_upstream_of_vector_luciferase"
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PromoterReporterFusionMode {
+    #[default]
+    InFrameTranslationFusion,
+    ExtraUpstreamAtg,
+}
+
+impl PromoterReporterFusionMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::InFrameTranslationFusion => "in_frame_translation_fusion",
+            Self::ExtraUpstreamAtg => "extra_upstream_atg",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Explicit opt-in request for an endogenous-ATG-retaining architecture.
+pub struct PromoterReporterFusionRequest {
+    pub transcript_id: String,
+    pub mode: PromoterReporterFusionMode,
+    pub retained_endogenous_cds_bp: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vector_luciferase_atg_removed: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub junction_sequence_5prime_to_3prime: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Optional caller-supplied baseline construct binding.
+pub struct PromoterReporterExistingConstructInput {
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insert_seq_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vector_seq_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_start_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_end_0based_exclusive: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Caller-supplied transcription-initiation evidence kept separate from
+/// transcript annotation and CUT&RUN occupancy.
+pub struct PromoterReporterInitiationEvidenceInput {
+    pub transcript_id: String,
+    pub evidence_kind: String,
+    pub source_id: String,
+    pub summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub support_value: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub support_unit: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Read-only request for comparing transcript-aware reporter geometries.
+pub struct PromoterReporterArchitectureComparisonRequest {
+    pub schema: String,
+    pub seq_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transcript_ids: Vec<String>,
+    pub promoter_upstream_bp: usize,
+    pub tss_proximal_downstream_bp: usize,
+    pub tss_cluster_tolerance_bp: usize,
+    #[serde(default)]
+    pub architectures: Vec<PromoterReporterArchitectureKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub existing_construct: Option<PromoterReporterExistingConstructInput>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fusion_requests: Vec<PromoterReporterFusionRequest>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub initiation_evidence: Vec<PromoterReporterInitiationEvidenceInput>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cutrun_dataset_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cutrun_read_report_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cutrun_catalog_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cutrun_cache_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cutrun_species_filters: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub motif_tokens: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motif_min_llr_quantile: Option<f64>,
+    /// Optional normalized evidence request rendered on the same axis as the
+    /// canonical reporter architectures.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locus_evidence_request: Option<GeneLocusEvidenceDisplayRequest>,
+    #[serde(default)]
+    pub include_local_source_paths: bool,
+}
+
+impl Default for PromoterReporterArchitectureComparisonRequest {
+    fn default() -> Self {
+        Self {
+            schema: PROMOTER_REPORTER_ARCHITECTURE_REQUEST_SCHEMA.to_string(),
+            seq_id: String::new(),
+            gene_label: None,
+            transcript_ids: vec![],
+            promoter_upstream_bp: 1_000,
+            tss_proximal_downstream_bp: 200,
+            tss_cluster_tolerance_bp: 50,
+            architectures: vec![
+                PromoterReporterArchitectureKind::TssProximalTranscriptional,
+                PromoterReporterArchitectureKind::Spliced5utrLucAtgReplacement,
+                PromoterReporterArchitectureKind::Genomic5utrLucAtgReplacement,
+            ],
+            existing_construct: None,
+            fusion_requests: vec![],
+            initiation_evidence: vec![],
+            cutrun_dataset_ids: vec![],
+            cutrun_read_report_ids: vec![],
+            cutrun_catalog_path: None,
+            cutrun_cache_dir: None,
+            cutrun_species_filters: vec![],
+            motif_tokens: vec![],
+            motif_min_llr_quantile: None,
+            locus_evidence_request: None,
+            include_local_source_paths: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PromoterReporterArchitectureSourceProvenance {
+    pub source_sequence_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genome_anchor: Option<SequenceGenomeAnchorSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extraction_operation: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_source_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotation_source_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotation_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_sha1: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotation_sha1: Option<String>,
+    pub local_paths_included: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct PromoterReporterArchitectureIntronAudit {
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub length_bp: usize,
+    pub transcript_order: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PromoterReporterTranscriptArchitectureAudit {
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub transcript_feature_id: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label: Option<String>,
+    /// Legacy local-sequence strand retained for backward compatibility.
+    pub strand: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub local_strand: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub genomic_strand: String,
+    pub tss_class_id: String,
+    pub tss_local_0based: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tss_genomic_1based: Option<usize>,
+    pub cds_start_codon_source_ranges_0based: Vec<(usize, usize)>,
+    #[serde(default)]
+    pub cds_start_codon_genomic_ranges_1based: Vec<(usize, usize)>,
+    pub cds_start_codon_5prime_to_3prime: String,
+    pub tss_to_atg_through_span_bp: usize,
+    #[serde(default)]
+    pub transcript_exon_ranges_0based: Vec<(usize, usize)>,
+    #[serde(default)]
+    pub cds_ranges_0based: Vec<(usize, usize)>,
+    pub five_prime_utr_exon_ranges_0based: Vec<(usize, usize)>,
+    pub five_prime_utr_spliced_length_bp: usize,
+    pub five_prime_utr_introns: Vec<PromoterReporterArchitectureIntronAudit>,
+    pub five_prime_utr_total_intron_bp: usize,
+    pub five_prime_utr_max_intron_bp: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kozak_context_5prime_to_3prime: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kozak_context_class: Option<String>,
+    #[serde(default)]
+    pub support_metadata: BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    pub warnings: Vec<PromoterReporterPanelExtendedWarning>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PromoterReporterTssClass {
+    pub class_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label: Option<String>,
+    /// Legacy local-sequence strand retained for backward compatibility.
+    pub strand: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub local_strand: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub genomic_strand: String,
+    pub representative_transcript_id: String,
+    pub representative_tss_local_0based: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub representative_tss_genomic_1based: Option<usize>,
+    pub min_tss_local_0based: usize,
+    pub max_tss_local_0based: usize,
+    #[serde(default)]
+    pub transcript_ids: Vec<String>,
+    pub grouping_reason: String,
+    pub transcription_initiation_evidence_state: String,
+    #[serde(default)]
+    pub initiation_evidence: Vec<PromoterReporterInitiationEvidenceInput>,
+    #[serde(default)]
+    pub recommended_usage_evidence: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct PromoterReporterArchitectureSegment {
+    pub segment_id: String,
+    pub kind: String,
+    pub material: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_start_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_end_0based_exclusive: Option<usize>,
+    pub length_bp: usize,
+    pub transcript_orientation: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct PromoterReporterArchitectureJunctionAudit {
+    pub endogenous_atg_disposition: PromoterReporterAtgDisposition,
+    pub reporter_atg_source: String,
+    pub vector_luciferase_atg_removed: Option<bool>,
+    pub frame_status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub junction_sequence_5prime_to_3prime: Option<String>,
+    pub audit_status: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PromoterReporterArchitectureRow {
+    pub architecture_id: String,
+    pub architecture_kind: PromoterReporterArchitectureKind,
+    pub tss_class_id: String,
+    pub representative_transcript_id: String,
+    #[serde(default)]
+    pub tss_class_transcript_ids: Vec<String>,
+    pub transcript_id: String,
+    /// Legacy local-sequence strand retained for backward compatibility.
+    pub strand: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub local_strand: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub genomic_strand: String,
+    pub tss_local_0based: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tss_genomic_1based: Option<usize>,
+    pub cds_start_codon_source_ranges_0based: Vec<(usize, usize)>,
+    pub modeled_insert_length_bp: usize,
+    pub modeled_length_scope: String,
+    pub five_prime_utr_spliced_length_bp: usize,
+    pub five_prime_utr_total_intron_bp: usize,
+    pub five_prime_utr_max_intron_bp: usize,
+    #[serde(default)]
+    pub five_prime_utr_introns: Vec<PromoterReporterArchitectureIntronAudit>,
+    #[serde(default)]
+    pub segments: Vec<PromoterReporterArchitectureSegment>,
+    pub junction: PromoterReporterArchitectureJunctionAudit,
+    #[serde(default)]
+    pub transcript_warnings: Vec<PromoterReporterPanelExtendedWarning>,
+    pub testable_question: String,
+    #[serde(default)]
+    pub major_confounds: Vec<String>,
+    #[serde(default)]
+    pub cloning_feasibility_notes: Vec<String>,
+    #[serde(default)]
+    pub non_claims: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PromoterReporterExistingConstructStatus {
+    pub status: String,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insert_seq_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vector_seq_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insert_sequence_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_start_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_end_0based_exclusive: Option<usize>,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PromoterReporterPanelRecommendation {
+    pub recommendation_id: String,
+    pub stage: String,
+    pub role: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub architecture_id: Option<String>,
+    pub rationale: String,
+    pub required_before_materialization: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PromoterReporterCutRunLaneState {
+    #[default]
+    Unevaluated,
+    NotPrepared,
+    PreparedNoCompatibleEvidence,
+    Evaluated,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PromoterReporterCutRunLane {
+    pub source_kind: String,
+    pub source_id: String,
+    pub state: PromoterReporterCutRunLaneState,
+    pub role: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_factor: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub condition: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tissue_or_cell_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_accession: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_source_path: Option<String>,
+    pub support_window_count: usize,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PromoterReporterCutRunEvidence {
+    pub evaluation_state: String,
+    pub quantitative_comparison_status: String,
+    #[serde(default)]
+    pub lanes: Vec<PromoterReporterCutRunLane>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub regulatory_support: Option<CutRunRegulatorySupportReport>,
+    pub interpretation: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Portable read-only comparison used by GUI, shell/CLI, and MCP `op` routes.
+pub struct PromoterReporterArchitectureComparisonReport {
+    pub schema: String,
+    pub request_schema: String,
+    pub seq_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label: Option<String>,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub source_provenance: PromoterReporterArchitectureSourceProvenance,
+    pub promoter_upstream_bp: usize,
+    pub tss_proximal_downstream_bp: usize,
+    pub tss_cluster_tolerance_bp: usize,
+    #[serde(default)]
+    pub tss_classes: Vec<PromoterReporterTssClass>,
+    #[serde(default)]
+    pub transcripts: Vec<PromoterReporterTranscriptArchitectureAudit>,
+    #[serde(default)]
+    pub architectures: Vec<PromoterReporterArchitectureRow>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub common_cds_start_local_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub common_cds_start_genomic_1based: Option<usize>,
+    pub existing_construct: PromoterReporterExistingConstructStatus,
+    #[serde(default)]
+    pub staged_panel: Vec<PromoterReporterPanelRecommendation>,
+    pub cutrun_evidence: PromoterReporterCutRunEvidence,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub theoretical_motif_hits: Option<TfbsHitScanReport>,
+    /// Normalized quantitative/context evidence sharing this report's source
+    /// sequence and genomic axis. Absent for legacy requests.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locus_evidence: Option<GeneLocusEvidenceDisplayReport>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
+    pub non_claims: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub json_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub svg_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// One already-ranked promoter candidate selected for panel planning.
+pub struct PromoterReporterPanelMemberRequest {
+    pub candidate_set_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub candidate_id: Option<String>,
+    #[serde(default)]
+    pub fragment_role: PromoterReporterPanelFragmentRole,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extended_boundary: Option<PromoterReporterPanelExtendedBoundaryPolicy>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    /// Optional member-specific override. When absent, the request-level policy
+    /// applies. This allows a native panel plus selected engineered controls.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mutation_policy: Option<PromoterReporterPanelMutationPolicy>,
+    /// Independent response, occupancy, or other selection evidence supplied
+    /// by the study. These rows remain distinct from sequence annotations.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence: Vec<PromoterEvidenceItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Normalized input for one read-only promoter-reporter panel proposal.
+pub struct PromoterReporterPanelRequest {
+    pub schema: String,
+    pub panel_id: String,
+    pub vector_seq_id: String,
+    pub vector_catalog_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub helper_catalog_path: Option<String>,
+    #[serde(default)]
+    pub mutation_policy: PromoterReporterPanelMutationPolicy,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scientific_caveats: Vec<String>,
+    pub members: Vec<PromoterReporterPanelMemberRequest>,
+    pub output_dir: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Stable external input bound into a panel proposal digest.
+pub struct PromoterReporterPanelSourceBinding {
+    pub path: String,
+    pub sha256: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One native promoter fragment and its optional engineered control.
+pub struct PromoterReporterPanelMemberProposal {
+    pub member_id: String,
+    pub label: String,
+    pub fragment_role: PromoterReporterPanelFragmentRole,
+    pub candidate_set: PromoterReporterPanelSourceBinding,
+    pub candidate_id: String,
+    pub source_seq_id: String,
+    pub source_sequence_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_class_id: Option<String>,
+    pub transcript_ids: Vec<String>,
+    pub strand: String,
+    pub fragment_start_0based: usize,
+    pub fragment_end_0based_exclusive: usize,
+    pub fragment_length_bp: usize,
+    pub mutation_policy: PromoterReporterPanelMutationPolicy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extended_boundary_audit: Option<PromoterReporterPanelExtendedBoundaryAudit>,
+    /// Resolved regulatory anchor for newly planned proposals. `None`
+    /// identifies a legacy v1 proposal that predates anchor provenance.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<PromoterReporterAnchor>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence: Vec<PromoterEvidenceItem>,
+    pub motif_start_in_fragment_0based: usize,
+    pub motif_end_in_fragment_0based_exclusive: usize,
+    pub motif_forward_strand: bool,
+    pub wild_type_seq_id: String,
+    pub wild_type_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mutant_seq_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mutant_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mutation: Option<P53FamilyMotifDisruptionReport>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One final restriction-site row projected from the shared scanner.
+pub struct PromoterReporterPanelRestrictionSiteRow {
+    pub enzyme_name: String,
+    pub recognition_start_0based: usize,
+    pub recognition_end_0based_exclusive: usize,
+    pub forward_strand: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Final-product junction and restriction-site checks included in the
+/// proposal approval basis.
+pub struct PromoterReporterPanelFinalProductAudit {
+    pub junction_validation: String,
+    pub restriction_scan_schema: String,
+    pub comparison_vector_seq_id: String,
+    pub comparison_insert_seq_id: String,
+    pub enzymes_scanned: Vec<String>,
+    pub matched_site_count: usize,
+    pub site_count_by_enzyme: BTreeMap<String, usize>,
+    pub sites: Vec<PromoterReporterPanelRestrictionSiteRow>,
+    pub unexpected_count_excess_by_enzyme: BTreeMap<String, usize>,
+    pub comparison_basis: String,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One final circular construct predicted by the approved workflow.
+pub struct PromoterReporterPanelProductProposal {
+    pub member_id: String,
+    pub allele: String,
+    pub insert_seq_id: String,
+    pub product_seq_id: String,
+    pub sequence_sha256: String,
+    pub length_bp: usize,
+    pub circular: bool,
+    /// All catalog-required vector annotations other than the replaced MCS
+    /// remain identifiable on the predicted product. `None` identifies a
+    /// legacy proposal that predates this generic validation field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_vector_annotations_preserved: Option<bool>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub preserved_vector_annotation_ids: Vec<String>,
+    /// Compatibility projection retained for existing pGL4/luc2 consumers.
+    pub luc2_annotation_preserved: bool,
+    pub assembly_model: String,
+    pub primer_seq_ids: Vec<String>,
+    pub primer_sequences_5prime_to_3prime: Vec<String>,
+    pub final_product_audit: PromoterReporterPanelFinalProductAudit,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One exact ordered child action included in the approval basis.
+pub struct PromoterReporterPanelWorkflowStep {
+    pub ordinal: usize,
+    pub stage: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub member_id: Option<String>,
+    pub operation: serde_json::Value,
+    pub operation_sha256: String,
+    pub expected_created_seq_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One file written only by approved materialization.
+pub struct PromoterReporterPanelArtifactProposal {
+    pub artifact_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub product_seq_id: Option<String>,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Content-addressed, reviewable panel proposal. The digest is the approval token.
+pub struct PromoterReporterPanelProposal {
+    pub schema: String,
+    pub proposal_id: String,
+    pub proposal_digest: String,
+    pub request: PromoterReporterPanelRequest,
+    pub request_sha256: String,
+    pub baseline_state_sha256: String,
+    pub helper_catalog: PromoterReporterPanelSourceBinding,
+    pub vector_sequence_sha256: String,
+    pub vector_validation: ReporterVectorValidationReport,
+    pub mcs_start_0based: usize,
+    pub mcs_end_0based_exclusive: usize,
+    pub members: Vec<PromoterReporterPanelMemberProposal>,
+    pub cloning_strategy: PromoterReporterPanelCloningStrategyReport,
+    pub workflow: Vec<PromoterReporterPanelWorkflowStep>,
+    pub workflow_sha256: String,
+    pub products: Vec<PromoterReporterPanelProductProposal>,
+    pub artifacts: Vec<PromoterReporterPanelArtifactProposal>,
+    pub approval_required: bool,
+    pub warnings: Vec<String>,
+    pub nonclaims: Vec<String>,
+}
+
+fn regulatory_fragment_panel_request_schema_default() -> String {
+    crate::engine::REGULATORY_FRAGMENT_PANEL_REQUEST_SCHEMA.to_string()
+}
+
+fn regulatory_fragment_panel_default_max_members() -> usize {
+    8
+}
+
+fn regulatory_fragment_panel_default_max_construct_length_bp() -> usize {
+    5_000
+}
+
+fn regulatory_fragment_panel_default_similarity_identity_fraction() -> f64 {
+    0.95
+}
+
+fn regulatory_fragment_panel_default_similarity_coverage_fraction() -> f64 {
+    0.90
+}
+
+fn regulatory_fragment_panel_default_vector_context_flank_bp() -> usize {
+    24
+}
+
+fn regulatory_fragment_panel_default_max_candidate_constructs() -> usize {
+    20
+}
+
+fn regulatory_fragment_panel_default_sequence_word_size_bp() -> usize {
+    12
+}
+
+fn regulatory_fragment_panel_default_near_exact_max_mismatches() -> usize {
+    1
+}
+
+fn regulatory_fragment_panel_default_junction_flank_bp() -> usize {
+    16
+}
+
+fn regulatory_fragment_panel_default_max_evidence_observations() -> usize {
+    512
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+/// Experimental role of one persisted genomic ROI in a regulatory-fragment panel.
+///
+/// This is deliberately distinct from [`PromoterReporterPanelFragmentRole`],
+/// whose legacy `core`/`extended` vocabulary remains unchanged.
+pub enum RegulatoryFragmentRole {
+    #[default]
+    Candidate,
+    Partner,
+    MinimalPromoter,
+    ReferenceControl,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+/// Experimental comparison requested from the bounded panel.
+pub enum RegulatoryFragmentQuestion {
+    #[default]
+    StandaloneCandidate,
+    PartnerDependence,
+    OrderDependence,
+    OrientationDependence,
+    SpacingDependence,
+    MotifDisruption,
+    BoundaryUncertainty,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+/// Orientation of one fragment instance in the synthetic insert.
+pub enum RegulatoryFragmentOrientation {
+    #[default]
+    Forward,
+    ReverseComplement,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+/// Explicitly requested geometry; the planner never expands these into a Cartesian product.
+pub enum RegulatoryFragmentGeometryKind {
+    #[default]
+    ReferenceCombination,
+    ReversedOrder,
+    ReversedOrientation,
+    ControlledSpacing,
+    BoundaryShift,
+    Tiling,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Exact persisted ROI bound to one declared panel role.
+pub struct RegulatoryFragmentBinding {
+    pub fragment_id: String,
+    pub declared_order: usize,
+    pub role: RegulatoryFragmentRole,
+    pub region_set_id: String,
+    pub region_set_content_sha256: String,
+    pub reference_release: String,
+    pub region: gentle_protocol::GenomicRegionOfInterest,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// One ordered fragment in a requested construct geometry.
+///
+/// `spacer_before` is the exact 5'-to-3' DNA inserted immediately before this
+/// instance. The first instance must use an empty spacer.
+pub struct RegulatoryFragmentInstanceRequest {
+    pub fragment_id: String,
+    pub orientation: RegulatoryFragmentOrientation,
+    pub spacer_before: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Exact ordered geometry supplied by the caller.
+pub struct RegulatoryFragmentGeometryRequest {
+    pub variant_id: String,
+    pub declared_order: usize,
+    pub kind: RegulatoryFragmentGeometryKind,
+    pub instances: Vec<RegulatoryFragmentInstanceRequest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extended_boundary: Option<PromoterReporterPanelExtendedBoundaryPolicy>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Exact motif interval to edit under the existing promoter-panel mutation policy.
+pub struct RegulatoryFragmentMotifDisruptionRequest {
+    pub control_id: String,
+    pub fragment_id: String,
+    pub motif_start_in_fragment_0based: usize,
+    pub motif_end_in_fragment_0based_exclusive: usize,
+    pub motif_forward_strand: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+/// Independent sequence/context evidence lane retained by the plan.
+pub enum RegulatoryFragmentEvidenceDimensionKind {
+    #[default]
+    ReferenceGenomicUniqueness,
+    PanelSequenceSimilarity,
+    RepeatsAndLowComplexity,
+    PairSpecificJunctionUniqueness,
+    RestrictionAndCloningRisk,
+    EnsemblRegulatoryOverlap,
+    TfbsModelScoreContext,
+    CutrunAndChromatinContext,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Exact external report citation, optionally resolved from a bound locus document.
+pub struct RegulatoryFragmentEvidenceBinding {
+    pub dimension: RegulatoryFragmentEvidenceDimensionKind,
+    pub report_id: String,
+    pub report_sha256: String,
+    /// Exact file bytes are hash-checked before parsing. Omission retains a citation only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub row_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Fully serialized deterministic policy used by the v1 planner.
+pub struct RegulatoryFragmentPanelPolicy {
+    pub include_promoterless_control: bool,
+    pub include_minimal_promoter_control: bool,
+    pub include_reference_control_when_bound: bool,
+    #[serde(default = "regulatory_fragment_panel_default_similarity_identity_fraction")]
+    pub high_similarity_identity_fraction: f64,
+    #[serde(default = "regulatory_fragment_panel_default_similarity_coverage_fraction")]
+    pub high_similarity_coverage_fraction: f64,
+    #[serde(default = "regulatory_fragment_panel_default_vector_context_flank_bp")]
+    pub vector_context_flank_bp: usize,
+    #[serde(default = "regulatory_fragment_panel_default_max_candidate_constructs")]
+    pub max_candidate_constructs: usize,
+    #[serde(default = "regulatory_fragment_panel_default_sequence_word_size_bp")]
+    pub sequence_word_size_bp: usize,
+    #[serde(default = "regulatory_fragment_panel_default_near_exact_max_mismatches")]
+    pub near_exact_max_mismatches: usize,
+    #[serde(default = "regulatory_fragment_panel_default_junction_flank_bp")]
+    pub junction_flank_bp: usize,
+    #[serde(default = "regulatory_fragment_panel_default_max_evidence_observations")]
+    pub max_evidence_observations_per_dimension: usize,
+}
+
+impl Default for RegulatoryFragmentPanelPolicy {
+    fn default() -> Self {
+        Self {
+            include_promoterless_control: true,
+            include_minimal_promoter_control: true,
+            include_reference_control_when_bound: true,
+            high_similarity_identity_fraction:
+                regulatory_fragment_panel_default_similarity_identity_fraction(),
+            high_similarity_coverage_fraction:
+                regulatory_fragment_panel_default_similarity_coverage_fraction(),
+            vector_context_flank_bp: regulatory_fragment_panel_default_vector_context_flank_bp(),
+            max_candidate_constructs: regulatory_fragment_panel_default_max_candidate_constructs(),
+            sequence_word_size_bp: regulatory_fragment_panel_default_sequence_word_size_bp(),
+            near_exact_max_mismatches: regulatory_fragment_panel_default_near_exact_max_mismatches(
+            ),
+            junction_flank_bp: regulatory_fragment_panel_default_junction_flank_bp(),
+            max_evidence_observations_per_dimension:
+                regulatory_fragment_panel_default_max_evidence_observations(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Read-only request for the smallest bounded regulatory-fragment contrast panel.
+pub struct RegulatoryFragmentPanelRequest {
+    #[serde(default = "regulatory_fragment_panel_request_schema_default")]
+    pub schema: String,
+    pub plan_id: String,
+    pub vector_seq_id: String,
+    pub vector_catalog_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub helper_catalog_path: Option<String>,
+    pub insertion_context_feature_id: String,
+    pub fragments: Vec<RegulatoryFragmentBinding>,
+    pub questions: Vec<RegulatoryFragmentQuestion>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_combination: Option<RegulatoryFragmentGeometryRequest>,
+    #[serde(default)]
+    pub requested_variants: Vec<RegulatoryFragmentGeometryRequest>,
+    #[serde(default)]
+    pub mutation_policy: PromoterReporterPanelMutationPolicy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motif_disruption: Option<RegulatoryFragmentMotifDisruptionRequest>,
+    #[serde(default)]
+    pub evidence_bindings: Vec<RegulatoryFragmentEvidenceBinding>,
+    #[serde(default = "regulatory_fragment_panel_default_max_members")]
+    pub max_panel_members: usize,
+    #[serde(default = "regulatory_fragment_panel_default_max_construct_length_bp")]
+    pub max_construct_length_bp: usize,
+    #[serde(default)]
+    pub policy: RegulatoryFragmentPanelPolicy,
+    #[serde(default)]
+    pub scientific_caveats: Vec<String>,
+}
+
+impl Default for RegulatoryFragmentPanelRequest {
+    fn default() -> Self {
+        Self {
+            schema: regulatory_fragment_panel_request_schema_default(),
+            plan_id: String::new(),
+            vector_seq_id: String::new(),
+            vector_catalog_id: String::new(),
+            helper_catalog_path: None,
+            insertion_context_feature_id: "multiple_cloning_region".to_string(),
+            fragments: vec![],
+            questions: vec![],
+            reference_combination: None,
+            requested_variants: vec![],
+            mutation_policy: PromoterReporterPanelMutationPolicy::Unspecified,
+            motif_disruption: None,
+            evidence_bindings: vec![],
+            max_panel_members: regulatory_fragment_panel_default_max_members(),
+            max_construct_length_bp: regulatory_fragment_panel_default_max_construct_length_bp(),
+            policy: RegulatoryFragmentPanelPolicy::default(),
+            scientific_caveats: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+/// Stable construct category used by selection and display.
+pub enum RegulatoryFragmentConstructKind {
+    #[default]
+    PromoterlessControl,
+    MinimalPromoterControl,
+    CandidateAlone,
+    PartnerAlone,
+    ReferenceCombination,
+    ReferenceControl,
+    RequestedGeometryVariant,
+    MotifDisruptionControl,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Conservative planning conclusion; none of these labels is a biological verdict.
+pub enum RegulatoryFragmentPlanningLabel {
+    #[default]
+    StandaloneTestableCandidate,
+    PartnerDependenceTestableHypothesis,
+    ContextOrGeometryConfounded,
+    UnresolvedExperimentalComparisonRequired,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RegulatoryFragmentInclusionReasonKind {
+    #[default]
+    RequiredControl,
+    ExperimentalComparisonEndpoint,
+    ExplicitReferenceControl,
+    DeterministicCoverageChoice,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Machine-readable reason one construct survived minimal-panel selection.
+pub struct RegulatoryFragmentInclusionReason {
+    pub kind: RegulatoryFragmentInclusionReasonKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub question: Option<RegulatoryFragmentQuestion>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contrast_id: Option<String>,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RegulatoryFragmentOmissionReasonKind {
+    #[default]
+    NotRequested,
+    RedundantForQuestionCoverage,
+    PanelMemberBound,
+    ConstructLengthBound,
+    DuplicateGeometry,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Candidate construct excluded by the deterministic selection rule.
+pub struct RegulatoryFragmentOmittedVariant {
+    pub member_id: String,
+    pub construct_kind: RegulatoryFragmentConstructKind,
+    pub reason: RegulatoryFragmentOmissionReasonKind,
+    #[serde(default)]
+    pub affected_questions: Vec<RegulatoryFragmentQuestion>,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One named blocker or warning with exact subjects.
+pub struct RegulatoryFragmentFinding {
+    pub code: String,
+    #[serde(default)]
+    pub subject_ids: Vec<String>,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Exact source and placement of one fragment instance in a planned insert.
+pub struct RegulatoryFragmentResolvedInstance {
+    pub fragment_id: String,
+    pub role: RegulatoryFragmentRole,
+    pub region_set_id: String,
+    pub region_id: String,
+    pub region_identity_sha256: String,
+    pub region_content_sha256: String,
+    pub assembly: String,
+    pub reference_release: String,
+    pub contig: String,
+    pub genomic_start_0based: u64,
+    pub genomic_end_0based_exclusive: u64,
+    pub genomic_strand: gentle_protocol::GenomicRegionStrand,
+    pub source_seq_id: String,
+    pub source_sequence_sha256: String,
+    pub source_start_0based: u64,
+    pub source_end_0based_exclusive: u64,
+    pub source_strand: gentle_protocol::GenomicRegionStrand,
+    pub orientation: RegulatoryFragmentOrientation,
+    pub spacer_before: String,
+    pub assembled_start_0based: usize,
+    pub assembled_end_0based_exclusive: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Exact reporter-vector context surrounding the catalog-validated insertion feature.
+pub struct RegulatoryFragmentVectorContext {
+    pub vector_seq_id: String,
+    pub vector_catalog_id: String,
+    pub vector_sequence_sha256: String,
+    pub insertion_context_feature_id: String,
+    pub insertion_start_0based: usize,
+    pub insertion_end_0based_exclusive: usize,
+    pub left_flank_5prime_to_3prime: String,
+    pub right_flank_5prime_to_3prime: String,
+    pub context_sha256: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RegulatoryFragmentCloningFeasibilityState {
+    DirectionalRestrictionCandidate,
+    GibsonFallbackCandidate,
+    NotApplicableEmptyInsert,
+    #[default]
+    NotEvaluated,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RegulatoryFragmentFinalProductAuditState {
+    #[default]
+    NotEvaluated,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// One selected exact insert and the comparisons it enables.
+pub struct RegulatoryFragmentPanelMember {
+    pub member_id: String,
+    pub construct_kind: RegulatoryFragmentConstructKind,
+    pub planning_label: RegulatoryFragmentPlanningLabel,
+    pub instances: Vec<RegulatoryFragmentResolvedInstance>,
+    pub insert_sequence_5prime_to_3prime: String,
+    pub insert_sequence_sha256: String,
+    pub insert_length_bp: usize,
+    pub vector_context: RegulatoryFragmentVectorContext,
+    #[serde(default)]
+    pub contrast_ids: Vec<String>,
+    #[serde(default)]
+    pub inclusion_reasons: Vec<RegulatoryFragmentInclusionReason>,
+    pub cloning_feasibility: RegulatoryFragmentCloningFeasibilityState,
+    pub final_product_audit_state: RegulatoryFragmentFinalProductAuditState,
+    #[serde(default)]
+    pub planned_operations: Vec<Value>,
+    #[serde(default)]
+    pub blockers: Vec<RegulatoryFragmentFinding>,
+    #[serde(default)]
+    pub warnings: Vec<RegulatoryFragmentFinding>,
+    #[serde(default)]
+    pub nonclaims: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Stable pairwise contrast contributing to one requested question.
+pub struct RegulatoryFragmentContrast {
+    pub contrast_id: String,
+    pub question: RegulatoryFragmentQuestion,
+    pub left_member_id: String,
+    pub right_member_id: String,
+    pub interpretation: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RegulatoryFragmentEvidenceState {
+    #[default]
+    NotEvaluated,
+    Evaluated,
+    Unavailable,
+    Stale,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "observation_kind", rename_all = "snake_case")]
+/// Typed, deterministic evidence retained inside one panel evidence lane.
+pub enum RegulatoryFragmentEvidenceObservation {
+    ExternalLocusContext {
+        report_id: String,
+        report_sha256: String,
+        row_id: String,
+        fragment_ids: Vec<String>,
+        state: RegulatoryFragmentEvidenceState,
+        evidence: Box<RegulatoryFragmentExternalEvidence>,
+    },
+    ReferenceGenomicUniqueness {
+        observation_id: String,
+        fragment_id: String,
+        source_seq_id: String,
+        fragment_length_bp: usize,
+        exact_forward_match_count: usize,
+        exact_reverse_complement_match_count: usize,
+        near_exact_max_mismatches: usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        near_exact_forward_match_count: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        near_exact_reverse_complement_match_count: Option<usize>,
+        near_exact_state: RegulatoryFragmentEvidenceState,
+        detail: String,
+    },
+    PanelSequenceSimilarity {
+        observation_id: String,
+        left_subject_id: String,
+        right_subject_id: String,
+        comparison_scope: String,
+        word_size_bp: usize,
+        exact_forward_word_match_count: usize,
+        exact_inverted_word_match_count: usize,
+        word_match_counts_truncated: bool,
+        alignment: SequenceAlignmentReport,
+        detail: String,
+    },
+    RepeatOrLowComplexity {
+        observation_id: String,
+        subject_id: String,
+        evidence: DesignEvidence,
+    },
+    PairSpecificJunctionUniqueness {
+        observation_id: String,
+        member_id: String,
+        left_fragment_id: String,
+        right_fragment_id: String,
+        assembled_start_0based: usize,
+        assembled_end_0based_exclusive: usize,
+        junction_sequence_sha256: String,
+        reference_forward_match_count: usize,
+        reference_reverse_complement_match_count: usize,
+        panel_other_member_match_count: usize,
+        exact_unique_in_assessed_context: bool,
+        detail: String,
+    },
+    RestrictionAndCloningRisk {
+        observation_id: String,
+        member_id: String,
+        cloning_feasibility: RegulatoryFragmentCloningFeasibilityState,
+        site_count_by_enzyme: BTreeMap<String, usize>,
+        blocker_count: usize,
+        selected_strategy: PromoterReporterPanelCloningStrategy,
+        detail: String,
+    },
+}
+
+/// Original typed source context, without converting overlap or score into activity.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "source_kind", content = "content", rename_all = "snake_case")]
+pub enum RegulatoryFragmentExternalEvidence {
+    EnsemblRegulation(gentle_protocol::GeneLocusEnsemblRegulationEvidence),
+    RegulatoryScore(gentle_protocol::GeneLocusRegulatoryScoreTrack),
+    Occupancy(gentle_protocol::GeneLocusOccupancyLane),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One independently interpreted evidence lane in the panel plan.
+pub struct RegulatoryFragmentEvidenceDimension {
+    pub kind: RegulatoryFragmentEvidenceDimensionKind,
+    pub state: RegulatoryFragmentEvidenceState,
+    pub assessment_id: String,
+    pub assessment_sha256: String,
+    #[serde(default)]
+    pub method_ids: Vec<String>,
+    #[serde(default)]
+    pub bindings: Vec<RegulatoryFragmentEvidenceBinding>,
+    #[serde(default)]
+    pub observations: Vec<RegulatoryFragmentEvidenceObservation>,
+    #[serde(default)]
+    pub blockers: Vec<RegulatoryFragmentFinding>,
+    #[serde(default)]
+    pub warnings: Vec<RegulatoryFragmentFinding>,
+    pub truncated: bool,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Pairwise alignment used only to surface a geometry-confounding risk.
+pub struct RegulatoryFragmentSimilarityAudit {
+    pub left_fragment_id: String,
+    pub right_fragment_id: String,
+    pub highly_similar: bool,
+    pub alignment: SequenceAlignmentReport,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Content-addressed read-only result of deterministic panel selection.
+pub struct RegulatoryFragmentPanelPlan {
+    pub schema: String,
+    pub plan_id: String,
+    pub proposal_digest: String,
+    pub request_sha256: String,
+    pub source_state_sha256: String,
+    pub request: RegulatoryFragmentPanelRequest,
+    pub vector_validation: ReporterVectorValidationReport,
+    pub vector_context: RegulatoryFragmentVectorContext,
+    pub planning_label: RegulatoryFragmentPlanningLabel,
+    pub members: Vec<RegulatoryFragmentPanelMember>,
+    pub contrasts: Vec<RegulatoryFragmentContrast>,
+    pub omitted_variants: Vec<RegulatoryFragmentOmittedVariant>,
+    pub evidence_dimensions: Vec<RegulatoryFragmentEvidenceDimension>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub candidate_partner_similarity: Option<RegulatoryFragmentSimilarityAudit>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cloning_strategy: Option<PromoterReporterPanelCloningStrategyReport>,
+    #[serde(default)]
+    pub uncovered_questions: Vec<RegulatoryFragmentQuestion>,
+    pub approval_required: bool,
+    pub materialization_supported: bool,
+    #[serde(default)]
+    pub blockers: Vec<RegulatoryFragmentFinding>,
+    #[serde(default)]
+    pub warnings: Vec<RegulatoryFragmentFinding>,
+    #[serde(default)]
+    pub nonclaims: Vec<String>,
+}
+
+/// Exact designed product. Vector features outside the replaced context are retained;
+/// ordered instance/spacer features carry source provenance, not inferred function.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RegulatoryFragmentDesignedProduct {
+    pub member_id: String,
+    pub output_seq_id: String,
+    pub sequence_5prime_to_3prime: String,
+    pub sequence_sha256: String,
+    pub circular: bool,
+    pub features: Vec<gb_io::seq::Feature>,
+    pub omitted_vector_feature_indices: Vec<usize>,
+    pub instances: Vec<RegulatoryFragmentResolvedInstance>,
+}
+
+/// Separately approved exact design materialization; no PCR, digest or ligation implied.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RegulatoryFragmentMaterializationProposal {
+    pub schema: String,
+    pub proposal_digest: String,
+    pub plan: Box<RegulatoryFragmentPanelPlan>,
+    pub output_prefix: String,
+    pub method: String,
+    /// All source vector annotations, including those omitted from a product.
+    pub vector_features_sha256: String,
+    pub products: Vec<RegulatoryFragmentDesignedProduct>,
+    pub nonclaims: Vec<String>,
+}
+
+/// Receipt retained in project metadata and returned identically through all adapters.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RegulatoryFragmentMaterializationReceipt {
+    pub schema: String,
+    pub approved_proposal_digest: String,
+    pub plan_digest: String,
+    pub created_seq_ids: Vec<String>,
+    pub product_sequence_sha256: BTreeMap<String, String>,
+    pub final_product_audit_state: RegulatoryFragmentFinalProductAuditState,
+    pub nonclaims: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Input artifact being assessed by the promoter-reporter readiness contract.
+pub enum PromoterReporterPanelReadinessInputKind {
+    #[default]
+    PanelRequest,
+    PanelProposal,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Stable stage names used by promoter-reporter readiness checks.
+pub enum PromoterReporterPanelReadinessCheckKind {
+    #[default]
+    RequestContract,
+    ReporterVectorValidation,
+    CandidateSelection,
+    TssResolution,
+    EvidenceCompatibility,
+    PanelSimulation,
+    ProposalCurrency,
+    ApprovalMatch,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// State of one context-bound promoter-reporter readiness check.
+pub enum PromoterReporterPanelReadinessState {
+    Ready,
+    Blocked,
+    NotSupplied,
+    NotApplicable,
+    #[default]
+    NotEvaluated,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Next safe transition established by the complete readiness report.
+pub enum PromoterReporterPanelReadinessOverall {
+    #[default]
+    Blocked,
+    ReadyToPlan,
+    ReadyForApproval,
+    ReadyToMaterialize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One machine-readable check bound to the supplied request or proposal.
+pub struct PromoterReporterPanelReadinessCheck {
+    pub kind: PromoterReporterPanelReadinessCheckKind,
+    pub state: PromoterReporterPanelReadinessState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject_id: Option<String>,
+    pub detail: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub basis_sha256: Option<String>,
+}
+
+fn promoter_reporter_panel_readiness_request_schema_default() -> String {
+    PROMOTER_REPORTER_PANEL_READINESS_REQUEST_SCHEMA.to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+/// Read-only request for checking either a panel request or a prior proposal.
+///
+/// Exactly one of `panel_request` and `proposal` must be supplied. An approval
+/// digest is meaningful only for a proposal and is compared byte-for-byte.
+pub struct PromoterReporterPanelReadinessRequest {
+    #[serde(default = "promoter_reporter_panel_readiness_request_schema_default")]
+    pub schema: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub panel_request: Option<Box<PromoterReporterPanelRequest>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposal: Option<Box<PromoterReporterPanelProposal>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval_digest: Option<String>,
+}
+
+impl Default for PromoterReporterPanelReadinessRequest {
+    fn default() -> Self {
+        Self {
+            schema: promoter_reporter_panel_readiness_request_schema_default(),
+            panel_request: None,
+            proposal: None,
+            approval_digest: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Context-bound, read-only promoter-reporter planning readiness report.
+pub struct PromoterReporterPanelReadinessReport {
+    pub schema: String,
+    pub input_kind: PromoterReporterPanelReadinessInputKind,
+    pub panel_id: String,
+    pub overall: PromoterReporterPanelReadinessOverall,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposal_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub evidence_kinds_by_member_id: BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    pub checks: Vec<PromoterReporterPanelReadinessCheck>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
+    pub nonclaims: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Receipt for one digest-approved, atomically committed panel materialization.
+pub struct PromoterReporterPanelReceipt {
+    pub schema: String,
+    pub proposal_id: String,
+    pub approved_proposal_digest: String,
+    pub completed_state_sha256: String,
+    pub created_seq_ids: Vec<String>,
+    pub product_seq_ids: Vec<String>,
+    pub artifact_paths: Vec<String>,
+    pub manifest_path: String,
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -6347,15 +11607,6 @@ impl UniprotProjectionAuditRowStatus {
             Self::MissingEvidence => "missing_evidence",
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct UniprotEnsemblLinkedXref {
-    pub transcript_id: Option<String>,
-    pub protein_id: Option<String>,
-    pub gene_id: Option<String>,
-    pub isoform_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -6593,6 +11844,142 @@ pub struct UniprotProjectionAuditRow {
     pub peptide_compare: Option<UniprotEnsemblPeptideCompareRow>,
 }
 
+pub const UNIPROT_LINKED_TRANSCRIPT_INVENTORY_SCHEMA: &str =
+    "gentle.uniprot_linked_transcript_inventory.v1";
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Resolution of one declared UniProt-to-transcript link against transcript FASTA.
+pub enum UniprotLinkedTranscriptInventoryStatus {
+    Resolved,
+    MissingTranscriptSequence,
+    AmbiguousTranscriptSequence,
+    #[default]
+    Unassessed,
+}
+
+impl UniprotLinkedTranscriptInventoryStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Resolved => "resolved",
+            Self::MissingTranscriptSequence => "missing_transcript_sequence",
+            Self::AmbiguousTranscriptSequence => "ambiguous_transcript_sequence",
+            Self::Unassessed => "unassessed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Explicit UniProt isoform/transcript link supplied to the inventory builder.
+pub struct UniprotLinkedTranscriptInventoryLink {
+    pub entry_id: String,
+    pub isoform_id: String,
+    pub transcript_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locus_reference_accession: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Request for a locus-independent, content-bound linked-transcript inventory.
+pub struct UniprotLinkedTranscriptInventoryRequest {
+    pub inventory_id: String,
+    pub assembly: String,
+    pub annotation_release: String,
+    pub source_resource_id: String,
+    #[serde(default)]
+    pub transcript_fasta_paths: Vec<String>,
+    #[serde(default)]
+    pub links: Vec<UniprotLinkedTranscriptInventoryLink>,
+    pub output_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct UniprotLinkedTranscriptInventorySource {
+    pub path: String,
+    pub sha256: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct UniprotLinkedTranscriptInventoryRecord {
+    pub entry_id: String,
+    pub isoform_id: String,
+    pub transcript_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locus_reference_accession: Option<String>,
+    #[serde(default)]
+    pub status: UniprotLinkedTranscriptInventoryStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mature_cdna_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mature_cdna_length_bp: Option<usize>,
+    #[serde(default)]
+    pub diagnostics: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Locus-independent transcript identity evidence for UniProt coverage claims.
+pub struct UniprotLinkedTranscriptInventory {
+    pub schema: String,
+    pub inventory_id: String,
+    pub assembly: String,
+    pub annotation_release: String,
+    pub source_resource_id: String,
+    #[serde(default)]
+    pub sources: Vec<UniprotLinkedTranscriptInventorySource>,
+    #[serde(default)]
+    pub records: Vec<UniprotLinkedTranscriptInventoryRecord>,
+    pub content_sha256: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Completeness of the protein-isoform inventory copied from UniProt.
+pub enum UniprotProteinIsoformInventoryStatus {
+    Complete,
+    CanonicalOnly,
+    Incomplete,
+    #[default]
+    LegacyUnavailable,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One authoritative protein-isoform target from a UniProt entry.
+pub struct UniprotProteinIsoformInventoryTarget {
+    pub entry_id: String,
+    pub isoform_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub synonyms: Vec<String>,
+    #[serde(default)]
+    pub isoform_id_aliases: Vec<String>,
+    pub is_canonical: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_status: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Complete named UniProt isoform inventory used independently from mappings.
+pub struct UniprotProteinIsoformInventory {
+    pub entry_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub declared_named_isoform_count: Option<usize>,
+    #[serde(default)]
+    pub status: UniprotProteinIsoformInventoryStatus,
+    #[serde(default)]
+    pub targets: Vec<UniprotProteinIsoformInventoryTarget>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct UniprotProjectionAuditReport {
@@ -6612,6 +11999,10 @@ pub struct UniprotProjectionAuditReport {
     pub run_id: Option<String>,
     #[serde(default)]
     pub rows: Vec<UniprotProjectionAuditRow>,
+    /// Authoritative target inventory. Mapping rows remain separate because
+    /// UniProt, Ensembl, and GenBank coding models need not agree exactly.
+    #[serde(default)]
+    pub protein_isoform_inventory: UniprotProteinIsoformInventory,
     #[serde(default)]
     pub warnings: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -6736,6 +12127,13 @@ pub struct CdnaAssayProduct {
     pub amplicon_start_0based: usize,
     pub amplicon_end_0based_exclusive: usize,
     pub amplicon_length_bp: usize,
+    /// SHA-256 of the mature-cDNA template span in transcript 5'-to-3'
+    /// orientation. The span includes primer binding regions but excludes
+    /// non-annealing oligo tails and primer-induced substitutions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub product_sequence_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub product_sequence_basis: String,
     pub forward_hit_index: usize,
     pub reverse_hit_index: usize,
     #[serde(default)]
@@ -6856,6 +12254,13 @@ pub struct CdnaAssayTranscriptMap {
 /// Deterministic cDNA PCR/qPCR assay-test report shared by shell/CLI/agents.
 pub struct CdnaAssayTestReport {
     pub schema: String,
+    /// Canonical ordered forward/reverse physical-sequence identity.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub pair_id: String,
+    /// Deterministic identity of this pair tested against this source/template
+    /// and these assay-test parameters.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub assay_test_id: String,
     pub assay_kind: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub template_source_kind: String,
@@ -6984,6 +12389,3176 @@ pub struct TranscriptQpcrPanelReport {
     pub warnings: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Selection objective for an equivalence-aware transcript assay panel.
+pub enum TranscriptAssayPanelObjective {
+    /// Select one assay that detects every exact mature-cDNA equivalence class.
+    #[default]
+    PanTranscript,
+    /// Select at least one useful assay for each exact mature-cDNA class.
+    OnePerClass,
+    /// Select a small assay set that separates every distinguishable class pair.
+    MinimalDiscriminationPanel,
+    /// Select a bounded assay set by coverage, then observable target-pair
+    /// separation, then fewer reactions and existing candidate preference.
+    MaximallyInformativePanel,
+    /// Design one endpoint RT-PCR reaction for each annotated first-end x
+    /// terminal-end combination represented by a mature transcript.
+    IsoformEndMatrix,
+}
+
+impl TranscriptAssayPanelObjective {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::PanTranscript => "pan_transcript",
+            Self::OnePerClass => "one_per_class",
+            Self::MinimalDiscriminationPanel => "minimal_discrimination_panel",
+            Self::MaximallyInformativePanel => "maximally_informative_panel",
+            Self::IsoformEndMatrix => "isoform_end_matrix",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Weighting contract for the bounded informative selector.
+pub enum TranscriptAssayInformativeTargetWeighting {
+    #[default]
+    EqualBoundCoverageTargets,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+/// Explicit whole-panel budget and observable-product policy.
+pub struct TranscriptAssayInformativeSelectionPolicy {
+    pub schema: String,
+    pub max_assays: usize,
+    #[serde(default)]
+    pub target_weighting: TranscriptAssayInformativeTargetWeighting,
+    pub require_nonzero_incremental_value: bool,
+    pub minimum_resolvable_size_difference_bp: usize,
+    pub allow_long_range_fallback: bool,
+}
+
+impl Default for TranscriptAssayInformativeSelectionPolicy {
+    fn default() -> Self {
+        Self {
+            schema: "gentle.transcript_assay_informative_selection_policy.v1".to_string(),
+            max_assays: 6,
+            target_weighting: TranscriptAssayInformativeTargetWeighting::default(),
+            require_nonzero_incremental_value: true,
+            minimum_resolvable_size_difference_bp: 20,
+            allow_long_range_fallback: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Strength of the optimization claim made by the selector.
+pub enum TranscriptAssayInformativeOptimalityCertificate {
+    #[default]
+    NotComputed,
+    /// Deterministic greedy search over all generated candidates. The result
+    /// is reproducible but is not a proof of global subset optimality.
+    BoundedGreedyV1,
+}
+
+impl TranscriptAssayInformativeOptimalityCertificate {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NotComputed => "not_computed",
+            Self::BoundedGreedyV1 => "bounded_greedy_v1",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Recomputable marginal contribution of one selected assay.
+pub struct TranscriptAssayInformativeAssayContribution {
+    pub assay_id: String,
+    pub rank: usize,
+    pub incremental_covered_target_count: usize,
+    pub incremental_separated_target_pair_count: usize,
+    pub leave_one_out_covered_target_loss: usize,
+    pub leave_one_out_separated_target_pair_loss: usize,
+    #[serde(default)]
+    pub redundant_alternative_assay_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Whole-panel objective audit for a bounded informative selection.
+pub struct TranscriptAssayInformativeSelectionReport {
+    pub schema: String,
+    pub policy: TranscriptAssayInformativeSelectionPolicy,
+    pub policy_sha256: String,
+    #[serde(default)]
+    pub certificate: TranscriptAssayInformativeOptimalityCertificate,
+    pub target_kind: String,
+    pub target_count: usize,
+    pub covered_target_count: usize,
+    pub total_target_pair_count: usize,
+    pub separated_target_pair_count: usize,
+    pub assay_budget: usize,
+    pub selected_assay_count: usize,
+    #[serde(default)]
+    pub assay_contributions: Vec<TranscriptAssayInformativeAssayContribution>,
+    #[serde(default)]
+    pub unresolved_target_pairs: Vec<PrimerPairSelectionAuditTargetPair>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Whether an operation may submit a linked partial fallback.
+pub enum TranscriptAssayFallbackSubmissionMode {
+    #[default]
+    Never,
+    PreapprovedInformativePartial,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Typed trigger accepted by the fallback executor.
+pub enum TranscriptAssayFallbackTrigger {
+    #[default]
+    StrictCoverageInfeasibleOnly,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+/// Approval basis for deriving one exact partial operation after strict
+/// coverage infeasibility. Legacy omission defaults to `mode=never`.
+pub struct TranscriptAssayFallbackSubmissionPolicy {
+    pub schema: String,
+    #[serde(default)]
+    pub mode: TranscriptAssayFallbackSubmissionMode,
+    #[serde(default)]
+    pub trigger: TranscriptAssayFallbackTrigger,
+    #[serde(default)]
+    pub informative_selection: TranscriptAssayInformativeSelectionPolicy,
+    pub fallback_report_id: String,
+}
+
+impl Default for TranscriptAssayFallbackSubmissionPolicy {
+    fn default() -> Self {
+        Self {
+            schema: "gentle.transcript_assay_fallback_submission_policy.v1".to_string(),
+            mode: TranscriptAssayFallbackSubmissionMode::Never,
+            trigger: TranscriptAssayFallbackTrigger::default(),
+            informative_selection: TranscriptAssayInformativeSelectionPolicy::default(),
+            fallback_report_id: String::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One exact field replacement used to derive the approved fallback operation.
+pub struct TranscriptAssayFallbackOperationDiff {
+    pub field: String,
+    pub strict_value_json: String,
+    pub fallback_value_json: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Machine-readable uncovered cDNA class retained with a strict failure.
+pub struct TranscriptAssayUncoveredEquivalenceGroup {
+    pub equivalence_group_id: String,
+    #[serde(default)]
+    pub transcript_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Durable identity of the primary strict failure.
+pub struct TranscriptAssayPanelInfeasibilityReport {
+    pub schema: String,
+    pub failure_id: String,
+    pub strict_operation_sha256: String,
+    pub error_code: String,
+    pub error_message: String,
+    pub error_sha256: String,
+    pub trigger_classification: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strict_report_id: Option<String>,
+    pub coverage_target_kind: String,
+    pub candidate_assay_count: usize,
+    pub selected_assay_count: usize,
+    #[serde(default)]
+    pub search_plan_status: TranscriptAssayPrimerSearchPlanStatus,
+    #[serde(default)]
+    pub uncovered_coverage_target_ids: Vec<String>,
+    #[serde(default)]
+    pub unresolved_coverage_target_pairs: Vec<TranscriptAssayCoverageUnresolvedTargetPair>,
+    #[serde(default)]
+    pub uncovered_equivalence_groups: Vec<TranscriptAssayUncoveredEquivalenceGroup>,
+    #[serde(default)]
+    pub unresolved_group_pairs: Vec<TranscriptAssayUnresolvedPair>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Parent/derivation link embedded in the separately stored fallback panel.
+pub struct TranscriptAssayPanelFallbackProvenance {
+    pub parent_strict_operation_sha256: String,
+    pub parent_failure_id: String,
+    pub fallback_policy_sha256: String,
+    pub trigger_classification: String,
+    #[serde(default)]
+    pub operation_diff: Vec<TranscriptAssayFallbackOperationDiff>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Required combined-gel disposition for an informative fallback panel.
+pub enum TranscriptAssayFallbackVirtualGelStatus {
+    #[default]
+    NotApplicable,
+    Generated,
+    NoPredictedProducts,
+}
+
+impl TranscriptAssayFallbackVirtualGelStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NotApplicable => "not_applicable",
+            Self::Generated => "generated",
+            Self::NoPredictedProducts => "no_predicted_products",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Inline deterministic one-assay-per-lane projection carried by a fallback.
+pub struct TranscriptAssayFallbackVirtualGel {
+    pub schema: String,
+    #[serde(default)]
+    pub status: TranscriptAssayFallbackVirtualGelStatus,
+    pub source_panel_report_id: String,
+    pub source_operation_sha256: String,
+    pub svg: String,
+    pub svg_sha256: String,
+    pub conditions: gentle_protocol::GelRunConditions,
+    pub render_options: gentle_protocol::PoolGelRenderOptions,
+    pub sample_lane_count: usize,
+    pub rendered_product_count: usize,
+    #[serde(default)]
+    pub empty_lane_assay_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub no_products_reason: Option<String>,
+    pub interpretation: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Linked outcome of one strict operation and its pre-approved fallback.
+pub struct TranscriptAssayFallbackExecutionReport {
+    pub schema: String,
+    pub execution_id: String,
+    pub summary: String,
+    pub strict_operation_sha256: String,
+    pub fallback_policy: TranscriptAssayFallbackSubmissionPolicy,
+    pub fallback_policy_sha256: String,
+    pub engine_revision: String,
+    pub search_policy_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strict_panel_report: Option<Box<TranscriptAssayPanelReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strict_infeasibility: Option<TranscriptAssayPanelInfeasibilityReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_operation_sha256: Option<String>,
+    #[serde(default)]
+    pub fallback_operation_diff: Vec<TranscriptAssayFallbackOperationDiff>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_panel_report: Option<Box<TranscriptAssayPanelReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_error: Option<EngineError>,
+    pub fallback_submitted: bool,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Compact listing row for a persisted strict/fallback execution audit.
+pub struct TranscriptAssayFallbackExecutionSummary {
+    pub execution_id: String,
+    pub strict_operation_sha256: String,
+    pub strict_succeeded: bool,
+    pub fallback_submitted: bool,
+    pub fallback_completed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_report_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Laboratory/readout mode for a multi-transcript assay panel.
+pub enum TranscriptAssayKind {
+    EndpointRtPcr,
+    SybrQpcr,
+    /// Backward-compatible mode used when older requests omit `assay_kind`.
+    #[default]
+    TaqmanQpcr,
+}
+
+impl TranscriptAssayKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::EndpointRtPcr => "endpoint_rt_pcr",
+            Self::SybrQpcr => "sybr_qpcr",
+            Self::TaqmanQpcr => "taqman_qpcr",
+        }
+    }
+
+    pub fn uses_probe(self) -> bool {
+        self == Self::TaqmanQpcr
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Reverse-transcription priming method relevant to assay interpretation.
+pub enum TranscriptAssayCdnaSynthesis {
+    #[default]
+    Unspecified,
+    OligoDt,
+    RandomHexamers,
+    GeneSpecific,
+    Mixed,
+}
+
+impl TranscriptAssayCdnaSynthesis {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unspecified => "unspecified",
+            Self::OligoDt => "oligo_dt",
+            Self::RandomHexamers => "random_hexamers",
+            Self::GeneSpecific => "gene_specific",
+            Self::Mixed => "mixed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Interpretation of annotation-derived oligo-dT 5-prime reach for one
+/// transcript-by-assay matrix cell.
+pub enum TranscriptAssayOligoDtReachStatus {
+    /// The cDNA synthesis method is not oligo-dT, or was not declared.
+    #[default]
+    NotApplicable,
+    /// A required primer/probe target is absent from this transcript model;
+    /// reverse-transcription falloff is not the primary explanation.
+    StructuralTargetAbsent,
+    /// Product reach is reported, but no experiment-specific threshold was
+    /// supplied and GENtle therefore makes no categorical risk call.
+    DistanceReportedUnthresholded,
+    /// Every predicted product remains within the user-supplied reach
+    /// threshold. This is not a guarantee of complete reverse transcription.
+    WithinConfiguredThreshold,
+    /// At least one predicted product reaches beyond the user-supplied
+    /// threshold toward the transcript 5' end.
+    Elevated5PrimeRisk,
+    /// Primer targets exist, but no compatible product geometry was found, so
+    /// oligo-dT 5-prime reach cannot be classified.
+    Indeterminate,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Reverse-transcription reach associated with one predicted product.
+pub struct TranscriptAssayOligoDtProductReach {
+    pub amplicon_start_0based: usize,
+    pub amplicon_end_0based_exclusive: usize,
+    pub amplicon_length_bp: usize,
+    /// Bases from the annotated transcript 3' end to the most 5' base needed
+    /// by this product. This is sequence geometry, not an observed RT length.
+    pub required_cdna_reach_from_3prime_end_bp: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exceeds_configured_threshold: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Per-cell annotation-derived oligo-dT 5-prime reach assessment.
+pub struct TranscriptAssayOligoDtReachAssessment {
+    #[serde(default)]
+    pub status: TranscriptAssayOligoDtReachStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub configured_risk_threshold_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximum_required_cdna_reach_from_3prime_end_bp: Option<usize>,
+    #[serde(default)]
+    pub product_reaches: Vec<TranscriptAssayOligoDtProductReach>,
+    pub basis: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Whether failure to span a requested exon-exon junction blocks that target.
+pub enum TranscriptAssayJunctionPriority {
+    Required,
+    #[default]
+    Preferred,
+}
+
+impl TranscriptAssayJunctionPriority {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Required => "required",
+            Self::Preferred => "preferred",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Coordinate representation supplied for an exon-exon junction request.
+pub enum TranscriptAssayJunctionCoordinateKind {
+    #[default]
+    TranscriptLocal,
+    /// Genomic coordinates describe the inclusive intron span between exons.
+    GenomicIntronSpan,
+    /// One-based exon ordinals in transcript 5'-to-3' order.
+    ExonOrdinals,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Explicit exon-exon junction target for primer placement.
+pub struct TranscriptAssayJunctionRequest {
+    pub junction_id: String,
+    #[serde(default)]
+    pub priority: TranscriptAssayJunctionPriority,
+    #[serde(default)]
+    pub coordinate_kind: TranscriptAssayJunctionCoordinateKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_local_position_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_end_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_exon_ordinal: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_exon_ordinal: Option<usize>,
+    #[serde(default)]
+    pub source_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<String>,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// How one selected primer pair overlaps one requested cDNA junction.
+pub struct TranscriptAssayJunctionMatch {
+    pub junction_id: String,
+    pub transcript_id: String,
+    pub transcript_local_position_0based: usize,
+    pub forward_spans: bool,
+    pub reverse_spans: bool,
+    pub spanning_role: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Audit row proving that a required/preferred junction was evaluated.
+pub struct TranscriptAssayJunctionEvaluation {
+    pub junction_id: String,
+    #[serde(default)]
+    pub priority: TranscriptAssayJunctionPriority,
+    pub source_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<String>,
+    pub status: String,
+    #[serde(default)]
+    pub resolved_transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub local_positions_0based: Vec<usize>,
+    #[serde(default)]
+    pub assay_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Transcript end represented by an endpoint RT-PCR primer class.
+pub enum TranscriptAssayEndKind {
+    #[default]
+    First,
+    Terminal,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One distinct first- or terminal-exon/junction class.
+pub struct TranscriptAssayEndClass {
+    pub end_class_id: String,
+    #[serde(default)]
+    pub kind: TranscriptAssayEndKind,
+    pub exon_source_start_0based: usize,
+    pub exon_source_end_0based_exclusive: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adjacent_exon_source_start_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adjacent_exon_source_end_0based_exclusive: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub junction_local_position_0based: Option<usize>,
+    #[serde(default)]
+    pub transcript_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One annotated first-end x terminal-end reaction represented by transcripts.
+pub struct TranscriptAssayEndReaction {
+    pub reaction_id: String,
+    pub first_end_class_id: String,
+    pub terminal_end_class_id: String,
+    #[serde(default)]
+    pub supported_transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub assay_ids: Vec<String>,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Geometry-only feasibility classification made before primer search.
+pub enum TranscriptAssayEndReactionFeasibilityStatus {
+    /// Annotation geometry cannot satisfy at least one hard request constraint.
+    StructurallyImpossible,
+    /// Geometry permits a design, but sequence/Tm/structure suitability remains unknown.
+    #[default]
+    PrimerSearchRequired,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One deterministic blocker that makes an endpoint reaction impossible before search.
+pub struct TranscriptAssayFeasibilityBlocker {
+    pub code: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Content-bound reference to advisory whole-cDNA similarity evidence.
+pub struct TranscriptAssayCdnaSimilarityMapRef {
+    pub path: String,
+    pub expected_sha256: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Opt-in producer configuration for a design-time cDNA similarity map.
+///
+/// The enclosing design operation supplies the active sequence, gene feature,
+/// and resolved transcript universe. The resource must already be a prepared,
+/// content-fingerprinted transcriptome/cDNA BLAST database.
+pub struct TranscriptAssayCdnaSimilarityMapBuildSource {
+    pub target_resource_id: String,
+    #[serde(default)]
+    pub paralog_gene_ids: Vec<String>,
+    #[serde(default)]
+    pub paralog_gene_symbols: Vec<String>,
+    /// Minimum retained local alignment length. Zero selects the producer
+    /// default (18 bp).
+    pub min_alignment_bp: usize,
+    /// Minimum retained identity percentage. Zero selects the producer
+    /// default (80%).
+    pub min_identity_percent: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Named Primer3 solution-chemistry baseline.
+pub enum Primer3ChemistryProfileName {
+    /// Use the selected Primer3 executable's own defaults.
+    #[default]
+    Primer3Default,
+    /// Emit Primer3 2.x documented defaults explicitly for reproducibility.
+    /// This is a computational baseline, not a wet-lab master-mix claim.
+    StandardPcr,
+    /// Emit only caller-reviewed overrides.
+    Custom,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Named chemistry baseline plus exact Primer3 tag overrides.
+pub struct Primer3ChemistryProfile {
+    pub name: Primer3ChemistryProfileName,
+    /// Restricted to documented solution/Tm parameters. Values are retained as
+    /// strings so the emitted Boulder record is byte-auditable.
+    #[serde(default)]
+    pub overrides: BTreeMap<String, String>,
+}
+
+impl Primer3ChemistryProfile {
+    pub fn is_default(&self) -> bool {
+        self == &Self::default()
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+/// Origin of one transcript-local primer-search interval.
+pub enum TranscriptAssayPrimerIntervalEvidenceKind {
+    KnownVariant,
+    RepeatMasker,
+    LowComplexity,
+    ParalogOrCdnaSimilarity,
+    #[default]
+    CallerSupplied,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+/// Search-planning effect of one evidence interval.
+pub enum TranscriptAssayPrimerIntervalDisposition {
+    Exclude,
+    Deprioritize,
+    #[default]
+    Informative,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// One content-bound transcript-local interval considered before Primer3.
+pub struct TranscriptAssayPrimerIntervalEvidence {
+    pub evidence_id: String,
+    pub transcript_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub template_sha256: String,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub kind: TranscriptAssayPrimerIntervalEvidenceKind,
+    pub disposition: TranscriptAssayPrimerIntervalDisposition,
+    pub reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_feature_id: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Opt-in projection of current sequence annotations into primer-search space.
+pub struct TranscriptAssayProjectIntervalEvidencePolicy {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub known_variants: Option<TranscriptAssayPrimerIntervalDisposition>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeatmasker: Option<TranscriptAssayPrimerIntervalDisposition>,
+}
+
+pub(crate) fn default_cdna_similarity_min_alignment_bp() -> usize {
+    18
+}
+
+pub(crate) fn default_cdna_similarity_min_identity_fraction() -> f64 {
+    0.80
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Request for an engine-owned whole-cDNA similarity map producer.
+pub struct TranscriptAssayCdnaSimilarityMapBuildRequest {
+    pub seq_id: SeqId,
+    pub source_feature_id: usize,
+    pub target_resource_id: String,
+    /// Empty means every transcript resolved by the selected gene feature.
+    #[serde(default)]
+    pub transcript_ids: Vec<String>,
+    /// Optional explicit paralog identities. GENtle never infers paralogy from
+    /// sequence similarity alone.
+    #[serde(default)]
+    pub paralog_gene_ids: Vec<String>,
+    #[serde(default)]
+    pub paralog_gene_symbols: Vec<String>,
+    #[serde(default = "default_cdna_similarity_min_alignment_bp")]
+    pub min_alignment_bp: usize,
+    #[serde(default = "default_cdna_similarity_min_identity_fraction")]
+    pub min_identity_fraction: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<String>,
+}
+
+impl Default for TranscriptAssayCdnaSimilarityMapBuildRequest {
+    fn default() -> Self {
+        Self {
+            seq_id: String::new(),
+            source_feature_id: 0,
+            target_resource_id: String::new(),
+            transcript_ids: vec![],
+            paralog_gene_ids: vec![],
+            paralog_gene_symbols: vec![],
+            min_alignment_bp: default_cdna_similarity_min_alignment_bp(),
+            min_identity_fraction: default_cdna_similarity_min_identity_fraction(),
+            catalog_path: None,
+            cache_dir: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+/// Biological relationship assigned by the producer of a cDNA similarity map.
+pub enum TranscriptAssayCdnaSimilarityClassification {
+    IntendedTarget,
+    IntendedFamily,
+    SameGeneUnintended,
+    Paralog,
+    OtherUnintended,
+    #[default]
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+/// Advisory search-order treatment for one similarity interval.
+///
+/// V1 intentionally has no exclusion disposition: complete candidate-level
+/// cDNA and genomic specificity checks remain authoritative.
+pub enum TranscriptAssayCdnaSimilarityGuidance {
+    #[default]
+    Informative,
+    Deprioritize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// One target-transcript interval supported by whole-cDNA similarity evidence.
+pub struct TranscriptAssayCdnaSimilarityInterval {
+    pub interval_id: String,
+    pub transcript_id: String,
+    pub template_sha256: String,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub classification: TranscriptAssayCdnaSimilarityClassification,
+    pub guidance: TranscriptAssayCdnaSimilarityGuidance,
+    #[serde(default)]
+    pub subject_ids: Vec<String>,
+    #[serde(default)]
+    pub subject_gene_ids: Vec<String>,
+    #[serde(default)]
+    pub subject_gene_symbols: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub best_identity_fraction: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub best_query_coverage_fraction: Option<f64>,
+    pub basis: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Deterministic summary of one transcript query used to build a similarity map.
+pub struct TranscriptAssayCdnaSimilarityBlastRun {
+    pub transcript_id: String,
+    #[serde(default)]
+    pub equivalent_transcript_ids: Vec<String>,
+    pub template_sha256: String,
+    pub query_length_bp: usize,
+    pub hit_count: usize,
+    #[serde(default)]
+    pub effective_options: serde_json::Value,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Content-bound advisory map from a target cDNA to similar cDNA regions.
+pub struct TranscriptAssayCdnaSimilarityMap {
+    pub schema: String,
+    pub map_id: String,
+    pub target_space: String,
+    pub target_resource_id: String,
+    pub database_content_fingerprint: String,
+    pub blast_program: String,
+    pub blast_task: String,
+    pub blast_tool_version: String,
+    #[serde(default)]
+    pub blast_options: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_seq_id: Option<SeqId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_feature_id: Option<usize>,
+    #[serde(default)]
+    pub target_transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub target_gene_ids: Vec<String>,
+    #[serde(default)]
+    pub target_gene_symbols: Vec<String>,
+    #[serde(default)]
+    pub blast_runs: Vec<TranscriptAssayCdnaSimilarityBlastRun>,
+    #[serde(default)]
+    pub intervals: Vec<TranscriptAssayCdnaSimilarityInterval>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+/// Deterministic limits applied before and while Primer3 evaluates transcript assays.
+///
+/// These limits reduce computational freedom only. They never change the
+/// requested transcript coverage policy.
+pub struct TranscriptAssayPrimerSearchPolicy {
+    /// Optional advisory regional-similarity evidence used to order bounded
+    /// records. It never excludes intervals or replaces final specificity QA.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cdna_similarity_map: Option<TranscriptAssayCdnaSimilarityMapRef>,
+    /// Optional one-step producer. This and `cdna_similarity_map` are mutually
+    /// exclusive: callers either bind an existing artifact or ask GENtle to
+    /// produce one from a prepared resource during this design operation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build_cdna_similarity_map: Option<TranscriptAssayCdnaSimilarityMapBuildSource>,
+    #[serde(default, skip_serializing_if = "Primer3ChemistryProfile::is_default")]
+    pub primer3_chemistry: Primer3ChemistryProfile,
+    /// Explicit transcript-local evidence, already bound by the operation
+    /// digest. Hard exclusions become Primer3 excluded regions; soft evidence
+    /// changes deterministic record ordering only.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub interval_evidence: Vec<TranscriptAssayPrimerIntervalEvidence>,
+    /// Optional projection of current variation and RepeatMasker features.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_interval_evidence: Option<TranscriptAssayProjectIntervalEvidencePolicy>,
+    /// Optional upper bound on either contiguous side of a junction-spanning
+    /// primer. This complements the existing minimum 3'/5' overlaps and is
+    /// evaluated on each realized primer, not inferred from a label.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_junction_single_side_match_bp: Option<usize>,
+    /// Optional genomic-carryover design gate. A retained pair must either
+    /// contain a junction-spanning primer or flank an annotated intron at
+    /// least this long between its two cDNA binding sites.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_intervening_intron_bp: Option<usize>,
+    /// Largest transcript-local interval offered to one primer side in one
+    /// Primer3 input record.
+    pub max_primer_window_bp: usize,
+    /// Maximum deterministic candidate-pair combinations in one record.
+    pub max_candidate_pairs_per_record: usize,
+    /// Maximum records retained for one biological target/reaction.
+    pub max_records_per_target: usize,
+    /// Maximum deterministic candidate-pair combinations across the operation.
+    pub max_candidate_pairs_total: usize,
+    /// Homopolymer runs longer than this are excluded during search planning.
+    pub max_homopolymer_run_bp: usize,
+    /// Emit a suspicious-runtime warning after this elapsed time when the
+    /// uncertain wall-clock projection exceeds the warning threshold.
+    pub runtime_warning_after_secs: u64,
+    pub runtime_warning_projected_total_secs: u64,
+    /// Stop the current record after this elapsed time when the uncertain
+    /// wall-clock projection exceeds the reduction threshold.
+    pub runtime_reduce_after_secs: u64,
+    pub runtime_reduce_projected_total_secs: u64,
+    /// Stop a record that has emitted no usable progress for this long.
+    pub runtime_no_progress_reduce_after_secs: u64,
+    /// Continue with other precomputed bounded records after a runtime
+    /// anomaly. Strict biological coverage is still evaluated afterwards.
+    pub continue_after_runtime_reduction: bool,
+}
+
+impl Default for TranscriptAssayPrimerSearchPolicy {
+    fn default() -> Self {
+        Self {
+            cdna_similarity_map: None,
+            build_cdna_similarity_map: None,
+            primer3_chemistry: Primer3ChemistryProfile::default(),
+            interval_evidence: vec![],
+            project_interval_evidence: None,
+            max_junction_single_side_match_bp: None,
+            min_intervening_intron_bp: None,
+            max_primer_window_bp: 96,
+            max_candidate_pairs_per_record: 250_000,
+            max_records_per_target: 12,
+            max_candidate_pairs_total: 2_000_000,
+            max_homopolymer_run_bp: 6,
+            runtime_warning_after_secs: 10 * 60,
+            runtime_warning_projected_total_secs: 5 * 60 * 60,
+            runtime_reduce_after_secs: 30 * 60,
+            runtime_reduce_projected_total_secs: 10 * 60 * 60,
+            runtime_no_progress_reduce_after_secs: 5 * 60 * 60,
+            continue_after_runtime_reduction: true,
+        }
+    }
+}
+
+impl TranscriptAssayPrimerSearchPolicy {
+    pub fn is_default(&self) -> bool {
+        self == &Self::default()
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Pre-Primer3 disposition of a bounded transcript-assay search plan.
+pub enum TranscriptAssayPrimerSearchPlanStatus {
+    #[default]
+    Ready,
+    SearchSpaceTooBroad,
+    NoAdmissibleRegions,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One allowed or rejected transcript-local primer interval.
+pub struct TranscriptAssayPrimerSearchInterval {
+    pub target_id: String,
+    pub representative_transcript_id: String,
+    pub side: String,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub reason_code: String,
+    pub reason: String,
+    #[serde(default)]
+    pub exon_ordinals: Vec<usize>,
+    #[serde(default)]
+    pub junction_ids: Vec<String>,
+    pub estimated_candidate_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Exact Primer3 field emitted for one bounded input record.
+pub struct TranscriptAssayPrimer3Field {
+    pub name: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One independently bounded Primer3 record.
+pub struct TranscriptAssayPrimerSearchRecord {
+    pub search_record_id: String,
+    pub target_id: String,
+    pub representative_transcript_id: String,
+    pub template_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_reaction_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub junction_id: Option<String>,
+    pub left_interval: TranscriptAssayPrimerSearchInterval,
+    pub right_interval: TranscriptAssayPrimerSearchInterval,
+    pub estimated_left_candidate_count: usize,
+    pub estimated_right_candidate_count: usize,
+    pub estimated_candidate_pair_count: usize,
+    /// Conservative product of all primer placements Primer3 may enumerate
+    /// inside the two allowed windows. This is reported separately from the
+    /// quality-filtered estimate used by the declared search budget.
+    pub candidate_pair_search_space_upper_bound: usize,
+    /// Advisory similarity-map intervals overlapping either primer window.
+    #[serde(default)]
+    pub similarity_risk_interval_ids: Vec<String>,
+    /// Sum of overlap with advisory `deprioritize` intervals. This ranks
+    /// records only and is not a biological or specificity verdict.
+    #[serde(default)]
+    pub similarity_risk_overlap_bp: usize,
+    /// Unified soft-risk projection across all pre-Primer3 evidence sources.
+    #[serde(default)]
+    pub design_risk_interval_ids: Vec<String>,
+    #[serde(default)]
+    pub design_risk_overlap_bp: usize,
+    #[serde(default)]
+    pub primer3_fields: Vec<TranscriptAssayPrimer3Field>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One runtime record skipped after Primer3 progress became anomalous.
+pub struct TranscriptAssayPrimerSearchRuntimeReduction {
+    pub search_record_id: String,
+    pub target_id: String,
+    pub reason_code: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Inspectable, byte-stable pre-Primer3 search plan.
+pub struct TranscriptAssayPrimerSearchPlan {
+    pub schema: String,
+    pub operation_sha256: String,
+    pub policy: TranscriptAssayPrimerSearchPolicy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cdna_similarity_map_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cdna_similarity_map_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cdna_similarity_database_content_fingerprint: Option<String>,
+    #[serde(default)]
+    pub similarity_guided_record_count: usize,
+    #[serde(default)]
+    pub interval_evidence: Vec<TranscriptAssayPrimerIntervalEvidence>,
+    #[serde(default)]
+    pub hard_exclusion_interval_count: usize,
+    #[serde(default)]
+    pub soft_deprioritization_interval_count: usize,
+    #[serde(default)]
+    pub records: Vec<TranscriptAssayPrimerSearchRecord>,
+    #[serde(default)]
+    pub rejected_intervals: Vec<TranscriptAssayPrimerSearchInterval>,
+    pub target_count: usize,
+    pub planned_target_count: usize,
+    pub estimated_candidate_pair_count_total: usize,
+    /// Sum of the per-record conservative Primer3 search-space bounds. Split
+    /// records deliberately overlap, so this measures executed record work,
+    /// not unique primer placements.
+    pub candidate_pair_search_space_upper_bound_total: usize,
+    #[serde(default)]
+    pub blocked_target_ids: Vec<String>,
+    #[serde(default)]
+    pub status: TranscriptAssayPrimerSearchPlanStatus,
+    #[serde(default)]
+    pub runtime_reductions: Vec<TranscriptAssayPrimerSearchRuntimeReduction>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Cheap annotation/geometry assessment for one first-end x terminal-end reaction.
+pub struct TranscriptAssayEndReactionFeasibility {
+    pub reaction_id: String,
+    pub first_end_class_id: String,
+    pub terminal_end_class_id: String,
+    pub representative_transcript_id: String,
+    #[serde(default)]
+    pub supported_transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub supported_equivalence_group_ids: Vec<String>,
+    pub template_length_bp: usize,
+    pub forward_window_start_0based: usize,
+    pub forward_window_end_0based_exclusive: usize,
+    pub reverse_window_start_0based: usize,
+    pub reverse_window_end_0based_exclusive: usize,
+    pub forward_window_length_bp: usize,
+    pub reverse_window_length_bp: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minimum_possible_amplicon_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximum_possible_amplicon_bp: Option<usize>,
+    #[serde(default)]
+    pub status: TranscriptAssayEndReactionFeasibilityStatus,
+    pub primer3_warranted: bool,
+    #[serde(default)]
+    pub blockers: Vec<TranscriptAssayFeasibilityBlocker>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Deterministic, read-only endpoint-matrix feasibility report.
+///
+/// This report proves only hard annotation/geometry exclusions. A
+/// `primer_search_required` row is not a prediction that Primer3 will find a
+/// thermodynamically suitable pair.
+pub struct TranscriptAssayPanelFeasibilityReport {
+    pub schema: String,
+    /// SHA-256 of the canonical design operation. The output-only `path` is
+    /// normalized away so the same computation has stable provenance across
+    /// export directories. This is not an execution-approval digest.
+    pub operation_sha256: String,
+    pub source_seq_id: String,
+    pub source_feature_id: usize,
+    pub group_label: String,
+    pub strand: String,
+    #[serde(default)]
+    pub assay_kind: TranscriptAssayKind,
+    #[serde(default)]
+    pub objective: TranscriptAssayPanelObjective,
+    #[serde(default)]
+    pub coverage_policy: TranscriptAssayCoveragePolicy,
+    #[serde(default)]
+    pub coverage_universe: TranscriptAssayCoverageUniverse,
+    #[serde(default)]
+    pub coverage_resolution: TranscriptAssayCoverageResolution,
+    pub transcript_count: usize,
+    pub equivalence_group_count: usize,
+    pub first_end_class_count: usize,
+    pub terminal_end_class_count: usize,
+    pub reaction_count: usize,
+    pub minimum_forward_primer_bp: usize,
+    pub minimum_reverse_primer_bp: usize,
+    pub requested_min_amplicon_bp: usize,
+    pub requested_max_amplicon_bp: usize,
+    /// Effective maximum passed to Primer3 for each feasible endpoint reaction.
+    pub primer3_candidate_pair_limit_per_reaction: usize,
+    #[serde(default)]
+    pub end_classes: Vec<TranscriptAssayEndClass>,
+    #[serde(default)]
+    pub reactions: Vec<TranscriptAssayEndReactionFeasibility>,
+    #[serde(default)]
+    pub structurally_impossible_reaction_ids: Vec<String>,
+    #[serde(default)]
+    pub structurally_impossible_equivalence_group_ids: Vec<String>,
+    pub primer3_warranted_reaction_count: usize,
+    /// Sum of representative cDNA template lengths over warranted reactions.
+    pub primer3_warranted_template_bp_total: usize,
+    /// Longest representative cDNA template still requiring Primer3.
+    pub primer3_warranted_max_template_bp: usize,
+    /// Warranted reaction count multiplied by the approved per-reaction limit.
+    pub primer3_candidate_pair_request_upper_bound: usize,
+    /// Sequence-aware bounded records that Primer3 would receive.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_plan: Option<TranscriptAssayPrimerSearchPlan>,
+    pub execution_recommendation: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Explicit gel-band prediction for one reaction/assay against one transcript.
+pub struct TranscriptAssayBandSizeRow {
+    pub reaction_id: String,
+    pub assay_id: String,
+    pub transcript_id: String,
+    pub product_count: usize,
+    #[serde(default)]
+    pub predicted_band_sizes_bp: Vec<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Procurement-oriented primer row. No random identifier is used.
+pub struct TranscriptAssayOrderPrimer {
+    pub line_id: String,
+    pub assay_id: String,
+    pub assay_rank: usize,
+    pub name: String,
+    pub role: String,
+    pub sequence_5_to_3: String,
+    pub length_nt: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Follow-up route for prepared-genome BLAST/e-PCR confirmation.
+pub struct TranscriptAssaySpecificityFollowup {
+    pub assay_id: String,
+    pub local_cdna_matrix_status: String,
+    pub genomic_confirmation_status: String,
+    pub shell_command_template: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Prepared-genome BLAST assessment attached to one selected transcript assay.
+pub struct TranscriptAssayGenomicSpecificityAssessment {
+    pub assay_id: String,
+    pub assay_rank: usize,
+    pub status: String,
+    #[serde(default)]
+    pub report: PrimerSpecificityReport,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Provenance source used while resolving junction evidence.
+pub struct TranscriptAssayPanelSourceProvenance {
+    pub source_kind: String,
+    pub source_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Machine-readable annotation and assay-input provenance.
+pub struct TranscriptAssayPanelProvenance {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotation_release: Option<String>,
+    #[serde(default)]
+    pub transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub junction_sources: Vec<TranscriptAssayPanelSourceProvenance>,
+    pub primer_backend: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Which annotated transcript set is mandatory for one assay-panel plan.
+///
+/// This axis is independent of both the panel-selection objective and the
+/// strict/best-effort coverage policy. Existing requests default to all
+/// annotated exact-cDNA classes.
+pub enum TranscriptAssayCoverageUniverseKind {
+    #[default]
+    AllAnnotatedCdnaClasses,
+    ExplicitTranscripts,
+    UniprotSupportedIsoforms,
+}
+
+impl TranscriptAssayCoverageUniverseKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::AllAnnotatedCdnaClasses => "all_annotated_cdna_classes",
+            Self::ExplicitTranscripts => "explicit_transcripts",
+            Self::UniprotSupportedIsoforms => "uniprot_supported_isoforms",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Content-bound evidence source defining a non-default transcript universe.
+pub struct TranscriptAssayCoverageSourceRef {
+    pub source_kind: String,
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_schema: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Additive target-universe request for transcript assay design.
+pub struct TranscriptAssayCoverageUniverse {
+    #[serde(default)]
+    pub kind: TranscriptAssayCoverageUniverseKind,
+    /// Required annotation transcript ids. For a UniProt universe GENtle
+    /// derives these from the content-bound audit sources and verifies any
+    /// caller-supplied list against that derivation.
+    #[serde(default)]
+    pub required_transcript_ids: Vec<String>,
+    /// Normalized authoritative targets for a UniProt-supported universe.
+    /// Callers may omit this and let GENtle derive it from content-bound audit
+    /// reports; once normalized it participates in approval/operation digests.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_uniprot_isoforms: Vec<TranscriptAssayUniprotIsoformTargetRef>,
+    #[serde(default)]
+    pub sources: Vec<TranscriptAssayCoverageSourceRef>,
+}
+
+impl TranscriptAssayCoverageUniverse {
+    pub fn is_default(&self) -> bool {
+        self == &Self::default()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(default)]
+/// Content-bound UniProt protein-isoform identity used as a coverage target.
+pub struct TranscriptAssayUniprotIsoformTargetRef {
+    pub entry_id: String,
+    pub isoform_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    pub is_canonical: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Resolution of one requested coverage target against current annotation.
+pub enum TranscriptAssayCoverageTargetStatus {
+    #[default]
+    Included,
+    Unresolved,
+    Ambiguous,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Whether selected assays detect at least one mapped cDNA for a target.
+pub enum TranscriptAssayCoverageEvaluationStatus {
+    Covered,
+    Uncovered,
+    #[default]
+    NotEvaluated,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Whether the selected panel separates one protein target from every other.
+pub enum TranscriptAssayCoverageDistinctionStatus {
+    Distinguished,
+    NotDistinguished,
+    NotApplicableSingleTarget,
+    #[default]
+    NotEvaluated,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One explicit or UniProt-supported transcript target and its resolution.
+pub struct TranscriptAssayCoverageTarget {
+    pub target_id: String,
+    pub requested_transcript_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uniprot_entry_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uniprot_isoform_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uniprot_isoform_name: Option<String>,
+    #[serde(default)]
+    pub is_canonical_uniprot_target: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_transcript_id: Option<String>,
+    #[serde(default)]
+    pub mapped_transcript_ids: Vec<String>,
+    /// Inventory records whose exact cDNA digest matched an assessed local
+    /// template, including off-locus records represented by the same cDNA.
+    #[serde(default)]
+    pub cdna_digest_matched_transcript_ids: Vec<String>,
+    /// Linked records that could not be assessed against a local cDNA template.
+    #[serde(default)]
+    pub unassessed_transcript_ids: Vec<String>,
+    /// Records whose cDNA coverage may be inferred by digest identity but whose
+    /// distinct genomic locus has not thereby been assessed.
+    #[serde(default)]
+    pub genomic_specificity_unassessed_transcript_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub equivalence_group_id: Option<String>,
+    #[serde(default)]
+    pub equivalence_group_ids: Vec<String>,
+    #[serde(default)]
+    pub source_report_ids: Vec<String>,
+    #[serde(default)]
+    pub uniprot_entry_ids: Vec<String>,
+    #[serde(default)]
+    pub uniprot_isoform_ids: Vec<String>,
+    #[serde(default)]
+    pub audit_statuses: Vec<String>,
+    #[serde(default)]
+    pub status: TranscriptAssayCoverageTargetStatus,
+    #[serde(default)]
+    pub coverage_status: TranscriptAssayCoverageEvaluationStatus,
+    #[serde(default)]
+    pub distinction_status: TranscriptAssayCoverageDistinctionStatus,
+    #[serde(default)]
+    pub covering_assay_ids: Vec<String>,
+    #[serde(default)]
+    pub not_distinguished_from_target_ids: Vec<String>,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(default)]
+/// One authoritative linked-transcript inventory record projected onto the
+/// exact mature-cDNA equivalence groups assessed by a panel.
+pub struct TranscriptAssayLinkedTranscriptResolution {
+    pub inventory_id: String,
+    pub target_id: String,
+    pub entry_id: String,
+    pub isoform_id: String,
+    /// Exact versioned identifier from the inventory source.
+    pub transcript_id: String,
+    pub mature_cdna_sha256: String,
+    /// Local annotation records with the same exact mature-cDNA digest.
+    #[serde(default)]
+    pub matched_local_transcript_ids: Vec<String>,
+    /// Exact mature-cDNA group in the assessed panel. Absence means the
+    /// inventory record cannot support a linked-sequence coverage claim.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub equivalence_group_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Auditable resolution of the requested coverage universe.
+pub struct TranscriptAssayCoverageResolution {
+    pub universe: TranscriptAssayCoverageUniverse,
+    /// True only when resolution consumed a validated, content-bound
+    /// `gentle.uniprot_linked_transcript_inventory.v1` source.
+    #[serde(default)]
+    pub linked_transcript_inventory_authoritative: bool,
+    #[serde(default)]
+    pub linked_transcript_inventory_ids: Vec<String>,
+    /// Record-level digest-to-panel joins for authoritative linked-transcript
+    /// inventories. Legacy payloads omit this and therefore cannot establish
+    /// linked-record or distinct-linked-cDNA coverage.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub linked_transcript_resolutions: Vec<TranscriptAssayLinkedTranscriptResolution>,
+    pub annotated_transcript_count: usize,
+    /// Distinct exact mature-cDNA groups in the complete annotation universe.
+    /// `None` distinguishes legacy payloads from a genuine empty annotation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotated_equivalence_group_count: Option<usize>,
+    pub required_target_count: usize,
+    #[serde(default)]
+    pub included_transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub excluded_annotated_transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub included_equivalence_group_ids: Vec<String>,
+    #[serde(default)]
+    pub excluded_annotated_equivalence_group_ids: Vec<String>,
+    #[serde(default)]
+    pub unresolved_target_ids: Vec<String>,
+    #[serde(default)]
+    pub ambiguous_target_ids: Vec<String>,
+    #[serde(default)]
+    pub targets: Vec<TranscriptAssayCoverageTarget>,
+    #[serde(default)]
+    pub uncovered_target_ids: Vec<String>,
+    #[serde(default)]
+    pub unresolved_target_pairs: Vec<TranscriptAssayCoverageUnresolvedTargetPair>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// A pair of mandatory protein targets not separated by the selected panel.
+pub struct TranscriptAssayCoverageUnresolvedTargetPair {
+    pub left_target_id: String,
+    pub right_target_id: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Coverage policy for transcript assay-panel selection.
+pub enum TranscriptAssayCoveragePolicy {
+    /// Refuse a report when the requested objective cannot cover all classes.
+    #[default]
+    RequireAll,
+    /// Return the best explicit partial result and enumerate what remains uncovered.
+    BestEffort,
+}
+
+impl TranscriptAssayCoveragePolicy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::RequireAll => "require_all",
+            Self::BestEffort => "best_effort",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Product-level outcome for one assay against one transcript equivalence class.
+pub enum TranscriptAssayDetectionStatus {
+    #[default]
+    NoProduct,
+    SingleProduct,
+    MultipleProducts,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Interpretation of selected assays for one transcript row.
+pub enum TranscriptAssayMemberStatus {
+    Specific,
+    SharedFamily,
+    #[default]
+    NoProduct,
+    /// Members have byte-identical mature cDNA and cannot be separated by sequence assays.
+    NotDistinguishableBetweenMembers,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Whether the selected panel satisfies its requested objective.
+pub enum TranscriptAssayPanelCompletionStatus {
+    #[default]
+    Complete,
+    Partial,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One transcript member of a byte-identical mature-cDNA equivalence class.
+pub struct TranscriptAssayEquivalenceMember {
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub strand: String,
+    pub cdna_length_bp: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Exact mature-cDNA identity class used as the unit of assay distinguishability.
+pub struct TranscriptAssayEquivalenceGroup {
+    pub equivalence_group_id: String,
+    pub cdna_sha256: String,
+    pub cdna_length_bp: usize,
+    pub representative_transcript_id: String,
+    pub member_count: usize,
+    #[serde(default)]
+    pub members: Vec<TranscriptAssayEquivalenceMember>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One selected transcript assay and the exact cDNA classes it detects once.
+pub struct TranscriptAssayPanelAssay {
+    pub assay_id: String,
+    pub rank: usize,
+    #[serde(default)]
+    pub assay_kind: TranscriptAssayKind,
+    pub design_equivalence_group_id: String,
+    pub design_transcript_id: String,
+    /// Canonical primer-only representation shared by all assay kinds.
+    #[serde(default)]
+    pub primer_pair: PrimerDesignPairRecord,
+    /// Internal hydrolysis probe; absent for endpoint and SYBR modes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe: Option<PrimerDesignPrimerRecord>,
+    /// Backward-compatible TaqMan record. Existing TaqMan callers still receive
+    /// this object; primer-only modes do not fabricate one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assay: Option<QpcrAssayRecord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_reaction_id: Option<String>,
+    /// All annotated first-end x terminal-end reactions represented by this
+    /// physical primer pair. `end_reaction_id` retains the first entry for
+    /// readers predating this additive field.
+    #[serde(default)]
+    pub end_reaction_ids: Vec<String>,
+    #[serde(default)]
+    pub junction_matches: Vec<TranscriptAssayJunctionMatch>,
+    #[serde(default)]
+    pub single_product_equivalence_group_ids: Vec<String>,
+    #[serde(default)]
+    pub single_product_coverage_target_ids: Vec<String>,
+    /// Redundant, communication-oriented projection of this pair plus its
+    /// transcript products and provenance. Older reports deserialize with an
+    /// empty summary; newly generated reports always populate it.
+    #[serde(default)]
+    pub primer_pair_summary: PrimerPairCommunicationSummary,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One transcript-by-assay matrix cell.
+pub struct TranscriptAssayDetectionCell {
+    pub assay_id: String,
+    pub equivalence_group_id: String,
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    #[serde(default)]
+    pub status: TranscriptAssayDetectionStatus,
+    pub detail_status: String,
+    pub product_count: usize,
+    #[serde(default)]
+    pub amplicon_lengths_bp: Vec<usize>,
+    pub exact_negative_prefiltered: bool,
+    #[serde(default)]
+    pub oligo_dt_5prime_reach: TranscriptAssayOligoDtReachAssessment,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Final interpretation row for one transcript model.
+pub struct TranscriptAssayPanelTranscriptRow {
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub equivalence_group_id: String,
+    #[serde(default)]
+    pub status: TranscriptAssayMemberStatus,
+    #[serde(default)]
+    pub covering_assay_ids: Vec<String>,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One still-unresolved pair of distinguishable cDNA equivalence classes.
+pub struct TranscriptAssayUnresolvedPair {
+    pub left_equivalence_group_id: String,
+    pub right_equivalence_group_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Primer backend used while generating candidates from one representative cDNA.
+pub struct TranscriptAssayPanelBackendRun {
+    pub equivalence_group_id: String,
+    pub transcript_id: String,
+    pub backend: PrimerDesignBackendInfo,
+    pub generated_candidate_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Persisted, matrix-centered transcript assay panel report.
+pub struct TranscriptAssayPanelReport {
+    pub schema: String,
+    pub report_id: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    /// Digest of the normalized operation used to produce this report.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub operation_sha256: String,
+    pub source_seq_id: String,
+    pub source_feature_id: usize,
+    /// Genome anchor captured when the panel was designed. Legacy reports
+    /// deserialize without it and may resolve current project metadata only as
+    /// a fallback.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_genome_anchor: Option<SequenceGenomeAnchorSummary>,
+    pub group_label: String,
+    pub strand: String,
+    #[serde(default)]
+    pub assay_kind: TranscriptAssayKind,
+    #[serde(default)]
+    pub cdna_synthesis: TranscriptAssayCdnaSynthesis,
+    #[serde(default)]
+    pub objective: TranscriptAssayPanelObjective,
+    #[serde(default)]
+    pub coverage_policy: TranscriptAssayCoveragePolicy,
+    #[serde(default)]
+    pub coverage_universe: TranscriptAssayCoverageUniverse,
+    #[serde(default)]
+    pub coverage_resolution: TranscriptAssayCoverageResolution,
+    #[serde(
+        default,
+        skip_serializing_if = "TranscriptAssayUseTier::is_unspecified"
+    )]
+    pub assay_tier: TranscriptAssayUseTier,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub practicality_policy: Option<TranscriptAssayPracticalityPolicy>,
+    #[serde(default)]
+    pub completion_status: TranscriptAssayPanelCompletionStatus,
+    /// Present only for the bounded informative objective.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub informative_selection: Option<TranscriptAssayInformativeSelectionReport>,
+    /// Present only on a panel derived by the approval-bound fallback wrapper.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_provenance: Option<TranscriptAssayPanelFallbackProvenance>,
+    /// Every informative fallback carries either one combined virtual gel or
+    /// an explicit typed reason that no predicted products could be rendered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_virtual_gel: Option<TranscriptAssayFallbackVirtualGel>,
+    pub transcript_count: usize,
+    pub equivalence_group_count: usize,
+    pub candidate_assay_count: usize,
+    pub selected_assay_count: usize,
+    pub exact_negative_prefilter_count: usize,
+    pub full_assay_evaluation_count: usize,
+    pub min_amplicon_bp: usize,
+    pub max_amplicon_bp: usize,
+    pub max_mismatches: usize,
+    pub require_3prime_exact_bases: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oligo_dt_5prime_risk_threshold_bp: Option<usize>,
+    #[serde(default)]
+    pub equivalence_groups: Vec<TranscriptAssayEquivalenceGroup>,
+    #[serde(default)]
+    pub selected_assays: Vec<TranscriptAssayPanelAssay>,
+    /// Accepted candidate-level alternatives that are non-dominated across
+    /// coverage, ambiguity, practicality, ranking, Tm balance, and pair
+    /// complementarity. Selection still follows the declared panel objective.
+    #[serde(default)]
+    pub pareto_frontier: PrimerPairParetoFrontier,
+    #[serde(default)]
+    pub detection_matrix: Vec<TranscriptAssayDetectionCell>,
+    #[serde(default)]
+    pub transcript_rows: Vec<TranscriptAssayPanelTranscriptRow>,
+    #[serde(default)]
+    pub uncovered_equivalence_group_ids: Vec<String>,
+    #[serde(default)]
+    pub uncovered_coverage_target_ids: Vec<String>,
+    #[serde(default)]
+    pub unresolved_group_pairs: Vec<TranscriptAssayUnresolvedPair>,
+    #[serde(default)]
+    pub unresolved_coverage_target_pairs: Vec<TranscriptAssayCoverageUnresolvedTargetPair>,
+    #[serde(default)]
+    pub backend_runs: Vec<TranscriptAssayPanelBackendRun>,
+    /// Geometry-only preflight used before endpoint Primer3 execution.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feasibility: Option<TranscriptAssayPanelFeasibilityReport>,
+    /// Sequence-aware bounded Primer3 records used for this run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_plan: Option<TranscriptAssayPrimerSearchPlan>,
+    /// Embedded only when this design operation produced the advisory map.
+    /// File-referenced maps remain external content-bound artifacts identified
+    /// by the search plan.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generated_cdna_similarity_map: Option<Box<TranscriptAssayCdnaSimilarityMap>>,
+    #[serde(default)]
+    pub end_classes: Vec<TranscriptAssayEndClass>,
+    #[serde(default)]
+    pub end_reactions: Vec<TranscriptAssayEndReaction>,
+    #[serde(default)]
+    pub band_size_matrix: Vec<TranscriptAssayBandSizeRow>,
+    #[serde(default)]
+    pub junction_evaluations: Vec<TranscriptAssayJunctionEvaluation>,
+    #[serde(default)]
+    pub short_sybr_junction_assays: Vec<TranscriptAssayPanelAssay>,
+    #[serde(default)]
+    pub order_ready_primers: Vec<TranscriptAssayOrderPrimer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub specificity_request: Option<TranscriptAssaySpecificityRequest>,
+    #[serde(default)]
+    pub genomic_specificity_assessments: Vec<TranscriptAssayGenomicSpecificityAssessment>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub specificity_acceptance: Option<TranscriptAssayPanelSpecificityAcceptance>,
+    #[serde(default)]
+    pub specificity_followups: Vec<TranscriptAssaySpecificityFollowup>,
+    #[serde(default)]
+    pub provenance: TranscriptAssayPanelProvenance,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Pure-read request joining one exported isoform ledger with persisted assay panels.
+pub struct GeneTranscriptAssayRoutineRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub routine_id: Option<String>,
+    pub label: String,
+    pub isoform_evidence_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_isoform_evidence_sha256: Option<String>,
+    pub transcript_assay_panel_report_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneTranscriptAssayRoutinePanelRole {
+    CommonControl,
+    JunctionValidation,
+    EndpointStructure,
+    QuantitativeValidation,
+    #[default]
+    Other,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GeneTranscriptAssayRoutinePanelSummary {
+    pub role: GeneTranscriptAssayRoutinePanelRole,
+    pub report_id: String,
+    pub report_schema: String,
+    pub report_digest: String,
+    pub assay_kind: TranscriptAssayKind,
+    pub objective: TranscriptAssayPanelObjective,
+    pub assay_tier: TranscriptAssayUseTier,
+    pub completion_status: TranscriptAssayPanelCompletionStatus,
+    pub selected_assay_ids: Vec<String>,
+    pub selected_assay_count: usize,
+    pub end_reaction_count: usize,
+    pub band_size_row_count: usize,
+    pub junction_evaluation_count: usize,
+    pub uncovered_equivalence_group_ids: Vec<String>,
+    pub unresolved_group_pairs: Vec<TranscriptAssayUnresolvedPair>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub specificity_status: Option<TranscriptAssayPanelSpecificityAcceptanceStatus>,
+    pub specificity_accepted: bool,
+    pub specificity_issue_messages: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GeneTranscriptAssayRoutineOrderPrimer {
+    pub source_report_id: String,
+    pub source_report_digest: String,
+    pub primer: TranscriptAssayOrderPrimer,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Review manifest joining existing evidence and assay reports without rerunning them.
+pub struct GeneTranscriptAssayRoutineReport {
+    pub schema: String,
+    pub routine_id: String,
+    pub label: String,
+    pub seq_id: String,
+    pub gene_symbol: String,
+    pub panel_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotation_release: Option<String>,
+    pub isoform_evidence_schema: String,
+    pub isoform_evidence_path: String,
+    pub isoform_evidence_sha256: String,
+    pub transcript_metrics: Vec<GeneLocusTranscriptMetrics>,
+    pub exon_candidates: Vec<GeneIsoformExonFamilyRow>,
+    pub junction_candidates: Vec<GeneIsoformJunctionRow>,
+    pub assay_panels: Vec<GeneTranscriptAssayRoutinePanelSummary>,
+    pub order_ready_primers: Vec<GeneTranscriptAssayRoutineOrderPrimer>,
+    pub uncovered_transcript_class_ids: Vec<String>,
+    pub recommended_experimental_sequence: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+/// Engine-selected depth of one gene-centred isoform-assay study.
+pub enum GeneIsoformAssayStudyProfile {
+    #[default]
+    RoutineCommonRegionScreen,
+    TargetedJunctionValidation,
+    IsoformDiscrimination,
+    ComprehensiveIsoformDossier,
+    LongRangeStructureDiscovery,
+}
+
+impl GeneIsoformAssayStudyProfile {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::RoutineCommonRegionScreen => "routine_common_region_screen",
+            Self::TargetedJunctionValidation => "targeted_junction_validation",
+            Self::IsoformDiscrimination => "isoform_discrimination",
+            Self::ComprehensiveIsoformDossier => "comprehensive_isoform_dossier",
+            Self::LongRangeStructureDiscovery => "long_range_structure_discovery",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Explicit scientific priority supplied independently from the gene symbol.
+pub enum GeneIsoformAssayPriorPriority {
+    #[default]
+    Routine,
+    Elevated,
+    High,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+/// Versioned, non-weighted decision policy for gene isoform assay planning.
+pub struct GeneIsoformAssayStudyPolicy {
+    pub schema: String,
+    pub policy_version: String,
+    pub min_equivalence_groups_for_discrimination: usize,
+    pub min_equivalence_groups_for_comprehensive: usize,
+    pub min_responsive_regions_for_targeted: usize,
+    pub min_responsive_regions_for_comprehensive: usize,
+    pub min_abs_regional_effect: f64,
+    pub poor_probe_coverage_fraction: f64,
+    pub include_common_control: bool,
+    pub include_endpoint_for_comprehensive: bool,
+    pub short_min_amplicon_bp: usize,
+    pub short_max_amplicon_bp: usize,
+    pub endpoint_min_amplicon_bp: usize,
+    pub endpoint_preferred_max_amplicon_bp: usize,
+    pub endpoint_max_amplicon_bp: usize,
+    /// Strict remains the backward-compatible default. Partial endpoint
+    /// matrices require an explicit best-effort policy in the approved plan.
+    #[serde(default)]
+    pub endpoint_coverage_policy: TranscriptAssayCoveragePolicy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oligo_dt_5prime_risk_threshold_bp: Option<usize>,
+}
+
+impl Default for GeneIsoformAssayStudyPolicy {
+    fn default() -> Self {
+        Self {
+            schema: "gentle.gene_isoform_assay_study_policy.v1".to_string(),
+            policy_version: "1".to_string(),
+            min_equivalence_groups_for_discrimination: 3,
+            min_equivalence_groups_for_comprehensive: 5,
+            min_responsive_regions_for_targeted: 1,
+            min_responsive_regions_for_comprehensive: 3,
+            min_abs_regional_effect: 0.5,
+            poor_probe_coverage_fraction: 0.5,
+            include_common_control: true,
+            include_endpoint_for_comprehensive: true,
+            short_min_amplicon_bp: 70,
+            short_max_amplicon_bp: 250,
+            endpoint_min_amplicon_bp: 200,
+            endpoint_preferred_max_amplicon_bp: 2_000,
+            endpoint_max_amplicon_bp: 10_000,
+            endpoint_coverage_policy: TranscriptAssayCoveragePolicy::RequireAll,
+            oligo_dt_5prime_risk_threshold_bp: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One caller-declared array contrast whose condition labels are matched exactly.
+pub struct GeneIsoformAssayStudyContrast {
+    pub contrast_id: String,
+    #[serde(default)]
+    pub condition_labels: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One content-bound evidence input retained beside the study decision.
+pub struct GeneIsoformAssayStudyInputRef {
+    pub input_kind: String,
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_schema: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Explicit user selection that never erases GENtle's automatic recommendation.
+pub struct GeneIsoformAssayStudyOverride {
+    pub selected_profile: GeneIsoformAssayStudyProfile,
+    pub reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Human-authored observation retained as unvalidated input to a later iteration.
+pub struct GeneIsoformAssayStudyObservation {
+    pub observation_id: String,
+    pub statement: String,
+    pub source: String,
+    pub validation_status: String,
+    #[serde(default)]
+    pub related_assay_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Optional content-bound parent plan for iterative assay refinement.
+pub struct GeneIsoformAssayPriorPlanRef {
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+/// Fully explicit request for a pure gene isoform-assay planning operation.
+pub struct GeneIsoformAssayStudyPlanRequest {
+    pub schema: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_id: Option<String>,
+    pub label: String,
+    pub isoform_evidence_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_isoform_evidence_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub isoform_evidence_report_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub isoform_evidence_schema: Option<String>,
+    #[serde(default)]
+    pub junction_evidence: Vec<GeneIsoformAssayStudyInputRef>,
+    #[serde(default)]
+    pub contrasts: Vec<GeneIsoformAssayStudyContrast>,
+    #[serde(default)]
+    pub prior_priority: GeneIsoformAssayPriorPriority,
+    #[serde(default)]
+    pub policy: GeneIsoformAssayStudyPolicy,
+    /// Optional target universe applied independently to every objective in
+    /// this named plan. Run separate named plans to compare alternatives.
+    #[serde(default)]
+    pub coverage_universe: TranscriptAssayCoverageUniverse,
+    /// Optional approval-bound recovery for a strict one-per-class design.
+    /// Omission preserves the legacy fail-closed behavior (`mode=never`).
+    #[serde(default)]
+    pub fallback_submission: TranscriptAssayFallbackSubmissionPolicy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_override: Option<GeneIsoformAssayStudyOverride>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prior_plan: Option<GeneIsoformAssayPriorPlanRef>,
+    #[serde(default)]
+    pub observations: Vec<GeneIsoformAssayStudyObservation>,
+    #[serde(default)]
+    pub retained_assay_ids: Vec<String>,
+}
+
+impl Default for GeneIsoformAssayStudyPlanRequest {
+    fn default() -> Self {
+        Self {
+            schema: "gentle.gene_isoform_assay_study_plan_request.v1".to_string(),
+            plan_id: None,
+            label: String::new(),
+            isoform_evidence_path: String::new(),
+            expected_isoform_evidence_sha256: None,
+            isoform_evidence_report_id: None,
+            isoform_evidence_schema: None,
+            junction_evidence: vec![],
+            contrasts: vec![],
+            prior_priority: GeneIsoformAssayPriorPriority::Routine,
+            policy: GeneIsoformAssayStudyPolicy::default(),
+            coverage_universe: TranscriptAssayCoverageUniverse::default(),
+            fallback_submission: TranscriptAssayFallbackSubmissionPolicy::default(),
+            policy_sha256: None,
+            profile_override: None,
+            prior_plan: None,
+            observations: vec![],
+            retained_assay_ids: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct GeneIsoformAssayStudyContrastSummary {
+    pub contrast_id: String,
+    pub matched_measurement_count: usize,
+    pub responsive_region_count: usize,
+    #[serde(default)]
+    pub responsive_region_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximum_abs_effect: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Separate evidence dimensions used by the transparent study policy.
+pub struct GeneIsoformAssayStudyEvidenceSummary {
+    pub transcript_count: usize,
+    pub exact_cdna_equivalence_group_count: usize,
+    pub informative_region_count: usize,
+    pub array_supported_region_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe_coverage_fraction: Option<f64>,
+    pub assayable_region_count: usize,
+    pub abundance_supported_region_count: usize,
+    pub responsive_region_count: usize,
+    #[serde(default)]
+    pub responsive_region_ids: Vec<String>,
+    #[serde(default)]
+    pub contrast_summaries: Vec<GeneIsoformAssayStudyContrastSummary>,
+    pub formal_statistics_available: bool,
+    #[serde(default)]
+    pub missing_evidence: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One explainable, non-weighted branch in the study policy.
+pub struct GeneIsoformAssayStudyDecisionFactor {
+    pub rule_id: String,
+    pub triggered: bool,
+    pub summary: String,
+    #[serde(default)]
+    pub evidence_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Exact operation payload emitted by the planner for later separate approval.
+pub struct GeneIsoformAssayStudyPlannedOperation {
+    pub step_index: usize,
+    pub step_id: String,
+    pub purpose: String,
+    pub operation: serde_json::Value,
+    pub operation_sha256: String,
+    /// Cheap endpoint geometry assessment, when applicable. It is advisory at
+    /// approval time and is recomputed against the exact operation before run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feasibility: Option<TranscriptAssayPanelFeasibilityReport>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Pure, policy-versioned recommendation record. It does not execute design.
+pub struct GeneIsoformAssayStudyPlanReport {
+    pub schema: String,
+    pub plan_id: String,
+    pub label: String,
+    pub iteration: usize,
+    /// Fully normalized request. This is the approval basis for planning and
+    /// contains every effective default used by the engine.
+    pub normalized_request: GeneIsoformAssayStudyPlanRequest,
+    pub request_sha256: String,
+    pub policy_sha256: String,
+    pub isoform_evidence_schema: String,
+    pub isoform_evidence_path: String,
+    pub isoform_evidence_sha256: String,
+    pub seq_id: String,
+    pub source_feature_id: usize,
+    pub gene_symbol: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotation_release: Option<String>,
+    pub recommended_profile: GeneIsoformAssayStudyProfile,
+    pub selected_profile: GeneIsoformAssayStudyProfile,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_override: Option<GeneIsoformAssayStudyOverride>,
+    pub evidence_summary: GeneIsoformAssayStudyEvidenceSummary,
+    #[serde(default)]
+    pub coverage_resolution: TranscriptAssayCoverageResolution,
+    #[serde(default)]
+    pub decision_factors: Vec<GeneIsoformAssayStudyDecisionFactor>,
+    #[serde(default)]
+    pub planned_operations: Vec<GeneIsoformAssayStudyPlannedOperation>,
+    /// Digest over the exact ordered operation payloads. Execution approval
+    /// binds this batch; callers must not regenerate it after approval.
+    pub operation_batch_sha256: String,
+    /// Digest over the exact canonical workflow bytes emitted for the second
+    /// approval. Older plans omit this field and must be replanned before
+    /// approved workflow execution.
+    #[serde(default)]
+    pub approved_workflow_sha256: String,
+    #[serde(default)]
+    pub resolved_evidence_inputs: Vec<GeneIsoformAssayStudyInputRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prior_plan_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prior_plan_sha256: Option<String>,
+    #[serde(default)]
+    pub observations: Vec<GeneIsoformAssayStudyObservation>,
+    #[serde(default)]
+    pub retained_assay_ids: Vec<String>,
+    #[serde(default)]
+    pub uncovered_questions: Vec<String>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One plan/workflow pair supplied when composing an approval-bound batch.
+pub struct GeneIsoformAssayStudyWorkflowBatchRequestEntry {
+    pub plan_path: String,
+    pub workflow_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Read-only request for composing several approved study workflows into one
+/// exact, ordered second-stage approval basis.
+pub struct GeneIsoformAssayStudyWorkflowBatchRequest {
+    pub schema: String,
+    pub batch_id: String,
+    pub entries: Vec<GeneIsoformAssayStudyWorkflowBatchRequestEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One content-bound plan/workflow pair in a multi-study execution batch.
+pub struct GeneIsoformAssayStudyWorkflowBatchEntry {
+    pub ordinal: usize,
+    pub plan_id: String,
+    pub plan_path: String,
+    pub plan_sha256: String,
+    pub workflow_path: String,
+    pub workflow_sha256: String,
+    pub workflow_run_id: String,
+    pub operation_batch_sha256: String,
+    pub operation_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Deterministic second-stage approval basis for multiple independently
+/// planned gene studies. The executor validates every entry before applying
+/// the first workflow.
+pub struct GeneIsoformAssayStudyWorkflowBatch {
+    pub schema: String,
+    pub batch_id: String,
+    pub entries: Vec<GeneIsoformAssayStudyWorkflowBatchEntry>,
+    pub total_operation_count: usize,
+    pub combined_operation_batch_sha256: String,
+    /// Digest over this record with this field cleared. It makes accidental
+    /// materialization or ordering changes detectable before approval.
+    pub batch_basis_sha256: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Exact runtime identity required for reusing an approved computation.
+pub struct GeneIsoformAssayStudyRuntimeIdentity {
+    pub gentle_package_version: String,
+    pub gentle_build: String,
+    pub executable_path: String,
+    pub executable_sha256: String,
+    pub primer_backend: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer3_executable_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer3_executable_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer3_version: Option<String>,
+    pub primer3_version_probe_ok: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One approved operation in the ordered prefix captured by a checkpoint.
+pub struct GeneIsoformAssayStudyCheckpointOperation {
+    pub global_operation_ordinal: usize,
+    pub workflow_ordinal: usize,
+    pub workflow_operation_ordinal: usize,
+    pub plan_id: String,
+    pub plan_sha256: String,
+    pub gene_symbol: String,
+    pub workflow_run_id: String,
+    pub workflow_sha256: String,
+    pub operation_sha256: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Content-bound detached-engine checkpoint written after a successful
+/// approved operation. It is inert until a separately approved reuse proposal
+/// imports it into another exact-prefix batch execution.
+pub struct GeneIsoformAssayStudyCheckpoint {
+    pub schema: String,
+    pub checkpoint_id: String,
+    pub source_batch_id: String,
+    pub source_batch_basis_sha256: String,
+    pub baseline_state_sha256: String,
+    pub runtime: GeneIsoformAssayStudyRuntimeIdentity,
+    pub completed_operations: Vec<GeneIsoformAssayStudyCheckpointOperation>,
+    pub completed_operation_count: usize,
+    pub completed_workflow_count: usize,
+    pub current_workflow_ordinal: usize,
+    pub current_plan_id: String,
+    pub current_gene_symbol: String,
+    pub engine_path: String,
+    pub engine_sha256: String,
+    pub engine_journal_len: usize,
+    #[serde(default)]
+    pub operation_results: Vec<OpResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Read-only proposal for importing one prior exact-prefix checkpoint. The
+/// proposal digest is the explicit approval token; execution never discovers
+/// or adopts cached work implicitly.
+pub struct GeneIsoformAssayStudyReuseProposal {
+    pub schema: String,
+    pub proposal_id: String,
+    pub proposal_sha256: String,
+    pub target_batch_id: String,
+    pub target_batch_basis_sha256: String,
+    pub baseline_state_sha256: String,
+    pub runtime: GeneIsoformAssayStudyRuntimeIdentity,
+    pub checkpoint_manifest_path: String,
+    pub checkpoint_manifest_sha256: String,
+    pub checkpoint_id: String,
+    pub reusable_operation_count: usize,
+    pub reusable_workflow_count: usize,
+    pub remaining_operation_count: usize,
+    pub remaining_workflow_count: usize,
+    pub reusable_operations: Vec<GeneIsoformAssayStudyCheckpointOperation>,
+    pub approval_required: bool,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Derived lifecycle state of one assay handoff card.
+pub enum ExperimentalAssayReadinessState {
+    #[default]
+    Candidate,
+    SpecificityChecked,
+    OrderReady,
+    WetLabValidated,
+}
+
+impl ExperimentalAssayReadinessState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Candidate => "candidate",
+            Self::SpecificityChecked => "specificity_checked",
+            Self::OrderReady => "order_ready",
+            Self::WetLabValidated => "wet_lab_validated",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Result of one versioned readiness-policy gate.
+pub enum ExperimentalAssayGateStatus {
+    Pass,
+    Fail,
+    Incomplete,
+    WaivedByPolicy,
+    NotApplicable,
+    #[default]
+    NotEvaluated,
+}
+
+impl ExperimentalAssayGateStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pass => "pass",
+            Self::Fail => "fail",
+            Self::Incomplete => "incomplete",
+            Self::WaivedByPolicy => "waived_by_policy",
+            Self::NotApplicable => "not_applicable",
+            Self::NotEvaluated => "not_evaluated",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+/// Versioned fail-closed policy for projecting a transcript panel into a
+/// bench-facing order/readiness package.
+pub struct ExperimentalAssayReadinessPolicy {
+    pub schema: String,
+    pub policy_version: String,
+    pub require_critical_qc_pass: bool,
+    /// Backward-compatible master switch for both specificity dimensions.
+    pub require_specificity_pass: bool,
+    pub require_genomic_carryover_pass: bool,
+    pub require_transcriptome_specificity_pass: bool,
+    pub require_annotation_provenance: bool,
+    pub require_assay_test: bool,
+    pub require_variant_evaluation: bool,
+    pub require_duplicate_review: bool,
+    pub allow_long_range_fallback: bool,
+    pub require_resolved_gel_bands: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gel_conditions: Option<gentle_protocol::GelRunConditions>,
+}
+
+impl Default for ExperimentalAssayReadinessPolicy {
+    fn default() -> Self {
+        Self {
+            schema: "gentle.experimental_assay_readiness_policy.v1".to_string(),
+            policy_version: "1".to_string(),
+            require_critical_qc_pass: true,
+            require_specificity_pass: true,
+            require_genomic_carryover_pass: true,
+            require_transcriptome_specificity_pass: true,
+            require_annotation_provenance: true,
+            require_assay_test: false,
+            require_variant_evaluation: false,
+            require_duplicate_review: true,
+            allow_long_range_fallback: true,
+            require_resolved_gel_bands: false,
+            gel_conditions: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One explicit readiness gate result embedded in an assay card.
+pub struct ExperimentalAssayGateOutcome {
+    pub gate: String,
+    pub required: bool,
+    pub status: ExperimentalAssayGateStatus,
+    pub summary: String,
+    #[serde(default)]
+    pub evidence_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Stable identity and procurement projection for one assay oligo.
+pub struct ExperimentalAssayOligoIdentity {
+    pub role: String,
+    pub oligo_id: String,
+    pub sequence_sha256: String,
+    pub tube_id: String,
+    pub legacy_primer_id: String,
+    pub display_label: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    pub sequence_5_to_3: String,
+    pub length_nt: usize,
+    #[serde(default)]
+    pub formulations: Vec<ExperimentalAssayOligoFormulation>,
+    pub analysis_species_caveat: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Procurement identity for one physical formulation of a base-sequence
+/// oligo. Different modifications/scale/purification remain separate rows.
+pub struct ExperimentalAssayOligoFormulation {
+    pub formulation_id: String,
+    #[serde(default)]
+    pub modifications: Vec<String>,
+    pub scale: String,
+    pub purification: String,
+    #[serde(default)]
+    pub order_line_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Pluggable variant-evidence conclusion for one primer pair.
+pub enum PrimerVariantEvidenceStatus {
+    EvaluatedNoRelevantVariant,
+    VariantDetected,
+    IncompatibleReference,
+    #[default]
+    NotEvaluated,
+}
+
+pub const PRIMER_VARIANT_RESOURCE_MANIFEST_SCHEMA: &str =
+    "gentle.primer_variant_resource_manifest.v1";
+pub const PRIMER_VARIANT_SCREEN_REQUEST_SCHEMA: &str = "gentle.primer_variant_screen_request.v1";
+pub const PRIMER_VARIANT_SCREEN_SCHEMA: &str = "gentle.primer_variant_screen.v1";
+pub const PRIMER_VARIANT_DEGENERATE_RESCUE_SCHEMA: &str =
+    "gentle.primer_variant_degenerate_rescue.v1";
+
+fn default_primer_variant_critical_3prime_bases() -> usize {
+    5
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Orientation of an oligo-binding segment on the reference contig.
+pub enum PrimerVariantBindingStrand {
+    #[default]
+    Plus,
+    Minus,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// How probe-binding variants contribute to the pair-level evidence status.
+pub enum PrimerVariantProbeOverlapPolicy {
+    #[default]
+    Relevant,
+    ReportOnly,
+    Ignore,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Assay region intersected by one variant allele.
+pub enum PrimerVariantOverlapKind {
+    #[default]
+    Primer,
+    Probe,
+    AmpliconOnly,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Length-based variant class retained without claiming normalization.
+pub enum PrimerVariantKind {
+    Snv,
+    Mnv,
+    Insertion,
+    Deletion,
+    #[default]
+    Complex,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Why an overlap can or cannot contribute to a mixed-base rescue proposal.
+pub enum PrimerVariantDegenerateRescueEligibility {
+    Eligible,
+    NotPrimerOverlap,
+    NotSimpleSnv,
+    IncompatibleReference,
+    SourceFiltered,
+    MissingFrequency,
+    BelowMinimumFrequency,
+    CriticalThreePrimeExcluded,
+    AlternateAlreadyRepresented,
+    #[default]
+    NotRequested,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// One contiguous genomic segment contributing bases to an oligo binding site.
+///
+/// `reference_sequence_5_to_3` follows increasing reference coordinates. The
+/// oligo offsets follow the supplied oligo sequence in synthesis orientation.
+pub struct PrimerVariantBindingSegment {
+    pub reference_name: String,
+    pub start_1based: usize,
+    pub end_1based: usize,
+    #[serde(default)]
+    pub strand: PrimerVariantBindingStrand,
+    pub oligo_start_0based: usize,
+    pub oligo_end_0based_exclusive: usize,
+    pub reference_sequence_5_to_3: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// One contiguous reference segment in the intended amplicon.
+pub struct PrimerVariantAmpliconSegment {
+    pub reference_name: String,
+    pub start_1based: usize,
+    pub end_1based: usize,
+    pub reference_sequence_5_to_3: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// One primer or probe plus its current assembly-aware binding geometry.
+pub struct PrimerVariantScreenOligo {
+    pub sequence_5_to_3: String,
+    #[serde(default)]
+    pub binding_segments: Vec<PrimerVariantBindingSegment>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Declared origin of a candidate sequence; this remains provenance, not
+/// GENtle-computed validation.
+pub enum PrimerVariantCandidateSourceKind {
+    DeNovo,
+    PrimerBank,
+    CommercialCatalogue,
+    Literature,
+    Laboratory,
+    External,
+    #[default]
+    Unknown,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Immutable source attribution retained alongside GENtle-derived findings.
+pub struct PrimerVariantCandidateSource {
+    pub candidate_id: String,
+    #[serde(default)]
+    pub source_kind: PrimerVariantCandidateSourceKind,
+    pub source_id: String,
+    pub provider: String,
+    pub catalogue_id: String,
+    pub version: String,
+    pub url: String,
+    pub organism: String,
+    pub target_claim: String,
+    pub source_date: String,
+    pub content_sha256: String,
+    #[serde(default)]
+    pub annotations: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// One physical primer pair and its explicit assembly-aware target geometry.
+pub struct PrimerVariantScreenCandidate {
+    pub candidate_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pair_id: Option<String>,
+    #[serde(default)]
+    pub source: PrimerVariantCandidateSource,
+    pub forward: PrimerVariantScreenOligo,
+    pub reverse: PrimerVariantScreenOligo,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe: Option<PrimerVariantScreenOligo>,
+    #[serde(default)]
+    pub amplicon_segments: Vec<PrimerVariantAmpliconSegment>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Provenance supplied with a direct local VCF/VCF.gz input.
+pub struct PrimerVariantSourceInput {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vcf_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest_path: Option<String>,
+    pub reference_assembly: String,
+    pub source_name: String,
+    pub source_release: String,
+    pub population: String,
+    pub retrieval_time: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allele_frequency_info_field: Option<String>,
+    /// INFO keys copied verbatim into overlap rows for downstream inspection.
+    #[serde(default)]
+    pub annotation_info_fields: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_content_sha256: Option<String>,
+    #[serde(default)]
+    pub contig_aliases: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// Offline variant-resource manifest whose relative VCF path is resolved next
+/// to the manifest file.
+pub struct PrimerVariantResourceManifest {
+    pub schema: String,
+    pub vcf_path: String,
+    pub reference_assembly: String,
+    pub source_name: String,
+    pub source_release: String,
+    pub population: String,
+    pub retrieval_time: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allele_frequency_info_field: Option<String>,
+    /// INFO keys copied verbatim into overlap rows for downstream inspection.
+    #[serde(default)]
+    pub annotation_info_fields: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_content_sha256: Option<String>,
+    #[serde(default)]
+    pub contig_aliases: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Shared request for screening one or more physical primer pairs in one VCF
+/// pass. Duplicate physical pairs retain all source rows.
+pub struct PrimerVariantScreenRequest {
+    pub schema: String,
+    /// Assembly used to assign the candidate binding coordinates.
+    pub reference_assembly: String,
+    #[serde(default)]
+    pub source: PrimerVariantSourceInput,
+    #[serde(default)]
+    pub candidates: Vec<PrimerVariantScreenCandidate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximum_allowed_frequency: Option<f64>,
+    #[serde(default = "default_primer_variant_critical_3prime_bases")]
+    pub critical_3prime_bases: usize,
+    #[serde(default)]
+    pub probe_overlap_policy: PrimerVariantProbeOverlapPolicy,
+    /// Enables mixed-base rescue proposals for simple primer SNVs at or above
+    /// this population allele frequency. Missing frequency never qualifies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub degenerate_rescue_minimum_frequency: Option<f64>,
+    /// Critical 3-prime changes require an explicit opt-in because a mixed
+    /// base there can alter extension efficiency and allele balance.
+    #[serde(default)]
+    pub allow_critical_3prime_degenerate_rescue: bool,
+}
+
+impl Default for PrimerVariantScreenRequest {
+    fn default() -> Self {
+        Self {
+            schema: PRIMER_VARIANT_SCREEN_REQUEST_SCHEMA.to_string(),
+            reference_assembly: String::new(),
+            source: PrimerVariantSourceInput::default(),
+            candidates: Vec::new(),
+            maximum_allowed_frequency: None,
+            critical_3prime_bases: default_primer_variant_critical_3prime_bases(),
+            probe_overlap_policy: PrimerVariantProbeOverlapPolicy::default(),
+            degenerate_rescue_minimum_frequency: None,
+            allow_critical_3prime_degenerate_rescue: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// One population/reference variant overlapping an assay oligo.
+pub struct PrimerVariantOverlap {
+    pub oligo_id: String,
+    pub role: String,
+    pub variant_id: String,
+    pub reference_name: String,
+    pub position_1based: usize,
+    pub reference_end_1based: usize,
+    pub reference_allele: String,
+    pub alternate_allele: String,
+    #[serde(default)]
+    pub overlap_kind: PrimerVariantOverlapKind,
+    #[serde(default)]
+    pub variant_kind: PrimerVariantKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oligo_position_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oligo_end_position_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub distance_from_3prime_end: Option<usize>,
+    pub critical_three_prime: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_match: Option<bool>,
+    pub source_filter: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allele_frequency: Option<f64>,
+    /// Selected source INFO values, retained as uninterpreted provenance.
+    #[serde(default)]
+    pub source_annotations: BTreeMap<String, String>,
+    pub relevant_under_policy: bool,
+    #[serde(default)]
+    pub degenerate_rescue_eligibility: PrimerVariantDegenerateRescueEligibility,
+    pub note: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// One source allele contributing to an IUPAC mixed-base change.
+pub struct PrimerVariantDegenerateRescueAllele {
+    pub variant_id: String,
+    pub reference_allele: String,
+    pub alternate_allele: String,
+    /// Alternate base in the primer's 5-prime-to-3-prime synthesis orientation.
+    pub primer_oriented_alternate_base: String,
+    pub allele_frequency: f64,
+    pub source_filter: String,
+    #[serde(default)]
+    pub source_annotations: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// One position changed from the original oligo to a mixed IUPAC base.
+pub struct PrimerVariantDegenerateRescueChange {
+    pub role: String,
+    pub original_oligo_id: String,
+    pub oligo_position_1based: usize,
+    pub original_iupac_base: String,
+    pub adjusted_iupac_base: String,
+    #[serde(default)]
+    pub represented_bases: Vec<String>,
+    pub critical_three_prime: bool,
+    #[serde(default)]
+    pub contributing_variants: Vec<PrimerVariantDegenerateRescueAllele>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// A deterministic post-screen mixed-base oligo proposal.
+///
+/// This describes a synthesis mixture, not a genotype call, and always has a
+/// new physical pair identity that requires its own assay validation.
+pub struct PrimerVariantDegenerateRescueSuggestion {
+    pub schema: String,
+    pub original_pair_id: String,
+    pub adjusted_pair_id: String,
+    pub original_forward_sequence_5_to_3: String,
+    pub adjusted_forward_sequence_5_to_3: String,
+    pub original_reverse_sequence_5_to_3: String,
+    pub adjusted_reverse_sequence_5_to_3: String,
+    #[serde(default)]
+    pub changes: Vec<PrimerVariantDegenerateRescueChange>,
+    pub forward_mixture_complexity: usize,
+    pub reverse_mixture_complexity: usize,
+    pub pair_mixture_complexity: usize,
+    pub requires_new_validation: bool,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Provenance-bound, provider-neutral primer variant-screening evidence.
+pub struct PrimerVariantEvidenceReport {
+    pub schema: String,
+    pub evidence_id: String,
+    pub pair_id: String,
+    pub reference_assembly: String,
+    pub source_name: String,
+    pub source_release: String,
+    pub population: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximum_allowed_frequency: Option<f64>,
+    pub normalization_method: String,
+    pub retrieval_time: String,
+    pub content_sha256: String,
+    pub request_sha256: String,
+    pub source_path: String,
+    #[serde(default)]
+    pub candidate_sources: Vec<PrimerVariantCandidateSource>,
+    #[serde(default = "default_primer_variant_critical_3prime_bases")]
+    pub critical_3prime_bases: usize,
+    #[serde(default)]
+    pub probe_overlap_policy: PrimerVariantProbeOverlapPolicy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub degenerate_rescue_minimum_frequency: Option<f64>,
+    #[serde(default)]
+    pub allow_critical_3prime_degenerate_rescue: bool,
+    #[serde(default)]
+    pub screened_reference_names: Vec<String>,
+    pub vcf_record_count: usize,
+    pub overlapping_record_count: usize,
+    #[serde(default)]
+    pub status: PrimerVariantEvidenceStatus,
+    #[serde(default)]
+    pub overlaps: Vec<PrimerVariantOverlap>,
+    #[serde(default)]
+    pub degenerate_rescue_suggestions: Vec<PrimerVariantDegenerateRescueSuggestion>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Deterministic wrapper for all per-pair v1 evidence reports produced from one
+/// VCF pass.
+pub struct PrimerVariantScreenReport {
+    pub schema: String,
+    pub screen_id: String,
+    pub request_sha256: String,
+    pub reference_assembly: String,
+    pub source_name: String,
+    pub source_release: String,
+    pub population: String,
+    pub source_path: String,
+    pub content_sha256: String,
+    pub candidate_count: usize,
+    pub unique_pair_count: usize,
+    pub vcf_record_count: usize,
+    pub overlapping_record_count: usize,
+    #[serde(default)]
+    pub evidence_reports: Vec<PrimerVariantEvidenceReport>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Verified link from one card to one complete cDNA assay-test report.
+pub struct ExperimentalAssayTestLink {
+    pub assay_test_id: String,
+    pub pair_id: String,
+    pub report_schema: String,
+    pub report_sha256: String,
+    pub oligo_identity_verified: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Exact predicted amplicon-sequence class across transcript models.
+pub struct ExperimentalAssayProductSequenceClass {
+    pub sequence_sha256: String,
+    #[serde(default)]
+    pub transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub equivalence_group_ids: Vec<String>,
+    #[serde(default)]
+    pub product_lengths_bp: Vec<usize>,
+    pub interpretation: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Pair-specific experimental control recommendation.
+pub struct ExperimentalAssayControlAdvice {
+    pub control: String,
+    pub requirement: String,
+    pub rationale: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Gel-resolution projection, computed only when named run assumptions exist.
+pub struct ExperimentalAssayGelAssessment {
+    pub status: String,
+    pub model: String,
+    #[serde(default)]
+    pub co_migrating_product_length_groups_bp: Vec<Vec<usize>>,
+    pub interpretation: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Compact bench-facing card for one selected transcript-panel primer pair.
+pub struct ExperimentalAssayCard {
+    pub schema: String,
+    pub card_id: String,
+    pub panel_report_id: String,
+    pub assay_id: String,
+    pub pair_id: String,
+    pub pair_rank: usize,
+    pub display_label: String,
+    #[serde(default)]
+    pub assay_kind: TranscriptAssayKind,
+    #[serde(default)]
+    pub assay_tier: TranscriptAssayUseTier,
+    #[serde(default)]
+    pub readiness_state: ExperimentalAssayReadinessState,
+    pub policy_schema: String,
+    pub policy_version: String,
+    pub policy_id: String,
+    #[serde(default)]
+    pub gate_outcomes: Vec<ExperimentalAssayGateOutcome>,
+    #[serde(default)]
+    pub blockers: Vec<String>,
+    #[serde(default)]
+    pub oligos: Vec<ExperimentalAssayOligoIdentity>,
+    #[serde(default)]
+    pub pair_summary: PrimerPairCommunicationSummary,
+    #[serde(default)]
+    pub assay_test_link: ExperimentalAssayTestLink,
+    #[serde(default)]
+    pub product_sequence_classes: Vec<ExperimentalAssayProductSequenceClass>,
+    #[serde(default)]
+    pub predicted_product_lengths_bp: Vec<usize>,
+    #[serde(default)]
+    pub controls: Vec<ExperimentalAssayControlAdvice>,
+    #[serde(default)]
+    pub gel_assessment: ExperimentalAssayGelAssessment,
+    #[serde(default)]
+    pub variant_evidence_status: PrimerVariantEvidenceStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variant_evidence_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variant_evidence_report_sha256: Option<String>,
+    pub endpoint_abundance_interpretation: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One row of the bench-facing order/readiness table.
+pub struct ExperimentalAssayOrderReadinessRow {
+    pub card_id: String,
+    pub assay_id: String,
+    pub pair_id: String,
+    pub pair_rank: usize,
+    pub display_label: String,
+    #[serde(default)]
+    pub readiness_state: ExperimentalAssayReadinessState,
+    pub order_ready: bool,
+    #[serde(default)]
+    pub blocker_codes: Vec<String>,
+    #[serde(default)]
+    pub oligo_ids: Vec<String>,
+    #[serde(default)]
+    pub tube_ids: Vec<String>,
+    #[serde(default)]
+    pub sequences_5_to_3: Vec<String>,
+    #[serde(default)]
+    pub predicted_product_lengths_bp: Vec<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Plain-denominator coverage projection bound to one source assay panel.
+///
+/// Exact mature-cDNA equivalence identifiers remain available in the source
+/// panel, but users should not need that internal term to understand coverage.
+pub struct ExperimentalAssayCoverageSummary {
+    pub coverage_universe_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotation_release: Option<String>,
+    pub broader_annotation_denominator_available: bool,
+    pub annotated_transcript_record_count: usize,
+    pub covered_annotated_transcript_record_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assessed_annotated_transcript_record_count: Option<usize>,
+    #[serde(default)]
+    pub unassessed_annotated_transcript_ids: Vec<String>,
+    pub distinct_annotated_mature_cdna_count: usize,
+    pub covered_distinct_annotated_mature_cdna_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assessed_distinct_annotated_mature_cdna_count: Option<usize>,
+    #[serde(default)]
+    pub unassessed_distinct_annotated_mature_cdna_ids: Vec<String>,
+    #[serde(default)]
+    pub uncovered_annotated_transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub uncovered_distinct_mature_cdna_ids: Vec<String>,
+    /// True only when an authoritative inventory has a complete, conflict-free
+    /// record-level mature-cDNA-to-panel-equivalence-group join.
+    pub uniprot_coverage_available: bool,
+    pub linked_transcript_inventory_authoritative: bool,
+    #[serde(default)]
+    pub linked_transcript_inventory_ids: Vec<String>,
+    pub uniprot_entry_count: usize,
+    pub uniprot_protein_target_count: usize,
+    pub covered_uniprot_protein_target_count: usize,
+    pub uniprot_linked_transcript_record_count: usize,
+    pub covered_uniprot_linked_transcript_record_count: usize,
+    #[serde(default)]
+    pub uncovered_uniprot_linked_transcript_ids: Vec<String>,
+    /// Linked records covered by exact cDNA identity whose separate genomic
+    /// locus has not been assessed for carryover specificity.
+    #[serde(default)]
+    pub genomic_specificity_unassessed_uniprot_linked_transcript_ids: Vec<String>,
+    pub distinct_uniprot_linked_mature_cdna_count: usize,
+    pub covered_distinct_uniprot_linked_mature_cdna_count: usize,
+    /// SHA-256 mature-cDNA identities not covered by the selected panel.
+    #[serde(default)]
+    pub uncovered_distinct_uniprot_linked_mature_cdna_ids: Vec<String>,
+    #[serde(default)]
+    pub uncovered_uniprot_target_ids: Vec<String>,
+    #[serde(default)]
+    pub unresolved_uniprot_target_ids: Vec<String>,
+    #[serde(default)]
+    pub ambiguous_uniprot_target_ids: Vec<String>,
+    #[serde(default)]
+    pub coverage_source_report_ids: Vec<String>,
+    #[serde(default)]
+    pub coverage_source_sha256s: Vec<String>,
+    #[serde(default)]
+    pub summary_lines: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Aggregate of one named gate across every assay card in a handoff.
+pub struct ExperimentalAssayGateAggregate {
+    pub gate: String,
+    pub total: usize,
+    pub assessed: usize,
+    pub passed: usize,
+    pub failed: usize,
+    pub incomplete: usize,
+    pub waived_by_policy: usize,
+    pub not_applicable: usize,
+    pub not_evaluated: usize,
+    #[serde(default)]
+    pub affected_assay_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Engine-owned QA/readiness totals shared by every presentation adapter.
+pub struct ExperimentalAssayQaAggregateSummary {
+    pub assay_total: usize,
+    #[serde(default)]
+    pub gate_aggregates: Vec<ExperimentalAssayGateAggregate>,
+    pub order_ready: usize,
+    pub not_order_ready: usize,
+    #[serde(default)]
+    pub order_blocker_codes: Vec<String>,
+    #[serde(default)]
+    pub blocked_assay_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Provenance-bound virtual-gel projection of one experimental assay handoff.
+///
+/// Every assay card is represented by one sample lane so primer-pair products
+/// remain comparable under one shared gel model. This projection is
+/// illustrative and does not replace the report's explicit gel-resolution
+/// gate.
+pub struct ExperimentalAssayVirtualGelReport {
+    pub schema: String,
+    pub source_package_id: String,
+    pub source_panel_report_id: String,
+    pub source_panel_sha256: String,
+    pub svg_path: String,
+    pub svg_sha256: String,
+    pub conditions: gentle_protocol::GelRunConditions,
+    pub conditions_source: String,
+    pub render_options: gentle_protocol::PoolGelRenderOptions,
+    #[serde(default)]
+    pub selected_ladders: Vec<String>,
+    pub sample_lane_count: usize,
+    pub rendered_product_count: usize,
+    #[serde(default)]
+    pub empty_lane_card_ids: Vec<String>,
+    pub interpretation: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Deterministic, read-only per-panel experimental handoff package.
+pub struct ExperimentalAssayHandoffReport {
+    pub schema: String,
+    pub package_id: String,
+    pub source_panel_report_id: String,
+    pub source_panel_schema: String,
+    pub source_panel_sha256: String,
+    pub source_seq_id: String,
+    pub source_feature_id: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_order_form_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_order_form_sha256: Option<String>,
+    #[serde(default)]
+    pub policy: ExperimentalAssayReadinessPolicy,
+    pub policy_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coverage_summary: Option<ExperimentalAssayCoverageSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub qa_aggregate_summary: Option<ExperimentalAssayQaAggregateSummary>,
+    #[serde(default)]
+    pub order_readiness_table: Vec<ExperimentalAssayOrderReadinessRow>,
+    #[serde(default)]
+    pub cards: Vec<ExperimentalAssayCard>,
+    /// Complete joined reports remain separate from the pair summaries; cards
+    /// refer to them through `assay_test_link`.
+    #[serde(default)]
+    pub assay_tests: Vec<CdnaAssayTestReport>,
+    #[serde(default)]
+    pub variant_evidence: Vec<PrimerVariantEvidenceReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub virtual_gel: Option<ExperimentalAssayVirtualGelReport>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Ordinal endpoint-gel observation; deliberately not a quantitative ratio.
+pub enum ExperimentalEndpointBandStrength {
+    Absent,
+    Faint,
+    Moderate,
+    Strong,
+    Saturated,
+    #[default]
+    NotRecorded,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Separate human-authored wet-lab observation linked to an immutable card.
+pub struct ExperimentalAssayObservationRecord {
+    pub schema: String,
+    pub record_id: String,
+    pub card_id: String,
+    pub pair_id: String,
+    pub author: String,
+    pub observed_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub empirical_annealing_temperature_c: Option<f64>,
+    #[serde(default)]
+    pub endpoint_band_strength: ExperimentalEndpointBandStrength,
+    pub validation_status: String,
+    pub method_note: String,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Compact persisted-report listing row for transcript assay panels.
+pub struct TranscriptAssayPanelReportSummary {
+    pub report_id: String,
+    pub source_seq_id: String,
+    pub source_feature_id: usize,
+    pub generated_at_unix_ms: u128,
+    #[serde(default)]
+    pub assay_kind: TranscriptAssayKind,
+    #[serde(default)]
+    pub objective: TranscriptAssayPanelObjective,
+    #[serde(default)]
+    pub coverage_policy: TranscriptAssayCoveragePolicy,
+    #[serde(
+        default,
+        skip_serializing_if = "TranscriptAssayUseTier::is_unspecified"
+    )]
+    pub assay_tier: TranscriptAssayUseTier,
+    #[serde(default)]
+    pub completion_status: TranscriptAssayPanelCompletionStatus,
+    pub transcript_count: usize,
+    pub equivalence_group_count: usize,
+    pub selected_assay_count: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 /// Optional transcript-aware targeting request for one qPCR design operation.
@@ -7069,6 +15644,8 @@ pub struct QpcrTranscriptTargetingResult {
 pub struct QpcrAssayRecord {
     pub rank: usize,
     pub score: f64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub score_terms: Vec<PrimerDesignScoreTerm>,
     pub forward: PrimerDesignPrimerRecord,
     pub reverse: PrimerDesignPrimerRecord,
     pub probe: PrimerDesignPrimerRecord,
@@ -7090,6 +15667,90 @@ pub struct QpcrDesignRejectionSummary {
     pub probe_gc_or_tm_out_of_bounds: usize,
     pub probe_non_unique_anneal: usize,
     pub probe_or_assay_failure: usize,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+/// Stable qPCR rejection vocabulary spanning the nested primer and probe
+/// census buckets.
+pub enum QpcrDesignRejectionReason {
+    PrimerOutOfWindow,
+    PrimerGcOrTmOutOfBounds,
+    PrimerNonUniqueAnneal,
+    PrimerAmpliconOrRoiFailure,
+    PrimerConstraintFailure,
+    PrimerPairConstraintFailure,
+    PrimerPairEvaluationLimitSkipped,
+    ProbeOutOfWindow,
+    ProbeGcOrTmOutOfBounds,
+    ProbeNonUniqueAnneal,
+    #[default]
+    ProbeOrAssayFailure,
+}
+
+impl QpcrDesignRejectionReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::PrimerOutOfWindow => "primer_out_of_window",
+            Self::PrimerGcOrTmOutOfBounds => "primer_gc_or_tm_out_of_bounds",
+            Self::PrimerNonUniqueAnneal => "primer_non_unique_anneal",
+            Self::PrimerAmpliconOrRoiFailure => "primer_amplicon_or_roi_failure",
+            Self::PrimerConstraintFailure => "primer_constraint_failure",
+            Self::PrimerPairConstraintFailure => "primer_pair_constraint_failure",
+            Self::PrimerPairEvaluationLimitSkipped => "primer_pair_evaluation_limit_skipped",
+            Self::ProbeOutOfWindow => "probe_out_of_window",
+            Self::ProbeGcOrTmOutOfBounds => "probe_gc_or_tm_out_of_bounds",
+            Self::ProbeNonUniqueAnneal => "probe_non_unique_anneal",
+            Self::ProbeOrAssayFailure => "probe_or_assay_failure",
+        }
+    }
+}
+
+impl QpcrDesignRejectionSummary {
+    pub fn count_for_reason(&self, reason: QpcrDesignRejectionReason) -> usize {
+        match reason {
+            QpcrDesignRejectionReason::PrimerOutOfWindow => self.primer_pair.out_of_window,
+            QpcrDesignRejectionReason::PrimerGcOrTmOutOfBounds => {
+                self.primer_pair.gc_or_tm_out_of_bounds
+            }
+            QpcrDesignRejectionReason::PrimerNonUniqueAnneal => self.primer_pair.non_unique_anneal,
+            QpcrDesignRejectionReason::PrimerAmpliconOrRoiFailure => {
+                self.primer_pair.amplicon_or_roi_failure
+            }
+            QpcrDesignRejectionReason::PrimerConstraintFailure => {
+                self.primer_pair.primer_constraint_failure
+            }
+            QpcrDesignRejectionReason::PrimerPairConstraintFailure => {
+                self.primer_pair.pair_constraint_failure
+            }
+            QpcrDesignRejectionReason::PrimerPairEvaluationLimitSkipped => {
+                self.primer_pair.pair_evaluation_limit_skipped
+            }
+            QpcrDesignRejectionReason::ProbeOutOfWindow => self.probe_out_of_window,
+            QpcrDesignRejectionReason::ProbeGcOrTmOutOfBounds => self.probe_gc_or_tm_out_of_bounds,
+            QpcrDesignRejectionReason::ProbeNonUniqueAnneal => self.probe_non_unique_anneal,
+            QpcrDesignRejectionReason::ProbeOrAssayFailure => self.probe_or_assay_failure,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One evaluated primer-pair/probe combination rejected before qPCR assay
+/// selection. Probe candidate-generation failures remain aggregate-only.
+pub struct QpcrDesignRejectedCandidate {
+    pub forward: PrimerDesignPrimerRecord,
+    pub reverse: PrimerDesignPrimerRecord,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe: Option<PrimerDesignPrimerRecord>,
+    pub amplicon_start_0based: usize,
+    pub amplicon_end_0based_exclusive: usize,
+    pub score: Option<f64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reasons: Vec<QpcrDesignRejectionReason>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failed_checks: Vec<String>,
+    pub detail: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -7128,8 +15789,29 @@ pub struct QpcrDesignReport {
     pub assays: Vec<QpcrAssayRecord>,
     #[serde(default)]
     pub rejection_summary: QpcrDesignRejectionSummary,
+    #[serde(
+        default,
+        skip_serializing_if = "PrimerPairCharacterizationStatus::is_not_run"
+    )]
+    pub score_decomposition_status: PrimerPairCharacterizationStatus,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub score_decomposition_reason: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub score_model: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub score_direction: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rejected_near_misses: Vec<QpcrDesignRejectedCandidate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub near_miss_capture: Option<PrimerDesignNearMissCapture>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub excluded_region_analysis_status: Option<PrimerPairCharacterizationStatus>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub excluded_region_analysis_reason: String,
     #[serde(default)]
     pub backend: PrimerDesignBackendInfo,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub construct_reasoning_graph_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -7303,6 +15985,9 @@ pub struct ConstructReasoningGraphSummary {
     pub graph_id: String,
     pub seq_id: String,
     pub generated_at_unix_ms: u128,
+    pub freshness: ConstructReasoningGraphFreshness,
+    #[serde(default)]
+    pub stale_reasons: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub op_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -7684,6 +16369,110 @@ pub struct PlanningCloningSuggestedNextAction {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default, deny_unknown_fields)]
+/// Reviewed biological and delivery requirements for protein expression.
+pub struct ProteinExpressionRequirements {
+    pub schema: String,
+    pub requirements_id: Option<String>,
+    pub yield_goal: Option<ProteinExpressionYieldRequirement>,
+    pub chassis: Option<ProteinExpressionChassisRequirement>,
+    pub localization: Option<ProteinExpressionLocalizationRequirement>,
+    pub folding: Option<ProteinExpressionFoldingRequirement>,
+    pub toxicity_induction: Option<ProteinExpressionToxicityInductionRequirement>,
+    pub tag_policy: Option<ProteinExpressionTagPolicyRequirement>,
+    pub scale_purification: Option<ProteinExpressionScalePurificationRequirement>,
+    pub outsourcing: Option<ProteinExpressionOutsourcingRequirement>,
+    pub reviewed_by: Option<String>,
+    pub reviewed_at_unix_ms: Option<u128>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Yield endpoint reviewed for a protein-expression request.
+pub struct ProteinExpressionYieldRequirement {
+    pub metric: String,
+    pub target_amount: Option<f64>,
+    pub target_amount_unit: Option<String>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Acceptable expression chassis reviewed for a protein-expression request.
+pub struct ProteinExpressionChassisRequirement {
+    pub acceptable_chassis: Vec<String>,
+    pub provider_managed_allowed: bool,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Required cellular or extracellular destination of the expressed product.
+pub struct ProteinExpressionLocalizationRequirement {
+    pub target: String,
+    pub secretion_required: Option<bool>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Reviewed folding, processing, and cofactor requirements.
+pub struct ProteinExpressionFoldingRequirement {
+    pub required_ptms: Vec<String>,
+    pub required_cofactors: Vec<String>,
+    pub required_chaperones: Vec<String>,
+    pub disulfide_bonding_required: Option<bool>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Reviewed toxicity expectation and induction policy.
+pub struct ProteinExpressionToxicityInductionRequirement {
+    pub toxicity_expected: Option<bool>,
+    pub induction_policy: String,
+    pub maximum_temperature_c: Option<f64>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Reviewed affinity/solubility tag and cleavage policy.
+pub struct ProteinExpressionTagPolicyRequirement {
+    pub strategy: String,
+    pub preferred_tags: Vec<String>,
+    pub position: Option<String>,
+    pub cleavage_policy: Option<String>,
+    pub retention_policy: Option<String>,
+    pub preserve_annotated_tags: Option<bool>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Reviewed production scale, purification endpoint, and delivery specification.
+pub struct ProteinExpressionScalePurificationRequirement {
+    pub production_scale: String,
+    pub purification_endpoint: String,
+    pub target_purity_percent: Option<f64>,
+    pub endotoxin_control_required: Option<bool>,
+    pub delivery_buffer: Option<String>,
+    pub qc_requirements: Vec<String>,
+    pub delivery_format: Option<String>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Explicit permission boundary for external protein-expression work.
+pub struct ProteinExpressionOutsourcingRequirement {
+    pub allowed: Option<bool>,
+    pub approved_providers: Vec<String>,
+    pub data_sharing_notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
 /// Read-only protein-expression planning handoff for underspecified yield requests.
 pub struct ProteinExpressionHandoffReport {
     pub schema: String,
@@ -7692,6 +16481,7 @@ pub struct ProteinExpressionHandoffReport {
     pub biological_intent: String,
     pub product_definition: ProteinExpressionProductDefinition,
     pub product_readiness: ProteinExpressionProductReadiness,
+    pub requirements: Option<ProteinExpressionRequirements>,
     pub sequence_context: Option<ProteinExpressionSequenceContext>,
     pub cds_assessment: ProteinExpressionCdsAssessment,
     pub tag_assessment: ProteinExpressionTagAssessment,
@@ -8109,6 +16899,18 @@ pub enum IsoformTranscriptGeometryMode {
     Cds,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+/// One Ensembl-derived genomic interval retained as panel provenance.
+pub struct IsoformPanelAnnotationRange {
+    pub start_1based: usize,
+    pub end_1based: usize,
+    #[serde(default)]
+    pub exon_id: Option<String>,
+    #[serde(default)]
+    pub exon_version: Option<usize>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
 pub struct IsoformPanelIsoformSpec {
@@ -8129,6 +16931,29 @@ pub struct IsoformPanelIsoformSpec {
     pub curation: Option<IsoformPanelCurationInfo>,
     #[serde(default)]
     pub domains: Vec<IsoformPanelDomainSpec>,
+    /// Exact versioned transcript identifier from the annotation source.
+    #[serde(default)]
+    pub annotation_transcript_id: Option<String>,
+    #[serde(default)]
+    pub transcript_strand: Option<String>,
+    #[serde(default)]
+    pub transcript_biotype: Option<String>,
+    #[serde(default)]
+    pub annotation_is_canonical: Option<bool>,
+    #[serde(default)]
+    pub annotation_gencode_primary: Option<bool>,
+    #[serde(default)]
+    pub exon_ranges_genomic_1based: Vec<IsoformPanelAnnotationRange>,
+    #[serde(default)]
+    pub cds_ranges_genomic_1based: Vec<IsoformPanelAnnotationRange>,
+    #[serde(default)]
+    pub annotation_translation_id: Option<String>,
+    #[serde(default)]
+    pub coding_start_status: Option<String>,
+    #[serde(default)]
+    pub coding_completeness_status: Option<String>,
+    #[serde(default)]
+    pub annotation_provenance: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

@@ -7,15 +7,21 @@ use gentle::workflow_examples::{
     DEFAULT_TUTORIAL_MANIFEST_PATH, DEFAULT_TUTORIAL_OUTPUT_DIR, DEFAULT_TUTORIAL_SOURCE_DIR,
     DEFAULT_WORKFLOW_EXAMPLE_DIR, DEFAULT_WORKFLOW_SNIPPET_DIR, check_tutorial_catalog_generated,
     check_tutorial_generated, check_tutorial_manifest_generated, generate_tutorial_docs,
-    generate_workflow_example_docs, load_workflow_examples, validate_example_required_files,
-    write_tutorial_catalog_from_sources, write_tutorial_manifest_from_sources,
+    generate_workflow_example_docs, load_tutorial_manifest, load_workflow_examples,
+    run_example_workflow_for_project_state, validate_example_required_files,
+    validate_tutorial_manifest_against_examples, write_tutorial_catalog_from_sources,
+    write_tutorial_manifest_from_sources,
 };
+use ring::digest::{SHA256, digest};
 use serde_json::json;
 use std::{
+    collections::BTreeSet,
     env, fs,
     path::{Path, PathBuf},
-    process,
+    process, thread,
 };
+
+const EXAMPLES_DOCS_EXPANDED_STACK_SIZE: usize = 32 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
@@ -28,6 +34,8 @@ enum Mode {
     TutorialCatalogCheck,
     TutorialManifestGenerate,
     TutorialManifestCheck,
+    ExampleProject,
+    TutorialGuiProject,
     ParityMatrixGenerate,
     ParityMatrixCheck,
 }
@@ -35,6 +43,7 @@ enum Mode {
 #[derive(Debug)]
 struct CliArgs {
     show_help: bool,
+    show_version: bool,
     mode: Mode,
     source_dir: String,
     example_output_dir: String,
@@ -47,14 +56,22 @@ struct CliArgs {
     tutorial_source_dir: String,
     tutorial_manifest: String,
     tutorial_output_dir: String,
+    tutorial_chapter: String,
+    tutorial_phase: String,
+    tutorial_project_output: String,
+    tutorial_run_dir: String,
     parity_matrix_output: String,
     repo_root: String,
+    example_id: String,
+    project_output: String,
+    run_dir: String,
 }
 
 impl Default for CliArgs {
     fn default() -> Self {
         Self {
             show_help: false,
+            show_version: false,
             mode: Mode::ExampleGenerate,
             source_dir: DEFAULT_WORKFLOW_EXAMPLE_DIR.to_string(),
             example_output_dir: DEFAULT_WORKFLOW_SNIPPET_DIR.to_string(),
@@ -67,15 +84,22 @@ impl Default for CliArgs {
             tutorial_source_dir: DEFAULT_TUTORIAL_SOURCE_DIR.to_string(),
             tutorial_manifest: DEFAULT_TUTORIAL_MANIFEST_PATH.to_string(),
             tutorial_output_dir: DEFAULT_TUTORIAL_OUTPUT_DIR.to_string(),
+            tutorial_chapter: String::new(),
+            tutorial_phase: String::new(),
+            tutorial_project_output: String::new(),
+            tutorial_run_dir: String::new(),
             parity_matrix_output: "docs/gui_cli_mcp_parity.md".to_string(),
             repo_root: ".".to_string(),
+            example_id: String::new(),
+            project_output: String::new(),
+            run_dir: String::new(),
         }
     }
 }
 
 fn usage() {
     eprintln!(
-        "Usage:\n  \
+        "Usage:\n  gentle_examples_docs --version\n  \
 gentle_examples_docs [generate] [--source DIR] [--output DIR]\n  \
 gentle_examples_docs --check [--source DIR]\n  \
 gentle_examples_docs svg-png INPUT.svg OUTPUT.png [--scale N] [--drop-dotplot-metadata]\n  \
@@ -85,6 +109,8 @@ gentle_examples_docs tutorial-catalog-generate [--catalog-meta FILE] [--tutorial
 gentle_examples_docs tutorial-catalog-check [--catalog-meta FILE] [--tutorial-sources DIR] [--tutorial-catalog FILE]\n  \
 gentle_examples_docs tutorial-manifest-generate [--catalog-meta FILE] [--tutorial-sources DIR] [--manifest FILE]\n  \
 gentle_examples_docs tutorial-manifest-check [--catalog-meta FILE] [--tutorial-sources DIR] [--manifest FILE]\n  \
+gentle_examples_docs example-project EXAMPLE_ID PROJECT.json --run-dir DIR [--source DIR] [--repo-root DIR]\n  \
+gentle_examples_docs tutorial-gui-project --chapter ID --phase starter|oracle --project-output FILE [--run-dir DIR] [--source DIR] [--manifest FILE] [--repo-root DIR]\n  \
 gentle_examples_docs parity-matrix-generate [--output FILE]\n  \
 gentle_examples_docs parity-matrix-check [--output FILE]\n\n  \
 Defaults:\n  \
@@ -113,6 +139,10 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
         match args[idx].as_str() {
             "--help" | "-h" => {
                 parsed.show_help = true;
+                idx += 1;
+            }
+            "--version" | "-V" => {
+                parsed.show_version = true;
                 idx += 1;
             }
             "--check" => {
@@ -153,6 +183,35 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
                     return Err("Missing DIR after --tutorial-output".to_string());
                 }
                 parsed.tutorial_output_dir = args[idx + 1].clone();
+                idx += 2;
+            }
+            "--chapter" => {
+                if idx + 1 >= args.len() {
+                    return Err("Missing ID after --chapter".to_string());
+                }
+                parsed.tutorial_chapter = args[idx + 1].clone();
+                idx += 2;
+            }
+            "--phase" => {
+                if idx + 1 >= args.len() {
+                    return Err("Missing starter|oracle after --phase".to_string());
+                }
+                parsed.tutorial_phase = args[idx + 1].clone();
+                idx += 2;
+            }
+            "--project-output" => {
+                if idx + 1 >= args.len() {
+                    return Err("Missing FILE after --project-output".to_string());
+                }
+                parsed.tutorial_project_output = args[idx + 1].clone();
+                idx += 2;
+            }
+            "--run-dir" => {
+                if idx + 1 >= args.len() {
+                    return Err("Missing DIR after --run-dir".to_string());
+                }
+                parsed.tutorial_run_dir = args[idx + 1].clone();
+                parsed.run_dir = args[idx + 1].clone();
                 idx += 2;
             }
             "--tutorial-catalog" => {
@@ -222,6 +281,14 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
                 parsed.mode = Mode::TutorialManifestCheck;
                 idx += 1;
             }
+            "example-project" => {
+                parsed.mode = Mode::ExampleProject;
+                idx += 1;
+            }
+            "tutorial-gui-project" => {
+                parsed.mode = Mode::TutorialGuiProject;
+                idx += 1;
+            }
             "parity-matrix-generate" => {
                 parsed.mode = Mode::ParityMatrixGenerate;
                 idx += 1;
@@ -238,6 +305,16 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
                 }
                 if parsed.mode == Mode::SvgPng && parsed.png_output.is_empty() {
                     parsed.png_output = other.to_string();
+                    idx += 1;
+                    continue;
+                }
+                if parsed.mode == Mode::ExampleProject && parsed.example_id.is_empty() {
+                    parsed.example_id = other.to_string();
+                    idx += 1;
+                    continue;
+                }
+                if parsed.mode == Mode::ExampleProject && parsed.project_output.is_empty() {
+                    parsed.project_output = other.to_string();
                     idx += 1;
                     continue;
                 }
@@ -319,6 +396,7 @@ fn run_tutorial_check_mode(
     let summary = json!({
         "status": "ok",
         "mode": "tutorial-check",
+        "agent_parity": report.agent_parity,
         "chapter_count": report.chapter_count,
         "generated_files": report.generated_files,
         "warnings": report.warnings,
@@ -407,6 +485,229 @@ fn run_tutorial_manifest_check_mode(
     Ok(())
 }
 
+fn run_example_project_mode(
+    source_dir: &Path,
+    example_id: &str,
+    project_output: &Path,
+    run_dir: &Path,
+    repo_root: &Path,
+) -> Result<(), String> {
+    if example_id.trim().is_empty() || project_output.as_os_str().is_empty() {
+        return Err("example-project requires EXAMPLE_ID and PROJECT.json".to_string());
+    }
+    if run_dir.as_os_str().is_empty() {
+        return Err("example-project requires --run-dir DIR".to_string());
+    }
+    let examples = load_workflow_examples(source_dir)?;
+    let loaded = examples
+        .iter()
+        .find(|loaded| loaded.example.id == example_id)
+        .ok_or_else(|| {
+            format!(
+                "Workflow example '{}' was not found under '{}'",
+                example_id,
+                source_dir.display()
+            )
+        })?;
+    validate_example_required_files(&loaded.example, repo_root)?;
+    fs::create_dir_all(run_dir)
+        .map_err(|error| format!("Could not create '{}': {error}", run_dir.display()))?;
+    if let Some(parent) = project_output.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Could not create '{}': {error}", parent.display()))?;
+    }
+    let state = run_example_workflow_for_project_state(&loaded.example, repo_root, run_dir)?;
+    state
+        .save_to_path(&project_output.to_string_lossy())
+        .map_err(|error| {
+            format!(
+                "Could not save workflow example '{}' project to '{}': {error}",
+                example_id,
+                project_output.display()
+            )
+        })?;
+    let summary = json!({
+        "status": "ok",
+        "mode": "example-project",
+        "example_id": example_id,
+        "project_output": project_output.to_string_lossy(),
+        "sequence_count": state.sequences.len(),
+    });
+    let pretty = serde_json::to_string_pretty(&summary)
+        .map_err(|error| format!("Could not serialize example-project report: {error}"))?;
+    println!("{pretty}");
+    Ok(())
+}
+
+fn file_sha256(path: &Path) -> Result<String, String> {
+    let bytes = fs::read(path)
+        .map_err(|error| format!("Could not read '{}' for hashing: {error}", path.display()))?;
+    let hash = digest(&SHA256, &bytes);
+    let mut encoded = String::with_capacity(hash.as_ref().len() * 2);
+    for byte in hash.as_ref() {
+        encoded.push_str(&format!("{byte:02x}"));
+    }
+    Ok(encoded)
+}
+
+fn run_tutorial_gui_project_mode(
+    example_source_dir: &Path,
+    manifest_path: &Path,
+    repo_root: &Path,
+    chapter_id: &str,
+    phase: &str,
+    project_output: &Path,
+    requested_run_dir: Option<&Path>,
+) -> Result<(), String> {
+    if chapter_id.trim().is_empty() {
+        return Err("tutorial-gui-project requires --chapter ID".to_string());
+    }
+    if project_output.as_os_str().is_empty() {
+        return Err("tutorial-gui-project requires --project-output FILE".to_string());
+    }
+    let manifest = load_tutorial_manifest(manifest_path)?;
+    let examples = load_workflow_examples(example_source_dir)?;
+    validate_tutorial_manifest_against_examples(&manifest, &examples)?;
+    let chapter = manifest
+        .chapters
+        .iter()
+        .find(|chapter| chapter.id == chapter_id)
+        .ok_or_else(|| format!("Tutorial chapter '{chapter_id}' was not found"))?;
+    let acceptance = chapter
+        .gui_acceptance
+        .as_ref()
+        .ok_or_else(|| format!("Tutorial chapter '{chapter_id}' has no GUI acceptance contract"))?;
+    let project_reference = match phase {
+        "starter" => &acceptance.starter,
+        "oracle" => &acceptance.oracle,
+        other => {
+            return Err(format!(
+                "Unknown tutorial GUI project phase '{other}'; expected starter or oracle"
+            ));
+        }
+    };
+    let loaded = examples
+        .iter()
+        .find(|loaded| loaded.example.id == project_reference.example_id)
+        .ok_or_else(|| {
+            format!(
+                "Tutorial GUI {phase} example '{}' was not found",
+                project_reference.example_id
+            )
+        })?;
+    validate_example_required_files(&loaded.example, repo_root)?;
+    let default_run_dir = project_output
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let run_dir = requested_run_dir.unwrap_or(default_run_dir);
+    fs::create_dir_all(run_dir)
+        .map_err(|error| format!("Could not create '{}': {error}", run_dir.display()))?;
+    if let Some(parent) = project_output.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Could not create '{}': {error}", parent.display()))?;
+    }
+    let state = run_example_workflow_for_project_state(&loaded.example, repo_root, run_dir)?;
+    let sequence_ids = state.sequences.keys().cloned().collect::<BTreeSet<_>>();
+    let source_sequence_ids = acceptance
+        .steps
+        .iter()
+        .filter_map(|step| step.subject.get("sequence"))
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let mut sequence_bindings = Vec::with_capacity(source_sequence_ids.len());
+    let mut feature_bindings = Vec::new();
+    for source_sequence_id in source_sequence_ids {
+        let resolved_sequence_id = project_reference
+            .seq_id_map
+            .get(&source_sequence_id)
+            .cloned()
+            .unwrap_or_else(|| source_sequence_id.clone());
+        if !sequence_ids.contains(&resolved_sequence_id) {
+            return Err(format!(
+                "Tutorial chapter '{chapter_id}' {phase} sequence binding '{source_sequence_id}' -> '{resolved_sequence_id}' is absent from the prepared state"
+            ));
+        }
+        let subject_scope = gentle::tutorial_gui_semantics::pseudonymous_subject_scope(&[
+            resolved_sequence_id.as_str(),
+        ]);
+        sequence_bindings.push(json!({
+            "source_sequence_id": source_sequence_id,
+            "resolved_sequence_id": resolved_sequence_id,
+            "subject_scope": subject_scope,
+        }));
+        let feature_indices = acceptance
+            .steps
+            .iter()
+            .filter(|step| step.subject.get("sequence") == Some(&source_sequence_id))
+            .filter_map(|step| step.subject.get("feature_index"))
+            .collect::<BTreeSet<_>>();
+        for raw_index in feature_indices {
+            let index = raw_index.parse::<usize>().map_err(|_| {
+                format!("Invalid feature_index '{raw_index}' for '{source_sequence_id}'")
+            })?;
+            if raw_index != &index.to_string() {
+                return Err(format!("Noncanonical feature_index '{raw_index}'"));
+            }
+            let dna = &state.sequences[&resolved_sequence_id];
+            let feature = dna.features().get(index).ok_or_else(|| {
+                format!("Feature {index} is absent from '{resolved_sequence_id}'")
+            })?;
+            let identity = serde_json::to_string(feature).map_err(|error| error.to_string())?;
+            if dna
+                .features()
+                .iter()
+                .filter(|candidate| *candidate == feature)
+                .count()
+                != 1
+            {
+                return Err(format!(
+                    "Feature {index} in '{resolved_sequence_id}' has ambiguous content identity"
+                ));
+            }
+            let scope = gentle::tutorial_gui_semantics::pseudonymous_subject_scope(&[
+                &resolved_sequence_id,
+                &identity,
+            ]);
+            let group_scope = gentle::tutorial_gui_semantics::pseudonymous_subject_scope(&[
+                &resolved_sequence_id,
+                feature.kind.as_ref(),
+            ]);
+            feature_bindings.push(json!({
+                "source_sequence_id": source_sequence_id,
+                "resolved_sequence_id": resolved_sequence_id,
+                "feature_index": raw_index,
+                "subject_scope": scope,
+                "group_subject_scope": group_scope,
+            }));
+        }
+    }
+    state
+        .save_to_path(&project_output.to_string_lossy())
+        .map_err(|error| error.to_string())?;
+    let summary = json!({
+        "schema": "gentle.tutorial_gui_project_preparation.v1",
+        "chapter_id": chapter.id,
+        "acceptance_schema": acceptance.schema,
+        "profile": acceptance.profile,
+        "phase": phase,
+        "example_id": loaded.example.id,
+        "workflow_source_path": loaded.path.to_string_lossy(),
+        "workflow_source_sha256": file_sha256(&loaded.path)?,
+        "project_path": project_output.to_string_lossy(),
+        "project_sha256": file_sha256(project_output)?,
+        "run_dir": run_dir.to_string_lossy(),
+        "sequence_bindings": sequence_bindings,
+        "feature_bindings": feature_bindings,
+    });
+    let pretty = serde_json::to_string_pretty(&summary)
+        .map_err(|error| format!("Could not serialize GUI project preparation: {error}"))?;
+    println!("{pretty}");
+    Ok(())
+}
+
 fn run_parity_matrix_generate_mode(output_path: &Path) -> Result<(), String> {
     let markdown = gentle_protocol::render_gui_cli_mcp_parity_matrix_markdown();
     if let Some(parent) = output_path.parent() {
@@ -447,21 +748,7 @@ fn run_parity_matrix_check_mode(output_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn main() {
-    let args: Vec<String> = env::args().skip(1).collect();
-    let parsed = match parse_args(&args) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("{e}");
-            usage();
-            process::exit(1);
-        }
-    };
-    if parsed.show_help {
-        usage();
-        return;
-    }
-
+fn run_selected_mode(parsed: CliArgs) -> Result<(), String> {
     let source_dir = PathBuf::from(parsed.source_dir);
     let example_output = PathBuf::from(parsed.example_output_dir);
     let tutorial_catalog = PathBuf::from(parsed.tutorial_catalog);
@@ -471,9 +758,13 @@ fn main() {
     let tutorial_output = PathBuf::from(parsed.tutorial_output_dir);
     let parity_matrix_output = PathBuf::from(parsed.parity_matrix_output);
     let repo_root = PathBuf::from(parsed.repo_root);
+    let tutorial_project_output = PathBuf::from(parsed.tutorial_project_output);
+    let tutorial_run_dir = PathBuf::from(parsed.tutorial_run_dir);
     let svg_input = PathBuf::from(parsed.svg_input);
     let png_output = PathBuf::from(parsed.png_output);
-    let result = match parsed.mode {
+    let project_output = PathBuf::from(parsed.project_output);
+    let run_dir = PathBuf::from(parsed.run_dir);
+    match parsed.mode {
         Mode::ExampleGenerate => run_generate_mode(&source_dir, &example_output),
         Mode::ExampleCheck => run_check_mode(&source_dir),
         Mode::SvgPng => run_svg_png_mode(
@@ -514,9 +805,63 @@ fn main() {
             &tutorial_source_dir,
             &tutorial_manifest,
         ),
+        Mode::ExampleProject => run_example_project_mode(
+            &source_dir,
+            &parsed.example_id,
+            &project_output,
+            &run_dir,
+            &repo_root,
+        ),
+        Mode::TutorialGuiProject => run_tutorial_gui_project_mode(
+            &source_dir,
+            &tutorial_manifest,
+            &repo_root,
+            &parsed.tutorial_chapter,
+            &parsed.tutorial_phase,
+            &tutorial_project_output,
+            (!tutorial_run_dir.as_os_str().is_empty()).then_some(tutorial_run_dir.as_path()),
+        ),
         Mode::ParityMatrixGenerate => run_parity_matrix_generate_mode(&parity_matrix_output),
         Mode::ParityMatrixCheck => run_parity_matrix_check_mode(&parity_matrix_output),
+    }
+}
+
+fn run_selected_mode_on_expanded_stack(parsed: CliArgs) -> Result<(), String> {
+    let worker = thread::Builder::new()
+        .name("gentle-examples-docs".to_string())
+        .stack_size(EXAMPLES_DOCS_EXPANDED_STACK_SIZE)
+        .spawn(move || run_selected_mode(parsed))
+        .map_err(|error| format!("Could not start gentle_examples_docs worker thread: {error}"))?;
+    worker.join().map_err(|panic_payload| {
+        let message = panic_payload
+            .downcast_ref::<&str>()
+            .map(|value| (*value).to_string())
+            .or_else(|| panic_payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "unknown panic payload".to_string());
+        format!("gentle_examples_docs worker thread panicked: {message}")
+    })?
+}
+
+fn main() {
+    let args: Vec<String> = env::args().skip(1).collect();
+    let parsed = match parse_args(&args) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("{e}");
+            usage();
+            process::exit(1);
+        }
     };
+    if parsed.show_help {
+        usage();
+        return;
+    }
+    if parsed.show_version {
+        println!("{}", gentle::about::version_cli_text());
+        return;
+    }
+
+    let result = run_selected_mode_on_expanded_stack(parsed);
     if let Err(e) = result {
         eprintln!("{e}");
         process::exit(1);
@@ -526,6 +871,14 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::{Mode, parse_args};
+
+    #[test]
+    fn version_probe_does_not_select_a_workflow() {
+        for flag in ["--version", "-V"] {
+            let parsed = parse_args(&[flag.to_string()]).expect("version flag");
+            assert!(parsed.show_version);
+        }
+    }
 
     #[test]
     fn parse_svg_png_mode_with_cleanup_flag() {
@@ -543,5 +896,42 @@ mod tests {
         assert_eq!(parsed.png_output, "output.png");
         assert!((parsed.svg_scale - 1.5).abs() < 1e-6);
         assert!(parsed.drop_dotplot_metadata);
+    }
+
+    #[test]
+    fn parse_example_project_mode() {
+        let args = vec![
+            "example-project".to_string(),
+            "simple_pcr_selection_gui".to_string(),
+            "/tmp/starter.project.gentle.json".to_string(),
+            "--run-dir".to_string(),
+            "/tmp/starter-run".to_string(),
+        ];
+        let parsed = parse_args(&args).expect("parse example-project args");
+        assert_eq!(parsed.mode, Mode::ExampleProject);
+        assert_eq!(parsed.example_id, "simple_pcr_selection_gui");
+        assert_eq!(parsed.project_output, "/tmp/starter.project.gentle.json");
+        assert_eq!(parsed.run_dir, "/tmp/starter-run");
+    }
+
+    #[test]
+    fn parse_tutorial_gui_project_mode() {
+        let args = vec![
+            "tutorial-gui-project".to_string(),
+            "--chapter".to_string(),
+            "simple_pcr_selection_gui".to_string(),
+            "--phase".to_string(),
+            "starter".to_string(),
+            "--project-output".to_string(),
+            "starter.gentle.json".to_string(),
+            "--run-dir".to_string(),
+            "run".to_string(),
+        ];
+        let parsed = parse_args(&args).expect("parse tutorial GUI project args");
+        assert_eq!(parsed.mode, Mode::TutorialGuiProject);
+        assert_eq!(parsed.tutorial_chapter, "simple_pcr_selection_gui");
+        assert_eq!(parsed.tutorial_phase, "starter");
+        assert_eq!(parsed.tutorial_project_output, "starter.gentle.json");
+        assert_eq!(parsed.tutorial_run_dir, "run");
     }
 }

@@ -46,6 +46,18 @@ fn shell_command_paths() -> BTreeSet<String> {
         .collect()
 }
 
+fn declared_mcp_op_paths() -> BTreeSet<String> {
+    glossary_commands()
+        .into_iter()
+        .filter(|command| {
+            command["interfaces"]
+                .as_array()
+                .is_some_and(|interfaces| interfaces.iter().any(|interface| interface == "mcp-op"))
+        })
+        .filter_map(|command| command["path"].as_str().map(ToString::to_string))
+        .collect()
+}
+
 fn intentionally_mcp_excluded_paths() -> BTreeSet<String> {
     let marker = "#### Intentionally MCP-excluded shell commands";
     let section = AGENT_INTERFACE_MD
@@ -182,6 +194,62 @@ fn every_glossary_shell_command_is_mcp_tool_or_documented_exclusion() {
 }
 
 #[test]
+fn glossary_mcp_op_routes_are_advertised_without_exclusion_shortcuts() {
+    let tools = mcp_tools();
+    let covered = tool_command_paths(&tools);
+    let excluded = intentionally_mcp_excluded_paths();
+
+    for path in declared_mcp_op_paths() {
+        assert!(
+            covered.contains(&path),
+            "glossary mcp-op route `{path}` must be advertised by MCP op"
+        );
+        assert!(
+            !excluded.contains(&path),
+            "glossary mcp-op route `{path}` must not be documented as MCP-excluded"
+        );
+    }
+}
+
+#[test]
+fn typed_op_routes_are_advertised_without_exclusion_shortcuts() {
+    let tools = mcp_tools();
+    let covered = tool_command_paths(&tools);
+    let excluded = intentionally_mcp_excluded_paths();
+    for path in [
+        "features encode-ccre-overlaps",
+        "features materialize-encode-ccres",
+        "features ensembl-regulation-overlaps",
+        "features materialize-ensembl-regulation",
+        "splicing cryptic-screen",
+        "splicing cryptic-render",
+        "splicing cryptic-export",
+        "splicing cryptic-overlay",
+        "splicing cryptic-protein",
+        "uniprot build-linked-transcript-inventory",
+        "promoters regulatory-products-plan",
+        "promoters regulatory-products-materialize",
+    ] {
+        assert!(
+            covered.contains(path),
+            "{path} must be advertised by MCP op"
+        );
+        assert!(
+            !excluded.contains(path),
+            "{path} must not be counted as both supported and excluded"
+        );
+    }
+    assert!(
+        excluded.contains("resources sync-maxent"),
+        "host-local MaxEnt resource normalization must remain an explicit MCP exclusion"
+    );
+    assert!(
+        !covered.contains("resources sync-maxent"),
+        "an exclusion must not be mistaken for MCP support"
+    );
+}
+
+#[test]
 fn mcp_tool_errors_return_typed_engine_error_payloads() {
     let cases = [
         gentle::mcp_server::mcp_tool_call_for_capability_surface_tests(
@@ -203,6 +271,15 @@ fn mcp_tool_errors_return_typed_engine_error_payloads() {
             gentle::mcp_server::DEFAULT_MCP_STATE_PATH,
             "restriction_site_detail",
             serde_json::json!({}),
+        ),
+        gentle::mcp_server::mcp_tool_call_for_capability_surface_tests(
+            gentle::mcp_server::DEFAULT_MCP_STATE_PATH,
+            "gene_isoform_assay_publication",
+            serde_json::json!({
+                "confirm": false,
+                "request_path": "request.json",
+                "output_directory": "out"
+            }),
         ),
     ];
 

@@ -80,6 +80,12 @@ impl IupacCode {
         Self(self.0 & other.0)
     }
 
+    /// Complement all represented bases, preserving IUPAC ambiguity (and invalid/empty codes).
+    #[inline]
+    pub fn complement(self) -> Self {
+        Self(((self.0 & 1) << 3) | ((self.0 & 2) << 1) | ((self.0 & 4) >> 1) | ((self.0 & 8) >> 3))
+    }
+
     #[inline(always)]
     pub fn is_valid_letter(letter: u8) -> bool {
         matches!(
@@ -144,6 +150,17 @@ impl IupacCode {
             b'G' => b'C',
             b'T' => b'A',
             b'U' => b'A',
+            b'W' => b'W',
+            b'S' => b'S',
+            b'M' => b'K',
+            b'K' => b'M',
+            b'R' => b'Y',
+            b'Y' => b'R',
+            b'B' => b'V',
+            b'D' => b'H',
+            b'H' => b'D',
+            b'V' => b'B',
+            b'N' => b'N',
             _ => b' ',
         }
     }
@@ -204,8 +221,34 @@ mod tests {
         assert_eq!(IupacCode::letter_complement(b'G'), b'C');
         assert_eq!(IupacCode::letter_complement(b'T'), b'A');
         assert_eq!(IupacCode::letter_complement(b'U'), b'A');
+        assert_eq!(IupacCode::letter_complement(b'W'), b'W');
+        assert_eq!(IupacCode::letter_complement(b'S'), b'S');
+        assert_eq!(IupacCode::letter_complement(b'M'), b'K');
+        assert_eq!(IupacCode::letter_complement(b'K'), b'M');
+        assert_eq!(IupacCode::letter_complement(b'R'), b'Y');
+        assert_eq!(IupacCode::letter_complement(b'Y'), b'R');
+        assert_eq!(IupacCode::letter_complement(b'B'), b'V');
+        assert_eq!(IupacCode::letter_complement(b'D'), b'H');
+        assert_eq!(IupacCode::letter_complement(b'H'), b'D');
+        assert_eq!(IupacCode::letter_complement(b'V'), b'B');
+        assert_eq!(IupacCode::letter_complement(b'N'), b'N');
         assert_eq!(IupacCode::letter_complement(b'X'), b' ');
         assert_eq!(IupacCode::letter_complement(b'a'), b'T');
+        assert_eq!(IupacCode::letter_complement(b'n'), b'N');
+    }
+
+    #[test]
+    fn iupac_complement_preserves_every_ambiguity_code() {
+        for (base, expected) in b"ACGTWSMKRYBDHVN".iter().zip(b"TGCAWSKMYRVHDBN") {
+            let code = IupacCode::from_letter(*base);
+            assert_eq!(code.complement().to_letter(), *expected);
+            assert_eq!(code.complement().complement(), code);
+            assert_eq!(
+                IupacCode::from_letter(base.to_ascii_lowercase()).complement(),
+                code.complement()
+            );
+        }
+        assert!(IupacCode::from_letter(b'?').complement().is_empty());
     }
 
     #[test]

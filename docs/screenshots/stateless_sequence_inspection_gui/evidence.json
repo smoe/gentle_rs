@@ -1,0 +1,54 @@
+{
+  "schema": "gentle.manual_stateless_sequence_inspection_gui_evidence.v1",
+  "status": "manual_hybrid_partial_gui_blocked",
+  "automated_gui_acceptance": false,
+  "input_policy": "publication_safe_synthetic_only",
+  "capture_date": "2026-10-01",
+  "capture_backend": "ImageMagick import -window root on native X11/Xvfb windows",
+  "environment": "Linux Xvfb without an EWMH window manager; manual/hybrid capture only",
+  "display": {
+    "revision": "002de21230d5bb7dfbb8d78542e3961774a90628",
+    "gentle_gui_sha256": "1dbc3a3e227e3c4cb1ed5c3afe08e37b1f59859b18ac5e8f54e2e89efff0cb1e",
+    "viewport_pixels": [1900, 1180]
+  },
+  "input": {
+    "path": "docs/tutorial/inputs/inline_sequence_inspection_demo.fa",
+    "sha256": "f9de6db7015666382c0b4d98b0a1aa4964c33c12a03ccd8688bfc5d7edab5d76",
+    "length_nt": 46,
+    "span_0based_half_open": [0, 46]
+  },
+  "captures": [
+    {
+      "id": "tfbs_settings",
+      "raw_png": {
+        "path": "docs/screenshots/stateless_sequence_inspection_gui/01-tfbs-settings.raw.png",
+        "sha256": "2e58cf6f250cf8e74b46353b6a01fb18fbfb5adb9359ec00ab2f5be3d33904a0",
+        "size_bytes": 694600
+      },
+      "claim": "SP1/TP73, 0.95 quantile, background-tail log10 score kind and unclipped negative values are visibly configured"
+    },
+    {
+      "id": "direct_scan_inspectors",
+      "raw_png": {
+        "path": "docs/screenshots/stateless_sequence_inspection_gui/02-direct-scan-inspectors.raw.png",
+        "sha256": "86e41154c9d17d02e285551ea25190e7877a2144b70df87b682d4381aa954cbe",
+        "size_bytes": 706271
+      },
+      "claim": "EcoRI, SmaI and BamHI plus three retained SP1 hits are visible in the shared-report inspectors"
+    }
+  ],
+  "score_track_gui_blocker": {
+    "action": "TFBS score tracks -> Show score tracks in whole sequence",
+    "settings": {
+      "motifs": ["SP1", "TP73"],
+      "min_llr_quantile": 0.95,
+      "value_kind": "llr_background_tail_log10",
+      "clip_negatives": false
+    },
+    "independent_fresh_process_reproductions": 2,
+    "exit_code": 134,
+    "stderr": "thread '<unknown>' has overflowed its stack; fatal runtime error: stack overflow, aborting",
+    "headless_workflow_status": "pass",
+    "interpretation": "GUI-path blocker only; no claim that the shared engine score-track result is wrong"
+  }
+}

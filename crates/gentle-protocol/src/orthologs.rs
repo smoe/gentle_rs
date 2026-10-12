@@ -5,9 +5,12 @@
 //! evidence-separated comparison reports for sequence, TFBS, expression, and
 //! CUT&RUN/occupancy signals.
 
-use crate::{GeneSetCohortRelationship, GeneSetCohortRelationshipFlag};
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use crate::{
+    BiologicalContextRegistry, BiologicalContextResolutionError, GeneSetCohortRelationship,
+    GeneSetCohortRelationshipFlag, SequenceAlignmentReport,
+};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::{collections::BTreeMap, fmt, ops::Deref};
 
 /// Local offline ortholog mapping resource schema.
 pub const ORTHOLOG_RESOURCE_SCHEMA: &str = "gentle.ortholog_resource.v1";
@@ -15,6 +18,208 @@ pub const ORTHOLOG_RESOURCE_SCHEMA: &str = "gentle.ortholog_resource.v1";
 pub const ORTHOLOG_PROMOTER_COHORT_SCHEMA: &str = "gentle.ortholog_promoter_cohort.v1";
 /// Cross-species promoter comparison report schema.
 pub const ORTHOLOG_PROMOTER_COMPARISON_SCHEMA: &str = "gentle.ortholog_promoter_comparison.v1";
+/// Anchor-oriented cross-species promoter conservation report schema.
+pub const ORTHOLOG_PROMOTER_CONSERVATION_SCHEMA: &str = "gentle.ortholog_promoter_conservation.v1";
+
+/// Canonical cardinality represented by a recognized orthology-type value.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum OrthologyCardinality {
+    OneToOne,
+    OneToMany,
+    ManyToOne,
+    ManyToMany,
+}
+
+impl OrthologyCardinality {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::OneToOne => "one_to_one",
+            Self::OneToMany => "one_to_many",
+            Self::ManyToOne => "many_to_one",
+            Self::ManyToMany => "many_to_many",
+        }
+    }
+}
+
+/// Open orthology-type vocabulary that preserves provider-specific legacy text.
+///
+/// Known spellings expose a typed cardinality while unknown values round-trip
+/// unchanged. This keeps existing local resources such as `synthetic_ortholog`
+/// valid instead of treating a new vocabulary as a migration gate.
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct OrthologyType(String);
+
+impl OrthologyType {
+    pub const ONE_TO_ONE: &'static str = "one_to_one";
+    pub const ONE_TO_MANY: &'static str = "one_to_many";
+    pub const MANY_TO_ONE: &'static str = "many_to_one";
+    pub const MANY_TO_MANY: &'static str = "many_to_many";
+
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn cardinality(&self) -> Option<OrthologyCardinality> {
+        match normalized_orthology_token(&self.0).as_str() {
+            "one_to_one" | "one2one" | "ortholog_one_to_one" | "ortholog_one2one" => {
+                Some(OrthologyCardinality::OneToOne)
+            }
+            "one_to_many" | "one2many" | "ortholog_one_to_many" | "ortholog_one2many" => {
+                Some(OrthologyCardinality::OneToMany)
+            }
+            "many_to_one" | "many2one" | "ortholog_many_to_one" | "ortholog_many2one" => {
+                Some(OrthologyCardinality::ManyToOne)
+            }
+            "many_to_many" | "many2many" | "ortholog_many_to_many" | "ortholog_many2many" => {
+                Some(OrthologyCardinality::ManyToMany)
+            }
+            _ => None,
+        }
+    }
+}
+
+impl From<String> for OrthologyType {
+    fn from(value: String) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<&str> for OrthologyType {
+    fn from(value: &str) -> Self {
+        Self::new(value)
+    }
+}
+
+impl Deref for OrthologyType {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
+
+impl fmt::Display for OrthologyType {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+impl Serialize for OrthologyType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for OrthologyType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        String::deserialize(deserializer).map(Self)
+    }
+}
+
+/// Canonical confidence tier represented by a recognized confidence value.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum OrthologConfidenceLevel {
+    High,
+    Medium,
+    Low,
+}
+
+impl OrthologConfidenceLevel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::High => "high",
+            Self::Medium => "medium",
+            Self::Low => "low",
+        }
+    }
+}
+
+/// Open ortholog-confidence vocabulary preserving provider-specific values.
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct OrthologConfidence(String);
+
+impl OrthologConfidence {
+    pub const HIGH: &'static str = "high";
+    pub const MEDIUM: &'static str = "medium";
+    pub const LOW: &'static str = "low";
+
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn level(&self) -> Option<OrthologConfidenceLevel> {
+        match normalized_orthology_token(&self.0).as_str() {
+            "high" => Some(OrthologConfidenceLevel::High),
+            "medium" | "moderate" => Some(OrthologConfidenceLevel::Medium),
+            "low" => Some(OrthologConfidenceLevel::Low),
+            _ => None,
+        }
+    }
+}
+
+impl From<String> for OrthologConfidence {
+    fn from(value: String) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<&str> for OrthologConfidence {
+    fn from(value: &str) -> Self {
+        Self::new(value)
+    }
+}
+
+impl Deref for OrthologConfidence {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
+
+impl fmt::Display for OrthologConfidence {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+impl Serialize for OrthologConfidence {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for OrthologConfidence {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        String::deserialize(deserializer).map(Self)
+    }
+}
+
+fn normalized_orthology_token(value: &str) -> String {
+    value.trim().to_ascii_lowercase().replace(['-', ' '], "_")
+}
 
 /// How to handle multiple local ortholog rows for one anchor/target pair.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -23,6 +228,7 @@ pub enum OrthologAmbiguityPolicy {
     #[default]
     Reject,
     First,
+    Preserve,
 }
 
 impl OrthologAmbiguityPolicy {
@@ -30,6 +236,7 @@ impl OrthologAmbiguityPolicy {
         match self {
             Self::Reject => "reject",
             Self::First => "first",
+            Self::Preserve => "preserve",
         }
     }
 }
@@ -69,6 +276,105 @@ impl OrthologCutRunSupportStatus {
     }
 }
 
+/// Whether normalized cross-species CUT&RUN values were compared.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum OrthologCutRunQuantitativeComparisonStatus {
+    #[default]
+    NotComparable,
+    Comparable,
+}
+
+impl OrthologCutRunQuantitativeComparisonStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NotComparable => "not_comparable",
+            Self::Comparable => "comparable",
+        }
+    }
+}
+
+/// One caller-supplied normalized CUT&RUN value for a resolved promoter.
+///
+/// Values are never synthesized from prepared peak scores or read counts.
+/// Source ids and provenance bind each value to the evidence from which the
+/// caller derived it.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct OrthologCutRunNormalizedValueInput {
+    pub species: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id: Option<String>,
+    pub normalized_value: f64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub contributing_dataset_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub contributing_read_report_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<String>,
+}
+
+/// Explicit normalization contract for quantitative cross-promoter CUT&RUN.
+///
+/// A method, unit, shared comparison reference, and provenance statement are
+/// all required before the engine will compare the supplied values.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct OrthologCutRunNormalizationInput {
+    pub normalization_method: String,
+    pub unit: String,
+    pub comparison_reference: String,
+    pub provenance: String,
+    #[serde(default)]
+    pub values: Vec<OrthologCutRunNormalizedValueInput>,
+}
+
+/// One normalized value assigned to a resolved ortholog promoter row.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct OrthologCutRunNormalizedAssignment {
+    pub species: String,
+    pub gene_label: String,
+    pub transcript_id: String,
+    pub normalized_value: f64,
+    #[serde(default)]
+    pub contributing_dataset_ids: Vec<String>,
+    #[serde(default)]
+    pub contributing_read_report_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<String>,
+}
+
+/// Pairwise difference between two explicitly normalized CUT&RUN values.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct OrthologCutRunPairwiseQuantitativeComparison {
+    pub left_species: String,
+    pub right_species: String,
+    pub left_gene_label: String,
+    pub right_gene_label: String,
+    pub left_normalized_value: f64,
+    pub right_normalized_value: f64,
+    pub delta_right_minus_left: f64,
+    pub absolute_delta: f64,
+}
+
+/// Fail-closed quantitative CUT&RUN comparison carried beside qualitative
+/// motif/occupancy states.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct OrthologCutRunQuantitativeComparison {
+    pub status: OrthologCutRunQuantitativeComparisonStatus,
+    pub normalization: OrthologCutRunNormalizationInput,
+    #[serde(default)]
+    pub assignments: Vec<OrthologCutRunNormalizedAssignment>,
+    #[serde(default)]
+    pub pairwise_comparisons: Vec<OrthologCutRunPairwiseQuantitativeComparison>,
+    pub detail: String,
+}
+
 /// Species alias mapping used by a local ortholog resource.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
@@ -83,18 +389,22 @@ pub struct OrthologSpeciesAlias {
 pub struct OrthologMappingRow {
     pub source_species: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_context_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_gene_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_gene_symbol: Option<String>,
     pub target_species: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_context_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_gene_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_gene_symbol: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub orthology_type: Option<String>,
+    pub orthology_type: Option<OrthologyType>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub confidence: Option<String>,
+    pub confidence: Option<OrthologConfidence>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
     #[serde(default)]
@@ -110,12 +420,33 @@ pub struct OrthologResource {
     pub id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
+    #[serde(flatten)]
+    pub biological_contexts: BiologicalContextRegistry,
     #[serde(default)]
     pub species_aliases: Vec<OrthologSpeciesAlias>,
     #[serde(default)]
     pub rows: Vec<OrthologMappingRow>,
     #[serde(default)]
     pub warnings: Vec<String>,
+}
+
+impl OrthologResource {
+    /// Validate the registry and every optional row-level context reference.
+    pub fn validate_context_references(&self) -> Result<(), BiologicalContextResolutionError> {
+        self.biological_contexts.validate()?;
+        for row in &self.rows {
+            for context_id in [
+                row.source_context_id.as_deref(),
+                row.target_context_id.as_deref(),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                self.biological_contexts.context(context_id)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Request echoed into a resolved ortholog promoter cohort.
@@ -139,11 +470,43 @@ pub struct OrthologPromoterCohortRequest {
     pub relationship: GeneSetCohortRelationship,
 }
 
+/// One ordered mapping candidate retained for an unresolved ambiguous target.
+///
+/// Candidate rows preserve declared identity and evidence without treating the
+/// mapping as selected or resolving it into a promoter-cohort member.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct OrthologAmbiguityCandidate {
+    pub candidate_rank: usize,
+    pub candidate_label: String,
+    pub target_species: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_genome_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_context_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_context_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_gene_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_gene_symbol: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub orthology_type: Option<OrthologyType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<OrthologConfidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub evidence: Vec<String>,
+}
+
 /// One unresolved species/gene row from ortholog promoter resolution.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
 pub struct OrthologUnresolvedRow {
     pub species: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub genome_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -151,6 +514,8 @@ pub struct OrthologUnresolvedRow {
     pub reason: String,
     #[serde(default)]
     pub candidates: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub candidate_mappings: Vec<OrthologAmbiguityCandidate>,
 }
 
 /// One promoter window resolved for an anchor or target ortholog.
@@ -159,6 +524,8 @@ pub struct OrthologUnresolvedRow {
 pub struct OrthologPromoterRow {
     pub species: String,
     pub genome_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_id: Option<String>,
     pub role: OrthologPromoterRole,
     pub gene_query: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -180,9 +547,13 @@ pub struct OrthologPromoterRow {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promoter_sequence: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub orthology_type: Option<String>,
+    pub orthology_type: Option<OrthologyType>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub confidence: Option<String>,
+    pub confidence: Option<OrthologConfidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub orthology_source_context_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub orthology_target_context_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub orthology_source: Option<String>,
     #[serde(default)]
@@ -204,6 +575,8 @@ pub struct OrthologPromoterCohortReport {
     pub request: OrthologPromoterCohortRequest,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ortholog_resource_label: Option<String>,
+    #[serde(flatten)]
+    pub biological_contexts: BiologicalContextRegistry,
     pub resolved_promoter_count: usize,
     pub unresolved_count: usize,
     #[serde(default)]
@@ -284,6 +657,58 @@ pub struct OrthologSequenceSimilarityRow {
     pub identity_fraction: f64,
 }
 
+/// One target promoter aligned to the cohort anchor promoter.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct OrthologConservationPairwiseAlignment {
+    pub target_species: String,
+    pub target_gene_label: String,
+    pub target_transcript_id: String,
+    pub alignment: SequenceAlignmentReport,
+    pub identical_anchor_bp: usize,
+    pub anchor_coverage_bp: usize,
+}
+
+/// One exact-match interval shared by every resolved target on anchor coordinates.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct OrthologConservedInterval {
+    pub anchor_start_0based: usize,
+    pub anchor_end_0based_exclusive: usize,
+    pub length_bp: usize,
+    pub promoter_relative_start_bp: i64,
+    pub promoter_relative_end_bp_exclusive: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_end_1based: Option<usize>,
+    #[serde(default)]
+    pub supporting_species: Vec<String>,
+}
+
+/// Portable conservation comparison over one resolved ortholog promoter cohort.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct OrthologPromoterConservationReport {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub cohort: OrthologPromoterCohortReport,
+    pub anchor_species: String,
+    pub anchor_gene_label: String,
+    pub anchor_transcript_id: String,
+    pub min_conserved_bp: usize,
+    #[serde(default)]
+    pub pairwise_alignments: Vec<OrthologConservationPairwiseAlignment>,
+    #[serde(default)]
+    pub conserved_intervals: Vec<OrthologConservedInterval>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
 /// Cross-species CUT&RUN/occupancy assignment row.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
@@ -344,6 +769,8 @@ pub struct OrthologPromoterComparisonReport {
     pub sequence_similarity: Vec<OrthologSequenceSimilarityRow>,
     #[serde(default)]
     pub cutrun_support: Vec<OrthologCutRunSupportRow>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cutrun_quantitative_comparison: Option<OrthologCutRunQuantitativeComparison>,
     #[serde(default)]
     pub expression_assignments: Vec<OrthologExpressionAssignment>,
     #[serde(default)]
@@ -375,7 +802,160 @@ mod tests {
         .expect("deserialize resource");
         assert_eq!(resource.rows.len(), 1);
         assert_eq!(resource.rows[0].confidence.as_deref(), Some("high"));
+        assert_eq!(
+            resource.rows[0]
+                .confidence
+                .as_ref()
+                .and_then(OrthologConfidence::level),
+            Some(OrthologConfidenceLevel::High)
+        );
+        assert_eq!(
+            resource.rows[0]
+                .orthology_type
+                .as_ref()
+                .and_then(OrthologyType::cardinality),
+            Some(OrthologyCardinality::OneToOne)
+        );
         assert_eq!(resource.species_aliases[0].aliases, vec!["human"]);
+    }
+
+    #[test]
+    fn ortholog_open_vocabularies_preserve_provider_specific_legacy_text() {
+        let row: OrthologMappingRow = serde_json::from_value(serde_json::json!({
+            "source_species": "Homo sapiens",
+            "source_gene_symbol": "TP73",
+            "target_species": "Mus musculus",
+            "target_gene_symbol": "Trp73",
+            "orthology_type": "synthetic_ortholog",
+            "confidence": "tutorial"
+        }))
+        .expect("deserialize provider-specific values");
+
+        assert_eq!(row.orthology_type.as_deref(), Some("synthetic_ortholog"));
+        assert_eq!(row.confidence.as_deref(), Some("tutorial"));
+        assert_eq!(
+            row.orthology_type
+                .as_ref()
+                .and_then(OrthologyType::cardinality),
+            None
+        );
+        assert_eq!(
+            row.confidence.as_ref().and_then(OrthologConfidence::level),
+            None
+        );
+        let serialized = serde_json::to_value(row).expect("serialize provider-specific values");
+        assert_eq!(serialized["orthology_type"], "synthetic_ortholog");
+        assert_eq!(serialized["confidence"], "tutorial");
+    }
+
+    #[test]
+    fn ortholog_resource_context_references_are_validated() {
+        let mut resource: OrthologResource = serde_json::from_value(serde_json::json!({
+            "schema": ORTHOLOG_RESOURCE_SCHEMA,
+            "contexts": [
+                {
+                    "context_id": "human",
+                    "organism": "Homo sapiens",
+                    "genome_id": "GRCh38"
+                },
+                {
+                    "context_id": "mouse",
+                    "organism": "Mus musculus",
+                    "genome_id": "GRCm39"
+                }
+            ],
+            "rows": [{
+                "source_species": "Homo sapiens",
+                "source_context_id": "human",
+                "source_gene_symbol": "TP73",
+                "target_species": "Mus musculus",
+                "target_context_id": "mouse",
+                "target_gene_symbol": "Trp73"
+            }]
+        }))
+        .expect("deserialize context-bound resource");
+
+        resource
+            .validate_context_references()
+            .expect("known context references");
+        resource.rows[0].target_context_id = Some("unknown".to_string());
+        assert!(matches!(
+            resource.validate_context_references(),
+            Err(BiologicalContextResolutionError::UnknownContextId {
+                context_id
+            }) if context_id == "unknown"
+        ));
+    }
+
+    #[test]
+    fn preserve_ambiguity_policy_and_candidate_mapping_round_trip() {
+        let unresolved: OrthologUnresolvedRow = serde_json::from_value(serde_json::json!({
+            "species": "Mus musculus",
+            "reason": "ambiguous",
+            "candidate_mappings": [{
+                "candidate_rank": 1,
+                "candidate_label": "Mus musculus:Trp73:ENSMUSG_TRP73:one_to_one",
+                "target_species": "Mus musculus",
+                "target_genome_id": "GRCm39",
+                "source_context_id": "human",
+                "target_context_id": "mouse",
+                "target_gene_id": "ENSMUSG_TRP73",
+                "target_gene_symbol": "Trp73",
+                "orthology_type": "one_to_one",
+                "confidence": "provider_reviewed",
+                "source": "curated provider",
+                "evidence": ["provider_assertion"]
+            }]
+        }))
+        .expect("deserialize preserved ambiguity");
+        assert_eq!(unresolved.candidate_mappings.len(), 1);
+        assert_eq!(
+            unresolved.candidate_mappings[0]
+                .orthology_type
+                .as_ref()
+                .and_then(OrthologyType::cardinality),
+            Some(OrthologyCardinality::OneToOne)
+        );
+        assert_eq!(
+            unresolved.candidate_mappings[0].confidence.as_deref(),
+            Some("provider_reviewed")
+        );
+
+        let policy = OrthologAmbiguityPolicy::Preserve;
+        assert_eq!(policy.as_str(), "preserve");
+        assert_eq!(
+            serde_json::to_value(policy).expect("serialize policy"),
+            "preserve"
+        );
+        assert_eq!(
+            serde_json::from_value::<OrthologAmbiguityPolicy>(serde_json::json!("preserve"))
+                .expect("deserialize policy"),
+            OrthologAmbiguityPolicy::Preserve
+        );
+        assert!(
+            serde_json::from_value::<OrthologAmbiguityPolicy>(serde_json::json!("future_policy"))
+                .is_err(),
+            "operation-control policies are closed and must not silently default"
+        );
+        let serialized = serde_json::to_value(unresolved).expect("serialize preserved ambiguity");
+        assert_eq!(
+            serialized["candidate_mappings"][0]["confidence"],
+            "provider_reviewed"
+        );
+
+        let legacy: OrthologUnresolvedRow = serde_json::from_value(serde_json::json!({
+            "species": "Mus musculus",
+            "reason": "ambiguous",
+            "candidates": ["Trp73", "Trp73b"]
+        }))
+        .expect("deserialize legacy unresolved row");
+        assert!(legacy.candidate_mappings.is_empty());
+        assert!(
+            serde_json::to_value(legacy)
+                .expect("serialize legacy unresolved row")
+                .get("candidate_mappings")
+                .is_none()
+        );
     }
 
     #[test]
@@ -401,7 +981,9 @@ mod tests {
         assert_eq!(report.relationship, GeneSetCohortRelationship::Unspecified);
         assert!(report.relationship_flags.is_empty());
         assert!(report.rows.is_empty());
+        assert!(report.unresolved_rows.is_empty());
         assert!(report.warnings.is_empty());
+        assert!(report.biological_contexts.contexts.is_empty());
     }
 
     #[test]
@@ -415,5 +997,78 @@ mod tests {
         };
         let value = serde_json::to_value(row).expect("serialize row");
         assert_eq!(value["status"], "motif_only");
+    }
+
+    #[test]
+    fn normalized_cutrun_contract_round_trips_without_changing_old_reports() {
+        let old_report: OrthologPromoterComparisonReport =
+            serde_json::from_value(serde_json::json!({
+                "schema": ORTHOLOG_PROMOTER_COMPARISON_SCHEMA,
+                "cohort": {"schema": ORTHOLOG_PROMOTER_COHORT_SCHEMA}
+            }))
+            .expect("deserialize comparison without normalized CUT&RUN");
+        assert!(old_report.cutrun_quantitative_comparison.is_none());
+
+        let comparison = OrthologCutRunQuantitativeComparison {
+            status: OrthologCutRunQuantitativeComparisonStatus::Comparable,
+            normalization: OrthologCutRunNormalizationInput {
+                normalization_method: "spike_in_scaled_cpm".to_string(),
+                unit: "normalized_fragments_per_million".to_string(),
+                comparison_reference: "shared_batch_1".to_string(),
+                provenance: "synthetic reviewed normalization table".to_string(),
+                values: vec![OrthologCutRunNormalizedValueInput {
+                    species: "Homo sapiens".to_string(),
+                    gene_label: Some("TP73".to_string()),
+                    normalized_value: 4.5,
+                    contributing_read_report_ids: vec!["human_reads".to_string()],
+                    ..OrthologCutRunNormalizedValueInput::default()
+                }],
+            },
+            detail: "Explicit normalized values were comparable.".to_string(),
+            ..OrthologCutRunQuantitativeComparison::default()
+        };
+        let value = serde_json::to_value(comparison).expect("serialize normalized comparison");
+        assert_eq!(value["status"], "comparable");
+        assert_eq!(
+            value["normalization"]["normalization_method"],
+            "spike_in_scaled_cpm"
+        );
+    }
+
+    #[test]
+    fn promoter_conservation_report_round_trips_alignment_and_intervals() {
+        let report = OrthologPromoterConservationReport {
+            schema: ORTHOLOG_PROMOTER_CONSERVATION_SCHEMA.to_string(),
+            anchor_species: "human".to_string(),
+            min_conserved_bp: 8,
+            pairwise_alignments: vec![OrthologConservationPairwiseAlignment {
+                target_species: "chimp".to_string(),
+                alignment: SequenceAlignmentReport {
+                    cigar: "8=".to_string(),
+                    matches: 8,
+                    ..SequenceAlignmentReport::default()
+                },
+                identical_anchor_bp: 8,
+                anchor_coverage_bp: 8,
+                ..OrthologConservationPairwiseAlignment::default()
+            }],
+            conserved_intervals: vec![OrthologConservedInterval {
+                anchor_start_0based: 2,
+                anchor_end_0based_exclusive: 10,
+                length_bp: 8,
+                supporting_species: vec!["human".to_string(), "chimp".to_string()],
+                ..OrthologConservedInterval::default()
+            }],
+            ..OrthologPromoterConservationReport::default()
+        };
+        let value = serde_json::to_value(&report).expect("serialize conservation report");
+        let restored: OrthologPromoterConservationReport =
+            serde_json::from_value(value).expect("deserialize conservation report");
+        assert_eq!(restored.schema, ORTHOLOG_PROMOTER_CONSERVATION_SCHEMA);
+        assert_eq!(restored.anchor_species, "human");
+        assert_eq!(restored.pairwise_alignments.len(), 1);
+        assert_eq!(restored.pairwise_alignments[0].alignment.cigar, "8=");
+        assert_eq!(restored.pairwise_alignments[0].identical_anchor_bp, 8);
+        assert_eq!(restored.conserved_intervals, report.conserved_intervals);
     }
 }

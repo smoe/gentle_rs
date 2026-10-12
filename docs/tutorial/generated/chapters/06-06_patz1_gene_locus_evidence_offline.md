@@ -1,0 +1,283 @@
+---
+chapter_id: "patz1_gene_locus_evidence_offline"
+title: "PATZ1 Gene-Locus Evidence Composition (Offline Synthetic Demo)"
+tier: "core"
+example_id: "patz1_gene_locus_evidence_offline"
+source_example: "docs/examples/workflows/patz1_gene_locus_evidence_offline.json"
+example_test_mode: "always"
+executed_during_generation: true
+automated_status: "passing"
+review_status: "codex_reviewed"
+review_stale: false
+codex_reviewed_at: "2026-10-01"
+human_reviewed_at: null
+human_reviewer: null
+review_stale_reason: null
+review_issue_template: null
+review_issue_template_path: null
+generated_artifact_dir: "docs/tutorial/generated/artifacts/patz1_gene_locus_evidence_offline"
+---
+
+# PATZ1 Gene-Locus Evidence Composition (Offline Synthetic Demo)
+
+Compose one reproducible, strand-aware locus figure from PATZ1-like transcript models, cDNA/EST and array constraints, condition-wise abundance, differential probe activity, grouped occupancy tracks, and a TP73 motif score track without network access.
+
+Gene-centered interpretation becomes difficult when transcript order, genomic coordinates, probe geometry, abundance, differential activity, occupancy tracks, and assay evidence are inspected in separate tools. GENtle's Gene Locus Evidence composer keeps these sources distinct but aligns them on one axis. This chapter uses an artificial 240 bp region labelled as a negative-strand PATZ1 locus. Its transcript models, PSR/JUC rows, effect values, occupancy intervals, and expression values are synthetic and exist only to make every transformation inspectable offline.
+
+Read the figure as a structured evidence ledger. A probe interval or junction marker identifies where an array design interrogates the locus. Its abundance cells report condition-wise probe-set signal, while separately scaled differential cells report raw activity changes rather than statistical significance. Signal can prioritize assay regions but does not prove PCR-primer binding. An occupancy interval reports a projected experimental track at the locus, not the affected isoform. A motif score is a sequence-model result, not proof of binding. The shared visual axis helps formulate validation experiments while preserving those boundaries.
+
+The inner agent works against the currently open project and should propose each GUI-equivalent operation for review while preserving these evidence classes. The outer agent starts from no GUI state: give it the canonical workflow plus an explicit disposable project path, then compare its structured receipt and artifact digest with the local result. Neither agent may turn the synthetic fixture into a claim about biological PATZ1 regulation.
+
+## What You Will Accomplish
+
+- Distinguish transcript 5'-to-3' display order from ascending genomic coordinates on a negative-strand gene.
+- Read PSR intervals and JUC junction markers as different array geometries.
+- Interpret abundance, differential probe activity, motif scores, occupancy tracks, and sequence support as separate evidence layers.
+- Use resource readiness and provenance to relocate local evidence files without silently changing coordinate systems.
+- Move from an evidence row to an existing qPCR report or transcript-aware junction-assay design without claiming validation.
+
+## Before You Start
+
+**Prerequisites:** Read [Chapter 10: TP53 isoform architecture expert panel (online)](./06-03_tp53_isoform_architecture_online.md), [Chapter 13: Determine and review PCR primer pairs (offline)](./04-02_pcr_selection_batch_primer_pairs_offline.md) first.
+
+> **How to Run This Locally**
+> Run from the repository root; the canonical workflow is fully offline and uses only committed synthetic fixtures. For native inspection, open the generated disposable project, double-click an mRNA row to open Splicing Expert, then use the Evidence and Locus figure tabs. The inner agent operates on that open project; the outer agent must receive the workflow plus an explicit disposable project path and return its structured receipt and artifact digest.
+
+**Useful when:**
+
+- You want to inspect transcript architecture and multiple evidence layers in one gene-centered figure.
+- You need a deterministic negative-strand example before loading a full Ensembl locus.
+- You want to verify that PSR exon probes and JUC junction probes remain visually distinct.
+- You want grouped occupancy lanes whose scaling policy is declared rather than inferred from filenames.
+- You want a reproducible SVG and machine-readable report path before designing a junction assay.
+
+## At a Glance
+
+1. Open test_files/fixtures/isoform_evidence/patz1/patz1_minus_strand.gb, import patz1_isoform_panel.json as panel patz1_synthetic_v1, and open Splicing Expert for the PATZ1 gene group.
+2. Select the Evidence tab and enter the committed probe-evidence JSON, cDNA/EST JSON, and expression TSV. Inspect the ledger before composing the figure; observed evidence, candidate association, design constraint, and unresolved evidence remain separate statuses.
+3. Import the four small BED files from test_files/fixtures/gene_locus_evidence/patz1_offline_composer/ with the exact Saos-2 and SK-MEL-29 track names used by the workflow.
+4. Select Locus figure, choose the committed probe-effect TSV, leave the contrast filter empty to retain all abundance and differential columns, set coordinate system GRCh38.p14, and choose docs/examples/gene_locus_evidence/patz1_cutrun_layout.json.
+5. Set upstream and downstream flanks to 19, motif to TP73, score kind to llr_background_tail_log10, clipping on, and top hits to 5. Confirm the readiness table reports the anchor and local resources before composing.
+6. Click Compose / refresh. Inspect the graphical preview, warnings, provenance, and assay continuations; then export SVG, PDF, or report JSON through the shared renderer/operation paths.
+
+## Walkthrough: GUI, CLI and Inner Agent
+
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
+
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Open test_files/fixtures/isoform_evidence/patz1/patz1_minus_strand.gb, import patz1_isoform_panel.json as panel patz1_synthetic_v1, and open Splicing Expert for the PATZ1 gene group
+
+**GUI**
+
+Open `test_files/fixtures/isoform_evidence/patz1/patz1_minus_strand.gb`, import `patz1_isoform_panel.json` as panel `patz1_synthetic_v1`, and open Splicing Expert for the PATZ1 gene group.
+
+**CLI (terminal)**
+
+```bash
+gentle_cli workflow @docs/examples/workflows/patz1_gene_locus_evidence_offline.json
+```
+
+**Ask the inner agent**
+
+> Verify that the selected input is the committed 240 bp synthetic PATZ1 fixture, not a live PATZ1 locus. Propose loading it and importing panel `patz1_synthetic_v1`; report the GRCh38.p14 anchor, negative strand, three transcript ids, and any unverified-anchor warning separately.
+
+**Expected**
+
+> The loaded 240 bp sequence reports a GRCh38.p14 chromosome-22 anchor and the gene/transcript rows remain on the negative strand.
+
+### Step 2: Select the Evidence tab and enter the committed probe-evidence JSON, cDNA/EST JSON, and expression TSV. Inspect the ledger before composing the figure; observed evidence, candidate association, design constraint, and unresolved evidence remain separate statuses
+
+**GUI**
+
+Select the `Evidence` tab and enter the committed probe-evidence JSON, cDNA/EST JSON, and expression TSV. Inspect the ledger before composing the figure; observed evidence, candidate association, design constraint, and unresolved evidence remain separate statuses.
+
+**Ask the inner agent**
+
+> Inspect the Evidence ledger with the committed probe, cDNA/EST, and expression resources. Preserve observed evidence, candidate association, design constraint, and unresolved evidence as distinct states; explicitly report that the GRCh37 cDNA/EST negative control is rejected against GRCh38.p14.
+
+**Expected**
+
+> The evidence ledger keeps cDNA/EST observations separate from array design constraints and retains the synthetic missing/mismatched evidence warnings.
+
+![The native Evidence tab keeps three negative-strand transcript models, four projected occupancy tracks, and four junction-evidence rows separate. The deliberately incompatible GRCh37 cDNA/EST row remains visibly rejected against the GRCh38.p14 anchor instead of being coerced into support.](../../../screenshots/patz1_gene_locus_evidence_offline/01-evidence-ledger.png)
+
+*Figure: The native Evidence tab keeps three negative-strand transcript models, four projected occupancy tracks, and four junction-evidence rows separate. The deliberately incompatible GRCh37 cDNA/EST row remains visibly rejected against the GRCh38.p14 anchor instead of being coerced into support. Screenshot captured 2026-10-01.*
+
+### Step 3: Import the four small BED files from test_files/fixtures/gene_locus_evidence/patz1_offline_composer/ with the exact Saos-2 and SK-MEL-29 track names used by the workflow
+
+**GUI**
+
+Import the four small BED files from `test_files/fixtures/gene_locus_evidence/patz1_offline_composer/` with the exact Saos-2 and SK-MEL-29 track names used by the workflow.
+
+**Ask the inner agent**
+
+> Propose importing exactly the four committed synthetic BED tracks with their workflow-declared names. Report their source paths, projected intervals, and track identities; do not describe the invented intervals as CUT&RUN measurements or isoform-specific regulation.
+
+**Expected**
+
+> Four projected occupancy tracks are present with explicit Saos-2 and SK-MEL-29 identities.
+
+### Step 4: Select Locus figure, choose the committed probe-effect TSV, leave the contrast filter empty to retain all abundance and differential columns, set coordinate system GRCh38.p14, and choose docs/examples/gene_locus_evidence/patz1_cutrun_layout.json
+
+**GUI**
+
+Select `Locus figure`, choose the committed probe-effect TSV, leave the contrast filter empty to retain all abundance and differential columns, set coordinate system `GRCh38.p14`, and choose `docs/examples/gene_locus_evidence/patz1_cutrun_layout.json`.
+
+**Ask the inner agent**
+
+> Build the locus-composition request from the committed probe-effect table and occupancy layout. Confirm one PSR row, one JUC row, three abundance columns, three differential columns, two separately scaled occupancy groups, and the GRCh38.p14 coordinate binding before composition.
+
+**Expected**
+
+> The request carries one PSR row, one JUC row, three abundance columns, and three differential columns without inferring primer binding or significance.
+
+### Step 5: Set upstream and downstream flanks to 19, motif to TP73, score kind to llr_background_tail_log10, clipping on, and top hits to 5. Confirm the readiness table reports the anchor and local resources before composing
+
+**GUI**
+
+Set upstream and downstream flanks to `19`, motif to `TP73`, score kind to `llr_background_tail_log10`, clipping on, and top hits to `5`. Confirm the readiness table reports the anchor and local resources before composing.
+
+**Ask the inner agent**
+
+> Verify the 19 bp flanks from the fixture geometry and resolve TP73 through the local JASPAR registry with `llr_background_tail_log10`, clipping enabled, and five retained hits. Explain that motif scores rank sequence-model sites and do not establish binding, affinity, or causality.
+
+**Expected**
+
+> Resource readiness distinguishes readable files from engine-validated project objects, and the motif request resolves through the local JASPAR registry.
+
+### Step 6: Click Compose / refresh. Inspect the graphical preview, warnings, provenance, and assay continuations; then export SVG, PDF, or report JSON through the shared renderer/operation paths
+
+**GUI**
+
+Click `Compose / refresh`. Inspect the graphical preview, warnings, provenance, and assay continuations; then export SVG, PDF, or report JSON through the shared renderer/operation paths.
+
+**Ask the inner agent**
+
+> Compose and inspect the shared-engine report before proposing any export. Return the transcript, evidence-layer, warning, provenance, and artifact summaries separately; treat SVG/PDF/JSON writes as explicit outputs and never replace the structured report with a screenshot-derived interpretation.
+
+**Expected**
+
+> The SVG contains transcript rows, separate PSR/JUC geometry, separately scaled abundance and differential lanes, two occupancy groups, a TP73 motif track, warnings, and source provenance.
+
+![The native Locus figure tab composes three transcripts, two occupancy groups, one TP73 motif track, and two probe-effect rows. Warnings and explicit non-claims remain beside the preview; the synthetic layers are not presented as experimental PATZ1 regulation.](../../../screenshots/patz1_gene_locus_evidence_offline/02-locus-composition.png)
+
+*Figure: The native Locus figure tab composes three transcripts, two occupancy groups, one TP73 motif track, and two probe-effect rows. Warnings and explicit non-claims remain beside the preview; the synthetic layers are not presented as experimental PATZ1 regulation. Screenshot captured 2026-10-01.*
+
+![A strand-aware synthetic PATZ1 locus composition with transcript models, distinct PSR/JUC effects, grouped occupancy lanes, and a TP73 motif score track. The aligned layers are evidence for inspection, not proof of isoform-specific regulation.](../artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg)
+
+*Figure: A strand-aware synthetic PATZ1 locus composition with transcript models, distinct PSR/JUC effects, grouped occupancy lanes, and a TP73 motif score track. The aligned layers are evidence for inspection, not proof of isoform-specific regulation. Regenerate with `cargo run --bin gentle_examples_docs -- tutorial-generate`.*
+
+> SVG text labels: `PATZ1 locus evidence | 5' -> 3' display, genomic 31326038 -> 31325801 | strand - | assembly GRCh38.p14 | annotation synthetic Ensembl116-like fixture | upstream 19 bp | downstre...`. If the embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
+
+
+## Complete Workflow Replay
+
+When an individual GUI gesture has no standalone shell command, replay the complete canonical workflow:
+
+```bash
+gentle_cli workflow @docs/examples/workflows/patz1_gene_locus_evidence_offline.json
+gentle_cli shell 'workflow @docs/examples/workflows/patz1_gene_locus_evidence_offline.json'
+```
+
+## Ask an Outer Agent (MCP or ClawBio/OpenClaw)
+
+An outer agent does not inherit the unsaved GUI project. Give it this chapter's canonical workflow and an explicit disposable state path; ask it to retain the structured result, artifacts and reproducibility receipt instead of replacing them with prose.
+
+> Use GENtle's `gentle-cloning` skill to replay `docs/examples/workflows/patz1_gene_locus_evidence_offline.json` against a new disposable state. First report the exact workflow, inputs, state path, outputs and whether the selected route needs confirmation. Do not infer state from an open GUI. Return the structured result, produced artifacts and reproducibility receipt, and state any unmet prerequisite.
+
+Equivalent direct structured request for the generic wrapper:
+
+```json
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "state_path": "/tmp/gentle-patz1-gene-locus-evidence-offline.state.json",
+  "workflow_path": "docs/examples/workflows/patz1_gene_locus_evidence_offline.json",
+  "timeout_secs": 300
+}
+```
+
+Submitting a direct structured request is an explicit wrapper invocation. If natural language selects a narrower delegated skill and that route mutates state, selects biological material or writes artifacts, the caller must preserve that skill's proposal/approval boundary and approve only the exact bound digest. This tutorial generation step does not invoke an agent or grant approval.
+
+## Interpretation and Reference
+
+## Parameters That Matter
+
+- `upstream_bp=19 / downstream_bp=19` (where used: GeneLocusEvidenceDisplayRequest)
+  - Why it matters: The synthetic gene spans local bases 21..220; 19 bp flanks retain the full requested context without clipping at the 240 bp sequence boundaries.
+  - How to derive it: Use the fixture gene span and subtract one base from each 20 bp boundary margin.
+- `probe_effect_coordinate_system=GRCh38.p14` (where used: Probe-effect overlay projection)
+  - Why it matters: GENtle rejects effect geometry when its declared coordinate system does not match the sequence anchor.
+  - How to derive it: Read the genome id from the loaded sequence anchor and the fixture README; do not infer it from the filename.
+- `occupancy scale_mode=shared_group` (where used: Saos-2 and SK-MEL-29 occupancy groups)
+  - Why it matters: TA and DN lanes are comparable within each declared synthetic context, while the two contexts are not silently forced onto one common scale.
+  - How to derive it: Use the explicit occupancy layout rather than grouping tracks by filename heuristics.
+- `motif=TP73 / score_kind=llr_background_tail_log10` (where used: Motif score track)
+  - Why it matters: The score track shows where the local sequence model ranks TP73-like sites; it is not an occupancy or causality call.
+  - How to derive it: Use the local JASPAR TP73 entry resolved by GENtle and retain its matrix id in report provenance.
+
+## Applied Concepts
+
+- **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
+- **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
+- **Genome Catalog Targeting** (`genome_catalog_targeting`): Prepared genome catalogs, annotation-based gene filters, and anchor extension connect imported entries to genomic context.
+- **Artifact Exports** (`artifact_exports`): Representative outputs (CSV/protocol/SVG/text) are retained for auditability and sharing.
+- **Tutorial Drift Checks** (`tutorial_drift_checks`): Tutorial content is generated from executable examples and verified in automated checks.
+
+## Follow-up Commands
+
+```bash
+cargo run --bin gentle_examples_docs -- tutorial-generate
+cargo run --bin gentle_examples_docs -- tutorial-check
+gentle_cli workflow @docs/examples/workflows/patz1_gene_locus_evidence_offline.json
+```
+
+## Checkpoints
+
+- The canonical workflow runs offline and writes `patz1_gene_locus_evidence.svg`.
+- The SVG reports `gentle.gene_locus_evidence_display.v1` and preserves the negative-strand axis.
+- Stable SVG attributes identify PSR, JUC, abundance and differential lanes, both occupancy groups, and the TP73 motif matrix.
+- The figure labels array signal as prioritization evidence rather than primer-binding proof or significance.
+- Warnings and provenance remain visible instead of being replaced by a biological verdict.
+
+## What This Chapter Produces
+
+- [`artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg`](../artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg)
+
+  - Embedded above near Step 6; kept here as an audit link.
+
+> SVG text labels: `PATZ1 locus evidence | 5' -> 3' display, genomic 31326038 -> 31325801 | strand - | assembly GRCh38.p14 | annotation synthetic Ensembl116-like fixture | upstream 19 bp | downstre...`. If this embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
+
+
+## Tutorial Provenance
+
+- Chapter id: `patz1_gene_locus_evidence_offline`
+- Tier: `core`
+- Example id: `patz1_gene_locus_evidence_offline`
+- Tutorial source JSON: `docs/tutorial/sources/06-06_patz1_gene_locus_evidence_offline.json`
+- Workflow file: `docs/examples/workflows/patz1_gene_locus_evidence_offline.json`
+- Generated artifact dir: `docs/tutorial/generated/artifacts/patz1_gene_locus_evidence_offline`
+- Example test_mode: `always`
+- Executed during generation: `yes`
+- Automated status: `passing`
+- Review status: `codex_reviewed`
+- Codex reviewed at: `2026-10-01`
+- Human reviewed at: `not recorded`
+- Inspect the source JSON when you need full option-level detail.
+
+## Feedback
+
+If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context below.
+
+- Tutorial title: `PATZ1 Gene-Locus Evidence Composition (Offline Synthetic Demo)`
+- Tutorial/chapter id: `patz1_gene_locus_evidence_offline`
+- Step reached:
+- Expected vs. actual:
+- Interface used: GUI / CLI / Agent Assistant / ClawBio
+
+Paste the Tutorial feedback context here:
+
+```text
+
+```

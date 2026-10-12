@@ -1,0 +1,3 @@
+readA_geneA
+readAB_ambiguous
+readA2_geneA

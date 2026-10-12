@@ -1,0 +1,29 @@
+LOCUS       GENTLE_SYNTHETIC_MCS     240 bp    DNA     circular SYN 27-AUG-2026
+DEFINITION  Synthetic MCS-layout fixture for exact reporter-vector validation.
+ACCESSION   GENTLE_SYNTHETIC_MCS
+VERSION     GENTLE_SYNTHETIC_MCS.1
+KEYWORDS    synthetic construct; test fixture; not pGL4.10.
+SOURCE      synthetic DNA construct
+  ORGANISM  synthetic DNA construct
+            other sequences; artificial sequences.
+COMMENT     Repository-owned deterministic fixture. It is not Promega
+            pGL4.10[luc2] and must never satisfy that catalog identity.
+FEATURES             Location/Qualifiers
+     source          1..240
+                     /organism="synthetic DNA construct"
+                     /mol_type="other DNA"
+     misc_feature    1..70
+                     /label="synthetic_mcs"
+                     /note="synthetic multiple cloning site region; layout-only test fixture"
+                     /mcs_expected_sites="SfiI,KpnI,SacI,NheI,XhoI,EcoRV,BglII,HindIII"
+     CDS             100..180
+                     /gene="luc2_demo"
+                     /product="synthetic luciferase luc2 marker"
+                     /label="luc2_demo"
+                     /note="short synthetic marker for validator tests; not a functional reporter CDS"
+ORIGIN
+        1 ggcctaactg gccggtacct gagctcgcta gcctcgagga tatcaagatc tggcctcggc
+       61 ggccaagctt acgtacgtac gtacgtacgt acgtacgtaa tggccgccgc cgccgccgcc
+      121 gccgccgccg ccgccgccgc cgccgccgcc gccgccgccg ccgccgccgc cgccgcctaa
+      181 acgtacgtac gtacgtacgt acgtacgtac gtacgtacgt acgtacgtac gtacgtacgt
+//

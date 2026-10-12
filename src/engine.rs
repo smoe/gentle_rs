@@ -25,6 +25,11 @@
 use crate::{
     DNA_LADDERS, RNA_LADDERS,
     amino_acids::{STOP_CODON, UNKNOWN_CODON},
+    digest_utils::{
+        canonical_oligo_sequence, oligo_full_id, oligo_sequence_sha256, oligo_tube_id,
+        primer_pair_full_id, sha256_hex_str, sha256_prefixed_bytes, sha256_prefixed_str,
+        short_sha256_id,
+    },
     dna_sequence::DNAsequence,
     ensembl_protein::EnsemblProteinEntry,
     enzymes::{
@@ -32,18 +37,20 @@ use crate::{
     },
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     genomes::{
-        BlastExternalBinaryPreflightReport, DEFAULT_HELPER_CATALOG_DISCOVERY_TOKEN,
-        DEFAULT_REFERENCE_CATALOG_DISCOVERY_TOKEN, EnsemblCatalogUpdatePreview,
-        EnsemblCatalogUpdateReport, EnsemblInstallableGenomeCatalog,
+        BlastDatabaseIndexKind, BlastDatabaseInspectionReport, BlastExternalBinaryPreflightReport,
+        DEFAULT_HELPER_CATALOG_DISCOVERY_TOKEN, DEFAULT_REFERENCE_CATALOG_DISCOVERY_TOKEN,
+        EnsemblCatalogUpdatePreview, EnsemblCatalogUpdateReport, EnsemblInstallableGenomeCatalog,
         EnsemblQuickInstallCatalogWriteReport, EnsemblQuickInstallPreview,
         EnsemblQuickInstallReport, GenomeBlastReport, GenomeCatalog,
         GenomeCatalogEntryRemovalReport, GenomeCatalogListEntry, GenomeGeneRecord,
         GenomeSourcePlan, GenomeTranscriptRecord, HelperConstructInterpretation,
         HelperConstructVocabularyDoctorReport, HelperConstructVocabularyTerm,
-        HelperVectorCardReport, HelperVectorCatalogDoctorReport, PrepareGenomeActivityStatus,
-        PrepareGenomePlan, PrepareGenomeProgress, PrepareGenomeReport, PreparedCacheCleanupReport,
-        PreparedCacheInspectionReport, PreparedGenomeCompatibilityInspection,
-        PreparedGenomeFallbackPolicy, PreparedGenomeInspection, PreparedGenomeRemovalReport,
+        HelperVectorCardReport, HelperVectorCatalogDoctorReport,
+        HelperVectorRequiredFeatureExpectation, HelperVectorSequenceExpectation,
+        PrepareGenomeActivityStatus, PrepareGenomePlan, PrepareGenomeProgress, PrepareGenomeReport,
+        PreparedCacheCleanupReport, PreparedCacheInspectionReport,
+        PreparedGenomeCompatibilityInspection, PreparedGenomeFallbackPolicy,
+        PreparedGenomeInspection, PreparedGenomeRemovalReport,
         blast_external_binary_preflight_report, build_genbank_efetch_url,
         clear_prepared_cache_roots, default_helper_semantics_vocabulary_discovery_label,
         doctor_helper_construct_vocabulary, inspect_prepared_cache_roots,
@@ -53,7 +60,11 @@ use crate::{
     iupac_code::IupacCode,
     lineage_export::export_lineage_svg,
     methylation_sites::MethylationMode,
-    pool_gel::{GelSampleInput, export_pool_gel_svg},
+    pool_gel::{
+        GelSampleInput, GelSampleMember, PoolGelLane, build_serial_gel_layout, export_pool_gel_svg,
+        export_pool_gel_svg_with_options,
+    },
+    primerbank::PrimerBankSearchRequest,
     protease::{Protease, normalize_protease_name_token},
     protocol_cartoon::ProtocolCartoonTemplateBindings,
     render_export::{export_circular_svg, export_linear_svg},
@@ -72,7 +83,6 @@ use rayon::join;
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sha1::{Digest, Sha1};
 use std::{
     cell::Cell,
     cmp::Ordering,
@@ -95,20 +105,45 @@ use tempfile::NamedTempFile;
 pub use gentle_protocol::{
     AnnotationCandidate, AnnotationCandidateSummary, AnnotationCandidateWriteback, Arrangement,
     ArrangementMode, ConstructCandidate, ConstructObjective, ConstructReasoningGraph,
-    ConstructReasoningInspectionAction, ConstructReasoningInspectionActionKind,
-    ConstructReasoningRepeatFamilyProvenance, ConstructReasoningRiskTask,
-    ConstructReasoningSeverity, ConstructReasoningStore, ConstructReasoningTaskSeverity,
-    ConstructRole, Container, ContainerId, ContainerKind, ContainerState, DecisionMethod,
-    DesignDecisionNode, DesignEvidence, DesignFact, DotplotMode, EditableStatus, EvidenceClass,
-    EvidenceScope, ExonSkipReturnKind, ExonSkipReturnPayload, ExonSkipSelectionCriterion,
-    GelBufferModel, GelRunConditions, GelTopologyForm, HostLifecycleRole, LineageEdge,
-    LineageGraph, LineageMacroInstance, LineageMacroPortBinding, LineageNode, MacroInstanceStatus,
-    NodeId, OpId, OrthologAmbiguityPolicy, OrthologPromoterCohortReport,
-    OrthologPromoterComparisonReport, ProteinExternalOpinionSource, ProteinFeatureFilter, Rack,
-    RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
-    RackOccupant, RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
+    ConstructReasoningGraphFreshness, ConstructReasoningGraphSnapshotStatus,
+    ConstructReasoningInputFingerprint, ConstructReasoningInspectionAction,
+    ConstructReasoningInspectionActionKind, ConstructReasoningRepeatAnnotation,
+    ConstructReasoningRepeatFamilyAgreement, ConstructReasoningRepeatFamilyProvenance,
+    ConstructReasoningRiskTask, ConstructReasoningSeverity, ConstructReasoningStore,
+    ConstructReasoningTaskApplicability, ConstructReasoningTaskApplicabilityBasis,
+    ConstructReasoningTaskSeverity, ConstructRole, Container, ContainerId, ContainerKind,
+    ContainerState, CrypticSplicingEvidenceOverlayReport, CrypticSplicingEvidenceOverlayRequest,
+    CrypticSplicingProteinProjectionReport, CrypticSplicingProteinProjectionRequest,
+    CrypticSplicingScreenRequest, CrypticSplicingScreenView,
+    DEFAULT_GENOMIC_MOTIF_EVIDENCE_MAX_PAYLOAD_FILES, DEFAULT_GENOMIC_MOTIF_EVIDENCE_MAX_ROWS,
+    DEFAULT_GENOMIC_MOTIF_EVIDENCE_TIMEOUT_SECONDS, DecisionMethod, DesignDecisionNode,
+    DesignEvidence, DesignFact, DotplotInspectionProvenanceCitation,
+    DotplotInspectionProvenanceStatus, DotplotInspectionRequestSnapshot, DotplotMode,
+    ENCODE_CCRE_MATERIALIZATION_SCHEMA, ENCODE_CCRE_OVERLAP_SCHEMA,
+    ENSEMBL_REGULATION_MATERIALIZATION_SCHEMA, ENSEMBL_REGULATION_OVERLAP_SCHEMA, EditableStatus,
+    EncodeCcreClassSummary, EncodeCcreGenomeAnchor, EncodeCcreInterval,
+    EncodeCcreMaterializationReport, EncodeCcreOverlapReport, EncodeCcreOverlapRow,
+    EnsemblRegulationGenomeAnchor, EnsemblRegulationInterval,
+    EnsemblRegulationMaterializationReport, EnsemblRegulationOverlapReport,
+    EnsemblRegulationOverlapRow, EnsemblRegulationTypeSummary, EvidenceClass, EvidenceScope,
+    ExonSkipReturnKind, ExonSkipReturnPayload, ExonSkipSelectionCriterion,
+    GENOMIC_REGION_HOMOLOGY_SCREEN_SCHEMA, GelBandLabelLayout, GelBufferModel,
+    GelIsoformMarkerMode, GelLaneLabelLayout, GelRunConditions, GelTopologyForm,
+    GenomicMotifEvidenceCoverageStatus, GenomicMotifEvidenceInterval,
+    GenomicMotifEvidenceMotifCoverage, GenomicMotifEvidenceReport, GenomicMotifEvidenceRequest,
+    GenomicMotifEvidenceTarget, GenomicRegionHomologyScreenReport,
+    GenomicRegionHomologyScreenRequest, HostLifecycleRole, LineageEdge, LineageGraph,
+    LineageMacroInstance, LineageMacroPortBinding, LineageNode,
+    MAX_GENOMIC_MOTIF_EVIDENCE_QUERY_MOTIFS, MacroInstanceStatus, NodeId, OpId,
+    OrthologAmbiguityPolicy, OrthologCutRunNormalizationInput, OrthologPromoterCohortReport,
+    OrthologPromoterComparisonReport, PoolGelRenderOptions, PrimerSpecificityAmpliconCeilingSource,
+    PrimerSpecificityReportDetailMode, PromoterModuleAssessmentRequest,
+    ProteinExternalOpinionSource, ProteinFeatureFilter, Rack, RackAuthoringTemplate,
+    RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
+    RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
     RackPlacementEntry, RackProfileKind, RackProfileSnapshot, ReadAcquisitionAnalysisFormat,
-    ReadAcquisitionReadLayout, RunId, SeqId, SequenceOrigin,
+    ReadAcquisitionReadLayout, RegulatoryPartnerAnchorMode, RegulatoryPartnerMotifThreshold,
+    RegulatoryPartnerScreenReport, RunId, SeqId, SequenceOrigin,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -386,6 +421,193 @@ pub fn construct_reasoning_action_dotplot_request(
     })
 }
 
+fn dotplot_inspection_provenance_summary(citation: &DotplotInspectionProvenanceCitation) -> String {
+    match citation.status {
+        DotplotInspectionProvenanceStatus::Pass => format!(
+            "Verified construct-reasoning inspection citation: graph '{}' action '{}'.",
+            citation.graph_id, citation.action_id
+        ),
+        DotplotInspectionProvenanceStatus::Fail => format!(
+            "Construct-reasoning inspection citation failed verification for graph '{}' action '{}': {}",
+            citation.graph_id,
+            citation.action_id,
+            if citation.verification_reasons.is_empty() {
+                if citation.graph_snapshot_reasons.is_empty() {
+                    "reason unavailable".to_string()
+                } else {
+                    citation.graph_snapshot_reasons.join(" ")
+                }
+            } else {
+                citation.verification_reasons.join(" ")
+            }
+        ),
+        DotplotInspectionProvenanceStatus::Unknown => format!(
+            "Construct-reasoning inspection citation recorded for graph '{}' action '{}', but verification is unknown: {}",
+            citation.graph_id,
+            citation.action_id,
+            if citation.graph_snapshot_reasons.is_empty() {
+                "graph snapshot freshness is unknown".to_string()
+            } else {
+                citation.graph_snapshot_reasons.join(" ")
+            }
+        ),
+    }
+}
+
+pub fn construct_reasoning_dotplot_inspection_provenance(
+    graph: &ConstructReasoningGraph,
+    action: &ConstructReasoningInspectionAction,
+    snapshot_status: &ConstructReasoningGraphSnapshotStatus,
+    resolved_action_request: &ConstructReasoningActionDotplotRequest,
+    request: DotplotInspectionRequestSnapshot,
+) -> DotplotInspectionProvenanceCitation {
+    let mut verification_reasons = vec![];
+    let stored_action = graph
+        .inspection_actions
+        .iter()
+        .find(|row| row.action_id == action.action_id);
+    match stored_action {
+        Some(row) if row == action => {}
+        Some(_) => verification_reasons.push(format!(
+            "Inspection action '{}' differs from the graph snapshot.",
+            action.action_id
+        )),
+        None => verification_reasons.push(format!(
+            "Inspection action '{}' is absent from graph '{}'.",
+            action.action_id, graph.graph_id
+        )),
+    }
+    if action.action_kind != ConstructReasoningInspectionActionKind::Dotplot {
+        verification_reasons.push(format!(
+            "Inspection action kind '{}' is not dotplot.",
+            action.action_kind.as_str()
+        ));
+    }
+    if request.seq_id != resolved_action_request.seq_id {
+        verification_reasons.push(format!(
+            "Requested sequence '{}' differs from resolved action sequence '{}'.",
+            request.seq_id, resolved_action_request.seq_id
+        ));
+    }
+    if request.mode != resolved_action_request.mode {
+        verification_reasons.push(format!(
+            "Requested mode '{}' differs from resolved action mode '{}'.",
+            request.mode.as_str(),
+            resolved_action_request.mode.as_str()
+        ));
+    }
+    if request.span_start_0based != resolved_action_request.span_start_0based
+        || request.span_end_0based != resolved_action_request.span_end_0based
+    {
+        verification_reasons.push(format!(
+            "Requested span {}..{} differs from resolved action span {}..{}.",
+            request.span_start_0based,
+            request.span_end_0based,
+            resolved_action_request.span_start_0based,
+            resolved_action_request.span_end_0based
+        ));
+    }
+    for evidence_id in &action.driving_evidence_ids {
+        if !graph
+            .evidence
+            .iter()
+            .any(|row| row.evidence_id == *evidence_id)
+        {
+            verification_reasons.push(format!(
+                "Driving evidence '{}' is absent from graph '{}'.",
+                evidence_id, graph.graph_id
+            ));
+        }
+    }
+    for fact_id in &action.source_fact_ids {
+        if !graph.facts.iter().any(|row| row.fact_id == *fact_id) {
+            verification_reasons.push(format!(
+                "Source fact '{}' is absent from graph '{}'.",
+                fact_id, graph.graph_id
+            ));
+        }
+    }
+    for annotation_id in &action.source_annotation_ids {
+        if !graph
+            .annotation_candidates
+            .iter()
+            .any(|row| row.annotation_id == *annotation_id)
+            && !graph
+                .candidates
+                .iter()
+                .any(|row| row.candidate_id == *annotation_id)
+        {
+            verification_reasons.push(format!(
+                "Source annotation/candidate '{}' is absent from graph '{}'.",
+                annotation_id, graph.graph_id
+            ));
+        }
+    }
+    for summary_id in &action.source_summary_ids {
+        if !graph
+            .annotation_candidate_summaries
+            .iter()
+            .any(|row| row.summary_id == *summary_id)
+        {
+            verification_reasons.push(format!(
+                "Source annotation summary '{}' is absent from graph '{}'.",
+                summary_id, graph.graph_id
+            ));
+        }
+    }
+    verification_reasons.sort();
+    verification_reasons.dedup();
+
+    let source_candidate_ids = action
+        .source_annotation_ids
+        .iter()
+        .filter(|id| {
+            graph
+                .candidates
+                .iter()
+                .any(|candidate| candidate.candidate_id == id.as_str())
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let status = if !verification_reasons.is_empty()
+        || snapshot_status.freshness == ConstructReasoningGraphFreshness::Stale
+    {
+        DotplotInspectionProvenanceStatus::Fail
+    } else if snapshot_status.freshness == ConstructReasoningGraphFreshness::Current {
+        DotplotInspectionProvenanceStatus::Pass
+    } else {
+        DotplotInspectionProvenanceStatus::Unknown
+    };
+    let mut citation = DotplotInspectionProvenanceCitation {
+        status,
+        graph_id: graph.graph_id.clone(),
+        graph_schema: graph.schema.clone(),
+        graph_op_id: graph.op_id.clone(),
+        graph_run_id: graph.run_id.clone(),
+        graph_generated_at_unix_ms: graph.generated_at_unix_ms,
+        graph_input_fingerprint: graph.input_fingerprint.clone(),
+        graph_snapshot_freshness: snapshot_status.freshness,
+        graph_snapshot_reasons: snapshot_status.reasons.clone(),
+        action_id: action.action_id.clone(),
+        action_schema: action.schema.clone(),
+        action_kind: action.action_kind,
+        dotplot_mode: action.mode,
+        action_focus_start_0based: action.focus_start_0based,
+        action_focus_end_0based_exclusive: action.focus_end_0based_exclusive,
+        source_fact_ids: action.source_fact_ids.clone(),
+        source_annotation_ids: action.source_annotation_ids.clone(),
+        source_candidate_ids,
+        source_summary_ids: action.source_summary_ids.clone(),
+        driving_evidence_ids: action.driving_evidence_ids.clone(),
+        rationale: action.rationale.clone(),
+        request,
+        verification_reasons,
+        ..DotplotInspectionProvenanceCitation::default()
+    };
+    citation.summary = dotplot_inspection_provenance_summary(&citation);
+    citation
+}
+
 pub const DEFAULT_HOST_PROFILE_CATALOG_PATH: &str = "assets/host_profiles.json";
 pub const DEFAULT_CUTRUN_CATALOG_PATH: &str = "assets/cutrun.json";
 pub const DEFAULT_CUTRUN_CACHE_DIR: &str = "data/cutrun";
@@ -571,15 +793,38 @@ struct ConstructTranscriptVariantEffectSummary {
 }
 
 pub use crate::feature_expert::{
-    FeatureExpertTarget, FeatureExpertView, ISOFORM_ARCHITECTURE_EXPERT_INSTRUCTION,
+    CDNA_EST_EVIDENCE_RESOURCE_SCHEMA, CdnaEstEvidenceKind, CdnaEstEvidenceRecord,
+    CdnaEstEvidenceResource, FeatureExpertTarget, FeatureExpertView,
+    GENE_ISOFORM_EVIDENCE_INSTRUCTION, GENE_ISOFORM_EVIDENCE_SCHEMA,
+    GENE_ISOFORM_EVIDENCE_SCHEMA_V1, GENE_LOCUS_EVIDENCE_DISPLAY_INSTRUCTION,
+    GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA, GENE_LOCUS_EXTERNAL_REGULATORY_SCORE_SCHEMA,
+    GENE_LOCUS_OCCUPANCY_LAYOUT_SCHEMA, GeneIsoformAssayCandidate, GeneIsoformEvidenceComponent,
+    GeneIsoformEvidenceComponents, GeneIsoformEvidenceItem, GeneIsoformEvidenceMeasurement,
+    GeneIsoformEvidenceProvenanceSource, GeneIsoformEvidenceReport, GeneIsoformEvidenceRequest,
+    GeneIsoformExonFamilyRow, GeneIsoformFamilyRow, GeneIsoformJunctionRow,
+    GeneIsoformOccupancyInterval, GeneIsoformOccupancyLane, GeneIsoformRecommendation,
+    GeneIsoformRecommendationTier, GeneIsoformTranscriptRow, GeneLocusAssayOverlay,
+    GeneLocusCodonKind, GeneLocusCodonMarker, GeneLocusConservationBlockOverlay,
+    GeneLocusEvidenceDisplayReport, GeneLocusEvidenceDisplayRequest,
+    GeneLocusExternalRegulatoryScoreResource, GeneLocusMotifHit, GeneLocusMotifTrack,
+    GeneLocusOccupancyGroup, GeneLocusOccupancyGroupRequest, GeneLocusOccupancyLane,
+    GeneLocusOccupancyLaneRequest, GeneLocusOccupancyLaneRole, GeneLocusOccupancyLaneState,
+    GeneLocusOccupancyLayout, GeneLocusOccupancyScaleMode, GeneLocusProbeClass,
+    GeneLocusProbeEffectContrast, GeneLocusProbeEffectOverlay, GeneLocusProbeEffectValue,
+    GeneLocusRegulatoryCalibrationState, GeneLocusRegulatoryFactor,
+    GeneLocusRegulatoryScoreProviderKind, GeneLocusRegulatoryScoreScaleMode,
+    GeneLocusRegulatoryScoreSite, GeneLocusRegulatoryScoreState,
+    GeneLocusRegulatoryScoreStrandPolicy, GeneLocusRegulatoryScoreTrack,
+    GeneLocusRegulatoryScoreTrackRequest, GeneLocusScaleBar, GeneLocusScaleBarMode,
+    GeneLocusScaleBarPolicy, GeneLocusTranscriptMetrics, ISOFORM_ARCHITECTURE_EXPERT_INSTRUCTION,
     IsoformArchitectureCdsAaSegment, IsoformArchitectureExpertView,
     IsoformArchitectureProteinDomain, IsoformArchitectureProteinLane,
-    IsoformArchitectureTranscriptLane, RESTRICTION_EXPERT_INSTRUCTION, RestrictionSiteExpertView,
-    SPLICING_EXPERT_INSTRUCTION, SplicingBoundaryMarker, SplicingEventSummary,
-    SplicingExonCdsPhase, SplicingExonSummary, SplicingExpertView, SplicingJunctionArc,
-    SplicingMatrixRow, SplicingRange, SplicingScopePreset, SplicingTranscriptLane,
-    TFBS_EXPERT_INSTRUCTION, TfbsExpertColumn, TfbsExpertView, TranscriptProteinComparison,
-    TranscriptProteinComparisonStatus, TranscriptProteinDerivation,
+    IsoformArchitectureTranscriptLane, IsoformEvidenceAssessmentStatus, IsoformEvidenceSourceKind,
+    RESTRICTION_EXPERT_INSTRUCTION, RestrictionSiteExpertView, SPLICING_EXPERT_INSTRUCTION,
+    SplicingBoundaryMarker, SplicingEventSummary, SplicingExonCdsPhase, SplicingExonSummary,
+    SplicingExpertView, SplicingJunctionArc, SplicingMatrixRow, SplicingRange, SplicingScopePreset,
+    SplicingTranscriptLane, TFBS_EXPERT_INSTRUCTION, TfbsExpertColumn, TfbsExpertView,
+    TranscriptProteinComparison, TranscriptProteinComparisonStatus, TranscriptProteinDerivation,
     TranscriptProteinExternalOpinion,
 };
 const PROVENANCE_METADATA_KEY: &str = "provenance";
@@ -597,17 +842,85 @@ const GUIDE_DESIGN_SCHEMA: &str = "gentle.guide_design.v1";
 pub const PRIMER_DESIGN_REPORTS_METADATA_KEY: &str = "primer_design_reports";
 const PRIMER_DESIGN_REPORTS_SCHEMA: &str = "gentle.primer_design_reports.v1";
 const PRIMER_DESIGN_REPORT_SCHEMA: &str = "gentle.primer_design_report.v1";
+pub const PRIMER_GROUP_TARGET_DESIGN_SCHEMA: &str = "gentle.primer_group_target_design.v1";
 const QPCR_DESIGN_REPORT_SCHEMA: &str = "gentle.qpcr_design_report.v1";
 const OLIGO_ORDER_FORM_SCHEMA: &str = "gentle.oligo_order_form.v1";
 const CDNA_ASSAY_TEST_REPORT_SCHEMA: &str = "gentle.cdna_assay_test_report.v1";
+const EXPERIMENTAL_ASSAY_HANDOFF_SCHEMA: &str = "gentle.experimental_assay_handoff.v1";
+const EXPERIMENTAL_ASSAY_CARD_SCHEMA: &str = "gentle.experimental_assay_card.v1";
+const EXPERIMENTAL_ASSAY_VIRTUAL_GEL_SCHEMA: &str = "gentle.experimental_assay_virtual_gel.v1";
+const EXPERIMENTAL_ASSAY_READINESS_POLICY_SCHEMA: &str =
+    "gentle.experimental_assay_readiness_policy.v1";
+pub const GENE_ISOFORM_ASSAY_STUDY_PLAN_REQUEST_SCHEMA: &str =
+    "gentle.gene_isoform_assay_study_plan_request.v1";
+pub const GENE_ISOFORM_ASSAY_STUDY_POLICY_SCHEMA: &str =
+    "gentle.gene_isoform_assay_study_policy.v1";
+pub const GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA: &str = "gentle.gene_isoform_assay_study_plan.v1";
+pub const GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_REQUEST_SCHEMA: &str =
+    "gentle.gene_isoform_assay_study_workflow_batch_request.v1";
+pub const GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_SCHEMA: &str =
+    "gentle.gene_isoform_assay_study_workflow_batch.v1";
+pub const GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_EXECUTION_SCHEMA: &str =
+    "gentle.gene_isoform_assay_study_workflow_batch_execution.v1";
+pub const GENE_ISOFORM_ASSAY_STUDY_CHECKPOINT_SCHEMA: &str =
+    "gentle.gene_isoform_assay_study_checkpoint.v1";
+pub const GENE_ISOFORM_ASSAY_STUDY_REUSE_PROPOSAL_SCHEMA: &str =
+    "gentle.gene_isoform_assay_study_reuse_proposal.v1";
+pub const PRIMER_VARIANT_EVIDENCE_SCHEMA: &str = "gentle.primer_variant_evidence.v1";
 const CDNA_ASSAY_TRANSCRIPT_MAP_SCHEMA: &str = "gentle.cdna_assay_transcript_map.v1";
 const CDNA_ASSAY_PRODUCT_MATERIALIZATION_SCHEMA: &str =
     "gentle.cdna_assay_product_materialization.v1";
 const OLIGO_QC_REPORT_SCHEMA: &str = "gentle.oligo_qc_report.v1";
-const PRIMER_SPECIFICITY_REPORT_SCHEMA: &str = "gentle.primer_specificity_report.v1";
+const PRIMER_SPECIFICITY_REPORT_SCHEMA: &str = "gentle.primer_specificity_report.v4";
+const PRIMER_SPECIFICITY_HANDOFF_SCHEMA: &str = "gentle.primer_specificity_handoff.v1";
+const PRIMER_SPECIFICITY_POLICY_SCHEMA: &str = "gentle.primer_specificity_policy.v2";
+const TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_HANDOFF_SCHEMA: &str =
+    "gentle.transcript_assay_panel_specificity_handoff.v1";
+const TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_EXECUTION_MANIFEST_SCHEMA: &str =
+    "gentle.transcript_assay_panel_specificity_execution_manifest.v1";
+const TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_ACCEPTANCE_SCHEMA: &str =
+    "gentle.transcript_assay_panel_specificity_acceptance.v2";
+pub const TRANSCRIPT_ASSAY_SPECIFICITY_REDESIGN_SCHEMA: &str =
+    "gentle.transcript_assay_specificity_redesign.v1";
 pub const TRANSCRIPT_QPCR_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_qpcr_panel.v1";
+pub const TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_assay_panel.v2";
+pub const TRANSCRIPT_ASSAY_PANEL_INFEASIBILITY_SCHEMA: &str =
+    "gentle.transcript_assay_panel_infeasibility.v1";
+pub const TRANSCRIPT_ASSAY_FALLBACK_EXECUTION_SCHEMA: &str =
+    "gentle.transcript_assay_fallback_execution.v1";
+pub const TRANSCRIPT_ASSAY_PANEL_FEASIBILITY_SCHEMA: &str =
+    "gentle.transcript_assay_panel_feasibility.v1";
+pub const TRANSCRIPT_ASSAY_PRIMER_SEARCH_PLAN_SCHEMA: &str =
+    "gentle.transcript_assay_primer_search_plan.v1";
+pub const TRANSCRIPT_ASSAY_CDNA_SIMILARITY_MAP_SCHEMA: &str =
+    "gentle.transcript_assay_cdna_similarity_map.v1";
+pub const GENE_TRANSCRIPT_ASSAY_ROUTINE_SCHEMA: &str = "gentle.gene_transcript_assay_routine.v1";
+pub const PRIMER_PAIR_SUMMARY_SCHEMA: &str = "gentle.primer_pair_summary.v2";
 const RESTRICTION_CLONING_PCR_HANDOFF_REPORT_SCHEMA: &str =
     "gentle.restriction_cloning_pcr_handoff.v1";
+pub const PROMOTER_REPORTER_PANEL_CLONING_STRATEGY_SCHEMA: &str =
+    "gentle.promoter_reporter_panel_cloning_strategy.v1";
+pub const P53_FAMILY_MOTIF_DISRUPTION_SCHEMA: &str = "gentle.p53_family_motif_disruption.v1";
+pub const PROMOTER_REPORTER_PANEL_REQUEST_SCHEMA: &str =
+    "gentle.promoter_reporter_panel_request.v1";
+pub const REGULATORY_REPORTER_STUDY_REQUEST_SCHEMA: &str =
+    "gentle.regulatory_reporter_study_request.v1";
+pub const REGULATORY_REPORTER_STUDY_SCHEMA: &str = "gentle.regulatory_reporter_study.v1";
+pub const PROMOTER_REPORTER_PANEL_READINESS_REQUEST_SCHEMA: &str =
+    "gentle.promoter_reporter_panel_readiness_request.v1";
+pub const PROMOTER_REPORTER_PANEL_READINESS_REPORT_SCHEMA: &str =
+    "gentle.promoter_reporter_panel_readiness.v1";
+pub const PROMOTER_REPORTER_ARCHITECTURE_REQUEST_SCHEMA: &str =
+    "gentle.promoter_reporter_architecture_comparison_request.v1";
+pub const PROMOTER_REPORTER_ARCHITECTURE_REPORT_SCHEMA: &str =
+    "gentle.promoter_reporter_architecture_comparison.v1";
+pub const PROMOTER_REPORTER_PANEL_PROPOSAL_SCHEMA: &str =
+    "gentle.promoter_reporter_panel_proposal.v1";
+pub const PROMOTER_REPORTER_PANEL_RECEIPT_SCHEMA: &str =
+    "gentle.promoter_reporter_panel_receipt.v1";
+pub const REGULATORY_FRAGMENT_PANEL_REQUEST_SCHEMA: &str =
+    "gentle.regulatory_fragment_panel_request.v1";
+pub const REGULATORY_FRAGMENT_PANEL_PLAN_SCHEMA: &str = "gentle.regulatory_fragment_panel_plan.v1";
 pub const PROTEIN_DERIVATION_REPORTS_METADATA_KEY: &str = "protein_derivation_reports";
 const PROTEIN_DERIVATION_REPORTS_SCHEMA: &str = "gentle.protein_derivation_reports.v1";
 pub const PROTEIN_DERIVATION_REPORT_SCHEMA: &str = "gentle.protein_derivation_report.v1";
@@ -636,6 +949,8 @@ pub const PLANNING_SUGGESTION_SCHEMA: &str = "gentle.planning_suggestion.v1";
 pub const PLANNING_SYNC_STATUS_SCHEMA: &str = "gentle.planning_sync_status.v1";
 pub const PLANNING_CLONING_CONSULTATION_SCHEMA: &str = "gentle.planning_cloning_consultation.v1";
 pub const PROTEIN_EXPRESSION_HANDOFF_SCHEMA: &str = "gentle.protein_expression_handoff.v1";
+pub const PROTEIN_EXPRESSION_REQUIREMENTS_SCHEMA: &str =
+    "gentle.protein_expression_requirements.v1";
 const PLANNING_STORE_SCHEMA: &str = "gentle.planning_store.v1";
 pub const CONSTRUCT_REASONING_METADATA_KEY: &str = "construct_reasoning";
 pub const CONSTRUCT_OBJECTIVE_SCHEMA: &str = gentle_protocol::CONSTRUCT_OBJECTIVE_SCHEMA;
@@ -650,6 +965,9 @@ pub const CONSTRUCT_REASONING_GRAPH_SCHEMA: &str =
     gentle_protocol::CONSTRUCT_REASONING_GRAPH_SCHEMA;
 pub const CONSTRUCT_REASONING_STORE_SCHEMA: &str =
     gentle_protocol::CONSTRUCT_REASONING_STORE_SCHEMA;
+pub const DOTPLOT_INSPECTION_PROVENANCE_CITATION_SCHEMA: &str =
+    gentle_protocol::DOTPLOT_INSPECTION_PROVENANCE_CITATION_SCHEMA;
+pub const CONSTRUCT_REASONING_RULE_SET_VERSION: &str = "gentle.construct_reasoning.rules.v2";
 pub const WORKFLOW_MACRO_TEMPLATES_METADATA_KEY: &str = "workflow_macro_templates";
 const WORKFLOW_MACRO_TEMPLATES_SCHEMA: &str = "gentle.workflow_macro_templates.v1";
 pub const CLONING_MACRO_TEMPLATE_SCHEMA: &str = "gentle.cloning_macro_template.v1";
@@ -682,6 +1000,8 @@ const BLAST_OPTIONS_DEFAULTS_PATH_METADATA_KEY: &str = "blast_options_defaults_p
 const DEFAULT_BLAST_OPTIONS_PATH: &str = "assets/blast_defaults.json";
 const ISOFORM_PANELS_METADATA_KEY: &str = "isoform_panels";
 const ISOFORM_PANELS_SCHEMA: &str = "gentle.isoform_panels.v1";
+const SPLICING_LOCUS_PANEL_SELECTIONS_METADATA_KEY: &str = "splicing_locus_panel_selections";
+const SPLICING_LOCUS_PANEL_SELECTIONS_SCHEMA: &str = "gentle.splicing_locus_panel_selections.v1";
 const ISOFORM_PANEL_RESOURCE_SCHEMA: &str = "gentle.isoform_panel_resource.v1";
 const ISOFORM_PANEL_VALIDATION_REPORT_SCHEMA: &str = "gentle.isoform_panel_validation_report.v1";
 const UNIPROT_ENTRIES_METADATA_KEY: &str = "uniprot_entries";
@@ -714,6 +1034,7 @@ pub const UNIPROT_ENSEMBL_PEPTIDE_COMPARE_SCHEMA: &str =
 const PROCESS_RUN_BUNDLE_SCHEMA: &str = "gentle.process_run_bundle.v1";
 const LAB_ASSISTANT_INSTRUCTIONS_SCHEMA: &str = "gentle.lab_assistant_instructions.v2";
 pub const ROUTINE_DECISION_TRACES_METADATA_KEY: &str = "routine_decision_traces";
+pub const GENOMIC_REGION_SETS_METADATA_KEY: &str = "genomic_region_sets";
 pub const ROUTINE_DECISION_TRACE_SCHEMA: &str = "gentle.routine_decision_trace.v1";
 pub const ROUTINE_DECISION_TRACE_STORE_SCHEMA: &str = "gentle.routine_decision_trace_store.v1";
 pub const DOTPLOT_ANALYSIS_METADATA_KEY: &str = "dotplot_analysis";
@@ -729,6 +1050,11 @@ const RNA_READ_CHECKPOINT_SCHEMA: &str = "gentle.rna_read_interpret_checkpoint.v
 const RNA_READ_SAMPLE_SHEET_EXPORT_SCHEMA: &str = "gentle.rna_read_sample_sheet_export.v1";
 const RNA_READ_EXON_PATHS_EXPORT_SCHEMA: &str = "gentle.rna_read_exon_paths_export.v1";
 const RNA_READ_EXON_ABUNDANCE_EXPORT_SCHEMA: &str = "gentle.rna_read_exon_abundance_export.v1";
+const RNA_READ_DEXSEQ_ANNOTATION_GFF_EXPORT_SCHEMA: &str =
+    "gentle.rna_read_dexseq_annotation_gff_export.v1";
+const RNA_READ_DEXSEQ_COUNTS_TSV_EXPORT_SCHEMA: &str =
+    "gentle.rna_read_dexseq_counts_tsv_export.v1";
+const RNA_READ_DEXSEQ_VERIFICATION_SCHEMA: &str = "gentle.rna_read_dexseq_verification.v1";
 const RNA_READ_GENE_SUPPORT_SUMMARY_SCHEMA: &str = "gentle.rna_read_gene_support_summary.v1";
 const RNA_READ_GENE_SUPPORT_AUDIT_SCHEMA: &str = "gentle.rna_read_gene_support_audit.v1";
 const RNA_READ_TARGET_QUALITY_COMPARISON_BUNDLE_SCHEMA: &str =
@@ -753,9 +1079,6 @@ const CUTRUN_READ_REPORTS_SCHEMA: &str = "gentle.cutrun_read_reports.v1";
 const CUTRUN_READ_REPORT_SCHEMA: &str = "gentle.cutrun_read_report.v1";
 const CUTRUN_READ_COVERAGE_EXPORT_SCHEMA: &str = "gentle.cutrun_read_coverage_export.v1";
 const CUTRUN_REGULATORY_SUPPORT_SCHEMA: &str = "gentle.cutrun_regulatory_support.v1";
-#[cfg(debug_assertions)]
-const RNA_READ_PROGRESS_UPDATE_EVERY_READS: usize = 1_000;
-#[cfg(not(debug_assertions))]
 const RNA_READ_PROGRESS_UPDATE_EVERY_READS: usize = 10_000;
 const RNA_READ_ALIGNMENT_PROGRESS_UPDATE_EVERY_READS: usize = 1;
 const RNA_READ_PROGRESS_UPDATE_MAX_INTERVAL: Duration = Duration::from_secs(2);
@@ -789,6 +1112,12 @@ const PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP: usize = 6;
 const PRIMER_RECOMMENDED_MAX_PAIR_DIMER_RUN_BP: usize = 6;
 const PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP: usize = 3;
 const PRIMER_INTERNAL_MAX_PAIR_EVALUATIONS: usize = 1_000_000;
+const PRIMER_DESIGN_DEFAULT_REJECTED_NEAR_MISS_LIMIT: usize = 20;
+const PRIMER_DESIGN_MAX_REJECTED_NEAR_MISS_LIMIT: usize = 100;
+const PRIMER_DESIGN_SCORE_MODEL: &str = "gentle_primer_pair_rank_v1";
+const PRIMER_DESIGN_SCORE_DIRECTION: &str = "higher_is_better";
+const PRIMER_DESIGN_SCORE_SUM_TOLERANCE: f64 = 1.0e-9;
+const QPCR_ASSAY_SCORE_MODEL: &str = "gentle_qpcr_assay_rank_v1";
 const QPCR_PREFERRED_PROBE_TM_OFFSET_C: f64 = 7.5;
 const FEATURE_QUERY_RESULT_SCHEMA: &str = "gentle.sequence_feature_query_result.v1";
 const FEATURE_BED_EXPORT_REPORT_SCHEMA: &str = "gentle.sequence_feature_bed_export.v1";
@@ -799,7 +1128,7 @@ const SEQUENCE_CONTEXT_BUNDLE_SCHEMA: &str = "gentle.sequence_context_bundle.v1"
 const FEATURE_QUERY_DEFAULT_LIMIT: usize = 200;
 const FEATURE_QUERY_MAX_LIMIT: usize = 10_000;
 const TFBS_REGION_SUMMARY_SCHEMA: &str = "gentle.tfbs_region_summary.v1";
-const TFBS_SCORE_TRACK_REPORT_SCHEMA: &str = "gentle.tfbs_score_tracks.v1";
+pub(crate) const TFBS_SCORE_TRACK_REPORT_SCHEMA: &str = "gentle.tfbs_score_tracks.v1";
 const MULTI_GENE_PROMOTER_TFBS_REPORT_SCHEMA: &str = "gentle.multi_gene_promoter_tfbs.v1";
 const REPEAT_ANNOTATION_QUERY_REPORT_SCHEMA: &str = "gentle.repeat_annotation_query.v1";
 const SEQUENCE_REPEAT_OVERLAP_REPORT_SCHEMA: &str = "gentle.sequence_repeat_overlap.v1";
@@ -826,6 +1155,7 @@ const TFBS_REGION_SUMMARY_MAX_LIMIT: usize = 10_000;
 const TFBS_TRACK_SIMILARITY_REPORT_SCHEMA: &str = "gentle.tfbs_track_similarity.v1";
 pub(crate) const DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP: usize = 1000;
 pub(crate) const DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP: usize = 200;
+pub(crate) const DEFAULT_REGULATORY_PARTNER_DISTANCE_BP: usize = 100;
 pub const DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP: usize = 10_000;
 pub const DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED: u64 = 0x4A_41_53_50_41_52_5F_31;
 pub const DEFAULT_TFBS_SCORE_TRACK_RANDOM_SEQUENCE_LENGTH_BP: usize = 100_000;
@@ -874,6 +1204,10 @@ fn default_promoter_window_upstream_bp() -> usize {
 
 fn default_promoter_window_downstream_bp() -> usize {
     DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP
+}
+
+fn default_regulatory_partner_distance_bp() -> usize {
+    DEFAULT_REGULATORY_PARTNER_DISTANCE_BP
 }
 
 fn default_jaspar_presentation_random_sequence_length_bp() -> usize {
@@ -925,16 +1259,28 @@ struct ResolvedGenomePromoterSlice {
 mod candidate_guides;
 #[path = "engine/analysis/candidate_metrics.rs"]
 mod candidate_metrics;
+#[path = "engine/analysis/cryptic_splicing.rs"]
+mod cryptic_splicing;
 #[path = "engine/cutrun.rs"]
 mod cutrun;
+#[path = "engine/analysis/encode_ccre.rs"]
+mod encode_ccre_analysis;
+#[path = "engine/analysis/ensembl_regulation.rs"]
+mod ensembl_regulation_analysis;
+#[path = "engine/ops/external_primer_pairs.rs"]
+mod external_primer_pairs;
 #[path = "engine/state/feature_coordinate_formulas.rs"]
 mod feature_coordinate_formulas;
 #[path = "engine/analysis/feature_expert_ops.rs"]
 mod feature_expert_ops;
+#[path = "engine/io/gel_images.rs"]
+mod gel_images;
 #[path = "engine/analysis/gene_sets.rs"]
 mod gene_sets;
 #[path = "engine/io/genome_tracks.rs"]
 mod genome_tracks;
+#[path = "engine/state/genomic_regions.rs"]
+mod genomic_regions;
 #[path = "engine/io/import_anchors.rs"]
 mod import_anchors;
 #[path = "engine/analysis/jaspar.rs"]
@@ -960,16 +1306,48 @@ mod probe_region_glen_adapter;
 mod probe_regions;
 #[path = "engine/analysis/promoter_design.rs"]
 mod promoter_design;
+#[path = "engine/analysis/promoter_reporter_architecture.rs"]
+mod promoter_reporter_architecture;
 #[path = "engine/analysis/protein_handoff.rs"]
 mod protein_handoff;
 #[path = "engine/io/read_acquisition.rs"]
 mod read_acquisition;
+#[path = "engine/analysis/region_homology.rs"]
+mod region_homology;
+#[path = "engine/analysis/regulatory_fragment_panel.rs"]
+mod regulatory_fragment_panel;
+#[path = "engine/analysis/tata_boxes.rs"]
+mod tata_boxes;
+#[path = "engine/analysis/tss_profiles.rs"]
+mod tss_profiles;
+#[path = "engine/io/tss_view_export.rs"]
+mod tss_view_export;
+#[path = "engine/analysis/tss_workspace.rs"]
+mod tss_workspace;
+#[cfg(feature = "desktop-gui")]
+pub(crate) use region_homology::validate_genomic_region_homology_report;
+#[cfg(test)]
+pub(crate) use tss_workspace::tests::{
+    approved as synthetic_tss_approval, engine as synthetic_tss_engine,
+};
+#[path = "engine/analysis/primer_specificity_multi.rs"]
+mod primer_specificity_multi;
+#[path = "engine/analysis/primer_specificity_references.rs"]
+mod primer_specificity_references;
+#[path = "engine/analysis/regulatory_partners.rs"]
+mod regulatory_partners;
 #[path = "engine/analysis/repeat_cohort.rs"]
 mod repeat_cohort;
+#[path = "engine/analysis/reporter_fragment_selection.rs"]
+mod reporter_fragment_selection;
 #[path = "engine/ops/reporter_ops.rs"]
 mod reporter_ops;
+#[path = "engine/analysis/reporter_panel.rs"]
+mod reporter_panel;
 #[path = "engine/analysis/rna_reads.rs"]
 mod rna_reads;
+#[path = "engine/analysis/sequence_design.rs"]
+mod sequence_design;
 #[path = "engine/state/sequence_ops.rs"]
 mod sequence_ops;
 #[path = "engine/analysis/sequencing_confirmation.rs"]
@@ -1296,6 +1674,7 @@ struct SplicingTranscriptTemplate {
     strand: String,
     sequence: Vec<u8>,
     genomic_positions_1based: Vec<usize>,
+    transcript_local_exon_ordinals: Vec<usize>,
     kmer_positions: HashMap<u32, Vec<usize>>,
 }
 
@@ -1306,7 +1685,10 @@ struct TranscriptExonPathModel {
     transcript_label: String,
     strand: String,
     exon_ordinals: Vec<usize>,
+    exon_local_ordinals: Vec<usize>,
     transitions: Vec<(usize, usize)>,
+    transcript_local_ordinals: Vec<usize>,
+    transcript_local_transition_edges: Vec<(usize, usize)>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -1347,6 +1729,7 @@ struct RnaReadOriginClassification {
 #[derive(Debug, Clone, Default)]
 struct ReadExonPathInference {
     path: String,
+    transcript_exon_path: String,
     confirmed_transitions: usize,
     total_transitions: usize,
     transcript_id: String,
@@ -1508,6 +1891,11 @@ pub struct ProjectState {
     pub parameters: EngineParameters,
     #[serde(default)]
     pub container_state: ContainerState,
+    #[serde(
+        default,
+        skip_serializing_if = "gentle_protocol::gel_image::GelImageStore::is_empty"
+    )]
+    pub gel_images: gentle_protocol::gel_image::GelImageStore,
 }
 
 #[derive(Debug)]
@@ -2154,7 +2542,6 @@ impl ProjectState {
                             final_dir.display(),
                             backup.display()
                         ),
-                    
                         cause_chain: vec![],})?;
                     backup_dir = Some(backup);
                 }
@@ -2219,7 +2606,6 @@ impl ProjectState {
                                 "Could not remove partially committed candidate-sidecar directory '{}': {e}",
                                 final_dir.display()
                             ),
-                        
                             cause_chain: vec![],})?;
                     }
                     std::fs::rename(&backup, &final_dir).map_err(|e| EngineError {
@@ -2239,7 +2625,6 @@ impl ProjectState {
                             "Could not remove new candidate-sidecar directory '{}' during rollback: {e}",
                             final_dir.display()
                         ),
-                    
                         cause_chain: vec![],})?;
                 }
                 Ok(())
@@ -2297,6 +2682,7 @@ impl Default for PrimerDesignPairConstraint {
             forbidden_amplicon_motifs: vec![],
             fixed_amplicon_start_0based: None,
             fixed_amplicon_end_0based_exclusive: None,
+            rejected_near_miss_limit: None,
         }
     }
 }
@@ -2487,6 +2873,16 @@ struct PrimerDesignStore {
     updated_at_unix_ms: u128,
     reports: HashMap<String, PrimerDesignReport>,
     qpcr_reports: HashMap<String, QpcrDesignReport>,
+    terminal_exon_rt_primer_pools: HashMap<String, TerminalExonRtPrimerPoolReport>,
+    transcript_capture_pools: HashMap<String, TranscriptCapturePoolReport>,
+    primer_specificity_reports: HashMap<String, PrimerSpecificityReport>,
+    primer_specificity_reference_selections: BTreeMap<String, PrimerSpecificityReferenceSelection>,
+    active_primer_specificity_reference_selections: BTreeMap<String, String>,
+    primer_specificity_panel_sources: BTreeMap<String, PrimerSpecificityPanelSource>,
+    primer_specificity_multi_summaries: BTreeMap<String, PrimerSpecificityMultiSummary>,
+    transcript_assay_panels: HashMap<String, TranscriptAssayPanelReport>,
+    transcript_assay_fallback_executions: HashMap<String, TranscriptAssayFallbackExecutionReport>,
+    external_primer_pair_imports: HashMap<String, ExternalPrimerPairImportReport>,
     restriction_cloning_handoffs: HashMap<String, RestrictionCloningPcrHandoffReport>,
     oligo_order_forms: HashMap<String, OligoOrderForm>,
 }
@@ -2741,6 +3137,13 @@ struct IsoformPanelStore {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
+struct SplicingLocusPanelSelectionStore {
+    schema: String,
+    selections: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
 struct UniprotEntryStore {
     schema: String,
     updated_at_unix_ms: u128,
@@ -2848,6 +3251,41 @@ impl BlastRunOptions {
 /// rely on `GentleEngine::apply` for execution. This preserves one deterministic
 /// behavior surface and avoids adapter-specific biology logic branches.
 pub enum Operation {
+    PlanDnaSequenceDesign {
+        request: Box<gentle_protocol::sequence_design::DnaSequenceDesignRequest>,
+        #[serde(default)]
+        path: Option<String>,
+    },
+    ApplyDnaSequenceDesign {
+        proposal: Box<gentle_protocol::sequence_design::DnaSequenceDesignReport>,
+        approval_digest: String,
+    },
+    ComputeTssTfbsProfiles {
+        request: Box<gentle_protocol::tss_profiles::ComputeTssProfilesRequest>,
+        #[serde(default)]
+        export: Option<gentle_protocol::tss_profiles::ExportTssProfilesRequest>,
+    },
+    ExportTssTfbsProfiles {
+        report: Box<gentle_protocol::tss_profiles::TssProfileReport>,
+        request: gentle_protocol::tss_profiles::ExportTssProfilesRequest,
+    },
+    ImportGelImage {
+        request: gentle_protocol::gel_image::GelImageImportRequest,
+    },
+    AnalyzeGelImage {
+        request: Box<gentle_protocol::gel_image::GelImageAnalysisRequest>,
+    },
+    /// Save incomplete manual assignments without claiming a calibrated result.
+    SaveGelImageDraft {
+        /// Shared across history journals; JSON still contains an ordinary request.
+        request: std::sync::Arc<gentle_protocol::gel_image::GelImageAnalysisRequest>,
+    },
+    InspectGelImageAnalysis {
+        report_id: String,
+    },
+    ExportGelImageAnalysis {
+        request: gentle_protocol::gel_image::GelImageExportRequest,
+    },
     LoadFile {
         path: String,
         as_id: Option<SeqId>,
@@ -2912,6 +3350,28 @@ pub enum Operation {
         target: FeatureExpertTarget,
         path: String,
     },
+    PrepareGeneLocusEvidence {
+        request: Box<GeneLocusEvidencePreparationRequest>,
+    },
+    InspectCrypticSplicingScreen {
+        request: CrypticSplicingScreenRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    RenderCrypticSplicingScreenSvg {
+        request: CrypticSplicingScreenRequest,
+        path: String,
+    },
+    InspectCrypticSplicingEvidenceOverlay {
+        request: CrypticSplicingEvidenceOverlayRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    InspectCrypticSplicingProteinProjection {
+        request: CrypticSplicingProteinProjectionRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     RenderIsoformArchitectureSvg {
         seq_id: SeqId,
         panel_id: String,
@@ -2936,6 +3396,8 @@ pub enum Operation {
         arrangement_id: Option<String>,
         #[serde(default)]
         conditions: Option<GelRunConditions>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        render_options: Option<PoolGelRenderOptions>,
     },
     RenderProteinGelSvg {
         report_id: String,
@@ -3124,6 +3586,29 @@ pub enum Operation {
         pool_id: Option<String>,
         human_id: Option<String>,
     },
+    ExportPoolCollection {
+        collection_subject: CollectionSubjectRef,
+        path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pool_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        human_id: Option<String>,
+    },
+    CreateGeneSetPool {
+        collection_subject: CollectionSubjectRef,
+        #[serde(default)]
+        member_bindings: Vec<GeneSetPoolMemberBinding>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        output_prefix: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        container_name: Option<String>,
+        #[serde(default)]
+        dry_run: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expected_plan_fingerprint_sha256: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     ExportProcessRunBundle {
         path: String,
         #[serde(default)]
@@ -3283,6 +3768,10 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         min_abs_logfc: Option<f64>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        threshold_source: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        policy_sha256: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
     ProjectGenomeInterval {
@@ -3379,6 +3868,10 @@ pub enum Operation {
         dataset_ids: Vec<String>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         read_report_ids: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         promoter_search_start_0based: Option<usize>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -3589,6 +4082,32 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    InspectRegulatoryPartnerScreen {
+        genome_id: String,
+        resolution: Box<GeneSetResolutionReport>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cutrun_support: Option<Box<GeneSetCutRunRegulatorySupportReport>>,
+        anchor_motifs: Vec<String>,
+        partner_motifs: Vec<String>,
+        #[serde(default)]
+        min_llr_bits: f64,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        per_motif_thresholds: Vec<RegulatoryPartnerMotifThreshold>,
+        #[serde(default = "default_regulatory_partner_distance_bp")]
+        max_distance_bp: usize,
+        #[serde(default)]
+        anchor_mode: RegulatoryPartnerAnchorMode,
+        #[serde(default = "default_promoter_window_upstream_bp")]
+        upstream_bp: usize,
+        #[serde(default = "default_promoter_window_downstream_bp")]
+        downstream_bp: usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        genome_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     ResolveOrthologPromoterCohort {
         anchor_species: String,
         anchor_genome_id: String,
@@ -3637,6 +4156,8 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         cutrun_read_report_ids: Vec<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        cutrun_normalization: Option<OrthologCutRunNormalizationInput>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
     ImportIsoformPanel {
@@ -3658,6 +4179,12 @@ pub enum Operation {
         query: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         species: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        assembly: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        flank_5prime_bp: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        flank_3prime_bp: Option<usize>,
         entry_id: Option<String>,
     },
     FetchEnsemblRegion {
@@ -3736,6 +4263,9 @@ pub enum Operation {
         #[serde(default)]
         ensembl_entry_id: Option<String>,
     },
+    BuildUniprotLinkedTranscriptInventory {
+        request: UniprotLinkedTranscriptInventoryRequest,
+    },
     AuditUniprotProjectionParity {
         projection_id: String,
         #[serde(default)]
@@ -3783,6 +4313,20 @@ pub enum Operation {
         enzymes: Vec<String>,
         output_prefix: Option<String>,
     },
+    DigestCollection {
+        collection_subject: CollectionSubjectRef,
+        #[serde(default)]
+        member_bindings: Vec<DigestCollectionMemberBinding>,
+        enzymes: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        output_prefix: Option<String>,
+        #[serde(default)]
+        dry_run: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expected_plan_fingerprint_sha256: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     FindRestrictionSites {
         target: SequenceScanTarget,
         #[serde(default)]
@@ -3791,6 +4335,42 @@ pub enum Operation {
         max_sites_per_enzyme: Option<usize>,
         #[serde(default = "default_true")]
         include_cut_geometry: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    FindRestrictionSitesCollection {
+        collection_subject: CollectionSubjectRef,
+        #[serde(default)]
+        member_bindings: Vec<RestrictionSiteScanCollectionMemberBinding>,
+        #[serde(default)]
+        enzymes: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_sites_per_enzyme: Option<usize>,
+        #[serde(default = "default_true")]
+        include_cut_geometry: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    InspectConstructReasoningCollection {
+        collection_subject: CollectionSubjectRef,
+        #[serde(default)]
+        member_bindings: Vec<ConstructReasoningCollectionMemberBinding>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    ScanTfbsHitsCollection {
+        collection_subject: CollectionSubjectRef,
+        #[serde(default)]
+        member_bindings: Vec<TfbsHitScanCollectionMemberBinding>,
+        motifs: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_llr_bits: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_llr_quantile: Option<f64>,
+        #[serde(default)]
+        per_tf_thresholds: Vec<TfThresholdOverride>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_hits_per_member: Option<usize>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
@@ -3825,6 +4405,119 @@ pub enum Operation {
         clear_existing: Option<bool>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
+    },
+    QueryEncodeCcreOverlaps {
+        seq_id: SeqId,
+        index_path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        bed_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        start_0based: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        end_0based_exclusive: Option<usize>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        classes: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    MaterializeEncodeCcreFeatures {
+        seq_id: SeqId,
+        index_path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        bed_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        classes: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_features: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        clear_existing: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    QueryEnsemblRegulationOverlaps {
+        seq_id: SeqId,
+        index_path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        intervals_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        start_0based: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        end_0based_exclusive: Option<usize>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        feature_types: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    MaterializeEnsemblRegulationFeatures {
+        seq_id: SeqId,
+        index_path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        intervals_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        feature_types: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_features: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        clear_existing: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    CreateGenomicRegion {
+        request: gentle_protocol::GenomicRegionCreateRequest,
+    },
+    CaptureGenomicRegion {
+        request: gentle_protocol::GenomicRegionCaptureRequest,
+    },
+    PreviewGenomicRegionFeature {
+        request: gentle_protocol::GenomicRegionFeatureRequest,
+    },
+    MaterializeGenomicRegionFeature {
+        request: gentle_protocol::GenomicRegionFeatureRequest,
+    },
+    ListGenomicRegions {
+        #[serde(default)]
+        request: gentle_protocol::GenomicRegionListRequest,
+    },
+    InspectGenomicRegion {
+        request: gentle_protocol::GenomicRegionInspectRequest,
+    },
+    UpdateGenomicRegionPresentation {
+        request: gentle_protocol::GenomicRegionUpdateRequest,
+    },
+    DeriveGenomicRegion {
+        request: gentle_protocol::GenomicRegionDeriveRequest,
+    },
+    ImportGenomicRegionSet {
+        request: gentle_protocol::GenomicRegionImportRequest,
+    },
+    ExportGenomicRegionSet {
+        request: gentle_protocol::GenomicRegionExportRequest,
+    },
+    ScreenGenomicRegionHomology {
+        request: gentle_protocol::GenomicRegionHomologyScreenRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    RenderGenomicRegionHomologySvg {
+        report: Box<gentle_protocol::GenomicRegionHomologyScreenReport>,
+        path: String,
+    },
+    AssessPromoterConservedModules {
+        request: gentle_protocol::PromoterModuleAssessmentRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    ScreenTataBoxes {
+        request: gentle_protocol::tata_boxes::TataBoxScreenRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    MaterializeTataBoxFeatures {
+        request: gentle_protocol::tata_boxes::TataBoxMaterializeRequest,
     },
     BuildRepeatEnvironmentCohort {
         genome_id: String,
@@ -3911,6 +4604,21 @@ pub enum Operation {
         max_pairs: Option<usize>,
         report_id: Option<String>,
     },
+    DesignTerminalExonRtPrimerPool {
+        request: TerminalExonRtPrimerPoolRequest,
+    },
+    /// Discover exact transcript-binding capture oligos and propose a bounded
+    /// mixed-role pool without approving specificity or placing an order.
+    DesignTranscriptCapturePool {
+        request: TranscriptCapturePoolRequest,
+    },
+    /// Design one exact-binding primer pair shared by related loaded
+    /// sequences after deterministic common-interval planning.
+    DesignPrimerGroupTarget {
+        request: PrimerGroupTargetDesignRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     DesignInsertionPrimerPairs {
         template: SeqId,
         insertion: PrimerInsertionIntent,
@@ -3927,6 +4635,16 @@ pub enum Operation {
         report_id: Option<String>,
     },
     ExportPrimerDesignReport {
+        report_id: String,
+        path: String,
+    },
+    ExportTerminalExonRtPrimerPoolReport {
+        report_id: String,
+        path: String,
+    },
+    /// Render stored full-primer specificity alignments without rerunning
+    /// BLAST or sequence alignment.
+    ExportPrimerSpecificityAlignmentHtml {
         report_id: String,
         path: String,
     },
@@ -3951,6 +4669,61 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    AssessPrimerPairSpecificityCollection {
+        collection_subject: CollectionSubjectRef,
+        #[serde(default)]
+        member_bindings: Vec<PrimerSpecificityCollectionMemberBinding>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pair_rank: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pair_index: Option<usize>,
+        target_genome_id: String,
+        #[serde(default)]
+        policy: PrimerSpecificityPolicy,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    PreparePrimerPairSpecificityHandoff {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        primer_report_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pair_rank: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pair_index: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        forward_primer: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reverse_primer: Option<String>,
+        target_genome_id: String,
+        #[serde(default)]
+        policy: PrimerSpecificityPolicy,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+        output_dir: String,
+    },
+    ImportPrimerPairSpecificityHandoff {
+        handoff_path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    PreparePrimerPairMultiReferenceSpecificityHandoff {
+        request: Box<PrimerSpecificityMultiRequest>,
+        output_dir: String,
+    },
+    ImportPrimerPairMultiReferenceSpecificity {
+        handoff_path: String,
+        manifest_path: String,
+    },
+    GetPrimerPairMultiReferenceSpecificitySummary {
+        summary_id: String,
+    },
+    ListPrimerPairMultiReferenceSpecificitySummaries {},
     PrepareRestrictionCloningPcrHandoff {
         template: SeqId,
         primer_report_id: String,
@@ -3993,6 +4766,13 @@ pub enum Operation {
         transcript_targeting: Option<QpcrTranscriptTargeting>,
         report_id: Option<String>,
     },
+    SearchPrimerBank {
+        request: PrimerBankSearchRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source_html_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     TestCdnaPcr {
         seq_id: SeqId,
         source_feature_id: usize,
@@ -4024,6 +4804,20 @@ pub enum Operation {
         product_gel_svg_path: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         product_gel_ladders: Option<Vec<String>>,
+    },
+    ImportExternalPrimerPairs {
+        request: ExternalPrimerPairImportRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    /// Screen explicit assembly-aware primer/probe geometry against one local
+    /// VCF in a single pass without mutating project state.
+    ScreenPrimerVariants {
+        request: Box<PrimerVariantScreenRequest>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        evidence_dir: Option<String>,
     },
     TestCdnaQpcr {
         seq_id: SeqId,
@@ -4065,6 +4859,159 @@ pub enum Operation {
         shared_qpcr_report_id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
+    },
+    /// Materialize advisory, content-bound whole-cDNA similarity intervals for
+    /// subsequent bounded transcript-assay planning.
+    BuildTranscriptAssayCdnaSimilarityMap {
+        request: TranscriptAssayCdnaSimilarityMapBuildRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    /// Propose content-bound replacements for specificity-failed transcript
+    /// assays without mutating the approved source panel.
+    RedesignTranscriptAssaySpecificityFailures {
+        request: TranscriptAssaySpecificityRedesignRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    DesignTranscriptAssayPanel {
+        seq_id: SeqId,
+        /// Zero-based feature index into the source sequence feature table.
+        source_feature_id: usize,
+        /// Omitted by older callers; defaults to the original TaqMan behavior.
+        #[serde(default)]
+        assay_kind: TranscriptAssayKind,
+        #[serde(default)]
+        cdna_synthesis: TranscriptAssayCdnaSynthesis,
+        #[serde(default)]
+        objective: TranscriptAssayPanelObjective,
+        #[serde(default)]
+        coverage_policy: TranscriptAssayCoveragePolicy,
+        /// Mandatory transcript universe, independent of objective and
+        /// strictness. Omitted/default preserves the historical all-annotation
+        /// operation bytes and behavior.
+        #[serde(
+            default,
+            skip_serializing_if = "TranscriptAssayCoverageUniverse::is_default"
+        )]
+        coverage_universe: TranscriptAssayCoverageUniverse,
+        /// Experimental purpose, independent of the panel-selection objective.
+        #[serde(
+            default,
+            skip_serializing_if = "TranscriptAssayUseTier::is_unspecified"
+        )]
+        assay_tier: TranscriptAssayUseTier,
+        /// Optional preferred/allowed product-length policy. Existing
+        /// `min_amplicon_bp`/`max_amplicon_bp` remain the legacy allowed range.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        practicality: Option<TranscriptAssayPracticalityPolicy>,
+        #[serde(default)]
+        forward: PrimerDesignSideConstraint,
+        #[serde(default)]
+        reverse: PrimerDesignSideConstraint,
+        #[serde(default)]
+        probe: PrimerDesignSideConstraint,
+        #[serde(default)]
+        pair_constraints: PrimerDesignPairConstraint,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_amplicon_bp: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_amplicon_bp: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_tm_delta_c: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_probe_tm_delta_c: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_assays_per_class: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_mismatches: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        require_3prime_exact_bases: Option<usize>,
+        /// Optional experiment-specific threshold for classifying the cDNA
+        /// reach reported in oligo-dT transcript-by-assay cells.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        oligo_dt_5prime_risk_threshold_bp: Option<usize>,
+        /// Optional deterministic search budget. Omitted/default policy is
+        /// not serialized so legacy operation digests remain stable.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        search_policy: Option<TranscriptAssayPrimerSearchPolicy>,
+        /// Whole-panel budget and observable-product policy required by
+        /// `maximally_informative_panel`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        informative_selection: Option<TranscriptAssayInformativeSelectionPolicy>,
+        #[serde(default)]
+        junctions: Vec<TranscriptAssayJunctionRequest>,
+        /// Existing probe-evidence interpretation reports whose JUC rows
+        /// should become explicit junction requests.
+        #[serde(default)]
+        junction_evidence_paths: Vec<String>,
+        #[serde(default)]
+        junction_evidence_priority: TranscriptAssayJunctionPriority,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_3prime_junction_overlap_bp: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_5prime_junction_overlap_bp: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        annotation_release: Option<String>,
+        /// Optional prepared-genome BLAST confirmation for the selected panel.
+        /// Absent preserves the deterministic design-only path.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        specificity: Option<TranscriptAssaySpecificityRequest>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        report_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    /// Execute one exact strict panel request and, only after typed coverage
+    /// infeasibility, derive and execute its pre-approved partial fallback.
+    DesignTranscriptAssayPanelWithFallback {
+        strict_operation: Box<Operation>,
+        #[serde(default)]
+        fallback_submission: TranscriptAssayFallbackSubmissionPolicy,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    /// Recommend an explicit, policy-versioned set of transcript-assay design
+    /// operations without executing any of them.
+    PlanGeneIsoformAssayStudy {
+        request: GeneIsoformAssayStudyPlanRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+        /// Optional workflow artifact containing the exact ordered operations
+        /// for a separate approval and execution step.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        workflow_path: Option<String>,
+    },
+    /// Compose existing isoform evidence and transcript-assay reports without
+    /// rerunning design, specificity, or external analysis.
+    ComposeGeneTranscriptAssayRoutine {
+        request: GeneTranscriptAssayRoutineRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    /// Project one persisted transcript assay panel into deterministic
+    /// per-pair bench cards and an order/readiness table. This operation runs
+    /// the shared cDNA assay test for every selected pair.
+    BuildExperimentalAssayHandoff {
+        panel_report_id: String,
+        #[serde(default)]
+        policy: ExperimentalAssayReadinessPolicy,
+        #[serde(default)]
+        variant_evidence_paths: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        order_form_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        order_table_path: Option<String>,
+        /// Optional deterministic virtual-gel projection. Each assay card is
+        /// rendered as one comparable sample lane under shared conditions.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        virtual_gel_svg_path: Option<String>,
+        #[serde(default)]
+        virtual_gel_ladders: Vec<String>,
+        #[serde(default)]
+        virtual_gel_render_options: PoolGelRenderOptions,
     },
     TestCdnaQpcrFasta {
         #[serde(default)]
@@ -4201,6 +5148,8 @@ pub enum Operation {
         tile_bp: Option<usize>,
         #[serde(default)]
         store_as: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        inspection_provenance: Option<Box<DotplotInspectionProvenanceCitation>>,
     },
     ComputeDotplotOverlay {
         owner_seq_id: SeqId,
@@ -4661,6 +5610,14 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    QueryPromoterCofactors {
+        request: gentle_protocol::promoter_cofactors::PromoterCofactorRequest,
+    },
+    QueryGenomicMotifEvidence {
+        request: GenomicMotifEvidenceRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     SummarizeJasparEntries {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         motifs: Vec<String>,
@@ -4762,6 +5719,13 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    ComparePromoterReporterArchitectures {
+        request: Box<PromoterReporterArchitectureComparisonRequest>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        svg_path: Option<String>,
+    },
     SummarizePromoterEvidenceMatrix {
         input: SeqId,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -4831,6 +5795,11 @@ pub enum Operation {
         retain_upstream_beyond_variant_bp: usize,
         #[serde(default = "default_promoter_reporter_max_candidates")]
         max_candidates: usize,
+        #[serde(
+            default,
+            skip_serializing_if = "PromoterReporterFragmentPolicy::is_default"
+        )]
+        fragment_policy: PromoterReporterFragmentPolicy,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
@@ -4873,6 +5842,12 @@ pub enum Operation {
         reporter_backbone_seq_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reporter_backbone_load_path: Option<String>,
+        /// Exact helper-vector catalog identity to validate before commands are enabled.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reporter_backbone_catalog_id: Option<String>,
+        /// Optional helper/vector catalog override for exact identity validation.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        helper_catalog_path: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reference_fragment_seq_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -4882,12 +5857,105 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    PlanPromoterReporterPanel {
+        request: Box<PromoterReporterPanelRequest>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    PlanEvidenceGuidedFragmentCandidates {
+        request: Box<FragmentSelectionRequest>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    /// Preview exact annotated transcript starts on a loaded anchored locus.
+    InspectTssInventory {
+        request: gentle_protocol::tss_workspace::TssInventoryRequest,
+    },
+    MaterializeTssWindows {
+        request: gentle_protocol::tss_workspace::TssMaterializeRequest,
+    },
+    ListTssCollections {},
+    GetTssCollection {
+        collection_id: String,
+    },
+    /// Remove only TSS collection metadata; preserve member sequences and lineage.
+    ForgetTssCollection {
+        collection_id: String,
+    },
+    /// Export one annotated-TSS window or a validated collection, headless.
+    ///
+    /// Renders exactly what the GUI's TSS / Regulatory view would draw for the same
+    /// attachments: supplied annotation lanes always, report-backed curves and
+    /// imported DuckDB hits when `report` is given, and locally computed curves when
+    /// `local_motifs` is given. It never retrieves sequence, queries a motif package,
+    /// reinterprets an attached report, or modifies the loaded sequence.
+    ExportTssViewSvg {
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        seq_id: String,
+        /// Exclusive with seq_id; validates membership before producing ordered pages.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        collection_id: Option<String>,
+        path: String,
+        /// Validated TSS profile report to attach, exactly as the GUI file picker does.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        report: Option<String>,
+        /// Exact full-PFM accessions for locally computed curves; no aliases or `ALL`.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        local_motifs: Vec<String>,
+        #[serde(default = "default_tfbs_score_track_value_kind")]
+        score_kind: TfbsScoreTrackValueKind,
+        #[serde(default = "default_tfbs_score_track_clip_negative")]
+        clip_negative: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        start_0based: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        end_0based_exclusive: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        width_px: Option<u32>,
+    },
+    /// Stateless fixed-window geometry, not adaptive reporter insert selection.
+    ComputeTssWindowGeometry {
+        request: Box<gentle_protocol::tss_window_geometry::TssWindowGeometryRequest>,
+    },
+    ComposeRegulatoryReporterStudy {
+        request: Box<RegulatoryReporterStudyRequest>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    PlanRegulatoryFragmentPanel {
+        request: Box<RegulatoryFragmentPanelRequest>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    RenderRegulatoryFragmentPanelSvg {
+        plan: Box<RegulatoryFragmentPanelPlan>,
+        path: String,
+    },
+    PlanRegulatoryFragmentMaterialization {
+        plan: Box<RegulatoryFragmentPanelPlan>,
+        output_prefix: String,
+    },
+    MaterializeRegulatoryFragmentPanel {
+        proposal: Box<RegulatoryFragmentMaterializationProposal>,
+        approval_digest: String,
+    },
+    InspectPromoterReporterPanelReadiness {
+        request: Box<PromoterReporterPanelReadinessRequest>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    MaterializePromoterReporterPanel {
+        proposal: Box<PromoterReporterPanelProposal>,
+        approval_digest: String,
+    },
     MaterializeVariantAllele {
         input: SeqId,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         variant_label_or_id: Option<String>,
         #[serde(default)]
         allele: VariantAlleleChoice,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        alternate_allele: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         output_id: Option<SeqId>,
     },
@@ -4945,6 +6013,33 @@ pub enum Operation {
         selected_record_indices: Vec<usize>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         subset_spec: Option<String>,
+    },
+    ExportRnaReadDexseqAnnotationGff {
+        report_id: String,
+        path: String,
+    },
+    ExportRnaReadDexseqCountsTsv {
+        report_id: String,
+        path: String,
+        #[serde(default)]
+        selection: RnaReadHitSelection,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        selected_record_indices: Vec<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        subset_spec: Option<String>,
+    },
+    VerifyRnaReadDexseqExports {
+        report_id: String,
+        gff_path: String,
+        counts_path: String,
+        #[serde(default)]
+        selection: RnaReadHitSelection,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        selected_record_indices: Vec<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        subset_spec: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        r_library_paths: Vec<String>,
     },
     ExportRnaReadScoreDensitySvg {
         report_id: String,
@@ -5286,6 +6381,18 @@ pub enum Operation {
     RecomputeFeatures {
         seq_id: SeqId,
     },
+    PreviewFeatureLocationEdit {
+        request: FeatureLocationEditRequest,
+    },
+    EditFeatureLocation {
+        request: FeatureLocationEditRequest,
+    },
+    PreviewFeatureRecordCuration {
+        request: FeatureRecordCurationRequest,
+    },
+    ApplyFeatureRecordCuration {
+        request: FeatureRecordCurationRequest,
+    },
     SetParameter {
         name: String,
         value: serde_json::Value,
@@ -5344,11 +6451,49 @@ struct GenomeSequenceAnchor {
     cache_dir: Option<String>,
 }
 
-#[derive(Debug, Clone, Default)]
-struct EngineHistoryCheckpoint {
-    state: ProjectState,
-    journal: Vec<OperationRecord>,
-    op_counter: u64,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EngineHistoryCheckpointKind {
+    Full,
+    DisplayOnly,
+    GelDraftsOnly,
+}
+
+#[derive(Debug, Clone)]
+enum EngineHistoryCheckpoint {
+    Full {
+        state: ProjectState,
+        journal: Vec<OperationRecord>,
+        op_counter: u64,
+    },
+    DisplayOnly {
+        display: DisplaySettings,
+        journal: Vec<OperationRecord>,
+        op_counter: u64,
+    },
+    GelDraftsOnly {
+        drafts:
+            BTreeMap<String, std::sync::Arc<gentle_protocol::gel_image::GelImageAnalysisRequest>>,
+        journal: Vec<OperationRecord>,
+        op_counter: u64,
+    },
+}
+
+impl EngineHistoryCheckpoint {
+    fn kind(&self) -> EngineHistoryCheckpointKind {
+        match self {
+            Self::Full { .. } => EngineHistoryCheckpointKind::Full,
+            Self::DisplayOnly { .. } => EngineHistoryCheckpointKind::DisplayOnly,
+            Self::GelDraftsOnly { .. } => EngineHistoryCheckpointKind::GelDraftsOnly,
+        }
+    }
+
+    fn journal(&self) -> &[OperationRecord] {
+        match self {
+            Self::Full { journal, .. }
+            | Self::DisplayOnly { journal, .. }
+            | Self::GelDraftsOnly { journal, .. } => journal,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -5511,6 +6656,7 @@ struct FeatureBedExportRow {
     qualifiers_json: String,
     sort_feature_id: usize,
     length_bp: usize,
+    distance_to_query_bp: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -5522,6 +6668,43 @@ struct PrimerDesignCandidate {
     gc_fraction: f64,
     anneal_hits: usize,
 }
+
+#[derive(Debug, Default)]
+struct PrimerDesignNearMissCollector {
+    requested_limit: usize,
+    effective_limit: usize,
+    eligible_candidate_count: usize,
+    candidate_comparison_count: usize,
+    rows: Vec<PrimerDesignRejectedCandidate>,
+}
+
+#[derive(Debug, Default)]
+struct PrimerDesignPairSearchOutcome {
+    pairs: Vec<PrimerDesignPairRecord>,
+    rejection_summary: PrimerDesignRejectionSummary,
+    rejected_near_misses: Vec<PrimerDesignRejectedCandidate>,
+    near_miss_capture: PrimerDesignNearMissCapture,
+}
+
+#[derive(Debug, Default)]
+struct QpcrDesignNearMissCollector {
+    requested_limit: usize,
+    effective_limit: usize,
+    eligible_candidate_count: usize,
+    candidate_comparison_count: usize,
+    rows: Vec<QpcrDesignRejectedCandidate>,
+}
+
+#[derive(Debug, Default)]
+struct QpcrAssaySearchOutcome {
+    assays: Vec<QpcrAssayRecord>,
+    rejection_summary: QpcrDesignRejectionSummary,
+    rejected_near_misses: Vec<QpcrDesignRejectedCandidate>,
+    near_miss_capture: PrimerDesignNearMissCapture,
+}
+
+type PrimerDesignCandidatePairFilter<'a> =
+    &'a dyn Fn(&PrimerDesignCandidate, &PrimerDesignCandidate) -> bool;
 
 #[derive(Debug, Clone, Copy, Default)]
 struct PrimerHeuristicMetrics {
@@ -5757,15 +6940,119 @@ pub trait Engine {
 /// this type rather than introducing parallel execution layers.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GentleEngine {
+    #[serde(skip)]
+    instance_id: EngineInstanceId,
     state: ProjectState,
     journal: Vec<OperationRecord>,
     op_counter: u64,
     #[serde(skip, default)]
-    undo_stack: Vec<EngineHistoryCheckpoint>,
+    execution_revision: u64,
     #[serde(skip, default)]
-    redo_stack: Vec<EngineHistoryCheckpoint>,
+    mutation_revision: u64,
+    #[serde(skip, default)]
+    structural_revision: u64,
+    #[serde(skip, default)]
+    undo_stack: Vec<std::sync::Arc<EngineHistoryCheckpoint>>,
+    #[serde(skip, default)]
+    redo_stack: Vec<std::sync::Arc<EngineHistoryCheckpoint>>,
     #[serde(skip, default = "GentleEngine::default_history_limit")]
     history_limit: usize,
+}
+
+/// Process-local ownership, deliberately absent from portable project data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct EngineInstanceId(u64);
+
+impl Default for EngineInstanceId {
+    fn default() -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+    }
+}
+
+/// Restores only in-memory engine effects on error or unwind. History entries
+/// are shared immutably, so retaining a baseline does not clone every project
+/// checkpoint. External files, resources and running jobs are not transactional.
+struct EngineRollbackGuard<'a> {
+    engine: &'a mut GentleEngine,
+    baseline: Option<GentleEngine>,
+}
+
+impl Drop for EngineRollbackGuard<'_> {
+    fn drop(&mut self) {
+        let Some(mut baseline) = self.baseline.take() else {
+            return;
+        };
+        baseline.execution_revision = baseline
+            .execution_revision
+            .max(self.engine.execution_revision)
+            .wrapping_add(1);
+        baseline.mutation_revision = baseline
+            .mutation_revision
+            .max(self.engine.mutation_revision)
+            .wrapping_add(1);
+        baseline.structural_revision = baseline
+            .structural_revision
+            .max(self.engine.structural_revision)
+            .wrapping_add(1);
+        baseline.op_counter = baseline.op_counter.max(self.engine.op_counter);
+        *self.engine = baseline;
+    }
+}
+
+/// Engine-owned state for one optimistic detached execution.
+///
+/// The execution engine deliberately starts without inherited undo/redo
+/// checkpoints. Those checkpoints can contain complete project snapshots and
+/// are merged from the live engine only after the detached result passes its
+/// optimistic commit checks.
+#[derive(Debug)]
+pub(crate) struct DetachedEngineExecution {
+    engine: GentleEngine,
+    base_instance_id: EngineInstanceId,
+    base_structural_revision: u64,
+    base_mutation_revision: u64,
+    base_journal_len: usize,
+    base_metadata: HashMap<String, serde_json::Value>,
+}
+
+impl DetachedEngineExecution {
+    pub(crate) fn engine_mut(&mut self) -> &mut GentleEngine {
+        &mut self.engine
+    }
+
+    pub(crate) fn engine(&self) -> &GentleEngine {
+        &self.engine
+    }
+
+    /// Restore an in-memory boundary snapshot taken earlier in this same
+    /// detached run.
+    ///
+    /// Unlike `import_checkpoint_engine` the snapshot was never serialized, so
+    /// it needs no lineage or container reconciliation, and its own revision
+    /// identities are exactly the ones that were valid at the boundary. Callers
+    /// use this to discard a partially applied unit of work without discarding
+    /// the units that already succeeded.
+    pub(crate) fn restore_boundary_engine(&mut self, boundary: GentleEngine) {
+        self.engine = boundary;
+    }
+
+    /// Replace the detached execution with a verified serialized checkpoint.
+    /// Revision identities are rebased onto the live baseline so the final
+    /// optimistic commit remains the only mutation of the live engine.
+    pub(crate) fn import_checkpoint_engine(&mut self, mut checkpoint: GentleEngine) {
+        checkpoint.instance_id = self.engine.instance_id;
+        checkpoint.reconcile_lineage_nodes();
+        checkpoint.reconcile_containers();
+        checkpoint.reseed_op_counter_from_state();
+        checkpoint.execution_revision = self.engine.execution_revision.wrapping_add(1);
+        checkpoint.mutation_revision = self.engine.mutation_revision.wrapping_add(1);
+        checkpoint.structural_revision = self.engine.structural_revision.wrapping_add(1);
+        checkpoint.undo_stack.clear();
+        checkpoint.redo_stack.clear();
+        checkpoint.history_limit = self.engine.history_limit_or_default();
+        self.engine = checkpoint;
+    }
 }
 
 impl GentleEngine {
@@ -5849,13 +7136,312 @@ impl GentleEngine {
         &self.state
     }
 
+    /// Monotonic identity for every successful operation or direct state edit.
+    ///
+    /// GUI background workers use this to reject stale detached snapshots
+    /// instead of overwriting work performed while a long operation ran.
+    pub fn execution_revision(&self) -> u64 {
+        self.execution_revision
+    }
+
+    /// Monotonic identity for persisted project-state mutations.
+    ///
+    /// Read-only operations advance [`Self::execution_revision`] but leave this
+    /// value unchanged, so GUI dirty checks remain constant-time without
+    /// treating report inspection as a project edit.
+    pub fn mutation_revision(&self) -> u64 {
+        self.mutation_revision
+    }
+
+    /// Monotonic identity for biological/project structure, excluding display-only edits.
+    pub fn structural_revision(&self) -> u64 {
+        self.structural_revision
+    }
+
+    pub(crate) fn instance_id(&self) -> u64 {
+        self.instance_id.0
+    }
+
+    pub(crate) fn journal_len(&self) -> usize {
+        self.journal.len()
+    }
+
+    /// Clone the execution baseline without inherited undo/redo checkpoints.
+    ///
+    /// Read-only background workers use this clone directly. Mutating workers
+    /// receive the same history-free baseline through fork_detached_execution
+    /// and commit only their newly-created checkpoints.
+    pub(crate) fn clone_without_history(&self) -> Self {
+        Self {
+            instance_id: self.instance_id,
+            state: self.state.clone(),
+            journal: self.journal.clone(),
+            op_counter: self.op_counter,
+            execution_revision: self.execution_revision,
+            mutation_revision: self.mutation_revision,
+            structural_revision: self.structural_revision,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            history_limit: self.history_limit,
+        }
+    }
+
+    /// Run an in-memory transaction, restoring its complete baseline on a
+    /// returned error or unwind. Rollback invalidates detached execution without
+    /// resetting revisions, losing older undo/redo entries or hiding the error.
+    pub(crate) fn with_rollback_on_error<T, E>(
+        &mut self,
+        work: impl FnOnce(&mut Self) -> Result<T, E>,
+    ) -> Result<T, E> {
+        let mut baseline = self.clone_without_history();
+        baseline.undo_stack = self.undo_stack.clone();
+        baseline.redo_stack = self.redo_stack.clone();
+        let mut guard = EngineRollbackGuard {
+            engine: self,
+            baseline: Some(baseline),
+        };
+        let result = work(guard.engine);
+        if result.is_ok() {
+            guard.baseline = None;
+        }
+        result
+    }
+
+    /// Fork the execution state needed by a detached background operation.
+    ///
+    /// Session-local history is intentionally excluded: detached operations
+    /// build their own history delta, which is appended during commit.
+    pub(crate) fn fork_detached_execution(&self) -> DetachedEngineExecution {
+        DetachedEngineExecution {
+            engine: self.clone_without_history(),
+            base_instance_id: self.instance_id,
+            base_structural_revision: self.structural_revision,
+            base_mutation_revision: self.mutation_revision,
+            base_journal_len: self.journal.len(),
+            base_metadata: self.state.metadata.clone(),
+        }
+    }
+
+    /// Commit a detached execution after validating its optimistic baseline.
+    ///
+    /// The returned prior engine is dropped by the caller after releasing the
+    /// shared write lock. Existing undo checkpoints remain live and only the
+    /// checkpoints produced inside the detached execution are appended.
+    pub(crate) fn commit_detached_execution(
+        &mut self,
+        detached: &mut DetachedEngineExecution,
+    ) -> Result<GentleEngine, EngineError> {
+        if self.instance_id != detached.base_instance_id
+            || self.structural_revision != detached.base_structural_revision
+            || self.journal.len() != detached.base_journal_len
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Background result became stale because the project instance, project data or operation history changed while it was running; rerun the operation"
+                    .to_string(),
+                cause_chain: vec![],
+            });
+        }
+
+        let structural_changed =
+            detached.engine.structural_revision != detached.base_structural_revision;
+        let persisted_state_changed =
+            detached.engine.mutation_revision != detached.base_mutation_revision;
+        detached.engine.rebase_detached_commit_revisions(
+            self,
+            &detached.base_metadata,
+            detached.base_journal_len,
+            structural_changed,
+            persisted_state_changed,
+        )?;
+
+        // All fallible checks are complete. Moving the engine only now leaves
+        // rejected detached state owned by the caller, which drops it after
+        // releasing the shared write lock.
+        let mut engine = std::mem::take(&mut detached.engine);
+        let detached_history_changed =
+            !engine.undo_stack.is_empty() || !engine.redo_stack.is_empty();
+        let detached_undo = std::mem::take(&mut engine.undo_stack);
+        let detached_redo = std::mem::take(&mut engine.redo_stack);
+        let inherited_undo = std::mem::take(&mut self.undo_stack);
+        let inherited_redo = std::mem::take(&mut self.redo_stack);
+
+        let mut combined_undo = inherited_undo;
+        combined_undo.extend(detached_undo);
+        let history_limit = engine.history_limit_or_default();
+        if combined_undo.len() > history_limit {
+            let keep_from = combined_undo.len() - history_limit;
+            engine.undo_stack = combined_undo.split_off(keep_from);
+            // Keep evicted full-state checkpoints in the prior engine so they
+            // are dropped by the caller after releasing the write lock.
+            self.undo_stack = combined_undo;
+        } else {
+            engine.undo_stack = combined_undo;
+        }
+        if detached_history_changed || persisted_state_changed {
+            engine.redo_stack = detached_redo;
+            // Keep discarded inherited redo checkpoints in the prior engine so
+            // their potentially large snapshots are dropped outside the lock.
+            self.redo_stack = inherited_redo;
+        } else {
+            debug_assert!(detached_redo.is_empty());
+            engine.redo_stack = inherited_redo;
+        }
+
+        Ok(std::mem::replace(self, engine))
+    }
+
+    fn bump_execution_revision(&mut self) {
+        self.execution_revision = self.execution_revision.wrapping_add(1);
+    }
+
+    fn bump_mutation_revision(&mut self) {
+        self.mutation_revision = self.mutation_revision.wrapping_add(1);
+        self.bump_execution_revision();
+    }
+
+    fn bump_structural_revision(&mut self) {
+        self.structural_revision = self.structural_revision.wrapping_add(1);
+        self.bump_mutation_revision();
+    }
+
     /// Mutably borrow the canonical project snapshot.
     ///
     /// Direct mutation is intended for tightly controlled internal call sites;
     /// adapter code should normally prefer `apply`/`apply_workflow` so lineage,
     /// journaling, and parity guarantees remain intact.
     pub fn state_mut(&mut self) -> &mut ProjectState {
+        self.bump_structural_revision();
         &mut self.state
+    }
+
+    /// Mutably borrow only persisted display settings.
+    ///
+    /// GUI viewport/style changes remain dirty-state mutations, but do not
+    /// invalidate detached biological computations.
+    pub fn display_state_mut(&mut self) -> &mut DisplaySettings {
+        self.bump_mutation_revision();
+        &mut self.state.display
+    }
+
+    /// Mutably borrow persisted UI/session metadata without changing biological structure.
+    pub(crate) fn auxiliary_metadata_mut(&mut self) -> &mut HashMap<String, serde_json::Value> {
+        // A side edit starts a new persisted-state branch. A redo checkpoint
+        // predates that edit and would otherwise restore stale metadata.
+        self.redo_stack.clear();
+        self.bump_mutation_revision();
+        &mut self.state.metadata
+    }
+
+    fn write_auxiliary_metadata_values(
+        &mut self,
+        requested: Vec<(&'static str, Option<serde_json::Value>)>,
+    ) -> bool {
+        let mut changes = Vec::new();
+        for (key, value) in requested {
+            if self.state.metadata.get(key) != value.as_ref() {
+                changes.push((key.to_string(), value));
+            }
+        }
+        if changes.is_empty() {
+            return false;
+        }
+        let metadata = self.auxiliary_metadata_mut();
+        for (key, value) in changes {
+            if let Some(value) = value {
+                metadata.insert(key, value);
+            } else {
+                metadata.remove(&key);
+            }
+        }
+        true
+    }
+
+    pub(crate) fn rebase_detached_commit_revisions(
+        &mut self,
+        live: &GentleEngine,
+        base_metadata: &HashMap<String, serde_json::Value>,
+        base_journal_len: usize,
+        structural_changed: bool,
+        persisted_state_changed: bool,
+    ) -> Result<(), EngineError> {
+        let metadata_keys = base_metadata
+            .keys()
+            .chain(live.state.metadata.keys())
+            .chain(self.state.metadata.keys())
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        for key in &metadata_keys {
+            let base_value = base_metadata.get(key);
+            let live_value = live.state.metadata.get(key);
+            let detached_value = self.state.metadata.get(key);
+            if live_value != base_value
+                && detached_value != base_value
+                && live_value != detached_value
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Background result became stale because metadata key '{key}' changed both in the live project and in the detached operation; rerun the operation"
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+        }
+        let live_metadata_changes = metadata_keys
+            .into_iter()
+            .filter_map(|key| {
+                (live.state.metadata.get(&key) != base_metadata.get(&key))
+                    .then(|| (key.clone(), live.state.metadata.get(&key).cloned()))
+            })
+            .collect::<Vec<_>>();
+        for (key, live_value) in &live_metadata_changes {
+            let base_value = base_metadata.get(key);
+            let detached_value = self.state.metadata.get(key);
+            if detached_value == base_value {
+                if let Some(value) = live_value {
+                    self.state.metadata.insert(key.clone(), value.clone());
+                } else {
+                    self.state.metadata.remove(key);
+                }
+            }
+        }
+        let live_display = live.state.display.clone();
+        self.state.display = live_display.clone();
+        for checkpoint in self
+            .undo_stack
+            .iter_mut()
+            .filter(|checkpoint| checkpoint.journal().len() >= base_journal_len)
+        {
+            match std::sync::Arc::make_mut(checkpoint) {
+                EngineHistoryCheckpoint::Full { state, .. } => {
+                    state.display = live_display.clone();
+                    for (key, live_value) in &live_metadata_changes {
+                        if let Some(value) = live_value {
+                            state.metadata.insert(key.clone(), value.clone());
+                        } else {
+                            state.metadata.remove(key);
+                        }
+                    }
+                }
+                EngineHistoryCheckpoint::DisplayOnly { display, .. } => {
+                    *display = live_display.clone()
+                }
+                EngineHistoryCheckpoint::GelDraftsOnly { .. } => {}
+            }
+        }
+        self.execution_revision = live.execution_revision.wrapping_add(1);
+        self.mutation_revision = if persisted_state_changed {
+            live.mutation_revision.wrapping_add(1)
+        } else {
+            live.mutation_revision
+        };
+        self.structural_revision = if structural_changed {
+            live.structural_revision.wrapping_add(1)
+        } else {
+            live.structural_revision
+        };
+        Ok(())
     }
 
     pub fn list_sequences_with_genome_anchor(&self) -> Vec<String> {
@@ -5958,6 +7544,18 @@ impl GentleEngine {
         )
     }
 
+    /// Return the persisted subscription-array size without parsing entries.
+    ///
+    /// The GUI uses this only as an O(1) change-detection stamp before it
+    /// computes normalized subscription and anchor signatures.
+    pub(crate) fn genome_track_subscription_count(&self) -> usize {
+        self.state
+            .metadata
+            .get(GENOME_TRACK_SUBSCRIPTIONS_METADATA_KEY)
+            .and_then(serde_json::Value::as_array)
+            .map_or(0, Vec::len)
+    }
+
     pub fn add_genome_track_subscription(
         &mut self,
         subscription: GenomeTrackSubscription,
@@ -5996,12 +7594,10 @@ impl GentleEngine {
     }
 
     pub fn clear_genome_track_subscriptions(&mut self) {
-        self.state
-            .metadata
-            .remove(GENOME_TRACK_SUBSCRIPTIONS_METADATA_KEY);
-        self.state
-            .metadata
-            .remove(GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY);
+        self.write_auxiliary_metadata_values(vec![
+            (GENOME_TRACK_SUBSCRIPTIONS_METADATA_KEY, None),
+            (GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY, None),
+        ]);
     }
 
     pub fn import_genome_track_to_all_anchored(
@@ -6017,7 +7613,6 @@ impl GentleEngine {
                 message:
                     "No genome-anchored sequence is available. Extract a genome region or gene first."
                         .to_string(),
-            
                 cause_chain: vec![],});
         }
         let mut report = self.apply_track_subscription_to_seq_ids(&seq_ids, &normalized);
@@ -6055,7 +7650,6 @@ impl GentleEngine {
                 message:
                     "No genome-anchored sequence is available. Extract a genome region or gene first."
                         .to_string(),
-            
                 cause_chain: vec![],});
         }
         let mut report = self.apply_track_subscription_to_seq_ids(&seq_ids, &subscription);
@@ -6128,7 +7722,11 @@ impl GentleEngine {
                 .iter()
                 .map(|name| (*name).to_string())
                 .collect(),
-            supported_export_formats: vec!["GenBank".to_string(), "Fasta".to_string()],
+            supported_export_formats: vec![
+                "GenBank".to_string(),
+                "Embl".to_string(),
+                "Fasta".to_string(),
+            ],
             deterministic_operation_log: true,
             capability_registry: gentle_protocol::capability_registry().to_vec(),
         }
@@ -7237,6 +8835,48 @@ impl GentleEngine {
             })
     }
 
+    pub fn inspect_reference_genome_prepared(
+        catalog_path: Option<&str>,
+        genome_id: &str,
+        cache_dir: Option<&str>,
+    ) -> Result<Option<PreparedGenomeInspection>, EngineError> {
+        let (catalog, catalog_path) = Self::open_reference_genome_catalog(catalog_path)?;
+        catalog
+            .inspect_prepared_genome(
+                genome_id,
+                cache_dir.map(str::trim).filter(|value| !value.is_empty()),
+            )
+            .map_err(|error| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not inspect prepared genome '{}' in catalog '{}': {}",
+                    genome_id, catalog_path, error
+                ),
+                cause_chain: vec![],
+            })
+    }
+
+    pub fn inspect_helper_genome_prepared(
+        genome_id: &str,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> Result<Option<PreparedGenomeInspection>, EngineError> {
+        let (catalog, catalog_path) = Self::open_helper_genome_catalog(catalog_path)?;
+        catalog
+            .inspect_prepared_genome(
+                genome_id,
+                cache_dir.map(str::trim).filter(|value| !value.is_empty()),
+            )
+            .map_err(|error| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not inspect prepared helper '{}' in catalog '{}': {}",
+                    genome_id, catalog_path, error
+                ),
+                cause_chain: vec![],
+            })
+    }
+
     pub fn inspect_helper_genome_prepared_compatibility(
         genome_id: &str,
         catalog_path: Option<&str>,
@@ -7738,6 +9378,63 @@ impl GentleEngine {
         blast_external_binary_preflight_report()
     }
 
+    /// Capture only the project inputs read by the BLAST options resolver.
+    /// No sequences, journal, history, file reads or executable probes belong
+    /// in async admission. Files referenced by these settings resolve on the worker.
+    pub(crate) fn blast_execution_snapshot(&self) -> Result<Self, EngineError> {
+        let mut snapshot = Self::new();
+        snapshot.instance_id = self.instance_id;
+        for key in [
+            BLAST_OPTIONS_DEFAULTS_PATH_METADATA_KEY,
+            BLAST_OPTIONS_OVERRIDE_METADATA_KEY,
+        ] {
+            if let Some(value) = self.state.metadata.get(key) {
+                Self::validate_blast_async_json_budget(value)
+                    .map_err(EngineError::invalid_input)?;
+                snapshot
+                    .state
+                    .metadata
+                    .insert(key.to_string(), value.clone());
+            }
+        }
+        Ok(snapshot)
+    }
+
+    pub(crate) fn validate_blast_async_json_budget(
+        value: &serde_json::Value,
+    ) -> Result<(), String> {
+        fn visit(value: &serde_json::Value, remaining: &mut usize, depth: usize) -> Option<()> {
+            if depth > 32 {
+                return None;
+            }
+            *remaining = remaining.checked_sub(1)?;
+            match value {
+                serde_json::Value::String(s) => *remaining = remaining.checked_sub(s.len())?,
+                serde_json::Value::Array(rows) => {
+                    if rows.len() > *remaining {
+                        return None;
+                    }
+                    for row in rows {
+                        visit(row, remaining, depth + 1)?;
+                    }
+                }
+                serde_json::Value::Object(rows) => {
+                    if rows.len() > *remaining {
+                        return None;
+                    }
+                    for (key, row) in rows {
+                        *remaining = remaining.checked_sub(key.len())?;
+                        visit(row, remaining, depth + 1)?;
+                    }
+                }
+                _ => {}
+            }
+            Some(())
+        }
+        visit(value, &mut 65_536, 0)
+            .ok_or_else(|| "Async BLAST options exceed the 64-KiB/32-level admission budget".into())
+    }
+
     pub fn blast_reference_genome_with_project_and_request_options(
         &self,
         catalog_path: Option<&str>,
@@ -7759,6 +9456,48 @@ impl GentleEngine {
             cache_dir,
             &mut never_cancel,
         )
+    }
+
+    /// Run a complete short-query search for primer specificity.
+    ///
+    /// The resolved `max_hits` value is a review-warning threshold only; this
+    /// path never asks BLAST to discard database subjects.
+    pub fn blast_reference_genome_complete_with_project_and_request_options(
+        &self,
+        catalog_path: Option<&str>,
+        genome_id: &str,
+        query_sequence: &str,
+        request_override_json: Option<&serde_json::Value>,
+        legacy_task: Option<&str>,
+        legacy_max_hits: Option<usize>,
+        cache_dir: Option<&str>,
+    ) -> Result<GenomeBlastReport, EngineError> {
+        let resolved = self.resolve_blast_options_for_request(
+            request_override_json,
+            legacy_task,
+            legacy_max_hits,
+        )?;
+        let (catalog, catalog_path) = Self::open_reference_genome_catalog(catalog_path)?;
+        let mut report = catalog
+            .blast_sequence_complete_with_cache(
+                genome_id,
+                query_sequence,
+                resolved.max_hits,
+                Some(&resolved.task),
+                cache_dir.map(str::trim).filter(|value| !value.is_empty()),
+            )
+            .map_err(|error| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not run complete primer BLAST search against genome '{}' in catalog '{}': {}",
+                    genome_id, catalog_path, error
+                ),
+                cause_chain: vec![],
+            })?;
+        Self::apply_blast_thresholds_to_report(&mut report, &resolved.thresholds)?;
+        report.options_override_json = request_override_json.cloned();
+        report.effective_options_json = serde_json::to_value(&resolved).ok();
+        Ok(report)
     }
 
     pub fn blast_reference_genome_with_project_and_request_options_and_cancel(
@@ -8312,7 +10051,7 @@ impl GentleEngine {
             next_redo: self
                 .redo_stack
                 .last()
-                .and_then(|checkpoint| checkpoint.journal.last())
+                .and_then(|checkpoint| checkpoint.journal().last())
                 .map(Self::history_transition_summary_for_record),
         }
     }
@@ -8325,31 +10064,88 @@ impl GentleEngine {
         }
     }
 
-    fn capture_history_checkpoint(&self) -> EngineHistoryCheckpoint {
-        EngineHistoryCheckpoint {
-            state: self.state.clone(),
-            journal: self.journal.clone(),
-            op_counter: self.op_counter,
+    fn capture_history_checkpoint(
+        &self,
+        kind: EngineHistoryCheckpointKind,
+    ) -> EngineHistoryCheckpoint {
+        match kind {
+            EngineHistoryCheckpointKind::Full => EngineHistoryCheckpoint::Full {
+                state: self.state.clone(),
+                journal: self.journal.clone(),
+                op_counter: self.op_counter,
+            },
+            EngineHistoryCheckpointKind::DisplayOnly => EngineHistoryCheckpoint::DisplayOnly {
+                display: self.state.display.clone(),
+                journal: self.journal.clone(),
+                op_counter: self.op_counter,
+            },
+            EngineHistoryCheckpointKind::GelDraftsOnly => EngineHistoryCheckpoint::GelDraftsOnly {
+                drafts: self.state.gel_images.drafts.clone(),
+                journal: self.journal.clone(),
+                op_counter: self.op_counter,
+            },
         }
     }
 
     fn restore_history_checkpoint(&mut self, checkpoint: EngineHistoryCheckpoint) {
-        self.state = checkpoint.state;
-        self.journal = checkpoint.journal;
-        self.op_counter = checkpoint.op_counter;
-        self.reconcile_lineage_nodes();
-        self.reconcile_containers();
+        match checkpoint {
+            EngineHistoryCheckpoint::GelDraftsOnly {
+                drafts,
+                journal,
+                op_counter,
+            } => {
+                self.state.gel_images.drafts = drafts;
+                self.journal = journal;
+                self.op_counter = op_counter;
+            }
+            EngineHistoryCheckpoint::Full {
+                state,
+                journal,
+                op_counter,
+            } => {
+                self.state = state;
+                self.journal = journal;
+                self.op_counter = op_counter;
+                self.reconcile_lineage_nodes();
+                self.reconcile_containers();
+            }
+            EngineHistoryCheckpoint::DisplayOnly {
+                display,
+                journal,
+                op_counter,
+            } => {
+                self.state.display = display;
+                self.journal = journal;
+                self.op_counter = op_counter;
+            }
+        }
     }
 
-    fn op_records_history_checkpoint(op: &Operation) -> bool {
-        !matches!(
+    fn operation_checkpoint_kind(op: &Operation) -> Option<EngineHistoryCheckpointKind> {
+        if matches!(op, Operation::SaveGelImageDraft { .. }) {
+            return Some(EngineHistoryCheckpointKind::GelDraftsOnly);
+        }
+        if matches!(
             op,
             Operation::SaveFile { .. }
+                | Operation::PlanDnaSequenceDesign { .. }
+                | Operation::ComputeTssTfbsProfiles { .. }
+                | Operation::ExportTssTfbsProfiles { .. }
+                | Operation::InspectGelImageAnalysis { .. }
+                | Operation::ExportGelImageAnalysis { .. }
+                | Operation::PreviewFeatureLocationEdit { .. }
+                | Operation::PreviewFeatureRecordCuration { .. }
+                | Operation::PreviewGenomicRegionFeature { .. }
                 | Operation::RenderSequenceSvg { .. }
                 | Operation::RenderDotplotSvg { .. }
                 | Operation::RenderTfbsScoreTracksSvg { .. }
                 | Operation::RenderTfbsScoreTrackCorrelationSvg { .. }
                 | Operation::RenderFeatureExpertSvg { .. }
+                | Operation::InspectCrypticSplicingScreen { .. }
+                | Operation::ScreenTataBoxes { .. }
+                | Operation::RenderCrypticSplicingScreenSvg { .. }
+                | Operation::InspectCrypticSplicingEvidenceOverlay { .. }
+                | Operation::InspectCrypticSplicingProteinProjection { .. }
                 | Operation::RenderIsoformArchitectureSvg { .. }
                 | Operation::RenderRnaStructureSvg { .. }
                 | Operation::RenderLineageSvg { .. }
@@ -8359,7 +10155,11 @@ impl GentleEngine {
                 | Operation::RenderProteaseDigestGelSvg { .. }
                 | Operation::RenderProtein2dGelSvg { .. }
                 | Operation::ExportPrimerDesignReport { .. }
-                | Operation::AssessPrimerPairSpecificity { .. }
+                | Operation::ExportTerminalExonRtPrimerPoolReport { .. }
+                | Operation::PreparePrimerPairSpecificityHandoff { .. }
+                | Operation::PreparePrimerPairMultiReferenceSpecificityHandoff { .. }
+                | Operation::GetPrimerPairMultiReferenceSpecificitySummary { .. }
+                | Operation::ListPrimerPairMultiReferenceSpecificitySummaries { .. }
                 | Operation::RenderProtocolCartoonSvg { .. }
                 | Operation::RenderProtocolCartoonTemplateSvg { .. }
                 | Operation::ValidateProtocolCartoonTemplate { .. }
@@ -8375,6 +10175,7 @@ impl GentleEngine {
                 | Operation::ExportDnaLadders { .. }
                 | Operation::ExportRnaLadders { .. }
                 | Operation::ExportPool { .. }
+                | Operation::ExportPoolCollection { .. }
                 | Operation::ExportProcessRunBundle { .. }
                 | Operation::ExportLabAssistantInstructions { .. }
                 | Operation::ExportFeaturesBed { .. }
@@ -8397,13 +10198,27 @@ impl GentleEngine {
                 | Operation::InspectRnaReadGeneSupport { .. }
                 | Operation::QueryProteinResidueGenomicCoordinates { .. }
                 | Operation::FindRestrictionSites { .. }
+                | Operation::FindRestrictionSitesCollection { .. }
+                | Operation::InspectConstructReasoningCollection { .. }
+                | Operation::ScanTfbsHitsCollection { .. }
+                | Operation::DigestCollection { dry_run: true, .. }
+                | Operation::CreateGeneSetPool { dry_run: true, .. }
                 | Operation::QueryRepeatAnnotations { .. }
                 | Operation::QueryRepeatOverlaps { .. }
+                | Operation::QueryEncodeCcreOverlaps { .. }
+                | Operation::QueryEnsemblRegulationOverlaps { .. }
+                | Operation::ListGenomicRegions { .. }
+                | Operation::InspectGenomicRegion { .. }
+                | Operation::ExportGenomicRegionSet { .. }
+                | Operation::ScreenGenomicRegionHomology { .. }
+                | Operation::RenderGenomicRegionHomologySvg { .. }
+                | Operation::AssessPromoterConservedModules { .. }
                 | Operation::BuildRepeatEnvironmentCohort { .. }
                 | Operation::SummarizeTfbsRegion { .. }
                 | Operation::SummarizeTfbsScoreTracks { .. }
                 | Operation::SummarizeTfbsTrackSimilarity { .. }
                 | Operation::SummarizeAlternativePromoterComparison { .. }
+                | Operation::ComparePromoterReporterArchitectures { .. }
                 | Operation::SummarizePromoterEvidenceMatrix { .. }
                 | Operation::SummarizeIsoformPromoterComparison { .. }
                 | Operation::SummarizePromoterExpressionEvidence { .. }
@@ -8414,6 +10229,8 @@ impl GentleEngine {
                 | Operation::SummarizeOrthologPromoterComparison { .. }
                 | Operation::RenderMultiGenePromoterTfbsSvg { .. }
                 | Operation::ScanTfbsHits { .. }
+                | Operation::QueryGenomicMotifEvidence { .. }
+                | Operation::QueryPromoterCofactors { .. }
                 | Operation::InspectJasparEntry { .. }
                 | Operation::SummarizeJasparEntries { .. }
                 | Operation::ResolveTfQueries { .. }
@@ -8429,12 +10246,26 @@ impl GentleEngine {
                 | Operation::RecommendReporters { .. }
                 | Operation::ExportReporterCorpus { .. }
                 | Operation::PlanReporterConstructHandoff { .. }
+                | Operation::PlanPromoterReporterPanel { .. }
+                | Operation::PlanEvidenceGuidedFragmentCandidates { .. }
+                | Operation::ComputeTssWindowGeometry { .. }
+                | Operation::InspectTssInventory { .. }
+                | Operation::GetTssCollection { .. }
+                | Operation::ListTssCollections { .. }
+                | Operation::ExportTssViewSvg { .. }
+                | Operation::PlanRegulatoryFragmentPanel { .. }
+                | Operation::PlanRegulatoryFragmentMaterialization { .. }
+                | Operation::RenderRegulatoryFragmentPanelSvg { .. }
+                | Operation::InspectPromoterReporterPanelReadiness { .. }
                 | Operation::ExportRnaReadReport { .. }
                 | Operation::ExportRnaReadHitsFasta { .. }
                 | Operation::ExportRnaReadSampleSheet { .. }
                 | Operation::ExportRnaReadTargetQuality { .. }
                 | Operation::ExportRnaReadExonPathsTsv { .. }
                 | Operation::ExportRnaReadExonAbundanceTsv { .. }
+                | Operation::ExportRnaReadDexseqAnnotationGff { .. }
+                | Operation::ExportRnaReadDexseqCountsTsv { .. }
+                | Operation::VerifyRnaReadDexseqExports { .. }
                 | Operation::ExportRnaReadScoreDensitySvg { .. }
                 | Operation::ExportRnaReadAlignmentsTsv { .. }
                 | Operation::ExportRnaReadIsoformTriageTsv { .. }
@@ -8443,21 +10274,49 @@ impl GentleEngine {
                 | Operation::ShowSequencingConfirmationReport { .. }
                 | Operation::ExportSequencingConfirmationReport { .. }
                 | Operation::ExportSequencingConfirmationSupportTsv { .. }
+                | Operation::ExportPrimerSpecificityAlignmentHtml { .. }
                 | Operation::SuggestSequencingPrimers { .. }
                 | Operation::AlignSequences { .. }
+                | Operation::SearchPrimerBank { .. }
+                | Operation::ScreenPrimerVariants { .. }
                 | Operation::TestCdnaPcr { .. }
                 | Operation::TestCdnaQpcr { .. }
                 | Operation::BuildTranscriptQpcrPanel { .. }
+                | Operation::BuildTranscriptAssayCdnaSimilarityMap { .. }
+                | Operation::RedesignTranscriptAssaySpecificityFailures { .. }
                 | Operation::TestCdnaQpcrFasta { .. }
-        )
+        ) {
+            None
+        } else if matches!(
+            op,
+            Operation::SetDisplayVisibility { .. } | Operation::SetLinearViewport { .. }
+        ) {
+            Some(EngineHistoryCheckpointKind::DisplayOnly)
+        } else {
+            Some(EngineHistoryCheckpointKind::Full)
+        }
     }
 
     fn maybe_capture_checkpoint(&self, op: &Operation) -> Option<EngineHistoryCheckpoint> {
-        Self::op_records_history_checkpoint(op).then(|| self.capture_history_checkpoint())
+        Self::operation_checkpoint_kind(op).map(|kind| self.capture_history_checkpoint(kind))
+    }
+
+    fn bump_revision_for_checkpoint_kind(
+        &mut self,
+        checkpoint_kind: Option<EngineHistoryCheckpointKind>,
+    ) {
+        match checkpoint_kind {
+            Some(EngineHistoryCheckpointKind::Full) => self.bump_structural_revision(),
+            Some(
+                EngineHistoryCheckpointKind::DisplayOnly
+                | EngineHistoryCheckpointKind::GelDraftsOnly,
+            ) => self.bump_mutation_revision(),
+            None => self.bump_execution_revision(),
+        }
     }
 
     fn push_undo_checkpoint(&mut self, checkpoint: EngineHistoryCheckpoint) {
-        self.undo_stack.push(checkpoint);
+        self.undo_stack.push(std::sync::Arc::new(checkpoint));
         let limit = self.history_limit_or_default();
         if self.undo_stack.len() > limit {
             let drain_len = self.undo_stack.len() - limit;
@@ -8474,6 +10333,16 @@ impl GentleEngine {
         self.redo_stack.len()
     }
 
+    #[cfg(test)]
+    fn top_undo_checkpoint_kind(&self) -> Option<EngineHistoryCheckpointKind> {
+        self.undo_stack.last().map(|checkpoint| checkpoint.kind())
+    }
+
+    #[cfg(test)]
+    fn top_redo_checkpoint_kind(&self) -> Option<EngineHistoryCheckpointKind> {
+        self.redo_stack.last().map(|checkpoint| checkpoint.kind())
+    }
+
     pub fn undo_last_operation(&mut self) -> Result<(), EngineError> {
         let Some(previous) = self.undo_stack.pop() else {
             return Err(EngineError {
@@ -8483,14 +10352,16 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         };
-        let current = self.capture_history_checkpoint();
-        self.redo_stack.push(current);
+        let checkpoint_kind = previous.kind();
+        let current = self.capture_history_checkpoint(checkpoint_kind);
+        self.redo_stack.push(std::sync::Arc::new(current));
         let limit = self.history_limit_or_default();
         if self.redo_stack.len() > limit {
             let drain_len = self.redo_stack.len() - limit;
             self.redo_stack.drain(0..drain_len);
         }
-        self.restore_history_checkpoint(previous);
+        self.restore_history_checkpoint(std::sync::Arc::unwrap_or_clone(previous));
+        self.bump_revision_for_checkpoint_kind(Some(checkpoint_kind));
         Ok(())
     }
 
@@ -8503,14 +10374,16 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         };
-        let current = self.capture_history_checkpoint();
-        self.undo_stack.push(current);
+        let checkpoint_kind = next.kind();
+        let current = self.capture_history_checkpoint(checkpoint_kind);
+        self.undo_stack.push(std::sync::Arc::new(current));
         let limit = self.history_limit_or_default();
         if self.undo_stack.len() > limit {
             let drain_len = self.undo_stack.len() - limit;
             self.undo_stack.drain(0..drain_len);
         }
-        self.restore_history_checkpoint(next);
+        self.restore_history_checkpoint(std::sync::Arc::unwrap_or_clone(next));
+        self.bump_revision_for_checkpoint_kind(Some(checkpoint_kind));
         Ok(())
     }
 
@@ -8524,6 +10397,7 @@ impl GentleEngine {
     {
         let run_id = "interactive".to_string();
         let checkpoint = self.maybe_capture_checkpoint(&op);
+        let checkpoint_kind = checkpoint.as_ref().map(EngineHistoryCheckpoint::kind);
         let result = self.apply_internal(op.clone(), &run_id, &mut on_progress)?;
         self.journal.push(OperationRecord {
             run_id,
@@ -8533,6 +10407,7 @@ impl GentleEngine {
         if let Some(checkpoint) = checkpoint {
             self.push_undo_checkpoint(checkpoint);
         }
+        self.bump_revision_for_checkpoint_kind(checkpoint_kind);
         Ok(result)
     }
 
@@ -8550,7 +10425,22 @@ impl GentleEngine {
     {
         let mut results = Vec::new();
         for op in &wf.ops {
+            if !on_progress(OperationProgress::Workflow {
+                completed: results.len(),
+                total: wf.ops.len(),
+            }) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Workflow cancelled after {} of {} operations",
+                        results.len(),
+                        wf.ops.len()
+                    ),
+                    cause_chain: vec![],
+                });
+            }
             let checkpoint = self.maybe_capture_checkpoint(op);
+            let checkpoint_kind = checkpoint.as_ref().map(EngineHistoryCheckpoint::kind);
             let result = self.apply_internal(op.clone(), &wf.run_id, &mut on_progress)?;
             self.journal.push(OperationRecord {
                 run_id: wf.run_id.clone(),
@@ -8560,7 +10450,18 @@ impl GentleEngine {
             if let Some(checkpoint) = checkpoint {
                 self.push_undo_checkpoint(checkpoint);
             }
+            self.bump_revision_for_checkpoint_kind(checkpoint_kind);
             results.push(result);
+        }
+        if !on_progress(OperationProgress::Workflow {
+            completed: results.len(),
+            total: wf.ops.len(),
+        }) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Workflow cancelled before result publication".to_string(),
+                cause_chain: vec![],
+            });
         }
         Ok(results)
     }
@@ -9317,22 +11218,16 @@ impl GentleEngine {
         if Self::is_generated_helper_mcs_feature(feature) {
             return true;
         }
-        let text = Self::first_nonempty_feature_qualifier(
-            feature,
-            &["label", "note", "gene", "name", "standard_name"],
-        )
-        .unwrap_or_default();
-        Self::text_mentions_mcs(&text)
+        ["label", "note", "gene", "name", "standard_name"]
+            .into_iter()
+            .flat_map(|key| feature.qualifier_values(key))
+            .any(Self::text_mentions_mcs)
     }
 
     fn restriction_cloning_cut_positions_0based(dna: &DNAsequence) -> BTreeMap<String, Vec<usize>> {
         let seq_len = dna.len();
         let mut by_enzyme: BTreeMap<String, Vec<usize>> = BTreeMap::new();
-        for site in dna
-            .restriction_enzyme_sites()
-            .iter()
-            .filter(|site| site.forward_strand)
-        {
+        for site in dna.restriction_enzyme_sites() {
             let Some((cut_start, _)) = site.recessed_opening_window_0based(seq_len) else {
                 continue;
             };
@@ -9635,7 +11530,6 @@ impl GentleEngine {
                                 available_names.join(", ")
                             )
                         },
-                    
                         cause_chain: vec![],})
         };
         let explicit_forward = forward_enzyme
@@ -9679,7 +11573,6 @@ impl GentleEngine {
                                     "Vector '{}' has no recommended single-site restriction cutters for restriction-cloning seed generation",
                                     destination_vector_seq_id
                                 ),
-                            
                                 cause_chain: vec![],})?;
                         (
                             suggestion.enzyme.clone(),
@@ -9694,7 +11587,6 @@ impl GentleEngine {
                         return Err(EngineError {
                             code: ErrorCode::InvalidInput,
                             message: "Restriction-cloning directed_pair seed requires both forward and reverse enzymes, or neither to use the top recommendation".to_string(),
-                        
                             cause_chain: vec![],});
                     }
                     if let (Some(fwd), Some(rev)) = (explicit_forward, explicit_reverse) {
@@ -9750,7 +11642,6 @@ impl GentleEngine {
                                     "Vector '{}' has no recommended directed restriction-site pairs for restriction-cloning seed generation",
                                     destination_vector_seq_id
                                 ),
-                            
                                 cause_chain: vec![],})?;
                         (
                             suggestion.forward_enzyme.clone(),
@@ -10379,6 +12270,7 @@ impl GentleEngine {
         result: &mut OpResult,
         sequence: String,
         default_id: String,
+        origin: SequenceOrigin,
     ) -> Result<SeqId, EngineError> {
         let mut dna = DNAsequence::from_sequence(&sequence).map_err(|e| EngineError {
             code: ErrorCode::Internal,
@@ -10390,11 +12282,7 @@ impl GentleEngine {
         dna.set_name(seq_id.clone());
         Self::prepare_sequence(&mut dna);
         self.state.sequences.insert(seq_id.clone(), dna);
-        self.add_lineage_node(
-            &seq_id,
-            SequenceOrigin::ImportedGenomic,
-            Some(&result.op_id),
-        );
+        self.add_lineage_node(&seq_id, origin, Some(&result.op_id));
         result.created_seq_ids.push(seq_id.clone());
         Ok(seq_id)
     }
@@ -10532,9 +12420,10 @@ impl GentleEngine {
         subscriptions: &[GenomeTrackSubscription],
     ) -> Result<(), EngineError> {
         if subscriptions.is_empty() {
-            self.state
-                .metadata
-                .remove(GENOME_TRACK_SUBSCRIPTIONS_METADATA_KEY);
+            self.write_auxiliary_metadata_values(vec![(
+                GENOME_TRACK_SUBSCRIPTIONS_METADATA_KEY,
+                None,
+            )]);
             return Ok(());
         }
         let value = serde_json::to_value(subscriptions).map_err(|e| EngineError {
@@ -10543,9 +12432,10 @@ impl GentleEngine {
 
             cause_chain: vec![],
         })?;
-        self.state
-            .metadata
-            .insert(GENOME_TRACK_SUBSCRIPTIONS_METADATA_KEY.to_string(), value);
+        self.write_auxiliary_metadata_values(vec![(
+            GENOME_TRACK_SUBSCRIPTIONS_METADATA_KEY,
+            Some(value),
+        )]);
         Ok(())
     }
 
@@ -10568,9 +12458,10 @@ impl GentleEngine {
 
     fn write_known_track_anchor_ids(&mut self, anchors: &BTreeSet<String>) {
         if anchors.is_empty() {
-            self.state
-                .metadata
-                .remove(GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY);
+            self.write_auxiliary_metadata_values(vec![(
+                GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY,
+                None,
+            )]);
             return;
         }
         let values = anchors
@@ -10578,18 +12469,10 @@ impl GentleEngine {
             .map(|v| serde_json::Value::String(v.clone()))
             .collect::<Vec<_>>();
         let new_value = serde_json::Value::Array(values);
-        if self
-            .state
-            .metadata
-            .get(GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY)
-            == Some(&new_value)
-        {
-            return;
-        }
-        self.state.metadata.insert(
-            GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY.to_string(),
-            new_value,
-        );
+        self.write_auxiliary_metadata_values(vec![(
+            GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY,
+            Some(new_value),
+        )]);
     }
 
     fn track_subscription_to_operation(
@@ -10809,6 +12692,114 @@ impl GentleEngine {
             })
     }
 
+    /// Returns whether an isoform panel is imported for the given sequence.
+    ///
+    /// GUI readiness checks use this lightweight query before invoking the
+    /// full feature-expert operation; report construction remains the
+    /// authoritative schema and transcript-geometry validation path.
+    pub fn isoform_panel_is_available(&self, seq_id: &str, panel_id: &str) -> bool {
+        self.get_isoform_panel_record(seq_id, panel_id).is_ok()
+    }
+
+    /// Return deterministic imported isoform-panel ids compatible with one sequence.
+    pub fn isoform_panel_ids_for_sequence(&self, seq_id: &str) -> Vec<String> {
+        let seq_id = seq_id.trim();
+        if seq_id.is_empty() {
+            return Vec::new();
+        }
+        let mut panel_ids = self
+            .read_isoform_panel_store()
+            .records
+            .into_iter()
+            .filter(|record| record.seq_id == seq_id)
+            .map(|record| record.panel_id.trim().to_string())
+            .filter(|panel_id| !panel_id.is_empty())
+            .collect::<Vec<_>>();
+        panel_ids.sort();
+        panel_ids.dedup();
+        panel_ids
+    }
+
+    fn read_splicing_locus_panel_selection_store(&self) -> SplicingLocusPanelSelectionStore {
+        let mut store = self
+            .state
+            .metadata
+            .get(SPLICING_LOCUS_PANEL_SELECTIONS_METADATA_KEY)
+            .cloned()
+            .and_then(|value| {
+                serde_json::from_value::<SplicingLocusPanelSelectionStore>(value).ok()
+            })
+            .unwrap_or_default();
+        if store.schema.trim().is_empty() {
+            store.schema = SPLICING_LOCUS_PANEL_SELECTIONS_SCHEMA.to_string();
+        }
+        store
+    }
+
+    /// Return a still-compatible explicit locus-panel choice for one sequence.
+    pub fn splicing_locus_panel_selection(&self, seq_id: &str) -> Option<String> {
+        let seq_id = seq_id.trim();
+        let panel_id = self
+            .read_splicing_locus_panel_selection_store()
+            .selections
+            .get(seq_id)
+            .cloned()?;
+        self.isoform_panel_is_available(seq_id, &panel_id)
+            .then_some(panel_id)
+    }
+
+    /// Persist or clear an explicit locus-panel choice after compatibility validation.
+    pub fn set_splicing_locus_panel_selection(
+        &mut self,
+        seq_id: &str,
+        panel_id: Option<&str>,
+    ) -> Result<bool, EngineError> {
+        let seq_id = seq_id.trim();
+        if seq_id.is_empty() {
+            return Err(EngineError::invalid_input(
+                "seq_id cannot be empty for a splicing-locus panel selection",
+            ));
+        }
+        let panel_id = panel_id.map(str::trim).filter(|value| !value.is_empty());
+        if let Some(panel_id) = panel_id
+            && !self.isoform_panel_is_available(seq_id, panel_id)
+        {
+            return Err(EngineError::new(
+                ErrorCode::NotFound,
+                format!(
+                    "Isoform panel '{}' is not imported for sequence '{}'",
+                    panel_id, seq_id
+                ),
+            ));
+        }
+
+        let mut store = self.read_splicing_locus_panel_selection_store();
+        match panel_id {
+            Some(panel_id) => {
+                store
+                    .selections
+                    .insert(seq_id.to_string(), panel_id.to_string());
+            }
+            None => {
+                store.selections.remove(seq_id);
+            }
+        }
+        store.schema = SPLICING_LOCUS_PANEL_SELECTIONS_SCHEMA.to_string();
+        let value = if store.selections.is_empty() {
+            None
+        } else {
+            Some(serde_json::to_value(store).map_err(|error| {
+                EngineError::internal(format!(
+                    "Could not serialize splicing-locus panel selections: {error}"
+                ))
+            })?)
+        };
+        Ok(self.write_auxiliary_metadata_values(vec![(
+            SPLICING_LOCUS_PANEL_SELECTIONS_METADATA_KEY,
+            value,
+        )]))
+    }
+
     fn read_primer_design_store_from_metadata(
         value: Option<&serde_json::Value>,
     ) -> PrimerDesignStore {
@@ -10834,6 +12825,17 @@ impl GentleEngine {
     ) -> Result<(), EngineError> {
         if store.reports.is_empty()
             && store.qpcr_reports.is_empty()
+            && store.terminal_exon_rt_primer_pools.is_empty()
+            && store.transcript_capture_pools.is_empty()
+            && store.primer_specificity_reports.is_empty()
+            && store.primer_specificity_reference_selections.is_empty()
+            && store.primer_specificity_multi_summaries.is_empty()
+            && store
+                .active_primer_specificity_reference_selections
+                .is_empty()
+            && store.transcript_assay_panels.is_empty()
+            && store.transcript_assay_fallback_executions.is_empty()
+            && store.external_primer_pair_imports.is_empty()
             && store.restriction_cloning_handoffs.is_empty()
             && store.oligo_order_forms.is_empty()
         {
@@ -10843,6 +12845,29 @@ impl GentleEngine {
             return Ok(());
         }
         store.schema = PRIMER_DESIGN_REPORTS_SCHEMA.to_string();
+        for panel in store.transcript_assay_panels.values() {
+            let panel_design_digest = Self::primer_specificity_selection_panel_digest(panel)?;
+            if store
+                .primer_specificity_panel_sources
+                .get(&panel.report_id)
+                .is_some_and(|source| source.panel_design_digest == panel_design_digest)
+            {
+                continue;
+            }
+            if let Some(source_reference) = panel
+                .source_genome_anchor
+                .as_ref()
+                .and_then(|anchor| self.primer_specificity_source_reference_from_anchor(anchor))
+            {
+                store.primer_specificity_panel_sources.insert(
+                    panel.report_id.clone(),
+                    PrimerSpecificityPanelSource {
+                        panel_design_digest,
+                        source_reference,
+                    },
+                );
+            }
+        }
         store.updated_at_unix_ms = Self::now_unix_ms();
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
@@ -11455,6 +13480,173 @@ impl GentleEngine {
         Ok(report)
     }
 
+    fn upsert_terminal_exon_rt_primer_pool_report(
+        &mut self,
+        report: TerminalExonRtPrimerPoolReport,
+    ) -> Result<bool, EngineError> {
+        let mut store = self.read_primer_design_store();
+        let replaced = store
+            .terminal_exon_rt_primer_pools
+            .insert(report.report_id.clone(), report)
+            .is_some();
+        self.write_primer_design_store(store)?;
+        Ok(replaced)
+    }
+
+    pub fn list_terminal_exon_rt_primer_pool_reports(
+        &self,
+    ) -> Vec<TerminalExonRtPrimerPoolReportSummary> {
+        let store = self.read_primer_design_store();
+        let mut ids = store
+            .terminal_exon_rt_primer_pools
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        ids.sort();
+        ids.into_iter()
+            .filter_map(|id| store.terminal_exon_rt_primer_pools.get(&id))
+            .map(|report| TerminalExonRtPrimerPoolReportSummary {
+                report_id: report.report_id.clone(),
+                generated_at_unix_ms: report.generated_at_unix_ms,
+                op_id: report.op_id.clone(),
+                run_id: report.run_id.clone(),
+                target_count: report.targets.len(),
+                selected_oligo_count: report
+                    .targets
+                    .iter()
+                    .filter(|target| target.candidates.iter().any(|candidate| candidate.selected))
+                    .count(),
+                fixed_adapter_5prime: report.fixed_adapter_5prime.clone(),
+            })
+            .collect()
+    }
+
+    pub fn get_terminal_exon_rt_primer_pool_report(
+        &self,
+        report_id: &str,
+    ) -> Result<TerminalExonRtPrimerPoolReport, EngineError> {
+        let report_id = Self::normalize_primer_design_report_id(report_id)?;
+        self.read_primer_design_store()
+            .terminal_exon_rt_primer_pools
+            .get(&report_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Terminal-exon RT-primer pool report '{}' not found",
+                    report_id
+                ),
+                cause_chain: vec![],
+            })
+    }
+
+    pub fn export_terminal_exon_rt_primer_pool_report(
+        &self,
+        report_id: &str,
+        path: &str,
+    ) -> Result<TerminalExonRtPrimerPoolReport, EngineError> {
+        let report = self.get_terminal_exon_rt_primer_pool_report(report_id)?;
+        let text = serde_json::to_string_pretty(&report).map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not serialize terminal-exon RT-primer pool report '{}': {error}",
+                report.report_id
+            ),
+            cause_chain: vec![],
+        })?;
+        std::fs::write(path, text).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write terminal-exon RT-primer pool report to '{path}': {error}"
+            ),
+            cause_chain: vec![],
+        })?;
+        Ok(report)
+    }
+
+    fn upsert_primer_specificity_report(
+        &mut self,
+        report: PrimerSpecificityReport,
+    ) -> Result<bool, EngineError> {
+        let mut store = self.read_primer_design_store();
+        let replaced = store
+            .primer_specificity_reports
+            .insert(report.report_id.clone(), report)
+            .is_some();
+        self.write_primer_design_store(store)?;
+        Ok(replaced)
+    }
+
+    pub fn list_primer_specificity_reports(&self) -> Vec<PrimerSpecificityReportSummary> {
+        let store = self.read_primer_design_store();
+        let mut ids = store
+            .primer_specificity_reports
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        ids.sort();
+        ids.into_iter()
+            .filter_map(|id| store.primer_specificity_reports.get(&id))
+            .map(|report| PrimerSpecificityReportSummary {
+                report_id: report.report_id.clone(),
+                generated_at_unix_ms: report.generated_at_unix_ms,
+                op_id: report.op_id.clone(),
+                run_id: report.run_id.clone(),
+                primary_seq_id: report.primary_seq_id.clone(),
+                primer_report_id: report.primer_report_id.clone(),
+                pair_rank: report.pair_rank,
+                target_kind: report.target_kind.clone(),
+                target_genome_id: report.target_genome_id.clone(),
+                status: report.summary.status.clone(),
+                specificity_pass: report.summary.specificity_pass,
+                amplicon_count: report.summary.amplicon_count,
+                failing_unintended_amplicon_count: report.summary.failing_unintended_amplicon_count,
+                design_provenance_status: report.design_provenance.status,
+            })
+            .collect()
+    }
+
+    pub fn get_primer_specificity_report(
+        &self,
+        report_id: &str,
+    ) -> Result<PrimerSpecificityReport, EngineError> {
+        let report_id = Self::normalize_primer_design_report_id(report_id)?;
+        self.read_primer_design_store()
+            .primer_specificity_reports
+            .get(&report_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Primer-specificity report '{}' not found", report_id),
+                cause_chain: vec![],
+            })
+    }
+
+    pub fn export_primer_specificity_report(
+        &self,
+        report_id: &str,
+        path: &str,
+    ) -> Result<PrimerSpecificityReport, EngineError> {
+        let report = self.get_primer_specificity_report(report_id)?;
+        let text = serde_json::to_string_pretty(&report).map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not serialize primer-specificity report '{}': {}",
+                report.report_id, error
+            ),
+            cause_chain: vec![],
+        })?;
+        std::fs::write(path, text).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write primer-specificity report '{}' to '{}': {}",
+                report.report_id, path, error
+            ),
+            cause_chain: vec![],
+        })?;
+        Ok(report)
+    }
+
     pub fn list_qpcr_design_reports(&self) -> Vec<QpcrDesignReportSummary> {
         let store = self.read_primer_design_store();
         let mut ids = store.qpcr_reports.keys().cloned().collect::<Vec<_>>();
@@ -11516,6 +13708,143 @@ impl GentleEngine {
         Ok(report)
     }
 
+    pub fn list_transcript_assay_panel_reports(&self) -> Vec<TranscriptAssayPanelReportSummary> {
+        let store = self.read_primer_design_store();
+        let mut ids = store
+            .transcript_assay_panels
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        ids.sort();
+        ids.into_iter()
+            .filter_map(|id| store.transcript_assay_panels.get(&id))
+            .map(|report| TranscriptAssayPanelReportSummary {
+                report_id: report.report_id.clone(),
+                source_seq_id: report.source_seq_id.clone(),
+                source_feature_id: report.source_feature_id,
+                generated_at_unix_ms: report.generated_at_unix_ms,
+                assay_kind: report.assay_kind,
+                objective: report.objective,
+                coverage_policy: report.coverage_policy,
+                assay_tier: report.assay_tier,
+                completion_status: report.completion_status,
+                transcript_count: report.transcript_count,
+                equivalence_group_count: report.equivalence_group_count,
+                selected_assay_count: report.selected_assay_count,
+            })
+            .collect()
+    }
+
+    pub fn get_transcript_assay_panel_report(
+        &self,
+        report_id: &str,
+    ) -> Result<TranscriptAssayPanelReport, EngineError> {
+        let report_id = Self::normalize_primer_design_report_id(report_id)?;
+        let store = self.read_primer_design_store();
+        let mut report = store
+            .transcript_assay_panels
+            .get(&report_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Transcript assay panel report '{}' not found", report_id),
+
+                cause_chain: vec![],
+            })?;
+        Self::refresh_transcript_assay_panel_primer_pair_summaries(&mut report);
+        Ok(report)
+    }
+
+    pub fn export_transcript_assay_panel_report(
+        &self,
+        report_id: &str,
+        path: &str,
+    ) -> Result<TranscriptAssayPanelReport, EngineError> {
+        let report = self.get_transcript_assay_panel_report(report_id)?;
+        let text = serde_json::to_string_pretty(&report).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not serialize transcript assay panel report '{}': {e}",
+                report.report_id
+            ),
+
+            cause_chain: vec![],
+        })?;
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write transcript assay panel report to '{path}': {e}"),
+
+            cause_chain: vec![],
+        })?;
+        Ok(report)
+    }
+
+    pub fn list_transcript_assay_fallback_executions(
+        &self,
+    ) -> Vec<TranscriptAssayFallbackExecutionSummary> {
+        let store = self.read_primer_design_store();
+        let mut reports = store
+            .transcript_assay_fallback_executions
+            .values()
+            .map(|report| TranscriptAssayFallbackExecutionSummary {
+                execution_id: report.execution_id.clone(),
+                strict_operation_sha256: report.strict_operation_sha256.clone(),
+                strict_succeeded: report.strict_panel_report.is_some(),
+                fallback_submitted: report.fallback_submitted,
+                fallback_completed: report.fallback_panel_report.is_some(),
+                fallback_report_id: report
+                    .fallback_panel_report
+                    .as_deref()
+                    .map(|panel| panel.report_id.clone()),
+            })
+            .collect::<Vec<_>>();
+        reports.sort_by(|left, right| left.execution_id.cmp(&right.execution_id));
+        reports
+    }
+
+    pub fn get_transcript_assay_fallback_execution(
+        &self,
+        execution_id: &str,
+    ) -> Result<TranscriptAssayFallbackExecutionReport, EngineError> {
+        let execution_id = Self::normalize_primer_design_report_id(execution_id)?;
+        self.read_primer_design_store()
+            .transcript_assay_fallback_executions
+            .get(&execution_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Transcript assay fallback execution '{}' not found",
+                    execution_id
+                ),
+                cause_chain: vec![],
+            })
+    }
+
+    pub fn export_transcript_assay_fallback_execution(
+        &self,
+        execution_id: &str,
+        path: &str,
+    ) -> Result<TranscriptAssayFallbackExecutionReport, EngineError> {
+        let report = self.get_transcript_assay_fallback_execution(execution_id)?;
+        let text = serde_json::to_string_pretty(&report).map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not serialize transcript assay fallback execution '{}': {error}",
+                report.execution_id
+            ),
+            cause_chain: vec![],
+        })?;
+        std::fs::write(path, text).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write transcript assay fallback execution to '{path}': {error}"
+            ),
+            cause_chain: vec![],
+        })?;
+        Ok(report)
+    }
+
     fn normalize_oligo_order_form_id(raw: &str) -> Result<String, EngineError> {
         Self::normalize_primer_design_report_id(raw)
     }
@@ -11535,13 +13864,7 @@ impl GentleEngine {
     }
 
     fn normalize_oligo_sequence(raw: &str) -> String {
-        raw.chars()
-            .filter(|ch| !ch.is_whitespace())
-            .map(|ch| {
-                let up = ch.to_ascii_uppercase();
-                if up == 'U' { 'T' } else { up }
-            })
-            .collect()
+        canonical_oligo_sequence(raw)
     }
 
     fn normalize_oligo_modifications(values: &[String]) -> Vec<String> {
@@ -11567,9 +13890,8 @@ impl GentleEngine {
         Self::normalize_oligo_sequence(&line.sequence_5_to_3)
     }
 
-    fn short_sha1_id(prefix: &str, raw: &str) -> String {
-        let digest = Sha1::digest(raw.as_bytes());
-        format!("{prefix}_{:x}", digest)[..(prefix.len() + 1 + 16)].to_string()
+    fn short_digest_id(prefix: &str, raw: &str) -> String {
+        short_sha256_id(prefix, raw)
     }
 
     fn deterministic_oligo_line_id(form_id: &str, line: &OligoOrderLineItem) -> String {
@@ -11588,11 +13910,11 @@ impl GentleEngine {
             provenance.role.trim(),
             Self::oligo_procurement_key(line)
         );
-        Self::short_sha1_id("oli", &raw)
+        Self::short_digest_id("oli", &raw)
     }
 
     fn deterministic_oligo_group_id(prefix: &str, form_id: &str, key: &str) -> String {
-        Self::short_sha1_id(prefix, &format!("{form_id}\n{key}"))
+        Self::short_digest_id(prefix, &format!("{form_id}\n{key}"))
     }
 
     fn finalize_oligo_order_form(
@@ -12030,6 +14352,247 @@ impl GentleEngine {
                 default_action: "keep_separate".to_string(),
                 ..OligoOrderDuplicateReview::default()
             },
+            ..OligoOrderForm::default()
+        })?;
+        let mut store = self.read_primer_design_store();
+        store
+            .oligo_order_forms
+            .insert(form.form_id.clone(), form.clone());
+        self.write_primer_design_store(store)?;
+        Ok(form)
+    }
+
+    /// Create a procurement form only from rows that passed one explicit,
+    /// content-bound experimental-assay readiness policy.
+    pub fn create_oligo_order_form_from_experimental_handoff(
+        &mut self,
+        handoff_path: &str,
+        expected_handoff_sha256: Option<&str>,
+        form_id: Option<&str>,
+        scale: Option<&str>,
+        purification: Option<&str>,
+        modifications: &[String],
+    ) -> Result<OligoOrderForm, EngineError> {
+        let handoff_path = handoff_path.trim();
+        if handoff_path.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Experimental-assay handoff path cannot be empty".to_string(),
+                cause_chain: vec![],
+            });
+        }
+        let handoff_bytes = std::fs::read(handoff_path).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not read experimental-assay handoff '{handoff_path}': {error}"),
+            cause_chain: vec![],
+        })?;
+        let handoff_sha256 = sha256_prefixed_bytes(&handoff_bytes);
+        let expected = expected_handoff_sha256
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Creating an order form from an experimental-assay handoff requires its approved --expected-sha256 digest"
+                    .to_string(),
+                cause_chain: vec![],
+            })?;
+        if expected != handoff_sha256 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Experimental-assay handoff '{handoff_path}' has digest '{handoff_sha256}' but '{expected}' was required"
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let handoff: ExperimentalAssayHandoffReport = serde_json::from_slice(&handoff_bytes)
+            .map_err(|error| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not parse experimental-assay handoff '{handoff_path}': {error}"
+                ),
+                cause_chain: vec![],
+            })?;
+        if handoff.schema != EXPERIMENTAL_ASSAY_HANDOFF_SCHEMA {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Unsupported experimental-assay handoff schema '{}'; expected '{}'",
+                    handoff.schema, EXPERIMENTAL_ASSAY_HANDOFF_SCHEMA
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let policy_text = serde_json::to_string(&handoff.policy).map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not identify readiness policy: {error}"),
+            cause_chain: vec![],
+        })?;
+        let expected_policy_id =
+            format!("readiness_policy_sha256_{}", sha256_hex_str(&policy_text));
+        if handoff.policy_id != expected_policy_id {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Experimental-assay handoff policy_id '{}' does not match its embedded policy ('{}')",
+                    handoff.policy_id, expected_policy_id
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let readiness_policy_sha256 = sha256_prefixed_bytes(policy_text.as_bytes());
+        let form_id = form_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .unwrap_or_else(|| format!("{}_oligo_order", handoff.package_id));
+        let form_id = Self::normalize_oligo_order_form_id(&form_id)?;
+        let fallback_scale = Self::default_oligo_scale(scale);
+        let fallback_purification = Self::default_oligo_purification(purification);
+        let fallback_modifications = Self::normalize_oligo_modifications(modifications);
+        let mut line_items = vec![];
+        let mut ready_row_count = 0usize;
+        for readiness_row in &handoff.order_readiness_table {
+            if !readiness_row.order_ready
+                || readiness_row.readiness_state != ExperimentalAssayReadinessState::OrderReady
+            {
+                continue;
+            }
+            ready_row_count = ready_row_count.saturating_add(1);
+            let card = handoff
+                .cards
+                .iter()
+                .find(|card| card.card_id == readiness_row.card_id)
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Order-ready row '{}' has no matching assay card",
+                        readiness_row.card_id
+                    ),
+                    cause_chain: vec![],
+                })?;
+            if card.policy_id != handoff.policy_id
+                || card.readiness_state != ExperimentalAssayReadinessState::OrderReady
+                || card.assay_id != readiness_row.assay_id
+                || card.pair_id != readiness_row.pair_id
+                || !card.blockers.is_empty()
+                || card.gate_outcomes.iter().any(|gate| {
+                    gate.required
+                        && !matches!(
+                            gate.status,
+                            ExperimentalAssayGateStatus::Pass
+                                | ExperimentalAssayGateStatus::WaivedByPolicy
+                                | ExperimentalAssayGateStatus::NotApplicable
+                        )
+                })
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Order-ready row '{}' does not match its card identity, readiness state, or policy",
+                        readiness_row.card_id
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            for oligo in &card.oligos {
+                if !readiness_row.oligo_ids.contains(&oligo.oligo_id)
+                    || !readiness_row
+                        .sequences_5_to_3
+                        .contains(&oligo.sequence_5_to_3)
+                {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Order-ready row '{}' does not retain oligo '{}' and its sequence",
+                            readiness_row.card_id, oligo.oligo_id
+                        ),
+                        cause_chain: vec![],
+                    });
+                }
+                let formulations = if oligo.formulations.is_empty() {
+                    vec![ExperimentalAssayOligoFormulation {
+                        modifications: fallback_modifications.clone(),
+                        scale: fallback_scale.clone(),
+                        purification: fallback_purification.clone(),
+                        ..ExperimentalAssayOligoFormulation::default()
+                    }]
+                } else {
+                    oligo.formulations.clone()
+                };
+                for formulation in formulations {
+                    line_items.push(OligoOrderLineItem {
+                        line_id: String::new(),
+                        line_no: 0,
+                        name: format!("{}_{}_{}", card.display_label, card.pair_rank, oligo.role),
+                        role: oligo.role.clone(),
+                        sequence_5_to_3: oligo.sequence_5_to_3.clone(),
+                        length_nt: oligo.length_nt,
+                        modifications: formulation.modifications,
+                        scale: if formulation.scale.trim().is_empty() {
+                            fallback_scale.clone()
+                        } else {
+                            formulation.scale
+                        },
+                        purification: if formulation.purification.trim().is_empty() {
+                            fallback_purification.clone()
+                        } else {
+                            formulation.purification
+                        },
+                        notes: Some(format!(
+                            "Order-ready under readiness card '{}' from handoff '{}'.",
+                            card.card_id, handoff.package_id
+                        )),
+                        provenance: OligoOrderLineProvenance {
+                            source_kind: "experimental_assay_handoff".to_string(),
+                            report_id: handoff.package_id.clone(),
+                            report_schema: handoff.schema.clone(),
+                            report_sha256: Some(handoff_sha256.clone()),
+                            template: handoff.source_seq_id.clone(),
+                            assay_rank: Some(card.pair_rank),
+                            role: oligo.role.clone(),
+                            assay_id: Some(card.assay_id.clone()),
+                            pair_id: Some(card.pair_id.clone()),
+                            oligo_id: Some(oligo.oligo_id.clone()),
+                            readiness_policy_id: Some(handoff.policy_id.clone()),
+                            readiness_policy_sha256: Some(readiness_policy_sha256.clone()),
+                            readiness_card_id: Some(card.card_id.clone()),
+                            readiness_state: Some(card.readiness_state.as_str().to_string()),
+                            readiness_row: Some(readiness_row.clone()),
+                            ..OligoOrderLineProvenance::default()
+                        },
+                    });
+                }
+            }
+        }
+        if ready_row_count == 0 || line_items.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Experimental-assay handoff '{}' has no rows that passed policy '{}' as order_ready",
+                    handoff.package_id, handoff.policy_id
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let mut warnings = handoff.warnings.clone();
+        warnings.push(format!(
+            "Order lines are bound to handoff digest '{}' and readiness policy '{}' ({}).",
+            handoff_sha256, handoff.policy_id, readiness_policy_sha256
+        ));
+        let form = self.finalize_oligo_order_form(OligoOrderForm {
+            form_id,
+            target_label: handoff.source_seq_id.clone(),
+            source_note: Some(format!(
+                "Created from experimental-assay handoff '{}' at '{}' after policy '{}'.",
+                handoff.package_id, handoff_path, handoff.policy_id
+            )),
+            line_items,
+            duplicate_review: OligoOrderDuplicateReview {
+                default_action: "keep_separate".to_string(),
+                ..OligoOrderDuplicateReview::default()
+            },
+            warnings,
             ..OligoOrderForm::default()
         })?;
         let mut store = self.read_primer_design_store();
@@ -12588,7 +15151,6 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "Sequence-context inspection requires both viewport_start_0based and viewport_end_0based_exclusive"
                     .to_string(),
-            
                 cause_chain: vec![],});
         }
         let (viewport_start_0based, viewport_end_0based_exclusive) = if let (
@@ -13625,7 +16187,6 @@ impl GentleEngine {
                 message:
                     "FindRestrictionSites requires at least one enzyme or configured preferred restriction enzymes"
                         .to_string(),
-            
                 cause_chain: vec![],});
         }
 
@@ -13726,7 +16287,7 @@ impl GentleEngine {
             }
             for site in sites {
                 let Some((recognition_start_0based, recognition_end_0based_exclusive)) =
-                    site.recognition_bounds_0based(scan_dna.len())
+                    site.recognition_bounds_for_topology(scan_dna.len(), scan_dna.is_circular())
                 else {
                     continue;
                 };
@@ -13736,18 +16297,17 @@ impl GentleEngine {
                     opening_start_0based,
                     opening_end_0based_exclusive,
                 ) = if include_cut_geometry {
-                    let (forward_cut_0based, reverse_cut_0based) = site
-                        .strand_cut_positions_0based(scan_dna.len())
-                        .unwrap_or((recognition_start_0based, recognition_start_0based));
-                    let (opening_start_0based, opening_end_0based_exclusive) = site
-                        .recessed_opening_window_0based(scan_dna.len())
-                        .unwrap_or((forward_cut_0based, reverse_cut_0based));
-                    (
-                        Some(forward_cut_0based),
-                        Some(reverse_cut_0based),
-                        Some(opening_start_0based),
-                        Some(opening_end_0based_exclusive),
-                    )
+                    match site
+                        .strand_cut_positions_for_topology(scan_dna.len(), scan_dna.is_circular())
+                    {
+                        Some((forward, reverse)) => (
+                            Some(forward),
+                            Some(reverse),
+                            Some(forward.min(reverse)),
+                            Some(forward.max(reverse)),
+                        ),
+                        None => (None, None, None, None),
+                    }
                 } else {
                     (None, None, None, None)
                 };
@@ -13889,7 +16449,6 @@ impl GentleEngine {
                 message:
                     "TFBS context range requires both context_start_0based and context_end_0based_exclusive"
                         .to_string(),
-            
                 cause_chain: vec![],});
         }
         let (context_start, context_end) = match (
@@ -14506,6 +17065,7 @@ impl GentleEngine {
                 qualifiers_json,
                 sort_feature_id: row.feature_id,
                 length_bp: row.length_bp,
+                distance_to_query_bp: row.distance_to_query_bp,
             });
         }
 
@@ -14627,59 +17187,76 @@ impl GentleEngine {
                     qualifiers_json,
                     sort_feature_id: usize::MAX / 2usize + site_idx,
                     length_bp,
+                    distance_to_query_bp: query.nearest_to_0based.map(|point_0based| {
+                        Self::feature_distance_to_point_0based(
+                            point_0based,
+                            start_0based,
+                            end_0based_exclusive,
+                        )
+                    }),
                 });
             }
         }
 
         let matched_row_count =
             matched_sequence_feature_count.saturating_add(matched_restriction_site_count);
-        export_rows.sort_by(|a, b| match query.sort_by {
-            SequenceFeatureSortBy::FeatureId => a
-                .sort_feature_id
-                .cmp(&b.sort_feature_id)
-                .then(a.chrom_start_0based.cmp(&b.chrom_start_0based))
-                .then(
-                    a.chrom_end_0based_exclusive
-                        .cmp(&b.chrom_end_0based_exclusive),
-                )
-                .then(a.row_id.cmp(&b.row_id)),
-            SequenceFeatureSortBy::Start => a
-                .chrom_start_0based
-                .cmp(&b.chrom_start_0based)
-                .then(
-                    a.chrom_end_0based_exclusive
-                        .cmp(&b.chrom_end_0based_exclusive),
-                )
-                .then(a.sort_feature_id.cmp(&b.sort_feature_id))
-                .then(a.row_id.cmp(&b.row_id)),
-            SequenceFeatureSortBy::End => a
-                .chrom_end_0based_exclusive
-                .cmp(&b.chrom_end_0based_exclusive)
-                .then(a.chrom_start_0based.cmp(&b.chrom_start_0based))
-                .then(a.sort_feature_id.cmp(&b.sort_feature_id))
-                .then(a.row_id.cmp(&b.row_id)),
-            SequenceFeatureSortBy::Kind => a
-                .kind
-                .to_ascii_uppercase()
-                .cmp(&b.kind.to_ascii_uppercase())
-                .then(a.chrom_start_0based.cmp(&b.chrom_start_0based))
-                .then(
-                    a.chrom_end_0based_exclusive
-                        .cmp(&b.chrom_end_0based_exclusive),
-                )
-                .then(a.sort_feature_id.cmp(&b.sort_feature_id))
-                .then(a.row_id.cmp(&b.row_id)),
-            SequenceFeatureSortBy::Length => a
-                .length_bp
-                .cmp(&b.length_bp)
-                .then(a.chrom_start_0based.cmp(&b.chrom_start_0based))
-                .then(
-                    a.chrom_end_0based_exclusive
-                        .cmp(&b.chrom_end_0based_exclusive),
-                )
-                .then(a.sort_feature_id.cmp(&b.sort_feature_id))
-                .then(a.row_id.cmp(&b.row_id)),
-        });
+        if query.nearest_to_0based.is_some() {
+            export_rows.sort_by(|a, b| {
+                a.distance_to_query_bp
+                    .unwrap_or(usize::MAX)
+                    .cmp(&b.distance_to_query_bp.unwrap_or(usize::MAX))
+                    .then(a.sort_feature_id.cmp(&b.sort_feature_id))
+                    .then(a.row_id.cmp(&b.row_id))
+            });
+        } else {
+            export_rows.sort_by(|a, b| match query.sort_by {
+                SequenceFeatureSortBy::FeatureId => a
+                    .sort_feature_id
+                    .cmp(&b.sort_feature_id)
+                    .then(a.chrom_start_0based.cmp(&b.chrom_start_0based))
+                    .then(
+                        a.chrom_end_0based_exclusive
+                            .cmp(&b.chrom_end_0based_exclusive),
+                    )
+                    .then(a.row_id.cmp(&b.row_id)),
+                SequenceFeatureSortBy::Start => a
+                    .chrom_start_0based
+                    .cmp(&b.chrom_start_0based)
+                    .then(
+                        a.chrom_end_0based_exclusive
+                            .cmp(&b.chrom_end_0based_exclusive),
+                    )
+                    .then(a.sort_feature_id.cmp(&b.sort_feature_id))
+                    .then(a.row_id.cmp(&b.row_id)),
+                SequenceFeatureSortBy::End => a
+                    .chrom_end_0based_exclusive
+                    .cmp(&b.chrom_end_0based_exclusive)
+                    .then(a.chrom_start_0based.cmp(&b.chrom_start_0based))
+                    .then(a.sort_feature_id.cmp(&b.sort_feature_id))
+                    .then(a.row_id.cmp(&b.row_id)),
+                SequenceFeatureSortBy::Kind => a
+                    .kind
+                    .to_ascii_uppercase()
+                    .cmp(&b.kind.to_ascii_uppercase())
+                    .then(a.chrom_start_0based.cmp(&b.chrom_start_0based))
+                    .then(
+                        a.chrom_end_0based_exclusive
+                            .cmp(&b.chrom_end_0based_exclusive),
+                    )
+                    .then(a.sort_feature_id.cmp(&b.sort_feature_id))
+                    .then(a.row_id.cmp(&b.row_id)),
+                SequenceFeatureSortBy::Length => a
+                    .length_bp
+                    .cmp(&b.length_bp)
+                    .then(a.chrom_start_0based.cmp(&b.chrom_start_0based))
+                    .then(
+                        a.chrom_end_0based_exclusive
+                            .cmp(&b.chrom_end_0based_exclusive),
+                    )
+                    .then(a.sort_feature_id.cmp(&b.sort_feature_id))
+                    .then(a.row_id.cmp(&b.row_id)),
+            });
+        }
         if query.descending {
             export_rows.reverse();
         }
@@ -14759,6 +17336,22 @@ impl GentleEngine {
             skipped_missing_genomic_coordinates,
             query,
         })
+    }
+
+    fn feature_distance_to_point_0based(
+        point_0based: usize,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+    ) -> usize {
+        if point_0based < start_0based {
+            start_0based.saturating_sub(point_0based)
+        } else if point_0based >= end_0based_exclusive {
+            point_0based
+                .saturating_sub(end_0based_exclusive)
+                .saturating_add(1)
+        } else {
+            0
+        }
     }
 
     pub fn query_sequence_features(
@@ -14855,6 +17448,18 @@ impl GentleEngine {
                 cause_chain: vec![],
             })?;
         let sequence_length_bp = dna.len();
+        if let Some(point_0based) = query.nearest_to_0based
+            && point_0based >= sequence_length_bp
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Feature nearest-point coordinate {point_0based} is outside sequence length {sequence_length_bp}"
+                ),
+
+                cause_chain: vec![],
+            });
+        }
 
         let range_filter = if let (Some(start), Some(end_exclusive)) =
             (query.start_0based, query.end_0based_exclusive)
@@ -14985,6 +17590,13 @@ impl GentleEngine {
                 continue;
             }
             let length_bp = end_0based_exclusive.saturating_sub(start_0based);
+            let distance_to_query_bp = query.nearest_to_0based.map(|point_0based| {
+                Self::feature_distance_to_point_0based(
+                    point_0based,
+                    start_0based,
+                    end_0based_exclusive,
+                )
+            });
 
             if let Some(min_len_bp) = query.min_len_bp
                 && length_bp < min_len_bp
@@ -15097,6 +17709,7 @@ impl GentleEngine {
                 start_0based,
                 end_0based_exclusive,
                 length_bp,
+                distance_to_query_bp,
                 strand: strand_text.to_string(),
                 label: Self::feature_display_label(feature, feature_id),
                 labels,
@@ -15104,32 +17717,43 @@ impl GentleEngine {
             });
         }
 
-        rows.sort_by(|a, b| match query.sort_by {
-            SequenceFeatureSortBy::FeatureId => a.feature_id.cmp(&b.feature_id),
-            SequenceFeatureSortBy::Start => a
-                .start_0based
-                .cmp(&b.start_0based)
-                .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
-                .then(a.feature_id.cmp(&b.feature_id)),
-            SequenceFeatureSortBy::End => a
-                .end_0based_exclusive
-                .cmp(&b.end_0based_exclusive)
-                .then(a.start_0based.cmp(&b.start_0based))
-                .then(a.feature_id.cmp(&b.feature_id)),
-            SequenceFeatureSortBy::Kind => a
-                .kind
-                .to_ascii_uppercase()
-                .cmp(&b.kind.to_ascii_uppercase())
-                .then(a.start_0based.cmp(&b.start_0based))
-                .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
-                .then(a.feature_id.cmp(&b.feature_id)),
-            SequenceFeatureSortBy::Length => a
-                .length_bp
-                .cmp(&b.length_bp)
-                .then(a.start_0based.cmp(&b.start_0based))
-                .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
-                .then(a.feature_id.cmp(&b.feature_id)),
-        });
+        if query.nearest_to_0based.is_some() {
+            rows.sort_by(|a, b| {
+                a.distance_to_query_bp
+                    .unwrap_or(usize::MAX)
+                    .cmp(&b.distance_to_query_bp.unwrap_or(usize::MAX))
+                    .then(a.start_0based.cmp(&b.start_0based))
+                    .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
+                    .then(a.feature_id.cmp(&b.feature_id))
+            });
+        } else {
+            rows.sort_by(|a, b| match query.sort_by {
+                SequenceFeatureSortBy::FeatureId => a.feature_id.cmp(&b.feature_id),
+                SequenceFeatureSortBy::Start => a
+                    .start_0based
+                    .cmp(&b.start_0based)
+                    .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
+                    .then(a.feature_id.cmp(&b.feature_id)),
+                SequenceFeatureSortBy::End => a
+                    .end_0based_exclusive
+                    .cmp(&b.end_0based_exclusive)
+                    .then(a.start_0based.cmp(&b.start_0based))
+                    .then(a.feature_id.cmp(&b.feature_id)),
+                SequenceFeatureSortBy::Kind => a
+                    .kind
+                    .to_ascii_uppercase()
+                    .cmp(&b.kind.to_ascii_uppercase())
+                    .then(a.start_0based.cmp(&b.start_0based))
+                    .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
+                    .then(a.feature_id.cmp(&b.feature_id)),
+                SequenceFeatureSortBy::Length => a
+                    .length_bp
+                    .cmp(&b.length_bp)
+                    .then(a.start_0based.cmp(&b.start_0based))
+                    .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
+                    .then(a.feature_id.cmp(&b.feature_id)),
+            });
+        }
         if query.descending {
             rows.reverse();
         }
@@ -15160,7 +17784,12 @@ impl GentleEngine {
             limit,
             range_relation: query.range_relation.as_str().to_string(),
             strand_filter: query.strand.as_str().to_string(),
-            sort_by: query.sort_by.as_str().to_string(),
+            sort_by: if query.nearest_to_0based.is_some() {
+                "distance".to_string()
+            } else {
+                query.sort_by.as_str().to_string()
+            },
+            nearest_to_0based: query.nearest_to_0based,
             descending: query.descending,
             query,
             rows,
@@ -16244,7 +18873,7 @@ impl GentleEngine {
             && store.sync_status.last_snapshot_id.is_none()
             && store.sync_status.last_error.is_none();
         if is_empty {
-            self.state.metadata.remove(PLANNING_METADATA_KEY);
+            self.write_auxiliary_metadata_values(vec![(PLANNING_METADATA_KEY, None)]);
             return Ok(());
         }
 
@@ -16254,9 +18883,7 @@ impl GentleEngine {
 
             cause_chain: vec![],
         })?;
-        self.state
-            .metadata
-            .insert(PLANNING_METADATA_KEY.to_string(), value);
+        self.write_auxiliary_metadata_values(vec![(PLANNING_METADATA_KEY, Some(value))]);
         Ok(())
     }
 
@@ -16827,6 +19454,10 @@ impl GentleEngine {
             .collect();
         objective.preferred_routine_families.sort();
         objective.preferred_routine_families.dedup();
+        if let Some(tasks) = &mut objective.intended_tasks {
+            tasks.sort();
+            tasks.dedup();
+        }
         Self::normalize_optional_note_text(&mut objective.notes);
         objective
     }
@@ -16903,6 +19534,28 @@ impl GentleEngine {
             .collect();
         evidence.provenance_refs.sort();
         evidence.provenance_refs.dedup();
+        evidence.repeat_annotation = evidence.repeat_annotation.take().map(|mut annotation| {
+            annotation.source_kind = annotation.source_kind.trim().to_ascii_lowercase();
+            for value in [
+                &mut annotation.repeat_name,
+                &mut annotation.repeat_class,
+                &mut annotation.repeat_family,
+            ] {
+                *value = value
+                    .take()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty());
+            }
+            annotation.source_refs = annotation
+                .source_refs
+                .into_iter()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .collect();
+            annotation.source_refs.sort();
+            annotation.source_refs.dedup();
+            annotation
+        });
         Self::normalize_optional_note_text(&mut evidence.warnings);
         Self::normalize_optional_note_text(&mut evidence.notes);
         evidence
@@ -16928,7 +19581,23 @@ impl GentleEngine {
         fact.based_on_evidence_ids.dedup();
         for severity in &mut fact.task_severities {
             severity.rationale = severity.rationale.trim().to_string();
+            severity.base_score = Self::normalize_confidence_score(severity.base_score);
             severity.score = Self::normalize_confidence_score(severity.score);
+            severity.objective_adjustment = severity
+                .objective_adjustment
+                .filter(|value| value.is_finite())
+                .map(|value| value.clamp(-1.0, 1.0));
+            if severity.base_score.is_none()
+                && severity.applicability == ConstructReasoningTaskApplicability::Unknown
+            {
+                severity.base_score = severity.score;
+            }
+            if let Some(base_score) = severity.base_score {
+                severity.base_severity =
+                    Some(Self::construct_reasoning_severity_from_score(base_score));
+            } else if severity.base_severity.is_none() {
+                severity.base_severity = Some(severity.severity);
+            }
             if let Some(score) = severity.score {
                 severity.severity = Self::construct_reasoning_severity_from_score(score);
             }
@@ -16943,7 +19612,12 @@ impl GentleEngine {
         }
         fact.task_severities.retain(|severity| {
             severity.severity != ConstructReasoningSeverity::None
-                && (!severity.rationale.is_empty() || !severity.supporting_evidence_ids.is_empty())
+                || severity
+                    .base_severity
+                    .is_some_and(|value| value != ConstructReasoningSeverity::None)
+                || (severity.applicability != ConstructReasoningTaskApplicability::Unknown
+                    && (!severity.rationale.is_empty()
+                        || !severity.supporting_evidence_ids.is_empty()))
         });
         fact.task_severities.sort_by(|a, b| {
             a.task
@@ -17680,9 +20354,21 @@ impl GentleEngine {
     fn construct_reasoning_evidence_repeat_family_class(
         row: &DesignEvidence,
     ) -> RepeatFamilyClassMapping {
-        let repeat_name = Self::construct_reasoning_evidence_note_value(row, "repeat_name");
-        let repeat_class = Self::construct_reasoning_evidence_note_value(row, "repeat_class");
-        let repeat_family = Self::construct_reasoning_evidence_note_value(row, "repeat_family");
+        let repeat_name = row
+            .repeat_annotation
+            .as_ref()
+            .and_then(|annotation| annotation.repeat_name.clone())
+            .or_else(|| Self::construct_reasoning_evidence_note_value(row, "repeat_name"));
+        let repeat_class = row
+            .repeat_annotation
+            .as_ref()
+            .and_then(|annotation| annotation.repeat_class.clone())
+            .or_else(|| Self::construct_reasoning_evidence_note_value(row, "repeat_class"));
+        let repeat_family = row
+            .repeat_annotation
+            .as_ref()
+            .and_then(|annotation| annotation.repeat_family.clone())
+            .or_else(|| Self::construct_reasoning_evidence_note_value(row, "repeat_family"));
         let mut mapping = Self::construct_reasoning_repeat_family_class_from_parts(
             repeat_name.as_deref(),
             repeat_class.as_deref(),
@@ -17766,7 +20452,8 @@ impl GentleEngine {
         matches!(
             row.role,
             ConstructRole::RepeatRegion | ConstructRole::MobileElement
-        ) && (Self::construct_reasoning_evidence_has_tag(row, "curated_repeat_family")
+        ) && (row.repeat_annotation.is_some()
+            || Self::construct_reasoning_evidence_has_tag(row, "curated_repeat_family")
             || Self::construct_reasoning_evidence_has_tag(row, "ucsc_rmsk")
             || Self::construct_reasoning_evidence_note_value(row, "repeat_source").is_some())
     }
@@ -17777,7 +20464,12 @@ impl GentleEngine {
         if !Self::construct_reasoning_evidence_is_curated_repeat_annotation(row) {
             return None;
         }
-        let source_kind = Self::construct_reasoning_evidence_note_value(row, "repeat_source")
+        let source_kind = row
+            .repeat_annotation
+            .as_ref()
+            .map(|annotation| annotation.source_kind.clone())
+            .filter(|value| !value.is_empty())
+            .or_else(|| Self::construct_reasoning_evidence_note_value(row, "repeat_source"))
             .unwrap_or_else(|| {
                 if Self::construct_reasoning_evidence_has_tag(row, "ucsc_rmsk") {
                     "ucsc_rmsk".to_string()
@@ -17785,15 +20477,30 @@ impl GentleEngine {
                     "repeat_family_annotation".to_string()
                 }
             });
-        let repeat_name = Self::construct_reasoning_evidence_note_value(row, "repeat_name");
-        let repeat_class = Self::construct_reasoning_evidence_note_value(row, "repeat_class");
-        let repeat_family = Self::construct_reasoning_evidence_note_value(row, "repeat_family");
+        let repeat_name = row
+            .repeat_annotation
+            .as_ref()
+            .and_then(|annotation| annotation.repeat_name.clone())
+            .or_else(|| Self::construct_reasoning_evidence_note_value(row, "repeat_name"));
+        let repeat_class = row
+            .repeat_annotation
+            .as_ref()
+            .and_then(|annotation| annotation.repeat_class.clone())
+            .or_else(|| Self::construct_reasoning_evidence_note_value(row, "repeat_class"));
+        let repeat_family = row
+            .repeat_annotation
+            .as_ref()
+            .and_then(|annotation| annotation.repeat_family.clone())
+            .or_else(|| Self::construct_reasoning_evidence_note_value(row, "repeat_family"));
         let label = Self::construct_reasoning_repeat_family_display_label(
             repeat_name.as_deref(),
             repeat_class.as_deref(),
             repeat_family.as_deref(),
         );
         let mut source_refs = row.provenance_refs.clone();
+        if let Some(annotation) = &row.repeat_annotation {
+            source_refs.extend(annotation.source_refs.clone());
+        }
         source_refs.sort();
         source_refs.dedup();
         Some(ConstructReasoningCuratedRepeatSupport {
@@ -17972,38 +20679,9 @@ impl GentleEngine {
         }
     }
 
-    fn construct_reasoning_repeat_family_provenance_for_evidence_rows(
+    fn construct_reasoning_repeat_family_provenances_for_evidence_rows(
         rows: &[&DesignEvidence],
-    ) -> Option<ConstructReasoningRepeatFamilyProvenance> {
-        let mut supports = rows
-            .iter()
-            .filter_map(|row| Self::construct_reasoning_evidence_repeat_support(row))
-            .collect::<Vec<_>>();
-        if supports.is_empty() {
-            return None;
-        }
-        supports.sort_by(|a, b| a.label.cmp(&b.label));
-        let primary = supports.first()?;
-        let source_kind = if supports
-            .iter()
-            .any(|row| row.source_kind.eq_ignore_ascii_case("ucsc_rmsk"))
-        {
-            "ucsc_rmsk".to_string()
-        } else {
-            primary.source_kind.clone()
-        };
-        let evidence_ids = supports
-            .iter()
-            .flat_map(|row| row.evidence_ids.iter().cloned())
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect::<Vec<_>>();
-        let source_refs = supports
-            .iter()
-            .flat_map(|row| row.source_refs.iter().cloned())
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect::<Vec<_>>();
+    ) -> Vec<ConstructReasoningRepeatFamilyProvenance> {
         let curated_rows = rows
             .iter()
             .copied()
@@ -18014,34 +20692,104 @@ impl GentleEngine {
             .copied()
             .filter(|row| !Self::construct_reasoning_evidence_is_curated_repeat_annotation(row))
             .collect::<Vec<_>>();
-        let confidence = Self::construct_reasoning_best_repeat_family_agreement_for_rows(
-            &internal_rows,
-            &curated_rows,
-        )
-        .map(RepeatFamilyAgreementStrength::confidence)
-        .or_else(|| {
-            supports
+        let mut by_family = BTreeMap::<String, ConstructReasoningRepeatFamilyProvenance>::new();
+        for curated in curated_rows {
+            let Some(support) = Self::construct_reasoning_evidence_repeat_support(curated) else {
+                continue;
+            };
+            let agreement_strength = internal_rows
                 .iter()
-                .any(|row| row.source_kind.eq_ignore_ascii_case("ucsc_rmsk"))
-                .then_some(0.8)
-        })
-        .or(Some(0.65));
-        Some(ConstructReasoningRepeatFamilyProvenance {
-            source_kind,
-            family_id: primary
-                .repeat_family
-                .as_ref()
-                .or(primary.repeat_name.as_ref())
-                .map(|value| Self::normalize_id_token(value)),
-            family_name: primary
-                .repeat_family
-                .clone()
-                .or_else(|| primary.repeat_name.clone())
-                .or_else(|| primary.repeat_class.clone()),
-            source_refs,
-            evidence_ids,
-            confidence,
-        })
+                .filter(|internal| {
+                    Self::construct_reasoning_ranges_overlap(
+                        internal.start_0based,
+                        internal.end_0based_exclusive,
+                        curated.start_0based,
+                        curated.end_0based_exclusive,
+                    )
+                })
+                .filter_map(|internal| {
+                    Self::construct_reasoning_repeat_family_agreement_for_rows(internal, curated)
+                })
+                .max();
+            let (agreement, confidence) = match agreement_strength {
+                Some(RepeatFamilyAgreementStrength::Family) => {
+                    (ConstructReasoningRepeatFamilyAgreement::Family, 0.95)
+                }
+                Some(RepeatFamilyAgreementStrength::Class) => {
+                    (ConstructReasoningRepeatFamilyAgreement::Class, 0.90)
+                }
+                None if support.source_kind.eq_ignore_ascii_case("ucsc_rmsk") => (
+                    ConstructReasoningRepeatFamilyAgreement::CuratedAnnotation,
+                    0.80,
+                ),
+                None => (
+                    ConstructReasoningRepeatFamilyAgreement::ProvenanceOnly,
+                    0.65,
+                ),
+            };
+            let key = format!(
+                "{}:{}:{}:{}",
+                Self::normalize_id_token(&support.source_kind),
+                support
+                    .repeat_name
+                    .as_deref()
+                    .map(Self::normalize_id_token)
+                    .unwrap_or_default(),
+                support
+                    .repeat_class
+                    .as_deref()
+                    .map(Self::normalize_id_token)
+                    .unwrap_or_default(),
+                support
+                    .repeat_family
+                    .as_deref()
+                    .map(Self::normalize_id_token)
+                    .unwrap_or_default(),
+            );
+            let row =
+                by_family
+                    .entry(key)
+                    .or_insert_with(|| ConstructReasoningRepeatFamilyProvenance {
+                        source_kind: support.source_kind.clone(),
+                        repeat_name: support.repeat_name.clone(),
+                        repeat_class: support.repeat_class.clone(),
+                        repeat_family: support.repeat_family.clone(),
+                        family_id: support
+                            .repeat_family
+                            .as_ref()
+                            .or(support.repeat_name.as_ref())
+                            .map(|value| Self::normalize_id_token(value)),
+                        family_name: support
+                            .repeat_family
+                            .clone()
+                            .or_else(|| support.repeat_name.clone())
+                            .or_else(|| support.repeat_class.clone()),
+                        agreement,
+                        source_refs: vec![],
+                        evidence_ids: vec![],
+                        confidence: Some(confidence),
+                    });
+            if agreement > row.agreement {
+                row.agreement = agreement;
+                row.confidence = Some(confidence);
+            }
+            row.source_refs.extend(support.source_refs);
+            row.evidence_ids.extend(support.evidence_ids);
+            row.source_refs.sort();
+            row.source_refs.dedup();
+            row.evidence_ids.sort();
+            row.evidence_ids.dedup();
+        }
+        by_family.into_values().collect()
+    }
+
+    #[cfg(test)]
+    fn construct_reasoning_repeat_family_provenance_for_evidence_rows(
+        rows: &[&DesignEvidence],
+    ) -> Option<ConstructReasoningRepeatFamilyProvenance> {
+        Self::construct_reasoning_repeat_family_provenances_for_evidence_rows(rows)
+            .into_iter()
+            .next()
     }
 
     fn construct_reasoning_context_tags_for_evidence_rows(rows: &[&DesignEvidence]) -> Vec<String> {
@@ -18069,6 +20817,126 @@ impl GentleEngine {
         ids.sort();
         ids.dedup();
         ids
+    }
+
+    fn normalize_construct_reasoning_repeat_family_provenance(
+        mut provenance: ConstructReasoningRepeatFamilyProvenance,
+    ) -> ConstructReasoningRepeatFamilyProvenance {
+        provenance.source_kind = provenance.source_kind.trim().to_ascii_lowercase();
+        for value in [
+            &mut provenance.repeat_name,
+            &mut provenance.repeat_class,
+            &mut provenance.repeat_family,
+            &mut provenance.family_id,
+            &mut provenance.family_name,
+        ] {
+            *value = value
+                .take()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+        }
+        provenance.source_refs =
+            Self::construct_reasoning_inspection_action_source_ids(provenance.source_refs);
+        provenance.evidence_ids =
+            Self::construct_reasoning_inspection_action_source_ids(provenance.evidence_ids);
+        provenance.confidence = Self::normalize_confidence_score(provenance.confidence);
+        provenance
+    }
+
+    fn normalize_construct_reasoning_inspection_action(
+        mut action: ConstructReasoningInspectionAction,
+        graph_id: &str,
+        graph_seq_id: &str,
+        idx: usize,
+    ) -> ConstructReasoningInspectionAction {
+        action.schema = gentle_protocol::CONSTRUCT_REASONING_INSPECTION_ACTION_SCHEMA.to_string();
+        action.seq_id = action.seq_id.trim().to_string();
+        if action.seq_id.is_empty() {
+            action.seq_id = graph_seq_id.to_string();
+        }
+        if action.focus_end_0based_exclusive < action.focus_start_0based {
+            std::mem::swap(
+                &mut action.focus_start_0based,
+                &mut action.focus_end_0based_exclusive,
+            );
+        }
+        action.button_label = action.button_label.trim().to_string();
+        action.hover_text = action.hover_text.trim().to_string();
+        action.rationale = action.rationale.trim().to_string();
+        action.driving_evidence_ids =
+            Self::construct_reasoning_inspection_action_source_ids(action.driving_evidence_ids);
+        action.source_fact_ids =
+            Self::construct_reasoning_inspection_action_source_ids(action.source_fact_ids);
+        action.source_annotation_ids =
+            Self::construct_reasoning_inspection_action_source_ids(action.source_annotation_ids);
+        action.source_summary_ids =
+            Self::construct_reasoning_inspection_action_source_ids(action.source_summary_ids);
+        action.context_tags = action
+            .context_tags
+            .into_iter()
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| !value.is_empty())
+            .collect();
+        action.context_tags.sort();
+        action.context_tags.dedup();
+        if action.repeat_family_provenances.is_empty() {
+            action.repeat_family_provenances = action
+                .repeat_family_provenance
+                .clone()
+                .into_iter()
+                .collect();
+        }
+        let mut normalized_provenances = action
+            .repeat_family_provenances
+            .into_iter()
+            .map(Self::normalize_construct_reasoning_repeat_family_provenance)
+            .collect::<Vec<_>>();
+        normalized_provenances.sort_by(|left, right| {
+            left.source_kind
+                .cmp(&right.source_kind)
+                .then(left.repeat_class.cmp(&right.repeat_class))
+                .then(left.repeat_family.cmp(&right.repeat_family))
+                .then(left.repeat_name.cmp(&right.repeat_name))
+        });
+        action.repeat_family_provenances = vec![];
+        for provenance in normalized_provenances {
+            if let Some(existing) = action.repeat_family_provenances.last_mut()
+                && existing.source_kind == provenance.source_kind
+                && existing.repeat_name == provenance.repeat_name
+                && existing.repeat_class == provenance.repeat_class
+                && existing.repeat_family == provenance.repeat_family
+            {
+                existing.source_refs.extend(provenance.source_refs);
+                existing.source_refs.sort();
+                existing.source_refs.dedup();
+                existing.evidence_ids.extend(provenance.evidence_ids);
+                existing.evidence_ids.sort();
+                existing.evidence_ids.dedup();
+                if provenance.agreement > existing.agreement {
+                    existing.agreement = provenance.agreement;
+                }
+                existing.confidence = match (existing.confidence, provenance.confidence) {
+                    (Some(left), Some(right)) => Some(left.max(right)),
+                    (left, right) => left.or(right),
+                };
+                continue;
+            }
+            action.repeat_family_provenances.push(provenance);
+        }
+        action.repeat_family_provenance = action.repeat_family_provenances.first().cloned();
+        action.action_id = if action.action_id.trim().is_empty() {
+            format!(
+                "inspection_{}_{}_{}_{}_{}",
+                Self::normalize_id_token(graph_id),
+                action.mode.as_str(),
+                action.focus_start_0based,
+                action.focus_end_0based_exclusive,
+                idx,
+            )
+        } else {
+            action.action_id.trim().to_string()
+        };
+        action
     }
 
     fn construct_reasoning_build_inspection_actions_for_source(
@@ -18140,8 +21008,9 @@ impl GentleEngine {
         let end_1based = focus_end_0based_exclusive;
         let context_tags = Self::construct_reasoning_context_tags_for_evidence_rows(&rows);
         let driving_evidence_ids = Self::construct_reasoning_driving_ids_for_evidence_rows(&rows);
-        let repeat_family_provenance =
-            Self::construct_reasoning_repeat_family_provenance_for_evidence_rows(&rows);
+        let repeat_family_provenances =
+            Self::construct_reasoning_repeat_family_provenances_for_evidence_rows(&rows);
+        let repeat_family_provenance = repeat_family_provenances.first().cloned();
         let rationale = source_rationale.trim();
         let source_fact_ids =
             Self::construct_reasoning_inspection_action_source_ids(source_fact_ids);
@@ -18193,6 +21062,7 @@ impl GentleEngine {
                     source_summary_ids: source_summary_ids.clone(),
                     context_tags: context_tags.clone(),
                     repeat_family_provenance: repeat_family_provenance.clone(),
+                    repeat_family_provenances: repeat_family_provenances.clone(),
                     ..ConstructReasoningInspectionAction::default()
                 }
             })
@@ -18316,6 +21186,30 @@ impl GentleEngine {
         if graph.generated_at_unix_ms == 0 {
             graph.generated_at_unix_ms = Self::now_unix_ms();
         }
+        graph.input_fingerprint = graph.input_fingerprint.take().map(|mut fingerprint| {
+            fingerprint.schema =
+                gentle_protocol::CONSTRUCT_REASONING_INPUT_FINGERPRINT_SCHEMA.to_string();
+            fingerprint.sequence_snapshot_sha256 =
+                fingerprint.sequence_snapshot_sha256.trim().to_string();
+            fingerprint.objective_sha256 = fingerprint.objective_sha256.trim().to_string();
+            fingerprint.rule_set_version = fingerprint.rule_set_version.trim().to_string();
+            fingerprint.source_artifact_kind = fingerprint
+                .source_artifact_kind
+                .take()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            fingerprint.source_artifact_id = fingerprint
+                .source_artifact_id
+                .take()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            fingerprint.source_artifact_sha256 = fingerprint
+                .source_artifact_sha256
+                .take()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            fingerprint
+        });
         for (idx, evidence) in graph.evidence.iter_mut().enumerate() {
             let mut normalized = Self::normalize_design_evidence(evidence.clone(), idx);
             if normalized.seq_id.is_empty() {
@@ -18399,9 +21293,236 @@ impl GentleEngine {
                 .then(a.title.cmp(&b.title))
                 .then(a.summary_id.cmp(&b.summary_id))
         });
-        graph.inspection_actions = Self::construct_reasoning_build_inspection_actions(&graph);
+        if graph.inspection_actions.is_empty() {
+            graph.inspection_actions = Self::construct_reasoning_build_inspection_actions(&graph);
+        } else {
+            let graph_id = graph.graph_id.clone();
+            let graph_seq_id = graph.seq_id.clone();
+            graph.inspection_actions = graph
+                .inspection_actions
+                .into_iter()
+                .enumerate()
+                .map(|(idx, action)| {
+                    Self::normalize_construct_reasoning_inspection_action(
+                        action,
+                        &graph_id,
+                        &graph_seq_id,
+                        idx,
+                    )
+                })
+                .collect();
+            graph
+                .inspection_actions
+                .sort_by(|left, right| left.action_id.cmp(&right.action_id));
+            graph
+                .inspection_actions
+                .dedup_by(|left, right| left.action_id == right.action_id);
+        }
         Self::normalize_optional_note_text(&mut graph.notes);
         graph
+    }
+
+    fn construct_reasoning_canonical_json<T: Serialize>(
+        value: &T,
+        label: &str,
+    ) -> Result<String, EngineError> {
+        let value = serde_json::to_value(value).map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not serialize construct-reasoning {label} for fingerprinting: {error}"
+            ),
+            cause_chain: vec![],
+        })?;
+        serde_json::to_string(&value).map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not canonicalize construct-reasoning {label} for fingerprinting: {error}"
+            ),
+            cause_chain: vec![],
+        })
+    }
+
+    fn construct_reasoning_input_fingerprint(
+        dna: &DNAsequence,
+        objective: &ConstructObjective,
+    ) -> Result<ConstructReasoningInputFingerprint, EngineError> {
+        // Serializing through `Value` gives object maps deterministic key order;
+        // direct HashMap serialization would make fingerprints process-dependent.
+        let sequence_snapshot = Self::construct_reasoning_canonical_json(dna, "sequence snapshot")?;
+        let objective_snapshot = Self::construct_reasoning_canonical_json(objective, "objective")?;
+        Ok(ConstructReasoningInputFingerprint {
+            sequence_snapshot_sha256: sha256_prefixed_str(&sequence_snapshot),
+            objective_sha256: sha256_prefixed_str(&objective_snapshot),
+            rule_set_version: CONSTRUCT_REASONING_RULE_SET_VERSION.to_string(),
+            ..ConstructReasoningInputFingerprint::default()
+        })
+    }
+
+    fn primer_design_report_content_sha256(
+        report: &PrimerDesignReport,
+    ) -> Result<String, EngineError> {
+        let report_snapshot =
+            Self::construct_reasoning_canonical_json(report, "primer-design report")?;
+        Ok(sha256_prefixed_str(&report_snapshot))
+    }
+
+    fn qpcr_design_report_content_sha256(report: &QpcrDesignReport) -> Result<String, EngineError> {
+        let report_snapshot =
+            Self::construct_reasoning_canonical_json(report, "qPCR-design report")?;
+        Ok(sha256_prefixed_str(&report_snapshot))
+    }
+
+    fn construct_reasoning_graph_snapshot_status_for_objective(
+        &self,
+        graph: &ConstructReasoningGraph,
+        objective: &ConstructObjective,
+    ) -> ConstructReasoningGraphSnapshotStatus {
+        let Some(stored) = graph.input_fingerprint.as_ref() else {
+            return ConstructReasoningGraphSnapshotStatus {
+                freshness: ConstructReasoningGraphFreshness::Unknown,
+                reasons: vec![
+                    "Graph predates construct-reasoning input fingerprints; refresh it to establish snapshot freshness."
+                        .to_string(),
+                ],
+            };
+        };
+        if stored.sequence_snapshot_sha256.is_empty()
+            || stored.objective_sha256.is_empty()
+            || stored.rule_set_version.is_empty()
+        {
+            return ConstructReasoningGraphSnapshotStatus {
+                freshness: ConstructReasoningGraphFreshness::Unknown,
+                reasons: vec![
+                    "Graph input fingerprint is incomplete; refresh it before relying on current-state actions."
+                        .to_string(),
+                ],
+            };
+        }
+        let Some(dna) = self.state.sequences.get(&graph.seq_id) else {
+            return ConstructReasoningGraphSnapshotStatus {
+                freshness: ConstructReasoningGraphFreshness::Unknown,
+                reasons: vec![format!(
+                    "Source sequence '{}' is not loaded, so snapshot freshness cannot be verified.",
+                    graph.seq_id
+                )],
+            };
+        };
+        let current = match Self::construct_reasoning_input_fingerprint(dna, objective) {
+            Ok(current) => current,
+            Err(error) => {
+                return ConstructReasoningGraphSnapshotStatus {
+                    freshness: ConstructReasoningGraphFreshness::Unknown,
+                    reasons: vec![error.to_string()],
+                };
+            }
+        };
+        let mut reasons = vec![];
+        if stored.sequence_snapshot_sha256 != current.sequence_snapshot_sha256 {
+            reasons.push(
+                "Source sequence or feature snapshot changed after graph generation.".to_string(),
+            );
+        }
+        if stored.objective_sha256 != current.objective_sha256 {
+            reasons.push("Construct objective changed after graph generation.".to_string());
+        }
+        if stored.rule_set_version != current.rule_set_version {
+            reasons.push(format!(
+                "Reasoning rule set changed from '{}' to '{}'.",
+                stored.rule_set_version, current.rule_set_version
+            ));
+        }
+        let source_artifact_fields_present = stored.source_artifact_kind.is_some()
+            || stored.source_artifact_id.is_some()
+            || stored.source_artifact_sha256.is_some();
+        if source_artifact_fields_present {
+            let (Some(source_kind), Some(source_id), Some(source_sha256)) = (
+                stored.source_artifact_kind.as_deref(),
+                stored.source_artifact_id.as_deref(),
+                stored.source_artifact_sha256.as_deref(),
+            ) else {
+                return ConstructReasoningGraphSnapshotStatus {
+                    freshness: ConstructReasoningGraphFreshness::Unknown,
+                    reasons: vec![
+                        "Graph source-artifact fingerprint is incomplete; refresh it before relying on current-state actions."
+                            .to_string(),
+                    ],
+                };
+            };
+            let report_store = self.read_primer_design_store();
+            let current_sha256 = match source_kind {
+                "primer_design_report" => {
+                    let Some(report) = report_store.reports.get(source_id) else {
+                        reasons.push(format!(
+                            "Source primer-design report '{source_id}' is no longer stored."
+                        ));
+                        return ConstructReasoningGraphSnapshotStatus {
+                            freshness: ConstructReasoningGraphFreshness::Stale,
+                            reasons,
+                        };
+                    };
+                    Self::primer_design_report_content_sha256(report)
+                }
+                "qpcr_design_report" => {
+                    let Some(report) = report_store.qpcr_reports.get(source_id) else {
+                        reasons.push(format!(
+                            "Source qPCR-design report '{source_id}' is no longer stored."
+                        ));
+                        return ConstructReasoningGraphSnapshotStatus {
+                            freshness: ConstructReasoningGraphFreshness::Stale,
+                            reasons,
+                        };
+                    };
+                    Self::qpcr_design_report_content_sha256(report)
+                }
+                _ => {
+                    return ConstructReasoningGraphSnapshotStatus {
+                        freshness: ConstructReasoningGraphFreshness::Unknown,
+                        reasons: vec![format!(
+                            "Graph source-artifact kind '{source_kind}' is not supported for freshness verification."
+                        )],
+                    };
+                }
+            };
+            match current_sha256 {
+                Ok(current_sha256) if current_sha256 != source_sha256 => {
+                    let source_label = match source_kind {
+                        "primer_design_report" => "primer-design report",
+                        "qpcr_design_report" => "qPCR-design report",
+                        _ => "source artifact",
+                    };
+                    reasons.push(format!(
+                        "Source {source_label} '{source_id}' changed after graph generation."
+                    ));
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    return ConstructReasoningGraphSnapshotStatus {
+                        freshness: ConstructReasoningGraphFreshness::Unknown,
+                        reasons: vec![error.to_string()],
+                    };
+                }
+            }
+        }
+        ConstructReasoningGraphSnapshotStatus {
+            freshness: if reasons.is_empty() {
+                ConstructReasoningGraphFreshness::Current
+            } else {
+                ConstructReasoningGraphFreshness::Stale
+            },
+            reasons,
+        }
+    }
+
+    pub fn construct_reasoning_graph_snapshot_status(
+        &self,
+        graph: &ConstructReasoningGraph,
+    ) -> ConstructReasoningGraphSnapshotStatus {
+        let store = self.read_construct_reasoning_store();
+        let objective = store
+            .objectives
+            .get(&graph.objective.objective_id)
+            .unwrap_or(&graph.objective);
+        self.construct_reasoning_graph_snapshot_status_for_objective(graph, objective)
     }
 
     fn read_construct_reasoning_store_from_metadata(
@@ -18487,6 +21608,25 @@ impl GentleEngine {
         self.read_construct_reasoning_store()
     }
 
+    pub(crate) fn construct_reasoning_graphs_from_state(
+        state: &ProjectState,
+    ) -> Vec<ConstructReasoningGraph> {
+        let mut graphs = Self::read_construct_reasoning_store_from_metadata(
+            state.metadata.get(CONSTRUCT_REASONING_METADATA_KEY),
+        )
+        .graphs
+        .into_values()
+        .collect::<Vec<_>>();
+        graphs.sort_by(|left, right| {
+            left.seq_id
+                .to_ascii_lowercase()
+                .cmp(&right.seq_id.to_ascii_lowercase())
+                .then(left.generated_at_unix_ms.cmp(&right.generated_at_unix_ms))
+                .then(left.graph_id.cmp(&right.graph_id))
+        });
+        graphs
+    }
+
     pub fn list_construct_reasoning_graph_summaries(
         &self,
         seq_id_filter: Option<&str>,
@@ -18495,8 +21635,9 @@ impl GentleEngine {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(|value| value.to_ascii_lowercase());
+        let store = self.read_construct_reasoning_store();
         let mut rows =
-            self.read_construct_reasoning_store()
+            store
                 .graphs
                 .values()
                 .filter(|graph| {
@@ -18505,6 +21646,12 @@ impl GentleEngine {
                         .is_none_or(|needle| graph.seq_id.to_ascii_lowercase() == *needle)
                 })
                 .map(|graph| {
+                    let objective = store
+                        .objectives
+                        .get(&graph.objective.objective_id)
+                        .unwrap_or(&graph.objective);
+                    let snapshot_status = self
+                        .construct_reasoning_graph_snapshot_status_for_objective(graph, objective);
                     let summary =
                         Self::summarize_process_run_bundle_construct_reasoning_graph(graph);
                     let (
@@ -18515,6 +21662,8 @@ impl GentleEngine {
                         graph_id: graph.graph_id.clone(),
                         seq_id: graph.seq_id.clone(),
                         generated_at_unix_ms: graph.generated_at_unix_ms,
+                        freshness: snapshot_status.freshness,
+                        stale_reasons: snapshot_status.reasons,
                         op_id: graph.op_id.clone(),
                         run_id: graph.run_id.clone(),
                         objective_id: graph.objective.objective_id.clone(),
@@ -18653,6 +21802,34 @@ impl GentleEngine {
             &self.read_construct_reasoning_store(),
             target,
         );
+        if let Some(graph) = existing.as_ref()
+            && matches!(
+                graph
+                    .input_fingerprint
+                    .as_ref()
+                    .and_then(|fingerprint| fingerprint.source_artifact_kind.as_deref()),
+                Some("primer_design_report" | "qpcr_design_report")
+            )
+        {
+            let status = self.construct_reasoning_graph_snapshot_status(graph);
+            if status.freshness == ConstructReasoningGraphFreshness::Current {
+                return Ok(graph.clone());
+            }
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Report-bound primer-selection reasoning graph '{}' is {} and cannot be rebuilt as a generic construct graph; rerun DesignPrimerPairs or DesignQpcrAssays to refresh its report-bound evidence{}",
+                    graph.graph_id,
+                    status.freshness.as_str(),
+                    if status.reasons.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" ({})", status.reasons.join("; "))
+                    }
+                ),
+                cause_chain: vec![],
+            });
+        }
         let objective_id = existing
             .as_ref()
             .map(|graph| graph.objective.objective_id.as_str());
@@ -18990,7 +22167,6 @@ impl GentleEngine {
                     "Evidence '{}' referenced by annotation candidate '{}' was not found in graph '{}'",
                     candidate.evidence_id, annotation_id, graph_id
                 ),
-            
                 cause_chain: vec![],})?;
         let mut writeback = AnnotationCandidateWriteback {
             graph_id: graph.graph_id.clone(),
@@ -20778,20 +23954,21 @@ impl GentleEngine {
             let rationale =
                 Self::construct_reasoning_feature_rationale(feature, role, evidence_class);
             let context_tags = Self::construct_reasoning_feature_context_tags(feature);
+            let repeat_descriptor = Self::construct_reasoning_repeat_feature_descriptor(feature);
             let (feature_provenance_refs, feature_notes) =
                 if let Some((source_kind, repeat_name, repeat_class, repeat_family)) =
-                    Self::construct_reasoning_repeat_feature_descriptor(feature)
+                    repeat_descriptor.as_ref()
                 {
                     (
                         Self::construct_reasoning_repeat_feature_provenance_refs(
-                            &source_kind,
+                            source_kind,
                             repeat_name.as_deref(),
                             repeat_class.as_deref(),
                             repeat_family.as_deref(),
                             feature,
                         ),
                         Self::construct_reasoning_repeat_feature_notes(
-                            &source_kind,
+                            source_kind,
                             repeat_name.as_deref(),
                             repeat_class.as_deref(),
                             repeat_family.as_deref(),
@@ -20801,6 +23978,16 @@ impl GentleEngine {
                 } else {
                     (vec![feature.kind.to_string()], vec![])
                 };
+            let repeat_annotation =
+                repeat_descriptor.map(|(source_kind, repeat_name, repeat_class, repeat_family)| {
+                    ConstructReasoningRepeatAnnotation {
+                        source_kind,
+                        repeat_name,
+                        repeat_class,
+                        repeat_family,
+                        source_refs: feature_provenance_refs.clone(),
+                    }
+                });
             let strand = Some(
                 if feature_is_reverse(feature) {
                     "-"
@@ -20847,6 +24034,7 @@ impl GentleEngine {
                     context_tags: context_tags.clone(),
                     provenance_kind: "sequence_feature_annotation".to_string(),
                     provenance_refs: feature_provenance_refs.clone(),
+                    repeat_annotation: repeat_annotation.clone(),
                     notes: feature_notes.clone(),
                     ..DesignEvidence::default()
                 });
@@ -22359,15 +25547,6 @@ impl GentleEngine {
         }
     }
 
-    fn construct_reasoning_min_score_for_severity(severity: ConstructReasoningSeverity) -> f64 {
-        match severity {
-            ConstructReasoningSeverity::None => 0.0,
-            ConstructReasoningSeverity::Low => 0.20,
-            ConstructReasoningSeverity::Medium => 0.50,
-            ConstructReasoningSeverity::High => 0.85,
-        }
-    }
-
     fn construct_reasoning_task_score(
         severity: ConstructReasoningSeverity,
         evidence_score: f64,
@@ -22379,38 +25558,61 @@ impl GentleEngine {
         };
         match severity {
             ConstructReasoningSeverity::None => 0.0,
-            ConstructReasoningSeverity::Low => evidence_score.clamp(0.20, 0.24),
-            ConstructReasoningSeverity::Medium => evidence_score.clamp(0.50, 0.59),
-            ConstructReasoningSeverity::High => {
-                evidence_score.max(Self::construct_reasoning_min_score_for_severity(severity))
+            ConstructReasoningSeverity::Low => 0.10 + 0.14 * evidence_score,
+            ConstructReasoningSeverity::Medium => 0.25 + 0.34 * evidence_score,
+            ConstructReasoningSeverity::High => 0.60 + 0.40 * evidence_score,
+        }
+    }
+
+    fn construct_reasoning_normalize_task_text(raw: &str) -> String {
+        let mut normalized = String::with_capacity(raw.len().saturating_add(2));
+        normalized.push('_');
+        for character in raw.chars() {
+            if character.is_ascii_alphanumeric() {
+                normalized.push(character.to_ascii_lowercase());
+            } else if !normalized.ends_with('_') {
+                normalized.push('_');
             }
         }
-    }
-
-    fn construct_reasoning_text_has_any(haystack: &str, needles: &[&str]) -> bool {
-        needles.iter().any(|needle| haystack.contains(needle))
-    }
-
-    fn construct_reasoning_objective_text(objective: &ConstructObjective) -> String {
-        let mut parts = vec![objective.title.as_str(), objective.goal.as_str()];
-        for value in [
-            objective.host_species.as_deref(),
-            objective.cell_type.as_deref(),
-            objective.tissue.as_deref(),
-            objective.organelle.as_deref(),
-            objective.expression_intent.as_deref(),
-            objective.propagation_host_profile_id.as_deref(),
-            objective.expression_host_profile_id.as_deref(),
-            objective.helper_profile_id.as_deref(),
-        ]
-        .into_iter()
-        .flatten()
-        {
-            parts.push(value);
+        if !normalized.ends_with('_') {
+            normalized.push('_');
         }
-        parts.extend(objective.medium_conditions.iter().map(String::as_str));
-        parts.extend(objective.required_host_traits.iter().map(String::as_str));
-        parts.extend(objective.forbidden_host_traits.iter().map(String::as_str));
+        normalized
+    }
+
+    fn construct_reasoning_task_text_has_affirmed_any(text: &str, needles: &[&str]) -> bool {
+        needles.iter().any(|needle| {
+            let needle = Self::construct_reasoning_normalize_task_text(needle);
+            let needle = needle.trim_matches('_');
+            let positive = format!("_{needle}_");
+            text.match_indices(&positive).any(|(start, _)| {
+                let prior_tokens = text[..start]
+                    .trim_matches('_')
+                    .split('_')
+                    .filter(|token| !token.is_empty())
+                    .rev()
+                    .take(4)
+                    .collect::<Vec<_>>();
+                let negated = prior_tokens.iter().any(|token| {
+                    matches!(
+                        *token,
+                        "no" | "not" | "avoid" | "avoiding" | "without" | "exclude" | "excluding"
+                    )
+                });
+                let suffix = &text[start.saturating_add(positive.len())..];
+                let qualified_as_free = suffix
+                    .trim_matches('_')
+                    .split('_')
+                    .find(|token| !token.is_empty())
+                    == Some("free");
+                !negated && !qualified_as_free
+            })
+        })
+    }
+
+    fn construct_reasoning_objective_task_text(objective: &ConstructObjective) -> String {
+        let mut parts = vec![objective.title.as_str(), objective.goal.as_str()];
+        parts.extend(objective.expression_intent.as_deref());
         parts.extend(objective.notes.iter().map(String::as_str));
         parts.extend(
             objective
@@ -22426,79 +25628,41 @@ impl GentleEngine {
         }
         for step in &objective.host_route {
             parts.push(step.step_id.as_str());
-            parts.push(step.host_profile_id.as_str());
-            parts.push(step.role.as_str());
             parts.push(step.rationale.as_str());
             parts.extend(step.notes.iter().map(String::as_str));
         }
         for plan in &objective.adapter_restriction_capture_plans {
             parts.push(plan.capture_id.as_str());
-            parts.push(plan.restriction_enzyme_name.as_str());
-            parts.extend(plan.extra_retrieval_enzyme_names.iter().map(String::as_str));
             parts.extend(plan.notes.iter().map(String::as_str));
         }
-        parts
-            .join(" ")
-            .replace('-', "_")
-            .replace('/', "_")
-            .replace('.', "_")
-            .to_ascii_lowercase()
-    }
-
-    fn construct_reasoning_objective_has_explicit_task_context(
-        objective: &ConstructObjective,
-        text: &str,
-    ) -> bool {
-        let metadata_present = objective.host_species.is_some()
-            || objective.cell_type.is_some()
-            || objective.tissue.is_some()
-            || objective.organelle.is_some()
-            || objective.expression_intent.is_some()
-            || objective.propagation_host_profile_id.is_some()
-            || objective.expression_host_profile_id.is_some()
-            || !objective.host_route.is_empty()
-            || !objective.medium_conditions.is_empty()
-            || objective.helper_profile_id.is_some()
-            || !objective.adapter_restriction_capture_plans.is_empty()
-            || !objective.required_host_traits.is_empty()
-            || !objective.forbidden_host_traits.is_empty()
-            || !objective.required_roles.is_empty()
-            || !objective.forbidden_roles.is_empty()
-            || !objective.preferred_routine_families.is_empty()
-            || !objective.notes.is_empty();
-        let task_words = [
-            "pcr",
-            "qpcr",
-            "amplicon",
-            "primer",
-            "nanopore",
-            "sequencing",
-            "read_mapping",
-            "mapping",
-            "alignment",
-            "rna_seq",
-            "illumina",
-            "clone",
-            "cloning",
-            "assembly",
-            "ligation",
-            "propagation",
-            "stability",
-            "maintenance",
-            "storage",
-        ];
-        metadata_present || Self::construct_reasoning_text_has_any(text, &task_words)
+        Self::construct_reasoning_normalize_task_text(&parts.join(" "))
     }
 
     fn construct_reasoning_objective_task_relevance(
         objective: &ConstructObjective,
         task: ConstructReasoningRiskTask,
-    ) -> Option<(bool, &'static str)> {
-        let text = Self::construct_reasoning_objective_text(objective);
-        if !Self::construct_reasoning_objective_has_explicit_task_context(objective, &text) {
-            return None;
+    ) -> (
+        ConstructReasoningTaskApplicability,
+        ConstructReasoningTaskApplicabilityBasis,
+        &'static str,
+    ) {
+        if let Some(intended_tasks) = &objective.intended_tasks {
+            return if intended_tasks.contains(&task) {
+                (
+                    ConstructReasoningTaskApplicability::Applicable,
+                    ConstructReasoningTaskApplicabilityBasis::ExplicitObjectiveTasks,
+                    "the task is listed in objective.intended_tasks",
+                )
+            } else {
+                (
+                    ConstructReasoningTaskApplicability::NotApplicable,
+                    ConstructReasoningTaskApplicabilityBasis::ExplicitObjectiveTasks,
+                    "the task is omitted from the explicit objective.intended_tasks list",
+                )
+            };
         }
 
+        let text = Self::construct_reasoning_objective_task_text(objective);
         let has_propagation_or_storage = objective.host_route.iter().any(|step| {
             matches!(
                 step.role,
@@ -22513,56 +25677,47 @@ impl GentleEngine {
                 .any(|step| step.role == HostLifecycleRole::Expression);
         let has_adapter_capture = !objective.adapter_restriction_capture_plans.is_empty();
         let relevant = match task {
-            ConstructReasoningRiskTask::Pcr => Self::construct_reasoning_text_has_any(
-                &text,
-                &[
-                    "pcr",
-                    "qpcr",
-                    "amplification",
-                    "amplicon",
-                    "primer",
-                    "mutagenesis",
-                ],
-            ),
+            ConstructReasoningRiskTask::Pcr => {
+                Self::construct_reasoning_task_text_has_affirmed_any(
+                    &text,
+                    &[
+                        "pcr",
+                        "qpcr",
+                        "amplification",
+                        "amplicon",
+                        "primer",
+                        "mutagenesis",
+                    ],
+                )
+            }
             ConstructReasoningRiskTask::NanoporeSequencing => {
-                Self::construct_reasoning_text_has_any(
+                Self::construct_reasoning_task_text_has_affirmed_any(
                     &text,
                     &[
                         "nanopore",
-                        "long_read",
-                        "long read",
-                        "direct_sequencing",
-                        "direct sequencing",
-                        "sequence_confirmation",
-                        "sequence confirmation",
+                        "ont",
+                        "long_read_sequencing",
+                        "nanopore_sequencing",
                     ],
-                ) || (Self::construct_reasoning_text_has_any(&text, &["sequencing"])
-                    && !Self::construct_reasoning_text_has_any(
-                        &text,
-                        &["illumina", "short_read", "short read"],
-                    ))
+                )
             }
-            ConstructReasoningRiskTask::ReadMapping => Self::construct_reasoning_text_has_any(
-                &text,
-                &[
-                    "read_mapping",
-                    "read mapping",
-                    "mapping",
-                    "alignment",
-                    "align",
-                    "rna_seq",
-                    "rna seq",
-                    "rna_reads",
-                    "rna reads",
-                    "illumina",
-                    "nanopore",
-                    "sequencing",
-                ],
-            ),
+            ConstructReasoningRiskTask::ReadMapping => {
+                Self::construct_reasoning_task_text_has_affirmed_any(
+                    &text,
+                    &[
+                        "read_mapping",
+                        "mapping",
+                        "rna_seq",
+                        "rna_reads",
+                        "illumina",
+                        "short_read_sequencing",
+                    ],
+                )
+            }
             ConstructReasoningRiskTask::CloningStability => {
                 has_adapter_capture
                     || has_propagation_or_storage
-                    || Self::construct_reasoning_text_has_any(
+                    || Self::construct_reasoning_task_text_has_affirmed_any(
                         &text,
                         &[
                             "clone",
@@ -22585,7 +25740,7 @@ impl GentleEngine {
             ConstructReasoningRiskTask::ConstructMaintenance => {
                 has_propagation_or_storage
                     || has_expression
-                    || Self::construct_reasoning_text_has_any(
+                    || Self::construct_reasoning_task_text_has_affirmed_any(
                         &text,
                         &[
                             "maintenance",
@@ -22609,16 +25764,16 @@ impl GentleEngine {
                 "no PCR, primer, amplicon, or amplification step is named in the objective"
             }
             (ConstructReasoningRiskTask::NanoporeSequencing, true) => {
-                "the objective names nanopore, direct sequencing, or sequence confirmation"
+                "the objective names nanopore/ONT or long-read sequencing"
             }
             (ConstructReasoningRiskTask::NanoporeSequencing, false) => {
-                "no nanopore, direct sequencing, or sequence-confirmation step is named in the objective"
+                "no nanopore/ONT or long-read sequencing step is named in the objective"
             }
             (ConstructReasoningRiskTask::ReadMapping, true) => {
-                "the objective names sequencing, alignment, or read mapping"
+                "the objective names read mapping, RNA-seq, Illumina, or short-read sequencing"
             }
             (ConstructReasoningRiskTask::ReadMapping, false) => {
-                "no sequencing, alignment, or read-mapping step is named in the objective"
+                "no read-mapping, RNA-seq, Illumina, or short-read sequencing step is named in the objective"
             }
             (ConstructReasoningRiskTask::CloningStability, true) => {
                 "the objective includes cloning, assembly, adapter capture, or propagation"
@@ -22633,7 +25788,19 @@ impl GentleEngine {
                 "no propagation, expression, storage, or long-term maintenance context is named in the objective"
             }
         };
-        Some((relevant, reason))
+        if relevant {
+            (
+                ConstructReasoningTaskApplicability::Applicable,
+                ConstructReasoningTaskApplicabilityBasis::LegacyObjectiveInference,
+                reason,
+            )
+        } else {
+            (
+                ConstructReasoningTaskApplicability::Unknown,
+                ConstructReasoningTaskApplicabilityBasis::Unspecified,
+                "the legacy objective does not explicitly declare whether this task is performed",
+            )
+        }
     }
 
     fn construct_reasoning_task_severity(
@@ -22651,34 +25818,53 @@ impl GentleEngine {
             .collect::<Vec<_>>();
         supporting_evidence_ids.sort();
         supporting_evidence_ids.dedup();
-        let mut score = Self::construct_reasoning_task_score(severity, evidence_score);
+        let base_score = Self::construct_reasoning_task_score(severity, evidence_score);
+        let base_severity = Self::construct_reasoning_severity_from_score(base_score);
         let mut rationale = rationale.into().trim().to_string();
-        if let Some((relevant, reason)) =
-            Self::construct_reasoning_objective_task_relevance(objective, task)
-        {
-            if relevant {
-                score = (score + 0.08).min(1.0);
-                if !rationale.is_empty() {
-                    rationale.push(' ');
-                }
-                rationale.push_str("Objective context makes this task directly relevant because ");
-                rationale.push_str(reason);
-                rationale.push('.');
-            } else {
-                score = score.min(0.05);
-                if !rationale.is_empty() {
-                    rationale.push(' ');
-                }
-                rationale.push_str(
-                    "Objective context does not currently perform this task, so the score is down-weighted because ",
-                );
-                rationale.push_str(reason);
-                rationale.push('.');
+        let (applicability, applicability_basis, applicability_reason) =
+            Self::construct_reasoning_objective_task_relevance(objective, task);
+        let score = match applicability {
+            ConstructReasoningTaskApplicability::Applicable if base_score > 0.0 => {
+                (base_score + 0.08).min(1.0)
+            }
+            ConstructReasoningTaskApplicability::NotApplicable => 0.0,
+            _ => base_score,
+        };
+        let objective_adjustment = score - base_score;
+        if !rationale.is_empty() {
+            rationale.push(' ');
+        }
+        match applicability {
+            ConstructReasoningTaskApplicability::Applicable => {
+                rationale.push_str("Objective applicability is ");
+                rationale.push_str(applicability_basis.as_str());
+                rationale.push_str(" because ");
+                rationale.push_str(applicability_reason);
+                rationale.push_str(&format!(
+                    "; the effective score includes a {objective_adjustment:+.2} objective-priority adjustment."
+                ));
+            }
+            ConstructReasoningTaskApplicability::NotApplicable => {
+                rationale.push_str("Objective applicability is explicitly not applicable because ");
+                rationale.push_str(applicability_reason);
+                rationale.push_str(&format!(
+                    "; intrinsic score {base_score:.2} is preserved while effective priority is 0.00."
+                ));
+            }
+            ConstructReasoningTaskApplicability::Unknown => {
+                rationale.push_str("Objective applicability is unspecified because ");
+                rationale.push_str(applicability_reason);
+                rationale.push_str("; no objective adjustment was applied.");
             }
         }
         let severity = Self::construct_reasoning_severity_from_score(score);
         ConstructReasoningTaskSeverity {
             task,
+            applicability,
+            applicability_basis,
+            base_severity: Some(base_severity),
+            base_score: Some(base_score),
+            objective_adjustment: Some(objective_adjustment),
             severity,
             score: Some(score),
             rationale,
@@ -24936,6 +28122,7 @@ impl GentleEngine {
         } else {
             Self::construct_reasoning_default_objective(seq_id, dna)
         };
+        let input_fingerprint = Self::construct_reasoning_input_fingerprint(dna, &objective)?;
 
         let mut evidence =
             Self::build_construct_reasoning_objective_context_evidence(seq_id, &objective);
@@ -24977,6 +28164,7 @@ impl GentleEngine {
             seq_id: seq_id.to_string(),
             objective,
             generated_at_unix_ms: Self::now_unix_ms(),
+            input_fingerprint: Some(input_fingerprint),
             evidence,
             facts,
             decisions,
@@ -25047,6 +28235,27 @@ impl GentleEngine {
         )
     }
 
+    pub(crate) fn dotplot_views_from_state(state: &ProjectState) -> Vec<DotplotView> {
+        let mut views = Self::read_dotplot_analysis_store_from_metadata(
+            state.metadata.get(DOTPLOT_ANALYSIS_METADATA_KEY),
+        )
+        .dotplots
+        .into_values()
+        .collect::<Vec<_>>();
+        views.sort_by(|left, right| {
+            left.owner_seq_id
+                .to_ascii_lowercase()
+                .cmp(&right.owner_seq_id.to_ascii_lowercase())
+                .then(left.generated_at_unix_ms.cmp(&right.generated_at_unix_ms))
+                .then(
+                    left.dotplot_id
+                        .to_ascii_lowercase()
+                        .cmp(&right.dotplot_id.to_ascii_lowercase()),
+                )
+        });
+        views
+    }
+
     fn write_dotplot_analysis_store(
         &mut self,
         mut store: DotplotAnalysisStore,
@@ -25098,6 +28307,199 @@ impl GentleEngine {
             });
         }
         Ok(out)
+    }
+
+    fn verify_dotplot_inspection_provenance(
+        &self,
+        mut citation: DotplotInspectionProvenanceCitation,
+        actual_request: &DotplotInspectionRequestSnapshot,
+    ) -> DotplotInspectionProvenanceCitation {
+        let mut reasons = citation.verification_reasons.clone();
+        if citation.schema != DOTPLOT_INSPECTION_PROVENANCE_CITATION_SCHEMA {
+            reasons.push(format!(
+                "Citation schema '{}' does not match expected schema '{}'.",
+                citation.schema, DOTPLOT_INSPECTION_PROVENANCE_CITATION_SCHEMA
+            ));
+        }
+        if citation.request != *actual_request {
+            reasons.push(
+                "Cited dotplot request does not match the resolved request that was computed."
+                    .to_string(),
+            );
+        }
+
+        let graph = self
+            .read_construct_reasoning_store()
+            .graphs
+            .get(citation.graph_id.trim())
+            .cloned();
+        if let Some(graph) = graph {
+            if citation.graph_schema != graph.schema {
+                reasons.push(format!(
+                    "Cited graph schema '{}' differs from stored graph schema '{}'.",
+                    citation.graph_schema, graph.schema
+                ));
+            }
+            if citation.graph_op_id != graph.op_id {
+                reasons.push("Cited graph operation id differs from the stored graph.".to_string());
+            }
+            if citation.graph_run_id != graph.run_id {
+                reasons.push("Cited graph run id differs from the stored graph.".to_string());
+            }
+            if citation.graph_generated_at_unix_ms != graph.generated_at_unix_ms {
+                reasons
+                    .push("Cited graph generation time differs from the stored graph.".to_string());
+            }
+            if citation.graph_input_fingerprint != graph.input_fingerprint {
+                reasons.push(
+                    "Cited graph input fingerprint differs from the stored graph.".to_string(),
+                );
+            }
+
+            let snapshot_status = self.construct_reasoning_graph_snapshot_status(&graph);
+            citation.graph_snapshot_freshness = snapshot_status.freshness;
+            citation.graph_snapshot_reasons = snapshot_status.reasons.clone();
+
+            if let Some(action) = graph
+                .inspection_actions
+                .iter()
+                .find(|action| action.action_id == citation.action_id)
+            {
+                if citation.action_schema != action.schema {
+                    reasons.push(format!(
+                        "Cited action schema '{}' differs from stored action schema '{}'.",
+                        citation.action_schema, action.schema
+                    ));
+                }
+                if citation.action_kind != action.action_kind {
+                    reasons.push("Cited action kind differs from the stored action.".to_string());
+                }
+                if citation.dotplot_mode != action.mode {
+                    reasons.push("Cited dotplot mode differs from the stored action.".to_string());
+                }
+                if citation.action_focus_start_0based != action.focus_start_0based
+                    || citation.action_focus_end_0based_exclusive
+                        != action.focus_end_0based_exclusive
+                {
+                    reasons.push(
+                        "Cited action focus differs from the stored action focus.".to_string(),
+                    );
+                }
+                if citation.source_fact_ids != action.source_fact_ids {
+                    reasons
+                        .push("Cited source fact ids differ from the stored action.".to_string());
+                }
+                if citation.source_annotation_ids != action.source_annotation_ids {
+                    reasons.push(
+                        "Cited source annotation ids differ from the stored action.".to_string(),
+                    );
+                }
+                if citation.source_summary_ids != action.source_summary_ids {
+                    reasons.push(
+                        "Cited source summary ids differ from the stored action.".to_string(),
+                    );
+                }
+                if citation.driving_evidence_ids != action.driving_evidence_ids {
+                    reasons.push(
+                        "Cited driving evidence ids differ from the stored action.".to_string(),
+                    );
+                }
+                if citation.rationale != action.rationale {
+                    reasons.push("Cited rationale differs from the stored action.".to_string());
+                }
+
+                let source_candidate_ids = action
+                    .source_annotation_ids
+                    .iter()
+                    .filter(|id| {
+                        graph
+                            .candidates
+                            .iter()
+                            .any(|candidate| candidate.candidate_id == id.as_str())
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>();
+                if citation.source_candidate_ids != source_candidate_ids {
+                    reasons.push(
+                        "Cited source candidate ids differ from the stored graph/action."
+                            .to_string(),
+                    );
+                }
+
+                if let Some(sequence_len) = self
+                    .state
+                    .sequences
+                    .get(actual_request.seq_id.as_str())
+                    .map(DNAsequence::len)
+                {
+                    match construct_reasoning_action_dotplot_request(
+                        action,
+                        &graph.seq_id,
+                        sequence_len,
+                    ) {
+                        Ok(resolved) => {
+                            if resolved.seq_id != actual_request.seq_id
+                                || resolved.mode != actual_request.mode
+                                || resolved.span_start_0based != actual_request.span_start_0based
+                                || resolved.span_end_0based != actual_request.span_end_0based
+                            {
+                                reasons.push(
+                                    "Computed dotplot request differs from the request resolved from the stored action."
+                                        .to_string(),
+                                );
+                            }
+                            let live_validation = construct_reasoning_dotplot_inspection_provenance(
+                                &graph,
+                                action,
+                                &snapshot_status,
+                                &resolved,
+                                actual_request.clone(),
+                            );
+                            reasons.extend(live_validation.verification_reasons);
+                        }
+                        Err(error) => reasons.push(format!(
+                            "Stored action could not be resolved as a dotplot request: {}",
+                            error.message
+                        )),
+                    }
+                } else {
+                    reasons.push(format!(
+                        "Computed sequence '{}' is not loaded for action verification.",
+                        actual_request.seq_id
+                    ));
+                }
+            } else {
+                reasons.push(format!(
+                    "Inspection action '{}' is absent from graph '{}'.",
+                    citation.action_id, graph.graph_id
+                ));
+            }
+        } else {
+            citation.graph_snapshot_freshness = ConstructReasoningGraphFreshness::Unknown;
+            citation.graph_snapshot_reasons = vec![format!(
+                "Construct-reasoning graph '{}' is not stored.",
+                citation.graph_id
+            )];
+            reasons.push(format!(
+                "Construct-reasoning graph '{}' is not stored.",
+                citation.graph_id
+            ));
+        }
+
+        reasons.sort();
+        reasons.dedup();
+        citation.verification_reasons = reasons;
+        citation.status = if !citation.verification_reasons.is_empty()
+            || citation.graph_snapshot_freshness == ConstructReasoningGraphFreshness::Stale
+        {
+            DotplotInspectionProvenanceStatus::Fail
+        } else if citation.graph_snapshot_freshness == ConstructReasoningGraphFreshness::Current {
+            DotplotInspectionProvenanceStatus::Pass
+        } else {
+            DotplotInspectionProvenanceStatus::Unknown
+        };
+        citation.summary = dotplot_inspection_provenance_summary(&citation);
+        citation
     }
 
     fn resolve_analysis_span(
@@ -25799,6 +29201,9 @@ impl GentleEngine {
             seq_id: query_seq_id.trim().to_string(),
             reference_seq_id: Some(reference_seq_id.trim().to_string()),
             generated_at_unix_ms: 0,
+            op_id: None,
+            run_id: None,
+            inspection_provenance: None,
             span_start_0based: primary_series.span_start_0based,
             span_end_0based: primary_series.span_end_0based,
             reference_span_start_0based,
@@ -25936,6 +29341,9 @@ impl GentleEngine {
                 seq_id: view.seq_id.clone(),
                 reference_seq_id: view.reference_seq_id.clone(),
                 generated_at_unix_ms: view.generated_at_unix_ms,
+                op_id: view.op_id.clone(),
+                run_id: view.run_id.clone(),
+                inspection_provenance: view.inspection_provenance.clone(),
                 span_start_0based: view.span_start_0based,
                 span_end_0based: view.span_end_0based,
                 reference_span_start_0based: view.reference_span_start_0based,
@@ -26389,6 +29797,29 @@ impl GentleEngine {
         motifs.dedup();
         config.forbidden_motifs = motifs;
         Ok(config)
+    }
+
+    /// Shallow input inventory for launchers; does not clone guide arrays or imply preflight.
+    pub fn guide_set_input_ids(&self) -> Vec<String> {
+        let Some(sets) = self
+            .state
+            .metadata
+            .get(GUIDE_DESIGN_METADATA_KEY)
+            .and_then(|store| store.get("guide_sets"))
+            .and_then(serde_json::Value::as_object)
+        else {
+            return vec![];
+        };
+        let mut ids = sets
+            .iter()
+            .filter(|(id, set)| {
+                set.get("guide_set_id").and_then(serde_json::Value::as_str) == Some(id.as_str())
+                    && set.get("guides").is_some_and(serde_json::Value::is_array)
+            })
+            .map(|(id, _)| id.clone())
+            .collect::<Vec<_>>();
+        ids.sort();
+        ids
     }
 
     pub fn list_guide_sets(&self) -> Vec<GuideSetSummary> {
@@ -27200,7 +30631,6 @@ impl GentleEngine {
             message: format!(
                 "Sequence '{seq_id}' is not anchored to a genome interval; run ExtractGenomeRegion/ExtractGenomeGene/ExtendGenomeAnchor first"
             ),
-        
             cause_chain: vec![],})
     }
 
@@ -27293,6 +30723,7 @@ impl Engine for GentleEngine {
         let run_id = "interactive".to_string();
         let mut noop = |_p: OperationProgress| true;
         let checkpoint = self.maybe_capture_checkpoint(&op);
+        let checkpoint_kind = checkpoint.as_ref().map(EngineHistoryCheckpoint::kind);
         let result = self.apply_internal(op.clone(), &run_id, &mut noop)?;
         self.journal.push(OperationRecord {
             run_id,
@@ -27302,6 +30733,7 @@ impl Engine for GentleEngine {
         if let Some(checkpoint) = checkpoint {
             self.push_undo_checkpoint(checkpoint);
         }
+        self.bump_revision_for_checkpoint_kind(checkpoint_kind);
         Ok(result)
     }
 
@@ -27310,6 +30742,7 @@ impl Engine for GentleEngine {
         for op in &wf.ops {
             let mut noop = |_p: OperationProgress| true;
             let checkpoint = self.maybe_capture_checkpoint(op);
+            let checkpoint_kind = checkpoint.as_ref().map(EngineHistoryCheckpoint::kind);
             let result = self.apply_internal(op.clone(), &wf.run_id, &mut noop)?;
             self.journal.push(OperationRecord {
                 run_id: wf.run_id.clone(),
@@ -27319,6 +30752,7 @@ impl Engine for GentleEngine {
             if let Some(checkpoint) = checkpoint {
                 self.push_undo_checkpoint(checkpoint);
             }
+            self.bump_revision_for_checkpoint_kind(checkpoint_kind);
             results.push(result);
         }
         Ok(results)

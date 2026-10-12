@@ -1,0 +1,46 @@
+{
+  "schema": "gentle.tss_fasta_bundle.v1",
+  "reference": {
+    "genome_id": "synthetic-genome-v1",
+    "assembly": "synthetic-assembly-v1",
+    "annotation_release": "synthetic-annotation-v1"
+  },
+  "fasta_files": {
+    "minus.fa": "399f2a101b7c8d403ab3aabddd4654c66eedac935e16f421e9a2f60e16ad92ba",
+    "plus.fa": "77e2afd6eee8098023d147314cb0802d0e6410a68b47d2622b9cdd90da5c9063"
+  },
+  "records": [
+    {
+      "promoter_id": "synthetic-plus",
+      "gene_id": "synthetic-gene-plus",
+      "gene_symbol": "SYNPLUS",
+      "geometry": {
+        "chromosome": "synthetic_chr",
+        "strand": "+",
+        "tss_1based": 100,
+        "start_1based": 97,
+        "end_1based": 107,
+        "upstream_bp": 3,
+        "downstream_bp": 7
+      },
+      "transcripts": ["synthetic.plus.tx2", "synthetic.plus.tx1"],
+      "sequence_sha256": "4d9e77a90f447ff950a881a2fbcc85ba3ad70805f4b27ef66d9ab0adb611cb46"
+    },
+    {
+      "promoter_id": "synthetic-minus",
+      "gene_id": "synthetic-gene-minus",
+      "gene_symbol": "SYNMINUS",
+      "geometry": {
+        "chromosome": "synthetic_chr",
+        "strand": "-",
+        "tss_1based": 300,
+        "start_1based": 293,
+        "end_1based": 303,
+        "upstream_bp": 3,
+        "downstream_bp": 7
+      },
+      "transcripts": ["synthetic.minus.tx1"],
+      "sequence_sha256": "a5493db4212f6af549230331edcc33edeb562ef2fb954f09f3e0f63f28c8ff67"
+    }
+  ]
+}
