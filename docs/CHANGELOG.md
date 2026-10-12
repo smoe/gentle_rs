@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-10-13 - Clarify E-MTAB-15709 Positive-Control Provenance
+
+- The public SDRF identifies all three `pos_*_SKMel29` libraries as H3K4me3,
+  not HDAC2 or an unspecified target. Add only this source-bound clarification
+  and the checked SDRF URL/byte count/SHA-256 to the local processed-track README;
+  do not extrapolate the identity to other datasets or unbound local filenames.
+- Check DN terminology separately against the study description and its
+  [primary publication](https://pmc.ncbi.nlm.nih.gov/articles/PMC12839168/), which
+  specifies DNp73beta as DeltaEx2/3p73beta. Do not fold additional biological or
+  dominant-negative claims into this minimal H3K4me3 documentation repair.
+- No raw tracks, scientific bundles, Glen worktree files, RefSeq aliases or
+  product behavior are imported or changed; no build or push.
+
 ## 2026-10-13 - Semantically Forward-Port Glen's Tutorial Visuals
 
 - Review all 19 proposed placements from `d70bf25d` against main `5e6201a6`

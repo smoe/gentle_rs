@@ -13,6 +13,16 @@ Expected names include condition-specific tracks such as:
 - `tp73_skmel29_2_DN_R1.bigWig`
 - matching `input_*`, `pos_*`, and `neg_*` controls where available
 
+For public study **E-MTAB-15709**, `pos_DNp73b_SKMel29`, `pos_GFP_SKMel29`
+and `pos_TAp73a_SKMel29` are **H3K4me3** libraries: every corresponding row in
+the [public SDRF](https://www.ebi.ac.uk/biostudies/files/E-MTAB-15709/E-MTAB-15709.sdrf.txt)
+records `Factor Value[immunoprecipitate] = H3K4me3`. These are neither HDAC2
+libraries nor controls with an unspecified target. This annotation concerns
+those public libraries; bind local processed tracks to their actual source
+library rather than inferring control identity from a filename alone.
+The SDRF checked on 2026-10-13 is 11,940 bytes, SHA-256
+`60a3cdd3b5ba8c3e2b7f3fa823f3911dbf5091c61b90a31dd453bc2efad1377d`.
+
 Before interpreting or publishing a figure, record the alignment assembly,
 normalization and clipping procedure, and the meaning of the `tp73`, `pos`,
 `neg`, and `input` channels. A matching chromosome name is not by itself proof
