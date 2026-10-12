@@ -1,5 +1,22 @@
 # GENtle Changelog
 
+## 2026-10-13 - Consolidate Final-Candidate Glen Checks
+
+- Integrate the relayed `gentle_rs_2_main` follow-ups into
+  [one candidate execution request](glen_final_candidate_execution_handoff.md):
+  08.16/08.18, microarrays/gels, remaining FLNA evidence and 04.09 specificity.
+  Reuse tracked procedures and verified test names rather than another inbox
+  checklist or a new implementation scope.
+- Require the owner's full final pushed SHA, matching binaries and per-item
+  evidence. Keep the six-gate ledger and frozen `e981469e`/`dfadf2a5` audits
+  separately attributed, alongside historical `a403d2eb` evidence. Do not reopen
+  the source-bound `5383f7ec` tutorial-CI/link repairs or claim any new acceptance.
+- Documentation only; no local Rust, Claude invocation, push, workflow dispatch,
+  publication or alteration of scientific/historical evidence.
+- Verify all 13 handoff links/anchors, whitespace and the four-check release-link
+  gate. Session-close has no failures; unrelated dirty files and the manual
+  plan-fidelity reminder remain explicit. No execution acceptance follows.
+
 ## 2026-10-12 - Close The Source-Bound Tutorial CI Repair
 
 - Independently verify [run 38223352242](https://github.com/smoe/gentle_rs/actions/runs/38223352242)
