@@ -4185,6 +4185,11 @@ Sequencing-trace evidence notes:
     preserve selected-placement SPDI JSON, including insertion/deletion empty
     strings and multi-base replacements. Non-SNV markers remain one-base focal
     anchors, not complete variant intervals or VCF-normalized alleles.
+  - GenBank re-import removes physical line folds from an otherwise unparseable
+    `dbsnp_spdi` value only when the unfolded value is valid SPDI-shaped JSON
+    (string accession/deleted/inserted fields and an unsigned position). Valid
+    JSON, escaped characters, malformed values and other qualifiers are unchanged;
+    this does not verify source provenance or upgrade assembly/reference checks.
 - `DeriveTranscriptSequences { seq_id, feature_ids[], scope?, output_prefix? }`
 - `PlanExonSkippedIsoform { seq_id, transcript_feature_id, criteria[], plan_id? }`
 - `MaterializeExonSkippedIsoform { plan_id, selected_candidate_ids[], output_prefix? }`

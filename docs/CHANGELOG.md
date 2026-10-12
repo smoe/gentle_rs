@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-10-12 - Preserve Wrapped dbSNP JSON On GenBank Re-Import
+
+- Recheck the VKORC1 review against the local integrated source: the original
+  M1/M2/M3/L1 engine and GUI repairs are present. Successful pair materialization
+  deliberately retains two canonical undo entries; do not change that contract.
+- Static inspection identifies an additional interchange edge: `gb-io` retains
+  hard wraps as literal newlines, which can split compact SPDI JSON tokens.
+  Restore only physical folds in unparseable `dbsnp_spdi` values that unfold to
+  SPDI-shaped JSON. Keep valid JSON, escapes, malformed payloads, ordinary notes,
+  allele order, empty strings and assembly/reference checks unchanged.
+- Add inline hand-crafted GenBank export/shared-loader re-import regressions
+  for LF/CRLF, escaped quotes and long insertion/deletion/replacement payloads,
+  plus negative controls. Document the custom-catalog unavailable-assembly gate.
+  No new operation, GUI undo policy, dependency, fixture file or private output.
+- Rust execution remains deferred to Glen/CI: run `cargo test --locked --lib
+  dbsnp_spdi_`, then `cargo check -q --locked` on the exact committed source.
+  Live dbSNP/GRCh38, tutorial 08.04 native C/T, Windows, reporter orientation,
+  topology and release acceptance remain open; source inspection is not a pass.
+
 ## 2026-10-12 - Repair Deleted Release-Handoff Links
 
 - Repair five active links to the intentionally deleted `.12` candidate handoff
