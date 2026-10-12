@@ -308,6 +308,10 @@ which the owner will push. Use the focused
 commands and returned-evidence requirements. The subsequent `gentle_rs_3`
 merge `5b599808` includes a production GenBank/SPDI fix absent from `e981469e`;
 the requested older target cannot accept this newer main or a release.
+The focused handoff also consolidates the owner's supplemental audits at exact
+`dfadf2a554dd8a23afae923592baa65d37162bc9`: GenBank/variant safety and a separate
+experimental sequence-design recheck. Return their evidence independently;
+neither replaces these six gates, and sequence design is outside `.12` acceptance.
 
 The owner assigns Glen assistance with all remaining execution gates. This
 handoff supersedes the earlier `f56fdf84` target: use exact merged source

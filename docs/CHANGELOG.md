@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-10-12 - Consolidate Glen's Frozen Audit Instructions
+
+- Extend the [committed Glen handoff](glen_e981469e_execution_handoff.md) with
+  the owner's `dfadf2a5` GenBank/variant and experimental sequence-design checks,
+  exact checkout/tree/lockfile pins, commands and returned-evidence requirements.
+  Keep the six `e981469e` gates and their bundle unchanged and separately reported.
+- Require both SPDI regressions to execute, unchanged assembly/reference status,
+  no manufactured VCF alleles and the intentional two-entry GUI pair undo policy.
+  Keep native Windows, live reference/GUI, reporter and package acceptance distinct.
+- Preserve output-validation versus unverified-search claims, independent
+  two-strategy oracles and actual same-SHA CLI replay; runtime skips are not passes.
+  Sequence design remains experimental and outside `.12` acceptance. No new
+  Claude review, local Rust verification, Codex push or acceptance closure.
+
 ## 2026-10-12 - Commit Forwardable Glen Execution Instructions
 
 - Add the focused [e981469e handoff](glen_e981469e_execution_handoff.md): bundle
