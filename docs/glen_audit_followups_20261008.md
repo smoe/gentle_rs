@@ -87,6 +87,33 @@ candidate results never overwrite or inherit the older candidate's verdict.
 
 ### Current Main Snapshot: 2026-10-12
 
+#### Completed Tutorial CI At `5383f7ec`
+
+The owner confirms completion, and Codex independently reads
+[CI run 38223352242](https://github.com/smoe/gentle_rs/actions/runs/38223352242)
+and its latest-attempt jobs on 2026-10-12: exact head
+`5383f7eceeb761d778b7d26efc7d0f5c4486d941`, attempt 1, `completed/success`.
+Release-candidate safety, Linux headless CLI/MCP, Windows, macOS and the
+selected-platform aggregate all succeed. The safety job's tutorial discovery
+metadata and LF/CRLF checkout regressions succeed; both native platform jobs'
+tutorial schema/drift, ClawBio parity, core CLI runtime smoke and full-suite
+steps succeed. The review-manifest/LF-CRLF tutorial-CI repair is complete at
+this SHA, alongside the integrated link repair. Remove those two tasks from
+the active worklist, not their canonical repository records.
+
+This completed result supersedes only the earlier in-progress observation
+below. Linux full-suite, scroll, macOS authenticated-audit preparation and
+08.04 synthetic GUI jobs remain skipped. It is a selected-platform CI pass,
+not full-platform, native GUI, live-agent or `package-opt1` acceptance, and it
+does not execute the separate 08.16/08.18 DuckDB or FLNA acceptance gates.
+
+The two active workstreams below remain: current tutorial/native/FLNA follow-ups
+and the [frozen execution handoff](glen_e981469e_execution_handoff.md) for
+`e981469e` plus separate `dfadf2a5` audits. No SHA-exact execution receipts for
+those frozen targets are supplied by this confirmation. The six-item checklist
+does not advance; historical evidence, attachments and prompt copies remain
+intact. No local Rust, push, dispatch, tag or publication occurs.
+
 #### Glen Interim Feedback At `5383f7ec`
 
 The owner relays Glen's interim review of

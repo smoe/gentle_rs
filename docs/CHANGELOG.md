@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-10-12 - Close The Source-Bound Tutorial CI Repair
+
+- Independently verify [run 38223352242](https://github.com/smoe/gentle_rs/actions/runs/38223352242)
+  completed successfully at exact `5383f7eceeb761d778b7d26efc7d0f5c4486d941`:
+  safety, Linux headless, Windows, macOS and selected-platform aggregate pass,
+  including tutorial metadata/LF-CRLF checkout and schema/parity runtime steps.
+- Close only the review-manifest/LF-CRLF tutorial-CI and integrated link-repair
+  tasks; retain their historical records and the earlier in-progress snapshot.
+  Linux full-suite, scroll, authenticated-audit preparation and 08.04 GUI jobs
+  are skipped, not acceptance evidence.
+- Keep the frozen `e981469e` / `dfadf2a5` audits, six-item checklist, current
+  08.16/08.18 DuckDB, native/tutorial/FLNA, live-agent and `package-opt1` gates
+  open. No local Rust, push, dispatch, publication or artifact deletion.
+
 ## 2026-10-12 - Reconcile Glen's Interim Handoff Status
 
 - Record Glen's four handoff dispositions at `5383f7ec` in the existing audit
