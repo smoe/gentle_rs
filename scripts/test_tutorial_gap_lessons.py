@@ -130,6 +130,66 @@ class TutorialGapLessonTests(unittest.TestCase):
             self.assertNotIn("gui_acceptance", source)
             self.assertNotIn(source["id"], [chapter["id"] for chapter in manifest["chapters"]])
 
+    def test_canonical_tutorial_sources_have_review_manifest_entries(self):
+        manifest = json.loads((ROOT / "docs/tutorial/review_manifest.json").read_bytes())
+        identifiers = [entry["tutorial_id"] for entry in manifest["entries"]]
+        self.assertEqual(len(identifiers), len(set(identifiers)), "duplicate review identities")
+        known = {source["id"] for path in (ROOT / "docs/tutorial/sources").glob("*.json")
+                 if "id" in (source := json.loads(path.read_bytes()))}
+        self.assertEqual(known - set(identifiers), set(), "missing review entries change report.json warnings")
+        by_id = {entry["tutorial_id"]: entry for entry in manifest["entries"]}
+        catalog = {entry["id"]: entry for entry in
+                   json.loads((ROOT / "docs/tutorial/catalog.json").read_bytes())["entries"]}
+        for identifier in ("microarray_evidence_gui_cli", "measured_gel_sizing_gui_cli",
+                           "repeat_environment_cohorts"):
+            with self.subTest(tutorial=identifier):
+                entry = by_id[identifier]
+                self.assertEqual(entry["tutorial_kind"], "guided_walkthrough")
+                self.assertEqual(entry["tutorial_status"], "active")
+                self.assertNotEqual(catalog[identifier]["review_status"], "missing_review_manifest_entry")
+                if entry["codex_reviewed_at"] is None and entry["human_reviewed_at"] is None:
+                    self.assertEqual(catalog[identifier]["review_status"], "unreviewed")
+
+    def test_candidate_handoff_links_resolve_to_historical_and_topic_owned_sections(self):
+        linked_from = (ROOT / "docs/roadmap.md",
+                       ROOT / "docs/release_notes/release_notes_v0.1.0-internal.12.md",
+                       ROOT / "docs/clawbio_gentle_integration_onepager.md",
+                       ROOT / "docs/release.md")
+        historical_revision = "7c52082c24fca85817d70956146623eef6f24607"
+        historical_url = (f"https://github.com/smoe/gentle_rs/blob/{historical_revision}/"
+                          "docs/internal_12_candidate_preparation.md")
+        historical = subprocess.check_output(
+            ["git", "show", f"{historical_revision}:docs/internal_12_candidate_preparation.md"],
+            cwd=ROOT,
+        ).decode("utf-8")
+
+        def headings(text):
+            return {re.sub(r"[^a-z0-9 -]", "", heading.lower()).replace(" ", "-")
+                    for heading in re.findall(r"(?m)^#{1,6} (.+)$", text)}
+
+        expected = {"corrected-ci-evidence", "ubuntu-runner-decision", "compatibility-review-inventory"}
+        seen = set()
+        for source in linked_from:
+            for link in re.findall(r"\]\(([^)]+)\)", source.read_text(encoding="utf-8")):
+                relative, _, fragment = link.partition("#")
+                if "internal_12_candidate_preparation.md" in link and link.startswith("https://"):
+                    self.assertEqual(relative, historical_url, "historical evidence must stay revision-pinned")
+                    text = historical
+                elif "internal_12_candidate_preparation.md" in link or fragment in expected:
+                    target = (source.parent / relative).resolve() if relative else source
+                    self.assertTrue(target.is_file(), link)
+                    text = target.read_text(encoding="utf-8")
+                else:
+                    continue
+                if fragment:
+                    self.assertIn(fragment, headings(text), link)
+                    seen.add(fragment)
+        self.assertEqual(seen, expected)
+        restored = (ROOT / "docs/internal_12_candidate_preparation.md").read_text(encoding="utf-8")
+        self.assertIn("Historical handoff", restored)
+        self.assertTrue({"corrected-ci-evidence", "ubuntu-runner-decision", "clawbio-compatibility-decision"}
+                        <= headings(restored))
+
     def test_lesson_local_links_and_visible_pending_limits(self):
         for filename in ("07-04_microarray_evidence_gui_cli.md", "10-03_measured_gel_sizing_gui_cli.md",
                          "08-16_tss_regulatory_view_gui.md", "08-18_repeat_environment_cohorts.md"):
@@ -178,7 +238,9 @@ class TutorialGapLessonTests(unittest.TestCase):
             with self.assertRaises(FileExistsError):
                 motif_generator.build(Path(tmp), "not-invoked", "tss-view")
         draft = ROOT / "docs/tutorial/drafts/flna_splicing_interpretation.md"
-        self.assertIn("Inputs Pending", draft.read_text())
+        self.assertIn("Activation Pending", draft.read_text())
+        self.assertIn("no Ensembl", draft.read_text())
+        self.assertIn("release record", draft.read_text())
         catalog = json.loads((ROOT / "docs/tutorial/catalog.json").read_bytes())
         self.assertNotIn(str(draft.relative_to(ROOT)), json.dumps(catalog))
 

@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-10-12 - Merge Tutorial Repair And Archive Inspection Into Main
+
+- Merge `4ad6e5b6` and `e5859f4f` while retaining main's `228a4598` audit
+  handoffs and GenBank/release-link repairs. Preserve both changelog histories.
+- Keep main's active runner/compatibility links in their topic owners and its
+  immutable historical CI URLs. The restored handoff is an explicitly labelled
+  historical copy, not a second active planning ledger. Reconcile the incoming
+  link regression with those source-owned destinations rather than reverting
+  main's repair. Rust/runtime/native acceptance remains with Glen/CI.
+- Merged-tree verification on macOS: 94 scoped Python tests pass, three have
+  expected platform skips; formatting, whitespace and metadata freshness pass
+  (65 catalog entries, 30 executable chapters). No local Rust build or runtime
+  replay, push, dispatch, tag or publication.
+
 ## 2026-10-12 - Consolidate Glen's Frozen Audit Instructions
 
 - Extend the [committed Glen handoff](glen_e981469e_execution_handoff.md) with
@@ -71,6 +85,47 @@
   decisions remain owner-pending; workflows and compatibility are unchanged.
 - Preserve `.11` history, the `.12` development draft, historical mentions and
   all scientific, GUI, performance and package acceptance limitations.
+
+## 2026-10-12 - Inspect Glen's Retained Tutorial Evidence
+
+- Verify the supplied archive SHA-256, safe member types/paths and all 89 root
+  checksum entries without running archived code. Independently compare A1's
+  saved queries, unchanged window arrays, 33 receipt output hashes and 1,001-bp
+  FASTA/GenBank/EMBL sequence parity. Its fixture-genome companion does not
+  accept the newer 08.16 preset; A3 does not execute the new LocalProject test.
+- Confirm genuine retained FLNA raw payload equality, 30,120-base sequence,
+  stable canonical selector and both exact reviewed UniProt joins. Correct the
+  draft/handoff's missing-input status, but retain the missing release record,
+  teaching-exon and native/scientific gates. Do not label a dated REST snapshot
+  release-pinned, commit the external archive or activate the learner guide.
+- Record findings, digests and a no-push follow-up in
+  [the independent inspection](glen_tutorial_inputs_review_20261012.md).
+  Glen's executed Linux evidence remains bound to `a403d2eb`; no local Rust,
+  DuckDB query, native display, release or biological approval is claimed.
+- Recheck all 97 scoped Python cases: 94 pass and three have expected platform
+  skips. Metadata freshness and local documentation links pass; the restored
+  historical body is byte-identical after removing only its new banner.
+
+## 2026-10-12 - Repair Tutorial Review Registration And Candidate Links
+
+- Reproduce Glen's missing-review boundary before the repair: 07.04 and 10.03
+  lack entries, and the newer local 08.18 has the same defect. Register all
+  three as active guided walkthroughs with null review dates/reviewer; the
+  catalog now says `unreviewed`, not `missing_review_manifest_entry`. Do not
+  fabricate approval or rewrite the committed tutorial report to hide warnings.
+- Restore the deleted candidate-preparation handoff from the parent of
+  `afbef444`, preserving its original body and adding an explicit historical
+  banner/current-ledger pointer. All five existing release/roadmap/ClawBio
+  links and their three named anchors resolve again; no release policy changes.
+- Add failing-before/passing-after source regressions for canonical review
+  registration and handoff links, plus real disposable LF/CRLF checkouts for
+  the three manual identities and existing catalog-byte policy. Full current-
+  source tutorial replay/checkout and Rust verification remain with Glen/CI;
+  the older docs helper is used only for unchanged metadata generation/checks.
+- Verification on macOS: 94 scoped Python tests pass, with three expected
+  platform skips; `cargo fmt --check` and whitespace checks pass. Catalog
+  and manifest freshness pass (65 entries, 30 executable chapters). These
+  source/checkout checks are not a fresh binary `tutorial-check` verdict.
 
 ## 2026-10-12 - Prepare No-Push Merged-Source Glen Handoff
 
