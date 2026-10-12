@@ -125,8 +125,10 @@ publication or editing private studies is requested.
 
 1. Run current-source `gentle_examples_docs tutorial-check`, then
    `python3 scripts/check_tutorial_checkouts.py --binary /EXACT/gentle_examples_docs`.
-   Keep review dates null: registration fixes missing-entry warnings, not
-   acceptance. Report whether committed `generated/report.json` now matches.
+   Keep the three newly registered 07.04/08.18/10.03 lessons' review dates null:
+   registration fixes missing-entry warnings, not acceptance. The refreshed
+   08.16 Codex source review does not close execution/native/scientific gates.
+   Report whether committed `generated/report.json` now matches.
 2. Execute the new 08.16 `tss-view` companion and the LocalProject repeat test
    named in [the original handoff](glen_tutorial_gap_preparation_20261012.md).
    This archive's separate A1/A3 examples do not substitute for those tests.

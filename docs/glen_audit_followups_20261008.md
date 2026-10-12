@@ -87,6 +87,51 @@ candidate results never overwrite or inherit the older candidate's verdict.
 
 ### Current Main Snapshot: 2026-10-12
 
+#### Glen Interim Feedback At `5383f7ec`
+
+The owner relays Glen's interim review of
+`5383f7eceeb761d778b7d26efc7d0f5c4486d941`. Glen reports that his fetch
+updated remote/local main without checking it out, changing his dirty Clariom
+worktree or pushing; a final re-fetch found no further upstream drift.
+
+| Handoff | Reported Disposition | Remaining Acceptance |
+| --- | --- | --- |
+| `release_handoff_link_repair_prompt.md` | Five repairs from `1ee02cba` integrated; Glen reports `release-gate` 4 OK / 0 errors. | Link repair only, not package/release acceptance. |
+| [Tutorial input review](glen_tutorial_inputs_review_20261012.md) | Report complete; Glen reports the attachment byte-identical to the repository copy. | Current 08.16/08.18 execution, C/D native checks and FLNA provenance/exon/native/scientific gates. |
+| [Tutorial gap preparation](glen_tutorial_gap_preparation_20261012.md) | Partially complete; source/fixtures and three explicit unreviewed entries integrated. Glen reports 66 Python tests and LF/CRLF checkout checks passing. | GENtle Rust/DuckDB execution, native GUI and FLNA gates. |
+| [Frozen execution handoff](glen_e981469e_execution_handoff.md) | Active; Glen reports the attachment byte-identical and no Actions runs at `e981469e` or `dfadf2a5`. | Six-item audit and separately pinned GenBank/variant and sequence-design rechecks. |
+
+These are attributed interim results, not a new Codex execution receipt. The
+message supplies no complete command list, environment, binary hashes or raw
+log manifest for the 66 tests; do not promote them to runtime acceptance.
+The three new lessons remain unreviewed. The separately refreshed 08.16 Codex
+source/readability review is not native or scientific approval.
+
+Keep two active workstreams, using the existing handoffs rather than duplicating
+their commands:
+
+1. Current tutorials: freeze one final main SHA and use only matching binaries
+   for 08.16/08.18 Rust/DuckDB and catalog/parity replay, C/D and enriched-TSS
+   native displays, and FLNA release provenance, human teaching-exon selection,
+   native normal-size/2400-px and independent scientific acceptance. Keep FLNA
+   outside the catalog until its activation gates pass.
+2. Frozen audits: retain the exact `e981469e` six-item target and separate
+   `dfadf2a5` GenBank/variant and experimental sequence-design target. A newer
+   main pass cannot accept either; sequence design remains outside `.12`.
+
+On 2026-10-12 Codex independently reads
+[CI run 38223352242](https://github.com/smoe/gentle_rs/actions/runs/38223352242)
+and its latest-attempt jobs: exact head `5383f7ec`, overall `in_progress`,
+release-candidate safety and Linux headless jobs successful, macOS and Windows
+in progress. Linux full-suite, scroll, macOS authenticated-audit preparation and
+08.04 synthetic GUI jobs are skipped. This is a read-time snapshot, not a final
+or full-platform verdict; no dispatch or rerun is requested or performed.
+
+Retain canonical repository documents and historical evidence. Glen's suggested
+inbox cleanup is not an owner deletion request: Codex removes no attachment,
+untracked prompt copy or audit artifact. The six-item checklist below is
+unchanged; none of its open gates closes on this interim feedback.
+
 The subsequent owner-requested integration of `gentle_rs_2_main` commit
 `ae491a0c` adds imported-TSS/repeat tutorial fixtures and Rust regression source.
 It merges without conflicts and passes 93 scoped offline tests, including real

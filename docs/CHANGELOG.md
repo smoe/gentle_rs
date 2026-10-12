@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-10-12 - Reconcile Glen's Interim Handoff Status
+
+- Record Glen's four handoff dispositions at `5383f7ec` in the existing audit
+  ledger, attributing his 66 Python tests, LF/CRLF checks and 4-OK release-link
+  gate without inventing command logs, binary receipts or runtime acceptance.
+- Keep two active workstreams: final-source tutorial/native/FLNA gates and the
+  separate frozen `e981469e` / `dfadf2a5` audits. Preserve all six checklist
+  statuses, canonical handoffs, attachments and historical evidence.
+- Independently inspect the matching CI run: safety/headless checks pass,
+  macOS/Windows remain in progress, and Linux full-suite/scroll/08.04 GUI are
+  skipped at read time. No full-platform, package or scientific verdict follows.
+- Clarify that only the three new unreviewed lessons retain null review dates;
+  08.16's refreshed source review is not execution approval. No local Rust,
+  push, workflow dispatch, artifact deletion or publication.
+
 ## 2026-10-12 - Refresh Tutorial 08.16's Scoped Codex Review
 
 - Re-read the full 08.16 learner prose, including its optional DuckDB companion,
