@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-10-13 - Verify Source-Bound Main CI Execution Scope
+
+- Independently inspect [run 38295036951](https://github.com/smoe/gentle_rs/actions/runs/38295036951)
+  at exact `5e6201a6` and retain complete decoded job logs with explicit JSON
+  and decoded-text hashes in the [audit ledger](glen_audit_followups_20261008.md#source-bound-ci-update-2026-10-13).
+  macOS/Windows focused primer suites pass 9/8 tests respectively; Windows
+  excludes the Unix-only mock fixture. Root suites pass 4,140/4,079, with 14
+  ignored on each platform. Linux headless is compile-only evidence.
+- Record empty artifact inventory, skipped Linux/full-native-agent-scroll jobs
+  and zero-test snapshot steps rather than accepting their green labels as
+  visual/package proof. Both frozen audit targets and the local coordination
+  SHA still have no Actions runs. Keep all remaining acceptance gates open;
+  source-bound tutorial-CI/link repair stays closed. No local Rust, push,
+  workflow dispatch or scientific approval.
+
 ## 2026-10-13 - Consolidate Final-Candidate Glen Checks
 
 - Integrate the relayed `gentle_rs_2_main` follow-ups into

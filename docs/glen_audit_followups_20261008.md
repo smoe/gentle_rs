@@ -85,6 +85,56 @@ An authored contract is not an executed pass. Every completion needs an exact
 source SHA, platform/profile, command or run URL and retained evidence. New
 candidate results never overwrite or inherit the older candidate's verdict.
 
+### Source-Bound CI Update: 2026-10-13
+
+Codex independently reads the public Actions run, latest-attempt jobs, artifact
+inventory and decoded job logs at 2026-10-12 23:52 UTC (2026-10-13 locally).
+[Run 38295036951](https://github.com/smoe/gentle_rs/actions/runs/38295036951)
+is `completed/success`, attempt 1, exact source
+`5e6201a69a599cba87491c86cfd7311cb6fee173`, tree
+`2379f8bdfd115e6c93c0614a2bfe6188bb93c020`. Its checkout and executable
+self-identities in the native job logs name that same SHA. The committed
+lockfile SHA-256 is
+`ead4421545a125267e33af84aeeea39f0e7ea2f60717a59ef0271d0e71855f1b`.
+These are ordinary default dev/test checks, not `package-opt1` packages.
+
+| Executed Job | Directly Observed Log Evidence |
+| --- | --- |
+| [macOS 114964003981](https://github.com/smoe/gentle_rs/actions/runs/38295036951/job/114964003981) | macOS 26.6.2/arm64, Rust 1.99.0 (`b940084d7`). Focused primer multi-reference 9/9 and glossary 7/7; root lib under locked workspace suite 4,140 passed/14 ignored; workflow examples 95 passed. Default/JS/Lua/script/all-feature checks and schema/parity/process steps succeed. |
+| [Windows 114963959579](https://github.com/smoe/gentle_rs/actions/runs/38295036951/job/114963959579) | Windows Server 2025/x86-64 MSVC, same Rust. Focused primer multi-reference 8/8 and glossary 7/7; root lib under locked workspace suite 4,079 passed/14 ignored; workflow examples 94 passed. The Unix-only external-import fixture is not compiled on Windows; this does not execute its real-reference or native presentation gate. Feature/schema/parity/process steps succeed. |
+| [Linux headless 114963960058](https://github.com/smoe/gentle_rs/actions/runs/38295036951/job/114963960058) | Ubuntu 24.04/x86-64, same Rust; `cargo check --locked --no-default-features --bin gentle_cli --bin gentle_mcp` and dependency-boundary guard succeed. This is compile/dependency evidence, not Linux runtime/native acceptance. |
+| [Safety 114963960095](https://github.com/smoe/gentle_rs/actions/runs/38295036951/job/114963960095) | Nine offline helper suites execute 223 tests plus the separate one-test tutorial-discovery guard; all succeed. Includes synthetic public-audit/package/GUI-contract helpers and LF/CRLF checkout checks, not actual GUI/model/package execution. |
+
+The green `Render snapshot tests` step executes **zero tests** on both native
+jobs; its exit status supplies no visual evidence. Linux full-suite job
+`114964006033`, scroll `114963961155`, authenticated-audit preparation
+`114963961298` and 08.04 GUI `114963961543` are all explicitly skipped.
+The artifact inventory is empty. No binary hashes, native images, genuine model
+responses, 24 new scroll observations or package/extraction receipts are supplied.
+The explicitly ignored real-DuckDB companion is not accepted by a default suite.
+
+Retain the connector's complete decoded logs losslessly as JSON strings in
+`/private/tmp/gentle-ci-5e6201a6-20261013/job-JOB_ID.decoded-log.json`.
+Original LF/CRLF characters remain encoded in the strings. These are hashes of
+the saved JSON and its decoded-log UTF-8 re-encoding, **not** raw HTTP/archive
+digests or binary hashes:
+
+| Job ID | Saved JSON SHA-256 | Decoded-Log UTF-8 SHA-256 |
+| --- | --- | --- |
+| `114964003981` | `c870f941c6c45f6a6b1e3b335766cb71dcf1c08310a4c4c824c8b5e243dead28` | `bb7b939fc23bc15f71517b2a424075875f4a66dfc92af5d6be072576ac6a0687` |
+| `114963959579` | `bd3ba12b8f910e7e823fb79c084780470a1b02a27ce6d657e8fd02370f0520a8` | `d35d46fa80d512f9723abebce2d5b119bf4a2d8703aae6cc9292b45b25a6bec3` |
+| `114963960058` | `f5bdc9c04b848c1479912eccd9c2aeb4b3db007dd7a85314c2b35f453e10de0e` | `bdf8ae21c061ce89113ded4c92520985c09b831d31892b56383772c97743ea7d` |
+| `114963960095` | `eae07fd1186736e6bf9fe3c4170d0964f346a841a41607891cdcbb978662a3aa` | `c18bc2a85c9dfe84c2e0232b2d93617078cd728ac3fe58464ab8ced426057a8f` |
+
+At this observation, public remote main still resolves to `5e6201a6`. The
+Actions query for each full SHA `e981469e`, `dfadf2a5` and local coordination
+commit `9e5c8a05719ca6d81c68c88c47927b1a97113c30` returns zero runs.
+No live verification process is observed, so this is not a verified wait.
+The [consolidated final-candidate request](glen_final_candidate_execution_handoff.md)
+is committed locally; its target still needs the owner's full final pushed SHA.
+Older frozen requests and all remaining native/agent/scroll/package gates stay
+separate and open. No push, dispatch, local Rust or scientific approval occurs.
+
 ### Current Main Snapshot: 2026-10-12
 
 #### Completed Tutorial CI At `5383f7ec`
@@ -370,7 +420,7 @@ native/package verdict from these offline tests.
 | 3. Live-agent acceptance | Historical genuine public-starter pass at `3ac4a02d`; current source pending | [Executed receipt](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#genuine-live-agent), macOS/arm64 dev CLI and authorized login. Clarification then two unexecuted `ask` suggestions; reviewed manual execution preserves both sources and all four full `Seq` records match fresh CI. No credential/model/scientific claim; require final-source acceptance. |
 | 4. Honest visual evidence | Historical bounded pass at `3ac4a02d`; clean-source guard passes offline at `e981469e` and in earlier Linux CI at `f56fdf84`, fresh execution pending | [Retained evidence](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#public-reference-and-base-projection): 115 native/44 public hashes, four unchanged synthetic captures and exactly reproduced/inspected public SVG. Sole 588 C/T in 1,089-bp exports, display-only uppercase and explicit non-claims. New guards refuse dirty inputs and stale/changed binaries; they do not execute the public workflow or supply a public-locus GUI verdict. |
 | 5. Scroll benchmarks | Historical deterministic CPU pass at `3ac4a02d`; current source pending | [Retained scroll receipt](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#scroll-cpu-cases), Ubuntu 24.04/x86-64 dev. All 25 hashes and 24 bidirectional fixture/size cases, bounded viewport and unchanged content. No timed regression/native-latency claim; rerun the final-source cases without replacing historical evidence. |
-| 6. .12 package acceptance | Open; 263 local offline tests pass at `e981469e`; earlier Linux policy/headless checks at `f56fdf84` do not accept this source | The five-binary source/hash gate and delayed-start monitor regression are implemented, not native-accepted. Require corrected primer import plus fresh same-source full Linux/macOS/Windows success, non-publishing native/container builds and independent extracted-package/entrypoint identities at one final SHA/lockfile/`package-opt1` recipe. No publication or inherited verdict. |
+| 6. .12 package acceptance | Open; selected macOS/Windows suites plus Linux headless/safety pass at `5e6201a6`, not a final-candidate/package verdict | Primer multi-reference execution passes 9/9 on macOS and 8/8 on Windows (Unix-only fixture absent). Full Linux, native/agent/scroll jobs are skipped and artifact inventory is empty. Require same-source full Linux/macOS/Windows success, non-publishing native/container builds and independent extracted-package/entrypoint identities at the owner's final SHA/lockfile/`package-opt1` recipe. Older `e981469e` offline and `f56fdf84` headless results remain historical; no publication or inherited verdict. |
 
 ### Glen Execution Handoff: 2026-10-12
 
