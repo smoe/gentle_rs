@@ -1543,6 +1543,10 @@ UniProt mapping capability status:
     - `RS_ID` is a dbSNP identifier such as `rs9923231`; `GENOME_ID` is a
       prepared GENtle genome catalog id, and `--output-id` names the local
       sequence extracted around that variant.
+    - A custom catalog whose reference identity yields no recognizable assembly
+      family produces `dbsnp_assembly_check=unavailable`. The fetched slice remains
+      inspectable, but allele materialization is refused even if its base matches;
+      a matching base alone is not assembly or coordinate authority.
 - engine operations behind those commands:
   - `FetchUniprotSwissProt`, `ImportUniprotSwissProt`, `ProjectUniprotToGenome`,
     `FetchGenBankAccession`, `FetchDbSnpRegion`

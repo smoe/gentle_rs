@@ -266,7 +266,10 @@ impl DNAsequence {
     pub fn from_genbank_file(filename: &str) -> Result<Vec<DNAsequence>> {
         Ok(gb_io::reader::parse_file(filename)?
             .into_iter()
-            .map(DNAsequence::from_genbank_seq)
+            .map(|mut seq| {
+                restore_wrapped_dbsnp_spdi(&mut seq);
+                DNAsequence::from_genbank_seq(seq)
+            })
             .collect())
     }
 
@@ -1335,6 +1338,41 @@ fn canonicalize_location(location: gb_io::seq::Location) -> Result<gb_io::seq::L
     Ok(serde_json::from_value(value)?)
 }
 
+fn restore_wrapped_dbsnp_spdi(seq: &mut Seq) {
+    for feature in &mut seq.features {
+        for (key, value) in &mut feature.qualifiers {
+            if key != "dbsnp_spdi" {
+                continue;
+            }
+            let Some(raw) = value else { continue };
+            if !raw.contains(['\r', '\n']) || serde_json::from_str::<serde_json::Value>(raw).is_ok()
+            {
+                continue;
+            }
+            // gb-io retains hard wraps as newlines even inside JSON tokens.
+            // Remove only physical folds, never JSON escapes or ordinary notes.
+            let unfolded = raw.replace(['\r', '\n'], "");
+            let Ok(spdi) = serde_json::from_str::<serde_json::Value>(&unfolded) else {
+                continue;
+            };
+            if ["seq_id", "deleted_sequence", "inserted_sequence"]
+                .iter()
+                .all(|field| {
+                    spdi.get(*field)
+                        .and_then(serde_json::Value::as_str)
+                        .is_some()
+                })
+                && spdi
+                    .get("position")
+                    .and_then(serde_json::Value::as_u64)
+                    .is_some()
+            {
+                *raw = unfolded;
+            }
+        }
+    }
+}
+
 fn normalize_embl_qualifier_value(raw: &str) -> String {
     let mut value = raw.trim().to_string();
     if value.starts_with('"') && value.ends_with('"') && value.len() >= 2 {
@@ -2151,6 +2189,133 @@ SQ   Sequence 40 BP; 10 A; 10 C; 10 G; 10 T; 0 other;\n\
             exported.contains("join(1..5,10..15)") || exported.contains("10..15)"),
             "single-feature wrapped join should survive export: {exported}"
         );
+    }
+
+    #[test]
+    fn dbsnp_spdi_genbank_round_trip_preserves_wrapped_json() {
+        // Hand-crafted interchange record, recreated inline; not a real variant.
+        let alleles = [
+            ("A".to_string(), "T".to_string()),
+            ("ACGT".repeat(24), String::new()),
+            (String::new(), "TGCA".repeat(24)),
+            ("ACGT".repeat(24), "TGCA".repeat(24)),
+        ]
+        .map(|(deleted, inserted)| {
+            serde_json::json!({
+                "seq_id": "SYNTHETIC_ACCESSION.1", "position": 12,
+                "deleted_sequence": deleted, "inserted_sequence": inserted,
+            })
+        });
+        let mut seq = Seq::empty();
+        seq.name = Some("SYNTHETIC_DBSNP".into());
+        seq.seq = b"ACGT".repeat(64);
+        let mut qualifiers = vec![
+            ("label".into(), Some("rsSynthetic".into())),
+            ("dbsnp_variant_class".into(), Some("non_snv".into())),
+            ("dbsnp_reference_check".into(), Some("unavailable".into())),
+            ("dbsnp_assembly_check".into(), Some("unavailable".into())),
+        ];
+        qualifiers.extend(
+            alleles
+                .iter()
+                .map(|allele| ("dbsnp_spdi".into(), Some(allele.to_string()))),
+        );
+        seq.features.push(Feature {
+            kind: "variation".into(),
+            location: gb_io::seq::Location::simple_range(12, 13),
+            qualifiers,
+        });
+        let dna = DNAsequence::from_genbank_seq(seq);
+        let output = tempfile::tempdir().expect("temporary interchange directory");
+        let path = output.path().join("quoted ' dbSNP marker.gb");
+        dna.write_genbank_file(path.to_str().expect("UTF-8 temporary path"))
+            .expect("export annotated GenBank");
+        let exported = fs::read_to_string(&path).expect("read exported GenBank");
+        assert!(exported.contains("\"\""), "JSON quotes must be escaped");
+
+        // Confirm the actual writer/reader boundary, not just a helper input.
+        let raw = gb_io::reader::parse_file(path.to_str().unwrap()).expect("raw GenBank parse");
+        assert!(
+            raw[0].features[0]
+                .qualifier_values("dbsnp_spdi")
+                .any(|value| {
+                    value.contains('\n')
+                        && serde_json::from_str::<serde_json::Value>(value).is_err()
+                }),
+            "the fixture must exercise a hard wrap inside JSON"
+        );
+
+        for (ending, bytes) in [
+            ("lf", exported.clone()),
+            ("crlf", exported.replace('\n', "\r\n")),
+        ] {
+            let path = output.path().join(format!("{ending} dbSNP marker.gb"));
+            fs::write(&path, bytes).expect("write checkout-style line endings");
+            let imported = load_from_file(path.to_str().expect("UTF-8 temporary path"))
+                .expect("re-import annotated GenBank through the shared loader");
+            assert_eq!(
+                imported.forward_bytes().to_ascii_uppercase(),
+                dna.forward_bytes()
+            );
+            assert_eq!(imported.features().len(), 1);
+            let marker = &imported.features()[0];
+            assert_eq!(marker.location.to_gb_format(), "13");
+            assert_eq!(marker.qualifier_values("label").next(), Some("rsSynthetic"));
+            let retained = marker
+                .qualifier_values("dbsnp_spdi")
+                .map(|value| {
+                    serde_json::from_str::<serde_json::Value>(value).expect("restored SPDI JSON")
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                retained, alleles,
+                "{ending}: keep allele order, bases and empty strings"
+            );
+            for key in ["dbsnp_reference_check", "dbsnp_assembly_check"] {
+                assert_eq!(marker.qualifier_values(key).next(), Some("unavailable"));
+            }
+            assert_eq!(
+                marker.qualifier_values("dbsnp_variant_class").next(),
+                Some("non_snv")
+            );
+            assert!(marker.qualifier_values("vcf_ref").next().is_none());
+            assert!(marker.qualifier_values("vcf_alt").next().is_none());
+        }
+    }
+
+    #[test]
+    fn dbsnp_spdi_unfolding_preserves_valid_json_invalid_data_and_other_qualifiers() {
+        // Synthetic controls: no fetched record, biological claim or external file.
+        let valid = serde_json::json!({
+            "seq_id": "SYNTHETIC\\nESCAPE.1", "position": 12,
+            "deleted_sequence": "", "inserted_sequence": "AC",
+        });
+        let mut seq = Seq::empty();
+        seq.features.push(Feature {
+            kind: "variation".into(),
+            location: gb_io::seq::Location::simple_range(12, 13),
+            qualifiers: vec![
+                (
+                    "dbsnp_spdi".into(),
+                    Some(serde_json::to_string_pretty(&valid).unwrap()),
+                ),
+                ("dbsnp_spdi".into(), Some("broken\nJSON".into())),
+                ("dbsnp_spdi".into(), Some("{\"unre\rlated\":true}".into())),
+                (
+                    "dbsnp_spdi".into(),
+                    Some(
+                        valid
+                            .to_string()
+                            .replace("12", "-1")
+                            .replace("position", "posi\ntion"),
+                    ),
+                ),
+                ("note".into(), Some("ordinary\nwrapped text".into())),
+            ],
+        });
+        let before = seq.features.clone();
+        restore_wrapped_dbsnp_spdi(&mut seq);
+        assert_eq!(seq.features, before);
     }
 
     #[test]

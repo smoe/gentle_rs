@@ -219,6 +219,29 @@ current local GitHub credential could not download the protected Set-up-job
 logs or artifacts; exact image versions and hardware lines therefore remain
 unavailable in this review rather than being inferred from `*-latest` labels.
 
+## Ubuntu Runner Decision
+
+The [historical handoff](https://github.com/smoe/gentle_rs/blob/7c52082c24fca85817d70956146623eef6f24607/docs/internal_12_candidate_preparation.md#ubuntu-runner-decision)
+retains the Linux job's announcement of an Ubuntu 26 migration starting
+2026-10-19. That dated notice is not a current runner-image verdict or Ubuntu 26
+qualification. The source inventory reviewed on 2026-10-12 is:
+
+| Workflow | `ubuntu-latest` jobs |
+| --- | --- |
+| [ci.yml](../.github/workflows/ci.yml) | `release-policy`, `select-platform`, `headless-linux`, `linux`, `ci-summary` |
+| [container.yml](../.github/workflows/container.yml) | `container-build-check`, `container-publish` |
+| [release.yml](../.github/workflows/release.yml) | `collect-packages`, `publish-release` |
+| [release-candidate.yml](../.github/workflows/release-candidate.yml) | `resolve` |
+
+The Linux `build-installers` matrix already pins **`ubuntu-24.04`**, as do CI's
+`vkorc1-gui-audit` and `gui-scroll-audit` jobs; they are not rolling consumers.
+Rolling hosts can change system dependencies, graphics/fonts, Docker/BuildKit
+and runtime libraries even at the same source and lockfile. The owner decision
+remains open: whether to pin the listed hosts to `ubuntu-24.04` for `.12` and
+qualify Ubuntu 26 separately. This inventory changes no workflow and grants no
+dispatch, package acceptance or publication authority; approved build-only work
+still follows [candidate verification](#build-only-candidate-verification).
+
 ## Candidate Approval
 
 `v0.1.0-internal.10` was published as a prerelease on 2026-09-18 at

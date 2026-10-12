@@ -1,5 +1,47 @@
 # GENtle Changelog
 
+## 2026-10-12 - Merge GenBank Interchange And Release-Link Repairs
+
+- At the owner's request, merge `gentle_rs_3` tip `dfadf2a5` into local `main`
+  without conflicts, preserving both histories and the existing audit handoff.
+- Retain the incoming guarded SPDI unfolding and its synthetic LF/CRLF
+  round-trip tests, plus the release-link repairs. Scoped rustfmt and whitespace
+  pass; no local Rust build/check/test or runtime acceptance is claimed.
+- The requested Glen audit target stays `e981469e`; it excludes this newer
+  production fix and cannot certify current main. Prepare the committed handoff
+  for the owner's push, without pushing or changing historical evidence.
+
+## 2026-10-12 - Preserve Wrapped dbSNP JSON On GenBank Re-Import
+
+- Recheck the VKORC1 review against the local integrated source: the original
+  M1/M2/M3/L1 engine and GUI repairs are present. Successful pair materialization
+  deliberately retains two canonical undo entries; do not change that contract.
+- Static inspection identifies an additional interchange edge: `gb-io` retains
+  hard wraps as literal newlines, which can split compact SPDI JSON tokens.
+  Restore only physical folds in unparseable `dbsnp_spdi` values that unfold to
+  SPDI-shaped JSON. Keep valid JSON, escapes, malformed payloads, ordinary notes,
+  allele order, empty strings and assembly/reference checks unchanged.
+- Add inline hand-crafted GenBank export/shared-loader re-import regressions
+  for LF/CRLF, escaped quotes and long insertion/deletion/replacement payloads,
+  plus negative controls. Document the custom-catalog unavailable-assembly gate.
+  No new operation, GUI undo policy, dependency, fixture file or private output.
+- Rust execution remains deferred to Glen/CI: run `cargo test --locked --lib
+  dbsnp_spdi_`, then `cargo check -q --locked` on the exact committed source.
+  Live dbSNP/GRCh38, tutorial 08.04 native C/T, Windows, reporter orientation,
+  topology and release acceptance remain open; source inspection is not a pass.
+
+## 2026-10-12 - Repair Deleted Release-Handoff Links
+
+- Repair five active links to the intentionally deleted `.12` candidate handoff
+  without restoring its planning ledger. Pin historical CI/handoff evidence to
+  its retained source revision; keep the CLI/JASPAR-lock recheck distinct from
+  the open CertUtil sharing-violation note and current `.12` acceptance.
+- Keep the verified rolling/pinned Ubuntu inventory in the release guide and
+  the retained 25-mode ClawBio review scope in its onepager. Runner and removal
+  decisions remain owner-pending; workflows and compatibility are unchanged.
+- Preserve `.11` history, the `.12` development draft, historical mentions and
+  all scientific, GUI, performance and package acceptance limitations.
+
 ## 2026-10-12 - Prepare No-Push Merged-Source Glen Handoff
 
 - Freeze the remaining execution gates at merged `e981469e`, not the earlier
