@@ -130,6 +130,23 @@ class TutorialGapLessonTests(unittest.TestCase):
             self.assertNotIn("gui_acceptance", source)
             self.assertNotIn(source["id"], [chapter["id"] for chapter in manifest["chapters"]])
 
+    def test_tss_codex_review_is_scoped_to_current_prose(self):
+        reviews = json.loads((ROOT / "docs/tutorial/review_manifest.json").read_bytes())
+        review, = [row for row in reviews["entries"] if row["tutorial_id"] == "tss_regulatory_view_gui"]
+        catalog = json.loads((ROOT / "docs/tutorial/catalog.json").read_bytes())
+        projected, = [row for row in catalog["entries"] if row["id"] == review["tutorial_id"]]
+        prose = (ROOT / "docs/tutorial/08-16_tss_regulatory_view_gui.md").read_text(encoding="utf-8")
+        self.assertGreaterEqual(review["codex_reviewed_at"], "2026-10-12")
+        self.assertEqual(projected["codex_reviewed_at"], review["codex_reviewed_at"])
+        self.assertEqual(projected["review_status"], "codex_reviewed")
+        self.assertIn(f'**{review["codex_reviewed_at"]}**', prose)
+        self.assertRegex(prose, r"Reviewed source: `[0-9a-f]{40}`")
+        self.assertIn("including the optional DuckDB companion", prose)
+        self.assertIn("readability, pedagogy and command/source consistency", prose)
+        self.assertIn("not Rust, native GUI, model or human scientific acceptance", prose)
+        self.assertIsNone(review["human_reviewed_at"])
+        self.assertIsNone(review["human_reviewer"])
+
     def test_canonical_tutorial_sources_have_review_manifest_entries(self):
         manifest = json.loads((ROOT / "docs/tutorial/review_manifest.json").read_bytes())
         identifiers = [entry["tutorial_id"] for entry in manifest["entries"]]

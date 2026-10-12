@@ -10,6 +10,16 @@ It uses an entirely synthetic public minus-strand fixture. No network request,
 private sample, database query or new motif scoring occurs in the core inspection
 steps. The optional companion below explicitly adds local DuckDB queries.
 
+## Review Scope
+
+Codex reviewed the learner prose, including the optional DuckDB companion,
+on **2026-10-12** for readability, pedagogy and command/source consistency
+for experienced wet-lab biologists.
+Reviewed source: `0024fab11d64e8d455c903e6e36f47354d0f8ee3`.
+This is not Rust, native GUI, model or human scientific acceptance.
+Glen's execution gates remain open; retained captures keep their original
+revision-bound scope and do not show the new imported-hit companion.
+
 ## What you will accomplish
 
 In about 10 minutes you will:

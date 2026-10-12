@@ -1,5 +1,22 @@
 # GENtle Changelog
 
+## 2026-10-12 - Refresh Tutorial 08.16's Scoped Codex Review
+
+- Re-read the full 08.16 learner prose, including its optional DuckDB companion,
+  against `0024fab1`: shared query/export flags, signed footprint geometry,
+  full/partial coverage, score units and synthetic/non-claim boundaries.
+  Refresh only its manifest/catalog review date and add the exact source,
+  wet-lab audience and readability/pedagogy/source-consistency review scope.
+- Preserve the three explicit unreviewed records and coverage regression already
+  merged from `4ad6e5b6`; do not duplicate that repair or invent human approval.
+- Add an offline regression for the stale review date, projection consistency
+  and visible scope limits. Commands, fixtures, historical captures and Rust
+  behavior are unchanged. Glen/CI still own current-source DuckDB/Rust, repeat,
+  catalog/parity runtime, native and FLNA acceptance. No local Rust build or push.
+- All 76 scoped Python source/checkout/fixture checks pass on macOS/arm64 with
+  Python 3.14.7 and DuckDB 1.5.4, including two real DuckDB fixture I/O tests.
+  This is not execution of GENtle's query/export pipeline or native acceptance.
+
 ## 2026-10-12 - Merge Tutorial Repair And Archive Inspection Into Main
 
 - Merge `4ad6e5b6` and `e5859f4f` while retaining main's `228a4598` audit
