@@ -218,7 +218,9 @@ class TutorialGapLessonTests(unittest.TestCase):
             with self.assertRaises(FileExistsError):
                 motif_generator.build(Path(tmp), "not-invoked", "tss-view")
         draft = ROOT / "docs/tutorial/drafts/flna_splicing_interpretation.md"
-        self.assertIn("Inputs Pending", draft.read_text())
+        self.assertIn("Activation Pending", draft.read_text())
+        self.assertIn("no Ensembl", draft.read_text())
+        self.assertIn("release record", draft.read_text())
         catalog = json.loads((ROOT / "docs/tutorial/catalog.json").read_bytes())
         self.assertNotIn(str(draft.relative_to(ROOT)), json.dumps(catalog))
 

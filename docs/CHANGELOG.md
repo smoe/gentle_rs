@@ -1,5 +1,25 @@
 # GENtle Changelog
 
+## 2026-10-12 - Inspect Glen's Retained Tutorial Evidence
+
+- Verify the supplied archive SHA-256, safe member types/paths and all 89 root
+  checksum entries without running archived code. Independently compare A1's
+  saved queries, unchanged window arrays, 33 receipt output hashes and 1,001-bp
+  FASTA/GenBank/EMBL sequence parity. Its fixture-genome companion does not
+  accept the newer 08.16 preset; A3 does not execute the new LocalProject test.
+- Confirm genuine retained FLNA raw payload equality, 30,120-base sequence,
+  stable canonical selector and both exact reviewed UniProt joins. Correct the
+  draft/handoff's missing-input status, but retain the missing release record,
+  teaching-exon and native/scientific gates. Do not label a dated REST snapshot
+  release-pinned, commit the external archive or activate the learner guide.
+- Record findings, digests and a no-push follow-up in
+  [the independent inspection](glen_tutorial_inputs_review_20261012.md).
+  Glen's executed Linux evidence remains bound to `a403d2eb`; no local Rust,
+  DuckDB query, native display, release or biological approval is claimed.
+- Recheck all 97 scoped Python cases: 94 pass and three have expected platform
+  skips. Metadata freshness and local documentation links pass; the restored
+  historical body is byte-identical after removing only its new banner.
+
 ## 2026-10-12 - Repair Tutorial Review Registration And Candidate Links
 
 - Reproduce Glen's missing-review boundary before the repair: 07.04 and 10.03

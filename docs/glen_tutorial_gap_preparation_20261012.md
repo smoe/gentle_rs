@@ -9,6 +9,12 @@ valid. This second request covers A/B and the missing real inputs for E.
 Audit the exact commit containing this note, not the old preparation baseline.
 Steffen can forward it; no agent-to-agent message has been sent.
 
+Update 2026-10-12: the owner supplied Glen's checksum-bound A1-A3 archive.
+The [independent inspection and focused next request](glen_tutorial_inputs_review_20261012.md)
+confirm the retained FLNA snapshot and separate A1 companion. They do not
+complete the newer 08.16/08.18 tests, C/D native checks or FLNA activation gate.
+The original request below remains the command/acceptance scope.
+
 ## Common Instructions
 
 Use a clean isolated worktree and one exact-source CLI/GUI/docs-helper set.
@@ -131,10 +137,12 @@ contract acceptance from real repeat biology and RNA interpretation.
 ## E: Supply Retained Genuine FLNA Inputs Before Activation
 
 `docs/tutorial/drafts/flna_splicing_interpretation.md` is not in the catalog.
-The historical temporary FLNA state/view are gone; numeric feature `300` is
-not a stable tutorial selector. Please locate original retained public evidence
-and verify hashes/redistribution permission, or retrieve fresh public inputs
-with fresh provenance. Do not fabricate or rename a synthetic substitute FLNA.
+The historical temporary directory is gone, but the supplied archive now
+contains the genuine complete public FLNA state/view and raw sources. The
+stable canonical selector resolves uniquely; numeric feature `300` remains
+specific to that state. The missing release record, teaching-exon selection
+and native/scientific checks are listed in the independent inspection. Do not
+fabricate a release label or rename a synthetic substitute FLNA.
 
 Prefer release-pinned archive/GTF data. Historical gene ENSG00000196924,
 canonical ENST00000369850.10, reviewed UniProt P21333 and 36 transcripts are

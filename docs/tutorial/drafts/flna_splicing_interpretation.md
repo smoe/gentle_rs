@@ -1,9 +1,12 @@
-# FLNA Splicing Interpretation: Draft, Inputs Pending
+# FLNA Splicing Interpretation: Draft, Activation Pending
 
 This is a teaching outline, **not an active tutorial or acceptance record**.
-Do not put it in the discovery catalog until a retained genuine public bundle
-and stable feature selectors exist. Temporary files and numeric feature `300`
-from the historical smoke are not reproducible inputs.
+Do not put it in the discovery catalog until the activation gate below is met.
+The owner has now supplied the retained genuine FLNA bundle, independently
+checked in the [archive inspection](../../glen_tutorial_inputs_review_20261012.md).
+It supplies source bytes and a stable transcript selector, but no Ensembl
+release record, approved teaching exon or native screenshots. Numeric feature
+`300` from that snapshot is not a reusable selector.
 
 ## Biological Question
 
@@ -12,9 +15,10 @@ interpretation, and what do exact loaded UniProt links actually establish?
 
 ## Required Retained Inputs
 
-Glen should supply public FLNA ENSG00000196924 annotation, its canonical
-transcript identity (historically ENST00000369850.10), loaded reviewed UniProt
-P21333, project state, view/report and a machine-readable input manifest.
+The received archive supplies public FLNA ENSG00000196924 annotation, canonical
+transcript ENST00000369850.10, loaded reviewed UniProt P21333, complete project
+state, view/report and checksum manifests. Before activation, complete the
+release and teaching/native evidence rather than fetching an unlabeled substitute.
 Record retrieval URLs/date, Ensembl annotation release, exact response/file
 hashes and producer SHA/binary/profile. Prefer a release-pinned archive/GTF.
 If using live REST, capture `/info/data` before and after and retain the raw
