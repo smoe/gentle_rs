@@ -1,5 +1,26 @@
 # GENtle Changelog
 
+## 2026-10-12 - Repair Tutorial Review Registration And Candidate Links
+
+- Reproduce Glen's missing-review boundary before the repair: 07.04 and 10.03
+  lack entries, and the newer local 08.18 has the same defect. Register all
+  three as active guided walkthroughs with null review dates/reviewer; the
+  catalog now says `unreviewed`, not `missing_review_manifest_entry`. Do not
+  fabricate approval or rewrite the committed tutorial report to hide warnings.
+- Restore the deleted candidate-preparation handoff from the parent of
+  `afbef444`, preserving its original body and adding an explicit historical
+  banner/current-ledger pointer. All five existing release/roadmap/ClawBio
+  links and their three named anchors resolve again; no release policy changes.
+- Add failing-before/passing-after source regressions for canonical review
+  registration and handoff links, plus real disposable LF/CRLF checkouts for
+  the three manual identities and existing catalog-byte policy. Full current-
+  source tutorial replay/checkout and Rust verification remain with Glen/CI;
+  the older docs helper is used only for unchanged metadata generation/checks.
+- Verification on macOS: 94 scoped Python tests pass, with three expected
+  platform skips; `cargo fmt --check` and whitespace checks pass. Catalog
+  and manifest freshness pass (65 entries, 30 executable chapters). These
+  source/checkout checks are not a fresh binary `tutorial-check` verdict.
+
 ## 2026-10-12 - Prepare No-Push Merged-Source Glen Handoff
 
 - Freeze the remaining execution gates at merged `e981469e`, not the earlier

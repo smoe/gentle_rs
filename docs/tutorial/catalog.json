@@ -2227,7 +2227,7 @@
       "next_steps": [
         "gene_assay_study_gui"
       ],
-      "review_status": "missing_review_manifest_entry",
+      "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
@@ -2429,7 +2429,7 @@
       "next_steps": [
         "tss_regulatory_view_gui"
       ],
-      "review_status": "missing_review_manifest_entry",
+      "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
@@ -2465,7 +2465,7 @@
         "measured gel sizing report",
         "SVG/TSV exports"
       ],
-      "review_status": "missing_review_manifest_entry",
+      "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
       "graphics": [

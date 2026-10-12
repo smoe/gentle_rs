@@ -116,6 +116,41 @@ class TutorialCheckoutTests(unittest.TestCase):
                 with self.subTest(mode=mode[0], path=relative):
                     self.assertEqual((target / relative).read_bytes(), self.payload)
 
+    def test_manual_tutorial_review_identity_survives_lf_and_crlf_checkouts(self):
+        sources = ("07-04_microarray_evidence_gui_cli.json",
+                   "10-03_measured_gel_sizing_gui_cli.json",
+                   "08-18_repeat_environment_cohorts.json")
+        paths = [Path("docs/tutorial/review_manifest.json"), Path("docs/tutorial/catalog.json")]
+        paths.extend(Path("docs/tutorial/sources") / name for name in sources)
+        payloads = {path: (checker.ROOT / path).read_bytes() for path in paths}
+        (self.root / ".gitattributes").write_bytes((checker.ROOT / ".gitattributes").read_bytes())
+        for path, payload in payloads.items():
+            target = self.root / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "manual tutorial review identity")
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"manual-review-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            reviews = {entry["tutorial_id"]: entry for entry in
+                       json.loads((target / paths[0]).read_bytes())["entries"]}
+            catalog = {entry["id"]: entry for entry in
+                       json.loads((target / paths[1]).read_bytes())["entries"]}
+            known = {json.loads((target / path).read_bytes())["id"] for path in paths[2:]}
+            self.assertEqual(known - set(reviews), set(), "missing entries add report warnings")
+            self.assertEqual((target / paths[1]).read_bytes(), payloads[paths[1]])
+            for identifier in known:
+                with self.subTest(mode=mode[0], tutorial=identifier):
+                    self.assertEqual(reviews[identifier]["tutorial_kind"], "guided_walkthrough")
+                    self.assertEqual(reviews[identifier]["tutorial_status"], "active")
+                    self.assertNotEqual(catalog[identifier]["review_status"], "missing_review_manifest_entry")
+            missing = dict(reviews)
+            del missing["microarray_evidence_gui_cli"]
+            self.assertEqual(known - set(missing), {"microarray_evidence_gui_cli"},
+                             "the original missing-entry boundary is detectable in either checkout")
+
     def test_measured_gel_image_requests_and_checksums_survive_lf_crlf_checkouts(self):
         relative = Path("docs/tutorial/inputs/gel_sizing")
         names = ["gel_sizing_synthetic.png", "dna-analysis.json", "protein-analysis.json", "SHA256SUMS"]

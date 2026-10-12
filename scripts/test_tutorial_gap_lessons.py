@@ -130,6 +130,46 @@ class TutorialGapLessonTests(unittest.TestCase):
             self.assertNotIn("gui_acceptance", source)
             self.assertNotIn(source["id"], [chapter["id"] for chapter in manifest["chapters"]])
 
+    def test_canonical_tutorial_sources_have_review_manifest_entries(self):
+        manifest = json.loads((ROOT / "docs/tutorial/review_manifest.json").read_bytes())
+        identifiers = [entry["tutorial_id"] for entry in manifest["entries"]]
+        self.assertEqual(len(identifiers), len(set(identifiers)), "duplicate review identities")
+        known = {source["id"] for path in (ROOT / "docs/tutorial/sources").glob("*.json")
+                 if "id" in (source := json.loads(path.read_bytes()))}
+        self.assertEqual(known - set(identifiers), set(), "missing review entries change report.json warnings")
+        by_id = {entry["tutorial_id"]: entry for entry in manifest["entries"]}
+        catalog = {entry["id"]: entry for entry in
+                   json.loads((ROOT / "docs/tutorial/catalog.json").read_bytes())["entries"]}
+        for identifier in ("microarray_evidence_gui_cli", "measured_gel_sizing_gui_cli",
+                           "repeat_environment_cohorts"):
+            with self.subTest(tutorial=identifier):
+                entry = by_id[identifier]
+                self.assertEqual(entry["tutorial_kind"], "guided_walkthrough")
+                self.assertEqual(entry["tutorial_status"], "active")
+                self.assertNotEqual(catalog[identifier]["review_status"], "missing_review_manifest_entry")
+                if entry["codex_reviewed_at"] is None and entry["human_reviewed_at"] is None:
+                    self.assertEqual(catalog[identifier]["review_status"], "unreviewed")
+
+    def test_candidate_handoff_links_resolve_to_retained_historical_sections(self):
+        linked_from = (ROOT / "docs/roadmap.md",
+                       ROOT / "docs/release_notes/release_notes_v0.1.0-internal.12.md",
+                       ROOT / "docs/clawbio_gentle_integration_onepager.md")
+        expected = {"corrected-ci-evidence", "ubuntu-runner-decision", "clawbio-compatibility-decision"}
+        seen = set()
+        for source in linked_from:
+            for link in re.findall(r"\]\(([^)]+)\)", source.read_text(encoding="utf-8")):
+                if "internal_12_candidate_preparation.md" not in link:
+                    continue
+                relative, _, fragment = link.partition("#")
+                target = (source.parent / relative).resolve()
+                self.assertTrue(target.is_file(), link)
+                headings = {re.sub(r"[^a-z0-9 -]", "", heading.lower()).replace(" ", "-")
+                            for heading in re.findall(r"(?m)^#{1,6} (.+)$", target.read_text(encoding="utf-8"))}
+                if fragment:
+                    self.assertIn(fragment, headings, link)
+                    seen.add(fragment)
+        self.assertEqual(seen, expected)
+
     def test_lesson_local_links_and_visible_pending_limits(self):
         for filename in ("07-04_microarray_evidence_gui_cli.md", "10-03_measured_gel_sizing_gui_cli.md",
                          "08-16_tss_regulatory_view_gui.md", "08-18_repeat_environment_cohorts.md"):
