@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-10-12 - Commit Forwardable Glen Execution Instructions
+
+- Add the focused [e981469e handoff](glen_e981469e_execution_handoff.md): bundle
+  integrity/reconstruction, exact-source checks, the six execution gates and
+  returned-evidence requirements. All supporting reading is repository-tracked;
+  the owner will push it. Once pushed, fetching the exact source replaces the
+  optional bundle transfer. Codex performs no push or workflow dispatch.
+- Keep the explicitly requested audit target separate from newer merge
+  `5b599808`, which includes the incoming production SPDI repair. Neither
+  old-source acceptance nor a newer-main push run certifies the other SHA.
+- On exact `5b599808`, all 263 scoped offline helper tests pass on macOS/arm64
+  (81.537 s), including two real DuckDB fixture checks. Raw log
+  `/private/tmp/gentle-merge-5b599808-offline.log`, SHA-256
+  `71da327320014db8b333e49ecac9a2259bb8e4c382632bff65f3e0bd14772a5e`.
+  Scoped formatting/whitespace pass; no Rust or native/package pass is claimed.
+
 ## 2026-10-12 - Merge GenBank Interchange And Release-Link Repairs
 
 - At the owner's request, merge `gentle_rs_3` tip `dfadf2a5` into local `main`

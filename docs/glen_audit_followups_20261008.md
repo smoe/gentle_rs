@@ -302,11 +302,18 @@ native/package verdict from these offline tests.
 
 ### Glen Execution Handoff: 2026-10-12
 
+The owner now requests a forwardable message and committed supporting reading,
+which the owner will push. Use the focused
+[e981469e execution handoff](glen_e981469e_execution_handoff.md) for the bundle,
+commands and returned-evidence requirements. The subsequent `gentle_rs_3`
+merge `5b599808` includes a production GenBank/SPDI fix absent from `e981469e`;
+the requested older target cannot accept this newer main or a release.
+
 The owner assigns Glen assistance with all remaining execution gates. This
 handoff supersedes the earlier `f56fdf84` target: use exact merged source
 `e981469e4beb637d2def12617ff974c76661ace5`, not moving main or an older binary.
-Relay the small checksum-bound bundle above; no new GitHub push or credential
-transfer is authorized. Make a new isolated checkout on Glen's approved
+Relay the small checksum-bound bundle above; Codex performs no GitHub push or
+credential transfer. Make a new isolated checkout on Glen's approved
 external runner, never reset his primary tree. With `BUNDLE` pointing to the
 received file and `CHECKOUT` naming a new directory, reconstruct it as follows:
 
