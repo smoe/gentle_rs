@@ -616,7 +616,7 @@ fn specificity_matrix_mcp_reads_same_payload_without_persisting_state() {
     .unwrap();
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("state ' with spaces.json");
-    engine.state().save_to_path(&path).unwrap();
+    engine.state().save_to_path(path.to_str().unwrap()).unwrap();
     let before = std::fs::read(&path).unwrap();
     let output = crate::mcp_server::mcp_tool_call_for_capability_surface_tests(
         path.to_str().unwrap(),

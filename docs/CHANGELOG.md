@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+## 2026-10-13 - Correct Matrix Test State-Path Argument
+
+- Fix the merged MCP matrix regression's `PathBuf` argument for the existing
+  `EngineState::save_to_path(&str)` contract, using the same checked UTF-8 path
+  as its MCP reader. Keep the apostrophe/space path and unchanged-byte assertion.
+- Source/signature, scoped rustfmt and whitespace checks only; no local Rust
+  builds/tests, push or runtime acceptance claim. Merge `gentle_rs_3` at
+  `9e717bb4`; the newly merged inspection/tutorial checks still need execution.
+
 ## 2026-10-13 - Retain Bounded Import Profiling Results
 
 - Verify the owner-supplied 29,227-byte archive, all 75 manifest hashes and
