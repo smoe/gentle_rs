@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-10-13 - Prepare Bounded Post-BLAST Profiling Handoff
+
+- Commit [Glen's import-only diagnostic procedure](glen_post_blast_import_profiling_f35a58e6.md)
+  for frozen `f35a58e6`: verify original source/binary/reference/input bindings,
+  restore only absent disposable absolute paths, and retain evidence unchanged.
+- Limit two real-reference cases to four 60-second baseline/CPU attempts and
+  one optional 10-second file-open trace, with five-second grace and a total
+  five-minute import budget. Existing profiler permissions only; refusals,
+  timeout/process/state outcomes and unresolved stacks stay explicit.
+- Require hashes, complete commands, timing/RSS, CPU stacks/path counts and
+  retained logs before a runtime repair. No local Rust, profiling execution,
+  push, CI dispatch, package/tag/release or scientific approval.
+- Verify shell-template syntax, local links and whitespace; release-gate has
+  four passes and session-close has no failures. Roadmap remains 400 lines;
+  unrelated worktree/manual-fidelity warnings stay explicit.
+
 ## 2026-10-13 - Retain Glen's Final-Candidate Review
 
 - Independently verify the owner-supplied `f35a58e6` archive SHA/size, all 213
