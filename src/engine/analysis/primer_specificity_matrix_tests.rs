@@ -1,7 +1,10 @@
 //! Inline synthetic receipt fixtures for panel inspection; no genes or resources.
 //! Recreated by `fixture`/`acceptance`, used only by these shared-engine tests.
+//! Stored IDs follow production normalization; adapter requests retain punctuation.
 
 use super::*;
+
+const RAW_PANEL_REPORT_ID: &str = "synthetic panel ' inspection";
 
 fn fixture() -> (GentleEngine, TranscriptAssayPanelReport) {
     let primer = |sequence: &str| PrimerDesignPrimerRecord {
@@ -12,7 +15,7 @@ fn fixture() -> (GentleEngine, TranscriptAssayPanelReport) {
     };
     // Identical oligos in two different assay contexts must remain two identities.
     let panel = TranscriptAssayPanelReport {
-        report_id: "synthetic panel ' inspection".into(),
+        report_id: GentleEngine::normalize_primer_design_report_id(RAW_PANEL_REPORT_ID).unwrap(),
         source_seq_id: "synthetic_source".into(),
         selected_assays: ["assay_b", "assay_a"]
             .into_iter()
@@ -38,6 +41,31 @@ fn fixture() -> (GentleEngine, TranscriptAssayPanelReport) {
         .insert(panel.report_id.clone(), panel.clone());
     engine.write_primer_design_store(store).unwrap();
     (engine, panel)
+}
+
+#[test]
+fn specificity_matrix_raw_report_id_resolves_canonical_fixture_without_mutation() {
+    let (engine, panel) = fixture();
+    assert_eq!(panel.report_id, "synthetic_panel___inspection");
+    assert_ne!(panel.report_id, RAW_PANEL_REPORT_ID);
+    let before = serde_json::to_value(engine.snapshot()).unwrap();
+    for requested_id in [RAW_PANEL_REPORT_ID, panel.report_id.as_str()] {
+        assert_eq!(
+            engine
+                .get_transcript_assay_panel_report(requested_id)
+                .unwrap()
+                .report_id,
+            panel.report_id
+        );
+        let matrix = engine
+            .inspect_transcript_assay_panel_specificity_matrix(requested_id)
+            .unwrap();
+        assert_eq!(matrix.panel_report_id, panel.report_id);
+        assert_eq!(matrix.assays.len(), panel.selected_assays.len());
+        assert_eq!(matrix.unassessed_genomic_assay_ids.len(), 2);
+        assert_eq!(matrix.unassessed_transcriptome_assay_ids.len(), 2);
+    }
+    assert_eq!(before, serde_json::to_value(engine.snapshot()).unwrap());
 }
 
 fn acceptance(
@@ -549,7 +577,7 @@ fn specificity_matrix_shared_shell_raw_operation_and_reload_agree() {
     assert_eq!(template.matches("YOUR_PANEL_REPORT_ID").count(), 1);
     let command = crate::engine_shell::parse_shell_line(&template.replace(
         "YOUR_PANEL_REPORT_ID",
-        &crate::engine_shell::shell_quote(&panel.report_id),
+        &crate::engine_shell::shell_quote(RAW_PANEL_REPORT_ID),
     ))
     .unwrap();
     assert!(!command.is_state_mutating());
@@ -561,7 +589,7 @@ fn specificity_matrix_shared_shell_raw_operation_and_reload_agree() {
     );
     let raw = crate::engine_shell::ShellCommand::Op {
         payload: serde_json::to_string(&Operation::InspectTranscriptAssayPanelSpecificityMatrix {
-            panel_report_id: panel.report_id.clone(),
+            panel_report_id: RAW_PANEL_REPORT_ID.into(),
         })
         .unwrap(),
     };
@@ -621,7 +649,7 @@ fn specificity_matrix_mcp_reads_same_payload_without_persisting_state() {
     let output = crate::mcp_server::mcp_tool_call_for_capability_surface_tests(
         path.to_str().unwrap(),
         "transcript_assay_specificity_matrix",
-        json!({"panel_report_id":panel.report_id}),
+        json!({"panel_report_id":RAW_PANEL_REPORT_ID}),
     );
     assert_eq!(output["isError"], false);
     let content = output["content"].as_array().unwrap();

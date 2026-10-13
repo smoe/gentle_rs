@@ -384,6 +384,9 @@ jobs:
       - name: Primer multi-reference regressions
         run: 'cargo test -q --locked --lib -j1 engine::primer_specificity_multi::tests:: -- --test-threads=1'
 
+      - name: Primer panel specificity matrix regressions
+        run: 'cargo test -q --locked --lib -j1 specificity_matrix_ -- --test-threads=1'
+
       - name: Glossary command regressions
         run: 'cargo test -q --locked --lib -j1 engine_shell::tests::glossary_ -- --test-threads=1'
 
@@ -566,6 +569,9 @@ jobs:
       - name: Primer multi-reference regressions
         run: 'cargo test -q --locked --lib -j1 engine::primer_specificity_multi::tests:: -- --test-threads=1'
 
+      - name: Primer panel specificity matrix regressions
+        run: 'cargo test -q --locked --lib -j1 specificity_matrix_ -- --test-threads=1'
+
       - name: Glossary command regressions
         run: 'cargo test -q --locked --lib -j1 engine_shell::tests::glossary_ -- --test-threads=1'
 
@@ -710,6 +716,9 @@ jobs:
 
       - name: Primer multi-reference regressions
         run: 'cargo test -q --locked --lib -j1 engine::primer_specificity_multi::tests:: -- --test-threads=1'
+
+      - name: Primer panel specificity matrix regressions
+        run: 'cargo test -q --locked --lib -j1 specificity_matrix_ -- --test-threads=1'
 
       - name: Glossary command regressions
         run: 'cargo test -q --locked --lib -j1 engine_shell::tests::glossary_ -- --test-threads=1'

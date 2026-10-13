@@ -179,6 +179,51 @@ through an owner push or bundle, plus focused tests and bounded real imports.
 All six gate verdicts above remain bound to their recorded source; no additional
 native, live-agent, package, scientific or performance closure follows.
 
+### New-Source CI Regression At `6c87f8d1`
+
+Codex follows existing [run 38414971911](https://github.com/smoe/gentle_rs/actions/runs/38414971911),
+attempt 1, without dispatch/restart. The completed
+[Linux job 115356926933](https://github.com/smoe/gentle_rs/actions/runs/38414971911/job/115356926933)
+checks out exact `6c87f8d1f160b4c3856323048c1cb334f7a4f63d`, tree
+`314953cd7ed44cddf80ff847581f5be4978792db`. Runner is Ubuntu 24.04.5,
+image `20261004.327.1`, Rust 1.99.0; ordinary unoptimized/debuginfo test
+profile, root defaults plus workspace feature unification, `CARGO_INCREMENTAL=0`
+and `RUST_MIN_STACK=16777216`. The committed source lock
+hash remains `ead4421545a125267e33af84aeeea39f0e7ea2f60717a59ef0271d0e71855f1b`,
+not a separately CI-measured lock hash or a package receipt.
+
+Ten focused multi-reference tests pass. The full
+`cargo test --locked --workspace -j1` stops at the root library: 4,147 pass,
+eight fail, 14 ignored, 1,069.56 seconds. All five trace-recorder tests and
+the traced refusal/synthetic import pass within that failed suite. Do not
+call the workspace green or accept later test binaries that were not reached.
+Every matrix failure is `NotFound` for `synthetic_panel___inspection`: the
+fixture stores its raw spaces/apostrophe ID, unlike production construction.
+Preserve the original decoded Linux log outside Git at
+`/private/tmp/gentle-ci-6c87f8d1-20261013/linux-job-115356926933.decoded.log`,
+UTF-8 representation SHA-256
+`df1ade2fa646465ae66ab048a56ac28a2a27dda7251424bcb7f01aee8511c523`.
+This is not a raw HTTP/archive digest. Windows remains live at observation.
+
+Repair only fixture construction, retain raw unusual adapter requests, and
+add canonical/raw lookup plus read-only assertions. An early matrix filter on
+the existing platform jobs catches this shared primary failure before lengthy
+adapter/full-suite work. Rust verification of the repair remains external.
+No production identifier rule, biological policy or historical verdict changes.
+
+The owner explicitly authorizes 08.04 GUI replay, scroll CPU and macOS audit-CLI
+checks at `6c87f8d1` only after normal CI passes, excluding packages, public-data
+preparation, model calls, pushes, tags and publication. The CI prerequisite is
+unmet; do not dispatch or retry the unchanged failing fixture. A new source
+needs owner push/access, successful exact-SHA CI and explicit audit retargeting.
+Keep all six final-candidate gates open to their actual evidence boundaries.
+
+For the local repair, all 61 offline tutorial/checkout checks pass in 33.818 s;
+retain `/private/tmp/gentle-matrix-fixture-repair-offline.log`, SHA-256
+`0067bbe86619ec419e4c6e58962d7be1b3ecceaf85439fea2dab25e7d3f239ae`.
+Scoped rustfmt, workflow-structure and whitespace checks pass. This is source/
+documentation validation, not execution of the new Rust fixture or regression.
+
 ### Completed Container Validation At `5e6201a6`
 
 After the main integration, Codex follows the already-live

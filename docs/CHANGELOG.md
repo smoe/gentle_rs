@@ -1,5 +1,27 @@
 # GENtle Changelog
 
+## 2026-10-13 - Repair Panel Matrix Fixture Identity
+
+- Diagnose Linux job `115356926933` at exact `6c87f8d1`: 4,147 root tests
+  pass, eight matrix tests fail and 14 are ignored. All eight share a fixture
+  that stores a raw panel ID while the established getter normalizes requests.
+  This is not a download/environment failure or a reason to retry old code.
+- Construct the synthetic stored report through the production normalizer;
+  preserve the original spaces/apostrophe in shared-shell, raw-operation and
+  MCP requests. Add raw/canonical lookup and unchanged-state assertions rather
+  than simplifying identifiers or weakening production grammar/validation.
+- Add the focused matrix filter to the existing Windows/macOS/Linux CI jobs
+  before expensive adapter/full-suite steps; no new platform or build profile.
+  No production behavior, reference/terminal rules or scientific data changes.
+- The owner authorizes audit-only CI at `6c87f8d1` after normal CI passes;
+  this failure leaves that prerequisite unmet. No audit/package dispatch,
+  push, tag/publication or local Rust execution. The repair needs a new-SHA
+  external focused/full-suite pass and explicit audit retargeting.
+- Verification: 61 offline tutorial/checkout checks pass; scoped rustfmt,
+  workflow structure and whitespace pass. Release-gate reports four passes,
+  roadmap stays 400 lines and session-close has no failures, with intentional
+  worktree/manual-fidelity warnings. No local Rust verification is claimed.
+
 ## 2026-10-13 - Retain Human FLNA Teaching-Exon Selection
 
 - Preserve Glen's original 992-byte decision and small browser manifest with
