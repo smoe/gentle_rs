@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-10-13 - Retain Human FLNA Teaching-Exon Selection
+
+- Preserve Glen's original 992-byte decision and small browser manifest with
+  independently verified hashes, scoped LF rules and LF/CRLF missing-rule
+  coverage. The human choice of local `19370-19393` (24 bp) is closed at
+  `f35a58e6`; original audit files and assets remain untouched.
+- Compare the unchanged retained CDS geometry and record its 24-bp difference.
+  Distinguish loaded annotation `ENST00000360319.10` from UniProt/decision `.9`;
+  request a separate label addendum without rewriting evidence or reopening
+  selection. No version-equivalence, measured splice or functional claim.
+- Update only active handoff, ledger, roadmap and inactive FLNA draft status.
+  Native normal-size, historical release and scientific/experimental acceptance
+  remain open. No tutorial activation, local Rust, push, dispatch or publication.
+- Verification: all 68 offline teaching/checkout tests pass, including both
+  checkout modes and missing-rule controls; retained hashes and the historical
+  request body match. Release-gate has four passes, whitespace is clean and
+  roadmap remains 400 lines. Session-close has no failures; unrelated-worktree
+  and manual-fidelity warnings are explicit.
+
 ## 2026-10-13 - Narrow Glen's Active Tutorial Handoff
 
 - Reconcile the active handoff with Glen's executed `f35a58e6` evidence; mark

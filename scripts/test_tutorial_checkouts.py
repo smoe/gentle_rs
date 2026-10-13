@@ -296,11 +296,14 @@ class TutorialCheckoutTests(unittest.TestCase):
     def test_f35a58e6_original_report_and_manifest_survive_both_checkout_modes(self):
         base = Path("docs/audits/glen_followups_20261008/candidate_f35a58e6")
         profile = Path("docs/audits/glen_followups_20261008/post_blast_profile_f35a58e6")
+        decision = Path("docs/audits/glen_followups_20261008/flna_teaching_exon_f35a58e6")
         expected = {
             base / "REPORT.md": "63ab711e81383b407d8b4a00b90c2873553551646944696bc127f9d27ec7bc52",
             base / "SHA256SUMS": "cabb5e49d9e904d55cf0d07b9aae0879ba269c2a3ca4d9899a199e7df189d9e0",
             profile / "REPORT.md": "aef052f65bf668e8e2729b3f19ea95b05227bf3d377e6c81e03b66e7d09f795c",
             profile / "SHA256SUMS": "466e5371a53c18e856d8d28defd0a3210fd5e73265023ff01c18110afae537ff",
+            decision / "decision-record.json": "5202f0605fca8cdd24bbd00e5066da855ffe41ff9aa6695ad09c8f75da4972be",
+            decision / "bundle-manifest.json": "f1966fdf183c637ac571137593c6de6b926b44790c81ae23fbdbfde45516974f",
         }
         payloads = {path: (checker.ROOT / path).read_bytes() for path in expected}
         attributes = (checker.ROOT / ".gitattributes").read_bytes()

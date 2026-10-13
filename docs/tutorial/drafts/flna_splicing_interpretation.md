@@ -5,7 +5,8 @@ Do not put it in the discovery catalog until the activation gate below is met.
 The owner has now supplied the retained genuine FLNA bundle, independently
 checked in the [archive inspection](../../glen_tutorial_inputs_review_20261012.md).
 It supplies source bytes and a stable transcript selector, but no Ensembl
-release record, approved teaching exon or native screenshots. Numeric feature
+release record or native screenshots. The [human 24-bp teaching-exon choice](../../audits/glen_followups_20261008/flna_teaching_exon_f35a58e6/README.md)
+is now recorded; it is not scientific/experimental approval. Numeric feature
 `300` from that snapshot is not a reusable selector.
 
 ## Biological Question
@@ -18,7 +19,7 @@ interpretation, and what do exact loaded UniProt links actually establish?
 The received archive supplies public FLNA ENSG00000196924 annotation, canonical
 transcript ENST00000369850.10, loaded reviewed UniProt P21333, complete project
 state, view/report and checksum manifests. Before activation, complete the
-release and teaching/native evidence rather than fetching an unlabeled substitute.
+release and native evidence rather than fetching an unlabeled substitute.
 Record retrieval URLs/date, Ensembl annotation release, exact response/file
 hashes and producer SHA/binary/profile. Prefer a release-pinned archive/GTF.
 If using live REST, capture `/info/data` before and after and retain the raw
@@ -41,8 +42,12 @@ bundle, then resolve its current feature ID. Never copy `300` into learner steps
    is not automatically transcript ambiguity or a noncanonical splice site.
 4. Compare exact loaded UniProt xrefs and grouped transcripts. Missing loaded
    evidence is unknown, not proof of no protein or an invented equivalence.
-5. Select an exon; explain the engine's projected sequence/frame consequence.
-   Do not infer biological exon skipping merely from a selectable feature.
+5. Inspect the selected local `[19369,19393)` coding exon (24 bp), displayed as
+   one-based closed `19370-19393`. The retained canonical `.10` annotation has
+   it; comparison `ENST00000360319.10` lacks it, while its loaded UniProt
+   cross-reference is `.9`. Keep those version labels distinct pending Glen's
+   addendum. Explain the annotation-derived frame/net-eight-amino-acid lesson;
+   do not infer an observed splice event or functional effect.
 6. Save/reopen and export the same view. Check long IDs in hover, coincident
    junctions, mixed strands, dense matrix retention and summary bounds.
 

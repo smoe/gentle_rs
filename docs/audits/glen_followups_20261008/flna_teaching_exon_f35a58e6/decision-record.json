@@ -1,0 +1,23 @@
+{
+  "record_type": "human_teaching_exon_selection",
+  "candidate_sha": "f35a58e6d2bdd7e0a5551e4531c336d7949bfaf0",
+  "reviewer": "Steffen Möller",
+  "decision_timestamp": "2026-10-13T17:23:43+02:00",
+  "selected_exon": {
+    "gene": "FLNA",
+    "local_zero_based_half_open": [19369, 19393],
+    "display_one_based_closed": [19370, 19393],
+    "length_bp": 24,
+    "included_transcript": "ENST00000369850.10",
+    "included_uniprot_isoform": "P21333-1",
+    "absent_transcript": "ENST00000360319.9",
+    "absent_uniprot_isoform": "P21333-2"
+  },
+  "intended_lesson": "Annotated exon skipping can preserve the reading frame while changing a protein segment; the predicted net difference is eight amino acids.",
+  "limitations": [
+    "Annotation-derived prediction, not an observed splice event.",
+    "No functional or scientific approval is implied.",
+    "No native GENtle GUI acceptance is implied.",
+    "The retained snapshot lacks a historical Ensembl annotation-release record."
+  ]
+}

@@ -18,6 +18,12 @@ commands. The 60-second real imports remain performance-blocked, with no
 completed result/state and no CPU-stack attribution. See the
 [separate bounded profiling receipt](audits/glen_followups_20261008/post_blast_profile_f35a58e6/README.md).
 
+The later [human FLNA decision](audits/glen_followups_20261008/flna_teaching_exon_f35a58e6/README.md)
+closes teaching-exon selection only. Preserve the distinction between the
+loaded annotation's comparison transcript `.10` and UniProt's `.9` reference;
+request a version-label addendum, not another human selection or scientific
+approval. Native normal-size and historical-release gates remain open.
+
 Do not rerun 08.18 CLI acceptance or invent a cohort GUI; none exists. RNA
 ranking stays unimplemented. Tutorial-CI/review-registration/LF-CRLF and link
 repairs remain closed by retained `5383f7ec` evidence. A newly observed defect
@@ -36,7 +42,7 @@ Missing host, capture consent or human decision remains blocked/not-run.
 | --- | --- |
 | 08.16 | Open the retained complete/partial imported lanes in the native view, including plus/minus, clipped footprints, negative/real-zero values, units/scales and coverage warnings. Check normal-size label/legend readability. Retain approved original captures; do not rerun DuckDB queries or alter original score arrays to get a screenshot. |
 | 07.04 / 10.03 | Native navigation, readable configuration/result views and approved screenshots; save/reopen a disposable copy through the GUI. The existing CLI reopen evidence is already passed. Keep assembly/mapping and synthetic-statistics warnings visible; outside-calibration gel values remain null with `outside_calibrated_range`. |
-| FLNA | Inspect the normal-size native transcript/exon/UniProt presentation and both genomic-minus/local-plus orientation claims. Obtain a human teaching-exon choice with its intended lesson, consequence/uncertainty and reviewer; Codex/Glen must not manufacture approval. Seek historical annotation-release evidence only if a genuine contemporaneous record is available. The 2400-px render/source joins are already evidenced; keep the draft inactive. |
+| FLNA | Inspect normal-size native presentation and genomic-minus/local-plus orientation. The [human 24-bp teaching-exon choice is closed](audits/glen_followups_20261008/flna_teaching_exon_f35a58e6/README.md); clarify annotation `.10` versus UniProt `.9` labels without rewriting the original decision. Historical release provenance and scientific/experimental confirmation remain open. The 2400-px rendering is already evidenced; keep the draft inactive. |
 | 04.09 | Inspect the existing native Shell/report presentation, without claiming a new specialist GUI or a completed real-import verdict. Complete real-reference import/save/reopen acceptance only after an evidenced performance repair, at that repair's exact SHA, with unchanged raw HSPs, policies and reference bindings. A timed-out attempt is not a failed biological verdict. |
 
 Do not enable the disabled screenshot bridge, bypass isolation/host policy,

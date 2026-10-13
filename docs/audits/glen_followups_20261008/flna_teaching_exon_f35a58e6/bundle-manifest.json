@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "bundle": "flna-exon-review-f35a58e6-20261013",
+  "candidate_sha": "f35a58e6d2bdd7e0a5551e4531c336d7949bfaf0",
+  "purpose": "Browser-based human teaching-exon review; not native GENtle GUI acceptance",
+  "artifacts": [
+    {"path":"index.html","sha256":"sha256:f2ebb96e0dd581f71ef503e79f22fd1a672d0d721399f6b3c5aaffcebd605550","bytes":6461},
+    {"path":"review.css","sha256":"sha256:83eb177f896ada9664ad53fc8aa5d12fdd726231bbf74b27253e31d144e7d6b6","bytes":4454},
+    {"path":"review.js","sha256":"sha256:51c9ce2af7cc10d94d94ab61ae55b902966c7463e7280cb387c50ced867999c6","bytes":1791},
+    {"path":"review-data.json","sha256":"sha256:5218bcc6bbd7bbafe23f9c6bd98d3eeb64266bcb2d47ab43458f0cc06a1a0596","bytes":1282},
+    {"path":"decision-record.json","sha256":"sha256:5202f0605fca8cdd24bbd00e5066da855ffe41ff9aa6695ad09c8f75da4972be","bytes":992},
+    {"path":"assets/ensembl-entry-metadata.json","sha256":"sha256:5bf3c14e3391205e504c26162bc24670d5e5c45d3372801b7fd7ddfc956f49a5","bytes":2069},
+    {"path":"assets/flna-splicing-f35a58e6.svg","sha256":"sha256:1828fdd8e07d21e79feab21519eccaa6aa4bbf43610784acf72db3705855e8de","bytes":6573326},
+    {"path":"assets/flna-splicing-f35a58e6-2400.png","sha256":"sha256:067693d140868689b3295493f2143e1e8873a7b49a2792aaa0c9f00e56cc9ec0","bytes":2790164}
+  ]
+}

@@ -115,6 +115,25 @@ bounded import-only profile described in the receipt before changing rules.
 Frozen `e981469e`/`dfadf2a5` audits remain separate. No local Rust, push,
 dispatch, package publication or overall six-gate completion is claimed.
 
+### Human FLNA Decision Supplement: 2026-10-13
+
+The [retained human decision and inspection receipt](audits/glen_followups_20261008/flna_teaching_exon_f35a58e6/README.md)
+close only teaching-exon selection at the historical `f35a58e6` source.
+Codex independently verifies the original 992-byte record against the owner's
+SHA-256 `5202f0605fca8cdd24bbd00e5066da855ffe41ff9aa6695ad09c8f75da4972be`
+and preserves the small review manifest. Steffen selects local one-based closed
+`19370-19393` (`[19369,19393)`, 24 bp). Retained CDS geometry differs by that
+interval alone, consistent with the annotation-derived eight-amino-acid lesson.
+The original execution report and all old evidence remain unchanged.
+
+The loaded comparison annotation is `ENST00000360319.10`, while the retained
+UniProt cross-reference and decision name `.9`. Do not assert version identity
+or silently rewrite the human record; ask Glen for a separate label addendum.
+The choice is not reopened. Native normal-size readability, historical Ensembl
+release and scientific/experimental confirmation remain open; keep the draft
+inactive. Browser review/export evidence does not close gate 4 or any other
+native/agent/package gate. No local Rust or new candidate acceptance follows.
+
 ### Bounded Post-BLAST Measurements At `f35a58e6`
 
 Glen returns the diagnostic requested by coordination commit `05285a5c`, while
@@ -141,7 +160,7 @@ Glen's 2026-10-13 clarification confirms the completed software/learner scope
 at `f35a58e6`; the earlier `5e6201a6` worktree request is not a new full task.
 The [active consolidated tutorial residuals](glen_final_candidate_execution_handoff.md#remaining-native-and-human-checks)
 are native 08.16 lanes, native microarray/gel navigation/captures/reopen, normal
-native FLNA plus human exon choice/missing historical release, and native 04.09
+native FLNA/missing historical release (human exon choice now closed above), and native 04.09
 presentation with completed real import deferred until performance repair.
 No 08.18 CLI repeat or cohort GUI is requested; closed tutorial-CI/link repairs
 stay closed. New-code diagnostics remain separate from these residuals and
