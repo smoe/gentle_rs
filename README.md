@@ -3,7 +3,7 @@
 <p align="center">
   <a href="https://github.com/smoe/gentle_rs/actions/workflows/ci.yml"><img src="https://github.com/smoe/gentle_rs/actions/workflows/ci.yml/badge.svg" alt="Build and test status"></a>
   <img src="https://img.shields.io/badge/status-internal%20preview-d18b3f" alt="Status: internal preview">
-  <img src="https://img.shields.io/badge/version-0.1.0--internal.12-4e91a0" alt="Version 0.1.0-internal.12">
+  <img src="https://img.shields.io/badge/version-0.1.0--internal.13-4e91a0" alt="Version 0.1.0-internal.13">
   <a href="copyright"><img src="https://img.shields.io/badge/license-GPL--2.0--or--later-0f5964" alt="License: GPL-2.0-or-later"></a>
 </p>
 
@@ -298,12 +298,14 @@ containers, and platform notes are centralized in [`INSTALL.md`](INSTALL.md).
 
 ## Project Status
 
-- Current package version: `0.1.0-internal.12`. Development follows the
-  [published `.11` baseline](https://github.com/smoe/gentle_rs/releases/tag/v0.1.0-internal.11)
-  at `a51bbc06`, with Linux, macOS and Windows packages plus container publication.
-  The `.12` opt-level=1 package recipe needs fresh CI and Glen's runtime verdict.
-- Active release story: gene-informed primer-pair studies, source-aware isoform
-  comparison, TSS collection workflows and auditable annotated/vector exports.
+- Current package version: `0.1.0-internal.13`. Development follows the
+  [published `.12` baseline](https://github.com/smoe/gentle_rs/releases/tag/v0.1.0-internal.12)
+  at `5e6201a6` (2026-10-13), with Linux, macOS and Windows `package-opt1`
+  packages, four JSON receipts and the headless container. CI package smokes
+  passed; Glen's independent native/runtime and scientific verdicts remain open.
+- The `.13` release aim is undecided. Carry forward the open startup,
+  primer-import, native, live-agent and scientific gates without treating
+  package publication as experimental validation.
 - Default builds include GUI, CLI, MCP, and documentation paths.
 - Native packaging includes five GUI/CLI/MCP/docs/report binaries, without
   JavaScript or Lua; the container is headless and also excludes scripting.
@@ -313,7 +315,7 @@ containers, and platform notes are centralized in [`INSTALL.md`](INSTALL.md).
 
 See the [`roadmap`](docs/roadmap.md) for the current acceptance gate, the
 [`release guide`](docs/release.md), the
-[`v0.1.0-internal.12` release-note draft](docs/release_notes/release_notes_v0.1.0-internal.12.md),
+[`v0.1.0-internal.13` development draft](docs/release_notes/release_notes_v0.1.0-internal.13.md),
 and the complete [`release-note index`](docs/release_notes/) for notable
 user-facing changes.
 

@@ -18,6 +18,37 @@
   membership checks pass. Release-gate/whitespace pass, roadmap stays 400
   lines and session-close has only intentional worktree/fidelity warnings.
 
+## `v0.1.0-internal.13` - Development Rollover, 2026-10-13
+
+- Advance the workspace and its seven inherited lockfile package versions
+  after the owner-confirmed `.12` release. Keep the independently versioned
+  `gentle-sequence-design` at `0.1.0`, dependencies and package profiles unchanged.
+- Synchronize README, roadmap, next release draft/index and current release
+  examples. The `.13` aim remains undecided; post-tag matrix inspection and
+  import diagnostics are not retroactively part of `.12`.
+- Preserve historical tutorial results and provenance. Local Rust execution
+  remains prohibited: metadata/version guard/Cargo check and fresh tutorial
+  replay are not run. The [Glen handoff](internal_13_rollover_glen_handoff.md)
+  specifies exact-source validation without relabeling historical baselines.
+- Carry the six unfinished acceptance groups into `.13`, leaving its aim
+  undecided and offering three evidence-backed choices in the handoff. Record
+  the completed `8b6f8186` normal-CI pass without extending it to later source;
+  preserve the live-run observation as history. Prepare the Ubuntu host pin
+  separately, with owner merge/push/dispatch decisions still open.
+
+## 2026-10-13 - Record The Published Internal.12 Artifact Cycle
+
+- Verify the owner-published `5e6201a6` prerelease, three `package-opt1`
+  packages, four JSON receipts and successful release-event GHCR publication.
+  Record the installer's pre-compilation Rust-setup failure, successful Ubuntu
+  rerun, native package smokes and final validation/publication jobs separately.
+- Correct current release projections and add a dated audit correction without
+  rewriting historical evidence. Glen's `f35a58e6` review has matching Rust and
+  workflow source but different bundled docs; it is not exact-package approval.
+- Preserve independent native, live-agent, scientific and performance gates.
+  Only read-only GitHub/Git inspection and non-Rust checks are used locally;
+  no downloaded installers, tag changes, workflow dispatch or publication.
+
 ## 2026-10-13 - Remove Obsolete Primer Specificity File Reader
 
 - Remove the unused private `primer_specificity_blast_from_handoff` wrapper.

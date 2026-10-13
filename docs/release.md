@@ -140,8 +140,9 @@ This is a packaging smoke, not validation of an RNA folding prediction.
 
 The current release workflow adds an actual Linux tarball; Debian, RPM and AppImage
 packaging remain deferred. `linux_distribution=tarball` records the artifact
-actually built. `.11` now supplies that download; the changed `.12` recipe
-still needs its own candidate-bound packaging verdict.
+actually built. Both `.11` and `.12` supply that download. The `.12` hosted
+build and CI package smokes passed at `5e6201a6`; independent native acceptance
+and profile-performance comparison remain separate.
 
 ## Actions Runtime
 
@@ -221,10 +222,12 @@ unavailable in this review rather than being inferred from `*-latest` labels.
 
 ## Ubuntu Runner Decision
 
-The [historical handoff](https://github.com/smoe/gentle_rs/blob/7c52082c24fca85817d70956146623eef6f24607/docs/internal_12_candidate_preparation.md#ubuntu-runner-decision)
-retains the Linux job's announcement of an Ubuntu 26 migration starting
-2026-10-19. That dated notice is not a current runner-image verdict or Ubuntu 26
-qualification. The source inventory reviewed on 2026-10-12 is:
+The [official runner migration notice](https://github.com/actions/runner-images/issues/14748)
+announces the rolling `ubuntu-latest` transition to Ubuntu 26 from
+2026-10-19 through 2026-11-19. It corroborates the earlier
+[historical handoff](https://github.com/smoe/gentle_rs/blob/7c52082c24fca85817d70956146623eef6f24607/docs/internal_12_candidate_preparation.md#ubuntu-runner-decision),
+not a current runner-image verdict or Ubuntu 26 qualification. The source
+inventory reviewed on 2026-10-13 is:
 
 | Workflow | `ubuntu-latest` jobs |
 | --- | --- |
@@ -237,10 +240,12 @@ The Linux `build-installers` matrix already pins **`ubuntu-24.04`**, as do CI's
 `vkorc1-gui-audit` and `gui-scroll-audit` jobs; they are not rolling consumers.
 Rolling hosts can change system dependencies, graphics/fonts, Docker/BuildKit
 and runtime libraries even at the same source and lockfile. The owner decision
-remains open: whether to pin the listed hosts to `ubuntu-24.04` for `.12` and
-qualify Ubuntu 26 separately. This inventory changes no workflow and grants no
-dispatch, package acceptance or publication authority; approved build-only work
-still follows [candidate verification](#build-only-candidate-verification).
+remains open: whether to merge the separate local `pin-ubuntu-2404` proposal
+before October 19 and qualify Ubuntu 26 separately for `.13`. The release
+rollover branch leaves all ten workflow hosts unchanged. Preparing the pin is
+not merge, push, dispatch, package acceptance or publication authority;
+approved build-only work still follows
+[candidate verification](#build-only-candidate-verification).
 
 ## Candidate Approval
 
@@ -264,8 +269,22 @@ The owner confirmed the completed `.11` release on 2026-09-30. At `a51bbc06`,
 and [container publication 36714939309](https://github.com/smoe/gentle_rs/actions/runs/36714939309)
 passed. The release carries all three native packages and four JSON receipts.
 This closes the artifact-cycle prerequisite, not scientific or GUI acceptance.
-Keep `.11` tags/assets unchanged and continue development as `.12`. No tag
-mutation, workflow dispatch or publication is authorized by this document.
+That release prompted the `.12` development rollover; its tags/assets remain
+unchanged. No tag mutation, workflow dispatch or publication is authorized here.
+
+The owner published `v0.1.0-internal.12` as a prerelease at
+`5e6201a69a599cba87491c86cfd7311cb6fee173` on 2026-10-13 at 01:02:04 UTC.
+[Installer run 38330176948](https://github.com/smoe/gentle_rs/actions/runs/38330176948)
+attempt 2 passed: Ubuntu recovered from an initial Rust-setup failure before
+compilation; macOS/Windows results, extracted-package smokes, receipt validation
+and publication succeeded. All three `package-opt1` packages and four JSON
+receipts were uploaded by 10:05 UTC. The
+[release-event container run 38330177090](https://github.com/smoe/gentle_rs/actions/runs/38330177090)
+passed its smoke and GHCR publication at the same SHA. The
+[`.12` release ledger](release_notes/release_notes_v0.1.0-internal.12.md#publication-evidence)
+names each job and asset and distinguishes Glen's source-equivalent `f35a58e6`
+review from exact-package acceptance. Keep all tags/assets unchanged; native,
+scientific, live-agent and performance approval is not inferred from publication.
 
 ## Build-Only Candidate Verification
 
@@ -295,17 +314,17 @@ every receipt, rather than treating a fork run as upstream evidence.
 CANDIDATE_SHA=$(git rev-parse HEAD)
 WORKFLOW_REF=main # must already be pushed at CANDIDATE_SHA
 gh workflow run release.yml -R smoe/gentle_rs --ref "$WORKFLOW_REF" \
-  -f tag=v0.1.0-internal.12 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
+  -f tag=v0.1.0-internal.13 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
 gh workflow run container.yml -R smoe/gentle_rs --ref "$WORKFLOW_REF" \
-  -f tag=v0.1.0-internal.12 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
+  -f tag=v0.1.0-internal.13 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
 ```
 
 Manual runs default to **build-only**. They require the full 40-character commit
 SHA and a version label matching `Cargo.toml`; branch names and abbreviated
 SHAs are rejected. The version label need not be an existing tag. Build-only
-verification can therefore test a `.12` SHA before a `.12` tag exists.
+verification can therefore test a `.13` SHA before a `.13` tag exists.
 It does not certify, create or move a tag.
-These examples require `.12` in the candidate's committed Cargo metadata;
+These examples require `.13` in the candidate's committed Cargo metadata;
 update the label for subsequent development versions, never only the tag.
 Build/check jobs have read-only repository permission;
 the write-capable publication jobs are skipped.
@@ -461,7 +480,7 @@ binary inventory.
 Required local matrix:
 
 ```bash
-TAG=v0.1.0-internal.12 # must match the candidate's Cargo version
+TAG=v0.1.0-internal.13 # must match the candidate's Cargo version
 PROFILE=$(python3 -c 'import sys; from scripts.release_candidate import native_build_settings; print(native_build_settings(sys.argv[1])["native_profile"])' "$TAG")
 TARGET_SUBDIR=$(python3 -c 'import sys; from scripts.release_candidate import native_build_settings; print(native_build_settings(sys.argv[1])["native_target_subdir"])' "$TAG")
 cargo check -q --locked
@@ -526,8 +545,8 @@ Release-workflow assumptions to re-check before tagging:
 
 As the first development task after an owner-confirmed release, advance `main`
 to the next internal version without waiting for another reminder. After the
-`.11` release this means `0.1.0-internal.12`, not a change to the released tag.
-Do not advance while `.11` is still the active candidate, or infer completed
+`.12` release this means `0.1.0-internal.13`, not a change to the released tag.
+Do not advance while a version is still the active candidate, or infer completed
 publication from a tag push, a successful build, or a draft GitHub Release.
 
 1. Update `[workspace.package].version` in root `Cargo.toml` and every local

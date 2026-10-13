@@ -240,6 +240,18 @@ headless and safety jobs pass, full Linux is skipped by the existing sampler.
 Do not dispatch based on partial results, restart live jobs, or claim repaired
 Rust acceptance before the focused/full results are observed.
 
+**Dated update, 2026-10-13, after the final 19:05:33 UTC run update:** run
+`38432492850` is now `completed/success` at the exact `8b6f8186` source above.
+Windows job `115417977228` passed at 18:47:34 UTC; macOS `115418026971` passed
+at 19:05:26 UTC; `CI / selected platform` (`115485159934`) passed at
+19:05:32 UTC. Headless CLI/MCP and release-safety jobs also passed. Full Linux
+and the three optional audit jobs were skipped, not accepted. This closes
+the normal-CI prerequisite at that source only; it does not validate later
+main `024ed6c0`, the `.13` rollover, independent packages or scientific results.
+No fresh failure diagnosis or Rust repair is needed for this successful run;
+no audit dispatch was made in this session. Preserve the earlier observation
+and its source-bound checklist below as history.
+
 The old [Windows job 115356869784](https://github.com/smoe/gentle_rs/actions/runs/38414971911/job/115356869784)
 is now terminal at `6c87f8d1`: 4,086 root tests pass, the same eight matrix
 fixture lookups fail, 14 are ignored, 1,340.73 seconds. Windows Server 2025,
@@ -372,6 +384,16 @@ revision are exactly `5e6201a69a599cba87491c86cfd7311cb6fee173`, tree
 publication: the downloaded candidate record says `publish=false` and
 `mode=validate_only`, the build receipt says `pushed=false`, and the GHCR
 publication job is explicitly skipped. No owner-confirmed release follows.
+
+**Dated correction, 2026-10-13:** that observation preceded the owner's
+01:02:04 UTC publication of the `.12` prerelease at the same `5e6201a6` tag.
+The separate release-event [container run 38330177090](https://github.com/smoe/gentle_rs/actions/runs/38330177090)
+published GHCR successfully; [installer run 38330176948](https://github.com/smoe/gentle_rs/actions/runs/38330176948)
+attempt 2 completed package validation/publication by 10:05 UTC. See the
+[published ledger and seven-asset inventory](release_notes/release_notes_v0.1.0-internal.12.md#publication-evidence).
+The earlier validate-only record below remains unchanged. CI extracted-package
+smokes passed, but this does not close Glen's independent native/package,
+live-agent, scientific or performance gates, nor certify newer source.
 
 [Build job 115052172732](https://github.com/smoe/gentle_rs/actions/runs/38322028567/job/115052172732)
 runs on Ubuntu 24.04.5 (`ubuntu-24.04` image `20261004.327.1`) with Docker
