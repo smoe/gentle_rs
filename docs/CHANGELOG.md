@@ -1,5 +1,12 @@
 # GENtle Changelog
 
+## 2026-10-13 - Remove Obsolete Primer Specificity File Reader
+
+- Remove the unused private `primer_specificity_blast_from_handoff` wrapper.
+  Preserve the active retained-output parser and same-byte parse/hash binding;
+  no import, reference-selection or readiness behavior changes.
+- Rust build/test verification remains with Glen/CI; no push.
+
 ## 2026-10-13 - Record Repaired-Source Audit Authorization
 
 - Record owner-pushed `8b6f8186` and explicit audit-only retargeting after its

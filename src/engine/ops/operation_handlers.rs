@@ -16491,21 +16491,6 @@ impl GentleEngine {
         Ok(handoff)
     }
 
-    fn primer_specificity_blast_from_handoff(
-        handoff: &PrimerSpecificityHandoff,
-        command: &PrimerSpecificityHandoffCommand,
-    ) -> Result<GenomeBlastReport, EngineError> {
-        let output = fs::read_to_string(&command.output_tsv_path).map_err(|error| EngineError {
-            code: ErrorCode::Io,
-            message: format!(
-                "Could not read completed BLAST output '{}' for command '{}': {}. Run the structured command successfully before importing the handoff.",
-                command.output_tsv_path, command.command_id, error
-            ),
-            cause_chain: vec![],
-        })?;
-        Self::primer_specificity_blast_from_handoff_output(handoff, command, &output)
-    }
-
     fn primer_specificity_blast_from_handoff_output(
         handoff: &PrimerSpecificityHandoff,
         command: &PrimerSpecificityHandoffCommand,
