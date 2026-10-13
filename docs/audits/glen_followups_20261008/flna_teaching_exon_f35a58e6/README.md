@@ -23,6 +23,23 @@ and `scripts.test_tutorial_checkouts` preserve both files under LF/CRLF, with a
 missing-rule negative control. GENtle runtime does not consume these records.
 The complete browser bundle is not downloaded or independently accepted.
 
+Glen subsequently supplies a [separate version-label addendum](https://gentle.functional.domains/openclaw/canvas/flna-exon-review-f35a58e6-v2/).
+Codex retrieves only its small JSON records, verifies the owner's addendum hash
+and compares the v2 decision byte-for-byte with the original above. It is
+unchanged. Preserve the new records separately, with the same scoped LF rules
+and LF/CRLF missing-rule coverage; neither original JSON is replaced.
+
+| Additional Object | Bytes / SHA-256 |
+| --- | --- |
+| [Version-label addendum](version-label-addendum.json) | 773; `7ce94e64dbb6629dc0dbe3a6baeef6c3a567e5ca75c1a5766f145fa597f730a5` |
+| [V2 review manifest](v2-bundle-manifest.json) | 1,684; `444dd108f12b9e48cf026cabfdc35846574163ac4f16908b33597e6fd598f8f0` |
+
+Retrieve them from the v2 URL plus `version-label-addendum.json` and
+`bundle-manifest.json`; the latter is retained locally as
+`v2-bundle-manifest.json` without changing its bytes. Its entries bind the
+addendum and original decision hashes. No image is downloaded, and the v2
+browser display is not independently accepted as native GENtle evidence.
+
 ## Accepted Scope
 
 The record names Steffen Moller as the human reviewer, with decision timestamp
@@ -63,9 +80,10 @@ the second pair a version-identical annotation join:
 The canonical loaded mRNA is `ENST00000369850.10`; its CDS protein is
 `ENSP00000358866.3`. Stable transcript identity and the selected geometry can
 be compared, but the retained sources do not establish that `.9` and `.10`
-are interchangeable. Request a separate version-label addendum from Glen,
-distinguishing the annotation selector from the UniProt reference; do not
-silently correct the original JSON or reopen the human exon choice.
+are interchangeable. Glen's separately retained addendum now distinguishes
+the annotation selector from the UniProt reference and explicitly makes no
+version-equivalence claim. The label clarification is closed, without silently
+correcting the original JSON or reopening the human exon choice.
 
 Native normal-size GENtle readability, historical Ensembl-release provenance
 and scientific/experimental confirmation remain open. No today's release is

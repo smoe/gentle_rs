@@ -304,8 +304,25 @@ class TutorialCheckoutTests(unittest.TestCase):
             profile / "SHA256SUMS": "466e5371a53c18e856d8d28defd0a3210fd5e73265023ff01c18110afae537ff",
             decision / "decision-record.json": "5202f0605fca8cdd24bbd00e5066da855ffe41ff9aa6695ad09c8f75da4972be",
             decision / "bundle-manifest.json": "f1966fdf183c637ac571137593c6de6b926b44790c81ae23fbdbfde45516974f",
+            decision / "version-label-addendum.json": "7ce94e64dbb6629dc0dbe3a6baeef6c3a567e5ca75c1a5766f145fa597f730a5",
+            decision / "v2-bundle-manifest.json": "444dd108f12b9e48cf026cabfdc35846574163ac4f16908b33597e6fd598f8f0",
         }
         payloads = {path: (checker.ROOT / path).read_bytes() for path in expected}
+        addendum = json.loads(payloads[decision / "version-label-addendum.json"])
+        manifest = json.loads(payloads[decision / "v2-bundle-manifest.json"])
+        self.assertEqual(addendum["candidate_sha"], manifest["candidate_sha"])
+        self.assertEqual(addendum["original_decision_sha256"],
+                         expected[decision / "decision-record.json"])
+        self.assertEqual(manifest["preserves_original_decision_sha256"],
+                         expected[decision / "decision-record.json"])
+        self.assertEqual(addendum["loaded_annotation"]["transcript"], "ENST00000360319.10")
+        self.assertEqual(addendum["retained_uniprot_cross_reference"]["transcript"],
+                         "ENST00000360319.9")
+        self.assertEqual(addendum["effect_on_human_choice"], "none")
+        artifacts = {item["path"]: item for item in manifest["artifacts"]}
+        for filename in ("decision-record.json", "version-label-addendum.json"):
+            self.assertEqual(artifacts[filename]["sha256"], "sha256:" + expected[decision / filename])
+            self.assertEqual(artifacts[filename]["bytes"], len(payloads[decision / filename]))
         attributes = (checker.ROOT / ".gitattributes").read_bytes()
         (self.root / ".gitattributes").write_bytes(attributes)
         for relative, payload in payloads.items():

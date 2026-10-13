@@ -1,0 +1,17 @@
+{
+  "record_type": "version_label_addendum",
+  "candidate_sha": "f35a58e6d2bdd7e0a5551e4531c336d7949bfaf0",
+  "original_decision_sha256": "5202f0605fca8cdd24bbd00e5066da855ffe41ff9aa6695ad09c8f75da4972be",
+  "loaded_annotation": {
+    "transcript": "ENST00000360319.10",
+    "label": "FLNA-201"
+  },
+  "retained_uniprot_cross_reference": {
+    "transcript": "ENST00000360319.9",
+    "protein": "ENSP00000353467.4",
+    "isoform": "P21333-2"
+  },
+  "interpretation": "Stable transcript identity and selected exon geometry may be compared, but transcript versions .9 and .10 are not asserted to be interchangeable.",
+  "effect_on_human_choice": "none",
+  "preservation": "The original human decision record is retained byte-for-byte and is not rewritten by this addendum."
+}

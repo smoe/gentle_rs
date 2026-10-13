@@ -45,8 +45,9 @@ bundle, then resolve its current feature ID. Never copy `300` into learner steps
 5. Inspect the selected local `[19369,19393)` coding exon (24 bp), displayed as
    one-based closed `19370-19393`. The retained canonical `.10` annotation has
    it; comparison `ENST00000360319.10` lacks it, while its loaded UniProt
-   cross-reference is `.9`. Keep those version labels distinct pending Glen's
-   addendum. Explain the annotation-derived frame/net-eight-amino-acid lesson;
+   cross-reference is `.9`. Keep those version labels distinct as recorded in
+   Glen's separately retained addendum. Explain the annotation-derived
+   frame/net-eight-amino-acid lesson;
    do not infer an observed splice event or functional effect.
 6. Save/reopen and export the same view. Check long IDs in hover, coincident
    junctions, mixed strands, dense matrix retention and summary bounds.

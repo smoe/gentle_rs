@@ -1,5 +1,22 @@
 # GENtle Changelog
 
+## 2026-10-13 - Retain FLNA Transcript-Version Addendum
+
+- Verify Glen's 773-byte addendum against the owner-supplied SHA-256 and
+  compare the v2 decision byte-for-byte with the retained original. Preserve
+  the addendum and new small manifest separately, without replacing old
+  records or downloading images; add scoped LF rules and LF/CRLF hash coverage.
+- Close only the stale version-label request: loaded annotation `.10` and
+  UniProt `.9` remain distinct. Human exon selection stays closed, while
+  native readability, historical release and scientific/experimental gates
+  remain open. Keep the draft inactive and the historical request unchanged.
+- Verification: 55 checkout tests and 13 scoped lesson checks pass, including
+  LF/CRLF and missing-rule controls. Original decision/manifest and historical
+  handoff body remain unchanged; whitespace and release-gate pass, roadmap
+  stays 400 lines. Session-close has no failures, with intentional worktree
+  and manual-fidelity warnings. No local Rust, push, audit dispatch, model
+  call, package build or publication follows from this evidence commit.
+
 ## 2026-10-13 - Repair Panel Matrix Fixture Identity
 
 - Diagnose Linux job `115356926933` at exact `6c87f8d1`: 4,147 root tests

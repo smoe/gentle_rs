@@ -128,8 +128,13 @@ The original execution report and all old evidence remain unchanged.
 
 The loaded comparison annotation is `ENST00000360319.10`, while the retained
 UniProt cross-reference and decision name `.9`. Do not assert version identity
-or silently rewrite the human record; ask Glen for a separate label addendum.
-The choice is not reopened. Native normal-size readability, historical Ensembl
+or silently rewrite the human record. Glen's separate 773-byte label addendum
+is now independently verified against owner-supplied SHA-256
+`7ce94e64dbb6629dc0dbe3a6baeef6c3a567e5ca75c1a5766f145fa597f730a5`;
+its v2 decision is byte-identical to the original. Retain the addendum and its
+small manifest separately; the version-label request is closed, not a claim
+that `.9` and `.10` are interchangeable. The choice is not reopened.
+Native normal-size readability, historical Ensembl
 release and scientific/experimental confirmation remain open; keep the draft
 inactive. Browser review/export evidence does not close gate 4 or any other
 native/agent/package gate. No local Rust or new candidate acceptance follows.
