@@ -229,6 +229,48 @@ retain `/private/tmp/gentle-matrix-fixture-repair-offline.log`, SHA-256
 Scoped rustfmt, workflow-structure and whitespace checks pass. This is source/
 documentation validation, not execution of the new Rust fixture or regression.
 
+### Repaired-Source Audit Authorization At `8b6f8186`
+
+The owner pushes exact `8b6f8186c81636491dadb446e94ca68429ba0860` and explicitly
+authorizes retargeting only the 08.04 synthetic native replay, scroll CPU audit
+and macOS headless audit-CLI build after normal CI at that SHA passes. Follow
+[push run 38432492850](https://github.com/smoe/gentle_rs/actions/runs/38432492850),
+attempt 1. At 2026-10-13 16:54 UTC it remains live on macOS and Windows;
+headless and safety jobs pass, full Linux is skipped by the existing sampler.
+Do not dispatch based on partial results, restart live jobs, or claim repaired
+Rust acceptance before the focused/full results are observed.
+
+The old [Windows job 115356869784](https://github.com/smoe/gentle_rs/actions/runs/38414971911/job/115356869784)
+is now terminal at `6c87f8d1`: 4,086 root tests pass, the same eight matrix
+fixture lookups fail, 14 are ignored, 1,340.73 seconds. Windows Server 2025,
+runner image `20260925.250.1`, Rust 1.99.0; no distinct Windows-only repair is
+inferred from the same `synthetic_panel___inspection` primary failure.
+Retain decoded log
+`/private/tmp/gentle-ci-6c87f8d1-20261013/windows-job-115356869784.decoded.log`,
+UTF-8 representation SHA-256
+`617fbfab037ddb06743190540f4306c9e90438620584c64f1d1ef9d822875176`.
+The old whole run concludes failure; neither its partial passes nor new
+documentation commits accept `8b6f8186`.
+
+| Item | Fresh `8b6f8186` Boundary At This Observation |
+| --- | --- |
+| 1. Audit preservation / Linux validation | Historical bytes remain verified and separately attributed. Fresh headless/safety checks pass; no full Linux execution at this SHA yet. |
+| 2. 08.04 GUI/agent contracts | Authored contracts remain; optional native replay awaits successful normal CI and authorized dispatch. No online/scientific acceptance follows. |
+| 3. Genuine live agent | Not run; authorization explicitly excludes model calls. A headless CLI build is not authenticated agent acceptance. |
+| 4. Honest visual evidence | Historical teaching-exon decision and separate version addendum are preserved; ordinary source-bound native readability/captures remain open. |
+| 5. Scroll benchmarks | Historical 24-case deterministic CPU pass stays at `f35a58e6`; fresh exact-SHA CPU audit awaits dispatch. No native latency claim. |
+| 6. .12 package acceptance | Not run; package builds stay on the owner's normal release path, outside this audit authorization. Native/container/extracted acceptance remains open. |
+
+No package build, public-genome preparation, model call, push, tag or
+publication is included. Immediately before dispatch, verify a published ref
+still points to this authorized SHA, and verify the created run's actual SHA.
+The workflow's existing ordinary baseline jobs may run with the audit jobs;
+request Linux to obtain fresh full Linux evidence, without widening audit scope.
+If the ref drifts, request a new source choice rather than silently retargeting
+or creating/pushing a ref. Local FLNA evidence commit `5bd1cd37` is separate
+and unpushed; it does not replace the authorized target. No dispatch or local
+Rust execution has occurred at this observation.
+
 ### Completed Container Validation At `5e6201a6`
 
 After the main integration, Codex follows the already-live

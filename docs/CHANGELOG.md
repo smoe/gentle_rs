@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-10-13 - Record Repaired-Source Audit Authorization
+
+- Record owner-pushed `8b6f8186` and explicit audit-only retargeting after its
+  whole normal CI passes. Follow the actual live run, keeping packages,
+  public-genome preparation, model calls, pushes and publication excluded.
+- Retain the old completed Windows log/hash and root counts: 4,086 passes,
+  eight failures, 14 ignored. The same invalid matrix fixture is the primary
+  failure on both native platforms; do not invent a Windows-specific cause.
+- Keep a source-bound six-item pending checklist, exact-ref dispatch checks
+  and the separate unpushed FLNA evidence commit. No dispatch, local Rust or
+  new-source gate completion follows from this coordination record.
+- Verification: source/run/job identities and completed Windows log inspected;
+  whitespace and release-gate pass, roadmap stays 400 lines. Session-close has
+  no failures and only unrelated-worktree/manual-fidelity warnings.
+
 ## 2026-10-13 - Retain FLNA Transcript-Version Addendum
 
 - Verify Glen's 773-byte addendum against the owner-supplied SHA-256 and
