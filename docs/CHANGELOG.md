@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-10-14 - Retain Exact-Source CI And Start The Authorized Audits
+
+- Verify whole normal CI at `024ed6c0`: successful macOS/Windows workspace,
+  native LF/CRLF parity, early matrix/multi-reference and headless/helper checks.
+  Preserve source-bound counts and API-original logs in a small checksum-verified
+  archive; no named-test, real-reference, package or speedup verdict is inferred.
+- Recheck the published ref and absence of duplicate dispatches after that
+  prerequisite passes. Start only the owner-authorized 08.04 synthetic GUI,
+  scroll CPU and macOS audit-CLI checks in run `38476197008`, with existing
+  Linux/Windows/shared baselines. Verify its actual source is the authorized SHA.
+- Keep a six-item pending ledger with exact live job handles. Public VKORC1
+  preparation, model calls, packages, pushes and publication stay excluded;
+  later unpushed `.13`/`package-opt2` is not accepted by this `.12`-source run.
+  No local Rust or historical-evidence changes.
+- Verification: whole-run/source/job metadata and scoped log counts inspected;
+  gzip/member inventory and isolated manifest checks pass. Whitespace and
+  release-gate pass; roadmap remains 400 lines. Session-close has no failures,
+  only intentional worktree/manual-fidelity warnings. Audits are still live.
+
 ## 2026-10-14 - Prepare The Next Bounded Package Optimization
 
 - After merging `gentle_rs_1_bbe0` and its `.13` rollover, implement the

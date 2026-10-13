@@ -384,6 +384,74 @@ runs its established Windows/headless/safety jobs. No further source choice,
 push, tag, package build, public-genome preparation, model call or publication
 is implicit. No optional dispatch or local Rust execution has occurred.
 
+### Completed Normal CI And Authorized Audit Dispatch At `024ed6c0`
+
+On 2026-10-13 at 22:10:56 UTC, [normal run 38453643146](https://github.com/smoe/gentle_rs/actions/runs/38453643146)
+attempt 1 completes successfully at exact
+`024ed6c0520d38c4221517219d44c792084de4e5`. The earlier live observation above
+is retained unchanged. Rust 1.99.0 (`b940084d7`), ordinary dev/test builds,
+locked workspace tests and native LF/CRLF tutorial parity pass:
+
+| Platform / Job | Root Library | Full-Workspace Result Lines |
+| --- | --- | --- |
+| [Windows 115490639067](https://github.com/smoe/gentle_rs/actions/runs/38453643146/job/115490639067) | 4,095 pass, zero fail, 14 ignored; 669.15 s | 4,633 pass, zero fail, 17 ignored across 31 result lines |
+| [macOS 115490688166](https://github.com/smoe/gentle_rs/actions/runs/38453643146/job/115490688166) | 4,156 pass, zero fail, 14 ignored; 1,014.39 s | 4,694 pass, zero fail, 17 ignored across 31 result lines |
+
+Totals cover only each full-workspace command, excluding later/focused filters.
+Both early matrix filters execute ten tests; multi-reference filters execute
+nine on Windows and ten on macOS. Quiet counts do not attest named tests or
+real-reference/native GUI acceptance. Windows image is `windows-2025-vs2026`
+`20260925.250.1`, target `x86_64-pc-windows-msvc`; macOS image is
+`macos-26-arm64` `20260907.0351.1`, target `aarch64-apple-darwin`. Full Linux
+and all optional audits are skipped in this normal run. Linux headless checks
+the locked CLI/MCP no-default-feature dependency boundary, not runtime.
+Safety executes 248 helper tests: 244 pass and four real sequence-design CLI
+tests skip. The committed source lock hash is
+`ead4421545a125267e33af84aeeea39f0e7ea2f60717a59ef0271d0e71855f1b`,
+not a separately measured CI binary/lock receipt. No import speedup is inferred.
+
+Preserve API-original log bytes, including Windows CRLF and ANSI, outside Git
+in `/private/tmp/gentle-normal-ci-024ed6c0-20261014/`:
+
+| File | SHA-256 |
+| --- | --- |
+| `windows-job-115490639067.api-original.log` | `9e7da94659f3d23540a671393e71b4695d972bd32429708f45249ab3e2b7fec9` |
+| `macos-job-115490688166.api-original-complete.log` | `66ab6872ffb0fdfe47044ccaa6a95a240b93f03ba3ca2bee7deb2e627bbbea46` |
+| `headless-job-115490639102.api-original.log` | `4e63e8bdf8fa199e787110451aeb73c7a7d9392931c829cd9cc5e52fd6fec02c` |
+| `safety-job-115490639076.api-original.log` | `9e105b95f7a0443eb75af6810ab15f5f540716426bdcc5f393ac86a9b764c43b` |
+| `completion-observation.json` | `96f8944bf2a84167add3a90ebe999c51cf3124c7e3782e0ccba17ce744536bc9` |
+
+The evidence-only archive
+`/private/tmp/gentle-normal-ci-024ed6c0-20261014.tar.gz` is 204,624 bytes,
+SHA-256 `d6c45af141bf47304106b158401a022c7133071fb6e96944b22785638dc39fbb`.
+Its exact six regular members are the five files above plus `SHA256SUMS`,
+digest `fa1db7b61497e157bf9e0e47498825e2e2682c8709af23debeb3c10b54b33ae1`.
+Gzip integrity, safe membership and all five raw-file hashes pass after isolated
+extraction. The earlier failed live-log observation is excluded; older archives
+and evidence remain unchanged. This archive contains no installer or executable.
+
+After confirming whole normal success, no existing dispatch and remote `main`
+still at the approved SHA, Codex dispatches **once** at 22:12:36 UTC:
+[audit run 38476197008](https://github.com/smoe/gentle_rs/actions/runs/38476197008).
+Its observed `head_sha` matches the full source above. Requested inputs are
+`platform=linux`, `audit_followups=true`, `audit_public_vkorc1=false`.
+The established Windows/headless/safety jobs also run. No package workflow,
+public VKORC1 preparation, model call, push, tag or publication is included.
+
+| Item | Current Evidence / Remaining Boundary |
+| --- | --- |
+| 1. Audit preservation / Linux validation | Old bytes and new original logs verified separately. Normal headless succeeds; full Linux job `115567420297` is running in the audit run, not yet accepted. |
+| 2. 08.04 GUI/agent contracts | Synthetic native replay job `115567372647` is running; inspect receipt, exact operation semantics, T/refusal, source preservation and output parity before acceptance. |
+| 3. Genuine live agent | macOS CLI-build job `115567372408` is running; building it is not authenticated/model acceptance. Model calls remain outside this authorization. |
+| 4. Honest visual evidence | Historical human/version records remain intact. New synthetic replay captures are pending; no normal native lesson readability or scientific claim follows from their presence alone. |
+| 5. Scroll benchmarks | CPU audit job `115567372185` is running; require all 24 unique wheel/next-frame observations and hashes. Native compositor/input latency remains separate. |
+| 6. .12 package acceptance | Released `5e6201a6` opt1 evidence stays source-bound, with independent native acceptance open. This run builds no package; later local `.13`/`package-opt2` is not accepted by these older-source passes. |
+
+These are live handles, not passing verdicts. Follow this run rather than
+restarting it or creating duplicate dispatches. Local `edc3ed5c` and the `.13`
+rollover remain unpushed and separate from the authorized `024ed6c0` source.
+No local Rust or overall six-gate completion is claimed.
+
 ### Completed Container Validation At `5e6201a6`
 
 After the main integration, Codex follows the already-live
