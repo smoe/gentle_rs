@@ -4,6 +4,13 @@
   "title": "Gibson Specialist Testing Tutorial",
   "graphics": [
     {
+      "kind": "generated",
+      "path": "docs/figures/gibson_single_insert_protocol_cartoon.svg",
+      "caption": "Deterministic single-insert Gibson mechanism template with two junctions and chew-back, annealing, extension and sealing. Its example overhang lengths are not the current plan's 30-bp overlaps or designed oligos.",
+      "illustrates_step": 7,
+      "regen_command": "gentle_cli protocol-cartoon render-svg gibson.single_insert_dual_junction OUTPUT.svg"
+    },
+    {
       "kind": "screenshot",
       "path": "docs/screenshots/tutorial_gibson_specialist_testing_08_lineage_graph.png",
       "caption": "Historical native lineage view after Gibson apply: destination and insert feed one Gibson operation that produces two primer sequences and the assembled product. Useful orientation only; the 2026-03-23 capture predates the current hash-bound GUI-acceptance format.",

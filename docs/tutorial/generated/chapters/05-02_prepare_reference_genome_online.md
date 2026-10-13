@@ -67,6 +67,10 @@ gentle_cli genomes status "Human GRCh38 Ensembl 116" --catalog assets/genomes.js
 
 > The preflight status names `Human GRCh38 Ensembl 116`, the exact Ensembl-116 FASTA/GTF sources and the effective cache directory without downloading.
 
+![Historical preparation-menu orientation, captured 2026-03-08. Ensembl 113 is selected in this image; choose exactly Human GRCh38 Ensembl 116 for this chapter. The pictured already-prepared entries describe the capture host, not your cache or current acceptance.](../../../screenshots/screenshot_GUI_prepare_reference_genome.png)
+
+*Figure: Historical preparation-menu orientation, captured 2026-03-08. Ensembl 113 is selected in this image; choose exactly Human GRCh38 Ensembl 116 for this chapter. The pictured already-prepared entries describe the capture host, not your cache or current acceptance. Screenshot captured 2026-03-08.*
+
 ### Step 2: After explicit approval for network transfer, disk use and cache writes, prepare exactly Human GRCh38 Ensembl 116 with the reviewed catalog/cache settings
 
 **GUI**

@@ -108,6 +108,10 @@ cargo run --bin gentle_examples_docs -- tutorial-catalog-check
 
 > The tutorial catalog remains linked so the generated starter chapter points readers to the hand-written Gibson specialist walkthrough.
 
+![Historical Help-window orientation, captured 2026-03-22, for continuing into the Gibson specialist guide. It does not prove that the current starter loaded or that current GUI controls passed acceptance.](../../../screenshots/screenshot_GUI_help_tutorial_testing_gibson.png)
+
+*Figure: Historical Help-window orientation, captured 2026-03-22, for continuing into the Gibson specialist guide. It does not prove that the current starter loaded or that current GUI controls passed acceptance. Screenshot captured 2026-03-22.*
+
 
 ## Ask an Outer Agent (MCP or ClawBio/OpenClaw)
 

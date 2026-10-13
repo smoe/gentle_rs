@@ -1,10 +1,10 @@
 # Glen: Consolidated Final-Candidate Checks
 
 Coordination update, 2026-10-13. The relayed `gentle_rs_2_main` handoff is
-integrated into this request. Its integration baseline is
-`5e6201a69a599cba87491c86cfd7311cb6fee173`, shared by local `main`,
-`gentle_rs_2_main` and last-fetched `origin/main`. This is not selection or
-acceptance of the final candidate.
+integrated into this request, alongside the merged visual/provenance follow-ups.
+The pre-integration baseline was
+`5e6201a69a599cba87491c86cfd7311cb6fee173`; do not substitute it for the full
+merged SHA in Steffen's forwarded message. No candidate acceptance is implied.
 
 ## Freeze Before Execution
 
@@ -98,6 +98,23 @@ no local Rust build/check/test for this handoff. No Claude consultation is neede
    Test required failure, missing/stale/incomplete evidence, retained history and
    save/reopen. A positive Claude source review or Unix fake-tool fixture is not
    real BLAST, native Windows, scientific specificity or order acceptance.
+
+## Integrated Visual And Provenance Checks
+
+Read the [nineteen visual-placement decisions](tutorial/visual_forward_port_review.md)
+and run `python3 -m unittest scripts.test_tutorial_checkouts` at the merged SHA.
+Verify catalog/manifest and generated-chapter freshness with the exact-source
+docs binary, then inspect the added graphics in their learner/native context.
+Twelve placements belong in the proposed chapters; the five dotplot captures
+stay in 02.03, and the two unsuitable agent/variant illustrations stay omitted.
+Historical screenshots, teaching cartoons and saved-state tester examples must
+not become fresh GUI, fabrication, assay-specificity or scientific evidence.
+
+Check the minimal [E-MTAB-15709 README clarification](../data/resources/cutandrun_20250602_noDuplicates/README.md)
+against its pinned public SDRF: all three named `pos_*_SKMel29` libraries are
+H3K4me3, not HDAC2 or an unspecified target. Keep this source binding separate
+from broader DN terminology or claims about unbound local filenames. Do not
+import scientific report branches, RefSeq alias hardcodes or dirty-worktree data.
 
 ## Six Gates And Historical Separation
 

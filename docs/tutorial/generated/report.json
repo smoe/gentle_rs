@@ -108,7 +108,7 @@
     "chapters/03-01_load_and_digest_pgex.md": "af9d30eb5634e8444b258a86b0791816b47104625a0c0edc3f6da1178e822e82",
     "chapters/03-02_digest_ligation_extract_region_minimal.md": "8344555dce9f7d749805d87367dd79783b007ae68c68e331b79d90ea3d6ff668",
     "chapters/03-03_gibson_two_fragment_overlap_preview.md": "b6f2eed799af01377ce38e250c2ea64a1a75a153021d70a2e1f81365ae69d881",
-    "chapters/03-04_gibson_specialist_testing_baseline.md": "818dad81837f0382c087f1998cfaeb3e40a58a4f82318d70bea31965b98873ae",
+    "chapters/03-04_gibson_specialist_testing_baseline.md": "b916684e14a6c31fb2e1915f65ea50ca94f29b11f6f6832790dc18393696127a",
     "chapters/03-06_gibson_arrangements_baseline.md": "77705b3f99c8d030c5969fe1a4fa34506aa800ca935d30733bfbf33006946f1d",
     "chapters/04-01_simple_pcr_selection_gui.md": "fbad7e28fe80eb7dea406ad4654d724a7cc05e9b5f4f3ed503f8f347a684035f",
     "chapters/04-02_pcr_selection_batch_primer_pairs_offline.md": "a34952a16142faa839520430b40de90028452abee130555d01d633cac322c840",
@@ -116,7 +116,7 @@
     "chapters/04-05_guides_export_csv_and_protocol.md": "e889d98c0ba67ce43e4f85aeb03824f6c0c4ee489f323df1d2351c6d6c678571",
     "chapters/04-06_patz1_transcript_assay_panels_cli.md": "96009babcbaffc892fbb150d2273ee3c4aa41896604f25c55e27aa8e770cc6a5",
     "chapters/05-01_find_and_extend_genomic_target_local_catalog.md": "14c77573500e299b24988d2e07b5fcd6125c3337839fec51bb2a9dfda9755e46",
-    "chapters/05-02_prepare_reference_genome_online.md": "d5779430ac042286aa80d3b4e5d4c4093549a10a97ad8e363664bb46cfd99092",
+    "chapters/05-02_prepare_reference_genome_online.md": "79157d8dc8a6ff90c4e0df963de3e6c0bdc217df45a17ab1132a529fce8de5e8",
     "chapters/05-03_tp63_anchor_extension_online.md": "c405dbcb8ff7aa24247ae4c8995c12527614bd9587433e298f3b7d5924eb9ea3",
     "chapters/06-03_tp53_isoform_architecture_online.md": "743997135aeee48a10b36a1bf76eac3906fbca754bd674d3c775749f14138603",
     "chapters/06-04_tp53_uniprot_projection_online.md": "ff59bc6e3ea0882b40aa025e6597ed04bcbcf03e7eb00af56b491d3681c90ff2",
@@ -388,6 +388,15 @@
       "executed": false,
       "review_status": "codex_reviewed",
       "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/screenshot_GUI_prepare_reference_genome.png",
+          "caption": "Historical preparation-menu orientation, captured 2026-03-08. Ensembl 113 is selected in this image; choose exactly Human GRCh38 Ensembl 116 for this chapter. The pictured already-prepared entries describe the capture host, not your cache or current acceptance.",
+          "illustrates_step": 1,
+          "capture_date": "2026-03-08"
+        }
+      ],
       "retained_artifacts": []
     },
     {
@@ -570,6 +579,15 @@
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/screenshot_GUI_help_tutorial_testing_gibson.png",
+          "caption": "Historical Help-window orientation, captured 2026-03-22, for continuing into the Gibson specialist guide. It does not prove that the current starter loaded or that current GUI controls passed acceptance.",
+          "illustrates_step": 3,
+          "capture_date": "2026-03-22"
+        }
+      ],
       "retained_artifacts": []
     },
     {

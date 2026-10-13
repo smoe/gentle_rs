@@ -2,6 +2,15 @@
   "schema": "gentle.tutorial_source.v4",
   "id": "prepare_reference_genome_online",
   "title": "Prepare a reference genome cache (online)",
+  "graphics": [
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/screenshot_GUI_prepare_reference_genome.png",
+      "caption": "Historical preparation-menu orientation, captured 2026-03-08. Ensembl 113 is selected in this image; choose exactly Human GRCh38 Ensembl 116 for this chapter. The pictured already-prepared entries describe the capture host, not your cache or current acceptance.",
+      "illustrates_step": 1,
+      "capture_date": "2026-03-08"
+    }
+  ],
   "catalog": {
     "order": 32,
     "path": "docs/tutorial/generated/chapters/05-02_prepare_reference_genome_online.md",

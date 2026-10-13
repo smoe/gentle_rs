@@ -2,6 +2,29 @@
   "schema": "gentle.tutorial_source.v4",
   "id": "qpcr_exon_junctions_gui",
   "title": "qPCR Across Exon Junctions",
+  "graphics": [
+    {
+      "kind": "generated",
+      "path": "docs/figures/qpcr_assay_protocol_cartoon.svg",
+      "caption": "Deterministic qPCR mechanism template: ROI, independent primer/probe windows and a probe-bearing amplicon. Geometry alone does not establish transcript specificity or assay performance.",
+      "illustrates_step": 4,
+      "regen_command": "gentle_cli protocol-cartoon render-svg pcr.assay.qpcr OUTPUT.svg"
+    },
+    {
+      "kind": "generated",
+      "path": "docs/figures/tp73_as3_shared_cdna_qpcr.svg",
+      "caption": "Retained TP73-AS3 tester example: one 100-bp product in each of three annotated transcripts, not newly designed TP73 protein-coding assay outputs.",
+      "illustrates_step": 6,
+      "regen_command": "Use the shared TP73-AS3 primers test-cdna-qpcr command and pinned oligos documented in docs/figures/README.md with a fresh tp73.ncbi.gb state."
+    },
+    {
+      "kind": "generated",
+      "path": "docs/figures/tp73_as3_nr187362_cdna_qpcr.svg",
+      "caption": "Retained TP73-AS3 tester example: one 147-bp product in NR_187362.1; the other two annotated rows have no forward-primer hit. This annotation-bound example does not establish genome-wide or experimental specificity.",
+      "illustrates_step": 6,
+      "regen_command": "Use the NR_187362.1 TP73-AS3 primers test-cdna-qpcr command and pinned oligos documented in docs/figures/README.md with a fresh tp73.ncbi.gb state."
+    }
+  ],
   "catalog": {
     "order": 23,
     "path": "docs/tutorial/04-03_qpcr_exon_junctions_gui.md",

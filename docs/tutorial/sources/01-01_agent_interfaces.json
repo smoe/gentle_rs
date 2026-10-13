@@ -4,6 +4,13 @@
   "title": "GENtle Agent Assistant and Agent Interfaces Tutorial",
   "graphics": [
     {
+      "kind": "generated",
+      "path": "docs/figures/tp73_outer_agent_evidence_viewer.svg",
+      "caption": "Retained deterministic TP73 evidence export of local coordinates 1..1200 from an explicit saved example project; not an agent response, unsaved GUI state or experimental validation.",
+      "illustrates_step": 2,
+      "regen_command": "Replay docs/examples/workflows/tp73_genome_evidence_viewer_release_proof.json into a fresh explicit state; export the 1..1200 linear viewport as documented in docs/figures/README.md."
+    },
+    {
       "kind": "screenshot",
       "path": "docs/screenshots/tss_regulatory_view_gui/agent-assistant-report-command.raw.png",
       "caption": "Agent Assistant keeps a publication-safe synthetic viewport local when the selected agent system cannot accept images; provider submission remains disabled.",

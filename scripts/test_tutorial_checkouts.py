@@ -9,6 +9,7 @@ No network, build, real checkout changes, or platform-specific tools are used.
 
 import hashlib
 import json
+import re
 import os
 from pathlib import Path
 import subprocess
@@ -1033,6 +1034,62 @@ class TutorialVisualContractTests(unittest.TestCase):
         self.assertEqual(rows["measured_gel_sizing_gui_cli"]["visuals"][0]["status"],
                          "deterministic_figure_not_capture")
         self.assertIn("not current-candidate", report["non_claim"])
+
+    def test_glen_visual_forward_port_keeps_semantic_placements_and_exclusions(self):
+        # Existing assets proposed by d70bf25d, not new biological test fixtures.
+        report = checker.check_tutorial_visuals(checker.ROOT)
+        rows = {row["id"]: row for row in report["tutorials"]}
+        expected = {
+            "agent_interfaces": ["docs/figures/tp73_outer_agent_evidence_viewer.svg"],
+            "gibson_specialist_testing_gui": [
+                "docs/figures/gibson_single_insert_protocol_cartoon.svg",
+                "docs/screenshots/tutorial_gibson_specialist_testing_08_lineage_graph.png"],
+            "gibson_arrangements_gui": [
+                "docs/figures/gibson_single_insert_arrangement_gel.svg",
+                "docs/figures/gibson_single_insert_lineage.svg"],
+            "gibson_physical_rack_gui": [
+                "docs/figures/gibson_single_insert_rack_isometric.svg",
+                "docs/figures/gibson_single_insert_rack_topdown.svg"],
+            "qpcr_exon_junctions_gui": [
+                "docs/figures/qpcr_assay_protocol_cartoon.svg",
+                "docs/figures/tp73_as3_shared_cdna_qpcr.svg",
+                "docs/figures/tp73_as3_nr187362_cdna_qpcr.svg"],
+            "gibson_specialist_testing_baseline": [
+                "docs/screenshots/screenshot_GUI_help_tutorial_testing_gibson.png"],
+            "prepare_reference_genome_online": [
+                "docs/screenshots/screenshot_GUI_prepare_reference_genome.png"],
+        }
+        for identifier, paths in expected.items():
+            with self.subTest(identifier=identifier):
+                visuals = {row["path"]: row for row in rows[identifier]["visuals"]}
+                self.assertTrue(set(paths) <= visuals.keys())
+        self.assertEqual(rows["tp73_cdna_genomic_dotplot_online"]["visuals"], [])
+        self.assertNotIn("docs/screenshots/tp73_inner_agent_evidence_viewer.png",
+                         [row["path"] for row in rows["agent_interfaces"]["visuals"]])
+        self.assertNotIn("docs/figures/pgex_blunt_sequence_confirmation_hero.svg",
+                         [row["path"] for row in rows["sequencing_confirmation_gui"]["visuals"]])
+        for identifier in ("gibson_specialist_testing_baseline", "prepare_reference_genome_online"):
+            self.assertEqual(rows[identifier]["visuals"][0]["status"],
+                             "legacy_date_only_not_acceptance")
+        preparation = rows["prepare_reference_genome_online"]["visuals"][0]
+        self.assertEqual(preparation["step"], 1)
+        dotplot = (checker.ROOT / "docs/tutorial/02-03_tp73_cdna_genomic_dotplot_gui.md")
+        original_dotplot = ["tutorial_cdna_genomic_02_fetch_cdna_dialog.png",
+                            "tutorial_cdna_genomic_03_prepare_genome_dialog.png",
+                            "tutorial_cdna_genomic_04_retrieve_tp73_genomic_dialog.png",
+                            "tutorial_cdna_genomic_07_dotplot_window.png",
+                            "tutorial_cdna_genomic_09_dotplot_as_node.png"]
+        placements = [Path(a or b).name for a, b in checker.markdown_visuals(dotplot.read_text())]
+        for name in original_dotplot:
+            self.assertEqual(placements.count(name), 1)
+        review = (checker.ROOT / "docs/tutorial/visual_forward_port_review.md").read_text()
+        reviewed = re.findall(r"^\| \d{2}\.\d{2} \| `([^`]+)` \|", review, re.M)
+        expected_review = {path.removeprefix("docs/") for paths in expected.values() for path in paths}
+        expected_review.update("screenshots/" + name for name in original_dotplot)
+        expected_review.update(["screenshots/tp73_inner_agent_evidence_viewer.png",
+                                "figures/pgex_blunt_sequence_confirmation_hero.svg"])
+        self.assertEqual(len(reviewed), 19)
+        self.assertEqual(set(reviewed), expected_review)
 
     def test_missing_asset_and_unsafe_paths_fail(self):
         for target in ("docs/figures/missing.svg", "../outside.svg", "/tmp/outside.svg",

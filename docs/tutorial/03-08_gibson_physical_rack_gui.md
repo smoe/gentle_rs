@@ -191,6 +191,13 @@ What each one is for:
 - `OpenSCAD`
   - parameterized printable geometry for later refinement or printing
 
+For reading occupied positions, compare the retained top-down **hero** view
+below with the isometric export. A1-A5 carry the two ladders and three sample
+materials. This is an occupancy/communication view, not the `Fabrication SVG`
+or evidence that a printed rack has been dimensionally validated.
+
+![Top-down Gibson rack occupancy with labelled ladder, vector, insert and product positions](../figures/gibson_single_insert_rack_topdown.svg)
+
 Practical macOS note:
 
 - before installing anything just to inspect or render the exported `.scad`

@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-10-13 - Merge Visuals And Provenance Before Glen Acceptance
+
+- Merge `d0526425` and `ac6ce53a` into main with its consolidated handoff and
+  source-bound CI record. Both `gentle_rs_2_main` and `gentle_rs_3` are already
+  ancestors; preserve both changelog histories and reconcile only the active
+  roadmap line. No unrelated branch, data or historical output is imported.
+- Include the nineteen placement decisions and H3K4me3 provenance clarification
+  in the consolidated candidate request. Glen must use the full merged SHA from
+  the owner's forwarded message after push; older `5e6201a6` CI/container work
+  does not accept the integrated candidate. No local Rust, push or publication.
+- Merged-tree checks: 69 Python tests pass (checkout/visual contracts, gap lessons
+  and real-DuckDB fixture I/O); 15 handoff links/anchors and the release-link gate
+  pass. Catalog/manifest freshness uses the existing `150a3390` helper with
+  unchanged generator sources, not a current-SHA runtime acceptance binary.
+
 ## 2026-10-13 - Verify Source-Bound Main CI Execution Scope
 
 - Independently inspect [run 38295036951](https://github.com/smoe/gentle_rs/actions/runs/38295036951)
@@ -31,6 +46,41 @@
 - Verify all 13 handoff links/anchors, whitespace and the four-check release-link
   gate. Session-close has no failures; unrelated dirty files and the manual
   plan-fidelity reminder remain explicit. No execution acceptance follows.
+
+## 2026-10-13 - Clarify E-MTAB-15709 Positive-Control Provenance
+
+- The public SDRF identifies all three `pos_*_SKMel29` libraries as H3K4me3,
+  not HDAC2 or an unspecified target. Add only this source-bound clarification
+  and the checked SDRF URL/byte count/SHA-256 to the local processed-track README;
+  do not extrapolate the identity to other datasets or unbound local filenames.
+- Check DN terminology separately against the study description and its
+  [primary publication](https://pmc.ncbi.nlm.nih.gov/articles/PMC12839168/), which
+  specifies DNp73beta as DeltaEx2/3p73beta. Do not fold additional biological or
+  dominant-negative claims into this minimal H3K4me3 documentation repair.
+- No raw tracks, scientific bundles, Glen worktree files, RefSeq aliases or
+  product behavior are imported or changed; no build or push.
+
+## 2026-10-13 - Semantically Forward-Port Glen's Tutorial Visuals
+
+- Review all 19 proposed placements from `d70bf25d` against main `5e6201a6`
+  in a clean `codex/tutorial-visual-forward-port` worktree, without cherry-picking.
+  [Individual decisions](tutorial/visual_forward_port_review.md) retain twelve
+  placements, including three existing ones; five dotplot images already live
+  in 02.03, and the old agent-viewer crop and degenerate-PCR/Sanger hero do not
+  fit the newer consent and known-construct lessons.
+- Preserve current hand texts, all asset bytes and historical artifact hashes.
+  Correct captions that implied an arrangement node, fabrication geometry or
+  current assay outputs. Distinguish TP73-AS3 tester examples from newly designed
+  TP73 assays, cartoon overlap lengths from the plan, and Ensembl 113 in the
+  legacy menu capture from this chapter's required Ensembl 116.
+- Extend canonical graphics metadata, regenerate catalog/manifest and only the
+  two affected generated chapters/report records. The existing `150a3390` helper
+  has byte-identical docs-generator sources; this does not certify current-SHA
+  runtime. Unrelated temporary replay differences are not imported or waived.
+- Scoped Python verification: 85 tests, 82 pass and three expected binary-gated
+  skips, including the visual contracts and LF/CRLF checkout cases. Catalog and
+  manifest freshness pass; all 31 retained scientific artifact hashes remain
+  unchanged. No Rust build/check/test, fresh GUI acceptance, push or publication.
 
 ## 2026-10-12 - Close The Source-Bound Tutorial CI Repair
 

@@ -186,6 +186,12 @@ first pass. Only tighten primer/probe length, GC, Tm, motifs, or fixed
 positions after you have seen whether the transcript-aware search can find a
 basic assay.
 
+The retained mechanism template separates the ROI from the forward/reverse
+primer windows and the internal probe window. It illustrates a probe-bearing
+amplicon, not the specificity or experimental performance of your new assay.
+
+![qPCR mechanism template with separate ROI, primer windows and probe window](../figures/qpcr_assay_protocol_cartoon.svg)
+
 ### Step 5: Run qPCR Design
 
 GUI:
@@ -230,6 +236,18 @@ The most important question is:
 
 > Does the retained assay satisfy the biological intent, not just the primer
 > length and Tm filters?
+
+These retained **TP73-AS3**, not TP73 protein-coding, tester examples make the
+distinction concrete. The first produces one `100 bp` product in each of the
+three bundled annotated transcripts. The second produces a `147 bp` product
+only in `NR_187362.1`; the other rows have no forward-primer hit. Their pinned
+oligos are documented in [the figure provenance](../figures/README.md).
+They are not outputs of the new design above, a genome-wide off-target check or
+experimental validation.
+
+![Retained shared TP73-AS3 qPCR tester result with one 100-bp product per annotated transcript](../figures/tp73_as3_shared_cdna_qpcr.svg)
+
+![Retained NR_187362.1 TP73-AS3 tester result with a 147-bp product and two no-forward-hit controls](../figures/tp73_as3_nr187362_cdna_qpcr.svg)
 
 ### Step 7: Export the Handoff Artifacts
 
