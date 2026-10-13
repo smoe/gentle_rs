@@ -115,6 +115,26 @@ bounded import-only profile described in the receipt before changing rules.
 Frozen `e981469e`/`dfadf2a5` audits remain separate. No local Rust, push,
 dispatch, package publication or overall six-gate completion is claimed.
 
+### Bounded Post-BLAST Measurements At `f35a58e6`
+
+Glen returns the diagnostic requested by coordination commit `05285a5c`, while
+testing only the earlier exact `f35a58e6`. Codex independently verifies the
+29,227-byte archive, all 75 file hashes and exact membership; retain the
+[original report/manifest and measured boundary](audits/glen_followups_20261008/post_blast_profile_f35a58e6/README.md).
+Both ACTB/TP53 imports time out at 60.08 seconds with 99% CPU, approximately
+915 MiB peak RSS and no saved state/stdout/surviving process. CPU sampling is
+blocked, not executed: `perf` is absent and kernel policy is unchanged.
+
+The ten-second trace independently recounts 511 opens: 22 cDNA BLAST-index
+files, four annotation opens, two TSV opens and **zero prepared FASTA/FAI
+opens**. Do not conflate BLAST index files with the earlier per-hit FAI
+hypothesis. Repeated resource inspection/annotation reads are observed but
+their CPU share and the later import phases remain unknown. Original input
+hash lists and reference inspection JSONs are identical before/after; no real
+specificity verdict follows. Next is kernel-independent phase timing, not
+unmeasured policy changes or permission bypass. No runtime repair, local Rust,
+push, dispatch, publication or new six-gate completion is claimed.
+
 ### Completed Container Validation At `5e6201a6`
 
 After the main integration, Codex follows the already-live

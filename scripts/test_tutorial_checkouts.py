@@ -295,9 +295,12 @@ class TutorialCheckoutTests(unittest.TestCase):
 
     def test_f35a58e6_original_report_and_manifest_survive_both_checkout_modes(self):
         base = Path("docs/audits/glen_followups_20261008/candidate_f35a58e6")
+        profile = Path("docs/audits/glen_followups_20261008/post_blast_profile_f35a58e6")
         expected = {
             base / "REPORT.md": "63ab711e81383b407d8b4a00b90c2873553551646944696bc127f9d27ec7bc52",
             base / "SHA256SUMS": "cabb5e49d9e904d55cf0d07b9aae0879ba269c2a3ca4d9899a199e7df189d9e0",
+            profile / "REPORT.md": "aef052f65bf668e8e2729b3f19ea95b05227bf3d377e6c81e03b66e7d09f795c",
+            profile / "SHA256SUMS": "466e5371a53c18e856d8d28defd0a3210fd5e73265023ff01c18110afae537ff",
         }
         payloads = {path: (checker.ROOT / path).read_bytes() for path in expected}
         attributes = (checker.ROOT / ".gitattributes").read_bytes()

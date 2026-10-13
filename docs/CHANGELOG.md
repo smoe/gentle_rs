@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-10-13 - Retain Bounded Import Profiling Results
+
+- Verify the owner-supplied 29,227-byte archive, all 75 manifest hashes and
+  exact membership. Preserve Glen's report/manifest byte-for-byte and a
+  [source-bound inspection receipt](audits/glen_followups_20261008/post_blast_profile_f35a58e6/README.md),
+  with scoped LF rules and the existing LF/CRLF missing-policy regression.
+- Record both exact-`f35a58e6` 60-second, 99%-CPU timeouts, unchanged inputs
+  and reference inspection records, absent states and process cleanup. The
+  two CPU samples are blocked by missing perf/existing policy, not passes.
+- Independently recount the ten-second trace: 22 BLAST-index-prefix opens,
+  four annotation opens, two TSVs and zero prepared FASTA/FAI opens. Correct
+  the active FAI hypothesis without rewriting historical evidence or claiming
+  a dominant phase; kernel-independent phase timings are the next boundary.
+  No runtime repair, local Rust, push, CI dispatch or publication.
+- Merge `gentle_rs_2_main` at `dee6033d` into main as `a76b8418`; restore the
+  pending audit records without conflicts or unrelated-worktree changes.
+  All 60 offline tutorial/checkout tests pass above the merge. Newly merged
+  runtime code still needs exact-SHA Rust/native acceptance through Glen.
+
 ## 2026-10-13 - Prepare Bounded Post-BLAST Profiling Handoff
 
 - Commit [Glen's import-only diagnostic procedure](glen_post_blast_import_profiling_f35a58e6.md)
