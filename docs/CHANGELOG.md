@@ -120,6 +120,35 @@
   builds/tests, push or runtime acceptance claim. Merge `gentle_rs_3` at
   `9e717bb4`; the newly merged inspection/tutorial checks still need execution.
 
+## 2026-10-13 - Make Sequence-Design Repair And GC Audits Reproducible
+
+- Add a current exact-candidate acceptance procedure without rewriting Glen's
+  historical `needs_fix` record or claiming the pending audit is closed. Retain
+  the conflict-search completeness/pruning cross-read as Codex static evidence,
+  not Claude, runtime or independent acceptance. Keep the work outside `.12`.
+- Extend tutorial 06.07's actual-CLI companion with 18 independent literal
+  4/36-word cases under both strategies and honestly rehashed output/fact/policy
+  attacks, including the original valid non-minimal MEF example. Add opt-in
+  source-stamped raw evidence retention and isolated profiles; no builds are
+  launched by the companion. Tests preserve the output/search claim distinction.
+- Add fast oracle/source checks to the existing lightweight CI gate. No solver,
+  approval/readiness semantics, dependencies, private reports or fixture assets
+  change. Rust execution, native, usefulness and exact-SHA acceptance remain
+  with Glen/CI; skipped CLI tests are explicitly not passes.
+- Verification: 71 offline oracle/harness/tutorial/checkout checks pass,
+  including LF/CRLF coverage; four real-CLI tests remain explicit skips.
+  Oracle/harness checks also pass with Python optimizations enabled. Whitespace
+  and release-link checks pass; no local Rust or independent acceptance run.
+- Refuse retained acceptance rather than silently skipping when the binary
+  path is omitted. Keep primary matrix failures free of index-error cascades
+  and exclude the receipt itself from its artifact map so repeated retention
+  cannot bind an obsolete self-hash. These are audit-harness repairs only.
+- Read the completed Windows `8b6f8186` CI log to confirm its exact checkout,
+  binary source stamp, compiler, full-workspace success and LF/CRLF parity.
+  Keep this existing CI evidence separate from the unexecuted new audit and
+  Glen's pending native/usefulness/performance verdict; no named counts are
+  inferred from quiet aggregate logs and no later candidate inherits the pass.
+
 ## 2026-10-13 - Retain Bounded Import Profiling Results
 
 - Verify the owner-supplied 29,227-byte archive, all 75 manifest hashes and

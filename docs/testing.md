@@ -443,6 +443,12 @@ run. With it set, missing binaries fail. The Rust test executes apply/undo/redo
 through the shared parser in one engine session, not separate CLI processes.
 All DNA is explicitly synthetic and output goes to temporary directories. No
 new solver, automatic human approval or live GUI/inner-model verdict is implied.
+The [current sequence-design acceptance procedure](sequence_design_acceptance.md)
+adds an independent 18-case 4/36-word oracle and honestly rehashed CLI attacks.
+`scripts.test_sequence_design_audit_oracle` runs offline; real CLI checks still
+require supplied binaries. Explicit candidate/evidence variables retain source-
+stamped command/input/output receipts. Neither source passes nor skips certify
+the repaired runtime, native presentation, independent audit or performance.
 
 Without `GENTLE_TUTORIAL_BIN_DIR`, binary-dependent tests explicitly skip; with
 it set, missing tools, confirmation errors and command/report drift fail. The

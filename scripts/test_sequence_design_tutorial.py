@@ -7,12 +7,18 @@ synthetic fixture, never a user's DNA. No builds, network, model or GUI capture.
 """
 
 import json
+import copy
+import hashlib
 import os
+import platform
 from pathlib import Path
 import re
 import subprocess
 import tempfile
+import time
 import unittest
+
+from scripts import sequence_design_audit_oracle as oracle
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -105,25 +111,181 @@ class SequenceDesignTutorialSourceTests(unittest.TestCase):
                       (REQUEST.parent / "README.md").read_text(encoding="utf-8"))
 
 
-@unittest.skipUnless(BIN_DIR, "Set GENTLE_TUTORIAL_BIN_DIR for actual sequence-design CLI replay")
+@unittest.skipUnless(BIN_DIR or os.environ.get("GENTLE_SEQUENCE_DESIGN_EVIDENCE_DIR"),
+                     "Set GENTLE_TUTORIAL_BIN_DIR for actual sequence-design CLI replay")
 class SequenceDesignTutorialCliTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(prefix="gentle design's ")
-        self.addCleanup(self.tmp.cleanup)
-        self.cwd = Path(self.tmp.name)
+        retained = os.environ.get("GENTLE_SEQUENCE_DESIGN_EVIDENCE_DIR")
+        self.candidate = os.environ.get("GENTLE_SEQUENCE_DESIGN_CANDIDATE")
+        self.ledger = []
+        self.binary_hash = None
+        if retained:
+            self.assertTrue(BIN_DIR, "Retained acceptance requires GENTLE_TUTORIAL_BIN_DIR; cannot skip")
+            self.assertRegex(self.candidate or "", r"^[0-9a-f]{40}$",
+                             "Retained acceptance requires an exact authorized candidate")
+            revision = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT,
+                                      capture_output=True, check=True, timeout=10)
+            self.assertEqual(revision.stdout.decode().strip(), self.candidate,
+                             "Acceptance checkout differs from the authorized candidate")
+            status = subprocess.run(["git", "status", "--porcelain"], cwd=ROOT,
+                                    capture_output=True, check=True, timeout=10)
+            self.assertEqual(status.stdout, b"", "Acceptance requires a clean isolated checkout")
+            self.cwd = Path(retained).resolve() / self._testMethodName
+            self.cwd.mkdir(parents=True, exist_ok=False)
+            self.addCleanup(self.retain_evidence)
+        else:
+            self.tmp = tempfile.TemporaryDirectory(prefix="gentle design's ")
+            self.addCleanup(self.tmp.cleanup)
+            self.cwd = Path(self.tmp.name)
         self.state = self.cwd / "tutorial.gentle.json"
         suffix = ".exe" if os.name == "nt" else ""
         self.cli = Path(BIN_DIR).resolve() / f"gentle_cli{suffix}"
         self.assertTrue(self.cli.is_file(), f"Missing explicitly configured CLI: {self.cli}")
+        self.binary_hash = hashlib.sha256(self.cli.read_bytes()).hexdigest()
+        if retained:
+            version = subprocess.run([str(self.cli), "--version"], cwd=self.cwd,
+                                     capture_output=True, timeout=30, env=self.isolated_env())
+            (self.cwd / "binary-version.stdout").write_bytes(version.stdout)
+            (self.cwd / "binary-version.stderr").write_bytes(version.stderr)
+            self.assertEqual(version.returncode, 0)
+            self.assertRegex(version.stdout.decode(), r"(?m)^Source revision [^\r\n]*\+git\." +
+                             re.escape(self.candidate) + r"\r?$")
+
+    def isolated_env(self):
+        env = {key: value for key, value in os.environ.items()
+               if not key.startswith(("GENTLE_", "XDG_"))}
+        for key in ("HOME", "USERPROFILE", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME"):
+            folder = self.cwd / "isolated-profile" / key.lower()
+            folder.mkdir(parents=True, exist_ok=True)
+            env[key] = str(folder)
+        return env
+
+    def retain_evidence(self):
+        # Results are observations, not an auditor's scientific or performance verdict.
+        current_hash = (hashlib.sha256(self.cli.read_bytes()).hexdigest()
+                        if getattr(self, "cli", None) and self.cli.is_file() else None)
+        record = {"schema": "gentle.sequence_design_audit_observations.v1",
+                  "candidate": self.candidate, "binary": str(getattr(self, "cli", "")),
+                  "binary_sha256": self.binary_hash, "platform": platform.platform(),
+                  "test": self._testMethodName, "commands": self.ledger,
+                  "binary_sha256_at_end": current_hash,
+                  "binary_unchanged": self.binary_hash is not None and current_hash == self.binary_hash,
+                  "companion_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+                  "oracle_sha256": hashlib.sha256(Path(oracle.__file__).read_bytes()).hexdigest(),
+                  "independent_acceptance": False,
+                  "artifacts": {str(p.relative_to(self.cwd)): hashlib.sha256(p.read_bytes()).hexdigest()
+                                for p in sorted(self.cwd.rglob("*"))
+                                if p.is_file() and p != self.cwd / "observations.json"}}
+        (self.cwd / "observations.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+        if self.binary_hash is not None:
+            self.assertEqual(current_hash, self.binary_hash, "Audit binary changed during replay")
 
     def invoke(self, *args, success=True):
-        result = subprocess.run([str(self.cli), "--state", str(self.state), *args],
-                                cwd=self.cwd, capture_output=True, timeout=90)
+        command = [str(self.cli), "--state", str(self.state), *args]
+        index = len(self.ledger)
+        started = time.monotonic()
+        row = {"argv": command, "expected_success": success, "state": str(self.state)}
+        self.ledger.append(row)
+        try:
+            result = subprocess.run(command, cwd=self.cwd, capture_output=True, timeout=90,
+                                    env=self.isolated_env())
+        except subprocess.TimeoutExpired as error:
+            (self.cwd / f"command-{index:03}.stdout").write_bytes(error.stdout or b"")
+            (self.cwd / f"command-{index:03}.stderr").write_bytes(error.stderr or b"")
+            row.update(exit_code=None, timeout=True, wall_seconds=time.monotonic() - started)
+            raise
+        row.update(exit_code=result.returncode, timeout=False, wall_seconds=time.monotonic() - started)
+        (self.cwd / f"command-{index:03}.stdout").write_bytes(result.stdout)
+        (self.cwd / f"command-{index:03}.stderr").write_bytes(result.stderr)
         if not success:
             self.assertNotEqual(result.returncode, 0, result.stdout.decode(errors="replace"))
             return result
         self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
         return json.loads(result.stdout)
+
+    def test_exhaustive_acceptance_matrix_against_literal_oracle(self):
+        for name, template in oracle.audit_cases():
+            observations = []
+            for strategy in ("full_enumeration", "conflict_directed"):
+                with self.subTest(case=name, strategy=strategy):
+                    item = copy.deepcopy(template)
+                    item["search_strategy"] = strategy
+                    self.state = self.cwd / f"{name}-{strategy}.json"
+                    _, _, report = self.plan(item, name + " " + strategy)
+                    self.assertFalse(self.state.exists(), "Read-only preview created project state")
+                    oracle.assert_report(item, report)
+                    # Check our adversarial encoder against authentic engine bytes first.
+                    if report["approval_digest"] is not None:
+                        self.assertEqual(oracle.approval_digest(report), report["approval_digest"])
+                    observations.append(report["output_sequence"])
+            if len(observations) == 2:
+                self.assertEqual(observations[0], observations[1], name)
+
+    def test_rehashed_output_and_gc_facts_do_not_bypass_apply(self):
+        for strategy in ("full_enumeration", "conflict_directed"):
+            item = dict(oracle.audit_cases())["joint"]
+            item["search_strategy"] = strategy
+            self.state = self.cwd / f"tamper-{strategy}.json"
+            self.invoke("op", json.dumps({"CreateSequenceFromText": {
+                "sequence_text": "ACGT", "output_id": "keep_me", "name": None, "circular": False}}))
+            baseline = self.state.read_bytes()
+            _, _, report = self.plan(item, "tamper " + strategy)
+            self.assertEqual(oracle.approval_digest(report), report["approval_digest"])
+            for kind in ("gc_output", "window_fact", "stripped_gc", "stripped_window", "stop"):
+                with self.subTest(strategy=strategy, tamper=kind):
+                    changed = copy.deepcopy(report)
+                    if kind in ("gc_output", "stop"):
+                        changed["output_sequence"] = ("ATGTTCAAGTAA" if kind == "gc_output"
+                                                       else "ATGTTTAAGTAG")
+                        changed["output_sha256"] = "sha256:" + hashlib.sha256(changed["output_sequence"].encode()).hexdigest()
+                        changed["edits"] = [{"position_0based": i, "before": a, "after": b}
+                                            for i, (a, b) in enumerate(zip(changed["source_sequence"],
+                                                                          changed["output_sequence"])) if a != b]
+                    elif kind == "window_fact":
+                        changed["gc_window"]["output"][0]["gc_bases"] += 1
+                    else:
+                        del changed["request"]["gc_content" if kind == "stripped_gc" else "gc_window"]
+                    changed["approval_digest"] = oracle.approval_digest(changed)
+                    path = self.cwd / f"{strategy} {kind}.json"
+                    path.write_text(json.dumps(changed), encoding="utf-8")
+                    self.invoke("sequence-design", "apply", "@" + str(path), "--approve",
+                                changed["approval_digest"], success=False)
+                    self.assertEqual(self.state.read_bytes(), baseline)
+
+            # Valid two-edit MEF DNA may be applied, but its fabricated search proof
+            # must stay explicitly unverified. This reproduces Glen's needs_fix.
+            item = oracle.request("ATGGAATTCTAA", "MEF")
+            item["avoid_motifs"] = [{"pattern": "GAATTC", "strand": "both"}]
+            item["search_strategy"] = strategy
+            _, _, submitted = self.plan(item, "nonminimum " + strategy)
+            self.assertEqual(oracle.approval_digest(submitted), submitted["approval_digest"])
+            submitted["output_sequence"] = "ATGGAGTTTTAA"
+            submitted["output_sha256"] = "sha256:" + hashlib.sha256(b"ATGGAGTTTTAA").hexdigest()
+            submitted["edits"] = [{"position_0based": 5, "before": "A", "after": "G"},
+                                  {"position_0based": 8, "before": "C", "after": "T"}]
+            submitted["evaluated_candidates"] = 0
+            submitted["optimization_complete"] = True
+            submitted["minimum_edits_proven"] = True
+            submitted["approval_digest"] = oracle.approval_digest(submitted)
+            path = self.cwd / f"{strategy} forged-search.json"
+            path.write_text(json.dumps(submitted), encoding="utf-8")
+            applied = self.invoke("sequence-design", "apply", "@" + str(path), "--approve",
+                                  submitted["approval_digest"])
+            receipt = applied["result"]["dna_sequence_design_receipt"]
+            self.assertTrue(receipt["output_constraints_verified"])
+            self.assertFalse(receipt["search_claims_verified"])
+            state = json.loads(self.state.read_bytes())
+            record = state["metadata"]["dna_sequence_design:" + item["output_seq_id"]]
+            self.assertEqual(record["submitted_proposal"]["verification"], "unverified_portable_preview")
+            self.assertEqual(record["receipt"], receipt)
+            containers = [c for c in state["container_state"]["containers"].values()
+                          if item["output_seq_id"] in c["members"]]
+            self.assertEqual(len(containers), 1)
+            self.assertEqual(containers[0]["created_by_op"], applied["result"]["op_id"])
+            self.assertEqual(containers[0]["name"], "Synthetic sequence design")
+            nodes = [n for n in state["lineage"]["nodes"].values() if n["seq_id"] == item["output_seq_id"]]
+            self.assertEqual(len(nodes), 1)
+            self.assertEqual(nodes[0]["created_by_op"], applied["result"]["op_id"])
 
     def plan(self, request, name):
         path = self.cwd / f"{name} request.json"

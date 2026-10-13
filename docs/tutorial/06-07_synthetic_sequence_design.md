@@ -246,6 +246,14 @@ captures and semantic evidence; report CLI, GUI, scientific usefulness and
 performance verdicts separately. Native/platform, inner-model and human
 scientific acceptance are pending until independently performed.
 
+For the repair and both GC slices together, follow the
+[exact-candidate acceptance procedure](../sequence_design_acceptance.md).
+Its 18 literal exhaustive cases compare both strategies separately from search
+counts; honestly rehashed attacks distinguish output validation from unverifiable
+minimum-edit claims. With explicit candidate/evidence settings, the companion
+retains raw inputs, outputs and command receipts rather than deleting them.
+Offline source checks and skipped CLI tests do not close that audit.
+
 **Success means** that this explicit synthetic request produces the exact
 approved sequence with jointly satisfied constraints and coherent provenance.
 It does not establish expression, folding, splicing, synthesis, ordering or

@@ -537,6 +537,10 @@ independent native, usefulness or search audit stages below.
    retain coupled/new-conflict cases, budget stops and cancellation. Keep
    maintenance value, performance and biological suitability as separate claims;
    no `.12` delay or gate added.
+   Use the [current repair/GC acceptance procedure](sequence_design_acceptance.md)
+   and literal real-CLI audit matrix; source-only passes and skipped binary
+   tests cannot close this stage. The dated static cross-read is not a Claude
+   review or independent acceptance.
 2. Glen should now include the explicitly requested CDS-wide and sliding-window GC contracts and
    coupled constraints at one authorized revision, without treating prior
    motif-only proofs as GC acceptance. Decide usefulness before further search,
