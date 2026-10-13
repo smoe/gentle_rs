@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-10-13 - Retain Completed Matrix-Repair CI And Audit Retarget
+
+- Verify successful normal CI at exact `8b6f8186`: locked full-workspace and
+  native LF/CRLF parity on Windows/macOS, ten early matrix tests each, plus
+  scoped headless/safety results. Retain decoded logs and source-bound counts;
+  quiet aggregates do not establish named-test or real-reference acceptance.
+- Pre-dispatch ref validation detects owner-pushed `024ed6c0`; no optional run
+  starts at a different source. Record explicit owner retargeting to that SHA
+  only after its whole normal CI succeeds, retaining older verdicts separately.
+- Keep all six pending acceptance boundaries explicit. No package build,
+  model call, publication, push or local Rust execution; experimental
+  sequence-design audit preparation remains outside the `.12` gate.
+- Preserve a small manifest-bound log archive and a separate lossless Windows
+  API-original log. Explicitly distinguish the CRLF-to-LF text copy from raw
+  retained response bytes; original hashes, archive integrity and isolated
+  membership checks pass. Release-gate/whitespace pass, roadmap stays 400
+  lines and session-close has only intentional worktree/fidelity warnings.
+
 ## 2026-10-13 - Remove Obsolete Primer Specificity File Reader
 
 - Remove the unused private `primer_specificity_blast_from_handoff` wrapper.

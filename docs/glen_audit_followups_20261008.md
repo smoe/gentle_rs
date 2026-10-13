@@ -271,6 +271,95 @@ or creating/pushing a ref. Local FLNA evidence commit `5bd1cd37` is separate
 and unpushed; it does not replace the authorized target. No dispatch or local
 Rust execution has occurred at this observation.
 
+### Completed Normal CI At `8b6f8186` And Owner Retarget
+
+Run `38432492850`, attempt 1, is now `completed/success`, independently read
+on 2026-10-13 19:16 UTC. Its exact source remains
+`8b6f8186c81636491dadb446e94ca68429ba0860`, not later main. Both native
+jobs record Rust 1.99.0, exact checkout/binary source stamps and successful
+LF/CRLF tutorial parity. Locked full-workspace tests finish successfully,
+not merely the formerly failing matrix filter:
+
+| Platform / Job | Root Library | Full-Workspace Result Lines |
+| --- | --- | --- |
+| [Windows 115417977228](https://github.com/smoe/gentle_rs/actions/runs/38432492850/job/115417977228) | 4,095 pass, zero fail, 14 ignored; 1,199.58 s | 4,633 pass, zero fail, 17 ignored across 31 result lines |
+| [macOS 115418026971](https://github.com/smoe/gentle_rs/actions/runs/38432492850/job/115418026971) | 4,156 pass, zero fail, 14 ignored; 988.47 s | 4,694 pass, zero fail, 17 ignored across 31 result lines |
+
+Workspace totals exclude duplicate focused/engine steps. Quiet aggregates do
+not enumerate named tests, and zero-test result lines are not coverage. The
+early matrix filter executes ten tests on both platforms; multi-reference
+executes nine on Windows and ten on macOS. Unix-only mocks do not certify
+native Windows or real-reference BLAST/import acceptance. macOS runner is
+`macos-26-arm64`, image `20260907.0351.1`, host `aarch64-apple-darwin`;
+Windows uses `x86_64-pc-windows-msvc`. Ordinary dev/test profile and workspace
+feature unification are not `package-opt1` or native readability evidence.
+The committed lock hash remains
+`ead4421545a125267e33af84aeeea39f0e7ea2f60717a59ef0271d0e71855f1b`;
+these normal jobs do not independently measure retained binary/lock hashes.
+
+Retain decoded logs outside Git in `/private/tmp/gentle-ci-8b6f8186-20261013/`:
+
+| Log / Observation | UTF-8 Representation SHA-256 |
+| --- | --- |
+| `windows-job-115417977228.decoded.log` | `4b12d5c9e0b175bd530932e086c5ac9e72116545b5e444213b5004a9167b495d` |
+| `macos-job-115418026971.decoded.log` | `d8e9fc3bb8a98b42f24a0ccce256f3a9425d938974933354b570d8e043684b59` |
+| `headless-job-115417977116.decoded.log` | `6447d691fd5d7bd9eb31c78c4206580fc812b46ed56d3fd49a79216a8e9829f9` |
+| `safety-job-115417977132.decoded.log` | `bec3a45fca851fb57d33b1a91eacca3ec07a68fbf9a7004b8561f82e6deb6762` |
+| `completion-observation.json` | `2ef0c0b6e8c6fd6184f12dd5789d0a10fc8bca6deecb1367f69a3b83db86df43` |
+
+These are decoded log/API representations, not raw HTTP/archive digests.
+Text retention normalized Windows CRLF to LF; the first Windows hash above
+identifies that derived text, not the API-original bytes. Preserve the latter
+separately as `windows-job-115417977228.api-original-complete.log`:
+687,832 bytes, SHA-256
+`e0785ae196ac33d042a66936f7f25746ba24f8220e3a77d5c02d28b893208c14`.
+Removing only its 9,639 CR bytes reproduces the derived hash exactly. The
+CLI's ANSI-output guard initially refuses an empty retrieval; the successful
+GET explicitly retains escapes to a file, never to the terminal. No product
+failure or required isolation-policy change follows from that observer guard.
+Lossless gzip copy
+`/private/tmp/gentle-windows-ci-8b6f8186-20261013.api-original.log.gz` is
+95,782 bytes, SHA-256
+`9804daca2290576431cbb65185786ecfefced5a0064728ffdf59532f4cd490bd`; decompression reproduces the original hash.
+The separate evidence-only archive
+`/private/tmp/gentle-normal-ci-8b6f8186-20261013.tar.gz` is 212,380 bytes,
+SHA-256 `4c59c51c15713696ed4f809133bdf8eb0661a829363be97c133a26e2f3872beb`.
+Its six regular members are exactly these five files plus `SHA256SUMS`, whose
+SHA-256 is `9ee0c1eb08ee2582ad9fdb50d8e0462bb3b197e9dda351478bdb6b87a9b78b1c`.
+Gzip integrity, safe membership and all five hashes pass after isolated
+extraction. This is not an executable, installer or new Glen audit bundle;
+the old archives are untouched.
+Linux headless check and 228 safety/helper tests pass, but full Linux and all
+three optional audits are skipped. No native GUI/scroll run, package or live
+agent follows from this successful normal run.
+
+Immediately before optional dispatch, remote main has advanced to
+`024ed6c0520d38c4221517219d44c792084de4e5`; no published branch still pins
+`8b6f8186`. The preflight refuses before any dispatch command executes.
+The owner then explicitly retargets only the same three audit checks to
+`024ed6c0` after its exact-SHA normal CI passes. Follow already-live
+[run 38453643146](https://github.com/smoe/gentle_rs/actions/runs/38453643146);
+at 19:25 UTC macOS/Windows are live, headless/safety pass and full Linux is
+skipped. Old passes do not fulfill this new prerequisite. Main includes the
+owner-pushed FLNA evidence and experimental sequence-design audit tooling;
+their source-only tests do not become runtime/native acceptance or a `.12` gate.
+
+| Item | Current `024ed6c0` Acceptance Boundary |
+| --- | --- |
+| 1. Audit preservation / Linux validation | Original audit bytes and completed `8b6f8186` logs stay separately attributed. Fresh headless/safety jobs pass; full Linux at this source remains unexecuted. |
+| 2. 08.04 GUI/agent contracts | Optional exact-source replay awaits whole normal CI success and dispatch. No public-data, model or scientific verdict is implied. |
+| 3. Genuine live agent | Not run; the audit authorization excludes model calls. |
+| 4. Honest visual evidence | Human teaching-exon/version records remain preserved; ordinary same-source native presentation/capture gates remain open. |
+| 5. Scroll benchmarks | Fresh CPU audit awaits dispatch; historical 24-case `f35a58e6` pass is not this source or native latency. |
+| 6. .12 package acceptance | Open; packages stay on the owner's normal release path and outside this dispatch authority. |
+
+Recheck the exact published ref immediately before dispatch and the created
+run's source immediately after it. Use existing Linux selection for a fresh
+full-Linux baseline alongside the three requested audits; the workflow also
+runs its established Windows/headless/safety jobs. No further source choice,
+push, tag, package build, public-genome preparation, model call or publication
+is implicit. No optional dispatch or local Rust execution has occurred.
+
 ### Completed Container Validation At `5e6201a6`
 
 After the main integration, Codex follows the already-live
