@@ -26,6 +26,20 @@ Show/list inspect immutable history without database probes. Refer to the
 [protocol](protocol.md#standalone-multi-reference-primer-specificity) for schemas,
 MCP tools, applicability and non-claims; the same commands work in GUI Shell.
 
+### Inspect Retained Panel Specificity
+
+```sh
+gentle_cli --state study.gentle.json primers transcript-assay-specificity-matrix PANEL_REPORT_ID
+```
+
+This read-only command displays every retained selection receipt separately by
+panel design, exact reference and policy, including active/superseded history,
+per-assay binding diagnostics and unassessed current-design dimensions. It does
+not search, probe databases, write evidence, choose a reference or return an
+aggregate panel pass. Same-oligo standalone summaries remain unlinked citations,
+not panel evidence. GUI Shell and MCP `transcript_assay_specificity_matrix` use
+the same result; see [tutorial 04.09](tutorial/04-09_reference_bound_primer_specificity.md#inspect-the-panels-retained-evidence-matrix).
+
 ## Synthetic Sequence Design
 
 Start with [tutorial 06.07](tutorial/06-07_synthetic_sequence_design.md) for an

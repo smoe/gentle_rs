@@ -2,6 +2,14 @@
 
 This page documents the current graphical interface of GENtle.
 
+The existing GUI Shell / Agent Assistant accepts the read-only command
+`primers transcript-assay-specificity-matrix PANEL_REPORT_ID`. It inspects
+retained reference-selection receipts and binding diagnostics without probing
+databases or changing readiness. Policies and historical designs stay separate;
+matching standalone oligos do not establish panel association. There is no new
+matrix window or native GUI acceptance claim. See
+[tutorial 04.09](tutorial/04-09_reference_bound_primer_specificity.md#inspect-the-panels-retained-evidence-matrix).
+
 Experimental synthetic sequence redesign is available through the existing
 GUI Shell / Agent Assistant, not a new editor: `sequence-design plan @request.json`
 previews synonymous motif removal, and `sequence-design apply @preview.json

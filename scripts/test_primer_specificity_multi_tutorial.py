@@ -79,6 +79,28 @@ class PrimerSpecificityTutorialTests(unittest.TestCase):
             if "://" not in target:
                 self.assertTrue((ROOT / "docs/tutorial" / target.split("#")[0]).exists(), target)
 
+    def test_panel_matrix_teaches_scope_and_read_only_bindings(self):
+        glossary = json.loads((ROOT / "docs/glossary.json").read_text())
+        row, = [r for r in glossary["commands"] if r["path"] == "primers transcript-assay-specificity-matrix"]
+        self.assertEqual(row["engine_operations"], ["InspectTranscriptAssayPanelSpecificityMatrix"])
+        self.assertIn("mcp", row["interfaces"])
+        for ending in ("\n", "\r\n"):
+            page = self.page.replace("\n", ending)
+            for term in [row["path"], "transcript_assay_specificity_matrix", "is_superseded",
+                         "matches_current_panel_design", "retained_binding_verified",
+                         "unassessed_genomic_assay_ids", "unlinked_pair_summaries",
+                         "specificity and", "isoform discrimination", "does not combine"]:
+                self.assertIn(term, page)
+        implementation = (ROOT / "src/engine/analysis/primer_specificity_matrix.rs").read_text()
+        for forbidden in ["record_primer_specificity_reference_selection(",
+                          "write_primer_design_store(", "inspect_blast_database(",
+                          "selected_primer_specificity_report("]:
+            self.assertNotIn(forbidden, implementation)
+        for path in (ROOT / "src").rglob("*.rs"):
+            text = path.read_text()
+            for match in re.finditer(r"primer_specificity_multi_summaries:\s*vec!\[\],", text):
+                self.assertRegex(text[match.end():], r"^\s*transcript_assay_specificity_matrix:\s*None,", str(path))
+
 
 if __name__ == "__main__":
     unittest.main()

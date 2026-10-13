@@ -1330,6 +1330,8 @@ pub(crate) use region_homology::validate_genomic_region_homology_report;
 pub(crate) use tss_workspace::tests::{
     approved as synthetic_tss_approval, engine as synthetic_tss_engine,
 };
+#[path = "engine/analysis/primer_specificity_matrix.rs"]
+mod primer_specificity_matrix;
 #[path = "engine/analysis/primer_specificity_multi.rs"]
 mod primer_specificity_multi;
 #[path = "engine/analysis/primer_specificity_references.rs"]
@@ -4724,6 +4726,9 @@ pub enum Operation {
         summary_id: String,
     },
     ListPrimerPairMultiReferenceSpecificitySummaries {},
+    InspectTranscriptAssayPanelSpecificityMatrix {
+        panel_report_id: String,
+    },
     PrepareRestrictionCloningPcrHandoff {
         template: SeqId,
         primer_report_id: String,
@@ -10160,6 +10165,7 @@ impl GentleEngine {
                 | Operation::PreparePrimerPairMultiReferenceSpecificityHandoff { .. }
                 | Operation::GetPrimerPairMultiReferenceSpecificitySummary { .. }
                 | Operation::ListPrimerPairMultiReferenceSpecificitySummaries { .. }
+                | Operation::InspectTranscriptAssayPanelSpecificityMatrix { .. }
                 | Operation::RenderProtocolCartoonSvg { .. }
                 | Operation::RenderProtocolCartoonTemplateSvg { .. }
                 | Operation::ValidateProtocolCartoonTemplate { .. }

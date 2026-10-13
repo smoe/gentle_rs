@@ -4639,6 +4639,14 @@
       },
       {
          "aliases": [],
+         "engine_operations": ["InspectTranscriptAssayPanelSpecificityMatrix"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp"],
+         "path": "primers transcript-assay-specificity-matrix",
+         "summary": "Inspect retained panel specificity receipts independently by reference, policy and design; no probes, new aggregate pass or readiness change.",
+         "usage": "primers transcript-assay-specificity-matrix PANEL_REPORT_ID"
+      },
+      {
+         "aliases": [],
          "engine_operations": [],
          "interfaces": ["cli-shell", "gui-shell", "cli-direct"],
          "path": "primers transcript-assay-specificity-plan",

@@ -3656,7 +3656,8 @@ fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
         | "primer_specificity_multi_handoff"
         | "primer_specificity_multi_import"
         | "primer_specificity_multi_show"
-        | "primer_specificity_multi_list" => {
+        | "primer_specificity_multi_list"
+        | "transcript_assay_specificity_matrix" => {
             primer_tools::call(default_state_path, params.name.trim(), &params.arguments)
         }
         "capabilities" => tool_result_json(json!(GentleEngine::capabilities()), false),

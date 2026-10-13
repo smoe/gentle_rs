@@ -12471,6 +12471,7 @@ Error: `{err}`"
                 primer_specificity_multi_handoff: None,
                 primer_specificity_multi_summary: None,
                 primer_specificity_multi_summaries: vec![],
+                transcript_assay_specificity_matrix: None,
                 primer_specificity_report: None,
                 transcript_qpcr_panel: None,
                 transcript_assay_panel: None,

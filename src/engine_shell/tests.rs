@@ -1744,6 +1744,29 @@ fn glossary_specificity_multi_smoke_retains_typed_request_and_rejects_empty_json
     assert!(error.contains("missing field `schema`"), "{error}");
 }
 
+#[test]
+fn specificity_matrix_parser_is_read_only_and_keeps_exact_panel_identity() {
+    let command =
+        parse_shell_line("primers transcript-assay-specificity-matrix \"panel with ' spaces\"")
+            .unwrap();
+    assert!(!command.is_state_mutating());
+    let ShellCommand::Op { payload } = command else {
+        panic!("shared operation expected");
+    };
+    let Operation::InspectTranscriptAssayPanelSpecificityMatrix { panel_report_id } =
+        serde_json::from_str(&payload).unwrap()
+    else {
+        panic!("matrix operation expected");
+    };
+    assert_eq!(panel_report_id, "panel with ' spaces");
+    for line in [
+        "primers transcript-assay-specificity-matrix",
+        "primers transcript-assay-specificity-matrix a b",
+    ] {
+        assert!(parse_shell_line(line).is_err());
+    }
+}
+
 fn add_required_glossary_flag_companion(path: &str, flag: &str, line: &mut String) {
     let companion = match (path, flag) {
         ("primers execute-gene-isoform-study-workflow-batch", "--reuse-proposal") => {

@@ -14096,6 +14096,7 @@ impl ShellCommand {
                 Operation::PlanDnaSequenceDesign { .. }
                     | Operation::GetPrimerPairMultiReferenceSpecificitySummary { .. }
                     | Operation::ListPrimerPairMultiReferenceSpecificitySummaries { .. }
+                    | Operation::InspectTranscriptAssayPanelSpecificityMatrix { .. }
             )
         {
             return false;
@@ -20425,6 +20426,17 @@ fn primer_specificity_multi_descriptor(id: &str, action: &str) -> Value {
         "annotation_status":"fact_annotated","registry":registry_metadata_for_introspection(id)})
 }
 
+fn transcript_assay_specificity_matrix_descriptor(id: &str) -> Value {
+    let reads = vec![
+        json!({"fact":"report.exists","subject":{"arg":"PANEL_REPORT_ID"},"equals":"transcript_assay_panel"}),
+    ];
+    json!({"id":id,"kind":"operation","mutating":"false","requires_confirmation":false,
+        "args":[{"name":"PANEL_REPORT_ID","required":true,"subject_kind":"report","detail":"saved transcript assay panel ID"}],
+        "reads":reads,"effects":[],"precondition_expr":{"all":reads},
+        "description":"Inspect retained assay/reference receipts separately by policy and design; no resource probes, aggregate pass, readiness change or standalone pair association.",
+        "annotation_status":"fact_annotated","registry":registry_metadata_for_introspection(id)})
+}
+
 fn transcript_assay_cdna_similarity_map_descriptor(id: &str, description: &str) -> Value {
     json!({
         "id": id,
@@ -21976,6 +21988,13 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         primer_specificity_multi_descriptor("primers specificity-multi-list", "list"),
         primer_specificity_multi_descriptor("primer_specificity_multi_list", "list"),
         primer_specificity_multi_descriptor("primer_specificity_multi_handoff", "handoff"),
+        transcript_assay_specificity_matrix_descriptor(
+            "InspectTranscriptAssayPanelSpecificityMatrix",
+        ),
+        transcript_assay_specificity_matrix_descriptor(
+            "primers transcript-assay-specificity-matrix",
+        ),
+        transcript_assay_specificity_matrix_descriptor("transcript_assay_specificity_matrix"),
         pool_artifact_descriptor(
             "primers specificity-plan",
             "Prepare deterministic primer BLAST commands and query files without running the BLAST searches.",
@@ -31693,6 +31712,11 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "primers specificity-multi-show"
         | "primer_specificity_multi_show" => Some(vec![
             json!({"fact":"report.exists","subject":{"arg":"SUMMARY_ID"},"equals":"primer_specificity_multi"}),
+        ]),
+        "InspectTranscriptAssayPanelSpecificityMatrix"
+        | "primers transcript-assay-specificity-matrix"
+        | "transcript_assay_specificity_matrix" => Some(vec![
+            json!({"fact":"report.exists","subject":{"arg":"PANEL_REPORT_ID"},"equals":"transcript_assay_panel"}),
         ]),
         "AssessPrimerPairSpecificity"
         | "AssessPrimerPairSpecificityCollection"

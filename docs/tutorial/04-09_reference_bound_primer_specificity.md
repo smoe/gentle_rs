@@ -28,6 +28,7 @@ annotation and thresholds used; it does not predict laboratory performance.
 | Complete, retained search evidence | A process exit or truncated hit list does not prove specificity. | Both searches, exit codes, completeness, raw TSV sizes/hashes, policy and intended-target binding. |
 | Separate genomic/transcriptome verdicts | Genomic carryover and transcript cross-amplification have different experimental consequences. | `genomic` and `transcriptome` independently. |
 | Exact panel selection receipts | A newer passing report for another reference must not erase a required failure. | The selected reference/policy/pair/report hashes for each existing panel dimension, and replaced selections retained as history. |
+| Read-only panel evidence matrix | Old and new assessments can use different policies or panel designs; a single green label would conceal that distinction. | One column per retained receipt, active/superseded flags, binding diagnostics and current-design evidence gaps. |
 | Immutable standalone summaries | Results must remain inspectable after a reference is updated. | Stable summary ID and evidence snapshots; historical display is not a current-resource revalidation. |
 | Shared engine routes and approval | GUI, scripts and agents must not invent different biological interpretations or silently write evidence. | The same typed operations; approve file-writing preparation/import explicitly. |
 
@@ -223,12 +224,63 @@ Keep using the existing approved panel workflow for those gates. Neither a stand
 pass nor a panel's generated primers establishes isoform discrimination, oligo QC,
 laboratory validation or order readiness. Those need their own evidence and review.
 
+### Inspect The Panel's Retained Evidence Matrix
+
+If you already have a saved transcript-assay panel from 04.08, inspect it without
+running or importing anything:
+
+```sh
+gentle_cli --state study.gentle.json primers transcript-assay-specificity-matrix YOUR_PANEL_REPORT_ID
+```
+
+In the GUI Shell, omit the executable and `--state` prefix. MCP offers
+`transcript_assay_specificity_matrix` with `panel_report_id` and optional
+`state_path`; this read-only inspection needs no mutation confirmation.
+
+The result is under `transcript_assay_specificity_matrix`. Start with `assays`,
+then examine each `selections` column. Each column keeps its selection ID,
+reference fingerprint, policy, panel-design digest and acceptance ID. Inspect
+the following fields rather than looking for one overall green indicator:
+
+| Field | What it tells you |
+| --- | --- |
+| `is_active` / `is_superseded` | Which receipt the existing selection metadata points at, and which receipts have been replaced. These are not new readiness approvals. |
+| `matches_current_panel_design` | Whether this receipt belongs to the current panel design. A historical passing cell does not assess your edited panel. |
+| `retained_binding_verified` / `diagnostics` | Whether the stored report hash, assay/pair/tail, reference, policy and completeness bindings are consistent. Invalid/missing evidence is incomplete. |
+| `recorded_status` / `verdict` | The historical report's status and its binding-checked cell verdict. Resource currency is not rechecked. |
+| `unassessed_genomic_assay_ids` / `unassessed_transcriptome_assay_ids` | Current-design assays lacking a verified retained pass/fail assessment in that dimension. This is not "no off-targets" or a laboratory negative. |
+| `unlinked_pair_summaries` | Standalone evidence using the same full oligos/tail interpretation, but lacking a verified panel/assay/context association. It does not fill the matrix's evidence gaps. |
+
+For a hypothetical learning case, receipt A fails for one assay and later
+receipt B passes against another reference or policy. Both columns remain
+visible: B does not erase A, and the inspector does not combine them into a new
+panel pass. A panel with no receipts has no assessed columns and explicitly
+lists its current assays as unassessed, even if legacy reports look favorable.
+No reference availability or required/optional policy is inferred from that gap.
+Matching the saved panel design is not a fresh check of present source DNA or
+installed reference currency; use the existing finalization/readiness workflow
+when fresh applicability is required.
+
+Two assays may use identical primers yet pursue different transcript contrasts.
+Those assay identities remain distinct. A standalone pass for identical oligos
+is not enough to assign it to either context. Likewise, a common pair can pass a
+specificity screen while amplifying several intended isoforms: specificity and
+isoform discrimination are separate questions answered by different evidence.
+
+This command reads retained project evidence only. It does not authenticate the
+external runner, probe installed references, start BLAST, write a report, replace
+a selection or change order readiness. Export/import fan-out across a panel is
+not added by this inspection; use the existing approved workflows for new QA.
+
 ## 6. Use The Same Contract Through Agents And Scripts
 
 MCP exposes `primer_specificity_multi_handoff`, `primer_specificity_multi_import`,
 `primer_specificity_multi_show` and `primer_specificity_multi_list`. Preparation
 and import require `confirm: true`. Raw `op` calls, JS/Lua/Python and workflows use
 the same four engine operations documented in [the protocol](../protocol.md).
+Panel inspection adds the read-only `InspectTranscriptAssayPanelSpecificityMatrix`
+operation and `transcript_assay_specificity_matrix` MCP tool through the same
+shared engine; it does not introduce an alternative specificity interpreter.
 There is no adapter-local biological rule or automatic external execution.
 
 Suggested inner-agent message:
@@ -267,6 +319,7 @@ real-reference and native-GUI acceptance:
 ```sh
 cargo test --locked --lib specificity_reference_
 cargo test --locked --lib specificity_multi_
+cargo test --locked --lib specificity_matrix_
 cargo test --locked --lib writing_routes_require_confirmation_before_state_or_file_access
 cargo test --locked --lib primer_specificity_handoff_plans_without_running_and_imports_completed_outputs
 cargo test --locked --lib transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_outcomes
@@ -282,3 +335,6 @@ The Unix fake-tool import fixture is deterministic process-contract evidence,
 not a real BLAST search. Retained-byte/path tests are portable; native Windows
 filesystem behavior still needs Windows CI. This chapter is manual/hybrid, so
 the offline executable tutorial replay does not certify its external-runner step.
+The matrix fixtures are hand-crafted retained records: they test inspection,
+history, binding failures, same-oligo ambiguity, save/reload and unchanged state,
+not an actual BLAST run, native GUI workflow or biological acceptance.

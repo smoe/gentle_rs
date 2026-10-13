@@ -1,6 +1,6 @@
 # Primer Design Specialist Window Plan
 
-Last updated: 2026-10-09
+Last updated: 2026-10-13
 
 ## Verified Starting Point
 
@@ -30,6 +30,12 @@ The standalone multi-reference handoff/import/show/list core and
 implemented pending Glen/CI Rust verification. This core does not add panel fan-out or
 automatically attach its aggregate to order readiness. Those integrations,
 automatic tail selection and engine-native single-primer design remain separate.
+
+Read-only `primers transcript-assay-specificity-matrix PANEL_REPORT_ID` now
+projects retained panel receipts with separate design/reference/policy scopes,
+binding diagnostics, active/superseded history and unlinked same-oligo citations.
+Rust execution remains with Glen/CI. This is inspection only, not panel fan-out,
+new handoff/import machinery, reference selection or readiness attachment.
 
 ## Remaining Scope (Requires Separate Approval)
 

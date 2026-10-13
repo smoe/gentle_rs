@@ -741,6 +741,15 @@ of an external process or a claim of laboratory/isoform/order validity.
 Import parses and hashes the same retained output bytes. File hashes bind
 content, not the authenticity of an external runner's execution claim.
 
+Read-only panel-specificity inspection projects retained receipt snapshots,
+not whichever report currently shares their ID in the global store. Each
+selection keeps its reference, policy and design scope. Binding diagnostics,
+historical verdicts and active-selection metadata remain distinct; no combined
+panel pass or requirement policy is invented. Historical design evidence and
+unlinked same-oligo standalone summaries cannot fill current-design evidence
+gaps. This projection never records a selection, probes references or changes
+the existing readiness contract.
+
 ## DEC-030: Collection Lifting Is Subject-Specific And Engine-Owned
 
 Status: active
