@@ -298,10 +298,11 @@ containers, and platform notes are centralized in [`INSTALL.md`](INSTALL.md).
 
 ## Project Status
 
-- Current package version: `0.1.0-internal.12`. Development follows the
-  [published `.11` baseline](https://github.com/smoe/gentle_rs/releases/tag/v0.1.0-internal.11)
-  at `a51bbc06`, with Linux, macOS and Windows packages plus container publication.
-  The `.12` opt-level=1 package recipe needs fresh CI and Glen's runtime verdict.
+- Current package version: `0.1.0-internal.12`. The
+  [published `.12` baseline](https://github.com/smoe/gentle_rs/releases/tag/v0.1.0-internal.12)
+  is `5e6201a6` (2026-10-13), with Linux, macOS and Windows `package-opt1`
+  packages, four JSON receipts and the headless container. CI package smokes
+  passed; Glen's independent native/runtime and scientific verdicts remain open.
 - Active release story: gene-informed primer-pair studies, source-aware isoform
   comparison, TSS collection workflows and auditable annotated/vector exports.
 - Default builds include GUI, CLI, MCP, and documentation paths.
@@ -313,7 +314,7 @@ containers, and platform notes are centralized in [`INSTALL.md`](INSTALL.md).
 
 See the [`roadmap`](docs/roadmap.md) for the current acceptance gate, the
 [`release guide`](docs/release.md), the
-[`v0.1.0-internal.12` release-note draft](docs/release_notes/release_notes_v0.1.0-internal.12.md),
+[`v0.1.0-internal.12` release notes](docs/release_notes/release_notes_v0.1.0-internal.12.md),
 and the complete [`release-note index`](docs/release_notes/) for notable
 user-facing changes.
 

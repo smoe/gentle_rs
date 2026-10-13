@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-10-13 - Record The Published Internal.12 Artifact Cycle
+
+- Verify the owner-published `5e6201a6` prerelease, three `package-opt1`
+  packages, four JSON receipts and successful release-event GHCR publication.
+  Record the installer's pre-compilation Rust-setup failure, successful Ubuntu
+  rerun, native package smokes and final validation/publication jobs separately.
+- Correct current release projections and add a dated audit correction without
+  rewriting historical evidence. Glen's `f35a58e6` review has matching Rust and
+  workflow source but different bundled docs; it is not exact-package approval.
+- Preserve independent native, live-agent, scientific and performance gates.
+  Only read-only GitHub/Git inspection and non-Rust checks are used locally;
+  no downloaded installers, tag changes, workflow dispatch or publication.
+
 ## 2026-10-13 - Remove Obsolete Primer Specificity File Reader
 
 - Remove the unused private `primer_specificity_blast_from_handoff` wrapper.

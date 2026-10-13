@@ -284,6 +284,16 @@ publication: the downloaded candidate record says `publish=false` and
 `mode=validate_only`, the build receipt says `pushed=false`, and the GHCR
 publication job is explicitly skipped. No owner-confirmed release follows.
 
+**Dated correction, 2026-10-13:** that observation preceded the owner's
+01:02:04 UTC publication of the `.12` prerelease at the same `5e6201a6` tag.
+The separate release-event [container run 38330177090](https://github.com/smoe/gentle_rs/actions/runs/38330177090)
+published GHCR successfully; [installer run 38330176948](https://github.com/smoe/gentle_rs/actions/runs/38330176948)
+attempt 2 completed package validation/publication by 10:05 UTC. See the
+[published ledger and seven-asset inventory](release_notes/release_notes_v0.1.0-internal.12.md#publication-evidence).
+The earlier validate-only record below remains unchanged. CI extracted-package
+smokes passed, but this does not close Glen's independent native/package,
+live-agent, scientific or performance gates, nor certify newer source.
+
 [Build job 115052172732](https://github.com/smoe/gentle_rs/actions/runs/38322028567/job/115052172732)
 runs on Ubuntu 24.04.5 (`ubuntu-24.04` image `20261004.327.1`) with Docker
 Buildx 0.37.2, targeting `linux/amd64` / Debian forky. Its log installs Debian

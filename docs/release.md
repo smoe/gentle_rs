@@ -140,8 +140,9 @@ This is a packaging smoke, not validation of an RNA folding prediction.
 
 The current release workflow adds an actual Linux tarball; Debian, RPM and AppImage
 packaging remain deferred. `linux_distribution=tarball` records the artifact
-actually built. `.11` now supplies that download; the changed `.12` recipe
-still needs its own candidate-bound packaging verdict.
+actually built. Both `.11` and `.12` supply that download. The `.12` hosted
+build and CI package smokes passed at `5e6201a6`; independent native acceptance
+and profile-performance comparison remain separate.
 
 ## Actions Runtime
 
@@ -266,6 +267,20 @@ passed. The release carries all three native packages and four JSON receipts.
 This closes the artifact-cycle prerequisite, not scientific or GUI acceptance.
 Keep `.11` tags/assets unchanged and continue development as `.12`. No tag
 mutation, workflow dispatch or publication is authorized by this document.
+
+The owner published `v0.1.0-internal.12` as a prerelease at
+`5e6201a69a599cba87491c86cfd7311cb6fee173` on 2026-10-13 at 01:02:04 UTC.
+[Installer run 38330176948](https://github.com/smoe/gentle_rs/actions/runs/38330176948)
+attempt 2 passed: Ubuntu recovered from an initial Rust-setup failure before
+compilation; macOS/Windows results, extracted-package smokes, receipt validation
+and publication succeeded. All three `package-opt1` packages and four JSON
+receipts were uploaded by 10:05 UTC. The
+[release-event container run 38330177090](https://github.com/smoe/gentle_rs/actions/runs/38330177090)
+passed its smoke and GHCR publication at the same SHA. The
+[`.12` release ledger](release_notes/release_notes_v0.1.0-internal.12.md#publication-evidence)
+names each job and asset and distinguishes Glen's source-equivalent `f35a58e6`
+review from exact-package acceptance. Keep all tags/assets unchanged; native,
+scientific, live-agent and performance approval is not inferred from publication.
 
 ## Build-Only Candidate Verification
 
