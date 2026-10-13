@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-10-13 - Narrow Glen's Active Tutorial Handoff
+
+- Reconcile the active handoff with Glen's executed `f35a58e6` evidence; mark
+  the old `5e6201a6` full command list historical instead of redispatching it.
+  Preserve the original command text, byte-bound reports/manifests and all
+  source/platform/profile attribution.
+- Consolidate only native 08.16 lanes, microarray/gel navigation/captures/reopen,
+  normal native FLNA plus human exon/provenance decisions, and native 04.09
+  presentation with full real import deferred until an evidenced repair.
+  No repeated 08.18 CLI/cohort-GUI task or reopening of tutorial-CI/link repairs.
+- Keep `52908b2f`'s targeted matrix/trace diagnostics distinct from completed
+  tutorial execution and from a performance fix. No native/scientific/package
+  closure, screenshot-policy change, Rust execution, push or dispatch.
+- Verify the original request body is unchanged, the scoped LF/CRLF original-
+  evidence regression passes, release-gate has four passes and whitespace is
+  clean. Roadmap stays 400 lines; session-close has no failures and only the
+  existing unrelated-worktree/manual-fidelity warnings.
+
 ## 2026-10-13 - Instrument Post-BLAST Import Phases Without Changing Results
 
 - Add opt-in `GENTLE_PRIMER_IMPORT_TRACE=1`: bounded, operation-local stderr

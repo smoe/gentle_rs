@@ -137,6 +137,16 @@ push, dispatch, publication or new six-gate completion is claimed.
 
 ### Current Main Diagnostic Follow-Up: Awaiting Execution
 
+Glen's 2026-10-13 clarification confirms the completed software/learner scope
+at `f35a58e6`; the earlier `5e6201a6` worktree request is not a new full task.
+The [active consolidated tutorial residuals](glen_final_candidate_execution_handoff.md#remaining-native-and-human-checks)
+are native 08.16 lanes, native microarray/gel navigation/captures/reopen, normal
+native FLNA plus human exon choice/missing historical release, and native 04.09
+presentation with completed real import deferred until performance repair.
+No 08.18 CLI repeat or cohort GUI is requested; closed tutorial-CI/link repairs
+stay closed. New-code diagnostics remain separate from these residuals and
+from historical candidate acceptance.
+
 Both requested branches are now integrated: `gentle_rs_2_main` at `dee6033d`
 through merge `a76b8418`, then `gentle_rs_3` at `9e717bb4`. The reported matrix
 MCP test argument is repaired separately at `90e634f1`; its execution remains
