@@ -7,6 +7,7 @@ Keep one Markdown file per internal tag in this directory.
 
 | Version | Release status / date | Primary focus |
 | --- | --- | --- |
+| [`v0.1.0-internal.13`](release_notes_v0.1.0-internal.13.md) | Development draft after `.12`; no selected candidate, tag or packages | Aim undecided; carry forward source-bound validation and remaining acceptance |
 | [`v0.1.0-internal.12`](release_notes_v0.1.0-internal.12.md) | Published prerelease at `5e6201a6`, 2026-10-13; three native packages, four JSON receipts and container | First published `package-opt1` cycle; independent native/performance and scientific acceptance pending |
 | [`v0.1.0-internal.11`](release_notes_v0.1.0-internal.11.md) | Published with all three native packages and container at `a51bbc06`, 2026-09-30 | Gene-informed primer-pair GUI, source-aware isoform comparison, TSS collections, vector reports and self-contained packages |
 | [`v0.1.0-internal.10`](release_notes_v0.1.0-internal.10.md) | Published 2026-09-18; exact-candidate acceptance ledger remains pending | Genome evidence, corrected TFBS/TSS profiles, transcript-aware assays and annotated GenBank/EMBL export |

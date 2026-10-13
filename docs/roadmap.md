@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-10-13 - Record the owner's published `.12` at `5e6201a6`, with successful [installer/package publication](https://github.com/smoe/gentle_rs/actions/runs/38330176948) and [GHCR publication](https://github.com/smoe/gentle_rs/actions/runs/38330177090). Keep independent native, scientific, live-agent and performance acceptance open. Prepare the required `.13` development rollover separately; post-tag runtime work is not released `.12` content. No local Rust, Claude, push, dispatch, tag/publication changes or edits to paper/output/historical evidence; the `.11` DMG investigation remains owner-deferred.
+Last session: 2026-10-13 - Prepare `.13` development metadata after the [published `.12` artifact cycle](release_notes/release_notes_v0.1.0-internal.12.md#publication-evidence). The `.13` aim remains undecided. Follow the [Glen rollover handoff](internal_13_rollover_glen_handoff.md); local Rust checks and fresh tutorial replay are not run. Keep independent native, scientific, live-agent and performance acceptance open. No local Rust, Claude, push, dispatch, tag/publication changes or edits to paper/output/historical evidence; the `.11` DMG investigation remains owner-deferred.
 `.10` remains published at `84f34a9e` without recorded exact-candidate acceptance; its historical ledger stays pending.
 
 Purpose: fast session orientation. This file answers "what next?" and should be
@@ -21,8 +21,8 @@ Maintenance invariant:
 ## Release Gate
 
 Published baseline: `v0.1.0-internal.12` at `5e6201a69a599cba87491c86cfd7311cb6fee173`, published 2026-10-13 with all three native `package-opt1` packages, four JSON receipts and GHCR publication. Preserve the [release ledger](release_notes/release_notes_v0.1.0-internal.12.md#publication-evidence), including the initial Ubuntu setup failure and separate independent acceptance; the `.10`/`.11` scientific ledgers stay historical.
-Current candidate: source metadata still says `v0.1.0-internal.12`; the mandatory `.13` rollover is the next development task, not another `.12` release. Post-tag panel-matrix inspection and import diagnostics are not in the published packages. Glen's [f35a58e6 review](audits/glen_followups_20261008/candidate_f35a58e6/README.md) has identical Rust/workflow source to the tag, but different bundled docs; preserve its scoped verdicts without claiming exact-package or later-source acceptance.
-Active aim: responsive startup and DNA-feature presentation with measured opt-level=1 packaging; carry gene-informed primer-PAIR, source-aware isoform and TSS scientific/GUI checks forward rather than treating publication as experimental validation.
+Current candidate: `v0.1.0-internal.13` is the development version, with no selected release SHA or publication. Validate the synchronized metadata and unchanged historical tutorial baselines through the [Glen handoff](internal_13_rollover_glen_handoff.md); all local Rust checks remain not-run. Post-tag panel-matrix inspection and import diagnostics are not in the published `.12` packages. Preserve Glen's exact-source `f35a58e6` results without claiming exact-package or later-source acceptance.
+Active aim: undecided for `.13`. Carry forward startup, primer-import, native/live-agent, profile-comparison and scientific gates; owner selection is required before adding a new release aim.
 
 Release story: inspect TP73 GRCh38.p14 exon, repeat, array, CUT&RUN, paired-read,
 motif and coordinate-provenance tracks, plus PATZ1 negative-strand transcript/assay

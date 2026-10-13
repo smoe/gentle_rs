@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## `v0.1.0-internal.13` - Development Rollover, 2026-10-13
+
+- Advance the workspace and its seven inherited lockfile package versions
+  after the owner-confirmed `.12` release. Keep the independently versioned
+  `gentle-sequence-design` at `0.1.0`, dependencies and package profiles unchanged.
+- Synchronize README, roadmap, next release draft/index and current release
+  examples. The `.13` aim remains undecided; post-tag matrix inspection and
+  import diagnostics are not retroactively part of `.12`.
+- Preserve historical tutorial results and provenance. Local Rust execution
+  remains prohibited: metadata/version guard/Cargo check and fresh tutorial
+  replay are not run. The [Glen handoff](internal_13_rollover_glen_handoff.md)
+  specifies exact-source validation without relabeling historical baselines.
+
 ## 2026-10-13 - Record The Published Internal.12 Artifact Cycle
 
 - Verify the owner-published `5e6201a6` prerelease, three `package-opt1`

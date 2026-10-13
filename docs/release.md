@@ -265,8 +265,8 @@ The owner confirmed the completed `.11` release on 2026-09-30. At `a51bbc06`,
 and [container publication 36714939309](https://github.com/smoe/gentle_rs/actions/runs/36714939309)
 passed. The release carries all three native packages and four JSON receipts.
 This closes the artifact-cycle prerequisite, not scientific or GUI acceptance.
-Keep `.11` tags/assets unchanged and continue development as `.12`. No tag
-mutation, workflow dispatch or publication is authorized by this document.
+That release prompted the `.12` development rollover; its tags/assets remain
+unchanged. No tag mutation, workflow dispatch or publication is authorized here.
 
 The owner published `v0.1.0-internal.12` as a prerelease at
 `5e6201a69a599cba87491c86cfd7311cb6fee173` on 2026-10-13 at 01:02:04 UTC.
@@ -310,17 +310,17 @@ every receipt, rather than treating a fork run as upstream evidence.
 CANDIDATE_SHA=$(git rev-parse HEAD)
 WORKFLOW_REF=main # must already be pushed at CANDIDATE_SHA
 gh workflow run release.yml -R smoe/gentle_rs --ref "$WORKFLOW_REF" \
-  -f tag=v0.1.0-internal.12 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
+  -f tag=v0.1.0-internal.13 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
 gh workflow run container.yml -R smoe/gentle_rs --ref "$WORKFLOW_REF" \
-  -f tag=v0.1.0-internal.12 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
+  -f tag=v0.1.0-internal.13 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
 ```
 
 Manual runs default to **build-only**. They require the full 40-character commit
 SHA and a version label matching `Cargo.toml`; branch names and abbreviated
 SHAs are rejected. The version label need not be an existing tag. Build-only
-verification can therefore test a `.12` SHA before a `.12` tag exists.
+verification can therefore test a `.13` SHA before a `.13` tag exists.
 It does not certify, create or move a tag.
-These examples require `.12` in the candidate's committed Cargo metadata;
+These examples require `.13` in the candidate's committed Cargo metadata;
 update the label for subsequent development versions, never only the tag.
 Build/check jobs have read-only repository permission;
 the write-capable publication jobs are skipped.
@@ -476,7 +476,7 @@ binary inventory.
 Required local matrix:
 
 ```bash
-TAG=v0.1.0-internal.12 # must match the candidate's Cargo version
+TAG=v0.1.0-internal.13 # must match the candidate's Cargo version
 PROFILE=$(python3 -c 'import sys; from scripts.release_candidate import native_build_settings; print(native_build_settings(sys.argv[1])["native_profile"])' "$TAG")
 TARGET_SUBDIR=$(python3 -c 'import sys; from scripts.release_candidate import native_build_settings; print(native_build_settings(sys.argv[1])["native_target_subdir"])' "$TAG")
 cargo check -q --locked
@@ -541,8 +541,8 @@ Release-workflow assumptions to re-check before tagging:
 
 As the first development task after an owner-confirmed release, advance `main`
 to the next internal version without waiting for another reminder. After the
-`.11` release this means `0.1.0-internal.12`, not a change to the released tag.
-Do not advance while `.11` is still the active candidate, or infer completed
+`.12` release this means `0.1.0-internal.13`, not a change to the released tag.
+Do not advance while a version is still the active candidate, or infer completed
 publication from a tag push, a successful build, or a draft GitHub Release.
 
 1. Update `[workspace.package].version` in root `Cargo.toml` and every local
