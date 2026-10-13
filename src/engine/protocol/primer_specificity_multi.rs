@@ -43,6 +43,73 @@ pub struct PrimerSpecificityReferenceSelection {
     pub replaces_selection_id: Option<String>,
 }
 
+/// Read-only projection of retained panel selections, never a readiness verdict.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TranscriptAssayPanelSpecificityMatrix {
+    pub schema: String,
+    pub panel_report_id: String,
+    pub current_panel_design_digest: String,
+    pub assays: Vec<TranscriptAssaySpecificityMatrixAssay>,
+    pub selections: Vec<TranscriptAssaySpecificityMatrixSelection>,
+    pub unassessed_genomic_assay_ids: Vec<String>,
+    pub unassessed_transcriptome_assay_ids: Vec<String>,
+    pub unlinked_pair_summaries: Vec<TranscriptAssaySpecificityMatrixUnlinkedSummary>,
+    pub nonclaims: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+/// Current saved assay identity; identical oligos do not collapse assay rows.
+pub struct TranscriptAssaySpecificityMatrixAssay {
+    pub assay_id: String,
+    pub assay_rank: usize,
+    pub pair_binding_sha256: String,
+}
+
+/// Each receipt keeps its own policy/reference/design scope, including history.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TranscriptAssaySpecificityMatrixSelection {
+    pub selection_id: String,
+    pub panel_design_digest: String,
+    pub reference: PrimerSpecificityReferenceIdentity,
+    pub policy: PrimerSpecificityPolicy,
+    pub acceptance_id: String,
+    pub recorded_acceptance_status: TranscriptAssayPanelSpecificityAcceptanceStatus,
+    pub is_active: bool,
+    pub is_superseded: bool,
+    pub replaces_selection_id: Option<String>,
+    pub matches_current_panel_design: bool,
+    pub cells: Vec<TranscriptAssaySpecificityMatrixCell>,
+    pub diagnostics: Vec<String>,
+}
+
+/// A verdict is usable only within this receipt's verified retained bindings.
+/// Current resource currency is deliberately not checked by this inspection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TranscriptAssaySpecificityMatrixCell {
+    pub assay_id: String,
+    pub report_id: Option<String>,
+    pub report_content_sha256: Option<String>,
+    pub recorded_status: Option<String>,
+    pub verdict: PrimerSpecificityMultiVerdict,
+    pub retained_binding_verified: bool,
+    pub matches_current_assay: bool,
+    pub diagnostics: Vec<String>,
+}
+
+/// Identical full oligos/tail interpretation do not establish panel association.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TranscriptAssaySpecificityMatrixUnlinkedSummary {
+    pub summary_id: String,
+    pub pair_binding_sha256: String,
+    pub same_oligo_current_assay_ids: Vec<String>,
+    pub reason: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrimerSpecificityPanelSource {
     pub panel_design_digest: String,

@@ -84,6 +84,9 @@ pub(super) fn command_paths(name: &str) -> Option<&'static [&'static str]> {
         "primer_specificity_multi_import" => Some(&["primers specificity-multi-import"]),
         "primer_specificity_multi_show" => Some(&["primers specificity-multi-show"]),
         "primer_specificity_multi_list" => Some(&["primers specificity-multi-list"]),
+        "transcript_assay_specificity_matrix" => {
+            Some(&["primers transcript-assay-specificity-matrix"])
+        }
         _ => None,
     }
 }
@@ -146,6 +149,8 @@ pub(super) fn descriptors() -> Vec<Value> {
             "required":["summary_id"],"properties":{"summary_id":{"type":"string"},"state_path":{"type":"string"}}}}),
         json!({"name":"primer_specificity_multi_list", "inputSchema":{"type":"object","additionalProperties":false,
             "required":[],"properties":{"state_path":{"type":"string"}}}}),
+        json!({"name":"transcript_assay_specificity_matrix", "inputSchema":{"type":"object","additionalProperties":false,
+            "required":["panel_report_id"],"properties":{"panel_report_id":{"type":"string"},"state_path":{"type":"string"}}}}),
     ]
 }
 
@@ -192,6 +197,13 @@ fn validate_args<'a>(name: &str, arguments: &'a Value) -> Result<&'a Map<String,
 
 fn tokens(name: &str, args: &Map<String, Value>) -> Result<Vec<String>, String> {
     let string = |field| required_string_arg(args, field);
+    if name == "transcript_assay_specificity_matrix" {
+        return Ok(vec![
+            "primers".into(),
+            "transcript-assay-specificity-matrix".into(),
+            string("panel_report_id")?,
+        ]);
+    }
     if let Some(path) =
         command_paths(name).filter(|_| name.starts_with("primer_specificity_multi_"))
     {
@@ -301,6 +313,7 @@ pub(super) fn call(default_state_path: &str, name: &str, arguments: &Value) -> V
         let writes = match name {
             "primer_reports" => args["action"] == "export",
             "primer_specificity_multi_list" | "primer_specificity_multi_show" => false,
+            "transcript_assay_specificity_matrix" => false,
             _ => true,
         };
         if writes {
@@ -340,6 +353,11 @@ mod tests {
                 false,
             ),
             ("primer_specificity_multi_list", json!({}), false),
+            (
+                "transcript_assay_specificity_matrix",
+                json!({"panel_report_id":"synthetic panel ' context"}),
+                false,
+            ),
         ] {
             let args = validate_args(name, &args).unwrap();
             let tokens = tokens(name, args).unwrap();

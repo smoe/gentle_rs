@@ -5789,6 +5789,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "ImportPrimerPairMultiReferenceSpecificity",
     "GetPrimerPairMultiReferenceSpecificitySummary",
     "ListPrimerPairMultiReferenceSpecificitySummaries",
+    "InspectTranscriptAssayPanelSpecificityMatrix",
     "PrepareRestrictionCloningPcrHandoff",
     "PcrOverlapExtensionMutagenesis",
     "DesignQpcrAssays",
@@ -6004,6 +6005,12 @@ const MCP_TOOL_NAMES: &[(&str, &str, &str, CapabilityMutation)] = &[
         "primer_specificity_multi_list",
         "Primer Specificity Multi List",
         "List stored standalone multi-reference specificity summaries without resource probes.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "transcript_assay_specificity_matrix",
+        "Transcript Assay Specificity Matrix",
+        "Inspect retained panel/reference receipts with separate policies and designs, without probing databases or changing readiness.",
         CapabilityMutation::ReadOnly,
     ),
     (

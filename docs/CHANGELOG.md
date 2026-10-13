@@ -16,6 +16,26 @@
   four passes and session-close has no failures. Roadmap remains 400 lines;
   unrelated worktree/manual-fidelity warnings stay explicit.
 
+## 2026-10-13 - Inspect Retained Panel Specificity Without Changing Readiness
+
+- Implement the owner-approved, Claude-reconciled Slice A only: a transient typed
+  panel-specificity matrix and shared engine/shell/CLI/MCP/introspection route.
+  Keep each receipt's design/reference/policy scope, active/superseded history,
+  report snapshots, binding diagnostics and unassessed current-design assays.
+  No timestamp winner, aggregate panel pass or inferred reference requirements.
+- Verify retained identities, report hashes, assay/pair/tail interpretation,
+  reference/policy/completeness and verdict consistency without resource probes.
+  Historical designs remain history; matching standalone oligos are unlinked
+  citations, not panel evidence. Do not record selections or change readiness.
+- Author inline synthetic engine/shell/MCP, tamper/history, legacy/unlinked and
+  save/reload tests. Update tutorial 04.09, scoped review/catalog metadata and
+  interface/decision docs; initialize the additive result field in existing
+  result literals only. No new scheduler, fan-out, fixture resources or GUI.
+- Offline tutorial/source and LF/CRLF checkout checks pass 60/60; scoped rustfmt
+  and whitespace pass. Rust builds/tests/checks, official catalog/parity freshness,
+  native and real-reference acceptance remain with Glen/CI at the final SHA.
+  No private reports, dependencies, historical audits, push or release gate change.
+
 ## 2026-10-13 - Retain Glen's Final-Candidate Review
 
 - Independently verify the owner-supplied `f35a58e6` archive SHA/size, all 213

@@ -6343,6 +6343,19 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
     match tokens[1].as_str() {
         "primerbank" => parse_primers_primerbank_command(tokens),
         "oligo-order" => parse_primers_oligo_order_command(tokens),
+        "transcript-assay-specificity-matrix" => {
+            if tokens.len() != 3 {
+                return Err("primers transcript-assay-specificity-matrix PANEL_REPORT_ID".into());
+            }
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(
+                    &Operation::InspectTranscriptAssayPanelSpecificityMatrix {
+                        panel_report_id: tokens[2].clone(),
+                    },
+                )
+                .map_err(|e| e.to_string())?,
+            })
+        }
         "specificity-multi-handoff" => {
             if tokens.len() != 4 {
                 return Err(

@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 58 | 754 | 0 |
-| gentle_cli | 481 | 355 | 0 |
-| MCP | 179 | 518 | 50 |
-| JS | 78 | 577 | 69 |
-| Lua | 77 | 578 | 69 |
+| GUI | 58 | 756 | 0 |
+| gentle_cli | 482 | 356 | 0 |
+| MCP | 181 | 519 | 50 |
+| JS | 78 | 579 | 69 |
+| Lua | 77 | 580 | 69 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -380,6 +380,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | primers specificity-multi-import | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers specificity-multi-show | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers specificity-multi-list | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| primers transcript-assay-specificity-matrix | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers transcript-assay-specificity-plan | glossary-command | shell-only | prominent | prominent | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers transcript-assay-specificity-finalize | glossary-command | shell-only | prominent | prominent | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers primerbank search | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -777,6 +778,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | ImportPrimerPairMultiReferenceSpecificity | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | GetPrimerPairMultiReferenceSpecificitySummary | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ListPrimerPairMultiReferenceSpecificitySummaries | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| InspectTranscriptAssayPanelSpecificityMatrix | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | PrepareRestrictionCloningPcrHandoff | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | PcrOverlapExtensionMutagenesis | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | DesignQpcrAssays | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
@@ -936,6 +938,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | primer_specificity_multi_import | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |
 | primer_specificity_multi_show | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |
 | primer_specificity_multi_list | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |
+| transcript_assay_specificity_matrix | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |
 | transcript_assay_specificity_plan | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |
 | transcript_assay_specificity_finalize | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |
 | promoter_reporter_panel_plan | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |

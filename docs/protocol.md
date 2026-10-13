@@ -24,6 +24,42 @@ a receipt. Explicit experimental-handoff construction rechecks current database
 and annotation fingerprints; historical display does not probe resources. Raw
 TSV parsing and receipt hashes use the same retained bytes.
 
+## Retained Panel Specificity Matrix
+
+`InspectTranscriptAssayPanelSpecificityMatrix { panel_report_id }` and
+`primers transcript-assay-specificity-matrix PANEL_REPORT_ID` return the transient
+`gentle.transcript_assay_panel_specificity_matrix.v1` record in
+`OpResult.transcript_assay_specificity_matrix`. MCP exposes
+`transcript_assay_specificity_matrix { panel_report_id, state_path? }` without
+mutation confirmation. GUI Shell, CLI, scripting, workflow and introspection
+use the same operation. No new handoff, execution manifest or persisted report.
+
+Rows are current selected assay identities; each retained selection has its own
+column, exact reference fingerprint, complete policy, panel-design digest and
+acceptance/report citations. Columns remain in stable stored-selection-ID order;
+cells include historical assay identities and missing current assays. Active,
+superseded and current-design flags are independent. Superseded evidence is not
+dropped or selected by timestamp, and different policies/designs are not merged.
+
+Inspection verifies retained selection identity, assay inventory, report hashes,
+full oligo/annealing/tail binding, reference/policy identity, completeness and
+recorded verdict consistency using the receipt's report snapshots. Invalid or
+missing bindings yield `incomplete` cells with diagnostics, never a fabricated
+pass. A verified historical cell retains its recorded verdict but cannot count
+as evidence for the edited current design. `unassessed_genomic_assay_ids` and
+`unassessed_transcriptome_assay_ids` list current assays with no verified retained
+pass/fail cell for that design/dimension; they are not biological absence or
+current-resource/readiness assessments. No aggregate panel verdict or inferred
+required/optional-reference status is returned.
+Saved panel-design equality does not revalidate present source DNA or resources.
+
+Standalone summaries whose full-pair/tail binding matches are listed only as
+`unlinked_pair_summaries`, with same-oligo current assay IDs and an explicit lack
+of panel/assay/context association. They never contribute assessed cells. Legacy
+unreceipted panel assessments cannot establish verified matrix evidence.
+Inspection does not probe databases, authenticate process execution, write
+state/files, record selections or change readiness. See tutorial 04.09.
+
 ## Standalone Multi-Reference Primer Specificity
 
 `PreparePrimerPairMultiReferenceSpecificityHandoff { request, output_dir }` and

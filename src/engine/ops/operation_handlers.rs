@@ -40514,6 +40514,7 @@ impl GentleEngine {
             primer_specificity_multi_handoff: None,
             primer_specificity_multi_summary: None,
             primer_specificity_multi_summaries: vec![],
+            transcript_assay_specificity_matrix: None,
             primer_specificity_report: None,
             construct_reasoning_graph: None,
             sequencing_confirmation_report: None,
@@ -47318,6 +47319,12 @@ impl GentleEngine {
                 Operation::ListPrimerPairMultiReferenceSpecificitySummaries {} => {
                     result.primer_specificity_multi_summaries =
                         self.list_primer_pair_multi_reference_specificity_summaries();
+                }
+                Operation::InspectTranscriptAssayPanelSpecificityMatrix { panel_report_id } => {
+                    result.transcript_assay_specificity_matrix = Some(Box::new(
+                        self.inspect_transcript_assay_panel_specificity_matrix(&panel_report_id)?,
+                    ));
+                    result.messages.push("Inspected retained panel specificity; no database probes, aggregate panel pass or readiness changes".into());
                 }
                 Operation::PrepareRestrictionCloningPcrHandoff {
                     template,
