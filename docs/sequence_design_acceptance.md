@@ -28,7 +28,7 @@ The following closure table is deliberately still pending:
 | Tutorial/adapters | Actual 06.07 CLI replay; shared-shell/direct-CLI/confirmed-MCP Rust tests | Same scientific payload and approval boundary, with explicit binary identity |
 | Native/usefulness/runtime | Independent native review and bounded measurements below | Separate scoped verdicts; unavailable checks remain `not_run` |
 
-## Existing CI Evidence (Not The New Audit)
+## CI Regression Evidence (Not Independent Acceptance)
 
 Read-only cross-check on 2026-10-13: the
 [Windows job 115417977228](https://github.com/smoe/gentle_rs/actions/runs/38432492850/job/115417977228)
@@ -45,6 +45,29 @@ invent named-test counts from aggregate summaries. These audit additions were
 not in that SHA. Retain the source-bound CI evidence separately and execute the
 new targeted/real-CLI procedure at the integrated candidate before closing the
 table above. Later SHAs do not automatically inherit this job's acceptance.
+
+### Integrated Windows Regression Evidence
+
+Read-only cross-check on 2026-10-13: the
+[Windows job 115490639067](https://github.com/smoe/gentle_rs/actions/runs/38453643146/job/115490639067)
+completed successfully at `024ed6c0520d38c4221517219d44c792084de4e5`, which
+includes the repair/GC audit additions in `5e11be7c`. Its
+[decoded log source](https://api.github.com/repos/smoe/gentle_rs/actions/jobs/115490639067/logs)
+records the matching CLI source stamp, Rust 1.99.0 (`b940084d7`,
+`x86_64-pc-windows-msvc`) and successful `cargo test -q --locked --workspace`.
+The root-library summary has 4,095 passes, zero failures and 14 ignored tests;
+these are aggregate counts, not a named sequence-design acceptance result.
+
+The same run's
+[safety job 115490639076](https://github.com/smoe/gentle_rs/actions/runs/38453643146/job/115490639076)
+ran the companion/oracle suite: 16 checks passed and all four actual CLI tests
+were explicitly skipped because `GENTLE_TUTORIAL_BIN_DIR` was not configured.
+Those skipped checks cover direct/shared-shell apply, the exhaustive two-strategy
+matrix, rehashed attacks and exhausted-search behavior. Ordinary workspace
+regressions do not substitute for their retained replay or an independent
+verdict. At inspection macOS was still running; no whole-run, native GUI,
+usefulness, runtime or release acceptance is claimed. No local Rust was run,
+and every closure-table item above remains pending.
 
 ## Exact-Candidate Functional Checks
 

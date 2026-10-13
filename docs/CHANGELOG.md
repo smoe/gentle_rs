@@ -259,6 +259,15 @@
   skip; structural visual checks cover 66 catalog entries. No local Rust,
   current native capture, scientific approval or push is implied.
 
+## 2026-10-13 - Record Integrated Sequence-Design Windows CI
+
+- Cross-check completed Windows job `115490639067` at `024ed6c0`, including
+  the exact CLI source stamp and successful locked workspace tests. Add the
+  evidence to the existing sequence-design acceptance record, not a new handoff.
+- Keep the safety job's 16 passes and four skipped real-CLI checks separate.
+  Independent repair/GC, native, usefulness and runtime acceptance remain open;
+  macOS was still running at inspection. No local Rust, dispatch or push.
+
 ## 2026-10-13 - Remove Obsolete Primer Specificity File Reader
 
 - Remove the unused private `primer_specificity_blast_from_handoff` wrapper.
