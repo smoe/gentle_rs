@@ -140,6 +140,7 @@ pub mod ncbi_genbank_xml;
 pub mod open_reading_frame;
 /// Virtual pool gel model and rendering primitives.
 pub mod pool_gel;
+mod primer_import_trace;
 /// Assembly-aware local variant screening for primer and probe binding sites.
 pub mod primer_variants;
 /// PrimerBank search, provenance records, and HTML parsing helpers.

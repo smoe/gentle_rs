@@ -4,6 +4,7 @@
 
 use super::operation_handlers::PrimerSpecificityResolvedInput;
 use super::*;
+use crate::primer_import_trace::{self as import_trace, Phase as ImportPhase};
 use serde_json::Value;
 use std::fs;
 use std::io::Read;
@@ -708,6 +709,9 @@ impl GentleEngine {
         handoff_path: &str,
         manifest_path: &str,
     ) -> Result<PrimerSpecificityMultiSummary, EngineError> {
+        let _trace_session = import_trace::Session::from_env();
+        let trace = import_trace::span(ImportPhase::Import);
+        let admission_trace = import_trace::span(ImportPhase::Admission);
         let handoff: PrimerSpecificityMultiHandoff = specificity_multi_read_json(handoff_path)?;
         let mut manifest: PrimerSpecificityMultiExecutionManifest =
             specificity_multi_read_json(manifest_path)?;
@@ -716,6 +720,7 @@ impl GentleEngine {
             .commands
             .sort_by(|a, b| a.command_id.cmp(&b.command_id));
         let executions = Self::specificity_multi_validate_manifest(&handoff, &manifest)?;
+        admission_trace.finish(true, Some(handoff.references.len()));
         let mut execution_complete = handoff
             .references
             .iter()
@@ -729,6 +734,7 @@ impl GentleEngine {
             });
         let mut rows = Vec::new();
         for reference in &handoff.references {
+            let reference_trace = import_trace::span(ImportPhase::Reference);
             let mut row = PrimerSpecificityMultiSummaryReference {
                 genome_id: reference.resolved_genome_id.clone(),
                 required: reference.required,
@@ -745,15 +751,18 @@ impl GentleEngine {
                         "Optional reference unavailable; no search was requested".into()
                     }));
                 rows.push(row);
+                reference_trace.finish(true, Some(0));
                 continue;
             };
             if let Err(error) = self.validate_primer_specificity_handoff_database(child) {
                 row.applicability = "stale_or_unavailable_reference".into();
                 row.diagnostics.push(error.message);
                 rows.push(row);
+                reference_trace.finish(false, None);
                 continue;
             }
             row.applicability = "current_at_import".into();
+            let output_trace = import_trace::span(ImportPhase::OutputValidation);
             let mut outputs = BTreeMap::new();
             for (command, primer) in child.commands.iter().zip(&handoff.primers) {
                 let Some(execution) = executions.get(&command.command_id) else {
@@ -814,6 +823,7 @@ impl GentleEngine {
                 }
                 outputs.insert(command.command_id.clone(), text);
             }
+            output_trace.finish(true, Some(outputs.len()));
             if outputs.len() == child.commands.len() {
                 match self.primer_specificity_report_from_handoff_outputs(child, Some(&outputs)) {
                     Ok(mut report) => {
@@ -855,6 +865,7 @@ impl GentleEngine {
                 }
             }
             rows.push(row);
+            reference_trace.finish(true, Some(outputs.len()));
         }
         let mut summary = PrimerSpecificityMultiSummary {
             schema: PRIMER_SPECIFICITY_MULTI_SUMMARY_SCHEMA.into(),
@@ -894,6 +905,7 @@ impl GentleEngine {
                     "Immutable summary content collision",
                 ));
             }
+            trace.finish(true, Some(summary.references.len()));
             return Ok(existing.clone());
         }
         for report in summary.references.iter().filter_map(|r| r.report.as_ref()) {
@@ -905,7 +917,10 @@ impl GentleEngine {
         store
             .primer_specificity_multi_summaries
             .insert(summary.summary_id.clone(), summary.clone());
-        self.write_primer_design_store(store)?;
+        import_trace::measure_result(ImportPhase::Persistence, || {
+            self.write_primer_design_store(store)
+        })?;
+        trace.finish(true, Some(summary.references.len()));
         Ok(summary)
     }
 
@@ -1085,6 +1100,33 @@ mod tests {
             catalog_path: None,
             cache_dir: None,
         }
+    }
+
+    #[test]
+    fn specificity_multi_trace_refusal_keeps_error_and_state() {
+        let root = tempfile::tempdir().unwrap();
+        let missing = root.path().join("absent handoff ' with spaces.json");
+        let mut engine = GentleEngine::new();
+        let before = serde_json::to_value(engine.snapshot()).unwrap();
+        let ordinary = engine
+            .import_primer_pair_multi_reference_specificity(
+                missing.to_str().unwrap(),
+                missing.to_str().unwrap(),
+            )
+            .unwrap_err();
+        let (traced, events) = import_trace::capture(|| {
+            engine.import_primer_pair_multi_reference_specificity(
+                missing.to_str().unwrap(),
+                missing.to_str().unwrap(),
+            )
+        });
+        let traced = traced.unwrap_err();
+        assert_eq!(traced.code, ordinary.code);
+        assert_eq!(traced.message, ordinary.message);
+        assert_eq!(before, serde_json::to_value(engine.snapshot()).unwrap());
+        assert_eq!(events.first().unwrap()["kind"], "begin");
+        assert_eq!(events.last().unwrap()["kind"], "abandoned");
+        assert_eq!(events.last().unwrap()["phase"], "import");
     }
 
     #[test]
@@ -1605,12 +1647,18 @@ mod tests {
         let manifest_path = Path::new(&handoff.manifest_path);
         let mut manifest: PrimerSpecificityMultiExecutionManifest =
             specificity_multi_read_json(&handoff.manifest_path).unwrap();
-        let pending = engine
-            .import_primer_pair_multi_reference_specificity(
+        let (pending, pending_events) = import_trace::capture(|| {
+            engine.import_primer_pair_multi_reference_specificity(
                 path.to_str().unwrap(),
                 manifest_path.to_str().unwrap(),
             )
-            .unwrap();
+        });
+        let pending = pending.unwrap();
+        assert!(
+            pending_events
+                .iter()
+                .any(|event| { event["phase"] == "persistence" && event["kind"] == "completed" })
+        );
         assert_eq!(pending.genomic, PrimerSpecificityMultiVerdict::Incomplete);
         for child in handoff.references.iter().filter_map(|r| r.child.as_ref()) {
             for command in &child.commands {
@@ -1706,16 +1754,46 @@ mod tests {
                 .content_sha256,
             approved.content_sha256
         );
+        let replay_before = serde_json::to_value(engine.snapshot()).unwrap();
+        let (traced_replay, events) = import_trace::capture(|| {
+            engine.import_primer_pair_multi_reference_specificity(
+                path.to_str().unwrap(),
+                manifest_path.to_str().unwrap(),
+            )
+        });
         assert_eq!(
-            engine
-                .import_primer_pair_multi_reference_specificity(
-                    path.to_str().unwrap(),
-                    manifest_path.to_str().unwrap()
-                )
-                .unwrap()
-                .summary_id,
-            approved.summary_id
+            serde_json::to_value(traced_replay.unwrap()).unwrap(),
+            serde_json::to_value(&approved).unwrap()
         );
+        assert_eq!(
+            replay_before,
+            serde_json::to_value(engine.snapshot()).unwrap()
+        );
+        for phase in [
+            "import",
+            "admission",
+            "reference",
+            "database_validation",
+            "database_inspection",
+            "annotation_hash",
+            "annotation_read",
+            "annotation_decode",
+            "annotation_lookup",
+            "output_validation",
+            "tabular_parse",
+            "interpretation",
+            "subject_aliases",
+            "forward_hits",
+            "reverse_hits",
+            "amplicon_join",
+        ] {
+            assert!(
+                events.iter().any(|event| event["phase"] == phase),
+                "{phase}"
+            );
+        }
+        assert_eq!(events.last().unwrap()["kind"], "completed");
+        assert!(!events.iter().any(|event| event["kind"] == "truncated"));
         assert!(
             engine
                 .read_primer_design_store()

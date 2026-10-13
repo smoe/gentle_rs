@@ -1,5 +1,25 @@
 # GENtle Changelog
 
+## 2026-10-13 - Instrument Post-BLAST Import Phases Without Changing Results
+
+- Add opt-in `GENTLE_PRIMER_IMPORT_TRACE=1`: bounded, operation-local stderr
+  JSON spans for admission, reference/database validation, annotation hash/read/
+  decode, output parsing, hit evaluation, joins and persistence. Keep clocks
+  and private identifiers out of reports, state and content bindings; do not
+  cache resources, remove validation, change policy or claim a speedup.
+- Author recorder error/count/cap/nested/unwind tests, a cross-platform
+  missing-input refusal regression and exact-summary/unchanged-state trace
+  assertions on the existing synthetic external-import replay. Rust execution
+  remains with Glen; no local compilation or runtime acceptance claim.
+- Commit the [privilege-free Glen procedure](glen_post_blast_import_phase_trace.md)
+  for one same-source baseline/trace pair per real case, preserving both older
+  evidence bundles and the 300-second total budget. Incomplete spans, overlapping
+  wall time and trace overhead remain explicit; CPU attribution is not claimed.
+- Verification: 61 offline tutorial/checkout tests pass; final scoped teaching
+  recheck passes 6/6, rustfmt and whitespace pass, release-gate reports 4 OK
+  and session-close has no failures. Its worktree/manual-fidelity warnings are
+  explicit; roadmap remains 400 lines. No local Rust, push or dispatch.
+
 ## 2026-10-13 - Correct Matrix Test State-Path Argument
 
 - Fix the merged MCP matrix regression's `PathBuf` argument for the existing

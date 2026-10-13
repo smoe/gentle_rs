@@ -43,6 +43,7 @@
 
 use crate::feature_location::feature_is_reverse;
 use crate::ncbi_genbank_xml::{NcbiXmlDialect, parse_gbseq_xml_file_with_dialect};
+use crate::primer_import_trace::{self as import_trace, Phase as ImportPhase};
 use crate::runtime_status::{RuntimeStatusFrameKind, runtime_status_registry};
 use flate2::read::MultiGzDecoder;
 use gentle_protocol::{EngineError, ErrorCode};
@@ -5400,7 +5401,10 @@ impl GenomeCatalog {
             ));
         }
         if let Some(expected_sha1) = manifest.subject_annotation_index_sha1.as_deref() {
-            let observed_sha1 = compute_file_sha1(index_path)?.ok_or_else(|| {
+            let observed_sha1 = import_trace::measure_result(ImportPhase::AnnotationHash, || {
+                compute_file_sha1(index_path)
+            })?
+            .ok_or_else(|| {
                 format!(
                     "Could not fingerprint BLAST subject annotation index '{}'",
                     index_path.display()
@@ -11686,7 +11690,9 @@ impl BlastDatabaseInspectionReport {
         self.subject_annotation_fingerprint_algorithm =
             Some(BLAST_SUBJECT_ANNOTATION_FINGERPRINT_ALGORITHM.to_string());
         if let Some(expected_sha1) = manifest.subject_annotation_index_sha1.as_deref() {
-            match compute_file_sha1(Path::new(path)) {
+            match import_trace::measure_result(ImportPhase::AnnotationHash, || {
+                compute_file_sha1(Path::new(path))
+            }) {
                 Ok(Some(observed_sha1)) if observed_sha1 == expected_sha1 => {}
                 Ok(Some(_)) => {
                     self.subject_annotation_status = "stale".to_string();
@@ -12191,13 +12197,21 @@ fn normalize_genbank_blast_resource_if_needed(
 }
 
 fn load_blast_subject_annotation_index(path: &Path) -> Result<BlastSubjectAnnotationIndex, String> {
-    let text = fs::read_to_string(path).map_err(|error| {
-        format!(
-            "Could not read BLAST subject annotation index '{}': {error}",
-            path.display()
-        )
-    })?;
-    let index: BlastSubjectAnnotationIndex = serde_json::from_str(&text).map_err(|error| {
+    let text =
+        import_trace::measure_result(ImportPhase::AnnotationRead, || fs::read_to_string(path))
+            .map_err(|error| {
+                format!(
+                    "Could not read BLAST subject annotation index '{}': {error}",
+                    path.display()
+                )
+            })?;
+    let decode_trace = import_trace::span(ImportPhase::AnnotationDecode);
+    let decoded = serde_json::from_str::<BlastSubjectAnnotationIndex>(&text);
+    decode_trace.finish(
+        decoded.is_ok(),
+        decoded.as_ref().ok().map(|index| index.records.len()),
+    );
+    let index = decoded.map_err(|error| {
         format!(
             "Could not parse BLAST subject annotation index '{}': {error}",
             path.display()

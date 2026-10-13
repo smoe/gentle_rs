@@ -750,6 +750,12 @@ unlinked same-oligo standalone summaries cannot fill current-design evidence
 gaps. This projection never records a selection, probes references or changes
 the existing readiness contract.
 
+Opt-in primer-import tracing is observational, operation-local and bounded.
+It uses fixed phases/numeric counts only, never private identifiers, report
+fields, content fingerprints or persistence. Wall-clock spans overlap and do
+not establish CPU attribution or biological pass; early exits/truncation stay
+explicit. Trace I/O failure must not change validation, error or state results.
+
 ## DEC-030: Collection Lifting Is Subject-Specific And Engine-Owned
 
 Status: active

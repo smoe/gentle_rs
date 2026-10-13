@@ -135,6 +135,21 @@ specificity verdict follows. Next is kernel-independent phase timing, not
 unmeasured policy changes or permission bypass. No runtime repair, local Rust,
 push, dispatch, publication or new six-gate completion is claimed.
 
+### Current Main Diagnostic Follow-Up: Awaiting Execution
+
+Both requested branches are now integrated: `gentle_rs_2_main` at `dee6033d`
+through merge `a76b8418`, then `gentle_rs_3` at `9e717bb4`. The reported matrix
+MCP test argument is repaired separately at `90e634f1`; its execution remains
+pending. These runtime changes do not inherit `f35a58e6`'s acceptance.
+
+The [new phase-trace procedure](glen_post_blast_import_phase_trace.md) measures
+the same unchanged real inputs with opt-in, bounded stderr wall-clock spans,
+without a kernel profiler or weakened validation. Diagnostic source and inline
+tests are authored, not Rust-verified locally. Glen needs the exact new commit
+through an owner push or bundle, plus focused tests and bounded real imports.
+All six gate verdicts above remain bound to their recorded source; no additional
+native, live-agent, package, scientific or performance closure follows.
+
 ### Completed Container Validation At `5e6201a6`
 
 After the main integration, Codex follows the already-live

@@ -22,6 +22,7 @@ use super::*;
 #[path = "../analysis/transcript_capture.rs"]
 mod transcript_capture;
 use crate::engine::sequence_ops::{Primer3PairDesignOptions, PrimerDesignProgressContext};
+use crate::primer_import_trace::{self as import_trace, Phase as ImportPhase};
 use crate::{
     AMINO_ACIDS,
     amino_acids::{STOP_CODON, UNKNOWN_CODON},
@@ -16551,6 +16552,8 @@ impl GentleEngine {
         &self,
         handoff_path: &str,
     ) -> Result<PrimerSpecificityReport, EngineError> {
+        let _trace_session = import_trace::Session::from_env();
+        let trace = import_trace::span(ImportPhase::Import);
         let handoff_path = handoff_path.trim();
         if handoff_path.is_empty() {
             return Err(EngineError {
@@ -16577,7 +16580,9 @@ impl GentleEngine {
                 cause_chain: vec![],
             }
         })?;
-        self.primer_specificity_report_from_handoff(&handoff)
+        let result = self.primer_specificity_report_from_handoff(&handoff);
+        trace.finish(result.is_ok(), None);
+        result
     }
 
     fn primer_specificity_report_from_handoff(
@@ -16591,31 +16596,34 @@ impl GentleEngine {
         &self,
         handoff: &PrimerSpecificityHandoff,
     ) -> Result<Option<BlastDatabaseInspectionReport>, EngineError> {
+        let trace = import_trace::span(ImportPhase::DatabaseValidation);
         let Some(planned) = handoff.blast_database.as_ref() else {
+            trace.finish(true, Some(0));
             return Ok(None);
         };
         let (catalog, _) = Self::open_reference_genome_catalog(handoff.catalog_path.as_deref())?;
-        let current = catalog
-            .inspect_blast_database(
+        let current = import_trace::measure_result(ImportPhase::DatabaseInspection, || {
+            catalog.inspect_blast_database(
                 &handoff.resolved_target_genome_id,
                 handoff.cache_dir.as_deref(),
             )
-            .map_err(|error| EngineError {
-                code: ErrorCode::InvalidInput,
-                message: format!(
-                    "Could not revalidate BLAST database for handoff '{}': {}",
-                    handoff.handoff_id, error
-                ),
-                cause_chain: vec![],
-            })?
-            .ok_or_else(|| EngineError {
-                code: ErrorCode::InvalidInput,
-                message: format!(
-                    "BLAST database for handoff '{}' is no longer prepared",
-                    handoff.handoff_id
-                ),
-                cause_chain: vec![],
-            })?;
+        })
+        .map_err(|error| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!(
+                "Could not revalidate BLAST database for handoff '{}': {}",
+                handoff.handoff_id, error
+            ),
+            cause_chain: vec![],
+        })?
+        .ok_or_else(|| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!(
+                "BLAST database for handoff '{}' is no longer prepared",
+                handoff.handoff_id
+            ),
+            cause_chain: vec![],
+        })?;
         if current.validation_status != "valid" {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
@@ -16648,6 +16656,7 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
+        trace.finish(true, Some(1));
         Ok(Some(current))
     }
 
@@ -16656,6 +16665,7 @@ impl GentleEngine {
         handoff: &PrimerSpecificityHandoff,
         validated_outputs: Option<&BTreeMap<String, String>>,
     ) -> Result<PrimerSpecificityReport, EngineError> {
+        let trace = import_trace::span(ImportPhase::Interpretation);
         if handoff.schema != PRIMER_SPECIFICITY_HANDOFF_SCHEMA {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
@@ -16750,7 +16760,9 @@ impl GentleEngine {
                     ),
                     cause_chain: vec![],
                 })?;
-            Self::primer_specificity_blast_from_handoff_output(handoff, command, output)
+            import_trace::measure_result(ImportPhase::TabularParse, || {
+                Self::primer_specificity_blast_from_handoff_output(handoff, command, output)
+            })
         };
         let forward_blast = blast_for_role(PrimerSpecificityPrimerRole::Forward)?;
         let reverse_blast = blast_for_role(PrimerSpecificityPrimerRole::Reverse)?;
@@ -16840,6 +16852,10 @@ impl GentleEngine {
                 .cmp(&right.source_id)
                 .then(left.source_path.cmp(&right.source_path))
         });
+        trace.finish(
+            true,
+            Some(report.forward_hits.len() + report.reverse_hits.len()),
+        );
         Ok(report)
     }
 
@@ -21074,18 +21090,21 @@ impl GentleEngine {
                 reverse_blast.stderr.trim()
             ));
         }
+        let alias_trace = import_trace::span(ImportPhase::SubjectAliases);
         let subject_aliases =
             Self::primer_specificity_subject_aliases(&catalog, &forward_blast.genome_id, cache_dir);
-        let blast_database = catalog
-            .inspect_blast_database(&forward_blast.genome_id, cache_dir)
-            .map_err(|error| EngineError {
-                code: ErrorCode::InvalidInput,
-                message: format!(
-                    "Could not inspect BLAST database used for primer specificity: {}",
-                    error
-                ),
-                cause_chain: vec![],
-            })?;
+        alias_trace.finish(true, Some(subject_aliases.len()));
+        let blast_database = import_trace::measure_result(ImportPhase::DatabaseInspection, || {
+            catalog.inspect_blast_database(&forward_blast.genome_id, cache_dir)
+        })
+        .map_err(|error| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!(
+                "Could not inspect BLAST database used for primer specificity: {}",
+                error
+            ),
+            cause_chain: vec![],
+        })?;
         let index_kind = blast_database
             .as_ref()
             .map(|database| database.index_kind)
@@ -21152,7 +21171,9 @@ impl GentleEngine {
         intended_target.expected_products.dedup();
         warnings.extend(intended_target.warnings.clone());
         let subject_annotations =
-            match catalog.blast_subject_annotation_lookup(&forward_blast.genome_id, cache_dir) {
+            match import_trace::measure_result(ImportPhase::AnnotationLookup, || {
+                catalog.blast_subject_annotation_lookup(&forward_blast.genome_id, cache_dir)
+            }) {
                 Ok(annotations) => annotations,
                 Err(error) => {
                     warnings.push(format!(
@@ -21161,6 +21182,7 @@ impl GentleEngine {
                     BTreeMap::new()
                 }
             };
+        let forward_trace = import_trace::span(ImportPhase::ForwardHits);
         let mut forward_hits = forward_blast
             .hits
             .iter()
@@ -21180,6 +21202,8 @@ impl GentleEngine {
                 )
             })
             .collect::<Vec<_>>();
+        forward_trace.finish(true, Some(forward_hits.len()));
+        let reverse_trace = import_trace::span(ImportPhase::ReverseHits);
         let mut reverse_hits = reverse_blast
             .hits
             .iter()
@@ -21199,6 +21223,7 @@ impl GentleEngine {
                 )
             })
             .collect::<Vec<_>>();
+        reverse_trace.finish(true, Some(reverse_hits.len()));
         Self::primer_specificity_apply_subject_annotations(&mut forward_hits, &subject_annotations);
         Self::primer_specificity_apply_subject_annotations(&mut reverse_hits, &subject_annotations);
         if policy.full_alignment.mode == PrimerSpecificityFullAlignmentMode::Required {
@@ -21221,12 +21246,14 @@ impl GentleEngine {
                 warnings.push(search_completeness.reason.clone());
             }
         }
+        let pairing_trace = import_trace::span(ImportPhase::AmpliconJoin);
         let (mut amplicons, pairing_candidate_comparison_count) =
             Self::primer_specificity_collect_amplicons_for_hits_with_stats(
                 &forward_hits,
                 &reverse_hits,
                 &policy,
             );
+        pairing_trace.finish(true, Some(pairing_candidate_comparison_count));
         Self::primer_specificity_finalize_amplicons(
             &mut amplicons,
             &intended_target,

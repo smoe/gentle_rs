@@ -26,6 +26,12 @@ Show/list inspect immutable history without database probes. Refer to the
 [protocol](protocol.md#standalone-multi-reference-primer-specificity) for schemas,
 MCP tools, applicability and non-claims; the same commands work in GUI Shell.
 
+For bounded import diagnostics only, `GENTLE_PRIMER_IMPORT_TRACE=1` emits
+fixed-phase wall-clock JSON lines on stderr (at most 512 events per import).
+It is off by default and does not add timings to stdout, reports or state;
+completion events are not biological pass claims. Capture stderr to a local
+file and follow the [privilege-free diagnostic procedure](glen_post_blast_import_phase_trace.md).
+
 ### Inspect Retained Panel Specificity
 
 ```sh
