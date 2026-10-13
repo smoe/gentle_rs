@@ -12,6 +12,11 @@
   remains prohibited: metadata/version guard/Cargo check and fresh tutorial
   replay are not run. The [Glen handoff](internal_13_rollover_glen_handoff.md)
   specifies exact-source validation without relabeling historical baselines.
+- Carry the six unfinished acceptance groups into `.13`, leaving its aim
+  undecided and offering three evidence-backed choices in the handoff. Record
+  the completed `8b6f8186` normal-CI pass without extending it to later source;
+  preserve the live-run observation as history. Prepare the Ubuntu host pin
+  separately, with owner merge/push/dispatch decisions still open.
 
 ## 2026-10-13 - Record The Published Internal.12 Artifact Cycle
 

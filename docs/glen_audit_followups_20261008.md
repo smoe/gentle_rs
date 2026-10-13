@@ -240,6 +240,18 @@ headless and safety jobs pass, full Linux is skipped by the existing sampler.
 Do not dispatch based on partial results, restart live jobs, or claim repaired
 Rust acceptance before the focused/full results are observed.
 
+**Dated update, 2026-10-13, after the final 19:05:33 UTC run update:** run
+`38432492850` is now `completed/success` at the exact `8b6f8186` source above.
+Windows job `115417977228` passed at 18:47:34 UTC; macOS `115418026971` passed
+at 19:05:26 UTC; `CI / selected platform` (`115485159934`) passed at
+19:05:32 UTC. Headless CLI/MCP and release-safety jobs also passed. Full Linux
+and the three optional audit jobs were skipped, not accepted. This closes
+the normal-CI prerequisite at that source only; it does not validate later
+main `024ed6c0`, the `.13` rollover, independent packages or scientific results.
+No fresh failure diagnosis or Rust repair is needed for this successful run;
+no audit dispatch was made in this session. Preserve the earlier observation
+and its source-bound checklist below as history.
+
 The old [Windows job 115356869784](https://github.com/smoe/gentle_rs/actions/runs/38414971911/job/115356869784)
 is now terminal at `6c87f8d1`: 4,086 root tests pass, the same eight matrix
 fixture lookups fail, 14 are ignored, 1,340.73 seconds. Windows Server 2025,

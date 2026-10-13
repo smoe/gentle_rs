@@ -41,6 +41,13 @@ performance improvement or scientific acceptance is selected or claimed.
 
 ## Verification Boundary
 
+Normal [CI run 38432492850](https://github.com/smoe/gentle_rs/actions/runs/38432492850)
+finished successfully at `8b6f8186c81636491dadb446e94ca68429ba0860`, final update
+2026-10-13 19:05:33 UTC. Windows, macOS, headless CLI/MCP, release safety and
+the selected-platform gate passed; full Linux and optional audit jobs skipped.
+This resolves that repaired-fixture run, not later main `024ed6c0` or this
+rollover. See the [dated audit update](../glen_audit_followups_20261008.md#repaired-source-audit-authorization-at-8b6f8186).
+
 Local Rust execution is prohibited for this session. `cargo metadata`, the
 Rust version guard, Cargo check/build/test and a freshly built tutorial replay
 are **not run**. The [rollover handoff](../internal_13_rollover_glen_handoff.md)

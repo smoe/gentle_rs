@@ -222,10 +222,12 @@ unavailable in this review rather than being inferred from `*-latest` labels.
 
 ## Ubuntu Runner Decision
 
-The [historical handoff](https://github.com/smoe/gentle_rs/blob/7c52082c24fca85817d70956146623eef6f24607/docs/internal_12_candidate_preparation.md#ubuntu-runner-decision)
-retains the Linux job's announcement of an Ubuntu 26 migration starting
-2026-10-19. That dated notice is not a current runner-image verdict or Ubuntu 26
-qualification. The source inventory reviewed on 2026-10-12 is:
+The [official runner migration notice](https://github.com/actions/runner-images/issues/14748)
+announces the rolling `ubuntu-latest` transition to Ubuntu 26 from
+2026-10-19 through 2026-11-19. It corroborates the earlier
+[historical handoff](https://github.com/smoe/gentle_rs/blob/7c52082c24fca85817d70956146623eef6f24607/docs/internal_12_candidate_preparation.md#ubuntu-runner-decision),
+not a current runner-image verdict or Ubuntu 26 qualification. The source
+inventory reviewed on 2026-10-13 is:
 
 | Workflow | `ubuntu-latest` jobs |
 | --- | --- |
@@ -238,10 +240,12 @@ The Linux `build-installers` matrix already pins **`ubuntu-24.04`**, as do CI's
 `vkorc1-gui-audit` and `gui-scroll-audit` jobs; they are not rolling consumers.
 Rolling hosts can change system dependencies, graphics/fonts, Docker/BuildKit
 and runtime libraries even at the same source and lockfile. The owner decision
-remains open: whether to pin the listed hosts to `ubuntu-24.04` for `.12` and
-qualify Ubuntu 26 separately. This inventory changes no workflow and grants no
-dispatch, package acceptance or publication authority; approved build-only work
-still follows [candidate verification](#build-only-candidate-verification).
+remains open: whether to merge the separate local `pin-ubuntu-2404` proposal
+before October 19 and qualify Ubuntu 26 separately for `.13`. The release
+rollover branch leaves all ten workflow hosts unchanged. Preparing the pin is
+not merge, push, dispatch, package acceptance or publication authority;
+approved build-only work still follows
+[candidate verification](#build-only-candidate-verification).
 
 ## Candidate Approval
 
