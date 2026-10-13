@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-10-13 - Retain Completed Build-Only Container Evidence
+
+- Follow the existing [container run 38322028567](https://github.com/smoe/gentle_rs/actions/runs/38322028567)
+  to successful completion at exact `5e6201a6`, without starting or restarting
+  it. Independently verify the 401/1,154-byte evidence ZIPs, source/lock/profile
+  bindings and complete decoded build log. Record three CI binary hashes and
+  the network-disabled entrypoint/RNAPKIN smoke in the six-item audit ledger.
+- `validate_only`, `publish=false` / `pushed=false` and the skipped GHCR job
+  preserve non-publication. This is only the older source's headless container
+  pass, not the merged `2fffd4c0`, native-package, GUI/model/scroll or scientific
+  acceptance. Preserve frozen requests and historical artifacts; no image or
+  binaries downloaded, local Rust, push, dispatch or new runtime changes.
+- Recheck nine recorded digests and run 41 offline release-candidate tests;
+  all pass. Whitespace, release-link gate and session-close have no failures;
+  unrelated dirt and the manual scope reminder remain explicit warnings.
+
 ## 2026-10-13 - Merge Visuals And Provenance Before Glen Acceptance
 
 - Merge `d0526425` and `ac6ce53a` into main with its consolidated handoff and

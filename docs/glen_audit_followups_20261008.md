@@ -85,6 +85,72 @@ An authored contract is not an executed pass. Every completion needs an exact
 source SHA, platform/profile, command or run URL and retained evidence. New
 candidate results never overwrite or inherit the older candidate's verdict.
 
+### Completed Container Validation At `5e6201a6`
+
+After the main integration, Codex follows the already-live
+[container run 38322028567](https://github.com/smoe/gentle_rs/actions/runs/38322028567)
+without dispatching, restarting or publishing. On 2026-10-13 00:43 UTC, its
+first attempt is `completed/success` (last updated 00:27:55 UTC). Source and workflow
+revision are exactly `5e6201a69a599cba87491c86cfd7311cb6fee173`, tree
+`2379f8bdfd115e6c93c0614a2bfe6188bb93c020`; this predates merged candidate
+`2fffd4c00727cd6c829da96a620fe3679214c570`. The tag-push event does not grant
+publication: the downloaded candidate record says `publish=false` and
+`mode=validate_only`, the build receipt says `pushed=false`, and the GHCR
+publication job is explicitly skipped. No owner-confirmed release follows.
+
+[Build job 115052172732](https://github.com/smoe/gentle_rs/actions/runs/38322028567/job/115052172732)
+runs on Ubuntu 24.04.5 (`ubuntu-24.04` image `20261004.327.1`) with Docker
+Buildx 0.37.2, targeting `linux/amd64` / Debian forky. Its log installs Debian
+`rustc` package `1.96.1+dfsg1-2`; no separate `rustc -vV` capture is supplied.
+The actual locked three-binary, no-default-features build uses `package-opt1`
+and `-j1`, finishing in 56m 15s. The receipt matches the explicit Cargo recipe:
+opt-level 1, LTO off, 256 codegen units, incremental/debug off, assertions and
+overflow checks on, unwind and no stripping. Lockfile SHA-256 remains
+`ead4421545a125267e33af84aeeea39f0e7ea2f60717a59ef0271d0e71855f1b`.
+
+The completed smoke step runs default/CLI/MCP/docs entrypoints as the
+unprivileged runtime user with `--network none`, checks dependencies and absence
+of GUI/JS/Lua binaries, imports the Python wrapper, and renders nonempty RNAPKIN
+hairpin SVG/PNG. RNAPKIN 0.3.9
+is built separately under unoptimized `dev`; its corrected helper lock digest
+is `f8c593a086f1bf6277a1886aa879b90b39f57ce163964de7cbf851b927702dfb`.
+This is packaging/rendering smoke, not RNA-folding or scientific validation.
+
+| CI-Executed Binary | CI-Reported SHA-256 |
+| --- | --- |
+| `gentle_cli` | `c4dd32476b2c3b99097bfd8839cf83b66843e640a109961098fc835da632c5a1` |
+| `gentle_mcp` | `1a28058d88a09e353d908c90ab8e0c2e6a5ef3905ac39d5524bcdb09e2ae1b9b` |
+| `gentle_examples_docs` | `a2b7657c641db15f24a5141966542f981f82ebb900461a7a180cc4d9d669d2de` |
+
+All three self-identities name `.12`, build `1791848560452` and exact `5e6201a6`.
+The receipt binds image ID
+`sha256:57351ae9cd1c53c3a4308680057cc4c807853b52a8990c1bc77144ad31cd58d1`
+and image digest
+`sha256:1328e7335a58e1f7c2ef92d4b06c95ed0371c4594a71b3b3f7db9ee413d2d3bd`.
+No image or binaries are downloaded; these are CI-measured binary hashes, not
+an independent local rehash of executables.
+
+Retain the following small original ZIPs and lossless decoded log under
+`/private/tmp/gentle-container-38322028567/`. Independently check ZIP size/digest,
+single-member inventory and candidate/build/recipe/helper-lock/self-identity
+bindings before recording the pass:
+
+| Retained Evidence | Size / SHA-256 |
+| --- | --- |
+| `release-candidate.zip`, artifact `11778863187` | 401 bytes; `81421874f3ad7101c4adf2157be90d0a44ebaf6d456f898a3cfd1b78380c8f65`; raw JSON member `cf58c3650d9d5332fb03cd2267c4c8c983b2465d1f0484428794422b6a2bb087`. |
+| `container-evidence.zip`, artifact `11781064566` | 1,154 bytes; `0128405dd13a7e5fa85a0c8262f0ac7fd22364e466dcce9e5a5ede22c394be9d`; raw `container-build.json` member `682d7d10df1b907dd80121c7055c62b3335952147fc7a3bf41988e7f13ffc42d` (2,425 bytes). |
+| `job-115052172732.decoded-log.json` | Saved JSON `b30404cbbf4f735f83657bc5509dc4cd2b6a66097b9082e6972773b8bbbd554d`; decoded-log UTF-8 `9b2f13565a42e42957f7afd6815fc74fbbe6a7e4f650a05fd9d446f1cb941653`. These are representation hashes, not raw HTTP/archive digests. |
+
+The extra Docker build-record artifact is not downloaded. This accepts only the
+observed headless container build/smoke at `5e6201a6`. Three native packages,
+independent extracted-package smokes, full Linux and fresh final-source
+GUI/live-agent/scroll gates remain open. Remote main still names `5e6201a6`
+and the full merged `2fffd4c0` has zero Actions runs at observation time; retain
+its 69 offline Python checks separately. The new ledger-only commit is not a
+runtime change or an accepted build source. Use the full final pushed SHA in
+the [consolidated Glen request](glen_final_candidate_execution_handoff.md),
+without inheriting this baseline result. No local Rust or publication occurs.
+
 ### Source-Bound CI Update: 2026-10-13
 
 Codex independently reads the public Actions run, latest-attempt jobs, artifact
@@ -420,7 +486,7 @@ native/package verdict from these offline tests.
 | 3. Live-agent acceptance | Historical genuine public-starter pass at `3ac4a02d`; current source pending | [Executed receipt](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#genuine-live-agent), macOS/arm64 dev CLI and authorized login. Clarification then two unexecuted `ask` suggestions; reviewed manual execution preserves both sources and all four full `Seq` records match fresh CI. No credential/model/scientific claim; require final-source acceptance. |
 | 4. Honest visual evidence | Historical bounded pass at `3ac4a02d`; clean-source guard passes offline at `e981469e` and in earlier Linux CI at `f56fdf84`, fresh execution pending | [Retained evidence](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#public-reference-and-base-projection): 115 native/44 public hashes, four unchanged synthetic captures and exactly reproduced/inspected public SVG. Sole 588 C/T in 1,089-bp exports, display-only uppercase and explicit non-claims. New guards refuse dirty inputs and stale/changed binaries; they do not execute the public workflow or supply a public-locus GUI verdict. |
 | 5. Scroll benchmarks | Historical deterministic CPU pass at `3ac4a02d`; current source pending | [Retained scroll receipt](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#scroll-cpu-cases), Ubuntu 24.04/x86-64 dev. All 25 hashes and 24 bidirectional fixture/size cases, bounded viewport and unchanged content. No timed regression/native-latency claim; rerun the final-source cases without replacing historical evidence. |
-| 6. .12 package acceptance | Open; selected macOS/Windows suites plus Linux headless/safety pass at `5e6201a6`, not a final-candidate/package verdict | Primer multi-reference execution passes 9/9 on macOS and 8/8 on Windows (Unix-only fixture absent). Full Linux, native/agent/scroll jobs are skipped and artifact inventory is empty. Require same-source full Linux/macOS/Windows success, non-publishing native/container builds and independent extracted-package/entrypoint identities at the owner's final SHA/lockfile/`package-opt1` recipe. Older `e981469e` offline and `f56fdf84` headless results remain historical; no publication or inherited verdict. |
+| 6. .12 package acceptance | Open; selected suites and independently inspected build-only `package-opt1` container pass at `5e6201a6`, not final-source acceptance | [Container receipt/logs](#completed-container-validation-at-5e6201a6) bind all three CI binary identities, recipe and network-disabled smoke; publication is skipped. Main CI's macOS/Windows primer suites pass 9/8 (Unix-only fixture absent); full Linux/native-agent-scroll are skipped and that CI run has no artifacts. Require fresh full-platform, three native packages, independent extracted-package smokes and container evidence at the owner's final pushed SHA. Older frozen results remain historical; no inherited verdict. |
 
 ### Glen Execution Handoff: 2026-10-12
 
