@@ -101,6 +101,22 @@ class PrimerSpecificityTutorialTests(unittest.TestCase):
             for match in re.finditer(r"primer_specificity_multi_summaries:\s*vec!\[\],", text):
                 self.assertRegex(text[match.end():], r"^\s*transcript_assay_specificity_matrix:\s*None,", str(path))
 
+    def test_slice_b_is_deferred_and_slice_a_uses_the_printed_command(self):
+        plan = (ROOT / "docs/primer_design_specialist_plan.md").read_text()
+        for term in ["## Conditional Slice B: Bound Panel Fan-Out", "not implementation authorization",
+                     "Motivation And Entry Conditions", "atomic cross-reference import",
+                     "128 MiB total across the entire parent", "unknown sizes are not zero",
+                     "record_primer_specificity_reference_selection", "Readiness attachment needs a later policy decision"]:
+            self.assertIn(term, plan)
+        path = "src/engine/analysis/primer_specificity_matrix_tests.rs"
+        regression = (ROOT / path).read_text()
+        self.assertIn('include_str!("../../../docs/tutorial/04-09_reference_bound_primer_specificity.md")', regression)
+        self.assertIn('"gentle_cli --state study.gentle.json "', regression)
+        self.assertIn('template.replace(', regression)
+        self.assertIn('execute_shell_command(&mut engine, &command)', regression)
+        self.assertIn("primers list-transcript-assay-panels", self.page)
+        self.assertIn("Hands-on inspection exercise", self.page)
+
 
 if __name__ == "__main__":
     unittest.main()

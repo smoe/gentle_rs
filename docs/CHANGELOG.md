@@ -19,6 +19,22 @@
   All 60 offline tutorial/checkout tests pass above the merge. Newly merged
   runtime code still needs exact-SHA Rust/native acceptance through Glen.
 
+## 2026-10-13 - Preserve Conditional Fan-Out Rationale And Teach Slice A
+
+- Retain Slice B's motivation, entry conditions, existing composition seams,
+  atomic diagnostic-versus-panel boundary, proposed cumulative byte budget and
+  unresolved work limits in the primer specialist plan. Link it from the
+  roadmap without authorizing implementation or changing the release gate.
+  Import profiling and separate approval remain prerequisites; readiness
+  attachment remains a later policy decision, not a consequence of batching.
+- Expand tutorial 04.09 with exact saved-panel discovery and a before/after-QA
+  inspection exercise. Bind its printed Slice A command to the existing
+  shared-parser/engine/raw-operation/reload regression instead of constructing
+  an independent tutorial command. No new runtime or biological behavior.
+- All 61 offline teaching/source and LF/CRLF checkout checks, formatting and whitespace pass.
+  Rust execution stays with Glen/CI; no claim of native, real-reference or
+  scientific acceptance, private report regeneration or new fixture data.
+
 ## 2026-10-13 - Prepare Bounded Post-BLAST Profiling Handoff
 
 - Commit [Glen's import-only diagnostic procedure](glen_post_blast_import_profiling_f35a58e6.md)

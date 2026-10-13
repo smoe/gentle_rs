@@ -227,7 +227,15 @@ laboratory validation or order readiness. Those need their own evidence and revi
 ### Inspect The Panel's Retained Evidence Matrix
 
 If you already have a saved transcript-assay panel from 04.08, inspect it without
-running or importing anything:
+running or importing anything. First list the saved panels and copy the exact
+`report_id` of the panel you want to review:
+
+```sh
+gentle_cli --state study.gentle.json primers list-transcript-assay-panels
+```
+
+Substitute that ID for `YOUR_PANEL_REPORT_ID` below; quote it if it contains spaces.
+This invokes the Slice A shared engine operation, not a mock tutorial renderer:
 
 ```sh
 gentle_cli --state study.gentle.json primers transcript-assay-specificity-matrix YOUR_PANEL_REPORT_ID
@@ -260,6 +268,21 @@ No reference availability or required/optional policy is inferred from that gap.
 Matching the saved panel design is not a fresh check of present source DNA or
 installed reference currency; use the existing finalization/readiness workflow
 when fresh applicability is required.
+
+**Hands-on inspection exercise:** before any new QA, run the matrix command and
+write down the two unassessed-assay lists. If no receipts exist, every current
+assay belongs to those lists; that is a useful expected result, not a failed
+PCR or proof of absent off-targets. If previously approved QA already exists,
+record each column's selection ID, reference fingerprint, policy, active/history
+flags and binding diagnostics. Re-run the same read-only command after any
+separately approved single-reference finalization and compare the actual columns.
+Do not run extra BLAST just to fill this example, fabricate receipts, discard a
+failed column or reinterpret an edited panel's historical pass as current evidence.
+
+Checkpoint: can you point to the exact receipt behind each assessed cell, explain
+each current-design evidence gap, and distinguish a replaced reference from a
+changed panel design? Inspect the existing readiness report separately: reading
+the matrix does not activate a receipt or grant a new readiness pass.
 
 Two assays may use identical primers yet pursue different transcript contrasts.
 Those assay identities remain distinct. A standalone pass for identical oligos
@@ -338,3 +361,8 @@ the offline executable tutorial replay does not certify its external-runner step
 The matrix fixtures are hand-crafted retained records: they test inspection,
 history, binding failures, same-oligo ambiguity, save/reload and unchanged state,
 not an actual BLAST run, native GUI workflow or biological acceptance.
+The [shared-route regression](../../src/engine/analysis/primer_specificity_matrix_tests.rs)
+reads the printed matrix command from this chapter, substitutes its synthetic
+panel ID, and executes the shared parser/engine before comparing raw-operation
+and reloaded-state results. This prevents a tutorial-only command stub from
+standing in for Slice A. Its Rust execution remains pending with Glen/CI.

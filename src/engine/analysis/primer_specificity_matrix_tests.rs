@@ -539,9 +539,17 @@ fn specificity_matrix_shared_shell_raw_operation_and_reload_agree() {
             .unwrap(),
     )
     .unwrap();
-    let command = crate::engine_shell::parse_shell_line(&format!(
-        "primers transcript-assay-specificity-matrix {}",
-        crate::engine_shell::shell_quote(&panel.report_id)
+    let tutorial =
+        include_str!("../../../docs/tutorial/04-09_reference_bound_primer_specificity.md");
+    let template = tutorial
+        .lines()
+        .filter_map(|line| line.strip_prefix("gentle_cli --state study.gentle.json "))
+        .find(|line| line.starts_with("primers transcript-assay-specificity-matrix "))
+        .expect("tutorial must exercise the real matrix route");
+    assert_eq!(template.matches("YOUR_PANEL_REPORT_ID").count(), 1);
+    let command = crate::engine_shell::parse_shell_line(&template.replace(
+        "YOUR_PANEL_REPORT_ID",
+        &crate::engine_shell::shell_quote(&panel.report_id),
     ))
     .unwrap();
     assert!(!command.is_state_mutating());
