@@ -293,6 +293,39 @@ class TutorialCheckoutTests(unittest.TestCase):
                 self.assertEqual((target / relative).read_bytes(), payload)
                 self.assertEqual(hashlib.sha256((target / relative).read_bytes()).hexdigest(), expected)
 
+    def test_f35a58e6_original_report_and_manifest_survive_both_checkout_modes(self):
+        base = Path("docs/audits/glen_followups_20261008/candidate_f35a58e6")
+        expected = {
+            base / "REPORT.md": "63ab711e81383b407d8b4a00b90c2873553551646944696bc127f9d27ec7bc52",
+            base / "SHA256SUMS": "cabb5e49d9e904d55cf0d07b9aae0879ba269c2a3ca4d9899a199e7df189d9e0",
+        }
+        payloads = {path: (checker.ROOT / path).read_bytes() for path in expected}
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        for relative, payload in payloads.items():
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), expected[relative])
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "owner-supplied frozen-main report and manifest")
+        rules = tuple(str(path).encode() + b" " for path in expected)
+        unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                   if not line.startswith(rules))
+        broken = Path(self.tmp.name) / "f35a58e6-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        for relative, digest in expected.items():
+            self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(), digest)
+        for mode in checker.MODES:
+            with self.subTest(mode=mode[0]):
+                target = Path(self.tmp.name) / f"f35a58e6-{mode[0]}"
+                checker.prepare_checkout(self.root, target, mode)
+                for relative, payload in payloads.items():
+                    self.assertEqual((target / relative).read_bytes(), payload)
+                    self.assertEqual(hashlib.sha256((target / relative).read_bytes()).hexdigest(),
+                                     expected[relative])
+
     def test_original_audit_verification_receipt_survives_both_checkout_modes(self):
         relative = Path("docs/audits/glen_followups_20261008/original_archive_30f23aa4/verification.json")
         expected = "1a41c227b6e91587e6d310114d6672d875008f51170bf75428da303b3b50dbb5"

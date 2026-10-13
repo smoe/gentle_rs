@@ -85,6 +85,36 @@ An authored contract is not an executed pass. Every completion needs an exact
 source SHA, platform/profile, command or run URL and retained evidence. New
 candidate results never overwrite or inherit the older candidate's verdict.
 
+### Final-Candidate Review At `f35a58e6`
+
+Glen executed the consolidated request at exact
+`f35a58e6d2bdd7e0a5551e4531c336d7949bfaf0`, tree
+`f678fa505010119b0b546db116a82438e07f6405`, excluding the exercise tag.
+Codex independently verifies the unchanged 103,172,261-byte archive, all 213
+file hashes and exact safe membership. Preserve the
+[source-bound receipt, original report and manifest](audits/glen_followups_20261008/candidate_f35a58e6/README.md).
+No archived executable is run locally. New ledger commits do not become the
+tested source; all preceding snapshots remain historical.
+
+| Item | Status At `f35a58e6` | Evidence / Remaining Gate |
+| --- | --- | --- |
+| 1. Audit preservation | Complete; old and new bytes preserved | Original `30f23aa4` evidence stays unchanged; new report/archive/213-file manifest independently verified. |
+| 2. Tutorial 08.04 GUI/agent contracts | Focused software checks pass; native replay blocked | 19 Rust tests and projections pass. X11 receipt fails at interactive `sudo unshare` policy, not a product assertion; do not bypass isolation or claim native acceptance. |
+| 3. Live-agent acceptance | Not run at this source | No authorized authenticated session; earlier `3ac4a02d` pass remains historical. |
+| 4. Honest visual evidence | Source/placement/export contracts pass; native captures open | Tutorial/visual/provenance, TSS export and FLNA 2400-px render evidence retained. No ordinary native readability or human scientific approval. |
+| 5. Scroll benchmarks | Deterministic CPU contract complete at this source | 24 exact-SHA fixture/size/direction observations and executable hash independently checked; native latency explicitly not measured. |
+| 6. .12 package acceptance | Open | Exact main CI is now fully green, including macOS, but full Linux/optional GUI jobs are skipped; no same-SHA `package-opt1` native/container/extracted-package run. |
+
+08.16 real-DuckDB, 08.18 LocalProject, 07.04/10.03 learner and focused
+04.09/parity checks pass within their documented software scope. Native views
+remain untested. FLNA still lacks historical release evidence and human
+teaching-exon/interpretation approval; keep its draft inactive. Real BLAST
+searches succeed, but imports of 5,999/12,202 HSP rows remain performance-blocked
+without a completed specificity verdict. Preserve raw outputs and collect the
+bounded import-only profile described in the receipt before changing rules.
+Frozen `e981469e`/`dfadf2a5` audits remain separate. No local Rust, push,
+dispatch, package publication or overall six-gate completion is claimed.
+
 ### Completed Container Validation At `5e6201a6`
 
 After the main integration, Codex follows the already-live

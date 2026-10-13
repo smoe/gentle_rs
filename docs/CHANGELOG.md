@@ -1,5 +1,28 @@
 # GENtle Changelog
 
+## 2026-10-13 - Retain Glen's Final-Candidate Review
+
+- Independently verify the owner-supplied `f35a58e6` archive SHA/size, all 213
+  file hashes and exact membership; retain the original report/manifest and a
+  [bounded acceptance receipt](audits/glen_followups_20261008/candidate_f35a58e6/README.md).
+  Pin these two exact-byte documents to LF and add LF/CRLF checkout coverage
+  with a missing-policy negative control; no global newline-policy change.
+  Update the six-item checklist without erasing older evidence or accepting a
+  later documentation SHA. No archived binary is executed locally.
+- Record passed DuckDB/LocalProject/learner/parity paths and 24 deterministic
+  scroll observations. Independently confirm exact main CI completion,
+  including macOS; skipped full Linux/GUI/model/package gates remain open.
+  FLNA release/human/native gaps and ordinary native readability stay explicit.
+- Record the real-reference post-BLAST import performance blocker. Repeated
+  per-hit FASTA-index loading is a source-level diagnostic candidate, not a
+  profiled cause or speedup claim. Request bounded import profiling and keep
+  biological policy, raw evidence, limits and stale checks unchanged. No Rust
+  build, runtime repair, push, workflow dispatch or publication.
+- Local verification: all 55 offline checkout tests pass, including the new
+  original-byte regression; whitespace and four release-link checks pass.
+  Roadmap remains 400 lines; session-close has no failures and only unrelated
+  worktree/manual-fidelity warnings.
+
 ## 2026-10-13 - Retain Completed Build-Only Container Evidence
 
 - Follow the existing [container run 38322028567](https://github.com/smoe/gentle_rs/actions/runs/38322028567)
