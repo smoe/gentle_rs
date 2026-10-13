@@ -462,7 +462,7 @@ jobs:
 
   collect-packages:
     name: Validate and retain candidate packages
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [candidate, build-installers]
     env:
       RELEASE_TAG: ${{ needs.candidate.outputs.tag }}
@@ -502,7 +502,7 @@ jobs:
 
   publish-release:
     name: Publish approved GitHub Release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [candidate, collect-packages]
     if: >-
       needs.candidate.outputs.publish == 'true' &&

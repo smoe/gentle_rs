@@ -263,7 +263,7 @@ jobs:
 
   release-policy:
     name: Release candidate safety checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -289,7 +289,7 @@ jobs:
 
   select-platform:
     name: Select CI platform
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       platform: ${{ steps.pick.outputs.platform }}
 
@@ -314,7 +314,7 @@ jobs:
 
   headless-linux:
     name: Linux / headless CLI and MCP
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout code
@@ -520,7 +520,7 @@ jobs:
     name: Linux
     needs: select-platform
     if: needs.select-platform.outputs.platform == 'linux'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout code
@@ -924,7 +924,7 @@ jobs:
       - linux
       - windows
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Check selected platform result
