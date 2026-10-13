@@ -446,7 +446,7 @@ class WorkflowWiringTests(unittest.TestCase):
         self.assertIn("scripts/package_desktop.py verify-macos-bundle --repo .", inspect)
         self.assertIn('--binary "${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}/gentle"', inspect)
 
-    def test_package_opt1_preserves_safety_and_audit_profiles(self) -> None:
+    def test_package_opt2_changes_only_optimization_and_preserves_audit_profiles(self) -> None:
         repo = Path(__file__).resolve().parents[1]
         manifest = tomllib.loads((repo / "Cargo.toml").read_text())
         profiles = manifest["profile"]
@@ -457,6 +457,9 @@ class WorkflowWiringTests(unittest.TestCase):
             "incremental": False, "debug": 0, "debug-assertions": True,
             "overflow-checks": True, "panic": "unwind", "strip": "none",
         })
+        self.assertEqual(profiles["package-opt2"], {
+            **profiles["package-opt1"], "opt-level": 2,
+        }, "Keep opt1 unchanged; opt2 changes no safety or resource setting")
         self.assertEqual(profiles["release"], {"lto": "off"},
                          "Disable all native LTO; retain other Cargo defaults")
         self.assertEqual(profiles["release-fast"], {
@@ -505,7 +508,8 @@ class WorkflowWiringTests(unittest.TestCase):
             self.assertIn(f"value: ${{{{ jobs.resolve.outputs.{key} }}}}", resolver)
             self.assertIn(f"{key}: ${{{{ steps.identity.outputs.{key} }}}}", resolver)
         self.assertIn('case "$NATIVE_PROFILE:$NATIVE_TARGET_SUBDIR" in', workflow)
-        self.assertIn("package-opt1:package-opt1) ;;", workflow)
+        self.assertIn("package-opt2:package-opt2) ;;", workflow)
+        self.assertNotIn("package-opt1:package-opt1) ;;", workflow)
         self.assertNotIn("release:release)", workflow)
         self.assertIn("run: cargo install cargo-bundle --version 0.12.0 --locked --debug -j1", workflow)
         self.assertNotIn("script-interfaces", workflow)
@@ -534,6 +538,32 @@ class WorkflowWiringTests(unittest.TestCase):
             binary = next(binary for binary in manifest["bin"] if binary["name"] == name)
             self.assertEqual(binary["required-features"], [feature])
             self.assertIn(feature, manifest["features"]["script-interfaces"])
+
+    @unittest.skipUnless(os.name == "posix" and shutil.which("bash"),
+                         "Workflow shell guards require Bash")
+    def test_native_and_container_guards_reject_old_and_mixed_profiles(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        release = (repo / ".github/workflows/release.yml").read_text()
+        container = (repo / ".github/workflows/container.yml").read_text()
+        guards = [
+            'case "$NATIVE_PROFILE:$NATIVE_TARGET_SUBDIR" in' +
+            release.split('case "$NATIVE_PROFILE:$NATIVE_TARGET_SUBDIR" in', 1)[1].split("esac", 1)[0] + "esac",
+            next(line.strip() for line in container.splitlines()
+                 if line.strip().startswith('test "$NATIVE_PROFILE:$NATIVE_TARGET_SUBDIR"')),
+        ]
+        for guard in guards:
+            for profile in ("package-opt1", "package-opt2", "release-fast"):
+                for target in ("package-opt1", "package-opt2", "release-fast"):
+                    with self.subTest(guard=guard, profile=profile, target=target):
+                        result = subprocess.run(
+                            [shutil.which("bash"), "-c", guard],
+                            env={**os.environ, "NATIVE_PROFILE": profile,
+                                 "NATIVE_TARGET_SUBDIR": target},
+                            capture_output=True, text=True, timeout=10,
+                        )
+                        self.assertEqual(result.returncode == 0,
+                                         profile == target == "package-opt2",
+                                         result.stdout + result.stderr)
 
     def test_release_build_retains_diagnostics_even_on_failure(self) -> None:
         repo = Path(__file__).resolve().parents[1]
@@ -578,7 +608,7 @@ class WorkflowWiringTests(unittest.TestCase):
             )
             for name in ("cargo", "rustc"):
                 (root / name).chmod(0o755)
-            for profile, code in ((profile, code) for profile in ("dev", "package-opt1")
+            for profile, code in ((profile, code) for profile in ("dev", "package-opt1", "package-opt2")
                                   for code in (0, 101, 143)):
                 with self.subTest(profile=profile, exit_code=code):
                     result = subprocess.run(
@@ -613,7 +643,7 @@ class WorkflowWiringTests(unittest.TestCase):
             cargo = root / "cargo"
             cargo.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\"\n")
             cargo.chmod(0o755)
-            for profile in ("dev", "package-opt1"):
+            for profile in ("dev", "package-opt1", "package-opt2"):
                 with self.subTest(profile=profile):
                     result = subprocess.run(
                         [shutil.which("bash"), "-c", script], cwd=root,

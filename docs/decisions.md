@@ -1154,6 +1154,17 @@ codegen units, assertions, overflow checks, unwinding and no stripping.
 Receipts must bind those settings; neither this recipe nor higher optimization
 is certified by the successful `.11` build. Local `dev`, pinned build helpers
 and `bench-audit` remain unchanged.
+
+On 2026-10-13, after the `.12` artifact cycle, the owner requests a bounded
+increase in optimization. The next package recipe selects `package-opt2`,
+changing only opt-level 1 to 2. Keep `package-opt1` unchanged, all LTO off,
+256 codegen units, assertions/overflow checks, unwinding, no stripping, cold
+build settings, one Cargo job and unoptimized helpers. Native/container paths,
+guards and receipts must name the new profile; old opt1 evidence is not opt2
+acceptance. This authorizes implementation, not a push, dispatch or publication.
+Build reliability and same-SHA opt1/opt2 runtime/resource comparison remain
+external gates; no import speedup or compiler-memory reduction is inferred.
+
 Keep those verdicts separate: an optimized measurement cannot certify an
 unoptimized package, nor can that package certify a future optimized release's
 latency. Historical "release-like" measurements still mean the release profile;

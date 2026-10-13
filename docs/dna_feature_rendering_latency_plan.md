@@ -126,8 +126,11 @@ not the `bench-audit` harness. Published `.11` packages use the cold `dev`
 recipe. Following their successful artifact cycle, the owner's 2026-10-01
 first optimization step selects `package-opt1` for `.12`: opt-level 1, all LTO
 off, 256 codegen units, no incremental/debug information, assertions/overflow
-checks on and panic unwinding. This is a new recipe awaiting package/runtime
-acceptance, not a relabeling of `.11` or a version-label side effect.
+checks on and panic unwinding. Its `.12` CI package smokes pass, with independent
+native/runtime acceptance still separate. The owner's 2026-10-13 follow-up
+selects `package-opt2` for future packaging: only opt-level increases to 2;
+all remaining recipe and safety settings stay unchanged. Opt2 is unmeasured
+and needs new package acceptance, not relabeling of `.12` or a version side effect.
 The historical "release-like" label still means
 the optimized release profile, not an unoptimized interim package. Keep those
 evidence classes and their agreed budgets separate; neither certifies the
@@ -148,8 +151,15 @@ Neither harness can satisfy native acceptance, even when its CPU timings pass.
 The `.11` package is now available. For `.12`, Glen should first compare cold
 `dev` (`incremental=false`, `debug=0`) and `package-opt1` at the same SHA,
 including build time, peak RSS and archive size as well as native timings.
+For the new recipe, add an explicit same-SHA, same-host `package-opt1` /
+`package-opt2` pair using fresh isolated target directories, locked dependencies
+and identical features. Alternate repeated cold/warm startup and PATZ1
+open/resize runs; compare UI/export output and cancellation/refusal behavior.
+Record per-build time, process-tree/rustc peak RSS, binary/archive sizes and
+all input/binary hashes. Compare opt1 and opt2 before restoring LTO, reducing
+codegen units or changing safety checks; package success alone is not speedup.
 The separate audit-ladder comparison remains a **same-SHA native profile pair**:
-the packaged GUI (explicitly `dev`, `package-opt1` or `release`) and a native GUI built with `bench-audit`, keeping
+the packaged GUI (explicitly `dev`, `package-opt1`, `package-opt2` or `release`) and a native GUI built with `bench-audit`, keeping
 features and all other build inputs identical. Prebuild both outside timing;
 use the same host, toolchain, public PATZ1 project/report, window sizes, tracing
 settings and equivalent isolated application settings/cache state. Repeat open

@@ -65,7 +65,7 @@ jobs:
       - name: Verify immutable candidate identity
         run: |
           python3 scripts/release_candidate.py verify
-          test "$NATIVE_PROFILE:$NATIVE_TARGET_SUBDIR" = "package-opt1:package-opt1"
+          test "$NATIVE_PROFILE:$NATIVE_TARGET_SUBDIR" = "package-opt2:package-opt2"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4

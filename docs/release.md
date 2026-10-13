@@ -18,12 +18,19 @@ workflow. JS/Lua remain optional source builds with separate CI checks.
 **Staged optimization (owner decision, 2026-10-01):** `.11` completed the
 temporary optimization pause with native artifacts and container publication at
 `a51bbc064ea29d4e7a03c559c5a6e0a6f8e1bd29` on 2026-09-30. Preserve those `dev`
-artifacts. `.12` introduces `package-opt1`, independently of version label or
-publication mode; it requires a new build-only artifact cycle before publication.
+artifacts. `.12` shipped `package-opt1`; its successful artifact cycle is
+retained below, separately from native and performance acceptance.
 
-Compilation and macOS bundling use `--profile package-opt1`, one Cargo build job
-and `target/package-opt1`; JS/Lua stay excluded. The profile inherits `dev`,
-sets `opt-level=1`, disables all LTO, and keeps 256 codegen units,
+**Next bounded step (owner request, 2026-10-13):** future builds select
+`package-opt2`, changing only optimization level 1 to 2. Keep `package-opt1`
+unchanged as a same-source comparison baseline. This is permission to prepare
+the recipe, not evidence of faster runtime, package acceptance or permission
+to dispatch/publish. Fresh exact-source native/container receipts and extracted
+smokes are required before accepting the new recipe; preserve all `.12` assets.
+
+Compilation and macOS bundling use `--profile package-opt2`, one Cargo build job
+and `target/package-opt2`; JS/Lua stay excluded. The profile inherits `dev`,
+sets `opt-level=2`, disables all LTO, and keeps 256 codegen units,
 `incremental=false`, `debug=0`, assertions/overflow checks enabled, panic
 unwinding and no stripping. Local `dev` is unchanged. The Rust-built
 packaging/rendering helpers (pinned `cargo-bundle` and
@@ -43,7 +50,7 @@ the real manifest with `/usr/bin/true` as a prebuilt stand-in, in a disposable
 target directory. `package_desktop.py verify-macos-bundle` checks the resulting
 plist, consent text, icon and exact copied binary. This is a packaging-contract
 preflight, not a GENtle launch or acceptance test. The final bundling call uses
-`--binary-path` for the already-built `target/package-opt1/gentle`, avoiding another
+`--binary-path` for the already-built `target/package-opt2/gentle`, avoiding another
 Cargo build, and passes the same validation before staging. Keep the pin,
 metadata, extension and early packaging-policy tests aligned when upgrading
 the tool. Native extracted-package smokes remain required.
@@ -65,7 +72,7 @@ combining recipes. Build-only runs do not create tags or replace `.11` assets.
 The package profile is not a separate user-interface mode: normal DNA-map
 labels, view SVG exports and RNA-read progress policy are profile-independent.
 Do not disable assertions or overflow checks to obtain that presentation parity.
-Both `dev` and `package-opt1` retain the safety checks; explicit profiler
+`dev`, `package-opt1` and `package-opt2` retain the safety checks; explicit profiler
 receipts continue to identify the real build and its potentially different timing.
 This policy does not automatically change at version 1.0. See the
 [profile/content invariant](architecture.md#optional-embedded-scripting-adapters).
@@ -195,7 +202,7 @@ The failure boundary is narrower than “GENtle does not compile on Unix”:
   build log, so its last crate and memory state are unavailable.
 
 Glen's original response to these historical failures was diagnostics-only.
-The integrated workflow retains those diagnostics for the `package-opt1` trial;
+The integrated workflow retains those diagnostics for the `package-opt2` step;
 it does not restore the old optimized release recipe.
 Features, targets, parallelism and the 360-minute allowance
 remain unchanged. Consider further repairs only after an approved build-only
@@ -295,7 +302,7 @@ The pushed `--ref` must contain workflow definitions with `candidate_sha` inputs
 and profile-aware packaging helpers. The selected source must also include
 `native_profile` and `native_target_subdir` outputs in `release_candidate.py`;
 the current installer workflow rejects helpers that do not select
-`package-opt1:package-opt1` before compilation. The selected source must include the matching Dockerfile
+`package-opt2:package-opt2` before compilation. The selected source must include the matching Dockerfile
 too; using a newer workflow does not rewrite an older candidate's Dockerfile.
 Rerunning an old tagged workflow does not import these changes from `main`.
 `--ref` selects the workflow definition;
@@ -349,11 +356,11 @@ These are packaging/entrypoint checks, not graphical or scientific acceptance.
 The shared `gentle.release_candidate.v1` receipt records candidate SHA, lockfile
 hash, workflow revision, version label, `validate_only`/`publish` mode and the
 selected native profile/output subdirectory. Installer receipts also bind the
-actual archive digest, toolchain, actual `package-opt1` profile and recipe,
+actual archive digest, toolchain, actual `package-opt2` profile and recipe,
 `default_features: true`, `features: []` (no additional features), and
 the five-binary inventory. Collection compares every receipt with the selected
 candidate, not merely with the other receipts; missing, stale, mixed-mode,
-wrong-profile or modified packages fail closed. Docker uses `package-opt1`
+wrong-profile or modified packages fail closed. Docker uses `package-opt2`
 with the same optimization/safety settings and the Debian `forky` build argument.
 Its receipt records `default_features: false`, `features: []`
 and the explicit CLI/MCP/docs binary list; the build checks that desktop and
@@ -448,27 +455,27 @@ tar -tf "$archive_path" | grep '^docs/tutorial/generated/' && echo "unexpected"
 
 ## Artifact Naming
 
-For the first optimization step, release assets are normalized to:
+For the next bounded optimization step, release assets are normalized to:
 
-- `gentle-<tag>-macos-<arch>-package-opt1.dmg`
-- `gentle-<tag>-windows-<arch>-package-opt1.zip`
-- `gentle-<tag>-linux-x64-package-opt1.tar.gz`
+- `gentle-<tag>-macos-<arch>-package-opt2.dmg`
+- `gentle-<tag>-windows-<arch>-package-opt2.zip`
+- `gentle-<tag>-linux-x64-package-opt2.tar.gz`
 - `gentle-<tag>-<platform>-<arch>.build.json`
 - `gentle-<tag>-release-attributes.json`
 
 Example:
 
-- `gentle-v0.1.0-macos-arm64-package-opt1.dmg`
-- `gentle-v0.1.0-windows-x64-package-opt1.zip`
-- `gentle-v0.1.0-linux-x64-package-opt1.tar.gz`
+- `gentle-v0.1.0-macos-arm64-package-opt2.dmg`
+- `gentle-v0.1.0-windows-x64-package-opt2.zip`
+- `gentle-v0.1.0-linux-x64-package-opt2.tar.gz`
 - `gentle-v0.1.0-release-attributes.json`
 
-New installer archives append `-package-opt1` before the extension, for example
-`gentle-v0.1.0-internal.12-linux-x64-package-opt1.tar.gz`,
-`gentle-v0.1.0-internal.12-macos-arm64-package-opt1.dmg` and
-`gentle-v0.1.0-internal.12-windows-x64-package-opt1.zip`. Receipt filenames and inner
+New installer archives append `-package-opt2` before the extension, for example
+`gentle-v0.1.0-internal.13-linux-x64-package-opt2.tar.gz`,
+`gentle-v0.1.0-internal.13-macos-arm64-package-opt2.dmg` and
+`gentle-v0.1.0-internal.13-windows-x64-package-opt2.zip`. Receipt filenames and inner
 package layouts stay unchanged; both per-platform and aggregate receipts
-declare `profile: package-opt1`. The collector rejects a missing suffix or a receipt
+declare `profile: package-opt2`. The collector rejects a missing suffix or a receipt
 claiming the wrong profile, even when all three platforms agree on that error.
 
 ## Local Pre-Tag Smoke Checklist

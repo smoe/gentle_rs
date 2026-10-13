@@ -76,12 +76,21 @@ def validate_historical_panel_provenance(report):
 
 
 class NativeBuildSettingsTests(unittest.TestCase):
-    def test_all_version_labels_select_the_same_opt1_recipe(self) -> None:
-        for tag in ("v0.1.0-internal.11", "v0.1.0-internal.12", "v2.3.4-internal.1+build.7",
+    def test_repository_recipe_matches_selected_profile(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        self.assertEqual(policy.package_build_recipe(root), {
+            "opt_level": 2, "lto": "off", "codegen_units": 256,
+            "incremental": False, "debug": 0, "debug_assertions": True,
+            "overflow_checks": True, "panic": "unwind", "strip": "none",
+        })
+
+    def test_all_version_labels_select_the_same_opt2_recipe(self) -> None:
+        for tag in ("v0.1.0-internal.11", "v0.1.0-internal.12", "v0.1.0-internal.13",
+                    "v2.3.4-internal.1+build.7",
                     "v0.1.0", "v2.3.4+internal.11", "v0.1.0-rc.1", "v0.1.0-notinternal.11"):
             with self.subTest(tag=tag):
                 self.assertEqual(policy.native_build_settings(tag), {
-                    "native_profile": "package-opt1", "native_target_subdir": "package-opt1",
+                    "native_profile": "package-opt2", "native_target_subdir": "package-opt2",
                 })
         for tag in ("main", "v0.1.0-internal.11\n", "../v0.1.0-internal.11"):
             with self.subTest(tag=tag), self.assertRaises(ValueError):
@@ -94,9 +103,9 @@ class ReleaseCandidateTests(unittest.TestCase):
         (self.root / "Cargo.toml").write_text(textwrap.dedent(f'''\
             [workspace.package]
             version = "{version}"
-            [profile.package-opt1]
+            [profile.package-opt2]
             inherits = "dev"
-            opt-level = 1
+            opt-level = 2
             lto = "off"
             codegen-units = 256
             incremental = false
@@ -181,20 +190,21 @@ class ReleaseCandidateTests(unittest.TestCase):
                     **self.env, "CANDIDATE_EVENT": event,
                     "CANDIDATE_ACTION": action, "PUBLISH_REQUESTED": publish,
                 })
-                self.assertEqual(record["native_profile"], "package-opt1")
-                self.assertEqual(record["native_target_subdir"], "package-opt1")
+                self.assertEqual(record["native_profile"], "package-opt2")
+                self.assertEqual(record["native_target_subdir"], "package-opt2")
 
     def test_candidate_rejects_missing_or_changed_package_profile(self) -> None:
         path = self.root / "Cargo.toml"
         original = path.read_text()
         for before, after in (
-            ('opt-level = 1', 'opt-level = 2'), ('lto = "off"', 'lto = false'),
+            ('opt-level = 2', 'opt-level = 1'), ('opt-level = 2', 'opt-level = 3'),
+            ('lto = "off"', 'lto = false'),
             ('inherits = "dev"', 'inherits = "release"'),
             ('debug-assertions = true', 'debug-assertions = false'),
             ('overflow-checks = true', 'overflow-checks = false'),
             ('panic = "unwind"', 'panic = "abort"'),
             ('codegen-units = 256', 'codegen-units = 1'),
-            ('[profile.package-opt1]', '[profile.other]'),
+            ('[profile.package-opt2]', '[profile.other]'),
         ):
             with self.subTest(setting=before):
                 path.write_text(original.replace(before, after))
@@ -289,8 +299,8 @@ class ReleaseCandidateTests(unittest.TestCase):
         self.assertEqual(values["publish"], "false")
         self.assertEqual(values["revision"], self.sha)
         self.assertEqual(values["mode"], "validate_only")
-        self.assertEqual(values["native_profile"], "package-opt1")
-        self.assertEqual(values["native_target_subdir"], "package-opt1")
+        self.assertEqual(values["native_profile"], "package-opt2")
+        self.assertEqual(values["native_target_subdir"], "package-opt2")
         self.assertEqual(record["native_profile"], values["native_profile"])
         verify_env = {
             **env, "EXPECTED_REVISION": self.sha, "EXPECTED_LOCK_SHA256": record["cargo_lock_sha256"],
@@ -334,7 +344,7 @@ class ReleaseCandidateTests(unittest.TestCase):
                 "schema": "gentle.release_build.v1", "platform": platform, "arch": "x64",
                 "features": [], "default_features": True, "profile": candidate["native_profile"],
                 "incremental": False, "debug": 0,
-                "opt_level": 1, "lto": "off", "codegen_units": 256,
+                "opt_level": 2, "lto": "off", "codegen_units": 256,
                 "debug_assertions": True, "overflow_checks": True,
                 "panic": "unwind", "strip": "none",
                 "binaries": ["gentle", "gentle_cli", "gentle_mcp",
@@ -356,8 +366,8 @@ class ReleaseCandidateTests(unittest.TestCase):
         result = policy.collect_installers(folder, candidate)
         self.assertEqual(result["revision"], self.sha)
         self.assertEqual(result["mode"], "validate_only")
-        self.assertEqual(result["profile"], "package-opt1")
-        self.assertEqual(result["opt_level"], 1)
+        self.assertEqual(result["profile"], "package-opt2")
+        self.assertEqual(result["opt_level"], 2)
         self.assertEqual(result["lto"], "off")
         self.assertEqual(len(result["artifacts"]), 3)
         self.assertTrue(all(row["bytes"] > 0 for row in result["artifacts"]))
@@ -391,7 +401,7 @@ class ReleaseCandidateTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             policy.collect_installers(folder, candidate)
 
-    def test_final_version_label_cannot_bypass_opt1_packaging_policy(self) -> None:
+    def test_final_version_label_cannot_bypass_opt2_packaging_policy(self) -> None:
         self.write_manifest("0.1.0")
         self.git("add", "Cargo.toml")
         self.git("commit", "-qm", "synthetic final release")
@@ -400,10 +410,10 @@ class ReleaseCandidateTests(unittest.TestCase):
         self.env.update(CANDIDATE_SHA=self.sha, CANDIDATE_EVENT_SHA=self.sha,
                         RELEASE_TAG=self.tag, WORKFLOW_REVISION=self.sha)
         folder, candidate, paths = self.installers()
-        self.assertEqual(candidate["native_profile"], "package-opt1")
+        self.assertEqual(candidate["native_profile"], "package-opt2")
         result = policy.collect_installers(folder, candidate)
-        self.assertEqual(result["profile"], "package-opt1")
-        self.assertTrue(all("-package-opt1." in item["name"] for item in result["artifacts"]))
+        self.assertEqual(result["profile"], "package-opt2")
+        self.assertTrue(all("-package-opt2." in item["name"] for item in result["artifacts"]))
         for path in paths:
             receipt = json.loads(path.read_text())
             receipt["profile"] = "release"
@@ -423,11 +433,22 @@ class ReleaseCandidateTests(unittest.TestCase):
             with self.subTest(key=key), self.assertRaisesRegex(ValueError, key):
                 policy.collect_installers(folder, {**candidate, key: value})
 
+    def test_collection_rejects_a_consistent_opt1_baseline(self) -> None:
+        folder, candidate, paths = self.installers()
+        for path in paths:
+            receipt = json.loads(path.read_text())
+            receipt.update(profile="package-opt1", opt_level=1)
+            path.write_text(json.dumps(receipt))
+        for path in list(folder.glob("*.tar.gz")) + list(folder.glob("*.dmg")) + list(folder.glob("*.zip")):
+            path.rename(path.with_name(path.name.replace("-package-opt2.", "-package-opt1.")))
+        with self.assertRaisesRegex(ValueError, "profile"):
+            policy.collect_installers(folder, candidate)
+
     def test_internal_archive_name_exposes_package_profile(self) -> None:
         folder, candidate, _ = self.installers()
         path = next(folder.glob("*.zip"))
-        self.assertTrue(path.name.endswith("-package-opt1.zip"))
-        path.rename(path.with_name(path.name.replace("-package-opt1.zip", ".zip")))
+        self.assertTrue(path.name.endswith("-package-opt2.zip"))
+        path.rename(path.with_name(path.name.replace("-package-opt2.zip", ".zip")))
         with self.assertRaisesRegex(ValueError, "named"):
             policy.collect_installers(folder, candidate)
 
@@ -461,7 +482,8 @@ class ReleaseCandidateTests(unittest.TestCase):
             ("cargo_lock_sha256", "0" * 64), ("workflow_revision", "0" * 40),
             ("mode", "publish"), ("profile", "release-fast"), ("features", ["script-interfaces"]),
             ("incremental", True), ("incremental", None), ("debug", 1), ("debug", None),
-            ("opt_level", 0), ("opt_level", 2), ("opt_level", True), ("lto", "thin"),
+            ("opt_level", 0), ("opt_level", 1), ("opt_level", 3),
+            ("opt_level", True), ("lto", "thin"),
             ("codegen_units", 16), ("debug_assertions", False), ("debug_assertions", 1),
             ("overflow_checks", False), ("panic", "abort"), ("strip", "symbols"),
             ("default_features", False), ("default_features", None),

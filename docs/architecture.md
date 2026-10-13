@@ -658,11 +658,13 @@ Rules:
 
 Compile, bundle, smoke and staging paths must agree on the effective profile.
 After the successful `.11` `dev` artifact cycle, the owner's 2026-10-01 first
-optimization step selects `package-opt1` and `target/package-opt1` for native
-installers and the headless container, irrespective of label/publication mode
-(see [release process](release.md)). Archives carry `-package-opt1`; collection
+optimization step selected `package-opt1` for the published `.12` artifacts.
+The 2026-10-13 bounded follow-up selects `package-opt2` and `target/package-opt2`
+for future native installers and the headless container, irrespective of
+label/publication mode (see [release process](release.md)). Keep `package-opt1`
+unchanged for source-matched comparisons. Archives carry `-package-opt2`; collection
 rejects recipes inconsistent with the current policy. The explicit profile
-inherits `dev`, sets `opt-level=1`, `lto="off"`, 256 codegen units,
+inherits `dev`, sets `opt-level=2`, `lto="off"`, 256 codegen units,
 `incremental=false`, `debug=0`, assertions/overflow checks on, panic unwinding
 and no stripping. Receipts bind all these settings. Rust-built package helpers
 also use unoptimized installation; distribution-provided dependencies are unchanged.
@@ -670,7 +672,7 @@ The unused release profile still disables all LTO with `lto="off"`, retaining
 other defaults rather than forcing a single codegen unit. Do not substitute
 `lto=false`, which permits within-crate thin LTO. The explicit `release-fast`
 and `bench-audit` profiles retain their definitions but are not artifact-build
-profiles for this first optimization step. Package receipts bind
+profiles for this bounded optimization step. Package receipts bind
 the profile, default-feature selection, additional features and binary list;
 changing that recipe requires fresh exact-candidate package acceptance.
 

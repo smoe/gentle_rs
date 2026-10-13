@@ -225,6 +225,19 @@ overflow-checks = true
 panic = "unwind"
 strip = "none"
 
+# Next package step: only optimization level changes from package-opt1.
+[profile.package-opt2]
+inherits = "dev"
+opt-level = 2
+lto = "off"
+codegen-units = 256
+incremental = false
+debug = 0
+debug-assertions = true
+overflow-checks = true
+panic = "unwind"
+strip = "none"
+
 # Disable even within-crate LTO for native releases; keep other Cargo defaults.
 # Optional optimized and audit profiles retain their separate LTO policy.
 [profile.release]

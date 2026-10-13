@@ -1,5 +1,26 @@
 # GENtle Changelog
 
+## 2026-10-14 - Prepare The Next Bounded Package Optimization
+
+- After merging `gentle_rs_1_bbe0` and its `.13` rollover, implement the
+  owner's requested optimization increase as `package-opt2`. Only opt-level
+  changes from 1 to 2; retain `package-opt1` unchanged for same-source comparison.
+- Align native/container commands, staging paths, archive names, strict recipe
+  guards and receipts. Preserve LTO off, 256 codegen units, one build job,
+  assertions, overflow checks, unwinding, no stripping and unoptimized helpers.
+  Local dev, benchmark profiles, dependencies and biological behavior are unchanged.
+- Add repository-recipe, old-recipe rejection and executable shell-guard tests;
+  retain compiler-status/bundler boundary checks for all three dev/opt profiles.
+  Exact-source builds, extracted-package smokes and measured performance remain
+  external gates. The `.12` success and older CI do not accept the new recipe.
+- No local Rust, push, package/audit dispatch, tag or publication. Keep the
+  earlier authorized `024ed6c0` audit source and historical evidence separate.
+- Verification: 99 offline packaging-policy tests and 55 LF/CRLF checkout
+  tests pass. Five synthetic monitor tests pass outside the sandbox after its
+  `ps` subprocess was denied inside it; no monitor repair is included. YAML,
+  whitespace and release-gate checks pass; roadmap stays 400 lines. Session-close
+  has no failures, only intentional worktree/manual-fidelity warnings.
+
 ## 2026-10-13 - Retain Completed Matrix-Repair CI And Audit Retarget
 
 - Verify successful normal CI at exact `8b6f8186`: locked full-workspace and

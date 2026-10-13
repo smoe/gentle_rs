@@ -23,10 +23,10 @@ else:
     from package_desktop import BINARIES, validate_binary_identities
 
 
-PACKAGE_PROFILE = "package-opt1"
+PACKAGE_PROFILE = "package-opt2"
 CONTAINER_BINARIES = ("gentle_cli", "gentle_mcp", "gentle_examples_docs")
 PACKAGE_BUILD_RECIPE = {
-    "opt_level": 1, "lto": "off", "codegen_units": 256,
+    "opt_level": 2, "lto": "off", "codegen_units": 256,
     "incremental": False, "debug": 0, "debug_assertions": True,
     "overflow_checks": True, "panic": "unwind", "strip": "none",
 }
@@ -58,7 +58,7 @@ def release_tag(value: str) -> str:
 
 
 def native_build_settings(tag: str) -> dict[str, str]:
-    """Select the opt-level=1 recipe independently of label/publication mode."""
+    """Select the current opt-level=2 recipe independently of label/publication mode."""
     release_tag(tag)
     return {
         "native_profile": PACKAGE_PROFILE,

@@ -72,16 +72,16 @@ RUN cargo tree --locked --no-default-features --edges normal,build --prefix none
     && if grep -E '^(arboard|eframe|egui|egui_commonmark|egui_extras|gentle-gui|rfd|winit|deno_core|deno_error|v8|mlua|mlua-sys|lua-src|luajit-src) v' /tmp/gentle-dependencies.txt; then \
         echo "Desktop or embedded scripting dependency leaked into the headless build" >&2; exit 1; \
     fi
-# Same bounded opt-level=1 recipe as native installers; helpers stay dev.
+# Same bounded opt-level=2 recipe as native installers; helpers stay dev.
 ARG GENTLE_GIT_COMMIT=""
 ENV GENTLE_GIT_COMMIT=${GENTLE_GIT_COMMIT}
-RUN cargo build --locked --profile package-opt1 --no-default-features \
+RUN cargo build --locked --profile package-opt2 --no-default-features \
     --bin gentle_cli --bin gentle_mcp --bin gentle_examples_docs -j1
 
 RUN mkdir -p /opt/gentle-dist-cli/bin /opt/gentle-dist-cli/integrations \
-    && install -Dm755 "target/package-opt1/gentle_cli" /opt/gentle-dist-cli/bin/gentle_cli \
-    && install -Dm755 "target/package-opt1/gentle_mcp" /opt/gentle-dist-cli/bin/gentle_mcp \
-    && install -Dm755 "target/package-opt1/gentle_examples_docs" /opt/gentle-dist-cli/bin/gentle_examples_docs \
+    && install -Dm755 "target/package-opt2/gentle_cli" /opt/gentle-dist-cli/bin/gentle_cli \
+    && install -Dm755 "target/package-opt2/gentle_mcp" /opt/gentle-dist-cli/bin/gentle_mcp \
+    && install -Dm755 "target/package-opt2/gentle_examples_docs" /opt/gentle-dist-cli/bin/gentle_examples_docs \
     && cp -a assets /opt/gentle-dist-cli/assets \
     && cp -a docs /opt/gentle-dist-cli/docs \
     && cp -a integrations/python /opt/gentle-dist-cli/integrations/python \

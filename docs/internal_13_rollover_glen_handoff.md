@@ -5,6 +5,15 @@ authorization. The owner confirmed `.12` at `5e6201a6`; its
 [published ledger](release_notes/release_notes_v0.1.0-internal.12.md#publication-evidence)
 remains separate from this development-version validation.
 
+**2026-10-13 follow-up:** the owner subsequently requests a bounded opt-level
+increase. Future packaging now selects `package-opt2`; `package-opt1` remains
+unchanged. The rollover-only checks below still validate version/tutorial
+metadata; do not describe the combined source as profile-unchanged. Recipe
+acceptance and same-SHA opt1/opt2 comparison follow the
+[release process](release.md) and
+[measurement contract](dna_feature_rendering_latency_plan.md#measurement-profiles),
+only with separately authorized execution. No Rust/package build ran on the Mac.
+
 ## Bind The Source
 
 Wait for an **owner-provided pushed full SHA** containing the `.13` rollover

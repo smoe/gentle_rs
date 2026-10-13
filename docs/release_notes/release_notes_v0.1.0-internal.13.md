@@ -8,7 +8,7 @@ performance improvement or scientific acceptance is selected or claimed.
 
 ## Post-Release Development
 
-- The version rollover changes only application/workspace metadata and release
+- The version rollover itself changes only application/workspace metadata and release
   projections. Dependencies, `package-opt1`, `bench-audit`, `release-fast` and
   the independent `gentle-sequence-design` version remain unchanged.
 - Main already contains post-tag read-only primer-panel specificity-matrix
@@ -18,12 +18,23 @@ performance improvement or scientific acceptance is selected or claimed.
 - Diagnostics are not a demonstrated performance repair. Current-source CI,
   real-reference measurements and native acceptance retain distinct scopes.
 
+## Next Bounded Optimization Step
+
+The owner's 2026-10-13 request selects `package-opt2` for future native/container
+builds, raising only opt-level 1 to 2. `package-opt1` remains unchanged for
+comparisons. Keep LTO off, 256 codegen units, assertions/overflow checks on,
+unwinding, no stripping, incremental/debug off, one build job and unoptimized
+helpers. Build paths, archive suffixes and receipts name `package-opt2`.
+No dependency or application behavior changes. Exact-source package builds,
+extracted smokes and measured resource/runtime comparison remain not-run;
+no speedup, native acceptance, push or dispatch follows from implementation.
+
 ## Carried-Forward Gates
 
 1. Validate S6 cold/warm startup and first use after lazy help discovery using
    the [latency plan](../dna_feature_rendering_latency_plan.md). CPU checkpoints
    and headless frame tests do not measure native presentation latency.
-2. Have Glen compare `dev` and `package-opt1` at one SHA/toolchain/host: build
+2. Have Glen compare `dev`, `package-opt1` and `package-opt2` at one SHA/toolchain/host: build
    resources, repeated startup, PATZ1 open/resize and unchanged UI/export output.
    Successful `.12` hosted packaging does not establish a speedup.
 3. Resolve the [real-reference primer-import performance block](../glen_post_blast_import_phase_trace.md)

@@ -77,7 +77,7 @@ jobs:
       CARGO_TARGET_DIR: target
       CARGO_BUILD_JOBS: "1"
       # Hosted release jobs are cold builds: incremental state cannot be reused.
-      # package-opt1 keeps assertions and no debuginfo; DEV_DEBUG applies to
+      # package-opt2 keeps assertions and no debuginfo; DEV_DEBUG applies to
       # the separately installed, still-unoptimized cargo-bundle helper.
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
@@ -105,8 +105,8 @@ jobs:
           python3 scripts/release_candidate.py verify
           test -f scripts/package_desktop.py
           case "$NATIVE_PROFILE:$NATIVE_TARGET_SUBDIR" in
-            package-opt1:package-opt1) ;;
-            *) echo "Candidate must select package-opt1:package-opt1"; exit 1 ;;
+            package-opt2:package-opt2) ;;
+            *) echo "Candidate must select package-opt2:package-opt2"; exit 1 ;;
           esac
 
       - name: Install Linux build dependencies

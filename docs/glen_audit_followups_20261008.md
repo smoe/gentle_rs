@@ -184,6 +184,18 @@ through an owner push or bundle, plus focused tests and bounded real imports.
 All six gate verdicts above remain bound to their recorded source; no additional
 native, live-agent, package, scientific or performance closure follows.
 
+### Next Package Recipe After The Internal.12 Publication
+
+On 2026-10-13 the owner requests a bounded increase after the `.12` artifact
+cycle. Main merges `gentle_rs_1_bbe0` at `e40b5f77` and prepares `package-opt2`:
+only opt-level changes from 1 to 2, with `package-opt1` unchanged for comparison.
+This is implementation permission, not fresh acceptance or dispatch authority.
+Item 6 retains `.12`'s actual published receipts and open independent native
+boundary; the new `.13` recipe needs its own native/container/extracted receipts
+and [same-SHA opt1/opt2 resource/runtime evidence](dna_feature_rendering_latency_plan.md#measurement-profiles).
+The other five boundaries and exact-source audit authorization remain unchanged.
+No local Rust, push, package build, model call or publication occurs here.
+
 ### New-Source CI Regression At `6c87f8d1`
 
 Codex follows existing [run 38414971911](https://github.com/smoe/gentle_rs/actions/runs/38414971911),
