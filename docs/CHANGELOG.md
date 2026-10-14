@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-10-14 - Neutralize Cargo's Stack Configuration At Test Execution
+
+- Correct the focused native CI step: a shell `unset RUST_MIN_STACK` alone lets
+  Cargo restore the 16-MiB configured value and cannot prove default-stack behavior.
+  Use a narrowly scoped Cargo runner that removes only that variable immediately
+  before test execution, retains runtime library paths and reports the environment.
+- Keep original filters, fixture assertions, failure exits and the ordinary
+  full-suite stack setting. Add synthetic subprocess/path/exit tests and update
+  Glen's focused rerun instructions; no model/package/native acceptance is claimed.
+- Verification: 52 offline runner/release-policy tests and five frozen-evidence
+  tests pass, including a real Python child; YAML, whitespace and release-gate
+  checks pass. Session-close has no failures, only intentional-worktree/manual-scope
+  warnings; roadmap stays 400 lines. No Cargo/Rust build/check/test or push. Owner
+  dependency edits and historical evidence remain untouched; external runs are pending.
+
 ## 2026-10-14 - Preserve SVG Prefix Checks Across Quick-XML Updates
 
 - Normalize the text event's dereferenced byte/string backing explicitly before

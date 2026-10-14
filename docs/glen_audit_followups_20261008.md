@@ -420,7 +420,14 @@ abort for 11/2/7/2 selected allele/reporter tests (exit 101); 16-MiB ambient
 reruns pass diagnostically. This is not contradicted by CI's 16/64-MiB override.
 Local `4fdcb7a6902255af8275c6e5ee4270d193e99cc0` moves only those fixture bodies
 onto an explicit test stack and adds panic/small-caller regressions plus an
-override-free CI step. No production/parser change or local Rust verification.
+intended override-free CI step. A shell `unset` alone still allows Cargo to
+restore its configured override; that initial step is not default-stack proof.
+The corrected runner removes `RUST_MIN_STACK` just before the test executable
+starts and emits a JSON environment receipt. Normal full-suite configuration
+and historical records remain untouched. Offline subprocess/wiring tests pass,
+but the final source and owner-updated lockfile need fresh external Rust evidence,
+including the quick-xml SVG-prefix regressions. No production/parser broadening
+or local Rust verification is implied.
 [Glen must rerun the original commands at the new source](vkorc1_allele_review_followup_20261008.md#2026-10-14-default-stack-follow-up).
 
 Glen's documentation commit `b6e54e0a` is integrated as local `99ac1715`, preserving

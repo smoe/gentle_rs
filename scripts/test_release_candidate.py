@@ -674,6 +674,10 @@ class WorkflowWiringTests(unittest.TestCase):
     def test_native_jobs_run_allele_fixtures_without_ambient_stack_override(self) -> None:
         root = Path(__file__).resolve().parents[1]
         text = (root / ".github/workflows/ci.yml").read_text()
+        self.assertIn(
+            "      - run: python3 -m unittest scripts.test_default_stack_test_runner -v\n",
+            text,
+        )
         step = "      - name: Allele and reporter fixtures without ambient stack override\n"
         for platform in ("macos", "linux", "windows"):
             with self.subTest(platform=platform):
@@ -682,9 +686,17 @@ class WorkflowWiringTests(unittest.TestCase):
                 body = job.split(step, 1)[1].split("\n      - name:", 1)[0]
                 self.assertIn("shell: bash", body)
                 self.assertIn("set -euo pipefail", body)
-                self.assertIn("unset RUST_MIN_STACK", body)
-                self.assertIn('cargo test --locked --lib "$filter" -- --test-threads=1', body)
-                self.assertLess(body.index("unset RUST_MIN_STACK"), body.index("cargo test"))
+                interpreter = "python" if platform == "windows" else "python3"
+                self.assertIn(
+                    f'runner_config="$({interpreter} scripts/default_stack_test_runner.py --cargo-config)"',
+                    body,
+                )
+                self.assertIn(
+                    'cargo test --config "$runner_config" --locked --lib "$filter" -- --test-threads=1',
+                    body,
+                )
+                self.assertLess(body.index("--cargo-config"), body.index("cargo test"))
+                self.assertNotIn("unset RUST_MIN_STACK", body)
                 for test_filter in ("dbsnp_", "materialize_variant_allele",
                                     "reporter_construct_handoff_", "variant_followup_allele_pair_",
                                     "test_support::heavy_stack_tests"):

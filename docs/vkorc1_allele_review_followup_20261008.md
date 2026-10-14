@@ -63,10 +63,33 @@ passes. The `dbsnp_spdi_` filter passes 2/2 without that override.
 The local repair moves only these heavyweight fixture bodies onto an explicit
 16-MiB test worker, preserves their names/assertions and propagates panics.
 Helper regressions exercise a small caller stack and a worker failure. Native
-CI now unsets the ambient override for the original four filters and the helper
-tests. No parser, allele-selection or production stack policy changes.
-Run the commands above at the new committed source with `RUST_MIN_STACK` unset;
-Rust verification remains external and pending, not inherited from `024ed6c0`.
+CI initially used a shell `unset`, which does not prevent Cargo from restoring
+`RUST_MIN_STACK` through `.cargo/config.toml`. That step did not establish
+default-stack acceptance. No parser, allele-selection or production stack policy
+changes are implied by the test-worker repair.
+
+The corrected CI uses a Cargo runner that removes the override at the final
+executable-spawn boundary, preserving Cargo's library paths and normal full-suite
+settings. In a clean checkout of the final committed candidate, run:
+
+```sh
+runner_config="$(python3 scripts/default_stack_test_runner.py --cargo-config)"
+for filter in dbsnp_ materialize_variant_allele reporter_construct_handoff_ \
+  variant_followup_allele_pair_ test_support::heavy_stack_tests; do
+  cargo test --config "$runner_config" --locked --lib "$filter" -- --test-threads=1 || exit
+done
+cargo test --locked --lib tss_profile_export::tests::svg_dimensions_ -- --test-threads=1
+cargo check -q --locked
+```
+
+Use `python` on native Windows. Retain every runner JSON receipt and confirm
+`child_rust_min_stack:null`; an absent receipt is not a default-stack pass
+(a target-specific Cargo runner may take precedence). Keep the original Linux
+11/2/7/2 selections and two helper tests visible, report platform-specific skips,
+and retain exact SHA, lockfile/binary hashes, toolchain, commands and exit codes.
+The two TSS parser tests cover the owner-observed quick-xml 0.41-to-0.42 boundary.
+Rust verification remains external and pending, not inherited from `024ed6c0`
+or from the offline Python runner tests.
 
 - Tutorial 08.04 live native GUI: confirm reference/alternate refusal, retry,
   unchanged source and honest genomic-forward C/T evidence. Reverse-strand

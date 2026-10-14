@@ -280,6 +280,7 @@ jobs:
       - run: python3 -m unittest scripts.test_primer_specificity_multi_tutorial -v
       - run: python3 -m unittest scripts.test_synthetic_biology_tutorial -v
       - run: python3 -m unittest scripts.test_frozen_024ed6_audit -v
+      - run: python3 -m unittest scripts.test_default_stack_test_runner -v
       - run: python3 -m unittest scripts.test_sequence_design_audit_oracle scripts.test_sequence_design_tutorial -v
       - run: python3 -m unittest scripts.test_ci_vkorc1_gui_audit scripts.test_tutorial_gui_acceptance -v
       - run: python3 -m unittest scripts.test_prepare_public_vkorc1_audit -v
@@ -397,10 +398,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          unset RUST_MIN_STACK
+          runner_config="$(python3 scripts/default_stack_test_runner.py --cargo-config)"
           for filter in dbsnp_ materialize_variant_allele reporter_construct_handoff_ \
             variant_followup_allele_pair_ test_support::heavy_stack_tests; do
-            cargo test --locked --lib "$filter" -- --test-threads=1
+            cargo test --config "$runner_config" --locked --lib "$filter" -- --test-threads=1
           done
 
       - name: Cargo check (JavaScript adapter feature)
@@ -592,10 +593,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          unset RUST_MIN_STACK
+          runner_config="$(python3 scripts/default_stack_test_runner.py --cargo-config)"
           for filter in dbsnp_ materialize_variant_allele reporter_construct_handoff_ \
             variant_followup_allele_pair_ test_support::heavy_stack_tests; do
-            cargo test --locked --lib "$filter" -- --test-threads=1
+            cargo test --config "$runner_config" --locked --lib "$filter" -- --test-threads=1
           done
 
       - name: Cargo check (JavaScript adapter feature)
@@ -750,10 +751,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          unset RUST_MIN_STACK
+          runner_config="$(python scripts/default_stack_test_runner.py --cargo-config)"
           for filter in dbsnp_ materialize_variant_allele reporter_construct_handoff_ \
             variant_followup_allele_pair_ test_support::heavy_stack_tests; do
-            cargo test --locked --lib "$filter" -- --test-threads=1
+            cargo test --config "$runner_config" --locked --lib "$filter" -- --test-threads=1
           done
 
       - name: Cargo check (JavaScript adapter feature)

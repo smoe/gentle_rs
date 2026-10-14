@@ -172,8 +172,12 @@ Heavy allele/reporter unit fixtures use `test_support::run_heavy_test` to place
 their unchanged fixture body on an explicit 16-MiB worker stack. The wrapper
 keeps the test name and resumes worker panics; it is not production startup
 coverage. Native CI runs the four focused families and the helper regressions
-with `RUST_MIN_STACK` unset before the full suite. A larger ambient stack is
-diagnostic evidence only, not acceptance of the original default-stack commands.
+through `scripts/default_stack_test_runner.py` before the full suite. The Cargo
+runner removes `RUST_MIN_STACK` immediately before spawning the test executable,
+after Cargo has applied `.cargo/config.toml`; a shell `unset` alone is insufficient.
+Retain its JSON receipt with `child_rust_min_stack:null`. Cargo's runtime library
+paths and the normal full-suite stack configuration stay unchanged. A larger
+ambient stack is diagnostic evidence only, not default-stack acceptance.
 
 Native behavior is documented by [Rust's Windows path normalization rules](https://doc.rust-lang.org/std/path/struct.PathBuf.html#method.push),
 the [component parser](https://doc.rust-lang.org/src/std/path.rs.html), and
