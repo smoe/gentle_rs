@@ -4,6 +4,263 @@
 use super::*;
 use crate::gui_profiler::startup_trace;
 
+// Hand-written temporary Markdown and egui pointer events reproduce the links
+// in 03.09 without rasterizing its historical screenshots or touching user files.
+fn help_link_test_app(root: &Path, newline: &str) -> GENtleApp {
+    let directory = root.join("help with ' spaces");
+    fs::create_dir_all(&directory).unwrap();
+    let pages = [
+        (
+            "03-09_synthetic_biology_design_build_verify.md",
+            "Source",
+            "[03.07 Gibson Arrangements](./03-07_gibson_arrangements_gui.md)\n\n[03.08 Gibson Physical Rack][rack]\n\n[rack]: ./03-08_gibson_physical_rack_gui.md\n",
+        ),
+        (
+            "03-07_gibson_arrangements_gui.md",
+            "Arrangements",
+            "[Return](./03-09_synthetic_biology_design_build_verify.md)\n",
+        ),
+        (
+            "03-08_gibson_physical_rack_gui.md",
+            "Physical Rack",
+            "Target content\n",
+        ),
+    ];
+    let mut app = GENtleApp::default();
+    for (name, title, body) in pages {
+        let path = directory.join(name);
+        fs::write(&path, format!("# {title}\n\n{body}").replace('\n', newline)).unwrap();
+        app.help_tutorial_entries.push(
+            GENtleApp::help_tutorial_entry_from_catalog_entry(catalog_entry(&path, title)).unwrap(),
+        );
+    }
+    app.open_help_tutorial_doc(0);
+    app
+}
+
+fn help_link_frame(
+    app: &mut GENtleApp,
+    ctx: &egui::Context,
+    events: Vec<egui::Event>,
+) -> egui::FullOutput {
+    ctx.begin_pass(egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1200.0, 1000.0),
+        )),
+        events,
+        ..Default::default()
+    });
+    crate::egui_compat::show_central_panel_for_test_context(
+        ctx,
+        egui::CentralPanel::default(),
+        |ui| app.render_help_contents(ui),
+    );
+    crate::egui_compat::end_test_pass(ctx)
+}
+
+fn help_link_text_center(shape: &egui::epaint::Shape, label: &str) -> Option<egui::Pos2> {
+    match shape {
+        egui::epaint::Shape::Text(text) if text.galley.job.text == label => {
+            Some(text.pos + text.galley.size() * 0.5)
+        }
+        egui::epaint::Shape::Vec(shapes) => shapes
+            .iter()
+            .find_map(|shape| help_link_text_center(shape, label)),
+        _ => None,
+    }
+}
+
+fn click_help_link(app: &mut GENtleApp, label: &str) {
+    let ctx = egui::Context::default();
+    help_link_frame(app, &ctx, vec![]).drop_without_applying_deltas();
+    let output = help_link_frame(app, &ctx, vec![]);
+    let pos = output
+        .shapes
+        .iter()
+        .find_map(|shape| help_link_text_center(&shape.shape, label))
+        .expect("rendered Markdown hyperlink");
+    output.drop_without_applying_deltas();
+    for pressed in [true, false] {
+        let output = help_link_frame(
+            app,
+            &ctx,
+            vec![
+                egui::Event::PointerMoved(pos),
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert!(
+            !output
+                .platform_output
+                .commands
+                .iter()
+                .any(|command| matches!(command, egui::OutputCommand::OpenUrl(_))),
+            "a local chapter click must not launch a browser"
+        );
+        output.drop_without_applying_deltas();
+    }
+}
+
+#[test]
+fn help_markdown_links_click_inline_and_reference_chapters_without_project_changes() {
+    let source =
+        include_str!("../../../docs/tutorial/03-09_synthetic_biology_design_build_verify.md");
+    for name in [
+        "03-07_gibson_arrangements_gui.md",
+        "03-08_gibson_physical_rack_gui.md",
+    ] {
+        assert!(source.contains(&format!("](./{name})")));
+    }
+    for newline in ["\n", "\r\n"] {
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = help_link_test_app(temp.path(), newline);
+        let before = serde_json::to_value(app.engine.read().unwrap().state()).unwrap();
+        let revision = app.engine.read().unwrap().mutation_revision();
+        click_help_link(&mut app, "03.07 Gibson Arrangements");
+        assert_eq!(app.help_tutorial_selected, 1);
+        assert_eq!(app.help_tutorial_title, "Arrangements");
+        click_help_link(&mut app, "Return");
+        assert_eq!(app.help_tutorial_selected, 0);
+        click_help_link(&mut app, "03.08 Gibson Physical Rack");
+        assert_eq!(app.help_tutorial_selected, 2);
+        assert!(app.help_tutorial_markdown.contains("Target content"));
+        assert_eq!(app.help_tutorial_entries.len(), 3, "reuse catalog entries");
+        assert_eq!(app.help_doc, HelpDoc::Tutorial);
+        assert!(app.show_help_dialog);
+        assert!(app.help_link_notice.is_none());
+        assert_eq!(
+            serde_json::to_value(app.engine.read().unwrap().state()).unwrap(),
+            before
+        );
+        assert_eq!(app.engine.read().unwrap().mutation_revision(), revision);
+    }
+}
+
+#[test]
+fn help_markdown_links_preserve_web_urls_clipboard_and_other_window_commands() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut app = help_link_test_app(temp.path(), "\n");
+    let ctx = egui::Context::default();
+    ctx.begin_pass(egui::RawInput::default());
+    ctx.open_url(egui::OpenUrl::same_tab("./other-window.md"));
+    let start = ctx.output(|output| output.commands.len());
+    ctx.open_url(egui::OpenUrl::same_tab(
+        "./03-07_gibson_arrangements_gui.md",
+    ));
+    ctx.open_url(egui::OpenUrl::new_tab("https://example.invalid/guide.md"));
+    ctx.copy_text("Keep clipboard output".into());
+    app.follow_help_markdown_links(&ctx, start);
+    assert_eq!(app.help_tutorial_selected, 1);
+    ctx.output(|output| {
+        assert_eq!(output.commands.len(), 3);
+        assert!(matches!(&output.commands[0], egui::OutputCommand::OpenUrl(url) if url.url == "./other-window.md"));
+        assert!(matches!(&output.commands[1], egui::OutputCommand::OpenUrl(url) if url.url == "https://example.invalid/guide.md" && url.new_tab));
+        assert!(matches!(&output.commands[2], egui::OutputCommand::CopyText(text) if text == "Keep clipboard output"));
+    });
+    crate::egui_compat::discard_test_pass_output(&ctx);
+}
+
+#[test]
+fn help_markdown_links_report_missing_targets_and_disclose_fragment_limit() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut app = help_link_test_app(temp.path(), "\n");
+    let ctx = egui::Context::default();
+    ctx.begin_pass(egui::RawInput::default());
+    ctx.open_url(egui::OpenUrl::same_tab("./missing.md"));
+    app.follow_help_markdown_links(&ctx, 0);
+    assert_eq!(app.help_tutorial_selected, 0);
+    assert!(
+        app.help_link_notice
+            .as_deref()
+            .unwrap()
+            .contains("could not be found")
+    );
+    assert!(ctx.output(|output| output.commands.is_empty()));
+    crate::egui_compat::discard_test_pass_output(&ctx);
+    let notice = app.help_link_notice.clone().unwrap();
+    let output = help_link_frame(&mut app, &ctx, vec![]);
+    assert!(
+        output
+            .shapes
+            .iter()
+            .any(|shape| help_link_text_center(&shape.shape, &notice).is_some())
+    );
+    output.drop_without_applying_deltas();
+    assert!(
+        app.open_help_markdown_link("./03-07_gibson_arrangements_gui.md#details")
+            .is_ok()
+    );
+    assert_eq!(app.help_tutorial_selected, 1);
+    assert!(
+        app.help_link_notice
+            .as_deref()
+            .unwrap()
+            .contains("automatic section scrolling")
+    );
+    assert!(
+        app.open_help_markdown_link("./03-08_gibson_physical_rack_gui.md")
+            .is_ok()
+    );
+    assert!(app.help_link_notice.is_none());
+}
+
+#[test]
+fn help_markdown_links_reuse_manual_tabs_and_discover_unlisted_documents() {
+    let mut app = GENtleApp::default();
+    let source = Path::new("docs/tutorial/03-09_synthetic_biology_design_build_verify.md");
+    app.help_tutorial_entries.push(
+        GENtleApp::help_tutorial_entry_from_catalog_entry(catalog_entry(source, "Source")).unwrap(),
+    );
+    app.help_doc = HelpDoc::Tutorial;
+    app.open_help_markdown_link("../cli.md").unwrap();
+    assert_eq!(app.help_doc, HelpDoc::Cli);
+    assert!(app.show_help_dialog);
+    let temp = tempfile::tempdir().unwrap();
+    let mut app = help_link_test_app(temp.path(), "\n");
+    let source_dir = app
+        .help_document_path()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    fs::write(source_dir.join("extra.md"), "# Extra linked document\n").unwrap();
+    app.open_help_markdown_link("./extra.md").unwrap();
+    assert_eq!(app.help_tutorial_title, "Extra linked document");
+    assert_eq!(app.help_tutorial_entries.len(), 4);
+    app.open_help_markdown_link("./extra.md").unwrap();
+    assert_eq!(app.help_tutorial_entries.len(), 4);
+}
+
+#[test]
+fn help_markdown_links_do_not_intercept_external_or_absolute_targets() {
+    for destination in [
+        "https://example.invalid/guide.md",
+        "mailto:example@example.invalid",
+        "file:///tmp/guide.md",
+        "//example.invalid/guide.md",
+        "/tmp/guide.md",
+        "C:\\docs\\guide.md",
+        "C:/docs/guide.md",
+        "#section",
+        "figure.svg",
+    ] {
+        assert!(
+            GENtleApp::help_relative_markdown_link(destination).is_none(),
+            "{destination}"
+        );
+    }
+    assert_eq!(
+        GENtleApp::help_relative_markdown_link("../guide.md#section"),
+        Some("../guide.md")
+    );
+}
+
 fn catalog_entry(path: &Path, title: &str) -> crate::workflow_examples::TutorialCatalogEntry {
     serde_json::from_value(serde_json::json!({
         "id": "synthetic-help-test",

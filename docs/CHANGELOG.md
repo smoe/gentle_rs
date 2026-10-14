@@ -1,5 +1,25 @@
 # GENtle Changelog
 
+## 2026-10-14 - Route Relative Help Chapter Links In-App
+
+- Repair the inert 03.09 Gibson hyperlinks: consume only relative Markdown
+  URL commands emitted by the Help viewer and resolve them from the displayed
+  document. Reuse catalog entries/manual tabs and load only the chosen page;
+  leave web links, clipboard output and other windows' URL commands untouched.
+- Show missing-target errors in Help. Fragment links open their target page
+  with an explicit automatic-section-scrolling limitation, not a false jump.
+- Add five deterministic Rust regressions, including actual pointer clicks on
+  inline/reference links, LF/CRLF temporary pages in quoted paths, return/reuse,
+  unchanged project state, manual/dynamic targets and output-command isolation.
+  Tutorial prose/assets, scientific output and the owner lockfile are unchanged.
+- Rust and native execution remain external under the owner's instruction.
+  Add the focused filter and native 03.09 clicks to the existing consolidated
+  handoff; no new audit request, push or dispatch is made.
+- Verification: fast tutorial checkout/walkthrough/acceptance/source suites
+  pass 99 tests with three explicit platform/binary skips (102 total).
+  Formatting and whitespace checks pass; neither the new Rust regressions nor
+  a native click replay has run locally.
+
 ## 2026-10-14 - Retain Completed `df5c8244` Normal CI Evidence
 
 - Verify successful completion of run `38541824374` at its exact source and

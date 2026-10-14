@@ -55,6 +55,19 @@ horizontal scrolling, enablement, refusal/retry and historical captures.
 Return new same-source geometry/logs and approved raw screenshots; a synthetic
 egui pass alone does not close native readability. Codex ran no Rust tests.
 
+Also verify the scoped Help hyperlink repair at that final source:
+
+```sh
+cargo test --locked --lib help_markdown_links_ -- --test-threads=1
+```
+
+Require five tests, including actual rendered pointer clicks. In native Help,
+open tutorial 03.09 and follow its inline 03.07/03.08 links in the same window;
+confirm Topic/content change, entry reuse and unchanged project state. Check a
+missing-target message and preserve external web-link behavior. Page fragments
+currently disclose a Find-based fallback, not automatic section scrolling.
+Codex ran no local Rust or native acceptance; no extra dispatch is authorized.
+
 | Area | Remaining Check Only |
 | --- | --- |
 | 08.16 | Open the retained complete/partial imported lanes in the native view, including plus/minus, clipped footprints, negative/real-zero values, units/scales and coverage warnings. Check normal-size label/legend readability. Retain approved original captures; do not rerun DuckDB queries or alter original score arrays to get a screenshot. |

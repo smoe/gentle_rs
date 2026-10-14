@@ -4196,6 +4196,14 @@ The `Help` menu now includes:
     full title and summary, and selecting a pointer reuses the same Help window.
     Each direction is limited to three explicit catalog ids; absent or fallback
     catalog metadata produces no guessed navigation.
+  - inline and reference-style relative Markdown links also open the linked
+    chapter in this Help window, resolved from the displayed document rather
+    than the application's working directory. Existing catalog entries and
+    manual tabs are reused; uncatalogued Markdown guides can be opened too.
+    Missing targets produce a visible Help message instead of a silent browser
+    request. External web links keep their normal browser handling.
+    A `chapter.md#section` link opens the page and discloses that automatic
+    section scrolling is not supported; use Find to locate the section.
 - on macOS, app menu `GENtle -> GENtle Help...` opens the same help window
 - help now opens in its own native window (separate viewport), not as an overlay in the project window
 - re-selecting an already open help page, including via `GENtle -> GENtle Windows`, reuses the existing help viewport instead of reloading the manuals from disk

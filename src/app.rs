@@ -768,6 +768,7 @@ pub struct GENtleApp {
     help_focus_search_box: bool,
     help_last_content_width: f32,
     help_selectable_text_mode: bool,
+    help_link_notice: Option<String>,
     show_configuration_dialog: bool,
     configuration_tab: ConfigurationTab,
     configuration_rnapkin_executable: String,
@@ -2705,6 +2706,7 @@ impl Default for GENtleApp {
             help_focus_search_box: false,
             help_last_content_width: 0.0,
             help_selectable_text_mode: false,
+            help_link_notice: None,
             show_configuration_dialog: false,
             configuration_tab: ConfigurationTab::ExternalApplications,
             configuration_rnapkin_executable: env::var("GENTLE_RNAPKIN_BIN").unwrap_or_default(),
@@ -5971,6 +5973,7 @@ Error: `{err}`"
     }
 
     fn open_help_doc(&mut self, doc: HelpDoc) {
+        self.help_link_notice = None;
         if doc == HelpDoc::Tutorial {
             self.open_help_tutorial_doc(self.help_tutorial_selected);
             return;
@@ -24466,12 +24469,16 @@ Error: `{err}`"
             }
 
             if active_doc_changed {
+                self.help_link_notice = None;
                 self.help_markdown_cache = CommonMarkCache::default();
                 self.help_last_content_width = 0.0;
                 self.refresh_help_search_matches();
             }
             if let Some(current) = self.help_search_matches.get(self.help_search_selected) {
                 ui.small(format!("Line {}: {}", current.line_number, current.snippet));
+            }
+            if let Some(notice) = &self.help_link_notice {
+                ui.colored_label(ui.visuals().warn_fg_color, notice);
             }
 
             ui.separator();
@@ -24534,6 +24541,7 @@ Error: `{err}`"
                                     scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                                 );
                                 let rendered_markdown = self.rendered_help_markdown_for(active_doc);
+                                let command_start = ui.ctx().output(|output| output.commands.len());
                                 CommonMarkViewer::new()
                                     .max_image_width(Some(max_image_width))
                                     .show(
@@ -24541,6 +24549,7 @@ Error: `{err}`"
                                         &mut self.help_markdown_cache,
                                         rendered_markdown.as_ref(),
                                     );
+                                self.follow_help_markdown_links(ui.ctx(), command_start);
                             });
                     }
                 },

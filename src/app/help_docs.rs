@@ -7,7 +7,7 @@
 //! Look here for:
 //! - markdown cleanup/rewrite helpers used before rendering docs in-app
 //! - tutorial/help discovery and path resolution
-//! - relative asset/image rewriting for embedded help pages
+//! - relative asset/image rewriting and in-app chapter-link navigation
 
 use super::*;
 
@@ -24,6 +24,118 @@ status: manual/reference\n\
 Practical guide for the in-app Agent Assistant, provider quick starts, reviewed shared-shell suggestions, CLI/shared shell, MCP, and external coding agents.";
 
 impl GENtleApp {
+    fn help_document_path(&self) -> Option<PathBuf> {
+        let path = match self.help_doc {
+            HelpDoc::Gui => "docs/gui.md",
+            HelpDoc::Cli => "docs/cli.md",
+            HelpDoc::AgentInterface => "docs/agent_interface.md",
+            HelpDoc::ReviewerPreview => "docs/reviewer_preview.md",
+            HelpDoc::Shell => "docs/glossary.json",
+            HelpDoc::Tutorial => {
+                return self
+                    .help_tutorial_entries
+                    .get(self.help_tutorial_selected)
+                    .map(|entry| PathBuf::from(&entry.path));
+            }
+        };
+        Self::resolve_runtime_doc_path(path)
+    }
+
+    fn help_relative_markdown_link(destination: &str) -> Option<&str> {
+        let path = destination.split(['#', '?']).next()?;
+        if path.is_empty()
+            || path.starts_with('/')
+            || path.starts_with('\\')
+            || Self::is_windows_drive_path(path)
+            || Self::has_uri_scheme(path)
+            || !Path::new(path)
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("md"))
+        {
+            return None;
+        }
+        Some(path)
+    }
+
+    fn open_help_markdown_link(&mut self, destination: &str) -> Result<(), String> {
+        let relative = Self::help_relative_markdown_link(destination)
+            .ok_or_else(|| "Not a relative Help Markdown link".to_string())?;
+        let source = self
+            .help_document_path()
+            .ok_or_else(|| "The current Help page has no source path".to_string())?;
+        let target = source
+            .parent()
+            .ok_or_else(|| "The current Help page has no source directory".to_string())?
+            .join(relative)
+            .canonicalize()
+            .map_err(|_| format!("Help link '{destination}' could not be found."))?;
+        if !target.is_file() {
+            return Err(format!("Help link '{destination}' is not a document."));
+        }
+        let manual = [
+            (HelpDoc::Gui, "docs/gui.md"),
+            (HelpDoc::Cli, "docs/cli.md"),
+            (HelpDoc::AgentInterface, "docs/agent_interface.md"),
+            (HelpDoc::ReviewerPreview, "docs/reviewer_preview.md"),
+        ]
+        .into_iter()
+        .find(|(_, path)| {
+            Self::resolve_runtime_doc_path(path)
+                .and_then(|path| path.canonicalize().ok())
+                .as_ref()
+                == Some(&target)
+        });
+        if let Some((doc, _)) = manual {
+            self.open_help_doc(doc);
+        } else if let Some(index) = self
+            .help_tutorial_entries
+            .iter()
+            .position(|entry| Path::new(&entry.path).canonicalize().ok().as_ref() == Some(&target))
+        {
+            self.open_help_tutorial_doc(index);
+        } else {
+            let path = target
+                .to_str()
+                .ok_or_else(|| "The Help document path is not valid UTF-8".to_string())?;
+            self.open_help_tutorial_path(path, "", "")?;
+        }
+        self.help_markdown_cache = CommonMarkCache::default();
+        self.help_last_content_width = 0.0;
+        self.help_link_notice = destination
+            .split_once('#')
+            .filter(|(_, fragment)| !fragment.is_empty())
+            .map(|(_, fragment)| {
+                format!("Page opened. Use Find for section '{fragment}'; automatic section scrolling is not supported.")
+            });
+        Ok(())
+    }
+
+    pub(super) fn follow_help_markdown_links(&mut self, ctx: &egui::Context, command_start: usize) {
+        // Only consume relative document links emitted by this Help render.
+        // Browser URLs and output from other windows keep their native handling.
+        let destinations = ctx.output_mut(|output| {
+            let commands = output.commands.split_off(command_start);
+            let mut destinations = Vec::new();
+            for command in commands {
+                if let egui::OutputCommand::OpenUrl(url) = &command
+                    && Self::help_relative_markdown_link(&url.url).is_some()
+                {
+                    destinations.push(url.url.clone());
+                } else {
+                    output.commands.push(command);
+                }
+            }
+            destinations
+        });
+        for destination in destinations {
+            self.help_link_notice = None;
+            if let Err(message) = self.open_help_markdown_link(&destination) {
+                self.help_link_notice = Some(message);
+            }
+            ctx.request_repaint();
+        }
+    }
+
     fn help_tutorial_entry_from_catalog_entry(
         entry: crate::workflow_examples::TutorialCatalogEntry,
     ) -> Option<HelpTutorialDocEntry> {
@@ -811,6 +923,7 @@ impl GENtleApp {
     }
 
     pub(super) fn open_help_tutorial_doc(&mut self, tutorial_index: usize) {
+        self.help_link_notice = None;
         let trace = crate::gui_profiler::startup_trace::span_once(
             crate::gui_profiler::startup_trace::Phase::HelpTutorialOpen,
         );
