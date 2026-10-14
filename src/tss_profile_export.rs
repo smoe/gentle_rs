@@ -1484,7 +1484,7 @@ fn svg_dimensions(svg: &str) -> Result<(u32, u32), EngineError> {
             quick_xml::events::Event::Decl(_) | quick_xml::events::Event::Comment(_) => {}
             quick_xml::events::Event::Text(text)
                 if {
-                    let bytes: &[u8] = text.as_ref();
+                    let bytes = AsRef::<[u8]>::as_ref(&*text);
                     bytes.iter().all(u8::is_ascii_whitespace)
                 } => {}
             _ => return Err(invalid("unexpected content before SVG root")),
@@ -2793,6 +2793,7 @@ pub(crate) mod tests {
         // Hand-crafted SVG parser inputs, not biological data or export evidence.
         for (svg, expected) in [
             (r#"<svg width="120" height="80"/>"#, (120, 80)),
+            (" \t\r\n<svg width=\"120\" height=\"80\"/>", (120, 80)),
             (r#"<svg width=" 120.25px " height="0.5px"></svg>"#, (121, 1)),
             (
                 "\r\n\t<?xml version=\"1.0\"?><!-- synthetic -->\n<svg width=\"65535\" height=\"1\"/>",
@@ -2821,6 +2822,7 @@ pub(crate) mod tests {
             r#"<svg width="120" height="0"/>"#,
             r#"<svg width="120" width="121" height="80"/>"#,
             r#"prefix<svg width="120" height="80"/>"#,
+            "\u{00a0}<svg width=\"120\" height=\"80\"/>",
             r#"<!DOCTYPE svg><svg width="120" height="80"/>"#,
         ] {
             assert_eq!(

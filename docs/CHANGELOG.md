@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-10-14 - Preserve SVG Prefix Checks Across Quick-XML Updates
+
+- Normalize the text event's dereferenced byte/string backing explicitly before
+  checking ASCII whitespace. This repairs the owner-observed 0.41-to-0.42
+  compilation boundary without broadening SVG root/unit/budget admission.
+- Extend the existing hand-crafted parser cases with an ASCII prefix and a
+  refused non-breaking-space prefix. No new fixture file or dependency pin.
+- Preserve the owner's uncommitted dependency updates. Rust verification is
+  external; no local build/check/test or push.
+- Verification: inspect the cached 0.41/0.42 text backing APIs; Rust 2024
+  formatting and whitespace pass. The two parser tests still need Rust execution.
+
 ## 2026-10-14 - Centralize Workspace Compiler Compatibility
 
 - Remove the private sequence-design crate's unverified Rust 1.85 floor and
