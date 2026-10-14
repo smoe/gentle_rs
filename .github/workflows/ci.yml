@@ -281,6 +281,7 @@ jobs:
       - run: python3 -m unittest scripts.test_synthetic_biology_tutorial -v
       - run: python3 -m unittest scripts.test_frozen_024ed6_audit -v
       - run: python3 -m unittest scripts.test_frozen_df5c8244_audit -v
+      - run: python3 -m unittest scripts.test_frozen_de9df8af_ci -v
       - run: python3 -m unittest scripts.test_default_stack_test_runner -v
       - run: python3 -m unittest scripts.test_sequence_design_audit_oracle scripts.test_sequence_design_tutorial -v
       - run: python3 -m unittest scripts.test_ci_vkorc1_gui_audit scripts.test_tutorial_gui_acceptance -v

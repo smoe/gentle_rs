@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-10-14 - Retain Terminal `de9df8af` CI Failure
+
+- Follow run `38599805415` through completion. Linux and Windows pass default
+  checks and four early filters, then both abort in the first stripped-child
+  dbSNP fixture. Preserve actual null child-stack receipts, raw API metadata
+  and log hashes; later filters/full suites are unrun, not passes. Aggregate
+  failure is a cascade. Safety has 275 passes/four real-CLI skips; headless
+  compile/dependency checks pass. macOS/native/scroll/model/packages are unrun.
+- Record the local nested-worker repair separately from failed-source evidence
+  and keep all six gates open. Correct the stale Unix-only dbSNP claim using
+  named old-source Windows logs, without broadening mock-BLAST acceptance.
+- Add frozen-record/source-scope tests and fast LF/CRLF/missing-policy coverage.
+  Preserve all historical evidence and unrelated untracked handoffs. No push,
+  local Rust, workflow restart/dispatch, package/model call or publication.
+- Verification: 127 offline checks pass after correcting the new negative
+  control's assumption that compact API JSON contains line endings. Original
+  bytes/hashes stay unchanged. YAML, whitespace and release-gate pass;
+  session-close has no failures and roadmap remains 400 lines.
+
 ## 2026-10-14 - Give The dbSNP Fetch Worker An Explicit Stack
 
 - Trace the confirmed Linux default-stack abort at `de9df8af` to the dialog's

@@ -62,6 +62,9 @@ docs/audits/glen_followups_20261008/container_validate_5e6201a6/container-build.
 docs/audits/glen_followups_20261008/candidate_df5c8244/glen/** -text -whitespace
 docs/audits/glen_followups_20261008/candidate_df5c8244/native-x11-supplement/** -text -whitespace
 
+# Terminal failure records are immutable API bytes and a labelled extraction.
+docs/audits/glen_followups_20261008/candidate_de9df8af/*.json -text
+
 # The generated capability matrix is compared byte-for-byte with LF output.
 docs/gui_cli_mcp_parity.md text eol=lf
 

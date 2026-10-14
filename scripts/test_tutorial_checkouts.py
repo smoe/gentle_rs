@@ -435,6 +435,42 @@ class TutorialCheckoutTests(unittest.TestCase):
                 with self.subTest(mode=mode[0], path=path):
                     self.assertEqual((target / path).read_bytes(), payload)
 
+    def test_terminal_de9df8af_ci_records_survive_lf_crlf_and_missing_policy_control(self):
+        from scripts.test_frozen_de9df8af_ci import BASE, retained_hashes
+
+        expected = retained_hashes()
+        payloads = {path: (checker.ROOT / path).read_bytes() for path in expected}
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        for path, payload in payloads.items():
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), expected[path])
+            destination = self.root / path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "terminal CI failure and stripped-child observations")
+        unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                  if not line.startswith(BASE.as_posix().encode() + b"/"))
+        broken = Path(self.tmp.name) / "de9df8af-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        probe = BASE / "default_stack_from_logs.json"
+        self.assertIn(b"\n", payloads[probe])
+        self.assertNotEqual((broken / probe).read_bytes(), payloads[probe])
+        for name in ("run.api-original.json", "jobs.api-original.json"):
+            path = BASE / name
+            self.assertNotIn(b"\n", payloads[path])
+            self.assertEqual((broken / path).read_bytes(), payloads[path])
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"de9df8af-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for path, payload in payloads.items():
+                with self.subTest(mode=mode[0], path=path):
+                    self.assertEqual((target / path).read_bytes(), payload)
+                    attribute = checker.git(target, "check-attr", "text", "--", path.as_posix())
+                    self.assertEqual(attribute.strip(),
+                                     f"{path.as_posix()}: text: unset".encode())
+
     def test_nonpublishing_container_receipt_survives_lf_crlf_and_detects_missing_policy(self):
         relative = Path("docs/audits/glen_followups_20261008/container_validate_5e6201a6/container-build.json")
         expected = "682d7d10df1b907dd80121c7055c62b3335952147fc7a3bf41988e7f13ffc42d"

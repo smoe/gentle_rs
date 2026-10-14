@@ -1,0 +1,37 @@
+{
+  "schema": "gentle.ci_default_stack_observation.v1",
+  "source_revision": "de9df8af0a56923df01a7492f61005b1fe079d8c",
+  "run_id": 38599805415,
+  "run_attempt": 1,
+  "origin": "JSON lines extracted from terminal job logs; not original API receipts",
+  "default_stack_accepted": false,
+  "records": [
+    {
+      "platform": "linux",
+      "job_id": 115975878354,
+      "result": "failed_stack_overflow",
+      "selected_tests": 11,
+      "step_exit_code": 134,
+      "runner": {
+        "schema": "gentle.default_stack_test_runner.v1",
+        "command": ["/home/runner/work/gentle_rs/gentle_rs/target/debug/deps/gentle-b90e663556b58f60", "dbsnp_", "--test-threads=1"],
+        "inherited_rust_min_stack": "16777216",
+        "child_rust_min_stack": null
+      }
+    },
+    {
+      "platform": "windows",
+      "job_id": 115975818934,
+      "result": "failed_stack_overflow",
+      "selected_tests": 11,
+      "step_exit_code": 127,
+      "reported_child_exit_code": "0xffffffff",
+      "runner": {
+        "schema": "gentle.default_stack_test_runner.v1",
+        "command": ["D:\\a\\gentle_rs\\gentle_rs\\target\\debug\\deps\\gentle-7210ac5f92381fa3.exe", "dbsnp_", "--test-threads=1"],
+        "inherited_rust_min_stack": "16777216",
+        "child_rust_min_stack": null
+      }
+    }
+  ]
+}

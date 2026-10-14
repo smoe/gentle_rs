@@ -44,11 +44,14 @@ cargo test --locked --lib variant_followup_allele_pair_ -- --test-threads=1
 cargo check -q --locked
 ```
 
-Report individual pass/fail/skip counts and retain failure output. The synthetic
-fetch tests use Unix-only mock-resource machinery; a green native-Windows job
-does not prove those cases. Keep source inspection, focused tests, full-suite
-and native GUI verdicts separate. No focused Rust results for this diff are
-claimed here.
+Report individual pass/fail/skip counts and retain failure output. At exact
+`df5c8244787d8c920ee171ee55167de55e8a7294`, Windows job `115778176141`
+executes the file-backed reference/assembly fetch, annotated extraction, SPDI
+GenBank round-trip and late pair-rollback regressions; their named `ok` lines
+are in the [retained CI scope](audits/glen_followups_20261008/candidate_df5c8244/README.md).
+Those dbSNP tests are not Unix-only. Keep this historical unit-test evidence
+separate from newer-source/default-stack, real-data and native GUI acceptance;
+Unix-only mock-BLAST tests elsewhere retain their own platform limits.
 
 ## Still Open
 
@@ -99,6 +102,12 @@ selects 11 `dbsnp_` tests and aborts with stack overflow/exit 134 in
 `dbsnp_dialog_fetch_extracts_region_and_opens_window`. The remaining four
 filters do not execute after that first failure. This is a failed acceptance
 run, not a missing runner or a passed diagnostic replacement.
+
+The same [terminal CI record](audits/glen_followups_20261008/candidate_de9df8af/README.md)
+shows Windows failing at that same first fixture with the stripped-child receipt,
+child exit `0xffffffff` and step exit 127. Both later four-filter loops and
+full suites remain unexecuted; selected-platform failure is a cascade. macOS
+is skipped, not a default-stack pass. Neither platform accepts the repair.
 
 The test's fixture thread is explicitly named and sized at 16 MiB; the dbSNP
 dialog still spawned an unnamed default-sized production worker around detached

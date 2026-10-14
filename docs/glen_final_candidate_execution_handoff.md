@@ -39,6 +39,14 @@ hashes and platform/profile. Closing a residual at `f35a58e6` does not accept a
 newer main; testing a newer source does not rewrite its historical verdict.
 Missing host, capture consent or human decision remains blocked/not-run.
 
+Before native follow-ups, rerun the [corrected default-stack families](vkorc1_allele_review_followup_20261008.md#2026-10-14-default-stack-follow-up)
+at the repaired final source. The terminal `de9df8af` CI fails on Linux and
+Windows in the nested dbSNP production worker despite valid null child-stack
+receipts. Local repair `51a1634f` adds an explicit worker stack and synthetic
+probe; expect 12 Linux `dbsnp_` tests, then the remaining four filters. Preserve
+all runner receipts and original failures; no speculative parser change,
+ambient-stack substitution, local Rust or new dispatch is authorized.
+
 At the final source, also verify the Promoter design action-row width repair:
 
 ```sh

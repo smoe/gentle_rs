@@ -459,6 +459,38 @@ existing opt-in audit and [final-source native check](glen_final_candidate_execu
 This is a scoped implementation repair, not an executed Rust/native verdict;
 item 4 remains open and original screenshots/evidence are unchanged.
 
+### Terminal CI Failure At `de9df8af` (2026-10-14)
+
+The owner transferred the verified 85,131-byte bundle and published exact
+`de9df8af0a56923df01a7492f61005b1fe079d8c`. Glen independently confirms the
+clean detached source. Follow [run 38599805415](https://github.com/smoe/gentle_rs/actions/runs/38599805415)
+through terminal failure at 17:05:54 UTC; retain its
+[original API records, actual stripped-child lines and log hashes](audits/glen_followups_20261008/candidate_de9df8af/README.md).
+No workflow was restarted or dispatched by Codex.
+
+| Item | Exact-SHA Result / Remaining Evidence |
+| --- | --- |
+| 1. Preservation / Linux validation | Original terminal records and BOM/ANSI/CRLF log bytes retained. Linux/Windows default check and four early focused filters pass; full suites do not execute after the primary failure. Safety has 275 passes/four real-CLI skips; headless compile/dependency checks pass. No newer-source verdict. |
+| 2. 08.04 GUI/agent contracts | Both stripped-child receipts exist with null stack override, but the first 11-test `dbsnp_` filter aborts in the dialog's unnamed worker. The other four filters do not run. Local repair `51a1634f` gives this nested production worker an explicit 16-MiB stack and regression; external 12-test/remaining-filter acceptance is pending. GUI job skips. |
+| 3. Genuine live agent | Not run; authenticated macOS audit-CLI is skipped. No model or agent acceptance follows. |
+| 4. Honest visual evidence | No current native run; render-snapshot steps skip after failure. Historical captures and Glen's qualified FLNA verdict stay separate. Current Help/Promoter native acceptance remains open. |
+| 5. Scroll benchmark | Optional job skips; older 24-case CPU records cannot certify the repair/source or native latency. |
+| 6. .12 packages | No package job. Historical published/validate-only opt1 evidence is unchanged; independent extracted/native and new-source opt2 gates remain open. |
+
+Linux exits 134; Windows records child `0xffffffff` and step 127, after a
+launched executable reports the same stack overflow. This is not a missing
+command, absent runner or environmental isolation block. Selected-platform
+failure is a cascade, not another product defect. Do not substitute ordinary
+16-MiB ambient passes, remove the filter or close the default-stack gate.
+The worker repair, unchanged global policy and new probe need a fresh external
+run at the final available source; this failed SHA remains historical.
+
+Correct the dbSNP-specific portability caution: prior Windows job
+`115778176141` at `df5c8244` actually executes the file-backed fetch/reference,
+SPDI round-trip and late pair-rollback tests. That does not certify the newer
+default-stack worker, real-reference/native GUI, or Unix-only mock-BLAST paths.
+No new push, local Rust, model call, package build or gate completion occurred.
+
 ### Glen's Frozen `df5c8244` Review And No-Rerun Supplement (2026-10-14)
 
 Retain the [qualified review, original Rust records and native logs](audits/glen_followups_20261008/candidate_df5c8244/GLEN_REVIEW.md)
