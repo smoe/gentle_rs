@@ -16491,9 +16491,46 @@ pub struct ProteinExpressionHandoffReport {
     pub vector_route_candidates: Vec<ProteinExpressionVectorRouteCandidate>,
     pub missing_questions: Vec<PlanningCloningMissingQuestion>,
     pub service_handoff_candidates: Vec<ProteinExpressionServiceHandoffCandidate>,
+    /// V2 uses the canonical neutral request, without provider template defaults.
+    pub neutral_service_draft: Option<gentle_protocol::ExternalServiceDeliveryRouteRequest>,
+    /// Present only after explicit, permitted, catalog-supported provider selection.
+    pub provider_projection: Option<gentle_protocol::ExternalServiceRequest>,
+    pub provider_binding: ProteinExpressionProviderBinding,
     pub warnings: Vec<String>,
     pub suggested_next_actions: Vec<PlanningCloningSuggestedNextAction>,
     pub text_report: Option<String>,
+}
+
+/// Read-only provider-selection result; legacy reports default to not selected.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct ProteinExpressionProviderBinding {
+    pub requested_provider: Option<String>,
+    pub status: ProteinExpressionProviderBindingStatus,
+    pub reasons: Vec<ProteinExpressionProviderBindingReason>,
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Projection is local request construction, never service acceptance or submission.
+pub enum ProteinExpressionProviderBindingStatus {
+    #[default]
+    NotSelected,
+    Withheld,
+    Projected,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Stable withholding diagnostics; missing facts do not become provider defaults.
+pub enum ProteinExpressionProviderBindingReason {
+    ProductIdentityUnresolved,
+    ProductNotReady,
+    OutsourcingPermissionMissing,
+    OutsourcingDisallowed,
+    ProviderNotApproved,
+    ProviderUnavailable,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]

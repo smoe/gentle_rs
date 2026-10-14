@@ -7,8 +7,8 @@
 use crate::{
     engine::GentleEngine,
     external_service_providers::{
-        LoadedExternalServiceProviderConfig, doctor_external_service_provider_config,
-        external_service_provider_config_index,
+        ExternalServiceProviderConfigIndex, LoadedExternalServiceProviderConfig,
+        doctor_external_service_provider_config, external_service_provider_config_index,
     },
     genomes::{GenomeCatalog, PrepareGenomeActivityStatus},
     resource_status::{ExternalToolResourceStatus, ResourceCatalogReport, resource_catalog_status},
@@ -708,6 +708,58 @@ fn capability_display_name(
         .unwrap_or_else(|| service_kind.to_string())
 }
 
+fn projected_delivery_request(
+    route_request: &ExternalServiceDeliveryRouteRequest,
+    provider: String,
+    service_kind: String,
+) -> ExternalServiceRequest {
+    ExternalServiceRequest {
+        schema: EXTERNAL_SERVICE_REQUEST_SCHEMA.to_string(),
+        provider,
+        service_kind,
+        source_target: route_request.source_target.clone(),
+        optimization_target: route_request.optimization_target.clone(),
+        vector_spec: route_request.vector_spec.clone(),
+        delivery_options: route_request.delivery_options.clone(),
+        commercial_context_ref: route_request.commercial_context_ref.clone(),
+        return_spec: route_request.return_spec.clone(),
+        request_metadata: route_request.request_metadata.clone(),
+    }
+}
+
+/// Bind an explicit provider to the canonical neutral request, using only the
+/// active catalog. This creates a local value, never a preflight, quote or order.
+pub fn project_external_service_delivery_request(
+    route_request: &ExternalServiceDeliveryRouteRequest,
+    provider: &str,
+    service_kind: &str,
+) -> Result<ExternalServiceRequest, String> {
+    let index = external_service_provider_config_index()?;
+    project_delivery_request_from_catalog(route_request, provider, service_kind, &index)
+}
+
+fn project_delivery_request_from_catalog(
+    route_request: &ExternalServiceDeliveryRouteRequest,
+    provider: &str,
+    service_kind: &str,
+    index: &ExternalServiceProviderConfigIndex,
+) -> Result<ExternalServiceRequest, String> {
+    if route_request.schema != EXTERNAL_SERVICE_DELIVERY_ROUTE_REQUEST_SCHEMA {
+        return Err("Unsupported provider-neutral delivery request schema".to_string());
+    }
+    let selected = index
+        .provider(provider)
+        .ok_or_else(|| format!("Provider '{provider}' is not in the active catalog"))?;
+    selected.capability_for(service_kind).ok_or_else(|| {
+        format!("Provider '{provider}' does not support '{service_kind}' in the active catalog")
+    })?;
+    Ok(projected_delivery_request(
+        route_request,
+        selected.provider_record().provider,
+        normalize_service_token(service_kind),
+    ))
+}
+
 fn delivery_route_candidate(
     provider_config: &LoadedExternalServiceProviderConfig,
     service_kind: &str,
@@ -718,18 +770,7 @@ fn delivery_route_candidate(
     provider_config.capability_for(service_kind)?;
     let provider = normalize_service_token(&provider_config.record.provider);
     let service_kind = normalize_service_token(service_kind);
-    let request = ExternalServiceRequest {
-        schema: EXTERNAL_SERVICE_REQUEST_SCHEMA.to_string(),
-        provider: provider.clone(),
-        service_kind: service_kind.clone(),
-        source_target: route_request.source_target.clone(),
-        optimization_target: route_request.optimization_target.clone(),
-        vector_spec: route_request.vector_spec.clone(),
-        delivery_options: route_request.delivery_options.clone(),
-        commercial_context_ref: route_request.commercial_context_ref.clone(),
-        return_spec: route_request.return_spec.clone(),
-        request_metadata: route_request.request_metadata.clone(),
-    };
+    let request = projected_delivery_request(route_request, provider.clone(), service_kind.clone());
     Some(ExternalServiceDeliveryRouteCandidate {
         provider,
         provider_display_name: provider_config.record.display_name.clone(),
@@ -3411,6 +3452,75 @@ pub fn service_readiness_status() -> Result<ServiceReadinessReport, String> {
 mod tests {
     use super::*;
     use crate::resource_status::resource_catalog_status;
+
+    #[test]
+    fn protein_expression_handoff_catalog_projection_preserves_neutral_fields() {
+        let index = ExternalServiceProviderConfigIndex::from_explicit_path(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/assets/external_service_providers.json"
+        ))
+        .unwrap();
+        let route = ExternalServiceDeliveryRouteRequest {
+            source_target: json!({"seq_id":"synthetic_product"}),
+            optimization_target: Some(json!({"chassis":{"preferred_hosts":["e_coli"]}})),
+            vector_spec: Some(json!({"tag_policy":{"preserve_annotated_tags":false}})),
+            delivery_options: Some(json!({"purity_target":"reviewed"})),
+            commercial_context_ref: Some("redacted-context".to_string()),
+            request_metadata: Some(json!({"human_review_only":true})),
+            ..ExternalServiceDeliveryRouteRequest::default()
+        };
+        let projected =
+            project_delivery_request_from_catalog(&route, "GeneArt", "protein_expression", &index)
+                .unwrap();
+        assert_eq!(projected.provider, "geneart");
+        assert_eq!(projected.schema, EXTERNAL_SERVICE_REQUEST_SCHEMA);
+        assert_eq!(projected.source_target, route.source_target);
+        assert_eq!(projected.optimization_target, route.optimization_target);
+        assert_eq!(projected.vector_spec, route.vector_spec);
+        assert_eq!(projected.delivery_options, route.delivery_options);
+        assert_eq!(
+            projected.commercial_context_ref,
+            route.commercial_context_ref
+        );
+        assert_eq!(projected.return_spec, route.return_spec);
+        assert_eq!(projected.request_metadata, route.request_metadata);
+    }
+
+    #[test]
+    fn protein_expression_handoff_catalog_projection_rejects_schema_provider_and_capability() {
+        let index = ExternalServiceProviderConfigIndex::from_explicit_path(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/assets/external_service_providers.json"
+        ))
+        .unwrap();
+        let mut route = ExternalServiceDeliveryRouteRequest::default();
+        assert!(
+            project_delivery_request_from_catalog(
+                &route,
+                "not_in_catalog",
+                "protein_expression",
+                &index
+            )
+            .unwrap_err()
+            .contains("not in the active catalog")
+        );
+        assert!(
+            project_delivery_request_from_catalog(
+                &route,
+                "geneart",
+                "unsupported_synthetic_capability",
+                &index
+            )
+            .unwrap_err()
+            .contains("does not support")
+        );
+        route.schema = "unsupported.v2".into();
+        assert!(
+            project_delivery_request_from_catalog(&route, "geneart", "protein_expression", &index)
+                .unwrap_err()
+                .contains("schema")
+        );
+    }
 
     fn fake_activity(status: &str, phase: &str, percent: f64) -> PrepareGenomeActivityStatus {
         PrepareGenomeActivityStatus {

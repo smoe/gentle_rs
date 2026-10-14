@@ -13442,11 +13442,13 @@ fn parse_planning_commands() {
             seq_id,
             objective_json,
             requirements_json,
+            provider,
             profile_scope,
             output_format,
         } if seq_id.as_deref() == Some("protein_1")
             && objective_json.as_deref() == Some("@objective.json")
             && requirements_json.as_deref() == Some("@requirements.json")
+            && provider.is_none()
             && profile_scope == PlanningProfileScope::Effective
             && output_format == "text"
     ));
@@ -14857,6 +14859,12 @@ fn protein_expression_handoff_legacy_json_deserializes_without_readiness_fields(
     assert_eq!(report.product_definition.readiness.status, "");
     assert_eq!(report.cds_assessment.context_source, "");
     assert_eq!(report.tag_assessment.annotated_tag_count, 0);
+    assert!(report.neutral_service_draft.is_none());
+    assert!(report.provider_projection.is_none());
+    assert_eq!(
+        report.provider_binding.status,
+        crate::engine::ProteinExpressionProviderBindingStatus::NotSelected
+    );
 }
 
 #[test]
@@ -14867,6 +14875,7 @@ fn execute_planning_protein_expression_handoff_returns_reviewable_contract() {
         &ShellCommand::PlanningProteinExpressionHandoff {
             seq_id: None,
             objective_json: Some(
+                // No provider is implicitly selected by a product-yield objective.
                 r#"{
                   "schema":"gentle.planning_objective.v1",
                   "biological_intent":"Give me the maximal amount of protein"
@@ -14874,6 +14883,7 @@ fn execute_planning_protein_expression_handoff_returns_reviewable_contract() {
                 .to_string(),
             ),
             requirements_json: None,
+            provider: None,
             profile_scope: PlanningProfileScope::Effective,
             output_format: "text".to_string(),
         },
@@ -14882,7 +14892,7 @@ fn execute_planning_protein_expression_handoff_returns_reviewable_contract() {
     assert!(!out.state_changed);
     let report: crate::engine::ProteinExpressionHandoffReport =
         serde_json::from_value(out.output).expect("protein-expression handoff report");
-    assert_eq!(report.schema, "gentle.protein_expression_handoff.v1");
+    assert_eq!(report.schema, "gentle.protein_expression_handoff.v2");
     assert_eq!(report.status, "needs_product_definition");
     assert_eq!(report.biological_intent, "protein_expression_max_yield");
     assert_eq!(report.product_readiness.status, "needs_product_definition");
@@ -14919,18 +14929,12 @@ fn execute_planning_protein_expression_handoff_returns_reviewable_contract() {
             .any(|candidate| candidate.route_id == "cell_free_expression"),
         "cell-free route should stay visible for toxicity/screening cases"
     );
-    let service = report
-        .service_handoff_candidates
-        .first()
-        .expect("GeneArt handoff scaffold");
-    assert_eq!(service.provider, "geneart");
-    assert_eq!(service.service_kind, "protein_expression");
-    assert_eq!(service.status, "draft_example_review_required");
+    assert!(report.service_handoff_candidates.is_empty());
+    assert!(report.provider_projection.is_none());
     assert_eq!(
-        service.draft_request_preview["schema"].as_str(),
-        Some("gentle.external_service_request.v1")
+        report.neutral_service_draft.as_ref().unwrap().source_target["kind"],
+        "unresolved_product"
     );
-    assert!(service.shell_line.contains("services project-preflight"));
     assert!(report.suggested_next_actions.iter().any(|action| {
         action.action_id == "answer_yield_questions"
             && action.shell_line == "planning objective show"
@@ -14991,6 +14995,7 @@ fn execute_planning_protein_expression_handoff_seq_id_reports_cds_context() {
     let out = execute_shell_command(
         &mut engine,
         &ShellCommand::PlanningProteinExpressionHandoff {
+            provider: None,
             seq_id: Some("cds_product".to_string()),
             objective_json: Some(
                 r#"{
@@ -15059,52 +15064,33 @@ fn execute_planning_protein_expression_handoff_seq_id_reports_cds_context() {
             .unwrap_or_default()
             .contains("CDS assessment: source=annotated_cds")
     );
-    assert!(report.suggested_next_actions.iter().any(|action| {
-        action.action_id == "inspect_geneart_protein_expression_preflight"
-            && action.shell_line.contains("services project-preflight")
-    }));
+    assert!(report.provider_projection.is_none());
+    assert!(report.service_handoff_candidates.is_empty());
     assert!(
         report
             .suggested_next_actions
             .iter()
             .any(|action| action.action_id == "consult_cloning_strategy")
     );
-    assert!(report.suggested_next_actions.iter().any(|action| {
-        action.action_id == "prepare_geneart_quote_packet_after_review"
-            && action.shell_line.contains("services project-quote")
-    }));
-    let service = report
-        .service_handoff_candidates
-        .first()
-        .expect("product-specific GeneArt draft");
-    assert_eq!(service.status, "product_draft_review_required");
+    let draft = report
+        .neutral_service_draft
+        .as_ref()
+        .expect("neutral product draft");
+    assert_eq!(draft.source_target["seq_id"].as_str(), Some("cds_product"));
+    assert_eq!(draft.source_target["name"].as_str(), Some("obvious_cds"));
     assert_eq!(
-        service.draft_request_preview["source_target"]["seq_id"].as_str(),
-        Some("cds_product")
+        draft.request_metadata.as_ref().unwrap()["human_review_only"].as_bool(),
+        Some(true)
     );
-    assert_eq!(
-        service.draft_request_preview["source_target"]["name"].as_str(),
-        Some("obvious_cds")
-    );
-    assert_eq!(
-        service.draft_request_preview["request_metadata"]["tutorial"].as_bool(),
-        Some(false)
-    );
-    assert!(service.shell_line.contains("cds_product"));
-    assert!(!service.shell_line.contains("@docs/examples"));
-    let preflight_command = parse_shell_line(&service.shell_line)
-        .expect("product-specific preflight command should parse");
-    let preflight = execute_shell_command(&mut engine, &preflight_command)
-        .expect("product-specific preflight should execute");
-    assert_eq!(preflight.output["eligible"].as_bool(), Some(true));
     let text_report = report.text_report.as_deref().unwrap_or_default();
-    assert!(text_report.contains("services project-preflight"));
-    assert!(text_report.contains("services project-quote"));
+    assert!(!text_report.contains("services project-preflight"));
+    assert!(!text_report.contains("services project-quote"));
     assert!(text_report.contains("cds_product"));
 }
 
 #[test]
-fn execute_planning_protein_expression_handoff_whole_sequence_cds_suggests_preflight_and_consult() {
+fn execute_planning_protein_expression_handoff_whole_sequence_cds_consults_without_implicit_provider()
+ {
     let mut state = ProjectState::default();
     let mut dna = DNAsequence::from_sequence("ATGGCTGCTGAATAA").expect("synthetic CDS");
     dna.set_name("whole_sequence_cds");
@@ -15114,6 +15100,7 @@ fn execute_planning_protein_expression_handoff_whole_sequence_cds_suggests_prefl
     let out = execute_shell_command(
         &mut engine,
         &ShellCommand::PlanningProteinExpressionHandoff {
+            provider: None,
             seq_id: Some("whole_cds".to_string()),
             objective_json: Some(
                 r#"{
@@ -15139,11 +15126,12 @@ fn execute_planning_protein_expression_handoff_whole_sequence_cds_suggests_prefl
         report.cds_assessment.context_source,
         "whole_sequence_fallback"
     );
+    assert!(report.provider_projection.is_none());
     assert!(
         report
             .suggested_next_actions
             .iter()
-            .any(|action| { action.action_id == "inspect_geneart_protein_expression_preflight" })
+            .all(|action| !action.shell_line.starts_with("services "))
     );
     assert!(
         report
@@ -15213,6 +15201,7 @@ fn execute_planning_protein_expression_handoff_applies_reviewed_requirements() {
     let out = execute_shell_command(
         &mut engine,
         &ShellCommand::PlanningProteinExpressionHandoff {
+            provider: None,
             seq_id: Some("requirements_cds".to_string()),
             objective_json: None,
             requirements_json: Some(requirements.to_string()),
@@ -15238,8 +15227,8 @@ fn execute_planning_protein_expression_handoff_applies_reviewed_requirements() {
         !matches!(
             action.action_id.as_str(),
             "answer_yield_questions"
-                | "inspect_geneart_protein_expression_preflight"
-                | "prepare_geneart_quote_packet_after_review"
+                | "inspect_provider_protein_expression_preflight"
+                | "prepare_provider_protein_expression_quote_after_review"
         )
     }));
     assert!(
@@ -15254,12 +15243,17 @@ fn execute_planning_protein_expression_handoff_applies_reviewed_requirements() {
             .iter()
             .any(|warning| { warning.contains("Outsourcing is explicitly disallowed") })
     );
-    let service = report
-        .service_handoff_candidates
-        .first()
-        .expect("withheld provider provenance row");
-    assert_eq!(service.status, "withheld_by_outsourcing_requirement");
-    assert!(service.shell_line.is_empty());
+    assert!(report.service_handoff_candidates.is_empty());
+    assert!(report.provider_projection.is_none());
+    let draft = report.neutral_service_draft.as_ref().unwrap();
+    assert_eq!(
+        draft.delivery_options.as_ref().unwrap()["yield_goal"]["target_amount"],
+        10.0
+    );
+    assert_eq!(
+        draft.optimization_target.as_ref().unwrap()["chassis"]["acceptable_chassis"],
+        serde_json::json!(["e_coli"])
+    );
     let text_report = report.text_report.as_deref().unwrap_or_default();
     assert!(text_report.contains("Reviewed expression requirements: yield_goal, chassis"));
     assert!(!text_report.contains("Questions before committing:"));
@@ -15278,6 +15272,7 @@ fn execute_planning_protein_expression_handoff_partial_requirements_only_resolve
     let out = execute_shell_command(
         &mut engine,
         &ShellCommand::PlanningProteinExpressionHandoff {
+            provider: None,
             seq_id: Some("partial_requirements_cds".to_string()),
             objective_json: None,
             requirements_json: Some(
@@ -15329,6 +15324,7 @@ fn execute_planning_protein_expression_handoff_rejects_invalid_requirements() {
         &ShellCommand::PlanningProteinExpressionHandoff {
             seq_id: None,
             objective_json: None,
+            provider: None,
             requirements_json: Some(
                 r#"{"schema":"gentle.protein_expression_requirements.v2"}"#.to_string(),
             ),
@@ -15354,6 +15350,7 @@ fn execute_planning_protein_expression_handoff_protein_sequence_suggests_reverse
     let out = execute_shell_command(
         &mut engine,
         &ShellCommand::PlanningProteinExpressionHandoff {
+            provider: None,
             seq_id: Some("protein_product".to_string()),
             objective_json: Some(
                 r#"{
@@ -15387,35 +15384,24 @@ fn execute_planning_protein_expression_handoff_protein_sequence_suggests_reverse
                 .shell_line
                 .contains("reverse-translate run protein_product")
     }));
-    assert!(
-        report
-            .suggested_next_actions
-            .iter()
-            .any(|action| action.action_id == "inspect_provider_protein_target_handoff")
-    );
-    let service = report
-        .service_handoff_candidates
-        .first()
-        .expect("product-specific provider target draft");
-    assert_eq!(service.status, "product_draft_review_required");
+    assert!(report.service_handoff_candidates.is_empty());
+    assert!(report.provider_projection.is_none());
+    let draft = report.neutral_service_draft.as_ref().unwrap();
     assert_eq!(
-        service.draft_request_preview["source_target"]["protein_seq_id"].as_str(),
+        draft.source_target["protein_seq_id"].as_str(),
         Some("protein_product")
     );
-    assert_eq!(
-        service.draft_request_preview["source_target"]["length_aa"].as_u64(),
-        Some(9)
-    );
-    assert!(service.shell_line.contains("protein_product"));
+    assert_eq!(draft.source_target["length_aa"].as_u64(), Some(9));
     assert!(
         !report
             .suggested_next_actions
             .iter()
-            .any(|action| action.action_id == "prepare_geneart_quote_packet_after_review"),
+            .any(|action| action.action_id
+                == "prepare_provider_protein_expression_quote_after_review"),
         "a protein-only target should remain preflight-only until its coding route is reviewed"
     );
     let text_report = report.text_report.as_deref().unwrap_or_default();
-    assert!(text_report.contains("services project-preflight"));
+    assert!(!text_report.contains("services project-preflight"));
     assert!(!text_report.contains("services project-quote"));
 }
 
@@ -15430,6 +15416,7 @@ fn execute_planning_protein_expression_handoff_ambiguous_noncoding_sequence_asks
     let out = execute_shell_command(
         &mut engine,
         &ShellCommand::PlanningProteinExpressionHandoff {
+            provider: None,
             seq_id: Some("ambiguous_product".to_string()),
             objective_json: Some(
                 r#"{
@@ -15481,6 +15468,337 @@ fn execute_planning_protein_expression_handoff_ambiguous_noncoding_sequence_asks
                 .shell_line
                 .contains("features query ambiguous_product --kind CDS")
     }));
+}
+
+// Synthetic complete CDS/His-tag annotations and the existing hand-authored
+// in-house requirements example; no real product, provider execution or order.
+fn protein_expression_handoff_test_input(protein: bool) -> (GentleEngine, serde_json::Value) {
+    let mut state = ProjectState::default();
+    let mut sequence = DNAsequence::from_sequence(if protein {
+        "MHHHHHHA"
+    } else {
+        "ATGCACCACCACCACCACCACGCTTAA"
+    })
+    .unwrap();
+    sequence.set_name("Synthetic reviewed product");
+    if protein {
+        sequence.set_molecule_type("protein");
+    } else {
+        let sequence_length = sequence.len() as i64;
+        sequence.features_mut().push(Feature {
+            kind: "CDS".into(),
+            location: Location::simple_range(0, sequence_length),
+            qualifiers: vec![("label".into(), Some("Synthetic full CDS".into()))],
+        });
+    }
+    sequence.features_mut().push(Feature {
+        kind: "misc_feature".into(),
+        location: Location::simple_range(if protein { 1 } else { 3 }, if protein { 7 } else { 21 }),
+        qualifiers: vec![("label".into(), Some("6xHis tag".into()))],
+    });
+    state.sequences.insert("reviewed_product".into(), sequence);
+    let mut requirements: serde_json::Value = serde_json::from_str(include_str!(
+        "../../docs/examples/plans/protein_expression_requirements_in_house.json"
+    ))
+    .unwrap();
+    requirements["outsourcing"]["allowed"] = serde_json::json!(true);
+    requirements["outsourcing"]["approved_providers"] = serde_json::json!(["geneart"]);
+    (GentleEngine::from_state(state), requirements)
+}
+
+fn protein_expression_handoff_read_only_report(
+    engine: &mut GentleEngine,
+    requirements: Option<&serde_json::Value>,
+    provider: Option<&str>,
+    seq_id: &str,
+) -> crate::engine::ProteinExpressionHandoffReport {
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let revision = engine.mutation_revision();
+    let result = execute_shell_command(
+        engine,
+        &ShellCommand::PlanningProteinExpressionHandoff {
+            seq_id: Some(seq_id.to_string()),
+            objective_json: None,
+            requirements_json: requirements.map(serde_json::Value::to_string),
+            provider: provider.map(str::to_string),
+            profile_scope: PlanningProfileScope::Effective,
+            output_format: "text".to_string(),
+        },
+    )
+    .unwrap();
+    assert!(!result.state_changed);
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+    assert_eq!(engine.mutation_revision(), revision);
+    serde_json::from_value(result.output).unwrap()
+}
+
+#[test]
+fn protein_expression_handoff_complete_neutral_draft_does_not_select_provider() {
+    let (mut engine, requirements) = protein_expression_handoff_test_input(false);
+    let report = protein_expression_handoff_read_only_report(
+        &mut engine,
+        Some(&requirements),
+        None,
+        "reviewed_product",
+    );
+    assert_eq!(report.schema, "gentle.protein_expression_handoff.v2");
+    assert!(report.missing_questions.is_empty());
+    assert!(report.service_handoff_candidates.is_empty());
+    assert!(report.provider_projection.is_none());
+    assert!(
+        report
+            .suggested_next_actions
+            .iter()
+            .all(|action| !action.shell_line.starts_with("services "))
+    );
+    let draft = report.neutral_service_draft.unwrap();
+    assert_eq!(
+        draft.schema,
+        "gentle.external_service_delivery_route_request.v1"
+    );
+    assert_eq!(draft.source_target["seq_id"], "reviewed_product");
+    assert_eq!(draft.source_target["length_bp"], 27);
+    assert_eq!(draft.source_target["name"], "Synthetic reviewed product");
+    assert!(draft.source_target.get("protein_seq_id").is_none());
+    assert_eq!(
+        draft.optimization_target.as_ref().unwrap()["chassis"],
+        requirements["chassis"]
+    );
+    assert_eq!(
+        draft.optimization_target.as_ref().unwrap()["folding"]["required_ptms"],
+        requirements["folding"]["required_ptms"]
+    );
+    assert_eq!(
+        draft.vector_spec.as_ref().unwrap()["tag_policy"]["preserve_annotated_tags"],
+        requirements["tag_policy"]["preserve_annotated_tags"]
+    );
+    assert_eq!(
+        draft.vector_spec.as_ref().unwrap()["annotated_tag_evidence"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        draft
+            .vector_spec
+            .as_ref()
+            .unwrap()
+            .get("vector_id")
+            .is_none()
+    );
+    assert_eq!(
+        draft.delivery_options.as_ref().unwrap()["production_scale"],
+        requirements["scale_purification"]["production_scale"]
+    );
+    assert_eq!(
+        draft.delivery_options.as_ref().unwrap()["yield_goal"],
+        requirements["yield_goal"]
+    );
+    let metadata = draft.request_metadata.as_ref().unwrap();
+    assert_eq!(metadata["human_review_only"], true);
+    assert_eq!(metadata["requirements_id"], requirements["requirements_id"]);
+    assert_eq!(metadata["reviewed_by"], requirements["reviewed_by"]);
+    assert_eq!(metadata["unresolved_question_ids"], serde_json::json!([]));
+    assert!(metadata.get("template_path").is_none());
+}
+
+#[test]
+fn protein_expression_handoff_explicit_projection_preserves_dna_and_protein_identity() {
+    for protein in [false, true] {
+        let (mut engine, requirements) = protein_expression_handoff_test_input(protein);
+        let report = protein_expression_handoff_read_only_report(
+            &mut engine,
+            Some(&requirements),
+            Some("GeneArt"),
+            "reviewed_product",
+        );
+        assert_eq!(
+            report.provider_binding.status,
+            crate::engine::ProteinExpressionProviderBindingStatus::Projected
+        );
+        let draft = report.neutral_service_draft.as_ref().unwrap();
+        let request = report.provider_projection.as_ref().unwrap();
+        assert_eq!(request.schema, "gentle.external_service_request.v1");
+        assert_eq!(request.provider, "geneart");
+        assert_eq!(request.service_kind, "protein_expression");
+        assert_eq!(request.source_target, draft.source_target);
+        assert_eq!(request.optimization_target, draft.optimization_target);
+        assert_eq!(request.vector_spec, draft.vector_spec);
+        assert_eq!(request.delivery_options, draft.delivery_options);
+        assert_eq!(request.request_metadata, draft.request_metadata);
+        let identity = if protein { "protein_seq_id" } else { "seq_id" };
+        assert_eq!(request.source_target[identity], "reviewed_product");
+        assert!(report.text_report.as_ref().unwrap().contains(if protein {
+            "reviewed_product (8 aa"
+        } else {
+            "reviewed_product (27 bp"
+        }));
+        assert!(
+            request
+                .source_target
+                .get(if protein { "seq_id" } else { "protein_seq_id" })
+                .is_none()
+        );
+        let preflight = parse_shell_line(&report.service_handoff_candidates[0].shell_line).unwrap();
+        let before = serde_json::to_value(engine.state()).unwrap();
+        let result = execute_shell_command(&mut engine, &preflight).unwrap();
+        assert!(!result.state_changed);
+        assert_eq!(result.output["eligible"], true);
+        assert_eq!(result.output["direct_submission_available"], false);
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+        if protein {
+            assert!(
+                report
+                    .suggested_next_actions
+                    .iter()
+                    .all(|action| !action.shell_line.starts_with("services project-quote "))
+            );
+        } else {
+            assert!(
+                report
+                    .suggested_next_actions
+                    .iter()
+                    .any(|action| action.shell_line.starts_with("services project-quote "))
+            );
+        }
+    }
+}
+
+#[test]
+fn protein_expression_handoff_projection_fails_closed_with_typed_reasons() {
+    use crate::engine::ProteinExpressionProviderBindingReason as Reason;
+    for (case, reason) in [
+        ("in_house", Reason::OutsourcingDisallowed),
+        ("no_permission", Reason::OutsourcingPermissionMissing),
+        ("excluded", Reason::ProviderNotApproved),
+        ("missing_product", Reason::ProductIdentityUnresolved),
+        ("multiple_cds", Reason::ProductIdentityUnresolved),
+        ("unsupported_provider", Reason::ProviderUnavailable),
+        ("invalid_cds", Reason::ProductNotReady),
+    ] {
+        let (mut engine, mut requirements) = protein_expression_handoff_test_input(false);
+        let mut provider = "geneart";
+        let mut seq_id = "reviewed_product";
+        match case {
+            "in_house" => requirements["outsourcing"]["allowed"] = serde_json::json!(false),
+            "no_permission" => {
+                requirements.as_object_mut().unwrap().remove("outsourcing");
+            }
+            "excluded" => {
+                requirements["outsourcing"]["approved_providers"] = serde_json::json!(["metabion"])
+            }
+            "missing_product" => seq_id = "not_loaded",
+            "multiple_cds" => {
+                let sequence = engine.state_mut().sequences.get_mut(seq_id).unwrap();
+                let cds = sequence.features()[0].clone();
+                sequence.features_mut().push(cds);
+            }
+            "unsupported_provider" => {
+                provider = "synthetic_nonexistent_expression_provider";
+                requirements["outsourcing"]["approved_providers"] = serde_json::json!([]);
+            }
+            "invalid_cds" => {
+                engine.state_mut().sequences.insert(
+                    seq_id.to_string(),
+                    DNAsequence::from_sequence("ACGNNNT").unwrap(),
+                );
+            }
+            _ => unreachable!(),
+        }
+        let report = protein_expression_handoff_read_only_report(
+            &mut engine,
+            Some(&requirements),
+            Some(provider),
+            seq_id,
+        );
+        assert_eq!(
+            report.provider_binding.status,
+            crate::engine::ProteinExpressionProviderBindingStatus::Withheld,
+            "{case}"
+        );
+        assert!(
+            report.provider_binding.reasons.contains(&reason),
+            "{case}: {:?}",
+            report.provider_binding
+        );
+        assert!(report.provider_projection.is_none());
+        assert!(report.service_handoff_candidates.is_empty());
+        assert!(
+            report
+                .suggested_next_actions
+                .iter()
+                .all(|action| !action.shell_line.starts_with("services ")),
+            "{case}"
+        );
+        assert!(report.neutral_service_draft.is_some());
+    }
+}
+
+#[test]
+fn protein_expression_handoff_partial_requirements_leave_missing_fields_and_questions() {
+    let (mut engine, _) = protein_expression_handoff_test_input(false);
+    let requirements = serde_json::json!({
+        "schema": "gentle.protein_expression_requirements.v1",
+        "yield_goal": {"metric":"active_protein"},
+        "outsourcing": {"allowed":true, "approved_providers":["geneart"]}
+    });
+    let report = protein_expression_handoff_read_only_report(
+        &mut engine,
+        Some(&requirements),
+        Some("geneart"),
+        "reviewed_product",
+    );
+    let draft = report.neutral_service_draft.as_ref().unwrap();
+    assert!(draft.optimization_target.is_none());
+    assert!(
+        draft
+            .vector_spec
+            .as_ref()
+            .unwrap()
+            .get("tag_policy")
+            .is_none()
+    );
+    assert!(
+        draft
+            .delivery_options
+            .as_ref()
+            .unwrap()
+            .get("production_scale")
+            .is_none()
+    );
+    assert!(
+        draft.delivery_options.as_ref().unwrap()["yield_goal"]
+            .get("target_amount")
+            .is_none()
+    );
+    assert!(
+        draft
+            .request_metadata
+            .as_ref()
+            .unwrap()
+            .get("reviewed_by")
+            .is_none()
+    );
+    assert!(
+        report
+            .missing_questions
+            .iter()
+            .any(|question| question.question_id == "expression_chassis")
+    );
+    assert!(
+        draft.request_metadata.as_ref().unwrap()["unresolved_question_ids"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|id| id == "expression_chassis")
+    );
+    assert!(
+        report
+            .suggested_next_actions
+            .iter()
+            .all(|action| !action.shell_line.starts_with("services project-quote "))
+    );
 }
 
 #[test]

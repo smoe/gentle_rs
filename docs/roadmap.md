@@ -157,24 +157,24 @@ heuristics.
 High-yield protein-production requests should go through the separate
 read-only `planning protein-expression-handoff` route, which now surfaces
 product-readiness context for stored DNA/protein sequences, chassis/route
-candidates, GeneArt service preflight scaffolding, and the required
-yield/folding/chassis review questions without creating constructs.
-`product_definition.readiness` now drives `suggested_next_actions[]`; text and
-JSON outputs expose the same provider actions. A provider-ready selected
-product also produces a product-specific GeneArt review draft referencing its
-project `seq_id` or `protein_seq_id`, while undefined products retain only the
-clearly labelled bundled example and no provider action. The route now accepts
-the versioned `gentle.protein_expression_requirements.v1` record; reviewed
-topic records resolve matching questions, and an explicit in-house-only choice
-withholds provider actions.
+candidates and yield/folding/chassis questions without creating constructs.
+The v2 shared report separates the canonical neutral delivery request from
+optional provider projection. Supplied reviewed requirements and annotation
+evidence populate the draft; missing facts remain unanswered, never vendor
+example defaults. Provider binding requires explicit selection, permitted
+outsourcing, an unambiguous product and catalog capability/allowlist checks.
+V1 JSON remains readable. Semantic Rust and native acceptance remain external;
+local static checks do not establish service eligibility or wet-lab yield.
+Keep text, JSON, CLI and agent consumers on the same report and action rows.
+Do not add submission, ordering or automatic biological optimization.
 
 Keep the next synthetic-biology bridge slices in this order:
 
-1. Derive a fully populated, review-only provider-neutral external-service
-   request draft from
-   the selected product plus those reviewed requirements, then project it to
-   GeneArt only after provider selection. Keep submission and ordering out of
-   scope.
+1. Expose explicit provider selection in the shared handoff parser and update
+   tutorial 09.03, glossary and interface wording for v2. Verify complete,
+   partial, in-house and unsupported-provider requests without changing state
+   or creating files. Glen/CI must run the final committed Rust candidate;
+   local source checks are not runtime acceptance.
 2. Add a thin Synthetic Biology / Protein Expression Handoff inspector over
    the shared report. It should display readiness, unanswered requirements,
    sequence/CDS/tag evidence, candidates, and shared suggested actions; the

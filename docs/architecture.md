@@ -376,6 +376,11 @@ External-service integration rule:
 
 - Vendor/CRO/eProcurement integrations must enter GENtle through provider-
   neutral, engine-owned service request/status/artifact contracts.
+- Protein-expression handoffs build the canonical neutral delivery request
+  from stored product evidence and supplied reviewed requirements, never a
+  vendor example. V2 separates that draft from optional, explicit provider
+  binding; missing permission, ambiguous product identity, provider exclusions
+  or absent catalog capabilities withhold provider actions. V1 remains readable.
 - Provider-specific adapters (for example GeneArt) translate those contracts to
   official APIs or dashboard handoff packets; GUI/CLI/MCP/ClawBio must not
   hard-code vendor-specific biology or commerce behavior.

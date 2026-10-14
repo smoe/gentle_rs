@@ -16939,6 +16939,7 @@ pub(super) fn parse_planning_command(tokens: &[String]) -> Result<ShellCommand, 
                 seq_id,
                 objective_json,
                 requirements_json,
+                provider: None,
                 profile_scope,
                 output_format,
             })

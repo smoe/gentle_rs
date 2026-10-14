@@ -70,6 +70,21 @@
 - Verification: scoped rustfmt, whitespace and all 52 offline runner/release
   policy tests pass. No local Rust build/check/test, push or new CI dispatch.
 
+## 2026-10-14 - Separate Expression Requirements From Provider Selection
+
+- Emit a v2 protein-expression handoff with the existing canonical neutral
+  delivery request. Preserve exact DNA/protein identity, reviewed requirements,
+  annotation-only tag evidence and unanswered question IDs without loading a
+  GeneArt template. Defaulted fields keep legacy v1 reports readable.
+- Add a catalog-validated projection and typed withholding reasons for missing
+  product identity, outsourcing permission, provider approval or capability.
+  Provider preflight/quote suggestions require explicit permitted selection;
+  quote suggestions additionally require resolved questions and CDS context.
+- Author core semantic, legacy, state-invariance and catalog regressions.
+  Local Rust execution remains delegated to Glen/CI; no build, provider call,
+  project mutation, submission or output file is performed by the draft route.
+  The CLI provider flag and tutorial follow in a separate commit.
+
 ## 2026-10-14 - Preserve Glen's Frozen Review And X11 Diagnostics
 
 - Verify the 94-file small handoff and 21-file supplement manifests; preserve

@@ -49,7 +49,7 @@ pub fn default_external_service_provider_config_discovery_label() -> &'static st
     DEFAULT_EXTERNAL_SERVICE_PROVIDER_CONFIG_DISCOVERY_TOKEN
 }
 
-fn normalize_service_token(raw: &str) -> String {
+pub(crate) fn normalize_service_token(raw: &str) -> String {
     raw.trim()
         .to_ascii_lowercase()
         .replace([' ', '-'], "_")

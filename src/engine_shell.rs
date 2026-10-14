@@ -81,7 +81,7 @@ use crate::{
         OrthologCutRunNormalizationInput, OrthologPromoterCohortReport,
         PLANNING_CLONING_CONSULTATION_SCHEMA, PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA,
         PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
-        PRIMER_DESIGN_REPORTS_METADATA_KEY, PROTEIN_EXPRESSION_HANDOFF_SCHEMA,
+        PRIMER_DESIGN_REPORTS_METADATA_KEY, PROTEIN_EXPRESSION_HANDOFF_V2_SCHEMA,
         PROTEIN_EXPRESSION_REQUIREMENTS_SCHEMA, PairwiseAlignmentMode, PlanningCloningConsultation,
         PlanningCloningHelperVectorSummary, PlanningCloningHostProfileSummary,
         PlanningCloningLocalConstraint, PlanningCloningMissingQuestion,
@@ -227,9 +227,13 @@ pub use gentle_shell::{
 // execution contracts stay in this file so GUI Shell and CLI shell keep one
 // visible behavior surface.
 mod command_parsers;
+mod protein_expression_service_draft;
 pub(crate) mod routine_bindings;
 mod tss_profiles;
 use command_parsers::*;
+use protein_expression_service_draft::{
+    protein_expression_neutral_service_draft, protein_expression_provider_projection,
+};
 
 const CLONING_PATTERN_FILE_SCHEMA: &str = "gentle.cloning_patterns.v1";
 const CLONING_PATTERN_TEMPLATE_FILE_SCHEMA: &str = "gentle.cloning_pattern_template.v1";
@@ -238,22 +242,6 @@ const CLONING_ROUTINE_LIST_SCHEMA: &str = "gentle.cloning_routines_list.v1";
 const CLONING_ROUTINE_EXPLAIN_SCHEMA: &str = "gentle.cloning_routine_explain.v1";
 const CLONING_ROUTINE_COMPARE_SCHEMA: &str = "gentle.cloning_routine_compare.v1";
 pub const DEFAULT_CLONING_ROUTINE_CATALOG_PATH: &str = "assets/cloning_routines.json";
-const PROTEIN_EXPRESSION_GENEART_EXAMPLE_REQUEST_PATH: &str =
-    "docs/examples/external_services/geneart_protein_expression_request.json";
-fn protein_expression_geneart_preflight_shell_line() -> String {
-    format!(
-        "services project-preflight @{}",
-        PROTEIN_EXPRESSION_GENEART_EXAMPLE_REQUEST_PATH
-    )
-}
-
-fn protein_expression_geneart_quote_shell_line() -> String {
-    format!(
-        "services project-quote @{}",
-        PROTEIN_EXPRESSION_GENEART_EXAMPLE_REQUEST_PATH
-    )
-}
-
 const BLAST_ASYNC_JOB_SCHEMA: &str = "gentle.blast_async_job_status.v1";
 const BLAST_ASYNC_STORE_SCHEMA: &str = "gentle.blast_async_job_store.v2";
 const BLAST_ASYNC_STORE_METADATA_KEY: &str = "blast_async_receipts";
@@ -1603,6 +1591,7 @@ pub enum ShellCommand {
         seq_id: Option<String>,
         objective_json: Option<String>,
         requirements_json: Option<String>,
+        provider: Option<String>,
         profile_scope: PlanningProfileScope,
         output_format: String,
     },
@@ -9043,6 +9032,7 @@ impl ShellCommand {
                 seq_id,
                 objective_json,
                 requirements_json,
+                provider,
                 profile_scope,
                 output_format,
             } => {
@@ -9064,11 +9054,12 @@ impl ShellCommand {
                     .map(|value| format!("payload_len={}", value.len()))
                     .unwrap_or_else(|| "not_supplied".to_string());
                 format!(
-                    "plan protein-expression handoff (scope={}, seq_id={}, objective={}, requirements={}, format={})",
+                    "plan protein-expression handoff (scope={}, seq_id={}, objective={}, requirements={}, provider={}, format={})",
                     profile_scope.as_str(),
                     seq_id,
                     objective,
                     requirements,
+                    provider.as_deref().unwrap_or("not_selected"),
                     output_format
                 )
             }
@@ -34608,156 +34599,23 @@ fn protein_expression_vector_route_candidates() -> Vec<ProteinExpressionVectorRo
 }
 
 fn protein_expression_service_handoff_candidates(
-    product_definition: &ProteinExpressionProductDefinition,
-    sequence: Option<&DNAsequence>,
-    requirements: Option<&ProteinExpressionRequirements>,
-    warnings: &mut Vec<String>,
-) -> Vec<ProteinExpressionServiceHandoffCandidate> {
-    let example_request_preview =
-        match fs::read_to_string(PROTEIN_EXPRESSION_GENEART_EXAMPLE_REQUEST_PATH) {
-            Ok(raw) => match serde_json::from_str::<Value>(&raw) {
-                Ok(value) => value,
-                Err(err) => {
-                    warnings.push(format!(
-                        "Could not parse GeneArt protein-expression example request '{}': {err}.",
-                        PROTEIN_EXPRESSION_GENEART_EXAMPLE_REQUEST_PATH
-                    ));
-                    json!({
-                        "schema": "gentle.external_service_request.v1",
-                        "provider": "geneart",
-                        "service_kind": "protein_expression",
-                        "status": "example_parse_failed"
-                    })
-                }
-            },
-            Err(err) => {
-                warnings.push(format!(
-                    "Could not read GeneArt protein-expression example request '{}': {err}.",
-                    PROTEIN_EXPRESSION_GENEART_EXAMPLE_REQUEST_PATH
-                ));
-                json!({
-                    "schema": "gentle.external_service_request.v1",
-                    "provider": "geneart",
-                    "service_kind": "protein_expression",
-                    "status": "example_unavailable"
-                })
-            }
-        };
-
-    let product_draft = sequence.and_then(|sequence| {
-        let readiness = &product_definition.readiness;
-        if !matches!(
-            readiness.status.as_str(),
-            "whole_sequence_cds_candidate"
-                | "annotated_cds_review_required"
-                | "protein_sequence_review_required"
-        ) {
-            return None;
-        }
-        let seq_id = product_definition.seq_id.as_deref()?;
-        let name = product_definition
-            .sequence_name
-            .as_deref()
-            .unwrap_or(seq_id);
-        let source_target = if sequence.is_protein_sequence() {
-            json!({
-                "kind": "project_sequence",
-                "protein_seq_id": seq_id,
-                "name": name,
-                "molecule_type": sequence.molecule_type().unwrap_or("protein"),
-                "length_aa": sequence.len(),
-                "readiness_status": readiness.status,
-                "note": "Project protein reference generated by planning protein-expression-handoff; review the target and reverse-translation/provider route before external handoff."
-            })
-        } else {
-            json!({
-                "kind": "project_sequence",
-                "seq_id": seq_id,
-                "name": name,
-                "molecule_type": sequence.molecule_type().unwrap_or("DNA"),
-                "length_bp": sequence.len(),
-                "readiness_status": readiness.status,
-                "note": "Project coding-sequence reference generated by planning protein-expression-handoff; review exact CDS boundaries before external handoff."
-            })
-        };
-        let mut request = serde_json::from_value::<ExternalServiceRequest>(
-            example_request_preview.clone(),
-        )
-        .unwrap_or_else(|_| ExternalServiceRequest {
-            schema: EXTERNAL_SERVICE_REQUEST_SCHEMA.to_string(),
-            provider: "geneart".to_string(),
-            service_kind: "protein_expression".to_string(),
-            ..ExternalServiceRequest::default()
-        });
-        request.schema = EXTERNAL_SERVICE_REQUEST_SCHEMA.to_string();
-        request.provider = "geneart".to_string();
-        request.service_kind = "protein_expression".to_string();
-        request.source_target = source_target;
-        request.request_metadata = Some(json!({
-            "tutorial": false,
-            "human_review_only": true,
-            "generated_by": "planning protein-expression-handoff",
-            "template_path": PROTEIN_EXPRESSION_GENEART_EXAMPLE_REQUEST_PATH,
-            "notes": [
-                "Product-specific review draft; no provider call or submission has occurred.",
-                "Resolve the remaining protein-expression questions before quote handoff."
-            ]
-        }));
-        match serde_json::to_value(request) {
-            Ok(value) => Some(value),
-            Err(err) => {
-                warnings.push(format!(
-                    "Could not serialize the product-specific protein-expression request draft: {err}."
-                ));
-                None
-            }
-        }
-    });
-
-    let (status, draft_request_preview, shell_line, rationale) = if let Some(
-        draft_request_preview,
-    ) = product_draft
-    {
-        let request_json =
-            serde_json::to_string(&draft_request_preview).unwrap_or_else(|_| "{}".to_string());
-        (
-            "product_draft_review_required",
-            draft_request_preview,
-            format!(
-                "services project-preflight {}",
-                quote_shell_arg(&request_json)
-            ),
-            "Uses the selected project product in a review-only GeneArt request draft; V1 does not submit, quote, optimize, or order anything.",
-        )
-    } else {
-        (
-            "draft_example_review_required",
-            example_request_preview,
-            protein_expression_geneart_preflight_shell_line(),
-            "Uses the bundled GeneArt protein-expression example only as a template because no provider-ready product context is available.",
-        )
+    projection: Option<&ExternalServiceRequest>,
+) -> Result<Vec<ProteinExpressionServiceHandoffCandidate>, String> {
+    let Some(request) = projection else {
+        return Ok(vec![]);
     };
-
-    let mut candidate = ProteinExpressionServiceHandoffCandidate {
-        provider: "geneart".to_string(),
-        service_kind: "protein_expression".to_string(),
-        status: status.to_string(),
-        example_request_path: PROTEIN_EXPRESSION_GENEART_EXAMPLE_REQUEST_PATH.to_string(),
-        draft_request_preview,
-        shell_line,
-        rationale: rationale.to_string(),
-    };
-    if requirements
-        .and_then(|requirements| requirements.outsourcing.as_ref())
-        .and_then(|outsourcing| outsourcing.allowed)
-        == Some(false)
-    {
-        candidate.status = "withheld_by_outsourcing_requirement".to_string();
-        candidate.shell_line.clear();
-        candidate.rationale = "The reviewed requirements explicitly keep protein-expression work in-house; this provider row is retained only as provenance and has no executable handoff command."
-            .to_string();
-    }
-    vec![candidate]
+    let request_json = serde_json::to_string(request)
+        .map_err(|error| format!("Could not serialize provider projection: {error}"))?;
+    Ok(vec![ProteinExpressionServiceHandoffCandidate {
+        provider: request.provider.clone(),
+        service_kind: request.service_kind.clone(),
+        status: "product_draft_review_required".to_string(),
+        example_request_path: String::new(),
+        draft_request_preview: serde_json::to_value(request)
+            .map_err(|error| format!("Could not serialize provider preview: {error}"))?,
+        shell_line: format!("services project-preflight {}", quote_shell_arg(&request_json)),
+        rationale: "Explicit provider projection of the neutral review draft; no provider call, optimization, submission or order occurred.".to_string(),
+    }])
 }
 
 fn protein_expression_service_quote_shell_line(
@@ -34768,13 +34626,12 @@ fn protein_expression_service_quote_shell_line(
     {
         return format!("services project-quote {}", quote_shell_arg(&request_json));
     }
-    protein_expression_geneart_quote_shell_line()
+    String::new()
 }
 
 fn protein_expression_suggested_next_actions(
     product_definition: &ProteinExpressionProductDefinition,
     service_handoff: Option<&ProteinExpressionServiceHandoffCandidate>,
-    requirements: Option<&ProteinExpressionRequirements>,
     missing_questions: &[PlanningCloningMissingQuestion],
 ) -> Vec<PlanningCloningSuggestedNextAction> {
     let mut actions = vec![];
@@ -34787,24 +34644,14 @@ fn protein_expression_suggested_next_actions(
         });
     }
 
-    let outsourcing_disallowed = requirements
-        .and_then(|requirements| requirements.outsourcing.as_ref())
-        .and_then(|outsourcing| outsourcing.allowed)
-        == Some(false);
     let readiness = &product_definition.readiness;
     match readiness.status.as_str() {
         "whole_sequence_cds_candidate" | "annotated_cds_review_required" => {
-            let preflight_shell_line = service_handoff
-                .map(|service| service.shell_line.clone())
-                .unwrap_or_else(protein_expression_geneart_preflight_shell_line);
-            let quote_shell_line = service_handoff
-                .map(protein_expression_service_quote_shell_line)
-                .unwrap_or_else(protein_expression_geneart_quote_shell_line);
-            if !outsourcing_disallowed {
+            if let Some(service) = service_handoff {
                 actions.push(PlanningCloningSuggestedNextAction {
-                    action_id: "inspect_geneart_protein_expression_preflight".to_string(),
-                    label: "Inspect GeneArt protein-expression preflight scaffold".to_string(),
-                    shell_line: preflight_shell_line,
+                    action_id: "inspect_provider_protein_expression_preflight".to_string(),
+                    label: format!("Inspect {} protein-expression preflight", service.provider),
+                    shell_line: service.shell_line.clone(),
                     rationale: "A reviewable product context is present, so its product-specific request draft can be inspected without submitting or ordering anything.".to_string(),
                 });
             }
@@ -34814,11 +34661,13 @@ fn protein_expression_suggested_next_actions(
                 shell_line: "planning consult cloning --objective '{\"schema\":\"gentle.planning_objective.v1\",\"biological_intent\":\"protein_expression_max_yield\"}' --format json".to_string(),
                 rationale: "Rank cloning routine families only after product boundaries and protein-expression constraints are explicit.".to_string(),
             });
-            if !outsourcing_disallowed {
+            if let Some(service) = service_handoff
+                && missing_questions.is_empty()
+            {
                 actions.push(PlanningCloningSuggestedNextAction {
-                    action_id: "prepare_geneart_quote_packet_after_review".to_string(),
-                    label: "Prepare GeneArt protein-expression quote packet after review".to_string(),
-                    shell_line: quote_shell_line,
+                    action_id: "prepare_provider_protein_expression_quote_after_review".to_string(),
+                    label: format!("Prepare {} protein-expression quote packet after review", service.provider),
+                    shell_line: protein_expression_service_quote_shell_line(service),
                     rationale: "After product and outsourcing constraints are reviewed, prepare the provider-neutral quote packet without submitting it.".to_string(),
                 });
             }
@@ -34835,13 +34684,11 @@ fn protein_expression_suggested_next_actions(
                 shell_line: format!("reverse-translate run {protein_seq_id}"),
                 rationale: "A protein sequence defines the target product but still needs a reviewed coding-DNA, codon, or provider-target route before expression planning.".to_string(),
             });
-            if !outsourcing_disallowed {
+            if let Some(service) = service_handoff {
                 actions.push(PlanningCloningSuggestedNextAction {
                     action_id: "inspect_provider_protein_target_handoff".to_string(),
                     label: "Inspect provider protein-target handoff scaffold".to_string(),
-                    shell_line: service_handoff
-                        .map(|service| service.shell_line.clone())
-                        .unwrap_or_else(protein_expression_geneart_preflight_shell_line),
+                    shell_line: service.shell_line.clone(),
                     rationale: "Use the local service-request scaffold only as a review packet for a protein target; GENtle does not reverse-translate, optimize, quote, or order automatically.".to_string(),
                 });
             }
@@ -34875,9 +34722,19 @@ fn build_protein_expression_handoff_text(report: &ProteinExpressionHandoffReport
     match report.product_definition.seq_id.as_deref() {
         Some(seq_id) if report.product_definition.sequence_present => {
             lines.push(format!(
-                "Product sequence: {} ({} bp, {} feature(s))",
+                "Product sequence: {} ({} {}, {} feature(s))",
                 seq_id,
                 report.product_definition.length_bp.unwrap_or_default(),
+                if report
+                    .sequence_context
+                    .as_ref()
+                    .and_then(|context| context.protein_length_aa)
+                    .is_some()
+                {
+                    "aa"
+                } else {
+                    "bp"
+                },
                 report.product_definition.feature_count.unwrap_or_default()
             ));
         }
@@ -34900,6 +34757,21 @@ fn build_protein_expression_handoff_text(report: &ProteinExpressionHandoffReport
                 topics.join(", ")
             }
         ));
+    }
+    lines.push(format!(
+        "Neutral service draft: {}",
+        if report.neutral_service_draft.is_some() {
+            "present (human review only)"
+        } else {
+            "not present (legacy report)"
+        }
+    ));
+    lines.push(format!(
+        "Provider binding: {:?}; reasons: {:?}",
+        report.provider_binding.status, report.provider_binding.reasons
+    ));
+    if let Some(detail) = &report.provider_binding.detail {
+        lines.push(detail.clone());
     }
     if !report.cds_assessment.context_source.is_empty() {
         lines.push(format!(
@@ -34944,9 +34816,9 @@ fn build_protein_expression_handoff_text(report: &ProteinExpressionHandoffReport
         .filter(|action| {
             matches!(
                 action.action_id.as_str(),
-                "inspect_geneart_protein_expression_preflight"
+                "inspect_provider_protein_expression_preflight"
                     | "inspect_provider_protein_target_handoff"
-                    | "prepare_geneart_quote_packet_after_review"
+                    | "prepare_provider_protein_expression_quote_after_review"
             )
         })
         .collect::<Vec<_>>();
@@ -34970,6 +34842,7 @@ fn execute_planning_protein_expression_handoff(
     seq_id: &Option<String>,
     objective_json: &Option<String>,
     requirements_json: &Option<String>,
+    provider: Option<&str>,
     profile_scope: PlanningProfileScope,
     output_format: &str,
 ) -> Result<ProteinExpressionHandoffReport, String> {
@@ -35002,7 +34875,7 @@ fn execute_planning_protein_expression_handoff(
     };
     let mut biological_intent = planning_consult_biological_intent(&objective);
     let mut warnings = vec![
-        "Protein-expression handoff V1 is read-only: it does not design, optimize, order, or mutate constructs.".to_string(),
+        "Protein-expression handoff V2 is read-only: it does not design, optimize, submit, order, write files, or mutate constructs.".to_string(),
     ];
     if !planning_intent_is_protein_expression_max_yield(&biological_intent) {
         warnings.push(format!(
@@ -35051,16 +34924,26 @@ fn execute_planning_protein_expression_handoff(
         &sequence_analysis.tag_assessment,
         requirements.as_ref(),
     );
-    let service_handoff_candidates = protein_expression_service_handoff_candidates(
+    let neutral_service_draft = protein_expression_neutral_service_draft(
         &product_definition,
         resolved_sequence,
         requirements.as_ref(),
-        &mut warnings,
+        &sequence_analysis.tag_assessment,
+        &missing_questions,
+    )?;
+    let (provider_binding, provider_projection) = protein_expression_provider_projection(
+        provider,
+        &product_definition,
+        resolved_sequence,
+        &sequence_analysis.cds_assessment,
+        requirements.as_ref(),
+        &neutral_service_draft,
     );
+    let service_handoff_candidates =
+        protein_expression_service_handoff_candidates(provider_projection.as_ref())?;
     let suggested_next_actions = protein_expression_suggested_next_actions(
         &product_definition,
         service_handoff_candidates.first(),
-        requirements.as_ref(),
         &missing_questions,
     );
 
@@ -35072,7 +34955,7 @@ fn execute_planning_protein_expression_handoff(
         "needs_product_definition"
     };
     let mut report = ProteinExpressionHandoffReport {
-        schema: PROTEIN_EXPRESSION_HANDOFF_SCHEMA.to_string(),
+        schema: PROTEIN_EXPRESSION_HANDOFF_V2_SCHEMA.to_string(),
         generated_at_unix_ms: shell_now_unix_ms(),
         status: status.to_string(),
         biological_intent,
@@ -35086,6 +34969,9 @@ fn execute_planning_protein_expression_handoff(
         vector_route_candidates,
         missing_questions,
         service_handoff_candidates,
+        neutral_service_draft: Some(neutral_service_draft),
+        provider_projection,
+        provider_binding,
         warnings,
         suggested_next_actions,
         text_report: None,
@@ -57735,6 +57621,7 @@ fn execute_planning_command(
             seq_id,
             objective_json,
             requirements_json,
+            provider,
             profile_scope,
             output_format,
         } => {
@@ -57743,6 +57630,7 @@ fn execute_planning_command(
                 seq_id,
                 objective_json,
                 requirements_json,
+                provider.as_deref(),
                 *profile_scope,
                 output_format,
             )?;

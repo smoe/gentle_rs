@@ -469,7 +469,7 @@ pub struct ExternalServiceCapability {
 }
 
 /// Vendor-neutral project request accepted by external-service preflight/quote routes.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct ExternalServiceRequest {
     pub schema: String,
@@ -502,7 +502,7 @@ impl Default for ExternalServiceRequest {
 }
 
 /// Caller preferences for the payloads GENtle should return to automation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct ExternalServiceReturnSpec {
     pub requested_payloads: Vec<String>,
@@ -523,7 +523,7 @@ impl Default for ExternalServiceReturnSpec {
 }
 
 /// Provider-neutral request for classifying "deliver this sequence" intent.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct ExternalServiceDeliveryRouteRequest {
     pub schema: String,
