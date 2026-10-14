@@ -16,6 +16,7 @@ build = "build.rs"
 non_kebab_case_bins = "allow"
 
 [workspace]
+# Workspace-wide compiler compatibility and shared dependency policy live here.
 resolver = "3"
 members = [
     "crates/gentle-sequence-design",

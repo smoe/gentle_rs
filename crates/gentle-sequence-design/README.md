@@ -1,7 +1,9 @@
 # Synonymous motif/GC design core
 
 Private, dependency-free Rust prototype, independently versioned at 0.1.0.
-Original GENtle implementation, not code copied from DNA Chisel. MSRV: Rust 1.85.
+Original GENtle implementation, not code copied from DNA Chisel.
+Edition and compiler/dependency policy follow the [root manifest](../../Cargo.toml);
+this crate declares no independent minimum supported Rust version.
 The library has no serialization, GUI, Python, filesystem or network dependency.
 
 `solve` accepts one explicit synthetic DNA/CDS/protein problem plus a complete

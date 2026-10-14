@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-10-14 - Centralize Workspace Compiler Compatibility
+
+- Remove the private sequence-design crate's unverified Rust 1.85 floor and
+  inherit the root-owned edition, leaving its `0.1.0` version, dependency-free
+  core and biological behavior unchanged. No replacement Rust floor is chosen.
+- Document root ownership of workspace-wide compiler/shared dependency policy;
+  retain upstream requirements and historical MSRV evidence. Add offline guards
+  against member-specific Rust floors and accidental core dependency/version drift.
+- Owner-managed `Cargo.lock` updates are untouched. Rust/Cargo dependency
+  resolution and build verification remain with the owner/Glen; no local Rust,
+  dependency update or push.
+- Verification: 46 offline release/compiler-policy tests, TOML parsing,
+  whitespace and release-gate checks pass; roadmap remains 400 lines.
+
 ## 2026-10-14 - Verify Glen's Small Handoff And Completed Audit Receipts
 
 - Verify all 262 manifest entries and exact 263-file small-handoff membership,

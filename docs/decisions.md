@@ -1,5 +1,15 @@
 # GENtle Decisions
 
+## Workspace Compiler Compatibility
+
+The root `Cargo.toml` owns workspace-wide edition, resolver, any declared Rust
+minimum and shared dependency policy. First-party workspace members inherit
+the edition; any future member Rust minimum must inherit `workspace.package`
+rather than define a separate floor. No explicit Rust minimum is selected now.
+Private component versions can remain independent. Third-party dependency
+requirements and vendored upstream metadata are not compatibility promises for
+the whole application and must not be erased to force dependency updates.
+
 ## Explicit Variant Allele Selection
 
 `MaterializeVariantAllele` is the shared engine boundary for single-base

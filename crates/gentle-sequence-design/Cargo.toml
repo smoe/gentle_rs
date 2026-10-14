@@ -1,8 +1,7 @@
 [package]
 name = "gentle-sequence-design"
 version = "0.1.0"
-edition = "2024"
-rust-version = "1.85"
+edition.workspace = true
 publish = false
 license = "MIT"
 description = "Bounded synonymous motif removal for synthetic coding inserts"

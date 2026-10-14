@@ -75,6 +75,26 @@ def validate_historical_panel_provenance(report):
     return identity
 
 
+class WorkspaceCompilerPolicyTests(unittest.TestCase):
+    def test_workspace_members_inherit_compiler_compatibility_policy(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        workspace = tomllib.loads((root / "Cargo.toml").read_text())["workspace"]
+        for member in workspace["members"]:
+            with self.subTest(member=member):
+                package = tomllib.loads((root / member / "Cargo.toml").read_text())["package"]
+                self.assertEqual(package["edition"], {"workspace": True})
+                if "rust-version" in package:
+                    self.assertEqual(package["rust-version"], {"workspace": True})
+                    self.assertIn("rust-version", workspace["package"])
+
+    def test_sequence_design_keeps_its_private_dependency_free_version(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        manifest = tomllib.loads((root / "crates/gentle-sequence-design/Cargo.toml").read_text())
+        self.assertEqual(manifest["package"]["version"], "0.1.0")
+        self.assertIs(manifest["package"]["publish"], False)
+        self.assertEqual(manifest.get("dependencies", {}), {})
+
+
 class NativeBuildSettingsTests(unittest.TestCase):
     def test_repository_recipe_matches_selected_profile(self) -> None:
         root = Path(__file__).resolve().parents[1]

@@ -31,6 +31,11 @@ Review rationale is preserved in the [dated review history](dna_sequence_optimiz
 and [original consultation prompt](dna_sequence_optimization_claude_prompt.md).
 Those historical proposal stages do not override this owner-authorized contract.
 
+2026-10-14: the owner removes the pure crate's independent Rust 1.85 declaration.
+Compiler/dependency policy and edition now follow the root `Cargo.toml`.
+Earlier MSRV verification notes and handoffs below remain historical, not a
+current standalone compatibility claim.
+
 ## Adopted first slice
 
 Remove explicitly specified finite IUPAC motifs from a synthetic coding insert
@@ -46,7 +51,8 @@ later owner-approved GC slices add CDS-wide and explicit sliding-window constrai
 below; codon adaptation, repeats/hairpins, folding and a general specification/plugin
 framework remain deferred. The independent component option is adopted as
 `crates/gentle-sequence-design`, version 0.1.0, private/unpublished, original MIT
-code, no dependencies. It supports Rust 1.85 / edition 2024. No Python runtime,
+code, no dependencies. It inherits the workspace edition with no independent
+Rust minimum. No Python runtime,
 new dynamic ABI, GUI dependency or published separate repository is introduced.
 The core does not receive the root codon asset's positional 64-character string:
 the root resolves every explicit codon/residue pair through the existing table
