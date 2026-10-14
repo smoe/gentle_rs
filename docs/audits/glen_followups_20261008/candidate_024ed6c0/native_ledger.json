@@ -1,0 +1,1830 @@
+{
+  "acceptance_contract_sha256": "e5b61cbf23632a42f20b963e9da428881b3cd8a58d427474dbd88d962a4f6d05",
+  "chapter_id": "vkorc1_warfarin_promoter_luciferase_gui",
+  "chapter_title": "VKORC1 / rs9923231 PGx Alert -> Mammalian Luciferase Reporter (GUI Tutorial with Matching CLI Commands)",
+  "command_receipts": [
+    {
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_examples_docs",
+        "tutorial-gui-project",
+        "--chapter",
+        "vkorc1_warfarin_promoter_luciferase_gui",
+        "--phase",
+        "starter",
+        "--project-output",
+        "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/starter.project.gentle.json",
+        "--run-dir",
+        "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/starter-workflow",
+        "--source",
+        "/home/runner/work/_temp/vkorc1-projection-checkout/docs/examples/workflows",
+        "--manifest",
+        "/home/runner/work/_temp/vkorc1-projection-checkout/docs/tutorial/manifest.json",
+        "--repo-root",
+        "/home/runner/work/_temp/vkorc1-projection-checkout"
+      ],
+      "cwd": "/home/runner/work/_temp/vkorc1-projection-checkout",
+      "elapsed_ms": 37,
+      "exit_code": 0,
+      "label": "prepare-starter",
+      "stderr_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/commands/001-prepare-starter.stderr",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/commands/001-prepare-starter.stdout",
+      "stdout_sha256": "eb123b90017b7928ecf1046d0e38b50b3d0f30d5ceb166a86d629d64c2b726e8"
+    },
+    {
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_examples_docs",
+        "tutorial-gui-project",
+        "--chapter",
+        "vkorc1_warfarin_promoter_luciferase_gui",
+        "--phase",
+        "oracle",
+        "--project-output",
+        "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/oracle.project.gentle.json",
+        "--run-dir",
+        "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/oracle-workflow",
+        "--source",
+        "/home/runner/work/_temp/vkorc1-projection-checkout/docs/examples/workflows",
+        "--manifest",
+        "/home/runner/work/_temp/vkorc1-projection-checkout/docs/tutorial/manifest.json",
+        "--repo-root",
+        "/home/runner/work/_temp/vkorc1-projection-checkout"
+      ],
+      "cwd": "/home/runner/work/_temp/vkorc1-projection-checkout",
+      "elapsed_ms": 67,
+      "exit_code": 0,
+      "label": "prepare-oracle",
+      "stderr_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/commands/002-prepare-oracle.stderr",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/commands/002-prepare-oracle.stdout",
+      "stdout_sha256": "d7f57256d6bc66b214e4aff807c3a1887948355db0fa7becab27d0ce36b3040a"
+    },
+    {
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "--project",
+        "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/starter.project.gentle.json",
+        "shell",
+        "facts eval @/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/verifiers/starter-completion.fact.json"
+      ],
+      "cwd": "/home/runner/work/_temp/vkorc1-projection-checkout",
+      "elapsed_ms": 14,
+      "exit_code": 0,
+      "label": "starter-completion",
+      "stderr_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/commands/003-starter-completion.stderr",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/commands/003-starter-completion.stdout",
+      "stdout_sha256": "fed9be2cc194bba6badf3c49de8a6974f9c852ea7123d911c229d7a45b37359d"
+    },
+    {
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "--project",
+        "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/oracle.project.gentle.json",
+        "shell",
+        "facts eval @/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/verifiers/oracle-completion.fact.json"
+      ],
+      "cwd": "/home/runner/work/_temp/vkorc1-projection-checkout",
+      "elapsed_ms": 16,
+      "exit_code": 0,
+      "label": "oracle-completion",
+      "stderr_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/commands/004-oracle-completion.stderr",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/commands/004-oracle-completion.stdout",
+      "stdout_sha256": "8671889e3a19f9a1905b82304d95d37bdd30ee8b810b32b802ddb8e54d9b13c2"
+    },
+    {
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "--project",
+        "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/starter.project.gentle.json",
+        "shell",
+        "facts eval @/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/verifiers/oracle-check-materialize_pair-before.fact.json"
+      ],
+      "cwd": "/home/runner/work/_temp/vkorc1-projection-checkout",
+      "elapsed_ms": 13,
+      "exit_code": 0,
+      "label": "oracle-check-materialize_pair-before",
+      "stderr_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/commands/005-oracle-check-materialize_pair-before.stderr",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/commands/005-oracle-check-materialize_pair-before.stdout",
+      "stdout_sha256": "fed9be2cc194bba6badf3c49de8a6974f9c852ea7123d911c229d7a45b37359d"
+    },
+    {
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "--project",
+        "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/oracle.project.gentle.json",
+        "shell",
+        "facts eval @/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/verifiers/oracle-check-materialize_pair-after.fact.json"
+      ],
+      "cwd": "/home/runner/work/_temp/vkorc1-projection-checkout",
+      "elapsed_ms": 17,
+      "exit_code": 0,
+      "label": "oracle-check-materialize_pair-after",
+      "stderr_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/commands/006-oracle-check-materialize_pair-after.stderr",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/commands/006-oracle-check-materialize_pair-after.stdout",
+      "stdout_sha256": "8671889e3a19f9a1905b82304d95d37bdd30ee8b810b32b802ddb8e54d9b13c2"
+    },
+    {
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "--project",
+        "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/oracle.project.gentle.json",
+        "state-summary"
+      ],
+      "cwd": "/home/runner/work/_temp/vkorc1-projection-checkout",
+      "elapsed_ms": 14,
+      "exit_code": 0,
+      "label": "oracle-check-materialize_pair-state-1",
+      "stderr_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/commands/007-oracle-check-materialize_pair-state-1.stderr",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/commands/007-oracle-check-materialize_pair-state-1.stdout",
+      "stdout_sha256": "62d8113bc662c36e16ccb0cea48ec0b2ae54c5c55ec238bdcef92abf2b4a3a29"
+    },
+    {
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "--project",
+        "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/starter.project.gentle.json",
+        "shell",
+        "facts eval @/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/verifiers/runtime-materialize_pair-before.fact.json"
+      ],
+      "cwd": "/home/runner/work/_temp/vkorc1-projection-checkout",
+      "elapsed_ms": 17,
+      "exit_code": 0,
+      "label": "runtime-materialize_pair-before",
+      "stderr_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/commands/008-runtime-materialize_pair-before.stderr",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/commands/008-runtime-materialize_pair-before.stdout",
+      "stdout_sha256": "fed9be2cc194bba6badf3c49de8a6974f9c852ea7123d911c229d7a45b37359d"
+    },
+    {
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "--project",
+        "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/starter.project.gentle.json",
+        "shell",
+        "facts eval @/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/verifiers/runtime-materialize_pair-after.fact.json"
+      ],
+      "cwd": "/home/runner/work/_temp/vkorc1-projection-checkout",
+      "elapsed_ms": 40,
+      "exit_code": 0,
+      "label": "runtime-materialize_pair-after",
+      "stderr_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/commands/009-runtime-materialize_pair-after.stderr",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/commands/009-runtime-materialize_pair-after.stdout",
+      "stdout_sha256": "8671889e3a19f9a1905b82304d95d37bdd30ee8b810b32b802ddb8e54d9b13c2"
+    },
+    {
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "--project",
+        "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/starter.project.gentle.json",
+        "state-summary"
+      ],
+      "cwd": "/home/runner/work/_temp/vkorc1-projection-checkout",
+      "elapsed_ms": 27,
+      "exit_code": 0,
+      "label": "runtime-materialize_pair-state-1",
+      "stderr_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/commands/010-runtime-materialize_pair-state-1.stderr",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/commands/010-runtime-materialize_pair-state-1.stdout",
+      "stdout_sha256": "2b516ab3c2dd411c6e36608b226be6a5b1c14ee5b64b88241112cf2f050e80de"
+    },
+    {
+      "argv": [
+        "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "--project",
+        "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/starter.project.gentle.json",
+        "shell",
+        "facts eval @/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/verifiers/runtime-completion.fact.json"
+      ],
+      "cwd": "/home/runner/work/_temp/vkorc1-projection-checkout",
+      "elapsed_ms": 40,
+      "exit_code": 0,
+      "label": "runtime-completion",
+      "stderr_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/commands/011-runtime-completion.stderr",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/commands/011-runtime-completion.stdout",
+      "stdout_sha256": "8671889e3a19f9a1905b82304d95d37bdd30ee8b810b32b802ddb8e54d9b13c2"
+    }
+  ],
+  "completion": {
+    "schema": "gentle.fact_evaluation.v1",
+    "truth": "satisfied",
+    "unknown_atoms": [],
+    "unmet_atoms": []
+  },
+  "environment": {
+    "binaries": {
+      "gentle": {
+        "path": "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle",
+        "sha256": "b9158a8a535e3b26be1735f76bf67ef1db93e363f48bd54d7922772f233bd674"
+      },
+      "gentle_cli": {
+        "path": "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+        "sha256": "7720012c925730a07dfda227a34669b61c2adf18e3a387a8825e14acdf4ab521"
+      },
+      "gentle_examples_docs": {
+        "path": "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_examples_docs",
+        "sha256": "f11ce7d9104a8bed56e26c13c2dcabcc5ab9840c6f561c82494ff014704b7a18"
+      }
+    },
+    "cargo_lock_sha256": "ead4421545a125267e33af84aeeea39f0e7ea2f60717a59ef0271d0e71855f1b",
+    "cleared_inherited_variables": [],
+    "cleared_variable_names": [],
+    "display": ":99",
+    "display_geometry": {
+      "argv": [
+        "/usr/bin/xdpyinfo"
+      ],
+      "available": true,
+      "exit_code": 0,
+      "output": "name of display:    :99\nversion number:    11.0\nvendor string:    The X.Org Foundation\nvendor release number:    12101011\nX.Org version: 21.1.11\nmaximum request size:  16777212 bytes\nmotion buffer size:  256\nbitmap unit, bit order, padding:    32, LSBFirst, 32\nimage byte order:    LSBFirst\nnumber of supported pixmap formats:    6\nsupported pixmap formats:\n    depth 1, bits_per_pixel 1, scanline_pad 32\n    depth 4, bits_per_pixel 8, scanline_pad 32\n    depth 8, bits_per_pixel 8, scanline_pad 32\n    depth 16, bits_per_pixel 16, scanline_pad 32\n    depth 24, bits_per_pixel 32, scanline_pad 32\n    depth 32, bits_per_pixel 32, scanline_pad 32\nkeycode range:    minimum 8, maximum 255\nfocus:  window 0x20011f, revert to PointerRoot\nnumber of extensions:    23\n    BIG-REQUESTS\n    Composite\n    DAMAGE\n    DOUBLE-BUFFER\n    GLX\n    Generic Event Extension\n    MIT-SCREEN-SAVER\n    MIT-SHM\n    Present\n    RANDR\n    RECORD\n    RENDER\n    SECURITY\n    SHAPE\n    SYNC\n    X-Resource\n    XC-MISC\n    XF"
+    },
+    "git_status": "",
+    "kernel": "6.17.0-1022-azure",
+    "locale": {
+      "LANG": "C.UTF-8",
+      "LC_ALL": "C.UTF-8",
+      "TZ": "UTC"
+    },
+    "machine": "x86_64",
+    "network_enforcement": "linux_network_namespace",
+    "network_namespace": {
+      "current": "net:[4026532268]",
+      "parent": "net:[4026531833]"
+    },
+    "os": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "profile_isolation": [
+      "HOME",
+      "XDG_CONFIG_HOME",
+      "XDG_CACHE_HOME",
+      "XDG_DATA_HOME",
+      "TMPDIR"
+    ],
+    "schema": "gentle.tutorial_acceptance_environment.v1",
+    "source_revision": "024ed6c0520d38c4221517219d44c792084de4e5",
+    "tools": {
+      "blastdbcmd": {
+        "available": false,
+        "name": "blastdbcmd"
+      },
+      "blastn": {
+        "available": false,
+        "name": "blastn"
+      },
+      "ghostscript": {
+        "available": false,
+        "name": "gs"
+      },
+      "pandoc": {
+        "available": false,
+        "name": "pandoc"
+      },
+      "primer3": {
+        "argv": [
+          "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle_cli",
+          "primers",
+          "preflight",
+          "--backend",
+          "primer3"
+        ],
+        "available": true,
+        "exit_code": 0,
+        "output": "{\n  \"preflight\": {\n    \"backend\": \"primer3\",\n    \"configured_executable\": \"primer3_core\",\n    \"detail\": null,\n    \"error\": \"Primer3 --about probe could not be started: No such file or directory (os error 2) | Primer3 --version probe could not be started: No such file or directory (os error 2)\",\n    \"executable\": \"primer3_core\",\n    \"probe_time_ms\": 0,\n    \"progress_supported\": null,\n    \"reachable\": false,\n    \"resolved_path\": null,\n    \"status_code\": null,\n    \"used_default_executable\": false,\n    \"version\": null,\n    \"version_probe_ok\": false,\n    \"working_directory\": \"/home/runner/work/_temp/vkorc1-projection-checkout\"\n  },\n  \"schema\": \"gentle.primer3_preflight.v1\"\n}"
+      },
+      "python": {
+        "available": true,
+        "version": "3.12.3 (main, Aug 31 2026, 10:18:26) [GCC 13.3.0]"
+      },
+      "rustc": {
+        "argv": [
+          "rustc",
+          "--version"
+        ],
+        "available": false,
+        "diagnostic": "[Errno 2] No such file or directory: 'rustc'"
+      },
+      "scrot": {
+        "argv": [
+          "/usr/bin/scrot",
+          "--version"
+        ],
+        "available": true,
+        "exit_code": 0,
+        "output": "scrot version 1.10"
+      },
+      "window_manager": {
+        "available": true,
+        "name": "_NET_WM_NAME(UTF8_STRING) = \"Openbox\"",
+        "name_probe": {
+          "argv": [
+            "/usr/bin/xprop",
+            "-id",
+            "0x20011f",
+            "_NET_WM_NAME"
+          ],
+          "available": true,
+          "exit_code": 0,
+          "output": "_NET_WM_NAME(UTF8_STRING) = \"Openbox\""
+        },
+        "root_probe": {
+          "argv": [
+            "/usr/bin/xprop",
+            "-root",
+            "_NET_SUPPORTING_WM_CHECK"
+          ],
+          "available": true,
+          "exit_code": 0,
+          "output": "_NET_SUPPORTING_WM_CHECK(WINDOW): window id # 0x20011f"
+        },
+        "window_id": "0x20011f"
+      },
+      "xdotool": {
+        "argv": [
+          "/usr/bin/xdotool",
+          "version"
+        ],
+        "available": true,
+        "exit_code": 0,
+        "output": "xdotool version 3.20160805.1"
+      },
+      "xdpyinfo": {
+        "argv": [
+          "/usr/bin/xdpyinfo"
+        ],
+        "available": true,
+        "exit_code": 0,
+        "output": "name of display:    :99\nversion number:    11.0\nvendor string:    The X.Org Foundation\nvendor release number:    12101011\nX.Org version: 21.1.11\nmaximum request size:  16777212 bytes\nmotion buffer size:  256\nbitmap unit, bit order, padding:    32, LSBFirst, 32\nimage byte order:    LSBFirst\nnumber of supported pixmap formats:    6\nsupported pixmap formats:\n    depth 1, bits_per_pixel 1, scanline_pad 32\n    depth 4, bits_per_pixel 8, scanline_pad 32\n    depth 8, bits_per_pixel 8, scanline_pad 32\n    depth 16, bits_per_pixel 16, scanline_pad 32\n    depth 24, bits_per_pixel 32, scanline_pad 32\n    depth 32, bits_per_pixel 32, scanline_pad 32\nkeycode range:    minimum 8, maximum 255\nfocus:  window 0x20011f, revert to PointerRoot\nnumber of extensions:    23\n    BIG-REQUESTS\n    Composite\n    DAMAGE\n    DOUBLE-BUFFER\n    GLX\n    Generic Event Extension\n    MIT-SCREEN-SAVER\n    MIT-SHM\n    Present\n    RANDR\n    RECORD\n    RENDER\n    SECURITY\n    SHAPE\n    SYNC\n    X-Resource\n    XC-MISC\n    XF"
+      },
+      "xprop": {
+        "argv": [
+          "/usr/bin/xprop",
+          "-version"
+        ],
+        "available": true,
+        "exit_code": 0,
+        "output": "xprop 1.2.6"
+      },
+      "xwininfo": {
+        "argv": [
+          "/usr/bin/xwininfo",
+          "-version"
+        ],
+        "available": true,
+        "exit_code": 0,
+        "output": "xwininfo 1.1.6"
+      }
+    }
+  },
+  "failure_class": null,
+  "final_project_sha256": "ea3f9248f8c3f4861eb4ed7a126a2a1a47f3263d9ff70864824a2fd60ca74416",
+  "gui_process": {
+    "argv": [
+      "/home/runner/work/gentle_rs/gentle_rs/target/debug/gentle",
+      "--project",
+      "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/starter.project.gentle.json"
+    ],
+    "exit_code": -15,
+    "pid": 39763,
+    "stderr_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/gui.stderr",
+    "stderr_sha256": "76050053c4b02071888d4c96a42008c20783652c7d6b1762457f640578a0d413",
+    "stdout_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/gui.stdout",
+    "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "isolation_paths": {
+    "home": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/profile/home",
+    "tmpdir": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/profile/tmp",
+    "xdg_cache": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/profile/xdg-cache",
+    "xdg_config": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/profile/xdg-config",
+    "xdg_data": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/profile/xdg-data"
+  },
+  "manifest_path": "/home/runner/work/_temp/vkorc1-projection-checkout/docs/tutorial/manifest.json",
+  "manifest_sha256": "93d7baff5615c34a9815e488dd652f9c224e5a3787cffdd295d1b97c8863d841",
+  "message": "GUI actions and typed scientific verification passed",
+  "network_enforcement": "linux_network_namespace",
+  "network_policy": "offline",
+  "oracle": {
+    "acceptance_schema": "gentle.tutorial_gui_acceptance.v1",
+    "chapter_id": "vkorc1_warfarin_promoter_luciferase_gui",
+    "example_id": "vkorc1_pair_gui_oracle",
+    "feature_bindings": [
+      {
+        "feature_index": "0",
+        "group_subject_scope": "subject-2a7eb01287ab4380e95e122f7ae25030",
+        "resolved_sequence_id": "vkorc1_rs9923231_promoter_fragment",
+        "source_sequence_id": "vkorc1_rs9923231_promoter_fragment",
+        "subject_scope": "subject-d0c4a9b831b506b759a20bedd76f6258"
+      }
+    ],
+    "phase": "oracle",
+    "profile": "offline-core",
+    "project_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/oracle.project.gentle.json",
+    "project_sha256": "930e279e747f26b88d396b1e2be3850d16c6b850ffbe5b4e5a46f688c49900ab",
+    "run_dir": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/oracle-workflow",
+    "schema": "gentle.tutorial_gui_project_preparation.v1",
+    "sequence_bindings": [
+      {
+        "resolved_sequence_id": "vkorc1_rs9923231_promoter_fragment",
+        "source_sequence_id": "vkorc1_rs9923231_promoter_fragment",
+        "subject_scope": "subject-d6fef1a3df9110362aba292817a04ff5"
+      }
+    ],
+    "workflow_source_path": "/home/runner/work/_temp/vkorc1-projection-checkout/docs/examples/workflows/vkorc1_pair_gui_oracle.json",
+    "workflow_source_sha256": "80067936486f40ef7b62abde09571d7aa26a0aaf812aeeb86e3e5a4aeb11c501"
+  },
+  "preflight": {
+    "oracle_completion_truth": "satisfied",
+    "starter_completion_truth": "unsatisfied",
+    "status": "pass"
+  },
+  "profile": "offline-core",
+  "schema": "gentle.tutorial_gui_acceptance_ledger.v1",
+  "starter": {
+    "acceptance_schema": "gentle.tutorial_gui_acceptance.v1",
+    "chapter_id": "vkorc1_warfarin_promoter_luciferase_gui",
+    "example_id": "vkorc1_pair_gui_starter",
+    "feature_bindings": [
+      {
+        "feature_index": "0",
+        "group_subject_scope": "subject-2a7eb01287ab4380e95e122f7ae25030",
+        "resolved_sequence_id": "vkorc1_rs9923231_promoter_fragment",
+        "source_sequence_id": "vkorc1_rs9923231_promoter_fragment",
+        "subject_scope": "subject-d0c4a9b831b506b759a20bedd76f6258"
+      }
+    ],
+    "phase": "starter",
+    "profile": "offline-core",
+    "project_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/starter.project.gentle.json",
+    "project_sha256": "7ff2260c85bf168f8b0f0ccb5bd59fbc54609da7403a624783de3d82bbe929eb",
+    "run_dir": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/starter-workflow",
+    "schema": "gentle.tutorial_gui_project_preparation.v1",
+    "sequence_bindings": [
+      {
+        "resolved_sequence_id": "vkorc1_rs9923231_promoter_fragment",
+        "source_sequence_id": "vkorc1_rs9923231_promoter_fragment",
+        "subject_scope": "subject-d6fef1a3df9110362aba292817a04ff5"
+      }
+    ],
+    "workflow_source_path": "/home/runner/work/_temp/vkorc1-projection-checkout/docs/examples/workflows/vkorc1_pair_gui_starter.json",
+    "workflow_source_sha256": "b99d2c59e5bd9e029cd48f4be96142cf02ce2d135c25544de9f4059c93771df3"
+  },
+  "status": "pass",
+  "steps": [
+    {
+      "after_generation": 59,
+      "before_generation": 21,
+      "elapsed_ms": 6507,
+      "evidence": {
+        "screenshot": {
+          "derived_views": [
+            {
+              "annotation": "Numbered outline derived from the semantic focus rectangle",
+              "crop_physical_pixels": {
+                "max_x": 1600,
+                "max_y": 1000,
+                "min_x": 0,
+                "min_y": 0
+              },
+              "path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/open_fragment.orientation.svg",
+              "role": "orientation",
+              "sha256": "3125ae9caccc3219a072f1036dccd265ba0a21fa56731de56f6d50c1b60d4539"
+            },
+            {
+              "annotation": "Padded crop around the same semantic focus rectangle",
+              "crop_physical_pixels": {
+                "max_x": 1600,
+                "max_y": 1000,
+                "min_x": 0,
+                "min_y": 0
+              },
+              "path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/open_fragment.context.svg",
+              "role": "interaction_context",
+              "sha256": "9c3b0f9e351db26b4dd7c4dfaeed38ed6e2a66c8dc32ca5b308cb8d68af0c2d3"
+            }
+          ],
+          "raw_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/open_fragment.raw.png",
+          "raw_sha256": "e36d25c50e6453966612a035dbb2d90af85f190b4428d0efa9592331f8abcb22",
+          "record_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/open_fragment.screenshot.json",
+          "record_sha256": "c13361c6c25840c246d26f809a330f53ea917925337fe1d41f0b5ee2f37c8db6",
+          "requirement": "required",
+          "schema": "gentle.tutorial_gui_screenshot_evidence.v1"
+        },
+        "snapshot": {
+          "path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/open_fragment.snapshot.json",
+          "requirement": "required",
+          "sha256": "626e3865339b8d8b3d05b997c226f1d2f9ffdec6f543538ac004d738621379c9"
+        }
+      },
+      "id": "open_fragment",
+      "prose_step": 1,
+      "requested_action": {
+        "kind": "double_click"
+      },
+      "resolved_target": {
+        "egui_viewport_id": "\"FFFF\"",
+        "generation": 21,
+        "pixels_per_point": 1.0,
+        "rect_logical_points": {
+          "max_x": 555.0,
+          "max_y": 571.0,
+          "min_x": 517.0,
+          "min_y": 533.0
+        },
+        "semantic_id": "main.project.sequence.open",
+        "state": {
+          "enabled": true,
+          "hovered": false,
+          "selected": false,
+          "visible": true
+        },
+        "subject_scope": "subject-d6fef1a3df9110362aba292817a04ff5",
+        "widget_kind": "button",
+        "window_id": "window.main"
+      },
+      "scientific_verdict": "not_requested",
+      "semantic_target": "main.project.sequence.open",
+      "status": "pass",
+      "step_sha256": "3d93303145746e26f7a04b5630ba7ef2ea0bac41c5a0440113897aa8d6ef5db3",
+      "subject_scope": "subject-d6fef1a3df9110362aba292817a04ff5",
+      "timeout_class": "io",
+      "verifiers": [
+        {
+          "kind": "visible_claim",
+          "observed": {
+            "egui_viewport_id": "\"0122\"",
+            "generation": 59,
+            "outcome_role": "ready",
+            "pixels_per_point": 1.0,
+            "rect_logical_points": {
+              "max_x": 1200.0,
+              "max_y": 860.0,
+              "min_x": 0.0,
+              "min_y": 0.0
+            },
+            "semantic_id": "window.dna_viewer",
+            "state": {
+              "enabled": true,
+              "hovered": false,
+              "selected": true,
+              "visible": true
+            },
+            "subject_scope": "subject-d6fef1a3df9110362aba292817a04ff5",
+            "widget_kind": "window",
+            "window_id": "window.dna_viewer"
+          },
+          "semantic_id": "window.dna_viewer",
+          "status": "pass"
+        }
+      ],
+      "visual_verdict": "pass",
+      "window": "window.main",
+      "x11_event": {
+        "argv": [
+          [
+            "/usr/bin/xdotool",
+            "windowraise",
+            "4194306"
+          ],
+          [
+            "/usr/bin/xdotool",
+            "mousemove",
+            "537",
+            "572"
+          ],
+          [
+            "/usr/bin/xdotool",
+            "click",
+            "--repeat",
+            "2",
+            "--delay",
+            "100",
+            "1"
+          ]
+        ],
+        "hover_confirmed_generation": 45,
+        "kind": "double_click",
+        "native_window_binding": {
+          "coordinate_transform": "root_screen_px = native_client_origin_px + (target_logical - semantic_window_logical_origin) * pixels_per_point",
+          "egui_viewport_id": "\"FFFF\"",
+          "native_client_geometry": {
+            "height": 600,
+            "root_x": 400,
+            "root_y": 207,
+            "width": 800
+          },
+          "native_owner_semantic_window_id": "window.main",
+          "screen_rect_physical_pixels": {
+            "max_x": 556,
+            "max_y": 591,
+            "min_x": 518,
+            "min_y": 553
+          },
+          "semantic_window_id": "window.main",
+          "semantic_window_rect_logical_points": {
+            "max_x": 1199.0,
+            "max_y": 787.0,
+            "min_x": 399.0,
+            "min_y": 187.0
+          },
+          "x11_client_window_id": 4194306
+        },
+        "screen_x": 537,
+        "screen_y": 572
+      }
+    },
+    {
+      "after_generation": 84,
+      "before_generation": 72,
+      "elapsed_ms": 2153,
+      "evidence": {
+        "screenshot": {
+          "derived_views": [
+            {
+              "annotation": "Numbered outline derived from the semantic focus rectangle",
+              "crop_physical_pixels": {
+                "max_x": 1600,
+                "max_y": 1000,
+                "min_x": 0,
+                "min_y": 0
+              },
+              "path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/expand_variation.orientation.svg",
+              "role": "orientation",
+              "sha256": "a6228f19a0a59fbaa7b846706feb9266910478c8ca24c1d5fe00941b8c21976d"
+            },
+            {
+              "annotation": "Padded crop around the same semantic focus rectangle",
+              "crop_physical_pixels": {
+                "max_x": 264,
+                "max_y": 568,
+                "min_x": 0,
+                "min_y": 310
+              },
+              "path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/expand_variation.context.svg",
+              "role": "interaction_context",
+              "sha256": "ec1c96374dda0f57bd4dcf7eda843ed406a964f656c53a5d11b8fc5c9181b84d"
+            }
+          ],
+          "raw_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/expand_variation.raw.png",
+          "raw_sha256": "5f637796b6ba4023005450689f54d2ccb83d86447d47ff1425ec013104cd3816",
+          "record_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/expand_variation.screenshot.json",
+          "record_sha256": "4d48356e7ecb9daec8403bef714e1da0530c8e9e20b8f9b87ce7775f68f15fb0",
+          "requirement": "optional",
+          "schema": "gentle.tutorial_gui_screenshot_evidence.v1"
+        },
+        "snapshot": {
+          "path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/expand_variation.snapshot.json",
+          "requirement": "required",
+          "sha256": "ed06ea8254f8506407d02eab66347d4958fa9acd0f5aab27298f4d62d82e1aac"
+        }
+      },
+      "id": "expand_variation",
+      "prose_step": 2,
+      "requested_action": {
+        "kind": "click"
+      },
+      "resolved_target": {
+        "egui_viewport_id": "\"0122\"",
+        "generation": 72,
+        "pixels_per_point": 1.0,
+        "rect_logical_points": {
+          "max_x": 82.96875,
+          "max_y": 428.0,
+          "min_x": 8.0,
+          "min_y": 410.0
+        },
+        "semantic_id": "dna.feature_tree.group",
+        "state": {
+          "enabled": true,
+          "hovered": false,
+          "selected": false,
+          "visible": true
+        },
+        "subject_scope": "subject-2a7eb01287ab4380e95e122f7ae25030",
+        "widget_kind": "row",
+        "window_id": "window.dna_viewer"
+      },
+      "scientific_verdict": "not_requested",
+      "semantic_target": "dna.feature_tree.group",
+      "status": "pass",
+      "step_sha256": "71133584ffa8ed66db9cf45df44c25ea5d1dbe7df056c5aad7ad6a5ffd42e53a",
+      "subject_scope": "subject-2a7eb01287ab4380e95e122f7ae25030",
+      "timeout_class": "interactive",
+      "verifiers": [
+        {
+          "kind": "visible_claim",
+          "observed": {
+            "egui_viewport_id": "\"0122\"",
+            "generation": 84,
+            "pixels_per_point": 1.0,
+            "rect_logical_points": {
+              "max_x": 82.96875,
+              "max_y": 428.0,
+              "min_x": 8.0,
+              "min_y": 410.0
+            },
+            "semantic_id": "dna.feature_tree.group",
+            "state": {
+              "enabled": true,
+              "hovered": true,
+              "selected": true,
+              "visible": true
+            },
+            "subject_scope": "subject-2a7eb01287ab4380e95e122f7ae25030",
+            "widget_kind": "row",
+            "window_id": "window.dna_viewer"
+          },
+          "semantic_id": "dna.feature_tree.group",
+          "status": "pass"
+        }
+      ],
+      "visual_verdict": "pass",
+      "window": "window.dna_viewer",
+      "x11_event": {
+        "argv": [
+          [
+            "/usr/bin/xdotool",
+            "windowraise",
+            "4194364"
+          ],
+          [
+            "/usr/bin/xdotool",
+            "mousemove",
+            "46",
+            "439"
+          ],
+          [
+            "/usr/bin/xdotool",
+            "click",
+            "1"
+          ]
+        ],
+        "hover_confirmed_generation": 80,
+        "kind": "click",
+        "native_window_binding": {
+          "coordinate_transform": "root_screen_px = native_client_origin_px + (target_logical - semantic_window_logical_origin) * pixels_per_point",
+          "egui_viewport_id": "\"0122\"",
+          "native_client_geometry": {
+            "height": 860,
+            "root_x": 1,
+            "root_y": 20,
+            "width": 1200
+          },
+          "native_owner_semantic_window_id": "window.dna_viewer",
+          "screen_rect_physical_pixels": {
+            "max_x": 84,
+            "max_y": 448,
+            "min_x": 9,
+            "min_y": 430
+          },
+          "semantic_window_id": "window.dna_viewer",
+          "semantic_window_rect_logical_points": {
+            "max_x": 1200.0,
+            "max_y": 860.0,
+            "min_x": 0.0,
+            "min_y": 0.0
+          },
+          "x11_client_window_id": 4194364
+        },
+        "screen_x": 46,
+        "screen_y": 439
+      }
+    },
+    {
+      "after_generation": 124,
+      "before_generation": 105,
+      "elapsed_ms": 1887,
+      "evidence": {
+        "screenshot": {
+          "derived_views": [
+            {
+              "annotation": "Numbered outline derived from the semantic focus rectangle",
+              "crop_physical_pixels": {
+                "max_x": 1600,
+                "max_y": 1000,
+                "min_x": 0,
+                "min_y": 0
+              },
+              "path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/select_variant.orientation.svg",
+              "role": "orientation",
+              "sha256": "131a0b4699120e13de13ee3706592bc4bd757e7ac7b14e2c2f57c73c73b4bd0c"
+            },
+            {
+              "annotation": "Padded crop around the same semantic focus rectangle",
+              "crop_physical_pixels": {
+                "max_x": 599,
+                "max_y": 589,
+                "min_x": 0,
+                "min_y": 331
+              },
+              "path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/select_variant.context.svg",
+              "role": "interaction_context",
+              "sha256": "a6c13582cd0b1ad464ffab88c0be6c62c8c8b1f655b6b722c99863e892e9c917"
+            }
+          ],
+          "raw_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/select_variant.raw.png",
+          "raw_sha256": "c2f176d77b50b0bda07553e8186a698c5b92f94d7e28c78c57e6b13dcb24e507",
+          "record_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/select_variant.screenshot.json",
+          "record_sha256": "93ff3816be06128dcbe057bc4c8246cf6af23bddf256562c1192bd19d4177cc2",
+          "requirement": "required",
+          "schema": "gentle.tutorial_gui_screenshot_evidence.v1"
+        },
+        "snapshot": {
+          "path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/select_variant.snapshot.json",
+          "requirement": "required",
+          "sha256": "2768532a1af0bd6f99ea38ef1921e62a38bd218595206d2aeaaba01d0a0684eb"
+        }
+      },
+      "id": "select_variant",
+      "prose_step": 2,
+      "requested_action": {
+        "kind": "click"
+      },
+      "resolved_target": {
+        "egui_viewport_id": "\"0122\"",
+        "generation": 105,
+        "pixels_per_point": 1.0,
+        "rect_logical_points": {
+          "max_x": 312.03125,
+          "max_y": 449.0,
+          "min_x": 26.0,
+          "min_y": 431.0
+        },
+        "semantic_id": "dna.feature_tree.row",
+        "state": {
+          "enabled": true,
+          "hovered": false,
+          "selected": false,
+          "visible": true
+        },
+        "subject_scope": "subject-d0c4a9b831b506b759a20bedd76f6258",
+        "widget_kind": "row",
+        "window_id": "window.dna_viewer"
+      },
+      "scientific_verdict": "not_requested",
+      "semantic_target": "dna.feature_tree.row",
+      "status": "pass",
+      "step_sha256": "266cbbc26a443c85d029978a65ba4d69e6e9cea5cbdc1b72bb61669bc6faa050",
+      "subject_scope": "subject-d0c4a9b831b506b759a20bedd76f6258",
+      "timeout_class": "interactive",
+      "verifiers": [
+        {
+          "kind": "visible_claim",
+          "observed": {
+            "egui_viewport_id": "\"0122\"",
+            "generation": 124,
+            "pixels_per_point": 1.0,
+            "rect_logical_points": {
+              "max_x": 312.03125,
+              "max_y": 449.0,
+              "min_x": 26.0,
+              "min_y": 431.0
+            },
+            "semantic_id": "dna.feature_tree.row",
+            "state": {
+              "enabled": true,
+              "hovered": true,
+              "selected": true,
+              "visible": true
+            },
+            "subject_scope": "subject-d0c4a9b831b506b759a20bedd76f6258",
+            "widget_kind": "row",
+            "window_id": "window.dna_viewer"
+          },
+          "semantic_id": "dna.feature_tree.row",
+          "status": "pass"
+        }
+      ],
+      "visual_verdict": "pass",
+      "window": "window.dna_viewer",
+      "x11_event": {
+        "argv": [
+          [
+            "/usr/bin/xdotool",
+            "windowraise",
+            "4194364"
+          ],
+          [
+            "/usr/bin/xdotool",
+            "mousemove",
+            "170",
+            "460"
+          ],
+          [
+            "/usr/bin/xdotool",
+            "click",
+            "1"
+          ]
+        ],
+        "hover_confirmed_generation": 117,
+        "kind": "click",
+        "native_window_binding": {
+          "coordinate_transform": "root_screen_px = native_client_origin_px + (target_logical - semantic_window_logical_origin) * pixels_per_point",
+          "egui_viewport_id": "\"0122\"",
+          "native_client_geometry": {
+            "height": 860,
+            "root_x": 1,
+            "root_y": 20,
+            "width": 1200
+          },
+          "native_owner_semantic_window_id": "window.dna_viewer",
+          "screen_rect_physical_pixels": {
+            "max_x": 313,
+            "max_y": 469,
+            "min_x": 27,
+            "min_y": 451
+          },
+          "semantic_window_id": "window.dna_viewer",
+          "semantic_window_rect_logical_points": {
+            "max_x": 1200.0,
+            "max_y": 860.0,
+            "min_x": 0.0,
+            "min_y": 0.0
+          },
+          "x11_client_window_id": 4194364
+        },
+        "screen_x": 170,
+        "screen_y": 460
+      }
+    },
+    {
+      "after_generation": 144,
+      "before_generation": 138,
+      "elapsed_ms": 2212,
+      "evidence": {
+        "screenshot": {
+          "derived_views": [
+            {
+              "annotation": "Numbered outline derived from the semantic focus rectangle",
+              "crop_physical_pixels": {
+                "max_x": 1600,
+                "max_y": 1000,
+                "min_x": 0,
+                "min_y": 0
+              },
+              "path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/open_promoter.orientation.svg",
+              "role": "orientation",
+              "sha256": "a7521fc9b138bcad54af651c599396afbfc831123ad28265c5ffcf1e15cc8c7c"
+            },
+            {
+              "annotation": "Padded crop around the same semantic focus rectangle",
+              "crop_physical_pixels": {
+                "max_x": 1600,
+                "max_y": 1000,
+                "min_x": 0,
+                "min_y": 0
+              },
+              "path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/open_promoter.context.svg",
+              "role": "interaction_context",
+              "sha256": "ee6fae59b996a289d832089d62b323d1eceab381809f0942cb302c2d7b45bccf"
+            }
+          ],
+          "raw_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/open_promoter.raw.png",
+          "raw_sha256": "a99ca4371258476bfd27106c87311868b6e1126632a2cd5ac8bf454d985d45ee",
+          "record_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/open_promoter.screenshot.json",
+          "record_sha256": "32aa24643c942df232a94f80d1577051b92c43a5390ea9cc922b5e387051bdfe",
+          "requirement": "required",
+          "schema": "gentle.tutorial_gui_screenshot_evidence.v1"
+        },
+        "snapshot": {
+          "path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/open_promoter.snapshot.json",
+          "requirement": "required",
+          "sha256": "a57926b8a958bfd64950299adcfb76f34ccc32732f6356cef7a1513525a44eeb"
+        }
+      },
+      "id": "open_promoter",
+      "prose_step": 3,
+      "requested_action": {
+        "kind": "click"
+      },
+      "resolved_target": {
+        "egui_viewport_id": "\"0122\"",
+        "generation": 137,
+        "pixels_per_point": 1.0,
+        "rect_logical_points": {
+          "max_x": 149.75,
+          "max_y": 804.0,
+          "min_x": 8.0,
+          "min_y": 786.0
+        },
+        "semantic_id": "dna.promoter.open",
+        "state": {
+          "enabled": true,
+          "hovered": false,
+          "selected": false,
+          "visible": true
+        },
+        "subject_scope": "subject-d6fef1a3df9110362aba292817a04ff5",
+        "widget_kind": "button",
+        "window_id": "window.dna_viewer"
+      },
+      "scientific_verdict": "not_requested",
+      "semantic_target": "dna.promoter.open",
+      "status": "pass",
+      "step_sha256": "6fb17ee8b68df97ca4a345d946327acdfa89efd7a9004fb1504a686ee2778a5d",
+      "subject_scope": "subject-d6fef1a3df9110362aba292817a04ff5",
+      "timeout_class": "interactive",
+      "verifiers": [
+        {
+          "kind": "visible_claim",
+          "observed": {
+            "egui_viewport_id": "\"8499\"",
+            "generation": 144,
+            "pixels_per_point": 1.0,
+            "rect_logical_points": {
+              "max_x": 1590.0,
+              "max_y": 967.0,
+              "min_x": 626.0,
+              "min_y": 263.0
+            },
+            "semantic_id": "window.promoter_design",
+            "state": {
+              "enabled": true,
+              "hovered": false,
+              "selected": false,
+              "visible": true
+            },
+            "subject_scope": "subject-d6fef1a3df9110362aba292817a04ff5",
+            "widget_kind": "window",
+            "window_id": "window.promoter_design"
+          },
+          "semantic_id": "window.promoter_design",
+          "status": "pass"
+        }
+      ],
+      "visual_verdict": "pass",
+      "window": "window.dna_viewer",
+      "x11_event": {
+        "argv": [
+          [
+            "/usr/bin/xdotool",
+            "windowraise",
+            "4194364"
+          ],
+          [
+            "/usr/bin/xdotool",
+            "mousemove",
+            "80",
+            "815"
+          ],
+          [
+            "/usr/bin/xdotool",
+            "click",
+            "1"
+          ]
+        ],
+        "hover_confirmed_generation": 139,
+        "kind": "click",
+        "native_window_binding": {
+          "coordinate_transform": "root_screen_px = native_client_origin_px + (target_logical - semantic_window_logical_origin) * pixels_per_point",
+          "egui_viewport_id": "\"0122\"",
+          "native_client_geometry": {
+            "height": 860,
+            "root_x": 1,
+            "root_y": 20,
+            "width": 1200
+          },
+          "native_owner_semantic_window_id": "window.dna_viewer",
+          "screen_rect_physical_pixels": {
+            "max_x": 151,
+            "max_y": 824,
+            "min_x": 9,
+            "min_y": 806
+          },
+          "semantic_window_id": "window.dna_viewer",
+          "semantic_window_rect_logical_points": {
+            "max_x": 1200.0,
+            "max_y": 860.0,
+            "min_x": 0.0,
+            "min_y": 0.0
+          },
+          "x11_client_window_id": 4194364
+        },
+        "screen_x": 80,
+        "screen_y": 815
+      }
+    },
+    {
+      "after_generation": 158,
+      "before_generation": 150,
+      "elapsed_ms": 3229,
+      "evidence": {
+        "screenshot": {
+          "derived_views": [
+            {
+              "annotation": "Numbered outline derived from the semantic focus rectangle",
+              "crop_physical_pixels": {
+                "max_x": 1600,
+                "max_y": 1000,
+                "min_x": 0,
+                "min_y": 0
+              },
+              "path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/scroll_to_allele.orientation.svg",
+              "role": "orientation",
+              "sha256": "36d79fcfeb40c069098f17f918c2a907b0b3992f72e2439a0dc25b79500ddcaa"
+            },
+            {
+              "annotation": "Padded crop around the same semantic focus rectangle",
+              "crop_physical_pixels": {
+                "max_x": 1480,
+                "max_y": 650,
+                "min_x": 640,
+                "min_y": 390
+              },
+              "path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/scroll_to_allele.context.svg",
+              "role": "interaction_context",
+              "sha256": "79d802cd6f05baa3ec1bd0d5e6ddf5c8f54d97fe1eb4b1d57ceb6741eb303218"
+            }
+          ],
+          "raw_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/scroll_to_allele.raw.png",
+          "raw_sha256": "d305fa08fcc0c5e6f6a4608be16da52f21f19da72d7902823d9a01ab09372445",
+          "record_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/scroll_to_allele.screenshot.json",
+          "record_sha256": "556318d1e8ee2bf1c788f3b18afa1c70118ae87acdf4002bc015b8a4c20e1c0c",
+          "requirement": "required",
+          "schema": "gentle.tutorial_gui_screenshot_evidence.v1"
+        },
+        "snapshot": {
+          "path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/scroll_to_allele.snapshot.json",
+          "requirement": "required",
+          "sha256": "5f96edf4150b09f000e4af736aa4ccc018365107e9ddd89ac074100476162b9a"
+        }
+      },
+      "id": "scroll_to_allele",
+      "prose_step": 4,
+      "requested_action": {
+        "clicks": 20,
+        "direction": "down",
+        "kind": "scroll"
+      },
+      "resolved_target": {
+        "egui_viewport_id": "\"8499\"",
+        "generation": 150,
+        "pixels_per_point": 1.0,
+        "rect_logical_points": {
+          "max_x": 1590.0,
+          "max_y": 967.0,
+          "min_x": 626.0,
+          "min_y": 263.0
+        },
+        "semantic_id": "promoter.panel",
+        "state": {
+          "enabled": true,
+          "hovered": false,
+          "selected": false,
+          "visible": true
+        },
+        "subject_scope": "subject-d6fef1a3df9110362aba292817a04ff5",
+        "widget_kind": "window",
+        "window_id": "window.promoter_design"
+      },
+      "scientific_verdict": "not_requested",
+      "semantic_target": "promoter.panel",
+      "status": "pass",
+      "step_sha256": "08cdff63c759f0c2f38b8e1bedcc3a6b5fbc4d54b5d2680d96ddbff453a89953",
+      "subject_scope": "subject-d6fef1a3df9110362aba292817a04ff5",
+      "timeout_class": "interactive",
+      "verifiers": [
+        {
+          "kind": "visible_claim",
+          "observed": {
+            "egui_viewport_id": "\"8499\"",
+            "generation": 158,
+            "pixels_per_point": 1.0,
+            "rect_logical_points": {
+              "max_x": 1206.875,
+              "max_y": 517.5,
+              "min_x": 926.875,
+              "min_y": 498.5
+            },
+            "semantic_id": "promoter.alternate_base",
+            "state": {
+              "enabled": true,
+              "hovered": false,
+              "selected": false,
+              "visible": true
+            },
+            "subject_scope": "subject-d6fef1a3df9110362aba292817a04ff5",
+            "widget_kind": "text_input",
+            "window_id": "window.promoter_design"
+          },
+          "semantic_id": "promoter.alternate_base",
+          "status": "pass"
+        }
+      ],
+      "visual_verdict": "pass",
+      "window": "window.promoter_design",
+      "x11_event": {
+        "argv": [
+          [
+            "/usr/bin/xdotool",
+            "windowraise",
+            "4194436"
+          ],
+          [
+            "/usr/bin/xdotool",
+            "mousemove",
+            "1101",
+            "627"
+          ],
+          [
+            "/usr/bin/xdotool",
+            "click",
+            "--repeat",
+            "20",
+            "--delay",
+            "50",
+            "5"
+          ]
+        ],
+        "hover_confirmed_generation": 153,
+        "kind": "scroll",
+        "native_window_binding": {
+          "coordinate_transform": "root_screen_px = native_client_origin_px + (target_logical - semantic_window_logical_origin) * pixels_per_point",
+          "egui_viewport_id": "\"8499\"",
+          "native_client_geometry": {
+            "height": 720,
+            "root_x": 619,
+            "root_y": 275,
+            "width": 980
+          },
+          "native_owner_semantic_window_id": "window.promoter_design",
+          "screen_rect_physical_pixels": {
+            "max_x": 1583,
+            "max_y": 979,
+            "min_x": 619,
+            "min_y": 275
+          },
+          "semantic_window_id": "window.promoter_design",
+          "semantic_window_rect_logical_points": {
+            "max_x": 1590.0,
+            "max_y": 967.0,
+            "min_x": 626.0,
+            "min_y": 263.0
+          },
+          "x11_client_window_id": 4194436
+        },
+        "screen_x": 1101,
+        "screen_y": 627
+      }
+    },
+    {
+      "after_generation": 170,
+      "before_generation": 163,
+      "elapsed_ms": 2539,
+      "evidence": {
+        "screenshot": {
+          "derived_views": [
+            {
+              "annotation": "Numbered outline derived from the semantic focus rectangle",
+              "crop_physical_pixels": {
+                "max_x": 1600,
+                "max_y": 1000,
+                "min_x": 0,
+                "min_y": 0
+              },
+              "path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/review_t.orientation.svg",
+              "role": "orientation",
+              "sha256": "bd57b946465fe4370f6f800658db896ad9f69104195449d6d47ebf34d21a9591"
+            },
+            {
+              "annotation": "Padded crop around the same semantic focus rectangle",
+              "crop_physical_pixels": {
+                "max_x": 1480,
+                "max_y": 650,
+                "min_x": 640,
+                "min_y": 390
+              },
+              "path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/review_t.context.svg",
+              "role": "interaction_context",
+              "sha256": "3fe7bf5ccb34d2f6c67c393206f39cf07246507c15fb4b7500af5287dfc42260"
+            }
+          ],
+          "raw_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/review_t.raw.png",
+          "raw_sha256": "38c55cb4817a84d8aebbaced941d8868ad4530212e3d43a90f51ba5a7f853c92",
+          "record_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/review_t.screenshot.json",
+          "record_sha256": "59be65d509a285760f531f11e996b1bd74c9b3c5900f2f7d87f79d125706a8dc",
+          "requirement": "required",
+          "schema": "gentle.tutorial_gui_screenshot_evidence.v1"
+        },
+        "snapshot": {
+          "path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/review_t.snapshot.json",
+          "requirement": "required",
+          "sha256": "a361653d3800086377c0e8612949305ae10f15fba96d64b0ac2f253b5c236971"
+        }
+      },
+      "id": "review_t",
+      "prose_step": 4,
+      "requested_action": {
+        "kind": "replace_text",
+        "text": "T"
+      },
+      "resolved_target": {
+        "egui_viewport_id": "\"8499\"",
+        "generation": 163,
+        "pixels_per_point": 1.0,
+        "rect_logical_points": {
+          "max_x": 1206.875,
+          "max_y": 517.5,
+          "min_x": 926.875,
+          "min_y": 498.5
+        },
+        "semantic_id": "promoter.alternate_base",
+        "state": {
+          "enabled": true,
+          "hovered": false,
+          "selected": false,
+          "visible": true
+        },
+        "subject_scope": "subject-d6fef1a3df9110362aba292817a04ff5",
+        "widget_kind": "text_input",
+        "window_id": "window.promoter_design"
+      },
+      "scientific_verdict": "not_requested",
+      "semantic_target": "promoter.alternate_base",
+      "status": "pass",
+      "step_sha256": "dbe742e719bf2ff8e6e9029e6eb8841e5b24c668773e446c659c06d6eb5e0ec6",
+      "subject_scope": "subject-d6fef1a3df9110362aba292817a04ff5",
+      "timeout_class": "interactive",
+      "verifiers": [
+        {
+          "kind": "visible_claim",
+          "observed": {
+            "egui_viewport_id": "\"8499\"",
+            "generation": 169,
+            "pixels_per_point": 1.0,
+            "rect_logical_points": {
+              "max_x": 1206.875,
+              "max_y": 517.5,
+              "min_x": 926.875,
+              "min_y": 498.5
+            },
+            "semantic_id": "promoter.alternate_base",
+            "state": {
+              "enabled": true,
+              "hovered": true,
+              "selected": false,
+              "visible": true
+            },
+            "subject_scope": "subject-d6fef1a3df9110362aba292817a04ff5",
+            "widget_kind": "text_input",
+            "window_id": "window.promoter_design"
+          },
+          "semantic_id": "promoter.alternate_base",
+          "status": "pass"
+        }
+      ],
+      "visual_verdict": "pass",
+      "window": "window.promoter_design",
+      "x11_event": {
+        "argv": [
+          [
+            "/usr/bin/xdotool",
+            "windowraise",
+            "4194436"
+          ],
+          [
+            "/usr/bin/xdotool",
+            "mousemove",
+            "1060",
+            "520"
+          ],
+          [
+            "/usr/bin/xdotool",
+            "click",
+            "1"
+          ],
+          [
+            "/usr/bin/xdotool",
+            "key",
+            "--clearmodifiers",
+            "ctrl+a"
+          ],
+          [
+            "/usr/bin/xdotool",
+            "type",
+            "--clearmodifiers",
+            "--delay",
+            "1",
+            "--",
+            "T"
+          ],
+          [
+            "/usr/bin/xdotool",
+            "key",
+            "--clearmodifiers",
+            "Tab"
+          ]
+        ],
+        "hover_confirmed_generation": 168,
+        "kind": "replace_text",
+        "native_window_binding": {
+          "coordinate_transform": "root_screen_px = native_client_origin_px + (target_logical - semantic_window_logical_origin) * pixels_per_point",
+          "egui_viewport_id": "\"8499\"",
+          "native_client_geometry": {
+            "height": 720,
+            "root_x": 619,
+            "root_y": 275,
+            "width": 980
+          },
+          "native_owner_semantic_window_id": "window.promoter_design",
+          "screen_rect_physical_pixels": {
+            "max_x": 1200,
+            "max_y": 530,
+            "min_x": 920,
+            "min_y": 510
+          },
+          "semantic_window_id": "window.promoter_design",
+          "semantic_window_rect_logical_points": {
+            "max_x": 1590.0,
+            "max_y": 967.0,
+            "min_x": 626.0,
+            "min_y": 263.0
+          },
+          "x11_client_window_id": 4194436
+        },
+        "screen_x": 1060,
+        "screen_y": 520
+      }
+    },
+    {
+      "after_generation": 179,
+      "before_generation": 176,
+      "elapsed_ms": 2196,
+      "evidence": {
+        "screenshot": {
+          "derived_views": [
+            {
+              "annotation": "Numbered outline derived from the semantic focus rectangle",
+              "crop_physical_pixels": {
+                "max_x": 1600,
+                "max_y": 1000,
+                "min_x": 0,
+                "min_y": 0
+              },
+              "path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/scroll_to_pair.orientation.svg",
+              "role": "orientation",
+              "sha256": "1a07641dd246446eff37a06fc5abe9982761727ea9af3987c1768d6dcd43b5d4"
+            },
+            {
+              "annotation": "Padded crop around the same semantic focus rectangle",
+              "crop_physical_pixels": {
+                "max_x": 1015,
+                "max_y": 792,
+                "min_x": 421,
+                "min_y": 534
+              },
+              "path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/scroll_to_pair.context.svg",
+              "role": "interaction_context",
+              "sha256": "dc8bfdb67f31cbcfb673a68e8c04b97ee542ad97819ec1087a666453e24977e1"
+            }
+          ],
+          "raw_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/scroll_to_pair.raw.png",
+          "raw_sha256": "e57cb21af5b022d09026d3e8790fd74869b6bbfa1192558497ffad6c1de8eeb2",
+          "record_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/scroll_to_pair.screenshot.json",
+          "record_sha256": "03a7f6c1419c3887018497a5d3f26814636384ba537bd762365e9ed5ce618fb1",
+          "requirement": "required",
+          "schema": "gentle.tutorial_gui_screenshot_evidence.v1"
+        },
+        "snapshot": {
+          "path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/scroll_to_pair.snapshot.json",
+          "requirement": "required",
+          "sha256": "cdfbb774eb87bf56322fbf6d946729233c0561e57956ddcaf492f4ed98cdb3b3"
+        }
+      },
+      "id": "scroll_to_pair",
+      "prose_step": 5,
+      "requested_action": {
+        "clicks": 8,
+        "direction": "down",
+        "kind": "scroll"
+      },
+      "resolved_target": {
+        "egui_viewport_id": "\"8499\"",
+        "generation": 176,
+        "pixels_per_point": 1.0,
+        "rect_logical_points": {
+          "max_x": 1590.0,
+          "max_y": 967.0,
+          "min_x": 626.0,
+          "min_y": 263.0
+        },
+        "semantic_id": "promoter.panel",
+        "state": {
+          "enabled": true,
+          "hovered": true,
+          "selected": false,
+          "visible": true
+        },
+        "subject_scope": "subject-d6fef1a3df9110362aba292817a04ff5",
+        "widget_kind": "window",
+        "window_id": "window.promoter_design"
+      },
+      "scientific_verdict": "not_requested",
+      "semantic_target": "promoter.panel",
+      "status": "pass",
+      "step_sha256": "75ae55b95a66b47a942d8e49b0d6d03dab09156991985a40a6989caedbcf86ee",
+      "subject_scope": "subject-d6fef1a3df9110362aba292817a04ff5",
+      "timeout_class": "interactive",
+      "verifiers": [
+        {
+          "kind": "visible_claim",
+          "observed": {
+            "egui_viewport_id": "\"8499\"",
+            "generation": 179,
+            "pixels_per_point": 1.0,
+            "rect_logical_points": {
+              "max_x": 824.0625,
+              "max_y": 660.5,
+              "min_x": 626.0,
+              "min_y": 642.5
+            },
+            "semantic_id": "promoter.materialize_pair",
+            "state": {
+              "enabled": true,
+              "hovered": false,
+              "selected": false,
+              "visible": true
+            },
+            "subject_scope": "subject-d6fef1a3df9110362aba292817a04ff5",
+            "widget_kind": "button",
+            "window_id": "window.promoter_design"
+          },
+          "semantic_id": "promoter.materialize_pair",
+          "status": "pass"
+        }
+      ],
+      "visual_verdict": "pass",
+      "window": "window.promoter_design",
+      "x11_event": {
+        "argv": [
+          [
+            "/usr/bin/xdotool",
+            "windowraise",
+            "4194436"
+          ],
+          [
+            "/usr/bin/xdotool",
+            "mousemove",
+            "1101",
+            "627"
+          ],
+          [
+            "/usr/bin/xdotool",
+            "click",
+            "--repeat",
+            "8",
+            "--delay",
+            "50",
+            "5"
+          ]
+        ],
+        "hover_confirmed_generation": 177,
+        "kind": "scroll",
+        "native_window_binding": {
+          "coordinate_transform": "root_screen_px = native_client_origin_px + (target_logical - semantic_window_logical_origin) * pixels_per_point",
+          "egui_viewport_id": "\"8499\"",
+          "native_client_geometry": {
+            "height": 720,
+            "root_x": 619,
+            "root_y": 275,
+            "width": 980
+          },
+          "native_owner_semantic_window_id": "window.promoter_design",
+          "screen_rect_physical_pixels": {
+            "max_x": 1583,
+            "max_y": 979,
+            "min_x": 619,
+            "min_y": 275
+          },
+          "semantic_window_id": "window.promoter_design",
+          "semantic_window_rect_logical_points": {
+            "max_x": 1590.0,
+            "max_y": 967.0,
+            "min_x": 626.0,
+            "min_y": 263.0
+          },
+          "x11_client_window_id": 4194436
+        },
+        "screen_x": 1101,
+        "screen_y": 627
+      }
+    },
+    {
+      "after_fact": {
+        "schema": "gentle.fact_evaluation.v1",
+        "truth": "satisfied",
+        "unknown_atoms": [],
+        "unmet_atoms": []
+      },
+      "after_generation": 187,
+      "before_fact": {
+        "schema": "gentle.fact_evaluation.v1",
+        "truth": "unsatisfied",
+        "unknown_atoms": [],
+        "unmet_atoms": [
+          {
+            "fact": "sequence.exists",
+            "subject": {
+              "id": "vkorc1_rs9923231_promoter_reference",
+              "kind": "sequence"
+            }
+          }
+        ]
+      },
+      "before_generation": 184,
+      "elapsed_ms": 3162,
+      "evidence": {
+        "screenshot": {
+          "derived_views": [
+            {
+              "annotation": "Numbered outline derived from the semantic focus rectangle",
+              "crop_physical_pixels": {
+                "max_x": 1600,
+                "max_y": 1000,
+                "min_x": 0,
+                "min_y": 0
+              },
+              "path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/materialize_pair.orientation.svg",
+              "role": "orientation",
+              "sha256": "457b3a89b28d4bf90e28e896e005a56527a23a2b2916d41c68e331cc0e702e4e"
+            },
+            {
+              "annotation": "Padded crop around the same semantic focus rectangle",
+              "crop_physical_pixels": {
+                "max_x": 1015,
+                "max_y": 792,
+                "min_x": 421,
+                "min_y": 534
+              },
+              "path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/materialize_pair.context.svg",
+              "role": "interaction_context",
+              "sha256": "0a0cb297cc6db2a8870e1981fb5ec43c57323ccd7a1ed21d8d269373bf8dcb90"
+            }
+          ],
+          "raw_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/materialize_pair.raw.png",
+          "raw_sha256": "c53a00c893e430a63950653668e537b5a4956f759c4c85e4cb6656477dd4e3eb",
+          "record_path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/materialize_pair.screenshot.json",
+          "record_sha256": "cc8a65e8565fb6d837d7e3f66f074e6f2462dbebf69c938d1201d0980b187e93",
+          "requirement": "required",
+          "schema": "gentle.tutorial_gui_screenshot_evidence.v1"
+        },
+        "snapshot": {
+          "path": "/home/runner/work/_temp/vkorc1-gui-audit/native/vkorc1_warfarin_promoter_luciferase_gui/checkpoints/materialize_pair.snapshot.json",
+          "requirement": "required",
+          "sha256": "ec9e3dc35605b0c4b831dbecf0fe6fa91785a1315cd9db41bd641239eb114a4e"
+        }
+      },
+      "id": "materialize_pair",
+      "prose_step": 5,
+      "requested_action": {
+        "kind": "click"
+      },
+      "resolved_target": {
+        "egui_viewport_id": "\"8499\"",
+        "generation": 184,
+        "pixels_per_point": 1.0,
+        "rect_logical_points": {
+          "max_x": 824.0625,
+          "max_y": 660.5,
+          "min_x": 626.0,
+          "min_y": 642.5
+        },
+        "semantic_id": "promoter.materialize_pair",
+        "state": {
+          "enabled": true,
+          "hovered": false,
+          "selected": false,
+          "visible": true
+        },
+        "subject_scope": "subject-d6fef1a3df9110362aba292817a04ff5",
+        "widget_kind": "button",
+        "window_id": "window.promoter_design"
+      },
+      "save": {
+        "argv": [
+          [
+            "/usr/bin/xdotool",
+            "windowraise",
+            "4194306"
+          ],
+          [
+            "/usr/bin/xdotool",
+            "windowactivate",
+            "--sync",
+            "4194306"
+          ],
+          [
+            "/usr/bin/xdotool",
+            "key",
+            "--clearmodifiers",
+            "ctrl+s"
+          ]
+        ],
+        "event": "ctrl+s",
+        "generation": 193,
+        "native_window_binding": {
+          "coordinate_transform": "root_screen_px = native_client_origin_px + (target_logical - semantic_window_logical_origin) * pixels_per_point",
+          "egui_viewport_id": "\"FFFF\"",
+          "native_client_geometry": {
+            "height": 600,
+            "root_x": 400,
+            "root_y": 207,
+            "width": 800
+          },
+          "native_owner_semantic_window_id": "window.main",
+          "screen_rect_physical_pixels": {
+            "max_x": 549,
+            "max_y": 792,
+            "min_x": 408,
+            "min_y": 777
+          },
+          "semantic_window_id": "window.main",
+          "semantic_window_rect_logical_points": {
+            "max_x": 1199.0,
+            "max_y": 787.0,
+            "min_x": 399.0,
+            "min_y": 187.0
+          },
+          "x11_client_window_id": 4194306
+        },
+        "project_sha256": "ea3f9248f8c3f4861eb4ed7a126a2a1a47f3263d9ff70864824a2fd60ca74416"
+      },
+      "scientific_verdict": "pass",
+      "semantic_target": "promoter.materialize_pair",
+      "status": "pass",
+      "step_sha256": "8df4a1ab4350a9c163e5fb1a39348cd3d162a1b088e58446b456a97c960cdbc3",
+      "subject_scope": "subject-d6fef1a3df9110362aba292817a04ff5",
+      "timeout_class": "compute",
+      "verifiers": [
+        {
+          "kind": "state",
+          "sequence_content_sha256": {
+            "vkorc1_rs9923231_promoter_alternate": "3105beb51d7984d60a27f44593ad33de02e8b3cc8f277609f3856d2cae5409ae",
+            "vkorc1_rs9923231_promoter_fragment": "8a9e04d0499b959d81e34054b329a2538fce917e93671dc77c201759f1935a9f",
+            "vkorc1_rs9923231_promoter_reference": "a9337a54c96d4dbe94e5aafb7ffae371719b966a4863042688930ab5082027ef"
+          },
+          "sequence_ids": [
+            "vkorc1_rs9923231_promoter_fragment",
+            "vkorc1_rs9923231_promoter_reference",
+            "vkorc1_rs9923231_promoter_alternate"
+          ],
+          "status": "pass"
+        }
+      ],
+      "visual_verdict": "not_requested",
+      "window": "window.promoter_design",
+      "x11_event": {
+        "argv": [
+          [
+            "/usr/bin/xdotool",
+            "windowraise",
+            "4194436"
+          ],
+          [
+            "/usr/bin/xdotool",
+            "mousemove",
+            "718",
+            "663"
+          ],
+          [
+            "/usr/bin/xdotool",
+            "click",
+            "1"
+          ]
+        ],
+        "hover_confirmed_generation": 186,
+        "kind": "click",
+        "native_window_binding": {
+          "coordinate_transform": "root_screen_px = native_client_origin_px + (target_logical - semantic_window_logical_origin) * pixels_per_point",
+          "egui_viewport_id": "\"8499\"",
+          "native_client_geometry": {
+            "height": 720,
+            "root_x": 619,
+            "root_y": 275,
+            "width": 980
+          },
+          "native_owner_semantic_window_id": "window.promoter_design",
+          "screen_rect_physical_pixels": {
+            "max_x": 817,
+            "max_y": 672,
+            "min_x": 619,
+            "min_y": 654
+          },
+          "semantic_window_id": "window.promoter_design",
+          "semantic_window_rect_logical_points": {
+            "max_x": 1590.0,
+            "max_y": 967.0,
+            "min_x": 626.0,
+            "min_y": 263.0
+          },
+          "x11_client_window_id": 4194436
+        },
+        "screen_x": 718,
+        "screen_y": 663
+      }
+    }
+  ]
+}

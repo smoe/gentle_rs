@@ -1,0 +1,1538 @@
+{
+  "sample_count": 12,
+  "nested_span_policy": "Each inclusive span is reported independently; nested spans are never summed.",
+  "groups": {
+    "dev/cold": {
+      "role": "dev",
+      "condition": "cold",
+      "n": 3,
+      "metrics": {
+        "cache_png_after": {
+          "status": "measured",
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "median": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "spread": 0.0
+        },
+        "cache_png_before": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "dropped_events": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "dropped_help_image_observations": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "failed_spans": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "first_help_click_to_window_ms": {
+          "status": "measured",
+          "values": [
+            187.811,
+            303.486,
+            189.765
+          ],
+          "median": 189.765,
+          "min": 187.811,
+          "max": 303.486,
+          "spread": 115.67499999999998
+        },
+        "image_cache_hits": {
+          "status": "measured",
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "median": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "spread": 0.0
+        },
+        "image_preparation_failures": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "image_rasterization_attempts": {
+          "status": "measured",
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "median": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "spread": 0.0
+        },
+        "image_rasterization_completed": {
+          "status": "measured",
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "median": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "spread": 0.0
+        },
+        "image_rasterization_failures": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "image_rasterization_us": {
+          "status": "measured",
+          "values": [
+            470966.0,
+            468286.0,
+            470456.0
+          ],
+          "median": 470456.0,
+          "min": 468286.0,
+          "max": 470966.0,
+          "spread": 2680.0
+        },
+        "image_svg_references": {
+          "status": "measured",
+          "values": [
+            2.0,
+            2.0,
+            2.0
+          ],
+          "median": 2.0,
+          "min": 2.0,
+          "max": 2.0,
+          "spread": 0.0
+        },
+        "launch_to_main_activated_ms": {
+          "status": "measured",
+          "values": [
+            1115.986,
+            1101.648,
+            1101.755
+          ],
+          "median": 1101.755,
+          "min": 1101.648,
+          "max": 1115.986,
+          "spread": 14.338000000000193
+        },
+        "launch_to_main_mapped_ms": {
+          "status": "measured",
+          "values": [
+            1081.822,
+            1069.392,
+            1069.458
+          ],
+          "median": 1069.458,
+          "min": 1069.392,
+          "max": 1081.822,
+          "spread": 12.429999999999836
+        },
+        "launch_to_subject_window_ms": {
+          "status": "measured",
+          "values": [
+            3861.372,
+            3730.752,
+            3688.287
+          ],
+          "median": 3730.752,
+          "min": 3688.287,
+          "max": 3861.372,
+          "spread": 173.08500000000004
+        },
+        "launch_to_usable_main_ms": {
+          "status": "measured",
+          "values": [
+            2701.962,
+            2642.747,
+            2646.717
+          ],
+          "median": 2646.717,
+          "min": 2642.747,
+          "max": 2701.962,
+          "spread": 59.215000000000146
+        },
+        "open_sequence_click_to_subject_window_ms": {
+          "status": "measured",
+          "values": [
+            1051.699,
+            996.632,
+            936.792
+          ],
+          "median": 996.632,
+          "min": 936.792,
+          "max": 1051.699,
+          "spread": 114.90700000000004
+        },
+        "phase_help_manuals_ms": {
+          "status": "measured",
+          "values": [
+            43.389,
+            43.349,
+            42.605
+          ],
+          "median": 43.349,
+          "min": 42.605,
+          "max": 43.389,
+          "spread": 0.784000000000006
+        },
+        "phase_help_open_ms": {
+          "status": "measured",
+          "values": [
+            0.014,
+            0.015,
+            0.015
+          ],
+          "median": 0.015,
+          "min": 0.014,
+          "max": 0.015,
+          "spread": 0.0009999999999999992
+        },
+        "phase_help_preparation_ms": {
+          "status": "measured",
+          "values": [
+            525.74,
+            522.606,
+            523.85
+          ],
+          "median": 523.85,
+          "min": 522.606,
+          "max": 525.74,
+          "spread": 3.1340000000000146
+        },
+        "phase_help_shell_reference_ms": {
+          "status": "measured",
+          "values": [
+            6.016,
+            5.912,
+            5.833
+          ],
+          "median": 5.912,
+          "min": 5.833,
+          "max": 6.016,
+          "spread": 0.18299999999999983
+        },
+        "phase_help_tutorial_discovery_ms": {
+          "status": "measured",
+          "values": [
+            3.798,
+            3.586,
+            3.521
+          ],
+          "median": 3.586,
+          "min": 3.521,
+          "max": 3.798,
+          "spread": 0.27700000000000014
+        },
+        "phase_help_tutorial_menu_discovery_ms": {
+          "status": "measured",
+          "values": [
+            2.417,
+            2.407,
+            2.609
+          ],
+          "median": 2.417,
+          "min": 2.407,
+          "max": 2.609,
+          "spread": 0.20199999999999996
+        },
+        "phase_help_tutorial_open_ms": {
+          "status": "unavailable",
+          "values": []
+        },
+        "phase_help_tutorial_selected_load_ms": {
+          "status": "measured",
+          "values": [
+            472.518,
+            469.747,
+            471.883
+          ],
+          "median": 471.883,
+          "min": 469.747,
+          "max": 472.518,
+          "spread": 2.770999999999958
+        },
+        "phase_help_tutorial_switch_ms": {
+          "status": "measured",
+          "values": [
+            0.411,
+            0.412,
+            0.427
+          ],
+          "median": 0.412,
+          "min": 0.411,
+          "max": 0.427,
+          "spread": 0.016000000000000014
+        },
+        "topic_switch_click_to_window_ms": {
+          "status": "measured",
+          "values": [
+            394.514,
+            456.452,
+            454.099
+          ],
+          "median": 454.099,
+          "min": 394.514,
+          "max": 456.452,
+          "spread": 61.93799999999999
+        },
+        "trace_main_to_root_workspace_ms": {
+          "status": "measured",
+          "values": [
+            2620.237,
+            2553.116,
+            2551.999
+          ],
+          "median": 2553.116,
+          "min": 2551.999,
+          "max": 2620.237,
+          "spread": 68.23800000000028
+        },
+        "trace_main_to_subject_content_ms": {
+          "status": "measured",
+          "values": [
+            3263.18,
+            3141.519,
+            3151.029
+          ],
+          "median": 3151.029,
+          "min": 3141.519,
+          "max": 3263.18,
+          "spread": 121.66100000000006
+        },
+        "tutorial_click_to_window_ms": {
+          "status": "measured",
+          "values": [
+            5385.015,
+            5247.781,
+            5317.236
+          ],
+          "median": 5317.236,
+          "min": 5247.781,
+          "max": 5385.015,
+          "spread": 137.23400000000038
+        },
+        "tutorial_project_hover_to_observation_ms": {
+          "status": "measured",
+          "values": [
+            1002.41,
+            1002.491,
+            1002.563
+          ],
+          "median": 1002.491,
+          "min": 1002.41,
+          "max": 1002.563,
+          "spread": 0.15300000000002
+        }
+      }
+    },
+    "dev/warm": {
+      "role": "dev",
+      "condition": "warm",
+      "n": 3,
+      "metrics": {
+        "cache_png_after": {
+          "status": "measured",
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "median": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "spread": 0.0
+        },
+        "cache_png_before": {
+          "status": "measured",
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "median": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "spread": 0.0
+        },
+        "dropped_events": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "dropped_help_image_observations": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "failed_spans": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "first_help_click_to_window_ms": {
+          "status": "measured",
+          "values": [
+            120.468,
+            178.091,
+            117.093
+          ],
+          "median": 120.468,
+          "min": 117.093,
+          "max": 178.091,
+          "spread": 60.998000000000005
+        },
+        "image_cache_hits": {
+          "status": "measured",
+          "values": [
+            2.0,
+            2.0,
+            2.0
+          ],
+          "median": 2.0,
+          "min": 2.0,
+          "max": 2.0,
+          "spread": 0.0
+        },
+        "image_preparation_failures": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "image_rasterization_attempts": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "image_rasterization_completed": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "image_rasterization_failures": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "image_rasterization_us": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "image_svg_references": {
+          "status": "measured",
+          "values": [
+            2.0,
+            2.0,
+            2.0
+          ],
+          "median": 2.0,
+          "min": 2.0,
+          "max": 2.0,
+          "spread": 0.0
+        },
+        "launch_to_main_activated_ms": {
+          "status": "measured",
+          "values": [
+            681.992,
+            623.625,
+            627.733
+          ],
+          "median": 627.733,
+          "min": 623.625,
+          "max": 681.992,
+          "spread": 58.36699999999996
+        },
+        "launch_to_main_mapped_ms": {
+          "status": "measured",
+          "values": [
+            649.601,
+            591.521,
+            595.369
+          ],
+          "median": 595.369,
+          "min": 591.521,
+          "max": 649.601,
+          "spread": 58.08000000000004
+        },
+        "launch_to_subject_window_ms": {
+          "status": "measured",
+          "values": [
+            3772.771,
+            3759.116,
+            3826.339
+          ],
+          "median": 3772.771,
+          "min": 3759.116,
+          "max": 3826.339,
+          "spread": 67.22299999999996
+        },
+        "launch_to_usable_main_ms": {
+          "status": "measured",
+          "values": [
+            2684.394,
+            2671.679,
+            2685.118
+          ],
+          "median": 2684.394,
+          "min": 2671.679,
+          "max": 2685.118,
+          "spread": 13.43899999999985
+        },
+        "open_sequence_click_to_subject_window_ms": {
+          "status": "measured",
+          "values": [
+            987.219,
+            997.297,
+            1049.717
+          ],
+          "median": 997.297,
+          "min": 987.219,
+          "max": 1049.717,
+          "spread": 62.49800000000005
+        },
+        "phase_help_manuals_ms": {
+          "status": "measured",
+          "values": [
+            43.885,
+            42.971,
+            42.885
+          ],
+          "median": 42.971,
+          "min": 42.885,
+          "max": 43.885,
+          "spread": 1.0
+        },
+        "phase_help_open_ms": {
+          "status": "measured",
+          "values": [
+            0.015,
+            0.013,
+            0.014
+          ],
+          "median": 0.014,
+          "min": 0.013,
+          "max": 0.015,
+          "spread": 0.002
+        },
+        "phase_help_preparation_ms": {
+          "status": "measured",
+          "values": [
+            54.72,
+            53.805,
+            53.592
+          ],
+          "median": 53.805,
+          "min": 53.592,
+          "max": 54.72,
+          "spread": 1.1280000000000001
+        },
+        "phase_help_shell_reference_ms": {
+          "status": "measured",
+          "values": [
+            5.919,
+            5.926,
+            5.847
+          ],
+          "median": 5.919,
+          "min": 5.847,
+          "max": 5.926,
+          "spread": 0.07899999999999974
+        },
+        "phase_help_tutorial_discovery_ms": {
+          "status": "measured",
+          "values": [
+            3.576,
+            3.576,
+            3.553
+          ],
+          "median": 3.576,
+          "min": 3.553,
+          "max": 3.576,
+          "spread": 0.02300000000000013
+        },
+        "phase_help_tutorial_menu_discovery_ms": {
+          "status": "measured",
+          "values": [
+            2.47,
+            2.427,
+            2.438
+          ],
+          "median": 2.438,
+          "min": 2.427,
+          "max": 2.47,
+          "spread": 0.04300000000000015
+        },
+        "phase_help_tutorial_open_ms": {
+          "status": "unavailable",
+          "values": []
+        },
+        "phase_help_tutorial_selected_load_ms": {
+          "status": "measured",
+          "values": [
+            1.331,
+            1.324,
+            1.303
+          ],
+          "median": 1.324,
+          "min": 1.303,
+          "max": 1.331,
+          "spread": 0.028000000000000025
+        },
+        "phase_help_tutorial_switch_ms": {
+          "status": "measured",
+          "values": [
+            0.394,
+            0.386,
+            0.412
+          ],
+          "median": 0.394,
+          "min": 0.386,
+          "max": 0.412,
+          "spread": 0.025999999999999968
+        },
+        "topic_switch_click_to_window_ms": {
+          "status": "measured",
+          "values": [
+            464.279,
+            381.271,
+            451.941
+          ],
+          "median": 451.941,
+          "min": 381.271,
+          "max": 464.279,
+          "spread": 83.00799999999998
+        },
+        "trace_main_to_root_workspace_ms": {
+          "status": "measured",
+          "values": [
+            2574.407,
+            2564.362,
+            2581.685
+          ],
+          "median": 2574.407,
+          "min": 2564.362,
+          "max": 2581.685,
+          "spread": 17.322999999999865
+        },
+        "trace_main_to_subject_content_ms": {
+          "status": "measured",
+          "values": [
+            3229.071,
+            3158.648,
+            3184.949
+          ],
+          "median": 3184.949,
+          "min": 3158.648,
+          "max": 3229.071,
+          "spread": 70.42299999999977
+        },
+        "tutorial_click_to_window_ms": {
+          "status": "measured",
+          "values": [
+            5182.604,
+            5177.171,
+            5126.299
+          ],
+          "median": 5177.171,
+          "min": 5126.299,
+          "max": 5182.604,
+          "spread": 56.30500000000029
+        },
+        "tutorial_project_hover_to_observation_ms": {
+          "status": "measured",
+          "values": [
+            1002.387,
+            1002.444,
+            1002.503
+          ],
+          "median": 1002.444,
+          "min": 1002.387,
+          "max": 1002.503,
+          "spread": 0.11600000000009913
+        }
+      }
+    },
+    "package-opt1/cold": {
+      "role": "package-opt1",
+      "condition": "cold",
+      "n": 3,
+      "metrics": {
+        "cache_png_after": {
+          "status": "measured",
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "median": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "spread": 0.0
+        },
+        "cache_png_before": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "dropped_events": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "dropped_help_image_observations": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "failed_spans": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "first_help_click_to_window_ms": {
+          "status": "measured",
+          "values": [
+            119.603,
+            119.795,
+            118.237
+          ],
+          "median": 119.603,
+          "min": 118.237,
+          "max": 119.795,
+          "spread": 1.558000000000007
+        },
+        "image_cache_hits": {
+          "status": "measured",
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "median": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "spread": 0.0
+        },
+        "image_preparation_failures": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "image_rasterization_attempts": {
+          "status": "measured",
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "median": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "spread": 0.0
+        },
+        "image_rasterization_completed": {
+          "status": "measured",
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "median": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "spread": 0.0
+        },
+        "image_rasterization_failures": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "image_rasterization_us": {
+          "status": "measured",
+          "values": [
+            70075.0,
+            71154.0,
+            71294.0
+          ],
+          "median": 71154.0,
+          "min": 70075.0,
+          "max": 71294.0,
+          "spread": 1219.0
+        },
+        "image_svg_references": {
+          "status": "measured",
+          "values": [
+            2.0,
+            2.0,
+            2.0
+          ],
+          "median": 2.0,
+          "min": 2.0,
+          "max": 2.0,
+          "spread": 0.0
+        },
+        "launch_to_main_activated_ms": {
+          "status": "measured",
+          "values": [
+            412.232,
+            412.693,
+            413.012
+          ],
+          "median": 412.693,
+          "min": 412.232,
+          "max": 413.012,
+          "spread": 0.7799999999999727
+        },
+        "launch_to_main_mapped_ms": {
+          "status": "measured",
+          "values": [
+            380.224,
+            379.984,
+            380.9
+          ],
+          "median": 380.224,
+          "min": 379.984,
+          "max": 380.9,
+          "spread": 0.9159999999999968
+        },
+        "launch_to_subject_window_ms": {
+          "status": "measured",
+          "values": [
+            2798.369,
+            2796.648,
+            2800.357
+          ],
+          "median": 2798.369,
+          "min": 2796.648,
+          "max": 2800.357,
+          "spread": 3.7089999999998327
+        },
+        "launch_to_usable_main_ms": {
+          "status": "measured",
+          "values": [
+            2389.852,
+            2384.833,
+            2396.339
+          ],
+          "median": 2389.852,
+          "min": 2384.833,
+          "max": 2396.339,
+          "spread": 11.505999999999858
+        },
+        "open_sequence_click_to_subject_window_ms": {
+          "status": "measured",
+          "values": [
+            309.867,
+            317.328,
+            306.963
+          ],
+          "median": 309.867,
+          "min": 306.963,
+          "max": 317.328,
+          "spread": 10.364999999999952
+        },
+        "phase_help_manuals_ms": {
+          "status": "measured",
+          "values": [
+            9.588,
+            9.396,
+            9.288
+          ],
+          "median": 9.396,
+          "min": 9.288,
+          "max": 9.588,
+          "spread": 0.29999999999999893
+        },
+        "phase_help_open_ms": {
+          "status": "measured",
+          "values": [
+            0.003,
+            0.003,
+            0.003
+          ],
+          "median": 0.003,
+          "min": 0.003,
+          "max": 0.003,
+          "spread": 0.0
+        },
+        "phase_help_preparation_ms": {
+          "status": "measured",
+          "values": [
+            82.577,
+            83.49,
+            83.479
+          ],
+          "median": 83.479,
+          "min": 82.577,
+          "max": 83.49,
+          "spread": 0.9129999999999967
+        },
+        "phase_help_shell_reference_ms": {
+          "status": "measured",
+          "values": [
+            1.433,
+            1.453,
+            1.431
+          ],
+          "median": 1.433,
+          "min": 1.431,
+          "max": 1.453,
+          "spread": 0.02200000000000002
+        },
+        "phase_help_tutorial_discovery_ms": {
+          "status": "measured",
+          "values": [
+            1.123,
+            1.127,
+            1.109
+          ],
+          "median": 1.123,
+          "min": 1.109,
+          "max": 1.127,
+          "spread": 0.018000000000000016
+        },
+        "phase_help_tutorial_menu_discovery_ms": {
+          "status": "measured",
+          "values": [
+            0.637,
+            0.631,
+            0.937
+          ],
+          "median": 0.637,
+          "min": 0.631,
+          "max": 0.937,
+          "spread": 0.30600000000000005
+        },
+        "phase_help_tutorial_open_ms": {
+          "status": "unavailable",
+          "values": []
+        },
+        "phase_help_tutorial_selected_load_ms": {
+          "status": "measured",
+          "values": [
+            70.431,
+            71.512,
+            71.651
+          ],
+          "median": 71.512,
+          "min": 70.431,
+          "max": 71.651,
+          "spread": 1.2199999999999989
+        },
+        "phase_help_tutorial_switch_ms": {
+          "status": "measured",
+          "values": [
+            0.125,
+            0.131,
+            0.13
+          ],
+          "median": 0.13,
+          "min": 0.125,
+          "max": 0.131,
+          "spread": 0.006000000000000005
+        },
+        "topic_switch_click_to_window_ms": {
+          "status": "measured",
+          "values": [
+            128.927,
+            127.393,
+            127.557
+          ],
+          "median": 127.557,
+          "min": 127.393,
+          "max": 128.927,
+          "spread": 1.5339999999999918
+        },
+        "trace_main_to_root_workspace_ms": {
+          "status": "measured",
+          "values": [
+            2317.521,
+            2319.765,
+            2323.958
+          ],
+          "median": 2319.765,
+          "min": 2317.521,
+          "max": 2323.958,
+          "spread": 6.436999999999898
+        },
+        "trace_main_to_subject_content_ms": {
+          "status": "measured",
+          "values": [
+            2565.297,
+            2557.496,
+            2573.902
+          ],
+          "median": 2565.297,
+          "min": 2557.496,
+          "max": 2573.902,
+          "spread": 16.40599999999995
+        },
+        "tutorial_click_to_window_ms": {
+          "status": "measured",
+          "values": [
+            250.956,
+            256.593,
+            190.421
+          ],
+          "median": 250.956,
+          "min": 190.421,
+          "max": 256.593,
+          "spread": 66.17200000000003
+        },
+        "tutorial_project_hover_to_observation_ms": {
+          "status": "measured",
+          "values": [
+            1003.794,
+            1002.446,
+            1003.461
+          ],
+          "median": 1003.461,
+          "min": 1002.446,
+          "max": 1003.794,
+          "spread": 1.3479999999999563
+        }
+      }
+    },
+    "package-opt1/warm": {
+      "role": "package-opt1",
+      "condition": "warm",
+      "n": 3,
+      "metrics": {
+        "cache_png_after": {
+          "status": "measured",
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "median": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "spread": 0.0
+        },
+        "cache_png_before": {
+          "status": "measured",
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "median": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "spread": 0.0
+        },
+        "dropped_events": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "dropped_help_image_observations": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "failed_spans": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "first_help_click_to_window_ms": {
+          "status": "measured",
+          "values": [
+            120.499,
+            117.924,
+            120.559
+          ],
+          "median": 120.499,
+          "min": 117.924,
+          "max": 120.559,
+          "spread": 2.634999999999991
+        },
+        "image_cache_hits": {
+          "status": "measured",
+          "values": [
+            2.0,
+            2.0,
+            2.0
+          ],
+          "median": 2.0,
+          "min": 2.0,
+          "max": 2.0,
+          "spread": 0.0
+        },
+        "image_preparation_failures": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "image_rasterization_attempts": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "image_rasterization_completed": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "image_rasterization_failures": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "image_rasterization_us": {
+          "status": "measured",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "spread": 0.0
+        },
+        "image_svg_references": {
+          "status": "measured",
+          "values": [
+            2.0,
+            2.0,
+            2.0
+          ],
+          "median": 2.0,
+          "min": 2.0,
+          "max": 2.0,
+          "spread": 0.0
+        },
+        "launch_to_main_activated_ms": {
+          "status": "measured",
+          "values": [
+            308.881,
+            309.926,
+            360.037
+          ],
+          "median": 309.926,
+          "min": 308.881,
+          "max": 360.037,
+          "spread": 51.156000000000006
+        },
+        "launch_to_main_mapped_ms": {
+          "status": "measured",
+          "values": [
+            276.558,
+            277.506,
+            327.751
+          ],
+          "median": 277.506,
+          "min": 276.558,
+          "max": 327.751,
+          "spread": 51.192999999999984
+        },
+        "launch_to_subject_window_ms": {
+          "status": "measured",
+          "values": [
+            2949.935,
+            2767.771,
+            2827.483
+          ],
+          "median": 2827.483,
+          "min": 2767.771,
+          "max": 2949.935,
+          "spread": 182.16399999999976
+        },
+        "launch_to_usable_main_ms": {
+          "status": "measured",
+          "values": [
+            2440.165,
+            2363.981,
+            2414.108
+          ],
+          "median": 2414.108,
+          "min": 2363.981,
+          "max": 2440.165,
+          "spread": 76.18399999999974
+        },
+        "open_sequence_click_to_subject_window_ms": {
+          "status": "measured",
+          "values": [
+            329.52,
+            309.355,
+            315.911
+          ],
+          "median": 315.911,
+          "min": 309.355,
+          "max": 329.52,
+          "spread": 20.164999999999964
+        },
+        "phase_help_manuals_ms": {
+          "status": "measured",
+          "values": [
+            9.347,
+            9.347,
+            9.446
+          ],
+          "median": 9.347,
+          "min": 9.347,
+          "max": 9.446,
+          "spread": 0.0990000000000002
+        },
+        "phase_help_open_ms": {
+          "status": "measured",
+          "values": [
+            0.003,
+            0.003,
+            0.002
+          ],
+          "median": 0.003,
+          "min": 0.002,
+          "max": 0.003,
+          "spread": 0.001
+        },
+        "phase_help_preparation_ms": {
+          "status": "measured",
+          "values": [
+            12.198,
+            12.193,
+            12.321
+          ],
+          "median": 12.198,
+          "min": 12.193,
+          "max": 12.321,
+          "spread": 0.1280000000000001
+        },
+        "phase_help_shell_reference_ms": {
+          "status": "measured",
+          "values": [
+            1.455,
+            1.455,
+            1.464
+          ],
+          "median": 1.455,
+          "min": 1.455,
+          "max": 1.464,
+          "spread": 0.008999999999999897
+        },
+        "phase_help_tutorial_discovery_ms": {
+          "status": "measured",
+          "values": [
+            1.116,
+            1.113,
+            1.129
+          ],
+          "median": 1.116,
+          "min": 1.113,
+          "max": 1.129,
+          "spread": 0.016000000000000014
+        },
+        "phase_help_tutorial_menu_discovery_ms": {
+          "status": "measured",
+          "values": [
+            0.619,
+            0.632,
+            0.624
+          ],
+          "median": 0.624,
+          "min": 0.619,
+          "max": 0.632,
+          "spread": 0.013000000000000012
+        },
+        "phase_help_tutorial_open_ms": {
+          "status": "unavailable",
+          "values": []
+        },
+        "phase_help_tutorial_selected_load_ms": {
+          "status": "measured",
+          "values": [
+            0.279,
+            0.278,
+            0.28
+          ],
+          "median": 0.279,
+          "min": 0.278,
+          "max": 0.28,
+          "spread": 0.0020000000000000018
+        },
+        "phase_help_tutorial_switch_ms": {
+          "status": "measured",
+          "values": [
+            0.126,
+            0.127,
+            0.132
+          ],
+          "median": 0.127,
+          "min": 0.126,
+          "max": 0.132,
+          "spread": 0.006000000000000005
+        },
+        "topic_switch_click_to_window_ms": {
+          "status": "measured",
+          "values": [
+            130.395,
+            122.741,
+            120.907
+          ],
+          "median": 122.741,
+          "min": 120.907,
+          "max": 130.395,
+          "spread": 9.488000000000014
+        },
+        "trace_main_to_root_workspace_ms": {
+          "status": "measured",
+          "values": [
+            2316.092,
+            2317.15,
+            2339.363
+          ],
+          "median": 2317.15,
+          "min": 2316.092,
+          "max": 2339.363,
+          "spread": 23.27099999999973
+        },
+        "trace_main_to_subject_content_ms": {
+          "status": "measured",
+          "values": [
+            2701.275,
+            2534.994,
+            2590.001
+          ],
+          "median": 2590.001,
+          "min": 2534.994,
+          "max": 2701.275,
+          "spread": 166.28099999999995
+        },
+        "tutorial_click_to_window_ms": {
+          "status": "measured",
+          "values": [
+            193.993,
+            253.117,
+            253.11
+          ],
+          "median": 253.11,
+          "min": 193.993,
+          "max": 253.117,
+          "spread": 59.123999999999995
+        },
+        "tutorial_project_hover_to_observation_ms": {
+          "status": "measured",
+          "values": [
+            1002.42,
+            1002.407,
+            1002.496
+          ],
+          "median": 1002.42,
+          "min": 1002.407,
+          "max": 1002.496,
+          "spread": 0.08899999999994179
+        }
+      }
+    }
+  }
+}

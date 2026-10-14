@@ -1,0 +1,28 @@
+{
+  "schema": "gentle.synthetic_allele_pair_evidence.v1",
+  "synthetic": true,
+  "human_scientific_approval": false,
+  "online_vkorc1_accepted": false,
+  "native_screenshot": false,
+  "length_bp": 20,
+  "differences": [
+    {
+      "position_0based": 6,
+      "reference": "C",
+      "alternate": "T"
+    }
+  ],
+  "sequences": {
+    "fragment": "AAAAAACAAAAAAAAAAAAA",
+    "reference": "AAAAAACAAAAAAAAAAAAA",
+    "alternate": "AAAAAATAAAAAAAAAAAAA"
+  },
+  "raw_sequences": {
+    "fragment": "aaaaaacaaaaaaaaaaaaa",
+    "reference": "aaaaaaCaaaaaaaaaaaaa",
+    "alternate": "aaaaaaTaaaaaaaaaaaaa"
+  },
+  "display_case": "uppercase; raw_sequences retains GenBank case",
+  "nonclaim": "20-base allele-choice guard only, not human VKORC1 DNA or a reporter assay.",
+  "project_sha256": "ea3f9248f8c3f4861eb4ed7a126a2a1a47f3263d9ff70864824a2fd60ca74416"
+}

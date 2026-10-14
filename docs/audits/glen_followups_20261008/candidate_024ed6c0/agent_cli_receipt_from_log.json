@@ -1,0 +1,20 @@
+{
+  "schema": "gentle.audit_agent_cli.v1",
+  "source_revision": "024ed6c0520d38c4221517219d44c792084de4e5",
+  "profile": "dev",
+  "default_features": false,
+  "platform": "macOS",
+  "architecture": "arm64",
+  "binary_sha256": "a7c8f3f0e6d15b7a37f07b9782b940bae77051df062ac16bc6a5580b5b64dc0c",
+  "cargo_lock_sha256": "ead4421545a125267e33af84aeeea39f0e7ea2f60717a59ef0271d0e71855f1b",
+  "binary_version": "GENtle 0.1.0-internal.12\nBuild 1791929934810\nSource revision 0.1.0-internal.12+git.024ed6c0520d38c4221517219d44c792084de4e5\nCross-platform DNA cloning workbench\n",
+  "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1\n",
+  "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)\n",
+  "run_url": "https://github.com/smoe/gentle_rs/actions/runs/38476197008",
+  "live_agent_accepted": false,
+  "package_accepted": false,
+  "artifacts": {
+    "build.log": "1f3f10fe362cef4f0a07aae7bc44bc4f94f8d86cf76a154fe151e32736e33969",
+    "gentle_cli": "a7c8f3f0e6d15b7a37f07b9782b940bae77051df062ac16bc6a5580b5b64dc0c"
+  }
+}

@@ -384,6 +384,59 @@ runs its established Windows/headless/safety jobs. No further source choice,
 push, tag, package build, public-genome preparation, model call or publication
 is implicit. No optional dispatch or local Rust execution has occurred.
 
+### Verified Small Handoff And Completed `024ed6c0` Audits (2026-10-14)
+
+This update supersedes the live status below without rewriting it. The single
+authorized [audit run 38476197008](https://github.com/smoe/gentle_rs/actions/runs/38476197008)
+is completed/success, attempt 1, at exactly
+`024ed6c0520d38c4221517219d44c792084de4e5`; final update 00:14:31 UTC.
+Linux/Windows, headless/safety and all three optional audit jobs pass. No package,
+public-reference preparation, model call, push or publication was dispatched.
+The [new frozen evidence subset](audits/glen_followups_20261008/candidate_024ed6c0/README.md)
+records verified versus producer-reported bytes, original versus log-derived
+receipts, Linux counts, artifact identities and remaining boundaries.
+
+The owner-supplied small Glen bundle has exactly 263 files, all 262 manifest
+entries verified, manifest SHA-256
+`4f147f98457b02186c883f18da308dc19b652ce38f724ca4fa4c1f4aa491fc90`.
+No large archive is downloaded. Recompute both included-run summary tables:
+12 runs and 124 measured metric groups each; excluded cache fills remain
+excluded. Preserve A's two historical dev SHAs separately from B's same-`024ed6c0`
+dev/opt1 comparison. B supports roughly 257/270-ms cold/warm usable-window
+improvement and 0.93-0.95-s first-locus improvement on Linux virtual X11, not
+native package, PATZ1/circular, opt2 or scientific acceptance.
+
+| Item | Tested Scope / Remaining Gate |
+| --- | --- |
+| 1. Audit preservation / Linux validation | Original evidence stays unchanged. Small handoff membership and hashes verify; exact-source Linux workspace passes 4,694 / 0 / 17, root 4,156 / 0 / 14. Omitted Glen binaries/raw traces/projects and large archives are not independently rehashed here. A later final candidate needs fresh validation. |
+| 2. 08.04 GUI/agent contracts | Synthetic X11 replay passes with network-namespace isolation, explicit T, eight steps and full three-`Seq` oracle parity. Refusal/rollback regressions pass. Glen separately reports hash-bound real-reference C/T/refusal at this SHA, but his physical-host GUI replay remains policy-blocked. New default-stack test repair is authored, not Rust-accepted. |
+| 3. Genuine live agent | macOS/arm64 exact-source headless dev CLI build passes; its receipt explicitly says `live_agent_accepted:false`. No model was called. Genuine current/final-source acceptance remains open and outside this audit authorization. |
+| 4. Honest visual evidence | All 116 downloaded GUI artifact hashes verify; raw T/pair screenshots inspected, synthetic base projection explicitly not a native capture. Some wide controls clip; physical/native lesson readability and scientific review remain separate. Glen's newly merged route labels historical images as orientation only. |
+| 5. Scroll benchmarks | All 24 unique wheel/next-frame CPU-smoke observations are content-bound with valid direction/span. The receipt is log-derived and the 89-MB archive/binary is not rehashed here. Native compositor/input latency and timing-budget acceptance remain open; A/B startup comparisons do not replace them. |
+| 6. .12 package acceptance | Published `5e6201a6` opt1 receipts remain separately attributed. B is a same-source opt1 performance comparison, not extracted-package/physical-platform acceptance. These CI jobs build no package; unpushed `.13` opt2 needs new exact-source native/container/extracted smokes and opt1/opt2 comparison. |
+
+Glen's small failure logs reproduce the original Linux/Rust 1.96.1 default-stack
+abort for 11/2/7/2 selected allele/reporter tests (exit 101); 16-MiB ambient
+reruns pass diagnostically. This is not contradicted by CI's 16/64-MiB override.
+Local `4fdcb7a6902255af8275c6e5ee4270d193e99cc0` moves only those fixture bodies
+onto an explicit test stack and adds panic/small-caller regressions plus an
+override-free CI step. No production/parser change or local Rust verification.
+[Glen must rerun the original commands at the new source](vkorc1_allele_review_followup_20261008.md#2026-10-14-default-stack-follow-up).
+
+Glen's documentation commit `b6e54e0a` is integrated as local `99ac1715`, preserving
+the `.13`/opt2 work and unchanged historical evidence. The new manual/reference
+03.09 route has separate design/Gibson fixtures, four provenance-labelled visuals
+and no continuous experimental/function claim. Its boundary tests now run in CI.
+The catalog has 66 entries; executable chapters remain 30. No Golden Gate/RNA/guide
+implementation is inferred from the new backlog; keep future work separate.
+
+Glen's reported no-finding scan of 15 commits / 61 files at `024ed6c0` remains
+source-bound: 10 matrix and five trace tests pass, 22 Python pass / four binary
+checks skip, and both exact-source CI runs succeed. It does not close real
+post-BLAST import performance, native screenshots, historical FLNA release
+provenance or the other independent gates. Do not re-open accepted `f35a58e6`
+08.18 CLI, tutorial registration or link repairs merely to repeat old requests.
+
 ### Completed Normal CI And Authorized Audit Dispatch At `024ed6c0`
 
 On 2026-10-13 at 22:10:56 UTC, [normal run 38453643146](https://github.com/smoe/gentle_rs/actions/runs/38453643146)

@@ -39,6 +39,23 @@ docs/audits/glen_followups_20261008/candidate_3ac4a02d/base_comparison.json text
 docs/audits/glen_followups_20261008/candidate_3ac4a02d/base_comparison.svg text eol=lf
 docs/audits/glen_followups_20261008/candidate_3ac4a02d/live_agent.json text eol=lf
 
+# Frozen small audit records preserve original bytes, including report Markdown.
+docs/audits/glen_followups_20261008/candidate_024ed6c0/glen/REPORT.md text eol=lf
+docs/audits/glen_followups_20261008/candidate_024ed6c0/glen/REPORT-B.md text eol=lf
+docs/audits/glen_followups_20261008/candidate_024ed6c0/comparison-A/REPORT-A.md text eol=lf
+docs/audits/glen_followups_20261008/candidate_024ed6c0/comparison-A/runs.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_024ed6c0/comparison-A/statistics.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_024ed6c0/comparison-B/runs.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_024ed6c0/comparison-B/statistics.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_024ed6c0/glen/INDEX.md text eol=lf
+docs/audits/glen_followups_20261008/candidate_024ed6c0/glen/HANDOFF-SHA256SUMS text eol=lf
+docs/audits/glen_followups_20261008/candidate_024ed6c0/native_gui.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_024ed6c0/native_ledger.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_024ed6c0/base_comparison.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_024ed6c0/scroll_receipt_from_log.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_024ed6c0/agent_cli_receipt_from_log.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_024ed6c0/SHA256SUMS text eol=lf
+
 # The generated capability matrix is compared byte-for-byte with LF output.
 docs/gui_cli_mcp_parity.md text eol=lf
 

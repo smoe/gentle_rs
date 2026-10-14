@@ -1,5 +1,27 @@
 # GENtle Changelog
 
+## 2026-10-14 - Verify Glen's Small Handoff And Completed Audit Receipts
+
+- Verify all 262 manifest entries and exact 263-file small-handoff membership,
+  plus copied complete-tree bindings and both exclusion-aware timing tables.
+  Retain only 14 small reports/receipts with raw hashes and LF/CRLF coverage;
+  no large archives, omitted binaries or raw traces are downloaded or relabelled.
+- Record successful exact-`024ed6c0` Linux/Windows and three authorized audits:
+  source-bound synthetic native C/T/oracle parity, 24 scroll CPU cases and a
+  macOS headless CLI build, explicitly not a genuine live-agent run.
+- Keep original native receipts separate from log-derived scroll/CLI JSON,
+  reported omitted binary hashes and Glen's independently blocked physical-host
+  GUI replay. Preserve historical evidence and keep physical/native readability,
+  model, scientific, package and later-source acceptance open.
+- Separate A's historical two-SHA lazy-discovery result from B's same-SHA
+  dev/opt1 result. Neither accepts `.13` opt2 or justifies speculative caches.
+  The test-only default-stack repair and new merged tutorial need fresh external
+  Rust/source acceptance. No push, local Rust or new workflow dispatch.
+- Verification: 133 offline checks run, 130 pass and three real-binary replays
+  skip. All retained copies match their origins; hash membership, recomputed
+  statistics and LF/CRLF/missing-policy checks pass. Rust 2024 formatting, YAML,
+  whitespace and release-gate pass; roadmap stays 400 lines. Session-close has
+  no failures, only intentional worktree/manual-fidelity warnings.
 ## 2026-10-14 - Wire The Merged Tutorial Boundary Checks Into CI
 
 - Run Glen's new synthetic-biology reality-boundary tests in the offline

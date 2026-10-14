@@ -373,6 +373,35 @@ class TutorialCheckoutTests(unittest.TestCase):
                 checker.prepare_checkout(self.root, target, mode)
                 self.assertEqual((target / relative).read_bytes(), payload)
 
+    def test_frozen_024ed6c0_records_survive_lf_crlf_and_detect_missing_policy(self):
+        from scripts.test_frozen_024ed6_audit import BASE, retained_hashes
+
+        expected = retained_hashes()
+        expected[BASE / "SHA256SUMS"] = hashlib.sha256((checker.ROOT / BASE / "SHA256SUMS").read_bytes()).hexdigest()
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        payloads = {path: (checker.ROOT / path).read_bytes() for path in expected}
+        for path, payload in payloads.items():
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), expected[path])
+            destination = self.root / path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "frozen small audit records")
+        unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                  if not line.startswith(BASE.as_posix().encode() + b"/"))
+        broken = Path(self.tmp.name) / "frozen-audit-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        for path in expected:
+            self.assertNotEqual(hashlib.sha256((broken / path).read_bytes()).hexdigest(), expected[path])
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"frozen-audit-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for path, payload in payloads.items():
+                with self.subTest(mode=mode[0], path=path):
+                    self.assertEqual((target / path).read_bytes(), payload)
+
     def test_frozen_6d8b4db7_audit_receipts_survive_both_checkout_modes(self):
         base = Path("docs/audits/glen_followups_20261008/candidate_6d8b4db7")
         expected = {
