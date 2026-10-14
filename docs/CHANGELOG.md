@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-10-14 - Isolate Heavy Allele And Reporter Test Fixtures
+
+- Address Glen's exact-`024ed6c0` default-stack failures with a test-only
+  16-MiB worker for the four affected fixture families. Keep original test
+  names, fixture bodies, assertions and panic failures; no production change.
+- Add small-caller-stack and panic-propagation regressions. Native CI unsets
+  `RUST_MIN_STACK` for the original four filters and these helper tests before
+  the long suite, with a scoped Python wiring guard.
+- Glen's 11/2/7/2 larger-stack passes remain diagnostic evidence. Local Rust
+  execution is prohibited; acceptance requires the original commands at this
+  new source. No push or new workflow dispatch.
+- Verification: 44 offline release/workflow policy tests, Rust 2024 formatting,
+  YAML parsing, whitespace and release-gate checks pass. These execute no Rust
+  regressions; roadmap remains 400 lines.
+
 ## 2026-10-14 - Retain Exact-Source CI And Start The Authorized Audits
 
 - Verify whole normal CI at `024ed6c0`: successful macOS/Windows workspace,

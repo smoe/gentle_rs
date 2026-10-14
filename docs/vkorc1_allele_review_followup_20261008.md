@@ -52,6 +52,22 @@ claimed here.
 
 ## Still Open
 
+### 2026-10-14 Default-Stack Follow-Up
+
+Glen's retained `024ed6c0520d38c4221517219d44c792084de4e5` Linux/Rust 1.96.1
+logs show the four original filters selecting 11/2/7/2 tests, then aborting with
+test-thread stack overflow (exit 101). Explicit `RUST_MIN_STACK=16777216`
+reruns pass all four families; these are labelled diagnostic, not replacement
+passes. The `dbsnp_spdi_` filter passes 2/2 without that override.
+
+The local repair moves only these heavyweight fixture bodies onto an explicit
+16-MiB test worker, preserves their names/assertions and propagates panics.
+Helper regressions exercise a small caller stack and a worker failure. Native
+CI now unsets the ambient override for the original four filters and the helper
+tests. No parser, allele-selection or production stack policy changes.
+Run the commands above at the new committed source with `RUST_MIN_STACK` unset;
+Rust verification remains external and pending, not inherited from `024ed6c0`.
+
 - Tutorial 08.04 live native GUI: confirm reference/alternate refusal, retry,
   unchanged source and honest genomic-forward C/T evidence. Reverse-strand
   gene nomenclature must not silently complement the selected allele.

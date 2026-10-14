@@ -651,6 +651,28 @@ class WorkflowWiringTests(unittest.TestCase):
                                   "Workflow example runtime tests", "Full test suite"):
                         self.assertLess(job.index(step), job.index(f"- name: {later}\n"))
 
+    def test_native_jobs_run_allele_fixtures_without_ambient_stack_override(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        text = (root / ".github/workflows/ci.yml").read_text()
+        step = "      - name: Allele and reporter fixtures without ambient stack override\n"
+        for platform in ("macos", "linux", "windows"):
+            with self.subTest(platform=platform):
+                following = text.split(f"\n  {platform}:\n", 1)[1]
+                job = re.split(r"\n  [a-z][a-z0-9-]*:\n", following, maxsplit=1)[0]
+                body = job.split(step, 1)[1].split("\n      - name:", 1)[0]
+                self.assertIn("shell: bash", body)
+                self.assertIn("set -euo pipefail", body)
+                self.assertIn("unset RUST_MIN_STACK", body)
+                self.assertIn('cargo test --locked --lib "$filter" -- --test-threads=1', body)
+                self.assertLess(body.index("unset RUST_MIN_STACK"), body.index("cargo test"))
+                for test_filter in ("dbsnp_", "materialize_variant_allele",
+                                    "reporter_construct_handoff_", "variant_followup_allele_pair_",
+                                    "test_support::heavy_stack_tests"):
+                    self.assertIn(test_filter, body)
+                self.assertNotIn("continue-on-error:", body)
+                self.assertNotIn("if:", body)
+                self.assertLess(job.index(step), job.index("- name: Full test suite\n"))
+
     def test_native_gui_audit_keeps_preflight_and_rollback_regressions(self) -> None:
         root = Path(__file__).resolve().parents[1]
         text = (root / ".github/workflows/ci.yml").read_text()

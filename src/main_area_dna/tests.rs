@@ -11609,6 +11609,14 @@ fn promoter_pair_button_is_reachable_without_horizontal_scrolling() {
 
 #[test]
 fn variant_followup_allele_pair_preflights_before_creation_and_retries_without_orphans() {
+    crate::test_support::run_heavy_test(
+        "variant_followup_allele_pair_preflights_before_creation_and_retries_without_orphans",
+        variant_followup_allele_pair_preflights_before_creation_and_retries_without_orphans_on_fixture_stack,
+    );
+}
+
+fn variant_followup_allele_pair_preflights_before_creation_and_retries_without_orphans_on_fixture_stack()
+ {
     // Hand-crafted multi-allelic SNV; not a real locus or biological assertion.
     let mut dna = DNAsequence::from_sequence("ACCGT").expect("synthetic DNA");
     dna.features_mut().push(Feature {
@@ -11689,6 +11697,13 @@ fn variant_followup_allele_pair_preflights_before_creation_and_retries_without_o
 
 #[test]
 fn variant_followup_allele_pair_rolls_back_late_refusal_and_preserves_history() {
+    crate::test_support::run_heavy_test(
+        "variant_followup_allele_pair_rolls_back_late_refusal_and_preserves_history",
+        variant_followup_allele_pair_rolls_back_late_refusal_and_preserves_history_on_fixture_stack,
+    );
+}
+
+fn variant_followup_allele_pair_rolls_back_late_refusal_and_preserves_history_on_fixture_stack() {
     // Hand-crafted multi-allelic SNV; direct execution exercises a late operation refusal.
     let mut dna = DNAsequence::from_sequence("ACCGT").expect("synthetic DNA");
     dna.features_mut().push(Feature {

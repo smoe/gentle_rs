@@ -7908,6 +7908,13 @@ fn test_extract_region_default_output_id_uses_visible_1based_bounds() {
 
 #[test]
 fn test_extract_region_default_output_id_collapses_dbsnp_auto_parent_to_rsid() {
+    crate::test_support::run_heavy_test(
+        "test_extract_region_default_output_id_collapses_dbsnp_auto_parent_to_rsid",
+        test_extract_region_default_output_id_collapses_dbsnp_auto_parent_to_rsid_on_fixture_stack,
+    );
+}
+
+fn test_extract_region_default_output_id_collapses_dbsnp_auto_parent_to_rsid_on_fixture_stack() {
     let mut state = ProjectState::default();
     state.sequences.insert(
         "rs9923231_16_31093368_31099368".to_string(),
@@ -23557,6 +23564,13 @@ fn test_fetch_ensembl_region_operation_loads_sequence_and_anchor() {
 
 #[test]
 fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
+    crate::test_support::run_heavy_test(
+        "test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance",
+        test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance_on_fixture_stack,
+    );
+}
+
+fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance_on_fixture_stack() {
     // Hand-crafted DNA/GTF and refSNP JSON; ToyGenome.1 is synthetic assembly identity.
     let _guard = crate::genomes::genbank_env_lock()
         .lock()
@@ -23823,6 +23837,13 @@ fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
 
 #[test]
 fn dbsnp_fetch_checks_reference_and_assembly_and_retains_non_snv_spdi() {
+    crate::test_support::run_heavy_test(
+        "dbsnp_fetch_checks_reference_and_assembly_and_retains_non_snv_spdi",
+        dbsnp_fetch_checks_reference_and_assembly_and_retains_non_snv_spdi_on_fixture_stack,
+    );
+}
+
+fn dbsnp_fetch_checks_reference_and_assembly_and_retains_non_snv_spdi_on_fixture_stack() {
     // All sequences, annotations and refSNP records are hand-crafted synthetic inputs.
     // The NC_ identifier exercises existing contig alias resolution, not real variant biology.
     let _guard = crate::genomes::genbank_env_lock()
@@ -24151,6 +24172,14 @@ fn dbsnp_fetch_checks_reference_and_assembly_and_retains_non_snv_spdi() {
 
 #[test]
 fn dbsnp_reference_check_validates_the_full_reference_and_keeps_unknown_explicit() {
+    crate::test_support::run_heavy_test(
+        "dbsnp_reference_check_validates_the_full_reference_and_keeps_unknown_explicit",
+        dbsnp_reference_check_validates_the_full_reference_and_keeps_unknown_explicit_on_fixture_stack,
+    );
+}
+
+fn dbsnp_reference_check_validates_the_full_reference_and_keeps_unknown_explicit_on_fixture_stack()
+{
     // Hand-crafted two-base replacement; no real variant or source sequence.
     let document = json!({"primary_snapshot_data": {"placements_with_allele": [{
         "seq_id": "chr1", "alleles": [{"allele": {"spdi": {
@@ -24296,6 +24325,13 @@ fn test_fetch_ensembl_gene_live_tp53_skips_without_internet() {
 
 #[test]
 fn test_fetch_dbsnp_region_operation_emits_staged_progress_updates() {
+    crate::test_support::run_heavy_test(
+        "test_fetch_dbsnp_region_operation_emits_staged_progress_updates",
+        test_fetch_dbsnp_region_operation_emits_staged_progress_updates_on_fixture_stack,
+    );
+}
+
+fn test_fetch_dbsnp_region_operation_emits_staged_progress_updates_on_fixture_stack() {
     let _guard = crate::genomes::genbank_env_lock()
         .lock()
         .unwrap_or_else(|e| e.into_inner());
@@ -61146,6 +61182,13 @@ fn promoter_reporter_fragment_policy_defaults_from_legacy_operation_json() {
 
 #[test]
 fn dbsnp_selected_placement_keeps_its_own_position_and_alleles() {
+    crate::test_support::run_heavy_test(
+        "dbsnp_selected_placement_keeps_its_own_position_and_alleles",
+        dbsnp_selected_placement_keeps_its_own_position_and_alleles_on_fixture_stack,
+    );
+}
+
+fn dbsnp_selected_placement_keeps_its_own_position_and_alleles_on_fixture_stack() {
     // Synthetic placements share an accession but not a position or reference.
     let placement = |position: usize, reference: &str, preferred: bool| {
         json!({
@@ -61178,6 +61221,13 @@ fn dbsnp_selected_placement_keeps_its_own_position_and_alleles() {
 
 #[test]
 fn materialize_variant_allele_rejects_invalid_choices_without_creating_sequence() {
+    crate::test_support::run_heavy_test(
+        "materialize_variant_allele_rejects_invalid_choices_without_creating_sequence",
+        materialize_variant_allele_rejects_invalid_choices_without_creating_sequence_on_fixture_stack,
+    );
+}
+
+fn materialize_variant_allele_rejects_invalid_choices_without_creating_sequence_on_fixture_stack() {
     // Hand-crafted SNV inputs; no biological/clinical assertion is made.
     let mut dna = DNAsequence::from_sequence("ACCGT").expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {
@@ -61257,6 +61307,14 @@ fn materialize_variant_allele_rejects_invalid_choices_without_creating_sequence(
 
 #[test]
 fn materialize_variant_allele_sequence_supports_snv_and_explicit_multiallelic_alt() {
+    crate::test_support::run_heavy_test(
+        "materialize_variant_allele_sequence_supports_snv_and_explicit_multiallelic_alt",
+        materialize_variant_allele_sequence_supports_snv_and_explicit_multiallelic_alt_on_fixture_stack,
+    );
+}
+
+fn materialize_variant_allele_sequence_supports_snv_and_explicit_multiallelic_alt_on_fixture_stack()
+{
     let mut dna = DNAsequence::from_sequence("ACCGT").expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {
         kind: "variation".into(),

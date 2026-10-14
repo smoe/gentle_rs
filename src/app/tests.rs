@@ -12961,6 +12961,13 @@ fn genbank_dialog_fetch_imports_sequence_and_opens_window() {
 
 #[test]
 fn open_genbank_dialog_seeds_dbsnp_tutorial_defaults() {
+    crate::test_support::run_heavy_test(
+        "open_genbank_dialog_seeds_dbsnp_tutorial_defaults",
+        open_genbank_dialog_seeds_dbsnp_tutorial_defaults_on_fixture_stack,
+    );
+}
+
+fn open_genbank_dialog_seeds_dbsnp_tutorial_defaults_on_fixture_stack() {
     let mut app = GENtleApp::default();
     app.dbsnp_rs_id.clear();
     app.dbsnp_genome_id.clear();
@@ -12975,6 +12982,13 @@ fn open_genbank_dialog_seeds_dbsnp_tutorial_defaults() {
 
 #[test]
 fn poll_dbsnp_fetch_task_updates_runtime_status_from_worker_messages() {
+    crate::test_support::run_heavy_test(
+        "poll_dbsnp_fetch_task_updates_runtime_status_from_worker_messages",
+        poll_dbsnp_fetch_task_updates_runtime_status_from_worker_messages_on_fixture_stack,
+    );
+}
+
+fn poll_dbsnp_fetch_task_updates_runtime_status_from_worker_messages_on_fixture_stack() {
     let mut app = GENtleApp::default();
     let (tx, rx) = mpsc::channel::<DbSnpFetchTaskMessage>();
     app.dbsnp_fetch_task = Some(DbSnpFetchTask {
@@ -13018,6 +13032,13 @@ fn poll_dbsnp_fetch_task_updates_runtime_status_from_worker_messages() {
 
 #[test]
 fn dbsnp_dialog_fetch_extracts_region_and_opens_window() {
+    crate::test_support::run_heavy_test(
+        "dbsnp_dialog_fetch_extracts_region_and_opens_window",
+        dbsnp_dialog_fetch_extracts_region_and_opens_window_on_fixture_stack,
+    );
+}
+
+fn dbsnp_dialog_fetch_extracts_region_and_opens_window_on_fixture_stack() {
     let _lock = crate::genomes::genbank_env_lock().lock().unwrap();
     let mut app = GENtleApp::default();
     let temp = tempdir().expect("tempdir");

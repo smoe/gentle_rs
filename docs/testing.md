@@ -168,6 +168,13 @@ an OS-dependent assumption portable.
   `scripts.test_release_candidate` guards that ordering. Native Windows CI is
   required to confirm small-main-stack fixes.
 
+Heavy allele/reporter unit fixtures use `test_support::run_heavy_test` to place
+their unchanged fixture body on an explicit 16-MiB worker stack. The wrapper
+keeps the test name and resumes worker panics; it is not production startup
+coverage. Native CI runs the four focused families and the helper regressions
+with `RUST_MIN_STACK` unset before the full suite. A larger ambient stack is
+diagnostic evidence only, not acceptance of the original default-stack commands.
+
 Native behavior is documented by [Rust's Windows path normalization rules](https://doc.rust-lang.org/std/path/struct.PathBuf.html#method.push),
 the [component parser](https://doc.rust-lang.org/src/std/path.rs.html), and
 [Microsoft's flush access-right requirement](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-flushfilebuffers).

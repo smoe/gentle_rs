@@ -1011,3 +1011,51 @@ mod visual_svg_lint_tests {
         assert!(result.is_err(), "clipped marked labels should fail lint");
     }
 }
+
+#[cfg(test)]
+/// Keep large fixture frames off Cargo's platform-default test-thread stack.
+pub(crate) fn run_heavy_test(name: &str, test: fn()) {
+    std::thread::Builder::new()
+        .name(name.to_string())
+        .stack_size(16 * 1024 * 1024)
+        .spawn(test)
+        .unwrap_or_else(|error| panic!("spawn {name} with fixture stack: {error}"))
+        .join()
+        .unwrap_or_else(|payload| std::panic::resume_unwind(payload));
+}
+
+#[cfg(test)]
+mod heavy_stack_tests {
+    use super::run_heavy_test;
+
+    #[inline(never)]
+    fn synthetic_large_frame() {
+        let mut scratch = [0_u8; 1024 * 1024];
+        std::hint::black_box(&mut scratch);
+        scratch[0] = 7;
+        scratch[scratch.len() - 1] = 9;
+        assert_eq!((scratch[0], scratch[scratch.len() - 1]), (7, 9));
+    }
+
+    #[test]
+    fn heavy_test_runs_from_a_small_caller_stack() {
+        std::thread::Builder::new()
+            .stack_size(256 * 1024)
+            .spawn(|| run_heavy_test("synthetic-large-frame", synthetic_large_frame))
+            .expect("spawn small-stack caller")
+            .join()
+            .expect("fixture completed from small-stack caller");
+    }
+
+    #[test]
+    fn heavy_test_preserves_worker_panic() {
+        let payload = std::panic::catch_unwind(|| {
+            run_heavy_test("synthetic-panic", || panic!("synthetic worker failure"));
+        })
+        .expect_err("a worker assertion must still fail the test");
+        assert_eq!(
+            payload.downcast_ref::<&str>(),
+            Some(&"synthetic worker failure")
+        );
+    }
+}

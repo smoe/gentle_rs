@@ -2045,6 +2045,14 @@ mod tests {
 
     #[test]
     fn reporter_construct_handoff_uses_vkorc1_candidate_set_and_luciferase_route() {
+        crate::test_support::run_heavy_test(
+            "reporter_construct_handoff_uses_vkorc1_candidate_set_and_luciferase_route",
+            reporter_construct_handoff_uses_vkorc1_candidate_set_and_luciferase_route_on_fixture_stack,
+        );
+    }
+
+    fn reporter_construct_handoff_uses_vkorc1_candidate_set_and_luciferase_route_on_fixture_stack()
+    {
         let engine = GentleEngine::new();
         let plan = engine
             .plan_reporter_construct_handoff(
@@ -2094,6 +2102,14 @@ mod tests {
 
     #[test]
     fn reporter_construct_handoff_binds_unique_loaded_alternates_or_requires_review() {
+        crate::test_support::run_heavy_test(
+            "reporter_construct_handoff_binds_unique_loaded_alternates_or_requires_review",
+            reporter_construct_handoff_binds_unique_loaded_alternates_or_requires_review_on_fixture_stack,
+        );
+    }
+
+    fn reporter_construct_handoff_binds_unique_loaded_alternates_or_requires_review_on_fixture_stack()
+     {
         // Hand-crafted candidate/variant/backbone identities, not a real reporter study.
         let candidate_set = PromoterReporterCandidateSet {
             seq_id: "synthetic_source".to_string(),
@@ -2186,6 +2202,13 @@ mod tests {
 
     #[test]
     fn reporter_construct_handoff_operation_commands_round_trip_and_execute() {
+        crate::test_support::run_heavy_test(
+            "reporter_construct_handoff_operation_commands_round_trip_and_execute",
+            reporter_construct_handoff_operation_commands_round_trip_and_execute_on_fixture_stack,
+        );
+    }
+
+    fn reporter_construct_handoff_operation_commands_round_trip_and_execute_on_fixture_stack() {
         // Hand-crafted DNA/variant and temporary FASTA; not a real reporter study.
         let temp = tempdir().expect("temporary synthetic input directory");
         let load_path = temp.path().join("backbone's insert.fa");
@@ -2282,6 +2305,13 @@ mod tests {
 
     #[test]
     fn reporter_construct_handoff_rejects_unknown_candidate_id() {
+        crate::test_support::run_heavy_test(
+            "reporter_construct_handoff_rejects_unknown_candidate_id",
+            reporter_construct_handoff_rejects_unknown_candidate_id_on_fixture_stack,
+        );
+    }
+
+    fn reporter_construct_handoff_rejects_unknown_candidate_id_on_fixture_stack() {
         let engine = GentleEngine::new();
         let err = engine
             .plan_reporter_construct_handoff(
@@ -2303,6 +2333,13 @@ mod tests {
 
     #[test]
     fn reporter_construct_handoff_rejects_wrong_candidate_set_schema() {
+        crate::test_support::run_heavy_test(
+            "reporter_construct_handoff_rejects_wrong_candidate_set_schema",
+            reporter_construct_handoff_rejects_wrong_candidate_set_schema_on_fixture_stack,
+        );
+    }
+
+    fn reporter_construct_handoff_rejects_wrong_candidate_set_schema_on_fixture_stack() {
         let td = tempdir().expect("tempdir");
         let path = td.path().join("candidate_set.json");
         std::fs::write(&path, r#"{"schema":"wrong.schema"}"#).expect("write candidate set");
@@ -2327,6 +2364,14 @@ mod tests {
 
     #[test]
     fn reporter_construct_handoff_marks_non_luciferase_constraints_as_no_macro_route() {
+        crate::test_support::run_heavy_test(
+            "reporter_construct_handoff_marks_non_luciferase_constraints_as_no_macro_route",
+            reporter_construct_handoff_marks_non_luciferase_constraints_as_no_macro_route_on_fixture_stack,
+        );
+    }
+
+    fn reporter_construct_handoff_marks_non_luciferase_constraints_as_no_macro_route_on_fixture_stack()
+     {
         let constraints = ReporterConstraints {
             allowed_reporter_classes: vec!["fluorescent_protein".to_string()],
             ..ReporterConstraints::default()
@@ -2355,6 +2400,13 @@ mod tests {
 
     #[test]
     fn reporter_construct_handoff_reports_backbone_and_port_readiness() {
+        crate::test_support::run_heavy_test(
+            "reporter_construct_handoff_reports_backbone_and_port_readiness",
+            reporter_construct_handoff_reports_backbone_and_port_readiness_on_fixture_stack,
+        );
+    }
+
+    fn reporter_construct_handoff_reports_backbone_and_port_readiness_on_fixture_stack() {
         let mut engine = GentleEngine::new();
         engine
             .apply(Operation::LoadFile {

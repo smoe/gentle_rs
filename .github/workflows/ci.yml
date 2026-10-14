@@ -391,6 +391,16 @@ jobs:
       - name: Glossary command regressions
         run: 'cargo test -q --locked --lib -j1 engine_shell::tests::glossary_ -- --test-threads=1'
 
+      - name: Allele and reporter fixtures without ambient stack override
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset RUST_MIN_STACK
+          for filter in dbsnp_ materialize_variant_allele reporter_construct_handoff_ \
+            variant_followup_allele_pair_ test_support::heavy_stack_tests; do
+            cargo test --locked --lib "$filter" -- --test-threads=1
+          done
+
       - name: Cargo check (JavaScript adapter feature)
         run: cargo check -q --features js-interface
 
@@ -576,6 +586,16 @@ jobs:
       - name: Glossary command regressions
         run: 'cargo test -q --locked --lib -j1 engine_shell::tests::glossary_ -- --test-threads=1'
 
+      - name: Allele and reporter fixtures without ambient stack override
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset RUST_MIN_STACK
+          for filter in dbsnp_ materialize_variant_allele reporter_construct_handoff_ \
+            variant_followup_allele_pair_ test_support::heavy_stack_tests; do
+            cargo test --locked --lib "$filter" -- --test-threads=1
+          done
+
       - name: Cargo check (JavaScript adapter feature)
         run: cargo check -q --features js-interface
 
@@ -723,6 +743,16 @@ jobs:
 
       - name: Glossary command regressions
         run: 'cargo test -q --locked --lib -j1 engine_shell::tests::glossary_ -- --test-threads=1'
+
+      - name: Allele and reporter fixtures without ambient stack override
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset RUST_MIN_STACK
+          for filter in dbsnp_ materialize_variant_allele reporter_construct_handoff_ \
+            variant_followup_allele_pair_ test_support::heavy_stack_tests; do
+            cargo test --locked --lib "$filter" -- --test-threads=1
+          done
 
       - name: Cargo check (JavaScript adapter feature)
         run: cargo check -q --features js-interface
