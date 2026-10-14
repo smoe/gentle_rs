@@ -16,6 +16,11 @@ PROSE = ROOT / "docs/tutorial/03-09_synthetic_biology_design_build_verify.md"
 
 
 class SyntheticBiologyTutorialTests(unittest.TestCase):
+    def test_reality_boundary_checks_run_in_ci(self):
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+        safety = workflow.split("\n  release-policy:\n", 1)[1].split("\n  select-platform:\n", 1)[0]
+        self.assertIn("python3 -m unittest scripts.test_synthetic_biology_tutorial -v", safety)
+
     def test_source_is_manual_route_not_fabricated_executable_contract(self):
         source = json.loads(SOURCE.read_bytes())
         self.assertEqual(source["id"], "synthetic_biology_design_build_verify")

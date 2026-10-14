@@ -61,4 +61,3 @@ rewrite.
 Strong existing coverage in sequence inspection, Gibson planning, PCR/qPCR,
 genome/transcript context, regulatory evidence, external handoffs and Sanger
 confirmation should be linked rather than duplicated.
-

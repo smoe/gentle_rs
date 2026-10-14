@@ -1,5 +1,13 @@
 # GENtle Changelog
 
+## 2026-10-14 - Wire The Merged Tutorial Boundary Checks Into CI
+
+- Run Glen's new synthetic-biology reality-boundary tests in the offline
+  safety job; add a wiring regression so they do not become manual-only checks.
+- Remove the one trailing blank line flagged by whitespace checking in the
+  merged backlog. No teaching content, catalog or historical visual changes.
+- Verification: four scoped Python tests and whitespace pass. No Rust or push.
+
 ## 2026-10-14 - Isolate Heavy Allele And Reporter Test Fixtures
 
 - Address Glen's exact-`024ed6c0` default-stack failures with a test-only
