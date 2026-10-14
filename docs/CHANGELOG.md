@@ -1,5 +1,22 @@
 # GENtle Changelog
 
+## 2026-10-14 - Retain Completed `df5c8244` Normal CI Evidence
+
+- Verify successful completion of run `38541824374` at its exact source and
+  record the terminal macOS/Windows, headless and safety scopes with original
+  job-log hashes. Count only each full-workspace invocation: macOS 4,696 and
+  Windows 4,635 passed, zero failed, 17 ignored; focused repeats are not added.
+- Update the six-item checklist without transferring these verdicts to the
+  six newer local commits or owner-updated lockfile. GUI, scroll and audit-CLI
+  jobs skip; packages/models are absent. The shell-only unset is not default-stack
+  evidence, and zero selected optional snapshot tests are not visual acceptance.
+- Preserve prior reports/receipts and fixture bytes. No local Rust execution,
+  source/profile change, push, dispatch, binary/installer download or publication.
+- Verification: reconstruct both full-workspace totals from the retained raw
+  logs; all 108 offline release-policy/frozen-evidence/checkout tests pass.
+  Whitespace and release-gate pass; session-close has four OK, two intentional
+  worktree/manual-scope warnings and no failures. Roadmap remains 400 lines.
+
 ## 2026-10-14 - Bound Promoter Actions To The Visible Viewport
 
 - Repair the right-clipped analysis/export rows observed in the unchanged

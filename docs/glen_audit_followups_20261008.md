@@ -459,6 +459,31 @@ existing opt-in audit and [final-source native check](glen_final_candidate_execu
 This is a scoped implementation repair, not an executed Rust/native verdict;
 item 4 remains open and original screenshots/evidence are unchanged.
 
+### Completed Normal CI At `df5c8244` (2026-10-14)
+
+[Run 38541824374](https://github.com/smoe/gentle_rs/actions/runs/38541824374),
+attempt 1, completes successfully at 12:12:34 UTC, exact source
+`df5c8244787d8c920ee171ee55167de55e8a7294`. Preserve the new
+[completed-run inspection and original-log hashes](audits/glen_followups_20261008/candidate_df5c8244/README.md)
+separately from earlier observations and `024ed6c0` records. macOS has
+4,696 workspace passes / 0 failures / 17 ignored, Windows 4,635 / 0 / 17,
+each across 31 summaries in one full-workspace command. Root counts are
+4,158 / 0 / 14 and 4,097 / 0 / 14 respectively. Headless/safety also pass.
+
+| Item | What This New Run Establishes / Remaining Gate |
+| --- | --- |
+| 1. Audit preservation / Linux validation | Source/lock-bound terminal logs retained; Linux headless passes, full Linux is skipped. Old audit bytes remain unchanged. Later final-source validation is still required. |
+| 2. 08.04 GUI/agent contracts | Named SPDI round-trip/unfolding and allele/reporter/helper tests pass on macOS/Windows. Synthetic GUI audit is skipped. Shell-only stack unset does not prove default-stack families; the corrected runner still needs execution. |
+| 3. Genuine live agent | Not run; macOS audit-CLI job is skipped. No model acceptance or authorization follows from normal CI. |
+| 4. Honest visual evidence | Real LF/CRLF tutorial replay passes, but native captures/readability are not run. The optional render-snapshot step selects zero tests; it is not snapshot acceptance. Local viewport repair needs fresh Rust/native checks. |
+| 5. Scroll benchmarks | Job skipped; retain the 24-case `024ed6c0` CPU verdict separately. New-source wheel/next-frame and native timing boundaries remain open. |
+| 6. .12 package acceptance | No package job. Released and validate-only `5e6201a6` evidence remains separately attributed; independent extracted/native acceptance and newer opt2 checks remain open. |
+
+The six newer local commits through `5909a5dd`, including the completed owner
+lockfile update, are not tested by this run. Glen targets the final available
+committed tip after remaining development. No local Rust, push, dispatch,
+model call or publication was performed, and no item is newly marked complete.
+
 Glen's documentation commit `b6e54e0a` is integrated as local `99ac1715`, preserving
 the `.13`/opt2 work and unchanged historical evidence. The new manual/reference
 03.09 route has separate design/Gibson fixtures, four provenance-labelled visuals
