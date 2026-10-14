@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-10-14 - Add Synthetic Biology Learning Route And Tutorial Backlog
+
+- Add an honest design-build-track-verify learning route across the existing
+  synthetic sequence-design, Gibson, arrangement/rack and Sanger-confirmation
+  tutorials. Keep the fixtures explicitly separate and distinguish predicted
+  products, physical handling and biological function.
+- Reuse provenance-labelled public/synthetic visual material: two deterministic
+  SVG exports and two historical native Gibson screenshots. Record the
+  current native screenshot queue instead of presenting old images as current
+  candidate acceptance.
+- Add a prioritized coverage backlog for assembly-method selection, RNA
+  structure, microRNA target scanning, guide design and method-neutral sample
+  tracking. Each future topic remains a separate reviewable commit.
+
 ## 2026-10-13 - Remove Obsolete Primer Specificity File Reader
 
 - Remove the unused private `primer_specificity_blast_from_handoff` wrapper.

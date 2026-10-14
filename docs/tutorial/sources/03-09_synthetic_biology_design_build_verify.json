@@ -1,0 +1,65 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "synthetic_biology_design_build_verify",
+  "title": "Synthetic Biology in GENtle: Design, Build, Track and Verify",
+  "graphics": [
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/screenshot_GUI_help_tutorial_testing_gibson.png",
+      "caption": "Historical native Help orientation for the Gibson tutorial; it is not proof that a current binary loaded or completed the workflow.",
+      "illustrates_step": 2,
+      "capture_date": "2026-03-22"
+    },
+    {
+      "kind": "generated",
+      "path": "docs/figures/gibson_single_insert_protocol_cartoon.svg",
+      "caption": "Deterministic Gibson mechanism overview; illustrative overlap lengths must not replace the current plan.",
+      "illustrates_step": 2,
+      "regen_command": "gentle_cli protocol-cartoon render-svg gibson.single_insert_dual_junction OUTPUT.svg"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tutorial_gibson_specialist_testing_08_lineage_graph.png",
+      "caption": "Historical native Gibson lineage view retained for orientation; the 2026-03-23 capture predates current hash-bound GUI acceptance.",
+      "illustrates_step": 3,
+      "capture_date": "2026-03-23"
+    },
+    {
+      "kind": "generated",
+      "path": "docs/figures/gibson_single_insert_lineage.svg",
+      "caption": "Deterministic lineage export showing two inputs, one Gibson operation and its predicted products.",
+      "illustrates_step": 3,
+      "regen_command": "Replay gibson_specialist_testing_baseline.json, apply docs/figures/gibson_single_insert_readme.plan.json and run render-lineage-svg as documented in docs/figures/README.md."
+    }
+  ],
+  "catalog": {
+    "order": 66,
+    "path": "docs/tutorial/03-09_synthetic_biology_design_build_verify.md",
+    "type": "operational_reference",
+    "status": "manual/reference",
+    "source": "hand_written_markdown",
+    "audiences": [
+      "gui_first",
+      "cloning_planning",
+      "sequence_design",
+      "contributors"
+    ],
+    "notes": "Integrative design-build-track-verify learning route across existing synthetic sequence design, Gibson, lineage/rack and sequencing-confirmation tutorials. The fixtures are intentionally separate; this page does not claim one continuous validated construct or biological function.",
+    "interfaces": [
+      "native GUI",
+      "CLI / shared shell",
+      "saved project and evidence exports"
+    ],
+    "group": "03",
+    "group_position": 9,
+    "prerequisites": [
+      "synthetic_sequence_design",
+      "gibson_specialist_testing_gui"
+    ],
+    "next_steps": [
+      "sequencing_confirmation_gui",
+      "geneart_external_service_handoff_gui_cli",
+      "protein_expression_handoff_cli"
+    ]
+  }
+}

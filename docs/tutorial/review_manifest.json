@@ -183,6 +183,15 @@
       "human_reviewer": null
     },
     {
+      "tutorial_id": "synthetic_biology_design_build_verify",
+      "tutorial_kind": "guided_walkthrough",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": null,
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
       "tutorial_id": "sequencing_confirmation_trace_cli",
       "tutorial_kind": "guided_walkthrough",
       "tutorial_status": "active",
