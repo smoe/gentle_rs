@@ -11608,6 +11608,166 @@ fn promoter_pair_button_is_reachable_without_horizontal_scrolling() {
 }
 
 #[test]
+fn promoter_action_rows_wrap_to_viewport_after_wide_grid() {
+    // Hand-crafted egui geometry, not a native screenshot or biological fixture.
+    for width in [760.0, 980.0] {
+        for bounded in [false, true] {
+            let ctx = egui::Context::default();
+            let mut rects = Vec::new();
+            let mut clip = egui::Rect::NOTHING;
+            for frame in 0..3 {
+                ctx.begin_pass(egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(width, 520.0),
+                    )),
+                    time: Some(frame as f64 * 0.1),
+                    ..Default::default()
+                });
+                crate::egui_compat::show_central_panel_for_test_context(
+                    &ctx,
+                    egui::CentralPanel::default(),
+                    |ui| {
+                        egui::ScrollArea::both().show(ui, |ui| {
+                            egui::Grid::new("wide_promoter_parameters").show(ui, |ui| {
+                                ui.allocate_space(egui::vec2(2300.0, 20.0));
+                                ui.end_row();
+                            });
+                            clip = ui.clip_rect();
+                            assert!(ui.available_width() > clip.width() * 2.0);
+                            let actions = |ui: &mut egui::Ui| {
+                                (0..8)
+                                    .map(|index| {
+                                        ui.add_sized(
+                                            [250.0, 24.0],
+                                            egui::Button::new(format!("Action {index}")),
+                                        )
+                                        .rect
+                                    })
+                                    .collect::<Vec<_>>()
+                            };
+                            rects = if bounded {
+                                MainAreaDna::promoter_viewport_action_row(ui, actions).inner
+                            } else {
+                                ui.horizontal_wrapped(actions).inner
+                            };
+                        });
+                    },
+                );
+                crate::egui_compat::discard_test_pass_output(&ctx);
+            }
+            assert_eq!(rects.len(), 8);
+            if bounded {
+                assert!(rects.iter().all(|rect| {
+                    rect.left() >= clip.left() - 0.5 && rect.right() <= clip.right() + 0.5
+                }));
+                assert!(rects.last().unwrap().top() > rects[0].top());
+            } else {
+                assert!(
+                    rects.iter().any(|rect| rect.right() > clip.right()),
+                    "the fixture must reproduce content-width wrapping"
+                );
+            }
+        }
+    }
+}
+
+#[cfg(feature = "gui-test-support")]
+#[test]
+fn promoter_action_rows_are_readable_without_horizontal_scrolling() {
+    let expected = BTreeSet::from([
+        "Show TF score tracks",
+        "Show TFBS similarity ranking",
+        "Export TF score tracks SVG...",
+        "Export TF correlation SVG...",
+        "Export TFBS similarity JSON...",
+        "Annotate promoter windows",
+        "Compare alternative promoters",
+        "Compare isoform evidence",
+        "Build evidence matrix",
+        "Summarize expression evidence",
+        "Resolve ortholog cohort",
+        "Compare ortholog promoters",
+        "Summarize promoter context",
+        "Propose reporter fragment",
+        "Export promoter comparison JSON...",
+        "Export evidence matrix JSON...",
+        "Export expression JSON...",
+        "Export isoform comparison JSON...",
+        "Export ortholog cohort JSON...",
+        "Export ortholog comparison JSON...",
+        "Extract recommended fragment",
+        "Preview luciferase pair",
+        "Export handoff bundle",
+    ]);
+    for screen_width in [1000.0, 1600.0] {
+        let (mut area, engine) = synthetic_multiallelic_promoter_pair_area();
+        area.variant_followup_ui.alternate_allele = "T".into();
+        let before = serde_json::to_value(engine.read().unwrap().state()).unwrap();
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let mut pointer = egui::Pos2::ZERO;
+        let mut seen = BTreeSet::new();
+        for frame in 0..64 {
+            ctx.begin_pass(egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(screen_width, 1000.0),
+                )),
+                time: Some(frame as f64 * 0.1),
+                events: vec![
+                    egui::Event::PointerMoved(pointer),
+                    egui::Event::MouseWheel {
+                        unit: egui::MouseWheelUnit::Point,
+                        delta: egui::vec2(0.0, -120.0),
+                        phase: egui::TouchPhase::Move,
+                        modifiers: egui::Modifiers::default(),
+                    },
+                ],
+                ..Default::default()
+            });
+            crate::gui_test_support::begin_frame(&ctx);
+            area.render_variant_followup_window(&ctx);
+            let output = crate::egui_compat::end_test_pass(&ctx);
+            for clipped in output.shapes {
+                let mut texts = Vec::new();
+                collect_rendered_text_rects_from_shape(&clipped.shape, &mut texts);
+                for (text, rect) in texts {
+                    if expected.contains(text.as_str())
+                        && clipped.clip_rect.expand(0.5).contains_rect(rect)
+                    {
+                        seen.insert(text);
+                    }
+                }
+            }
+            let snapshot = crate::gui_test_support::snapshot(&ctx);
+            if let Some(panel) = snapshot
+                .items
+                .iter()
+                .find(|item| item.semantic_id == crate::tutorial_gui_semantics::PROMOTER_PANEL)
+            {
+                let rect = panel.rect_logical_points;
+                pointer = egui::pos2(rect.min_x + 12.0, (rect.min_y + rect.max_y) * 0.5);
+            }
+            if seen.len() == expected.len() {
+                break;
+            }
+        }
+        let missing: Vec<_> = expected
+            .iter()
+            .copied()
+            .filter(|label| !seen.contains(*label))
+            .collect();
+        assert!(missing.is_empty(), "width {screen_width}: {missing:?}");
+        assert_eq!(
+            serde_json::to_value(engine.read().unwrap().state()).unwrap(),
+            before
+        );
+        assert_eq!(engine.read().unwrap().journal_len(), 0);
+    }
+}
+
+#[test]
 fn variant_followup_allele_pair_preflights_before_creation_and_retries_without_orphans() {
     crate::test_support::run_heavy_test(
         "variant_followup_allele_pair_preflights_before_creation_and_retries_without_orphans",

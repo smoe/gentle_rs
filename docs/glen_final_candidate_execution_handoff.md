@@ -39,6 +39,22 @@ hashes and platform/profile. Closing a residual at `f35a58e6` does not accept a
 newer main; testing a newer source does not rewrite its historical verdict.
 Missing host, capture consent or human decision remains blocked/not-run.
 
+At the final source, also verify the Promoter design action-row width repair:
+
+```sh
+cargo test --locked --lib --features gui-test-support promoter_action_rows_ -- --test-threads=1
+cargo test --locked --lib --features gui-test-support promoter_pair_ -- --test-threads=1
+```
+
+Require both `promoter_action_rows_` tests to execute, including the actual
+window's 23 action labels after a wide parameter grid and the unchanged-project
+assertion. The existing opt-in GUI audit includes this filter; no new dispatch
+is authorized. Inspect minimum/default native window sizes, vertical-only access
+to analysis/export actions and the separate pair action. Preserve parameter
+horizontal scrolling, enablement, refusal/retry and historical captures.
+Return new same-source geometry/logs and approved raw screenshots; a synthetic
+egui pass alone does not close native readability. Codex ran no Rust tests.
+
 | Area | Remaining Check Only |
 | --- | --- |
 | 08.16 | Open the retained complete/partial imported lanes in the native view, including plus/minus, clipped footprints, negative/real-zero values, units/scales and coverage warnings. Check normal-size label/legend readability. Retain approved original captures; do not rerun DuckDB queries or alter original score arrays to get a screenshot. |

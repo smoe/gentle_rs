@@ -6887,6 +6887,21 @@ impl MainAreaDna {
         }
     }
 
+    pub(super) fn promoter_viewport_action_row<R>(
+        ui: &mut egui::Ui,
+        add_contents: impl FnOnce(&mut egui::Ui) -> R,
+    ) -> egui::InnerResponse<R> {
+        // A wide parameter grid expands content width, not the visible viewport.
+        let width = ui
+            .available_width()
+            .min((ui.clip_rect().right() - ui.next_widget_position().x).max(1.0));
+        ui.allocate_ui_with_layout(
+            egui::vec2(width, ui.spacing().interact_size.y),
+            egui::Layout::left_to_right(egui::Align::Center).with_main_wrap(true),
+            add_contents,
+        )
+    }
+
     fn render_variant_followup_window_contents(&mut self, ui: &mut egui::Ui) {
         let engine_available = self.engine.is_some();
         let source_seq_id = self.variant_followup_ui.source_seq_id.clone();
@@ -7585,7 +7600,7 @@ impl MainAreaDna {
         }
 
         ui.separator();
-        ui.horizontal_wrapped(|ui| {
+        Self::promoter_viewport_action_row(ui, |ui| {
             if ui
                 .add_enabled(
                     engine_available && !source_missing && self.tfbs_task.is_none(),
@@ -7760,7 +7775,7 @@ impl MainAreaDna {
             }
         });
 
-        ui.horizontal_wrapped(|ui| {
+        Self::promoter_viewport_action_row(ui, |ui| {
             if ui
                 .add_enabled(
                     engine_available
@@ -7874,8 +7889,16 @@ impl MainAreaDna {
             {
                 self.extract_variant_followup_recommended_fragment();
             }
-            let has_materialized = !self.variant_followup_ui.reference_output_id.trim().is_empty()
-                && !self.variant_followup_ui.alternate_output_id.trim().is_empty();
+            let has_materialized = !self
+                .variant_followup_ui
+                .reference_output_id
+                .trim()
+                .is_empty()
+                && !self
+                    .variant_followup_ui
+                    .alternate_output_id
+                    .trim()
+                    .is_empty();
             if ui
                 .add_enabled(
                     has_variant_seed && has_materialized,

@@ -448,6 +448,17 @@ Its static structure checks do not establish Rust, native, model or package
 acceptance. Do not dispatch a new run, publish, or transfer old verdicts merely
 because dependencies are now committed; the owner's no-push instruction remains.
 
+The retained `024ed6c0` raw `review_t` screenshot shows the analysis/export
+controls clipping to the right after the parameter grid widens scrollable
+content; the T field and separate pair action remain readable. Bound only
+those two action rows to the visible viewport, preserving labels, enablement,
+handlers and parameter horizontal scrolling. Two authored egui regressions
+cover minimum/default geometry and all 23 real-window action labels with
+vertical-only input and unchanged project/history. Include their filter in the
+existing opt-in audit and [final-source native check](glen_final_candidate_execution_handoff.md#remaining-native-and-human-checks).
+This is a scoped implementation repair, not an executed Rust/native verdict;
+item 4 remains open and original screenshots/evidence are unchanged.
+
 Glen's documentation commit `b6e54e0a` is integrated as local `99ac1715`, preserving
 the `.13`/opt2 work and unchanged historical evidence. The new manual/reference
 03.09 route has separate design/Gibson fixtures, four provenance-labelled visuals

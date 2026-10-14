@@ -6292,6 +6292,11 @@ Tutorial projects:
     output names update only after both inserts succeed. Successful creation
     retains two ordinary undo entries. This is GUI composition of existing
     operations, not a new biological operation or a wet-lab validation claim.
+  - analysis and export actions wrap to the visible viewport even when the
+    parameter grid widens the scrollable content. Vertical scrolling reaches
+    later action rows; the parameters retain their existing horizontal scroll.
+    The pair action remains at the start of its separate row. Automated egui
+    geometry is not proof of native label readability or screenshot acceptance.
   - the same window now also exposes positive-only TF score tracks across the
     chosen promoter span, with TERT-friendly `SP1`, Yamanaka-plus-`NANOG`, and
     `TP73/SP1/BACH2/PATZ1` presets meant for promoter interpretation before

@@ -1,5 +1,22 @@
 # GENtle Changelog
 
+## 2026-10-14 - Bound Promoter Actions To The Visible Viewport
+
+- Repair the right-clipped analysis/export rows observed in the unchanged
+  `024ed6c0` native audit capture: their wrapping width now follows the visible
+  viewport instead of the parameter grid's expanded content width. Keep the
+  grid, action labels/enablement/handlers and separate pair row unchanged.
+- Add two deterministic egui tests: reproduce the old overflow at minimum and
+  default widths, then check all 23 real-window action labels using vertical
+  input only and an unchanged project/journal. Include their filter in the
+  existing opt-in GUI audit and Glen's final-tip request; no new dispatch.
+- Rust/native execution remains external. This layout-only repair does not
+  close native readability, agent, package or scientific gates. Original
+  evidence, `paper`, `output/` and the frozen owner lockfile remain untouched.
+- Verification: 80 offline release-policy/GUI-harness tests, scoped Rust
+  formatting, CI YAML parsing, whitespace and release-gate checks pass.
+  Roadmap remains 400 lines. Neither new Rust regression has run locally.
+
 ## 2026-10-14 - Freeze The Owner-Completed Dependency Update
 
 - Commit the owner's completed `Cargo.lock` update unchanged, including GENtle's
