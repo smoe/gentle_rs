@@ -369,6 +369,12 @@ inner workers alone: direct CLI operations can exhaust the main stack before
 reaching such a boundary. Real-binary tests must remove inherited
 `RUST_MIN_STACK` for both successful operation output and error handling.
 
+GUI dbSNP fetch uses an explicitly sized 16-MiB worker, matching GenBank
+sequence ingress, because its detached snapshot enters the same typed engine
+dispatcher. A large caller/test stack does not enlarge a nested worker; do not
+depend on an ambient `RUST_MIN_STACK`. Worker creation errors clear the pending
+fetch task and remain visible rather than reporting a started fetch.
+
 ## DEC-010: `#[inline(never)]` Helper Dispatch
 
 Status: active

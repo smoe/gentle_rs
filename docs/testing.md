@@ -179,6 +179,15 @@ Retain its JSON receipt with `child_rust_min_stack:null`. Cargo's runtime librar
 paths and the normal full-suite stack configuration stay unchanged. A larger
 ambient stack is diagnostic evidence only, not default-stack acceptance.
 
+The dbSNP dialog also starts a separate production worker. Its explicit
+16-MiB stack is independent of the fixture's stack and the parent environment.
+The existing dialog fetch regression exercises actual detached execution and
+window adoption; `dbsnp_worker_stack_is_explicit_and_named` adds a hand-crafted
+4-MiB worker-frame/name probe. After this repair the Linux `dbsnp_` filter
+selects 12 tests instead of the historical 11; both must execute in an external
+runner receipt with `child_rust_min_stack:null`. Source/format checks are not
+evidence that the authored repair passes; keep the failed `de9df8af` run intact.
+
 Native behavior is documented by [Rust's Windows path normalization rules](https://doc.rust-lang.org/std/path/struct.PathBuf.html#method.push),
 the [component parser](https://doc.rust-lang.org/src/std/path.rs.html), and
 [Microsoft's flush access-right requirement](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-flushfilebuffers).

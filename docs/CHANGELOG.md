@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-10-14 - Give The dbSNP Fetch Worker An Explicit Stack
+
+- Trace the confirmed Linux default-stack abort at `de9df8af` to the dialog's
+  unnamed/default-sized worker boundary, while its caller fixture already uses
+  a named 16-MiB stack. Use the adjacent GenBank ingress worker's explicit
+  16-MiB policy and a stable worker name; failed creation clears the pending
+  task and displays the error. No engine/allele rule or global override changes.
+- Preserve the existing real dialog regression and add a hand-crafted 4-MiB
+  stack/name probe through the production spawning seam. The repaired Linux
+  filter should select 12 tests, not the old 11. Rust execution remains external;
+  neither source inspection nor the failed old-source run accepts this repair.
+- Verification: scoped rustfmt, whitespace and all 52 offline runner/release
+  policy tests pass. No local Rust build/check/test, push or new CI dispatch.
+
 ## 2026-10-14 - Preserve Glen's Frozen Review And X11 Diagnostics
 
 - Verify the 94-file small handoff and 21-file supplement manifests; preserve

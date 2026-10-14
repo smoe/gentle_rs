@@ -91,6 +91,29 @@ The two TSS parser tests cover the owner-observed quick-xml 0.41-to-0.42 boundar
 Rust verification remains external and pending, not inherited from `024ed6c0`
 or from the offline Python runner tests.
 
+### Nested dbSNP Worker Repair (2026-10-14)
+
+At exact `de9df8af0a56923df01a7492f61005b1fe079d8c`, Linux job
+`115975878354` in run `38599805415` confirms `child_rust_min_stack:null`,
+selects 11 `dbsnp_` tests and aborts with stack overflow/exit 134 in
+`dbsnp_dialog_fetch_extracts_region_and_opens_window`. The remaining four
+filters do not execute after that first failure. This is a failed acceptance
+run, not a missing runner or a passed diagnostic replacement.
+
+The test's fixture thread is explicitly named and sized at 16 MiB; the dbSNP
+dialog still spawned an unnamed default-sized production worker around detached
+engine execution. The local repair gives that worker the adjacent GenBank
+ingress policy: explicit 16 MiB, named `gentle-dbsnp-fetch`, with visible creation
+failure and no pending task left behind. Engine, allele/provenance rules,
+fixture assertions, runner and global stack settings are unchanged.
+
+The new `dbsnp_worker_stack_is_explicit_and_named` uses a hand-crafted 4-MiB
+frame through the production spawning seam. Expect 12 Linux `dbsnp_` tests at
+the repaired source, including the original dialog boundary; keep per-platform
+counts and all five stripped-child receipts. Rust execution of the repair is
+still pending externally. The failed SHA/logs remain immutable, and no skip,
+larger ambient stack or ordinary CI summary substitutes for the rerun.
+
 - Tutorial 08.04 live native GUI: confirm reference/alternate refusal, retry,
   unchanged source and honest genomic-forward C/T evidence. Reverse-strand
   gene nomenclature must not silently complement the selected allele.

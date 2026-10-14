@@ -1,13 +1,23 @@
 //! Sequence and protein ingress dialog helpers.
 //!
-//! This module is a move-only extraction from `app.rs`: it keeps the GenBank,
+//! This module keeps the GenBank,
 //! dbSNP, UniProt, Ensembl protein, reverse-translation, protease digest, and
 //! protein-to-DNA handoff dialog helpers close to `GENtleApp` while reducing
 //! the top-level app monolith.
+//! Engine-backed ingress workers use explicit stacks, not an ambient override.
 
 use super::*;
 
 const SEQUENCE_INGRESS_WORKER_STACK_SIZE: usize = 16 * 1024 * 1024;
+
+pub(super) fn spawn_dbsnp_fetch_worker(
+    work: impl FnOnce() + Send + 'static,
+) -> std::io::Result<std::thread::JoinHandle<()>> {
+    std::thread::Builder::new()
+        .name("gentle-dbsnp-fetch".to_string())
+        .stack_size(SEQUENCE_INGRESS_WORKER_STACK_SIZE)
+        .spawn(work)
+}
 
 impl GENtleApp {
     pub(super) fn uniprot_optional_trimmed(value: &str) -> Option<String> {
@@ -518,7 +528,7 @@ impl GENtleApp {
             runtime_frame,
             receiver: rx,
         });
-        std::thread::spawn(move || {
+        let spawn_result = spawn_dbsnp_fetch_worker(move || {
             let tx_progress = tx.clone();
             let result =
                 crate::background_engine::execute_on_engine_snapshot(&engine, move |snapshot| {
@@ -531,6 +541,10 @@ impl GENtleApp {
                 });
             let _ = tx.send(DbSnpFetchTaskMessage::Done(result));
         });
+        if let Err(error) = spawn_result {
+            self.dbsnp_fetch_task = None;
+            self.dbsnp_status = format!("Could not start dbSNP fetch: {error}");
+        }
     }
 
     pub(super) fn sort_uniprot_entries_recent(

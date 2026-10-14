@@ -13038,6 +13038,27 @@ fn dbsnp_dialog_fetch_extracts_region_and_opens_window() {
     );
 }
 
+#[inline(never)]
+fn assert_dbsnp_worker_stack_and_name() {
+    // Hand-crafted stack probe; no reference data or network access.
+    let mut scratch = [0_u8; 4 * 1024 * 1024];
+    std::hint::black_box(&mut scratch);
+    scratch[0] = 7;
+    scratch[scratch.len() - 1] = 9;
+    assert_eq!((scratch[0], scratch[scratch.len() - 1]), (7, 9));
+    assert_eq!(std::thread::current().name(), Some("gentle-dbsnp-fetch"));
+}
+
+#[test]
+fn dbsnp_worker_stack_is_explicit_and_named() {
+    super::sequence_ingress_dialogs_ui::spawn_dbsnp_fetch_worker(
+        assert_dbsnp_worker_stack_and_name,
+    )
+    .expect("spawn explicit-stack dbSNP worker")
+    .join()
+    .expect("dbSNP worker stack probe");
+}
+
 fn dbsnp_dialog_fetch_extracts_region_and_opens_window_on_fixture_stack() {
     let _lock = crate::genomes::genbank_env_lock().lock().unwrap();
     let mut app = GENtleApp::default();
