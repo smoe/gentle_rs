@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-10-14 - Retain Non-Publishing Internal.12 Container Evidence
+
+- Independently retrieve the 1,154-byte receipt ZIP from validate-only run
+  `38322028567`; its GitHub digest and the original 2,425-byte JSON verify.
+  Preserve source/workflow `5e6201a6`, locked opt1 recipe, three CI-observed
+  binary identities and network-disabled smokes separately from publication.
+- Update the six-gate checklist without closing independent native/extracted
+  packages, current-source, live-agent, performance or scientific acceptance.
+  No image/installer download, build, dispatch, model call or push; existing
+  evidence, owner lockfile changes, `paper` and `output/` remain untouched.
+- Add frozen-record and scoped LF/CRLF/missing-policy checks to the existing
+  fast CI suites. All 148 offline checks, both focused checks, raw comparison
+  with the origin, whitespace and release-gate pass. Session-close has no
+  failures, only intentional-worktree/manual-scope warnings; roadmap stays 400 lines.
+
 ## 2026-10-14 - Neutralize Cargo's Stack Configuration At Test Execution
 
 - Correct the focused native CI step: a shell `unset RUST_MIN_STACK` alone lets

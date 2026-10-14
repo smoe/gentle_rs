@@ -2,11 +2,14 @@
 
 All resources, app shells and executable stand-ins are synthetic and recreated
 by setUp; they test packaging, never native GENtle or scientific acceptance.
+The separate frozen container-receipt test preserves real CI evidence with
+scope and retrieval documented beside the unchanged receipt.
 Run with: python3 -m unittest scripts.test_package_desktop -v
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -681,6 +684,39 @@ class WorkflowWiringTests(unittest.TestCase):
         self.assertIn('"revision": os.environ["EXPECTED_REVISION"]', normalize)
         self.assertIn('"binary_identities": smoke["binary_identities"]', normalize)
         self.assertIn('validate_binary_identities(smoke.get("binary_identities")', normalize)
+
+
+class FrozenContainerReceiptTests(unittest.TestCase):
+    def test_original_nonpublishing_container_receipt_scope(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        path = root / "docs/audits/glen_followups_20261008/container_validate_5e6201a6/container-build.json"
+        payload = path.read_bytes()
+        self.assertEqual(len(payload), 2425)
+        self.assertEqual(hashlib.sha256(payload).hexdigest(),
+                         "682d7d10df1b907dd80121c7055c62b3335952147fc7a3bf41988e7f13ffc42d")
+        record = json.loads(payload)
+        source = "5e6201a69a599cba87491c86cfd7311cb6fee173"
+        self.assertEqual(record["schema"], "gentle.container_build.v1")
+        self.assertEqual(record["revision"], source)
+        self.assertEqual(record["workflow_revision"], source)
+        self.assertEqual(record["cargo_lock_sha256"],
+                         "ead4421545a125267e33af84aeeea39f0e7ea2f60717a59ef0271d0e71855f1b")
+        self.assertEqual(record["mode"], "validate_only")
+        self.assertIs(record["pushed"], False)
+        self.assertEqual(record["profile"], "package-opt1")
+        self.assertEqual(record["platform"], "linux/amd64")
+        self.assertIs(record["default_features"], False)
+        self.assertEqual(record["features"], [])
+        image, = record["images"]
+        self.assertEqual(image["target"], "runtime-cli")
+        self.assertEqual(image["entrypoint_smoke"], "passed")
+        expected = {"gentle_cli", "gentle_mcp", "gentle_examples_docs"}
+        self.assertEqual(set(record["binaries"]), expected)
+        self.assertEqual(set(image["binary_identities"]), expected)
+        for name, identity in image["binary_identities"].items():
+            with self.subTest(binary=name):
+                package.validate_source_identity(identity["version"], record["tag"], source, name)
+                self.assertRegex(identity["sha256"], r"^[0-9a-f]{64}$")
 
 
 if __name__ == "__main__":

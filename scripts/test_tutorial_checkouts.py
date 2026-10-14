@@ -402,6 +402,30 @@ class TutorialCheckoutTests(unittest.TestCase):
                 with self.subTest(mode=mode[0], path=path):
                     self.assertEqual((target / path).read_bytes(), payload)
 
+    def test_nonpublishing_container_receipt_survives_lf_crlf_and_detects_missing_policy(self):
+        relative = Path("docs/audits/glen_followups_20261008/container_validate_5e6201a6/container-build.json")
+        expected = "682d7d10df1b907dd80121c7055c62b3335952147fc7a3bf41988e7f13ffc42d"
+        payload = (checker.ROOT / relative).read_bytes()
+        self.assertEqual(hashlib.sha256(payload).hexdigest(), expected)
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        destination = self.root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "original nonpublishing container receipt")
+        unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                  if not line.startswith(relative.as_posix().encode() + b" "))
+        broken = Path(self.tmp.name) / "container-receipt-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(), expected)
+        for mode in checker.MODES:
+            with self.subTest(mode=mode[0]):
+                target = Path(self.tmp.name) / f"container-receipt-{mode[0]}"
+                checker.prepare_checkout(self.root, target, mode)
+                self.assertEqual((target / relative).read_bytes(), payload)
+
     def test_frozen_6d8b4db7_audit_receipts_survive_both_checkout_modes(self):
         base = Path("docs/audits/glen_followups_20261008/candidate_6d8b4db7")
         expected = {

@@ -413,7 +413,17 @@ native package, PATZ1/circular, opt2 or scientific acceptance.
 | 3. Genuine live agent | macOS/arm64 exact-source headless dev CLI build passes; its receipt explicitly says `live_agent_accepted:false`. No model was called. Genuine current/final-source acceptance remains open and outside this audit authorization. |
 | 4. Honest visual evidence | All 116 downloaded GUI artifact hashes verify; raw T/pair screenshots inspected, synthetic base projection explicitly not a native capture. Some wide controls clip; physical/native lesson readability and scientific review remain separate. Glen's newly merged route labels historical images as orientation only. |
 | 5. Scroll benchmarks | All 24 unique wheel/next-frame CPU-smoke observations are content-bound with valid direction/span. The receipt is log-derived and the 89-MB archive/binary is not rehashed here. Native compositor/input latency and timing-budget acceptance remain open; A/B startup comparisons do not replace them. |
-| 6. .12 package acceptance | Published `5e6201a6` opt1 receipts remain separately attributed. B is a same-source opt1 performance comparison, not extracted-package/physical-platform acceptance. These CI jobs build no package; unpushed `.13` opt2 needs new exact-source native/container/extracted smokes and opt1/opt2 comparison. |
+| 6. .12 package acceptance | Published `5e6201a6` opt1 receipts remain separately attributed. The independently verified [validate-only container receipt](audits/glen_followups_20261008/container_validate_5e6201a6/README.md) establishes the non-publishing headless component at that source, not native/extracted-package acceptance. B is a same-source opt1 performance comparison, not installer acceptance. These `024ed6c0` CI jobs build no package; `.13` opt2 needs new exact-source native/container/extracted smokes and opt1/opt2 comparison. |
+
+On 2026-10-14, independently retrieve the original 2,425-byte `.12` container
+receipt from artifact `11781064566` of tag-push run `38322028567`. Its 1,154-byte
+ZIP matches GitHub's artifact digest; extracted bytes, source/workflow, original
+lockfile and opt1 recipe verify. CI executed all three binary identities and
+network-disabled help/helper smokes; `mode=validate_only`, `pushed=false` and
+skipped GHCR publication remain explicit. Image/binary hashes are CI-observed,
+not independently rehashed here. Preserve this supplement separately from the
+later publication run and old audit records. No native installer, new-source,
+live-agent, scientific or overall six-gate completion follows.
 
 Glen's small failure logs reproduce the original Linux/Rust 1.96.1 default-stack
 abort for 11/2/7/2 selected allele/reporter tests (exit 101); 16-MiB ambient

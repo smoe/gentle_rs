@@ -1,0 +1,62 @@
+{
+  "schema": "gentle.container_build.v1",
+  "tag": "v0.1.0-internal.12",
+  "revision": "5e6201a69a599cba87491c86cfd7311cb6fee173",
+  "cargo_lock_sha256": "ead4421545a125267e33af84aeeea39f0e7ea2f60717a59ef0271d0e71855f1b",
+  "workflow_revision": "5e6201a69a599cba87491c86cfd7311cb6fee173",
+  "mode": "validate_only",
+  "pushed": false,
+  "profile": "package-opt1",
+  "opt_level": 1,
+  "lto": "off",
+  "codegen_units": 256,
+  "incremental": false,
+  "debug": 0,
+  "debug_assertions": true,
+  "overflow_checks": true,
+  "panic": "unwind",
+  "strip": "none",
+  "default_features": false,
+  "features": [],
+  "binaries": [
+    "gentle_cli",
+    "gentle_mcp",
+    "gentle_examples_docs"
+  ],
+  "helpers": {
+    "rnapkin": {
+      "version": "0.3.9",
+      "profile": "dev",
+      "cargo_lock_path": "docker/rnapkin/Cargo.lock",
+      "cargo_lock_sha256": "f8c593a086f1bf6277a1886aa879b90b39f57ce163964de7cbf851b927702dfb"
+    }
+  },
+  "build_args": {
+    "DEBIAN_SUITE": "forky",
+    "GENTLE_GIT_COMMIT": "5e6201a69a599cba87491c86cfd7311cb6fee173"
+  },
+  "platform": "linux/amd64",
+  "buildx": "github.com/docker/buildx v0.37.2 2d379c0c3f22da0d2759d132a0ec81ca949098f0",
+  "images": [
+    {
+      "target": "runtime-cli",
+      "image_id": "sha256:57351ae9cd1c53c3a4308680057cc4c807853b52a8990c1bc77144ad31cd58d1",
+      "digest": "sha256:1328e7335a58e1f7c2ef92d4b06c95ed0371c4594a71b3b3f7db9ee413d2d3bd",
+      "entrypoint_smoke": "passed",
+      "binary_identities": {
+        "gentle_cli": {
+          "version": "GENtle 0.1.0-internal.12\nBuild 1791848560452\nSource revision 0.1.0-internal.12+git.5e6201a69a599cba87491c86cfd7311cb6fee173\nCross-platform DNA cloning workbench",
+          "sha256": "c4dd32476b2c3b99097bfd8839cf83b66843e640a109961098fc835da632c5a1"
+        },
+        "gentle_mcp": {
+          "version": "GENtle 0.1.0-internal.12\nBuild 1791848560452\nSource revision 0.1.0-internal.12+git.5e6201a69a599cba87491c86cfd7311cb6fee173\nCross-platform DNA cloning workbench",
+          "sha256": "1a28058d88a09e353d908c90ab8e0c2e6a5ef3905ac39d5524bcdb09e2ae1b9b"
+        },
+        "gentle_examples_docs": {
+          "version": "GENtle 0.1.0-internal.12\nBuild 1791848560452\nSource revision 0.1.0-internal.12+git.5e6201a69a599cba87491c86cfd7311cb6fee173\nCross-platform DNA cloning workbench",
+          "sha256": "a2b7657c641db15f24a5141966542f981f82ebb900461a7a180cc4d9d669d2de"
+        }
+      }
+    }
+  ]
+}
