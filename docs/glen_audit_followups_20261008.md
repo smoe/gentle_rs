@@ -440,6 +440,14 @@ including the quick-xml SVG-prefix regressions. No production/parser broadening
 or local Rust verification is implied.
 [Glen must rerun the original commands at the new source](vkorc1_allele_review_followup_20261008.md#2026-10-14-default-stack-follow-up).
 
+The owner confirms the dependency update is finished and directs Glen to the
+final committed tip after remaining development, not an earlier checkpoint.
+The unchanged updated lockfile is frozen with SHA-256
+`0b9729e60698e14d464b48230e606377a4e2e48054c2450be6f85760e999a6b9`.
+Its static structure checks do not establish Rust, native, model or package
+acceptance. Do not dispatch a new run, publish, or transfer old verdicts merely
+because dependencies are now committed; the owner's no-push instruction remains.
+
 Glen's documentation commit `b6e54e0a` is integrated as local `99ac1715`, preserving
 the `.13`/opt2 work and unchanged historical evidence. The new manual/reference
 03.09 route has separate design/Gibson fixtures, four provenance-labelled visuals

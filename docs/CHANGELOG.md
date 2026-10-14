@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-10-14 - Freeze The Owner-Completed Dependency Update
+
+- Commit the owner's completed `Cargo.lock` update unchanged, including GENtle's
+  direct quick-xml 0.42 selection supported by `e3abfd3c`. Local package versions,
+  the dependency-free sequence-design core and packaging profiles are unchanged.
+- New raw lockfile SHA-256:
+  `0b9729e60698e14d464b48230e606377a4e2e48054c2450be6f85760e999a6b9`.
+  Glen will verify the final committed tip after remaining development, not an
+  earlier coordination SHA; older CI does not accept these dependency changes.
+- Static TOML checks validate all 848 package identities, unambiguous dependency
+  references and registry checksum formats. This is not Cargo resolution,
+  downloaded-crate checksum verification or Rust execution. All 46 offline
+  release/compiler-policy tests, whitespace and release-gate pass; session-close
+  has no failures, only intentional-worktree/manual-scope warnings. Roadmap stays
+  400 lines. No local Rust or push.
+
 ## 2026-10-14 - Retain Non-Publishing Internal.12 Container Evidence
 
 - Independently retrieve the 1,154-byte receipt ZIP from validate-only run
