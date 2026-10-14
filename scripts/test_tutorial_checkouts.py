@@ -402,6 +402,39 @@ class TutorialCheckoutTests(unittest.TestCase):
                 with self.subTest(mode=mode[0], path=path):
                     self.assertEqual((target / path).read_bytes(), payload)
 
+    def test_frozen_df5c8244_records_preserve_mixed_bytes_in_both_checkout_modes(self):
+        from scripts.test_frozen_df5c8244_audit import BASE, GLEN, NATIVE, retained_hashes
+
+        expected = retained_hashes()
+        payloads = {path: (checker.ROOT / path).read_bytes() for path in expected}
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        for path, payload in payloads.items():
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), expected[path])
+            destination = self.root / path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "frozen df5c8244 review and mixed-newline logs")
+        checker.git(self.root, "diff", "--check", "HEAD^", "HEAD", "--",
+                    GLEN.as_posix(), NATIVE.as_posix())
+        source = "scripts/test_frozen_df5c8244_audit.py"
+        self.assertEqual(checker.git(self.root, "check-attr", "whitespace", "--", source).strip(),
+                         f"{source}: whitespace: unspecified".encode())
+        unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                  if not line.startswith(BASE.as_posix().encode() + b"/"))
+        broken = Path(self.tmp.name) / "df5c8244-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        for path in (GLEN / "REPORT.md", NATIVE / "INDEX.md"):
+            self.assertNotEqual((broken / path).read_bytes(), payloads[path])
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"df5c8244-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for path, payload in payloads.items():
+                with self.subTest(mode=mode[0], path=path):
+                    self.assertEqual((target / path).read_bytes(), payload)
+
     def test_nonpublishing_container_receipt_survives_lf_crlf_and_detects_missing_policy(self):
         relative = Path("docs/audits/glen_followups_20261008/container_validate_5e6201a6/container-build.json")
         expected = "682d7d10df1b907dd80121c7055c62b3335952147fc7a3bf41988e7f13ffc42d"

@@ -1,5 +1,25 @@
 # GENtle Changelog
 
+## 2026-10-14 - Preserve Glen's Frozen Review And X11 Diagnostics
+
+- Verify the 94-file small handoff and 21-file supplement manifests; preserve
+  a 40-file review subset plus the complete 22-file supplement unchanged.
+  Both full-tree manifest versions verify; only the final cleanup entry differs.
+  Omitted screenshots, binaries and the archive are not independently verified.
+- Record 28 scoped Linux Rust passes and locked check at `df5c8244`, without
+  accepting the newer source/lockfile or treating shell-only stack removal as
+  a default-stack child receipt. Keep original summary/claims byte-for-byte.
+- Preserve producer-reported FLNA virtual-X11 success, Microarray/Gel blocks
+  and TSS report-adoption failure separately. DRI3 warnings are not a proven
+  cause. Add existing bounded runtime-status diagnostics to the next approved
+  native attempt, not an extra rerun or speculative application/backend fix.
+- Add six offline record checks and a fast LF/CRLF/missing-policy regression,
+  including mixed-newline Openbox logs and empty streams. No local Rust,
+  push, dispatch, large download, model/package run or scientific approval.
+- Verification: all 121 offline record/checkout/runner/release-policy tests
+  pass; YAML, scoped whitespace and release-gate checks pass. Session-close
+  has four OK/two intentional warnings, no failures; roadmap stays 400 lines.
+
 ## 2026-10-14 - Route Relative Help Chapter Links In-App
 
 - Repair the inert 03.09 Gibson hyperlinks: consume only relative Markdown

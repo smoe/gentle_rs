@@ -1,0 +1,71 @@
+{
+  "schema": "gentle.glen_frozen_verification.v1",
+  "source": {
+    "sha": "df5c8244787d8c920ee171ee55167de55e8a7294",
+    "tree": "beefc526b11d4801fc57e2189bf0bc1ec18a439d",
+    "cargo_lock_sha256": "5893dd19e359d71a9a52ccaf688f952b2ef0507eda53dbdf2c3fdd60a775f84d"
+  },
+  "toolchain": {
+    "rustc": "1.96.1",
+    "cargo": "1.96.1",
+    "host": "x86_64-unknown-linux-gnu",
+    "rust_min_stack": null,
+    "cargo_build_jobs": 1,
+    "incremental": false,
+    "dev_debug": 0
+  },
+  "rust_boundary": {
+    "status": "pass",
+    "passed": 28,
+    "failed": 0,
+    "filters": {
+      "dbsnp_": 11,
+      "materialize_variant_allele": 2,
+      "reporter_construct_handoff_": 7,
+      "variant_followup_allele_pair_": 2,
+      "test_support::heavy_stack_tests": 2,
+      "release_version_consistency": 4
+    },
+    "cargo_check": "pass"
+  },
+  "tutorial_projection": {
+    "status": "pass",
+    "catalog_entries": 66,
+    "manifest_chapters": 30,
+    "workflow_examples": 53,
+    "python_tests_passed": 109,
+    "lf_crlf": "pass",
+    "generated_drift": false,
+    "expected_review_warnings": 2
+  },
+  "binaries": {
+    "gentle_sha256": "5575196c75653f58429007ccad8a430195d45af4715658bde2f021f334f342ae",
+    "gentle_examples_docs_sha256": "f5c5f99c3445ebfd700d2b28be527170d994b82ba9154097eb72f54cf407c3df"
+  },
+  "screenshots": {
+    "environment": "Linux virtual X11 via Xvfb/Openbox",
+    "flna": "pass_virtual_x11",
+    "microarray_07_04": "blocked_gui_unresponsive",
+    "gel_10_03": "blocked_gui_unresponsive",
+    "tss_08_16": "blocked_report_not_adopted",
+    "primer_04_09": "not_run_performance_prerequisite",
+    "sequence_design_06_07": "not_run_no_prepared_gui_state",
+    "gibson_03_05": "not_run_no_prepared_gui_state",
+    "sequencing_10_02": "not_run_no_prepared_gui_state"
+  },
+  "ci": {
+    "run_id": 38541824374,
+    "head_sha": "df5c8244787d8c920ee171ee55167de55e8a7294",
+    "status": "completed",
+    "conclusion": "success"
+  },
+  "final_origin_main": "df5c8244787d8c920ee171ee55167de55e8a7294",
+  "mutations": {
+    "push": false,
+    "dispatch": false,
+    "tag": false,
+    "publication": false,
+    "model_call": false,
+    "package_build": false
+  }
+}

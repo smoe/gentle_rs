@@ -1,0 +1,17 @@
+STATUS_BEFORE_CLEANUP
+CARGO_CLEAN
+     Removed 8227 files, 7.6GiB total
+TARGET_EXISTS_AFTER
+no
+STATUS_AFTER_CLEANUP
+removing run-owned: /tmp/gentle-df5-audit-JuxMtC/tss-x11-3
+removing run-owned: /tmp/gentle-df5-audit-JuxMtC/tss-x11-2
+removing run-owned: /tmp/gentle-df5-audit-JuxMtC/tss-x11
+removing run-owned: /tmp/gentle-df5-audit-JuxMtC/xwininfo96b.txt
+removing run-owned: /tmp/gentle-df5-audit-JuxMtC/xwininfo96.txt
+removing run-owned: /tmp/gentle-df5-audit-JuxMtC/gel-x11
+removing run-owned: /tmp/gentle-df5-audit-JuxMtC/xwininfo95.txt
+removing run-owned: /tmp/gentle-df5-audit-JuxMtC/microarray-x11
+removing run-owned: /tmp/gentle-df5-audit-JuxMtC/screenshot-inputs
+removing run-owned: /tmp/gentle-df5-audit-JuxMtC/flna-x11-interactive
+removing run-owned: /tmp/gentle-df5-audit-JuxMtC/flna-x11

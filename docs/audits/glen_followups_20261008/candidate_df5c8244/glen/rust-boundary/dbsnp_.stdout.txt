@@ -1,0 +1,16 @@
+
+running 11 tests
+test app::tests::dbsnp_dialog_fetch_extracts_region_and_opens_window ... ok
+test app::tests::open_genbank_dialog_seeds_dbsnp_tutorial_defaults ... ok
+test app::tests::poll_dbsnp_fetch_task_updates_runtime_status_from_worker_messages ... ok
+test dna_sequence::tests::dbsnp_spdi_genbank_round_trip_preserves_wrapped_json ... ok
+test dna_sequence::tests::dbsnp_spdi_unfolding_preserves_valid_json_invalid_data_and_other_qualifiers ... ok
+test engine::tests::dbsnp_fetch_checks_reference_and_assembly_and_retains_non_snv_spdi ... ok
+test engine::tests::dbsnp_reference_check_validates_the_full_reference_and_keeps_unknown_explicit ... ok
+test engine::tests::dbsnp_selected_placement_keeps_its_own_position_and_alleles ... ok
+test engine::tests::test_extract_region_default_output_id_collapses_dbsnp_auto_parent_to_rsid ... ok
+test engine::tests::test_fetch_dbsnp_region_operation_emits_staged_progress_updates ... ok
+test engine::tests::test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 4156 filtered out; finished in 2.46s
+

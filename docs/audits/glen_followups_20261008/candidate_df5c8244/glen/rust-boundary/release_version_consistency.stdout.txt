@@ -1,0 +1,9 @@
+
+running 4 tests
+test release_gate_accepts_next_candidate_alongside_a_published_baseline ... ok
+test release_gate_accepts_candidate_and_published_status_with_lf_or_crlf ... ok
+test release_gate_rejects_wrong_versions_and_mentions_outside_the_gate ... ok
+test release_metadata_matches_cargo_package_version ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

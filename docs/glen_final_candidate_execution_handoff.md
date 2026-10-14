@@ -75,6 +75,29 @@ Codex ran no local Rust or native acceptance; no extra dispatch is authorized.
 | FLNA | Inspect normal-size native presentation and genomic-minus/local-plus orientation. The [human 24-bp teaching-exon choice and separate version-label clarification are closed](audits/glen_followups_20261008/flna_teaching_exon_f35a58e6/README.md); preserve annotation `.10` versus UniProt `.9` without rewriting the original decision. Historical release provenance and scientific/experimental confirmation remain open. The 2400-px rendering is already evidenced; keep the draft inactive. |
 | 04.09 | Inspect the existing native Shell/report presentation, without claiming a new specialist GUI or a completed real-import verdict. Complete real-reference import/save/reopen acceptance only after an evidenced performance repair, at that repair's exact SHA, with unchanged raw HSPs, policies and reference bindings. A timed-out attempt is not a failed biological verdict. |
 
+### Frozen Native Attempts: Diagnose Before Changing Code
+
+The [retained `df5c8244` review and no-rerun supplement](audits/glen_followups_20261008/candidate_df5c8244/GLEN_REVIEW.md)
+qualify these requests without repeating completed CLI/DuckDB work. Glen reports
+FLNA normal-size virtual Linux/X11 passed; physical platforms, historical
+release provenance and scientific confirmation remain separate. Microarray
+and Gel were X11-unresponsive, with Mesa DRI3 warnings but no causal CPU stack.
+08.16 was a report-adoption/harness block, not an established rendering hang.
+Preserve these verdicts; they do not accept newer source or justify forcing a
+graphics backend. This supplement requests no rerun by itself.
+
+During the next already-approved native acceptance attempt, retain a bounded
+process/thread CPU/RSS observation, X-server responsiveness, exact action and
+renderer/driver identity before stopping a stalled process. Use the existing
+[Unix SIGUSR1 runtime-status dump](gui.md#start-the-gui)
+only for the known GENtle GUI PID, after confirming that the same-source
+binary installs it and stderr reports no installation failure. Preserve its
+stderr output (or lack of response); it reports registered activity, not CPU
+call stacks. A separate CLI process's `introspect runtime` cannot diagnose the
+GUI's process-local registry. No `sudo`, isolation bypass, policy change,
+profiler installation, screenshot-bridge enabling or extra model/package run
+is authorized. Use a fresh evidence directory and disposable original inputs.
+
 Do not enable the disabled screenshot bridge, bypass isolation/host policy,
 reuse render-only images as native captures or substitute today's Ensembl
 release for missing historical provenance. Preserve original inputs/evidence;

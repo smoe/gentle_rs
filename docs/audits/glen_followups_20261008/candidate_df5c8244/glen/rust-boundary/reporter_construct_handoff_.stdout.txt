@@ -1,0 +1,12 @@
+
+running 7 tests
+test engine::reporter_ops::tests::reporter_construct_handoff_binds_unique_loaded_alternates_or_requires_review ... ok
+test engine::reporter_ops::tests::reporter_construct_handoff_marks_non_luciferase_constraints_as_no_macro_route ... ok
+test engine::reporter_ops::tests::reporter_construct_handoff_operation_commands_round_trip_and_execute ... ok
+test engine::reporter_ops::tests::reporter_construct_handoff_rejects_unknown_candidate_id ... ok
+test engine::reporter_ops::tests::reporter_construct_handoff_rejects_wrong_candidate_set_schema ... ok
+test engine::reporter_ops::tests::reporter_construct_handoff_reports_backbone_and_port_readiness ... ok
+test engine::reporter_ops::tests::reporter_construct_handoff_uses_vkorc1_candidate_set_and_luciferase_route ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 4160 filtered out; finished in 0.14s
+

@@ -1,0 +1,1 @@
+env -u RUST_MIN_STACK CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_TARGET_DIR=/tmp/gentle-df5-audit-JuxMtC/target cargo test --locked --lib materialize_variant_allele -- --test-threads=1 

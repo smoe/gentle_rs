@@ -1,0 +1,27 @@
+# Historical command extracted from the recorded tool call.
+# Formatting only was normalized. Paths were valid during the run; the run-owned
+# /tmp worktree and binary were subsequently removed as reported.
+set -euo pipefail
+EVID=/home/clawbio/.openclaw/workspace/artifacts/gentle-df5c8244-verification-20261014
+CAP="$EVID/native-x11/microarray"
+RUN=/tmp/gentle-df5-audit-JuxMtC/microarray-x11
+BIN=/tmp/gentle-df5-audit-JuxMtC/target/debug/gentle
+INPUT=/tmp/gentle-df5-audit-JuxMtC/screenshot-inputs/evidence/artifacts/clariom-lesson/state.json
+mkdir -p "$CAP" "$RUN/home" "$RUN/xdg-config" "$RUN/xdg-cache" "$RUN/xdg-data"
+cp "$INPUT" "$RUN/state.json"
+sha256sum "$INPUT" "$RUN/state.json" > "$CAP/input.sha256"
+export DISPLAY=:95
+Xvfb "$DISPLAY" -screen 0 1600x1200x24 -nolisten tcp > "$CAP/xvfb.log" 2>&1 & echo $! > "$CAP/xvfb.pid"
+openbox > "$CAP/openbox.log" 2>&1 & echo $! > "$CAP/openbox.pid"
+sleep 1
+env HOME="$RUN/home" XDG_CONFIG_HOME="$RUN/xdg-config" XDG_CACHE_HOME="$RUN/xdg-cache" XDG_DATA_HOME="$RUN/xdg-data" "$BIN" --project "$RUN/state.json" > "$CAP/gentle.stdout.txt" 2> "$CAP/gentle.stderr.txt" & echo $! > "$CAP/gentle.pid"
+for i in $(seq 1 80); do w=$(xdotool search --onlyvisible --name 'GENtle' 2>/dev/null | head -n1 || true); [ -n "$w" ] && break; sleep 0.5; done
+[ -n "${w:-}" ]
+xdotool windowsize "$w" 1500 1100
+xdotool windowmove "$w" 20 20
+xdotool windowactivate --sync "$w"
+echo "$w" > "$CAP/window.id"
+sleep 5
+import -window "$w" "$CAP/01-overview.png"
+echo READY
+sleep 600

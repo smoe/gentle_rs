@@ -1,0 +1,5 @@
+warning: /tmp/gentle-df5-audit-JuxMtC/worktree/Cargo.toml: unused manifest key `lints.cargo` (may be supported in a future version)
+
+consider passing `-Zcargo-lints` to enable this feature.
+    Finished `test` profile [unoptimized] target(s) in 0.34s
+     Running unittests src/lib.rs (/tmp/gentle-df5-audit-JuxMtC/target/debug/deps/gentle-6bd93da0c5fba135)

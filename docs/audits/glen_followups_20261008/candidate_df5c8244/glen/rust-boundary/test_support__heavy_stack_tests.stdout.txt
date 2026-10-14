@@ -1,0 +1,7 @@
+
+running 2 tests
+test test_support::heavy_stack_tests::heavy_test_preserves_worker_panic ... ok
+test test_support::heavy_stack_tests::heavy_test_runs_from_a_small_caller_stack ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 4165 filtered out; finished in 0.00s
+

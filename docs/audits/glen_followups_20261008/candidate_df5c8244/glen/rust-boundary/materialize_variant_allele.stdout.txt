@@ -1,0 +1,7 @@
+
+running 2 tests
+test engine::tests::materialize_variant_allele_rejects_invalid_choices_without_creating_sequence ... ok
+test engine::tests::materialize_variant_allele_sequence_supports_snv_and_explicit_multiallelic_alt ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 4165 filtered out; finished in 0.06s
+

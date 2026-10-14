@@ -1,0 +1,7 @@
+
+running 2 tests
+test main_area_dna::tests::variant_followup_allele_pair_preflights_before_creation_and_retries_without_orphans ... ok
+test main_area_dna::tests::variant_followup_allele_pair_rolls_back_late_refusal_and_preserves_history ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 4165 filtered out; finished in 0.18s
+

@@ -459,6 +459,34 @@ existing opt-in audit and [final-source native check](glen_final_candidate_execu
 This is a scoped implementation repair, not an executed Rust/native verdict;
 item 4 remains open and original screenshots/evidence are unchanged.
 
+### Glen's Frozen `df5c8244` Review And No-Rerun Supplement (2026-10-14)
+
+Retain the [qualified review, original Rust records and native logs](audits/glen_followups_20261008/candidate_df5c8244/GLEN_REVIEW.md)
+separately from the normal-CI inspection below. Independently verify 94/94
+small-handoff entries and 21/21 supplement entries. Preserve a 40-file review
+subset plus all 22 supplement files byte-for-byte, including mixed LF/CRLF.
+The full-tree manifest discrepancy is resolved: the final 195-line `713a8d03`
+manifest adds only `cleanup.txt` to the early 194-line `0b6a9d95` version.
+Both original versions and companions remain unchanged; omitted full-tree
+artifacts have not been independently rehashed.
+
+| Item | Additional Exact-Source Evidence / Remaining Gate |
+| --- | --- |
+| 1. Audit preservation / Linux validation | Debian x86_64, Rust/Cargo 1.96.1, dev/default features: 28 scoped Rust tests and locked check pass. Original bytes are retained. This is not a full Linux suite or newer-source/lockfile acceptance. |
+| 2. 08.04 GUI/agent contracts | Both named SPDI tests and allele/reporter/helper filters execute. Original commands only unset the parent environment; frozen Cargo config restores 16 MiB. Default-stack families still need the corrected runner's child receipt; native isolation/parity remain separate. |
+| 3. Genuine live agent | Not run. No model, authenticated agent or audit-CLI acceptance is supplied. |
+| 4. Honest visual evidence | Glen reports FLNA normal-size virtual-X11 presentation passed; raw captures are omitted here. 07.04 and 10.03 remain environment-blocked, 08.16 lacked report adoption, four other native workflows were not run. DRI3 warnings do not identify a causal code defect. Final-source promoter/Help repairs and physical-platform readability remain unverified. |
+| 5. Scroll benchmarks | No new scroll run. Retain older 24-case CPU observations separately; final-source next-frame/native timing remains open. |
+| 6. .12 package acceptance | No package build. Released/validate-only opt1 receipts remain historical; independent extracted/native and newer opt2 acceptance remain open. |
+
+The original `SUMMARY.json` parent-stack claim is preserved, with its limitation
+explained in the wrapper rather than overwritten. Historical native commands
+are transcripts, not reruns; the GUI logs contain no CPU stacks or Rust panic.
+No application/backend change is justified by the timeout alone. The next
+already-approved native attempt should retain the existing runtime-status
+diagnostics at the stalled boundary, without new privileges or capture bypass.
+No item is newly marked complete, and no Rust, push or dispatch runs locally.
+
 ### Completed Normal CI At `df5c8244` (2026-10-14)
 
 [Run 38541824374](https://github.com/smoe/gentle_rs/actions/runs/38541824374),
