@@ -21,6 +21,11 @@ You do not need to understand the tutorial machinery before beginning.
   or [Annotation Curation](./02-05_feature_editor_gui_cli.md).
 - **Plan cloning or assembly:** use the
   [Gibson specialist walkthrough](./03-05_gibson_specialist_testing_gui.md).
+- **Follow a synthetic-biology design-build-verify route:** use
+  [Synthetic Biology in GENtle](./03-09_synthetic_biology_design_build_verify.md),
+  which links sequence design, assembly, lineage, physical planning and
+  sequencing confirmation without pretending its teaching fixtures are one
+  continuous experimental construct.
 - **Compare transcript and genomic structure:** use the
   [cDNA/genomic dotplot walkthrough](./02-03_tp73_cdna_genomic_dotplot_gui.md).
 - **Inspect Clariom D evidence on TP73:** use
@@ -174,6 +179,7 @@ Context** when reporting confusion or an execution failure.
 - `03.06` [Gibson Arrangements Starter Project (offline)](./generated/chapters/03-06_gibson_arrangements_baseline.md) - executable reference; status `generated+checked/human-pending` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.
 - `03.07` [Gibson Arrangements Tutorial](./03-07_gibson_arrangements_gui.md) - guided GUI; status `manual/hybrid` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Hands-on walkthrough for Gibson-created arrangements, lane inspection, and arrangement-level gel export.
 - `03.08` [Gibson Physical Rack Tutorial](./03-08_gibson_physical_rack_gui.md) - guided GUI; status `manual/hybrid` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Hands-on walkthrough for turning one arrangement-ready Gibson result into a linked physical rack, README-grade isometric SVG, carrier labels, and OpenSCAD export.
+- `03.09` [Synthetic Biology in GENtle: Design, Build, Track and Verify](./03-09_synthetic_biology_design_build_verify.md) - operational learning route; status `manual/reference` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: You want an honest route across sequence design, Gibson assembly, lineage/rack planning and sequencing confirmation, with explicit planning-versus-experiment boundaries.
 
 ### Primers, PCR & qPCR
 
@@ -388,6 +394,13 @@ Use the review badge to decide what kind of feedback is most useful:
 4. Export one arrangement-level gel with ladders flanking the sample lanes
 5. Use the Gibson specialist tutorial separately if you also want to replay the
    cloning step itself
+
+### Path E: Synthetic Biology design-build-verify
+
+1. Read [03.09 Synthetic Biology in GENtle](./03-09_synthetic_biology_design_build_verify.md) for the evidence boundaries between design, predicted assembly, physical tracking and verification.
+2. Exercise the exact-output constraint workflow in [06.07](./06-07_synthetic_sequence_design.md).
+3. Preview and apply the separate synthetic Gibson fixture in [03.05](./03-05_gibson_specialist_testing_gui.md), then inspect arrangements and rack exports in [03.07](./03-07_gibson_arrangements_gui.md) and [03.08](./03-08_gibson_physical_rack_gui.md).
+4. Finish with [10.02 Sequencing Confirmation](./10-02_sequencing_confirmation_gui.md), retaining uncertainty and save/reopen evidence rather than claiming biological function.
 
 ### Path J: Gibson physical rack and README figure export
 
