@@ -14868,6 +14868,35 @@ fn protein_expression_handoff_legacy_json_deserializes_without_readiness_fields(
 }
 
 #[test]
+fn protein_expression_handoff_parser_requires_explicit_single_provider() {
+    for prefix in [
+        "planning protein-expression-handoff",
+        "planning protein_expression_handoff",
+    ] {
+        let plain = parse_shell_line(prefix).unwrap();
+        assert!(matches!(
+            plain,
+            ShellCommand::PlanningProteinExpressionHandoff { provider: None, .. }
+        ));
+        let selected = parse_shell_line(&format!("{prefix} --provider GeneArt")).unwrap();
+        assert!(
+            matches!(selected, ShellCommand::PlanningProteinExpressionHandoff { provider: Some(provider), .. } if provider == "GeneArt")
+        );
+        for suffix in [
+            "--provider",
+            "--provider ''",
+            "--provider --format json",
+            "--provider geneart --provider other",
+        ] {
+            assert!(
+                parse_shell_line(&format!("{prefix} {suffix}")).is_err(),
+                "{suffix}"
+            );
+        }
+    }
+}
+
+#[test]
 fn execute_planning_protein_expression_handoff_returns_reviewable_contract() {
     let mut engine = GentleEngine::default();
     let out = execute_shell_command(
@@ -15503,6 +15532,7 @@ fn protein_expression_handoff_test_input(protein: bool) -> (GentleEngine, serde_
     .unwrap();
     requirements["outsourcing"]["allowed"] = serde_json::json!(true);
     requirements["outsourcing"]["approved_providers"] = serde_json::json!(["geneart"]);
+    requirements["reviewed_at_unix_ms"] = serde_json::json!(123);
     (GentleEngine::from_state(state), requirements)
 }
 
@@ -15561,8 +15591,8 @@ fn protein_expression_handoff_complete_neutral_draft_does_not_select_provider() 
     assert_eq!(draft.source_target["name"], "Synthetic reviewed product");
     assert!(draft.source_target.get("protein_seq_id").is_none());
     assert_eq!(
-        draft.optimization_target.as_ref().unwrap()["chassis"],
-        requirements["chassis"]
+        draft.optimization_target.as_ref().unwrap()["chassis"]["acceptable_chassis"],
+        requirements["chassis"]["acceptable_chassis"]
     );
     assert_eq!(
         draft.optimization_target.as_ref().unwrap()["folding"]["required_ptms"],
@@ -15592,13 +15622,29 @@ fn protein_expression_handoff_complete_neutral_draft_does_not_select_provider() 
         requirements["scale_purification"]["production_scale"]
     );
     assert_eq!(
-        draft.delivery_options.as_ref().unwrap()["yield_goal"],
-        requirements["yield_goal"]
+        draft.delivery_options.as_ref().unwrap()["yield_goal"]["metric"],
+        requirements["yield_goal"]["metric"]
+    );
+    assert_eq!(
+        draft.optimization_target.as_ref().unwrap()["chassis"]["provider_managed_allowed"],
+        false
+    );
+    assert_eq!(
+        draft.delivery_options.as_ref().unwrap()["yield_goal"]["target_amount"],
+        requirements["yield_goal"]["target_amount"]
+    );
+    assert_eq!(
+        draft.delivery_options.as_ref().unwrap()["yield_goal"]["target_amount_unit"],
+        requirements["yield_goal"]["target_amount_unit"]
     );
     let metadata = draft.request_metadata.as_ref().unwrap();
     assert_eq!(metadata["human_review_only"], true);
     assert_eq!(metadata["requirements_id"], requirements["requirements_id"]);
     assert_eq!(metadata["reviewed_by"], requirements["reviewed_by"]);
+    assert_eq!(
+        metadata["reviewed_at_unix_ms"],
+        requirements["reviewed_at_unix_ms"]
+    );
     assert_eq!(metadata["unresolved_question_ids"], serde_json::json!([]));
     assert!(metadata.get("template_path").is_none());
 }
@@ -15798,6 +15844,35 @@ fn protein_expression_handoff_partial_requirements_leave_missing_fields_and_ques
             .suggested_next_actions
             .iter()
             .all(|action| !action.shell_line.starts_with("services project-quote "))
+    );
+}
+
+#[test]
+fn protein_expression_handoff_missing_requirements_does_not_inherit_provider_answers() {
+    let (mut engine, _) = protein_expression_handoff_test_input(false);
+    let report = protein_expression_handoff_read_only_report(
+        &mut engine,
+        None,
+        Some("geneart"),
+        "reviewed_product",
+    );
+    assert!(report.requirements.is_none());
+    assert!(report.provider_binding.reasons.contains(
+        &crate::engine::ProteinExpressionProviderBindingReason::OutsourcingPermissionMissing
+    ));
+    assert!(report.provider_projection.is_none());
+    let draft = report.neutral_service_draft.unwrap();
+    assert!(draft.optimization_target.is_none());
+    assert!(draft.delivery_options.is_none());
+    assert!(draft.vector_spec.unwrap().get("tag_policy").is_none());
+    let metadata = draft.request_metadata.unwrap();
+    assert!(metadata.get("requirements_id").is_none());
+    assert!(metadata.get("requirements_schema").is_none());
+    assert!(
+        !metadata["unresolved_question_ids"]
+            .as_array()
+            .unwrap()
+            .is_empty()
     );
 }
 

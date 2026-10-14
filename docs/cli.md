@@ -7668,7 +7668,7 @@ Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'pl
   - `gentle.planning_suggestion.v1`
   - `gentle.planning_sync_status.v1`
   - `gentle.planning_cloning_consultation.v1`
-  - `gentle.protein_expression_handoff.v1`
+  - `gentle.protein_expression_handoff.v2` (legacy v1 reports remain readable)
 - Effective profile merge precedence:
   - `global_profile -> confirmed_agent_overlay -> project_override`
 - Schema compatibility:
@@ -7692,23 +7692,32 @@ Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'pl
     explicit `missing_questions[]` until structured profile fields exist.
   - `--seq-id` is traceability-only in v1 and is not consumed as a
     construct-candidate graph input.
-- `planning protein-expression-handoff [--seq-id SEQ_ID] [--objective JSON_OR_@FILE] [--requirements JSON_OR_@FILE] [--profile-scope effective] [--format json|text]`
+- `planning protein-expression-handoff [--seq-id SEQ_ID] [--objective JSON_OR_@FILE] [--requirements JSON_OR_@FILE] [--provider PROVIDER] [--profile-scope effective] [--format json|text]`
   - Returns a read-only protein-expression planning handoff for underspecified
     requests such as "give me the maximal amount of protein."
   - Emits `product_definition`, `product_readiness`, `sequence_context`,
     `cds_assessment`, `tag_assessment`, optional reviewed `requirements`, ranked `host_chassis_candidates[]`,
-    ranked `vector_route_candidates[]`, explicit `missing_questions[]`, a
-    GeneArt protein-expression `service_handoff_candidates[]` preflight
-    scaffold, and readiness-driven `suggested_next_actions[]`. Undefined
-    products retain only the labelled bundled example; provider-ready selected
-    products receive a project-bound request preview referencing `seq_id` or
-    `protein_seq_id`.
+    ranked `vector_route_candidates[]`, explicit `missing_questions[]`,
+    `neutral_service_draft`, optional `provider_projection`, typed
+    `provider_binding`, and readiness-driven `suggested_next_actions[]`.
+    The draft uses `gentle.external_service_delivery_route_request.v1`, with
+    exact project `seq_id` or `protein_seq_id`, bp/aa length and readiness.
+    Missing products are marked unresolved; no bundled example replaces them.
   - `--requirements` accepts inline JSON, a JSON path, or `@FILE` using schema
     `gentle.protein_expression_requirements.v1`. Reviewed topic records resolve
     only their matching missing questions; partial requirements remain partial.
-    Explicitly disallowing outsourcing removes provider preflight and quote
-    actions without removing in-house planning actions; the retained provider
-    row is marked `withheld_by_outsourcing_requirement` and is not executable.
+    Supplied topics populate neutral optimization, tag-policy and delivery
+    fields; metadata retains review provenance and unanswered question IDs.
+    Missing fields stay absent; supplied false values and reviewed empty lists
+    remain intact. Annotated tags are evidence, not a manufactured vector.
+  - Without `--provider`, `provider_binding.status = not_selected`,
+    `provider_projection` is null and `service_handoff_candidates[]` is empty.
+    No provider-specific preflight/quote command appears. Explicit selection
+    produces an existing `gentle.external_service_request.v1` projection only
+    if outsourcing is allowed, the product is usable/unambiguous and the active
+    catalog supports `protein_expression`; a non-empty `approved_providers`
+    must include the selection. Otherwise binding is `withheld`, with typed
+    reasons, and no provider actions. In-house actions remain available.
   - If `--seq-id` is supplied, the route now performs read-only product-context
     analysis: annotated CDS features are summarized first, whole-sequence CDS
     sanity is used only as an explicit fallback, and the report records
@@ -7723,15 +7732,19 @@ Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'pl
     scale, and delivery endpoint.
   - `product_definition.readiness.status` drives the next actions:
     `whole_sequence_cds_candidate` and `annotated_cds_review_required` point to
-    GeneArt preflight, cloning consultation, and review-gated quote-packet
-    preparation; `protein_sequence_review_required` points to reverse
+    cloning consultation and, only after permitted provider selection, local
+    preflight and question-resolved quote-packet preparation;
+    `protein_sequence_review_required` points to reverse
     translation or provider protein-target handoff review; `needs_cds_boundary`
     points to CDS/ORF boundary inspection.
   - Text output derives provider lines from the same structured action rows,
     and product-specific preflight/quote actions serialize the same request
     preview instead of pointing at the tutorial protein.
-  - The route never designs, optimizes, orders, mutates constructs, queries
-    live providers, or promises wet-lab yield. GUI exposure for this richer
+  - Partial requirements leave their questions visible even when a selected
+    provider permits a draft/local preflight; they withhold quote suggestions.
+    The bundled GeneArt catalog keeps direct submission unavailable.
+  - The route never designs, optimizes, submits, orders, writes files, changes
+    project state, queries live providers, or promises wet-lab yield. GUI exposure for this richer
     handoff remains a future Synthetic Biology inspector slice rather than a
     new dashboard in the CLI contract.
 - `planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]`

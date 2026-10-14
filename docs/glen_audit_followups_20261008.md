@@ -39,6 +39,37 @@ local Rust, model call, package build or publication.
 
 ## Owner-Requested Main Integration
 
+### Protein Expression Neutral Draft Follow-Up (2026-10-14)
+
+The GitHub-pushing thread should include this bounded slice in its next single
+consolidated exact-tip request, not ask Glen to accept this branch separately.
+Baseline for implementation was `de9df8af`; the core was rebased onto local
+`43fb1492`, preserving its unrelated dbSNP worker/CI records. No inherited CI
+verdict accepts the new source. Freeze the final merged/pushed SHA before replay.
+
+```bash
+cargo test -q --locked protein_expression_handoff_
+cargo test -q --locked execute_services_delivery_route_selects_sequence_kind_provider_rules
+cargo test -q --locked execute_services_external_provider_catalog_and_geneart_preflight
+cargo test -q --locked --test protein_expression_handoff_cli
+python3 -m unittest scripts.test_specialist_tutorials -v
+cargo check -q --locked
+cargo fmt --check
+git diff --check
+```
+
+Review tutorial 09.03 against that same tip: neutral draft without selection,
+explicit permitted GeneArt binding, denied outsourcing/allowlist/catalog
+capability, partial or absent requirements, DNA vs protein identity, legacy
+v1 read compatibility and no state/file changes. V2 must never fill missing
+answers from the GeneArt example. The generated preflight is local, with direct
+submission unavailable in the bundled catalog; quote suggestions require all
+questions answered and CDS context. A request draft is not scientific/provider
+acceptance. No GUI, remote service, pricing, order or package work belongs to
+this slice. Record SHA/platform, exact commands/counts and CI URL when available;
+keep failures and unrun checks distinct. No local Rust execution, push, dispatch
+or separate Glen message was performed for this implementation.
+
 Integrate the 45 commits from codex tip
 `4c394efefddd51c83bea93525e5024383d2cf372` into local main
 `b1547544980cb423dbda9ee57dfce81f8b193f5b` with an explicit merge commit.

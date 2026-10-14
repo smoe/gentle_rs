@@ -43,21 +43,23 @@ cargo run --quiet --bin gentle_cli -- planning protein-expression-handoff \
 
 Expected outcome:
 
-- `schema` is `gentle.protein_expression_handoff.v1`
+- `schema` is `gentle.protein_expression_handoff.v2`
 - `biological_intent` is `protein_expression_max_yield`
 - `status` is `needs_product_definition`
 - `product_definition.sequence_present` is `false`
 - `product_readiness.status` is `needs_product_definition`
 - the report contains `host_chassis_candidates[]`,
   `vector_route_candidates[]`, `missing_questions[]`,
-  `service_handoff_candidates[]`, `warnings[]`,
-  `suggested_next_actions[]`, and defaulted sequence-readiness records
+  `neutral_service_draft`, `provider_binding`, `warnings[]`,
+  `suggested_next_actions[]`, and sequence-readiness records
 
 This is the safest first response when no product sequence has been loaded.
 GENtle can still explain the choices, but it refuses to pretend that the
-product is already defined. The service candidate is a labelled bundled
-example in this state, and neither text nor `suggested_next_actions[]` offers a
-provider preflight or quote command.
+product is already defined. The neutral draft records `unresolved_product`;
+`provider_binding.status` is `not_selected`, `provider_projection` is null and
+`service_handoff_candidates[]` is empty. Neither text nor structured actions
+offer provider preflight or quote work. Legacy v1 JSON remains readable, but
+new reports use v2 so the changed provider-selection behavior is explicit.
 
 ## Step 2: Read The Missing Questions First
 
@@ -110,17 +112,33 @@ GENtle validates essential fields and removes only the questions answered by
 the supplied topics. A partial record is valid and deliberately leaves the
 other questions visible. The example sets `outsourcing.allowed` to `false`, so
 provider preflight and quote actions are withheld while in-house cloning
-consultation remains available. The retained service provenance row is marked
-`withheld_by_outsourcing_requirement` and has no `shell_line`.
+consultation remains available. Without a provider flag there is no provider
+row at all; an explicit selection with this in-house record is `withheld` with
+reason `outsourcing_disallowed`, not an executable provider request.
 
 Replace the synthetic answers and reviewer label with project-specific,
-human-reviewed requirements. This V1 record does not yet rerank chassis or
-populate provider request fields; those are later deterministic consumers of
-the same contract.
+human-reviewed requirements. These answers now populate
+`neutral_service_draft`, using the existing
+`gentle.external_service_delivery_route_request.v1` contract. Missing fields
+remain absent; supplied `false` values and reviewed empty lists are retained.
+The record does not yet rerank chassis/vector candidates.
+
+Read the draft as a request, not an expression prediction:
+
+- `source_target` identifies the exact DNA `seq_id` or protein `protein_seq_id`,
+  its name, molecule type, bp/aa length and current readiness.
+- `optimization_target` holds supplied chassis, localization, folding/PTM/
+  cofactor/chaperone and toxicity/induction requirements.
+- `vector_spec` holds reviewed tag policy and any annotation-only tag evidence;
+  it does not invent a vector or decide that an annotated tag must be retained.
+- `delivery_options` holds yield goal and supplied scale, purification, purity,
+  endotoxin, buffer, QC and delivery-format requirements.
+- `request_metadata` carries the human-review boundary, supplied requirements
+  ID/reviewer/date, unresolved question IDs and product readiness.
 
 ## Step 4: Interpret Chassis And Route Candidates
 
-The first V1 report ranks the following chassis candidates conservatively:
+The report retains the following conservative chassis candidates:
 
 - `e_coli`
 - `yeast`
@@ -168,33 +186,60 @@ Expected difference:
   boundaries instead of selecting an expression route
 - if a CDS/protein context is inferable, the report shifts toward the
   expression-specific review questions
-- `product_definition.readiness.status` determines the next actions: CDS
-  candidates can point to GeneArt preflight and cloning consultation,
-  protein-only targets point to reverse-translation or provider-target review,
-  and unresolved sequences point back to CDS/ORF boundary inspection
+- `product_definition.readiness.status` determines in-house next actions:
+  CDS candidates can point to cloning consultation, protein-only targets to
+  reverse-translation review, and unresolved sequences to boundary inspection.
+  Provider actions require the separate explicit selection described next.
 
 This analysis is read-only. GENtle does not infer that the product is
 expression-ready, codon-optimize it, mutate the sequence, create a construct,
 choose a final host/vector/tag, or submit anything to a provider.
 
-## Step 6: Inspect The Product-Specific GeneArt Draft
+## Step 6: Choose A Provider Explicitly, If Outsourcing Is Allowed
 
-When the selected product is provider-ready for review, inspect
-`service_handoff_candidates[0]` before running anything. Its expected fields
-are:
+First prepare your own reviewed `reviewed-expression.json`; this is a learner
+input, not a bundled file. Only if outsourcing is actually approved, set
+`outsourcing.allowed` to `true` and record approved provider IDs (for example
+`["geneart"]`). Do not change the supplied in-house example or infer permission
+from a chat message. Run:
 
-- `status = product_draft_review_required`
-- `draft_request_preview.source_target.seq_id` for a DNA/CDS product, or
-  `protein_seq_id` for a protein product
-- `request_metadata.human_review_only = true`
-- a `shell_line` that preflights that same product-specific preview
+```bash
+cargo run --quiet --bin gentle_cli -- --state path/to/project.gentle.json \
+  planning protein-expression-handoff \
+  --seq-id target_cds_or_protein_product \
+  --requirements @reviewed-expression.json \
+  --provider geneart --format json
+```
 
-The matching `suggested_next_actions[]` row carries the same command. Run it
-through the normal in-tree CLI only after checking that the project sequence id
-and product name are correct. The generated shell command references project
-state rather than embedding sequence letters.
+With a usable, unambiguous product and catalog capability:
 
-The existing bundled example remains useful for a tutorial-only rehearsal:
+- `provider_binding.status` is `projected`, not submitted or biologically ready.
+- `provider_projection` is `gentle.external_service_request.v1`, with
+  `provider = geneart`, `service_kind = protein_expression` and the unchanged
+  neutral draft fields. No vendor template supplies missing answers.
+- `service_handoff_candidates[0]` has `product_draft_review_required`, an empty
+  legacy `example_request_path`, that same projection as `draft_request_preview`,
+  and a product-specific local preflight `shell_line`.
+- The same preflight appears in `suggested_next_actions[]`. It does not submit
+  anything; GeneArt's bundled local preflight keeps
+  `direct_submission_available = false`.
+
+Read `provider_binding.reasons` if selection is withheld: missing outsourcing
+permission, disallowed outsourcing, an excluding non-empty allowlist, missing
+or multiple-CDS product identity, unusable product readiness, or an unsupported
+provider/capability all suppress provider rows and commands. Partial biological
+requirements may still permit a **draft** projection and local preflight, but
+their question IDs remain visible. They suppress quote suggestions.
+
+After checking the exact product and resolving all questions, a CDS handoff can
+offer `prepare_provider_protein_expression_quote_after_review`. Protein-only
+targets retain reverse-translation/provider-target review rather than a quote
+shortcut. Nothing runs just because an action is listed. The draft route never
+writes files, changes project state, contacts a provider or submits an order.
+Provider commands reference project IDs, not embedded sequence letters.
+
+The bundled GeneArt request remains a separate **synthetic rehearsal**, never
+the source of the selected product's draft:
 
 ```bash
 cargo run --quiet --bin gentle_cli -- services project-preflight \
@@ -209,11 +254,7 @@ Expected outcome:
 - direct submission remains unavailable
 - warnings keep the human-review boundary visible
 
-After the product definition, outsourcing permission, and route constraints
-have been reviewed, use the
-`prepare_geneart_quote_packet_after_review` action from the handoff report.
-For a product-specific handoff, that action serializes the same reviewed draft
-used by preflight. The bundled example below is still only a rehearsal:
+The bundled quote example below is likewise only a rehearsal:
 
 ```bash
 cargo run --quiet --bin gentle_cli -- services project-quote \
@@ -251,27 +292,31 @@ For ClawBio or another agent, the safe instruction is:
   `product_readiness`, `requirements`, `sequence_context`, `cds_assessment`,
   `tag_assessment`,
   `host_chassis_candidates`, `vector_route_candidates`, `missing_questions`,
+  `neutral_service_draft`, `provider_binding`, `provider_projection`,
   `service_handoff_candidates`, and `suggested_next_actions`
+- omit `--provider` until the user actually selects an allowed provider; explain
+  withheld reasons instead of substituting GeneArt or its example protein
 - do not invent a final expression host, promoter, vector, tag, or vendor
   submission from chat context alone
 
 GUI note: the current slice is CLI/shared-shell first. A dedicated Synthetic
 Biology or protein-expression handoff inspector for existing
-`gentle.protein_expression_handoff.v1` reports is the natural next GUI slice,
+`gentle.protein_expression_handoff.v2` reports is the natural next GUI slice,
 not something this tutorial assumes exists today.
 
 ## Expected Outcome
 
 At the end of this tutorial you should have:
 
-- a `gentle.protein_expression_handoff.v1` report
+- a `gentle.protein_expression_handoff.v2` report (legacy v1 remains readable)
 - a clear distinction between product definition and expression route choice
 - a versioned record of reviewed protein-expression requirements
 - read-only sequence/readiness/CDS/tag context when a sequence id is supplied
 - ranked but review-required chassis and route candidates
 - explicit missing biological questions for either product boundaries or
   expression-route review
-- a local GeneArt preflight scaffold and optional quote-packet handoff
+- a neutral draft, plus local provider preflight/quote suggestions only after
+  explicit permitted provider binding and the applicable review gates
 - no created construct and no vendor-side action
 
 ## Feedback

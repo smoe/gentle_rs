@@ -5861,7 +5861,7 @@ Adapter-equivalence guarantee for UI-intent tools:
   - cloning-consultation schema:
     `gentle.planning_cloning_consultation.v1`
   - protein-expression handoff schema:
-    `gentle.protein_expression_handoff.v1`
+    `gentle.protein_expression_handoff.v2` (legacy v1 remains readable)
   - merge precedence for effective profile:
     - `global_profile -> confirmed_agent_overlay -> project_override`
   - purchasing latency heuristic in v1:
@@ -5900,15 +5900,17 @@ Adapter-equivalence guarantee for UI-intent tools:
     explicit `missing_questions[]`
   - `--seq-id` is accepted for traceability, but v1 does not yet consume
     construct-candidate graphs when ranking strategies or helper vectors
-- `planning protein-expression-handoff [--seq-id SEQ_ID] [--objective JSON_OR_@FILE] [--requirements JSON_OR_@FILE] [--profile-scope effective] [--format json|text]`
+- `planning protein-expression-handoff [--seq-id SEQ_ID] [--objective JSON_OR_@FILE] [--requirements JSON_OR_@FILE] [--provider PROVIDER] [--profile-scope effective] [--format json|text]`
   - read-only handoff route for high-yield protein-expression requests
-  - emits `gentle.protein_expression_handoff.v1`
+  - emits `gentle.protein_expression_handoff.v2`; defaulted new fields permit
+    legacy v1 deserialization without silently redefining its old semantics
   - records `biological_intent = protein_expression_max_yield` for phrase-like
     objectives such as "give me the maximal amount of protein"
   - fields include `product_definition`, `product_readiness`,
     optional `requirements`, `sequence_context`, `cds_assessment`, `tag_assessment`,
     `host_chassis_candidates[]`, `vector_route_candidates[]`,
-    `missing_questions[]`, `service_handoff_candidates[]`, `warnings[]`, and
+    `missing_questions[]`, `neutral_service_draft`, `provider_projection`,
+    `provider_binding`, `service_handoff_candidates[]`, `warnings[]`, and
     `suggested_next_actions[]`
   - `product_readiness` reports whether the product context is usable for
     expression review, whether translation was possible, any blockers, and the
@@ -5937,26 +5939,41 @@ Adapter-equivalence guarantee for UI-intent tools:
   - validated reviewed topics remove only their matching
     `missing_questions[]` rows; partial records leave all unrelated questions
     visible and do not alter host/vector ranking
-  - `outsourcing.allowed = false` withholds provider preflight and quote next
-    actions while preserving in-house cloning and product-review actions; the
-    retained provider provenance row is marked
-    `withheld_by_outsourcing_requirement` and carries no shell command
-  - the bundled
-    `docs/examples/external_services/geneart_protein_expression_request.json`
-    remains the template/provenance source for the first V1 service scaffold
-  - without a provider-ready product, the service candidate is explicitly
-    `draft_example_review_required` and no provider command appears in either
-    text or structured suggested actions
-  - a provider-ready selected DNA or protein sequence produces a
-    `product_draft_review_required` request preview whose `source_target`
-    references the project `seq_id` or `protein_seq_id`; its preflight and,
-    where readiness permits, quote actions serialize that same request rather
-    than operating on the tutorial protein
+  - `neutral_service_draft` reuses `ExternalServiceDeliveryRouteRequest` with
+    schema `gentle.external_service_delivery_route_request.v1`. It copies exact
+    DNA/protein identity, name, molecule type, bp/aa length and readiness into
+    `source_target`; missing identities are explicitly unresolved. Supplied
+    chassis/localization/folding/toxicity topics populate `optimization_target`,
+    tag policy and annotation-only evidence populate `vector_spec`, and yield/
+    scale/purification/quality topics populate `delivery_options`. No vector,
+    requirement or product is supplied by a vendor template. Null optional
+    fields are omitted; false values and reviewed empty lists remain intact.
+  - draft `request_metadata` records `human_review_only`, supplied requirements
+    ID/review metadata, unresolved question IDs and product-readiness status
+  - `provider_binding.status` is `not_selected`, `withheld` or `projected`.
+    Without `--provider`, projection is null and provider candidates/actions
+    are empty. Explicit selection requires outsourcing permission, an
+    unambiguous usable product and active-catalog `protein_expression`
+    capability. A non-empty `outsourcing.approved_providers` must include it.
+    Stable reasons are `product_identity_unresolved`, `product_not_ready`,
+    `outsourcing_permission_missing`, `outsourcing_disallowed`,
+    `provider_not_approved`, and `provider_unavailable` (with diagnostic detail).
+  - permitted binding produces the existing `gentle.external_service_request.v1`
+    in `provider_projection`, preserving all neutral fields, including return
+    preferences. Projection is a local value, not provider acceptance. The
+    shared helper in `service_readiness` validates the active catalog; it never
+    preflights, submits, prices or orders on the caller's behalf.
+  - only a projected request produces a `product_draft_review_required`
+    candidate; its legacy `example_request_path` is empty. Local preflight
+    suggestions serialize that exact request. CDS quote suggestions additionally
+    require resolved questions; protein targets retain coding-route review.
+    Partial requirements stay partial, even when a draft/preflight is available.
+    GeneArt's bundled preflight keeps `direct_submission_available = false`.
   - project-bound request commands do not inline sequence letters; exact CDS
     boundaries, protein target, expression requirements, and outsourcing
     permission remain review gates before external handoff
-  - no provider network call, order, optimization, or construct mutation is
-    made
+  - no provider network call, submission, order, optimization, project mutation
+    or output file is made
   - if no usable CDS/protein context is found, `missing_questions[]` asks for
     coding sequence, ORF, CDS annotation, or target-protein boundaries rather
     than choosing an expression route
@@ -5967,8 +5984,8 @@ Adapter-equivalence guarantee for UI-intent tools:
     delivery endpoint
   - `product_definition.readiness.status` also drives
     `suggested_next_actions[]`: `whole_sequence_cds_candidate` and
-    `annotated_cds_review_required` suggest GeneArt preflight, cloning
-    consultation, and review-gated quote-packet preparation;
+    `annotated_cds_review_required` suggest cloning consultation, with provider
+    preflight/quote only after the explicit binding/question gates above;
     `protein_sequence_review_required` suggests reverse-translation or
     provider protein-target handoff review; `needs_cds_boundary` suggests
     inspecting or marking CDS/ORF boundaries before expression planning
@@ -5979,7 +5996,7 @@ Adapter-equivalence guarantee for UI-intent tools:
     GENtle does not codon-optimize, mutate sequences, create constructs, query
     live providers, submit orders, or promise wet-lab yield
   - GUI follow-up: a dedicated Synthetic Biology / protein-expression handoff
-    inspector should display existing `gentle.protein_expression_handoff.v1`
+    inspector should display `gentle.protein_expression_handoff.v2`
     reports later; this protocol slice intentionally keeps GUI exposure to the
     shared shell/CLI contract rather than adding a new dashboard
 - `planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]`

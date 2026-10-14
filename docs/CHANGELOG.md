@@ -37,6 +37,27 @@
   400 lines. Session-close has four OK/two intentional worktree/manual-scope
   warnings and no failures.
 
+## 2026-10-14 - Expose Explicit Expression Provider Binding In The Shared Shell
+
+- Add optional `--provider PROVIDER` to protein-expression handoff, rejecting
+  empty, missing and duplicate selections. Update tutorial 09.03, CLI/protocol,
+  glossary and MCP exclusion wording: v2 builds a neutral request first;
+  permitted catalog-supported binding alone enables provider suggestions.
+- Author a real direct-CLI/shared-shell replay across nine synthetic cases in
+  LF/CRLF paths with spaces/apostrophes and isolated HOME/XDG/catalog/temp roots.
+  Before/after raw-file and directory snapshots check no writes; a project
+  overlay removes expression capability to prove catalog gating. Core tests
+  also cover absent requirements, exact DNA/protein identities and state flags.
+- Expose the existing shared shell-argument quoting helper for that boundary
+  test rather than duplicating escaping. Correct protein handoff text to show
+  its amino-acid length, not a zero-bp placeholder; retain the legacy model.
+- Verification: 76 offline specialist/checkout/walkthrough tests pass, with six
+  explicit binary/platform skips (82 total). Rust formatting and whitespace
+  checks pass; authored Rust/CLI
+  regressions, locked check and native acceptance remain with Glen/CI under
+  the owner's no-local-Rust instruction. Add commands to the consolidated
+  handoff; no push, CI dispatch, catalog regeneration or provider call.
+
 ## 2026-10-14 - Retain Terminal `de9df8af` CI Failure
 
 - Follow run `38599805415` through completion. Linux and Windows pass default

@@ -93,6 +93,61 @@ def fixture_abif_tag(tag, number=2):
 
 
 class SpecialistSourceTests(unittest.TestCase):
+    def test_expression_draft_guide_matches_explicit_provider_glossary_contract(self):
+        stem = "09-03_protein_expression_handoff_cli"
+        source = read_json(TUTORIALS / "sources" / f"{stem}.json")
+        guide = (TUTORIALS / f"{stem}.md").read_text(encoding="utf-8")
+        self.assertEqual(guide.splitlines()[0], "# " + source["title"])
+        glossary = read_json(ROOT / "docs/glossary.json")
+        def rows(value):
+            if isinstance(value, dict):
+                yield value
+                for child in value.values():
+                    yield from rows(child)
+            elif isinstance(value, list):
+                for child in value:
+                    yield from rows(child)
+        command = next(row for row in rows(glossary)
+                       if row.get("path") == "planning protein-expression-handoff")
+        self.assertIn("[--provider PROVIDER]", command["usage"])
+        self.assertIn("provider-neutral", command["summary"])
+        for path in ("docs/cli.md", "docs/protocol.md"):
+            self.assertIn(command["usage"], (ROOT / path).read_text(encoding="utf-8"))
+        for text in (guide, guide.replace("\n", "\r\n")):
+            self.assertIn("gentle.protein_expression_handoff.v2", text)
+            self.assertIn("Legacy v1 JSON remains readable", text)
+            self.assertIn("not_selected", text)
+            self.assertIn("outsourcing_disallowed", text)
+            self.assertIn("direct_submission_available = false", text)
+            for field in ("neutral_service_draft", "provider_projection", "protein_seq_id",
+                          "unresolved question IDs", "no vendor-side action"):
+                self.assertIn(field, text)
+            self.assertNotIn("prepare_geneart_quote_packet_after_review", text)
+            blocks = re.findall(r"```bash\r?\n(.*?)```", text, re.S)
+            self.assertTrue(blocks)
+            result = subprocess.run(["bash", "-n"], input="\n".join(blocks).replace("\r\n", "\n"),
+                                    text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+        # This is explicitly a learner-owned input, not a missing bundled file.
+        self.assertIn("learner\ninput, not a bundled file", guide)
+        for path in re.findall(r'@((?:docs|test_files|assets)/[^\s\'"`]+)', guide):
+            self.assertTrue((ROOT / path).is_file(), path)
+
+    def test_expression_builder_is_neutral_and_cli_no_write_cases_are_authored(self):
+        builder = (ROOT / "src/engine_shell/protein_expression_service_draft.rs").read_text(encoding="utf-8")
+        self.assertIn("ExternalServiceDeliveryRouteRequest", builder)
+        self.assertIn("project_external_service_delivery_request", builder)
+        self.assertNotIn("fs::", builder)
+        self.assertNotIn("geneart_protein_expression_request.json", builder)
+        cli = (ROOT / "tests/protein_expression_handoff_cli.rs").read_text(encoding="utf-8")
+        for case in ("neutral", "selected", "protein", "in_house", "excluded", "partial",
+                     "missing_product", "missing_permission", "unsupported_capability"):
+            self.assertIn(f'"{case}"', cli)
+        self.assertRegex(cli, r"snapshot\(root\),\s*before")
+        self.assertIn("quote_shell_arg(token)", cli)
+        self.assertIn('"\\r\\n"', cli)
+        self.assertIn("No network", (ROOT / "tests/protein_expression_handoff_README.md").read_text(encoding="utf-8"))
+
     def test_sequence_comparison_preserves_bases_features_and_cut_coordinates(self):
         sequence = {"demo": {"seq": {"seq": [65, 67], "features": [{"location": [0, 2]}]},
                              "restriction_enzyme_sites": [{"pos": 1}, {"pos": 0}],

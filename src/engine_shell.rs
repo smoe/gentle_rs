@@ -14363,7 +14363,8 @@ fn default_cache_dir(helper_mode: bool) -> String {
     }
 }
 
-pub(crate) fn quote_shell_arg(raw: &str) -> String {
+/// Quote one argument for GENtle's shared shell grammar, not an OS subprocess.
+pub fn quote_shell_arg(raw: &str) -> String {
     if raw.is_empty() {
         "''".to_string()
     } else if raw
@@ -34382,7 +34383,7 @@ fn protein_expression_product_definition(
         seq_id: seq_id.clone(),
         product_metric: "review_required".to_string(),
         notes: vec![
-            "Protein-expression V1 treats maximal amount as an underspecified objective until the desired yield metric is selected.".to_string(),
+            "Protein-expression planning treats maximal amount as an underspecified objective until the desired yield metric is selected.".to_string(),
         ],
         readiness: analysis.product_readiness.clone(),
         ..ProteinExpressionProductDefinition::default()
@@ -34724,7 +34725,12 @@ fn build_protein_expression_handoff_text(report: &ProteinExpressionHandoffReport
             lines.push(format!(
                 "Product sequence: {} ({} {}, {} feature(s))",
                 seq_id,
-                report.product_definition.length_bp.unwrap_or_default(),
+                report
+                    .sequence_context
+                    .as_ref()
+                    .and_then(|context| context.protein_length_aa)
+                    .or(report.product_definition.length_bp)
+                    .unwrap_or_default(),
                 if report
                     .sequence_context
                     .as_ref()

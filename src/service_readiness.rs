@@ -750,13 +750,13 @@ fn project_delivery_request_from_catalog(
     let selected = index
         .provider(provider)
         .ok_or_else(|| format!("Provider '{provider}' is not in the active catalog"))?;
-    selected.capability_for(service_kind).ok_or_else(|| {
+    let capability = selected.capability_for(service_kind).ok_or_else(|| {
         format!("Provider '{provider}' does not support '{service_kind}' in the active catalog")
     })?;
     Ok(projected_delivery_request(
         route_request,
         selected.provider_record().provider,
-        normalize_service_token(service_kind),
+        crate::external_service_providers::normalize_service_token(&capability.service_kind),
     ))
 }
 

@@ -710,7 +710,10 @@ an agent has selected a deterministic operation.
 - `panels render-isoform-svg`
 - `panels validate-isoform`
 - `planning consult cloning`
-- `planning protein-expression-handoff`
+- `planning protein-expression-handoff` (shared shell/CLI only; v2 builds a
+  neutral draft. Optional `--provider PROVIDER` requires explicit permitted
+  catalog-supported binding before any provider preflight/quote suggestion.
+  It is not a new MCP tool or submission route.)
 - `planning objective clear`
 - `planning objective set`
 - `planning objective show`
