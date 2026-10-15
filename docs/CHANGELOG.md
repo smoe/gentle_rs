@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-10-15 - Prepare Internal.13 Candidate Handoff
+
+- Draft user-facing A/B/C and post-.12 release notes with explicit verification
+  boundaries and an entirely Pending candidate ledger. Reconcile the old
+  undecided-aim handoff; keep native latency/import/profile/live-agent and
+  historical scientific work non-blocking without manufacturing acceptance.
+- Document owner integration/push, separate Ubuntu-pin merge/push before
+  selection, full Linux plus Windows/macOS CI, opt2 build-only packages/container,
+  conditional opt1 new-candidate fallback, Glen's checks, owner publication and
+  post-confirmation .14 rollover. Pin/fallback stay separate and unmerged.
+- Record new tutorial catalog/generated replay and fresh storage SCAD as
+  external prerequisites. No local Rust, Claude, push, dispatch, provider/model
+  action, historical evidence rewrite or publication is performed.
+- Verification: 80 offline tutorial/checkout tests complete, 77 pass and three
+  optional real-binary cases skip; active opt2 and separate fallback policy
+  suites each pass 103/103, pin-branch candidate checks 46/46. Whitespace passes;
+  session-close reports four OK, two intentional scope/worktree warnings and
+  no failures. Roadmap remains 400 lines; Rust/runtime acceptance stays pending.
+
 ## 2026-10-15 - Add Explicit Minimal Gene-Set Storage Projection
 
 - Add `CreateGeneSetArrangement` on existing reviewed `op` routes. Require a
