@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-10-15 - Continue development on main under the owner's [release-only coordination cadence](decisions.md#development-and-release-verification-cadence): no interim SHA freezes, recurring bundles or synchronized acceptance waits. Normal checks record their tested source without blocking every subsequent change. Keep the [six-item ledger](glen_audit_followups_20261008.md), remaining Windows/full-suite, native/live-agent/scroll/package and scientific gates for actual release preparation; earlier evidence is not a newer-source pass. No local Rust, Claude, push, new dispatch, publication or paper/output/history edits; `.11` DMG remains deferred.
+Last session: 2026-10-15 - Reconcile recovered documentation lifecycles and semantic guards while preserving newer .13, runner-pin and acceptance work. Continue development on main under the owner's [release-only coordination cadence](decisions.md#development-and-release-verification-cadence): no interim SHA freezes, recurring bundles or synchronized acceptance waits. Normal checks record their tested source without blocking every subsequent change. Keep the [six-item ledger](glen_audit_followups_20261008.md), remaining Windows/full-suite, native/live-agent/scroll/package and scientific gates for actual release preparation; earlier evidence is not a newer-source pass. No local Rust, Claude, push, new dispatch, publication or paper/output/history edits; `.11` DMG remains deferred.
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in
@@ -336,8 +336,7 @@ cohort comparisons, and rollback paths for state patches; defer autonomous wet-l
 - Automatic cross-gene homology anchors on top of explicit `query_anchor_bp`.
 - Catalog-extensible gene-group and ontology bridge after the next release scope
   is selected.
-- External-service provider/CRO integration once deterministic local contracts
-  are stable enough to wrap.
+- External-service provider/CRO integration once deterministic local contracts are stable enough to wrap.
 - Luebeck S1 vector-resource follow-up: resolve sequence/procurement URLs and
   redistribution clearance before bundling actual sequences for the metadata
   candidates.
@@ -352,8 +351,7 @@ cohort comparisons, and rollback paths for state patches; defer autonomous wet-l
   The public pinned SERPINE1 plus clearly synthetic evidence test proves the
   integrated presentation only; it does not substitute for those materials.
 - Primer-walking support and iterative read/contig data management.
-- Helper-construct terminology migration away from legacy "helper genome"
-  wording.
+- Helper-construct terminology migration away from legacy "helper genome" wording.
 - CUT&RUN controls/replicate comparison, calibrated differential support, formal
   peak calling, and whole-genome read processing beyond the ROI-first release scope.
 - Add viewport-bounded quantitative Ensembl/ENCODE regulatory-signal lanes, retaining assay/biosample/condition/replicate/units and separate activity rules.
@@ -367,8 +365,7 @@ cohort comparisons, and rollback paths for state patches; defer autonomous wet-l
 - GuideRNA off-target ranking and macro-template packaging.
 - Cross-tool parity synthesis for Serial Cloner, MacVector, and SnapGene.
 - Measured gels: [verified ladders and real-image/native-editor acceptance](gel_image_analysis.md#remaining-work) for the manual editor included in `.10`; automatic peak detection remains deferred.
-- Weekly/monthly maintenance chore automation rollout from
-  [`maintenance_chore_plan.md`](maintenance_chore_plan.md).
+- Weekly/monthly maintenance chore automation rollout from [`maintenance_chore_plan.md`](maintenance_chore_plan.md).
 - First regular release: local-first GENtle server with optional browser interaction and shared project/job ownership; deferred beyond internal releases, with WebAssembly portability considered separately.
 - Expand the landed policy-driven collection surface beyond promoter
   derivation, primer specificity, construct-reasoning inspection,
@@ -396,5 +393,8 @@ cohort comparisons, and rollback paths for state patches; defer autonomous wet-l
 - Add paralog mapping/resolution only with a concrete engine consumer,
   preserving relationship provenance and one-to-many ambiguity without
   inferring functional equivalence from matching symbols.
+- Annotation-independent RNA ROI capture and any reusable sparse-posting resource remain proposed; see [origin status](rna_read_origin_sparse_index_plan.md).
+- Synonymous restriction-site introduction with verification-digest proof, distinct from motif-avoidance sequence design.
+- Report-first curated feature-library auto-annotation with a separately confirmed apply step.
 - Full glossary/help-generation inversion so `docs/glossary.json` becomes a
-  generated or validated projection of engine/protocol-side descriptors.
+  generated or validated projection of engine/protocol-side descriptors. Resolve duplicate registry `(source, name)` identities and derive a typed parity backlog before regenerating the matrix; see [verified gap](introspection.md#12-deferred-follow-up).

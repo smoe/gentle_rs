@@ -2,6 +2,16 @@
 
 Last updated: 2026-04-16
 
+Status review, 2026-10-07: the persisted engine-owned reasoning graph,
+sequence overlays and shared inspection/action/status/export routes exist.
+See [CLI](cli.md), [protocol](protocol.md) and [GUI](gui.md) for current
+interfaces. The numbered design sections below mix original motivation with
+extensions, not an instruction to rebuild the graph. Broader context-sensitive
+ranking and biological calibration require their own evidence/contracts; the
+[roadmap](roadmap.md) owns their priority. Retain this design provenance until
+its remaining scope is reconciled; the completed inspection-parity request is
+no longer active.
+
 Purpose: define an engine-owned, sequence-linked construct-planning layer that
 captures why GENtle proposes one genomic window, transcript/CDS span, fusion
 boundary, or cloning route over another.
@@ -14,7 +24,7 @@ This plan is deliberately architecture-first:
 - keep ClawBio/OpenClaw as thin orchestration over GENtle rather than a second
   biology engine.
 
-## 1. Current gap
+## 1. Original Motivation
 
 GENtle already knows many isolated facts and can already execute many
 deterministic transforms:

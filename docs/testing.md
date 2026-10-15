@@ -514,6 +514,21 @@ so matrix or catalog drift fails before the longer tutorial replay and full
 Rust suite. This complements the no-build Python
 checkout gate; neither replaces native-platform acceptance.
 
+The embedded Reviewer Quickstart and reconciled catalog/status pages also have
+a semantic, no-build guard:
+
+```bash
+python3 scripts/check_documentation_status.py
+python3 -m unittest scripts.test_tutorial_checkouts.DocumentationStatusTests -v
+```
+
+It checks the current workspace version, separate fresh states for the two
+offline examples, declared inputs/outputs, the existing PCR Designer, cloning
+catalog counts and retired-request links. Actual LF/CRLF Git clones exercise
+these text contracts in the existing fast checkout suite. This is not generated
+byte freshness, workflow execution, GUI or scientific acceptance; hashes and
+historical evidence retain their separate strict checks.
+
 Tutorial visuals are also checked before any binary replay. The same checks
 can run independently, offline and without compiling Rust:
 

@@ -14,12 +14,129 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import tomllib
 import unittest
 from unittest.mock import patch
 import xml.etree.ElementTree as ET
 import zlib
 
 from scripts import check_tutorial_checkouts as checker
+from scripts import check_documentation_status as doc_status
+
+
+class DocumentationStatusTests(unittest.TestCase):
+    """Copy public source inputs into synthetic disposable documentation repos."""
+
+    def fixture(self):
+        tmp = tempfile.TemporaryDirectory(prefix="gentle-doc-status-")
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name) / "source"
+        paths = {
+            "Cargo.toml", "build.rs", "src/app.rs",
+            "crates/gentle-shell/src/ui_intent.rs",
+            "docs/reviewer_preview.md", "docs/primer_design_specialist_plan.md",
+            "docs/cloning_pattern_catalog.md", "docs/cloning_routine_catalog_plan.md",
+            "assets/cloning_routines.json", ".gitattributes",
+        }
+        for name in ["load_branch_reverse_complement_pgex_fasta",
+                     "digest_ligation_extract_region_minimal"]:
+            path = f"docs/examples/workflows/{name}.json"
+            paths.add(path)
+            paths.update(json.loads((checker.ROOT / path).read_text())["required_files"])
+        paths.update(str(path.relative_to(checker.ROOT)) for path in
+                     (checker.ROOT / "assets/cloning_patterns_catalog").rglob("*.json"))
+        for relative in paths:
+            destination = root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes((checker.ROOT / relative).read_bytes())
+        return root
+
+    def test_current_documentation_status_and_links(self):
+        self.assertEqual(doc_status.check(), [])
+
+    def test_preview_and_catalog_survive_real_lf_crlf_checkouts(self):
+        root = self.fixture()
+        checker.git(root, "init", "--quiet")
+        checker.git(root, "config", "core.autocrlf", "false")
+        checker.git(root, "config", "user.name", "Synthetic documentation test")
+        checker.git(root, "config", "user.email", "fixture@example.invalid")
+        checker.git(root, "add", "--all")
+        checker.git(root, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "public doc inputs")
+        for mode in checker.MODES:
+            with self.subTest(mode=mode[0]):
+                clone = root.parent / mode[0]
+                checker.prepare_checkout(root, clone, mode)
+                payload = (clone / "docs/reviewer_preview.md").read_bytes()
+                self.assertEqual(b"\r\n" in payload, mode[0] == "crlf")
+                self.assertEqual(doc_status.preview_errors(clone), [])
+                self.assertEqual(doc_status.catalog_errors(clone), [])
+
+    def test_stale_version_and_unsafe_shared_state_are_refused(self):
+        root = self.fixture()
+        path = root / "docs/reviewer_preview.md"
+        original = path.read_text()
+        version = tomllib.loads((root / "Cargo.toml").read_text())["workspace"]["package"]["version"]
+        for changed, expected in [
+            (original.replace(f"GENtle `{version}`", "GENtle `obsolete`"), "workspace version"),
+            (original.replace("mktemp -d", "fixed_path") + '\nrm -f "$STATE"\n', "destructive cleanup"),
+            (original.replace("$WORK/digest.json", "$WORK/branch.json"), "separate fresh state"),
+        ]:
+            with self.subTest(expected=expected):
+                path.write_text(changed)
+                self.assertTrue(any(expected in error for error in doc_status.preview_errors(root)))
+
+    def test_catalog_change_requires_documentation_reconciliation(self):
+        root = self.fixture()
+        path = root / "docs/cloning_pattern_catalog.md"
+        count = len(list((root / "assets/cloning_patterns_catalog/gateway").rglob("*.json")))
+        path.write_text(path.read_text().replace(f"| gateway | {count} |", f"| gateway | {count + 1} |"))
+        self.assertTrue(any("template-family counts" in error for error in doc_status.catalog_errors(root)))
+
+    def test_primer_plan_cannot_reintroduce_missing_gui_claim(self):
+        root = self.fixture()
+        path = root / "docs/primer_design_specialist_plan.md"
+        path.write_text(path.read_text() + "\nThere is no dedicated, report-centric window.\n")
+        self.assertTrue(any("existing PCR Designer" in error for error in doc_status.preview_errors(root)))
+
+    def test_retired_link_is_refused_without_erasing_historical_prose(self):
+        with tempfile.TemporaryDirectory(prefix="gentle-retired-doc-") as tmp:
+            root = Path(tmp)
+            plan = root / "docs/rna_read_origin_sparse_index_plan.md"
+            plan.parent.mkdir()
+            warning = "ROI capture layer is planned but not active in phase-1 scoring"
+            original = (warning + "\nHistorical filename: tss_view_export_followup_codex_prompt.md\n"
+                        "[archived request](https://github.com/smoe/gentle_rs/blob/"
+                        + "a" * 40 + "/docs/tss_view_export_followup_codex_prompt.md)\n")
+            plan.write_text(original)
+            (plan.parent / "internal_12_candidate_preparation.md").write_text(
+                "Historical pointer retained by newer main, not a retired active request.\n")
+            source = root / "src/engine/analysis/rna_reads.rs"
+            source.parent.mkdir(parents=True)
+            source.write_text(warning)
+            with patch.object(doc_status, "STATUS_DOCS", ()):
+                self.assertEqual(doc_status.lifecycle_errors(root), [])
+                for target in ("tss_view_export_followup_codex_prompt.md",
+                               "tss%5Fview_export_followup_codex_prompt.md"):
+                    plan.write_text(original + f"\n[old request]({target})\n")
+                    self.assertTrue(any("still links to retired" in error
+                                        for error in doc_status.lifecycle_errors(root)))
+                plan.write_text(original)
+                (plan.parent / "tss_view_export_followup_codex_prompt.md").write_text(
+                    "Restored retired request.\n")
+                self.assertTrue(any("completed request restored" in error
+                                    for error in doc_status.lifecycle_errors(root)))
+
+    def test_roi_capture_status_cannot_silently_become_implemented(self):
+        with tempfile.TemporaryDirectory(prefix="gentle-roi-status-") as tmp:
+            root = Path(tmp)
+            plan = root / "docs/rna_read_origin_sparse_index_plan.md"
+            plan.parent.mkdir()
+            plan.write_text("ROI capture is implemented.\n")
+            source = root / "src/engine/analysis/rna_reads.rs"
+            source.parent.mkdir(parents=True)
+            source.write_text("ROI capture layer is planned but not active in phase-1 scoring")
+            with patch.object(doc_status, "STATUS_DOCS", ()):
+                self.assertTrue(any("RNA capture" in error for error in doc_status.lifecycle_errors(root)))
 
 
 class TutorialCheckoutTests(unittest.TestCase):

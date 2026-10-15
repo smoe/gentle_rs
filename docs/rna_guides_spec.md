@@ -1,5 +1,9 @@
 # gRNA Design Spec (Draft v0.1)
 
+Status review: 2026-10-07. The practical-filter/oligo baseline below exists;
+advanced model/off-target work and additional workflow packaging remain future
+scope. This is a contract/status review, not new experimental acceptance.
+
 This document defines a first implementation-oriented spec for gRNA
 design in GENtle, focused on:
 

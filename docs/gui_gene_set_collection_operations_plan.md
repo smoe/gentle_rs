@@ -32,6 +32,16 @@ This plan covers the implementation path for:
 - parity tests proving GUI affordances call the same operation/shell/capability
   paths as CLI/MCP/agent routes
 
+## Producer Authoring Decision
+
+Offline direct-list, ontology-assignment and co-regulated producers already
+have shared engine/shell routes, persistence and lineage. Decide whether a
+prominent GUI authoring form is useful before adding one; current access is
+through the GUI shell, not a missing producer implementation. Reuse the
+existing normalized producer/resolution contracts and explicit local-cache
+inputs. Statistical enrichment and live synchronization remain separate work;
+see [producer history](gene_set_retrieval_producers_plan.md).
+
 ## Non-Goals
 
 - Do not add GUI-only biology logic or GUI-only per-member loops.

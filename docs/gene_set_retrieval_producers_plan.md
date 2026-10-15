@@ -1,6 +1,7 @@
 # Gene Set Retrieval Producers: Landed Status And Design History
 
-Last verified: 2026-08-04
+Implementation review: 2026-08-04; documentation status reconciled 2026-10-07.
+This date does not claim a new runtime or GUI acceptance run.
 
 Implementation status: the offline direct-list, ontology-assignment, and
 co-regulated producer slices are landed across the shared protocol, engine,
@@ -248,7 +249,9 @@ versioned local artifacts and must not become hidden resolver network calls.
 
 Prominent producer authoring in the GUI is a separate product decision. The
 current shell-only GUI status is accurate and should not be changed by
-documentation cleanup alone.
+documentation cleanup alone. That decision now belongs to the active
+[GUI collection plan](gui_gene_set_collection_operations_plan.md#producer-authoring-decision);
+this file retains the producer design history.
 
 ## Durable Defaults
 

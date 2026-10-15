@@ -1037,3 +1037,14 @@ contract resolved them. The non-negotiables are promoted into
   `docs/glossary.json` still seeds those descriptors at compile time; full
   inversion is tracked as deferred roadmap work, not part of the implemented
   introspection contract.
+- Documentation audit, 2026-10-07: duplicate `facts graph/eval` and introspection
+  rows originate in repeated `docs/glossary.json` entries.
+  `build_capability_registry` emits one descriptor per entry; interface merging
+  by path does not merge descriptor identities, and `capability_descriptor`
+  returns the first match. Resolve the stable `(source, name)` identity and
+  conflicting usage/description policy with focused protocol tests before
+  regenerating the matrix; do not delete rows in the generated Markdown.
+  A future parity backlog should consume the typed registry/surfacing fields
+  exposed by `capabilities` or `introspect capabilities`, rather than assign
+  priorities by parsing the generated Open Gaps table. Registry uniqueness and
+  a dedicated backlog projection remain follow-ups, not fixes made by this audit.

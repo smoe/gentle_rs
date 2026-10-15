@@ -34,7 +34,7 @@ Rust/Cargo versions, OS/architecture, effective profile/environment and resultin
 executable identities/hashes. Read AGENTS.md, the
 [post-release checklist](release.md#post-release-development-version), the
 [`.13` draft](release_notes/release_notes_v0.1.0-internal.13.md) and the historical
-baseline contract in [the prior handoff](internal_12_tutorial_regeneration_glen_prompt.md).
+baseline contract in the [historical result](internal_12_tutorial_baseline_acceptance.md).
 
 ## Required Checks: Not Run Locally
 
