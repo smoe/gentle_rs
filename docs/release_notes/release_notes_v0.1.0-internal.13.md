@@ -3,8 +3,20 @@
 Status: development draft after the owner-published
 [`.12` prerelease](release_notes_v0.1.0-internal.12.md#publication-evidence)
 at `5e6201a69a599cba87491c86cfd7311cb6fee173` on 2026-10-13.
-**Release aim: undecided.** No `.13` candidate SHA, tag, packages, publication,
-performance improvement or scientific acceptance is selected or claimed.
+**Release aim (owner, 2026-10-15):** review early containers, pools, arrangements,
+racks/plates and 3D exports; finish minimal provider-neutral protein-expression
+drafts and explicit collection-to-storage projection, each with a tutorial.
+No `.13` candidate SHA, tag, package, publication or acceptance is claimed.
+The thin expression inspector is a stretch goal; ranking and broad storage
+expansion remain later work. Native latency, real-reference primer-import
+performance, profile comparisons, live-agent and the historical scientific
+ledgers carry forward as non-blocking work, not waived or completed checks.
+
+Release blockers are green Windows, macOS and full Linux CI; build-only native
+installers/container with extracted-package smokes; Glen's rollover, version,
+tutorial and readiness verdict; and owner approval, all at one selected source.
+Try `package-opt2` first; if hosted builds fail, select a new candidate containing
+the separately prepared `package-opt1` fallback and repeat the gates.
 
 ## Post-Release Development
 

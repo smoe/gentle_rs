@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+## 2026-10-15 - Select The Internal.13 Release Aim
+
+- Record the owner's early-feature/3D review, minimal provider-neutral expression
+  draft and explicit collection-to-storage tutorial scope. Inspector remains
+  stretch-only and ranking is deferred. Keep latency/import/profile/live-agent
+  and historical scientific checks open but non-blocking for this release.
+- Require one selected source's three-platform CI, build-only package/container
+  smokes, Glen's rollover/tutorial/readiness verdict and owner approval. Prepare
+  opt1 as a separate fallback, not an implicit profile switch or acceptance.
+- Documentation only; no local Rust, Claude, push, dispatch or publication.
+
 ## 2026-10-15 - Verify The dbSNP Worker Repair On Linux
 
 - Verify Glen's copied 34-entry evidence inventory and raw runner/exit records
