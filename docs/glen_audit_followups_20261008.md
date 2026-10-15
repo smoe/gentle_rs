@@ -37,6 +37,77 @@ availability question is needed now. Ordinary checks still record what they
 tested, and observed defects remain actionable. This does not authorize a push,
 local Rust, model call, package build or publication.
 
+## Prepared VKORC1 Next Actions (2026-10-15)
+
+**Preparation only, not dispatch approval or a development freeze.** Apply
+the release-preparation cadence above; the owner may continue other work.
+The Python assertion repair is committed at
+`6112095d721e166ae119d0d89039d4694a9eeb5f`, after integration of main
+`22b06a9b`. This is the exact prepared implementation target, not a selected
+`.13` release aim. The following documentation-only commit does not execute or
+accept it. No successful normal CI at this target is claimed here.
+
+The Windows coverage correction is already closed at `df5c8244`.
+The [terminal `de9df8af` records](audits/glen_followups_20261008/candidate_de9df8af/README.md)
+remain failed on Linux/Windows; both null child-stack receipts exist, but
+only the first filter ran. The [later focused Linux repair](vkorc1_allele_review_followup_20261008.md#focused-linux-repair-verification-2026-10-15)
+passes 12/12 at `6b7109db`; Windows and the other four filters remain open.
+Do not reissue that finished focused Linux audit or backfill newer-source,
+native, quick-xml or package acceptance from it.
+
+### One Owner-Approved Dispatch, After Successful Normal CI
+
+Workflow: `.github/workflows/ci.yml`; inputs `platform=linux`,
+`audit_followups=true`, `audit_public_vkorc1=true`. Before approving this
+single run, require the published ref and a completed successful **normal**
+push CI run to name the exact prepared SHA. No push, tag creation, model call,
+workflow change, dispatch, network retrieval or authentication probe is done
+by this preparation. If merging produces a different SHA, the owner selects
+and records that source and its normal-CI result at release preparation;
+never silently substitute moving main or request a new freeze on every commit.
+
+The following is an unexecuted owner command. `NORMAL_RUN_ID` must identify
+that successful normal run. `main` is usable only while its published tip
+equals `AUDIT_SHA`; these guards deliberately refuse any other source:
+
+```bash
+set -euo pipefail
+AUDIT_REPO=smoe/gentle_rs
+AUDIT_SHA=6112095d721e166ae119d0d89039d4694a9eeb5f
+AUDIT_REF=main
+: "${NORMAL_RUN_ID:?Set the successful normal-CI run ID for AUDIT_SHA}"
+test "$(gh api "repos/$AUDIT_REPO/git/ref/heads/$AUDIT_REF" --jq .object.sha)" = "$AUDIT_SHA" || exit 1
+test "$(gh api "repos/$AUDIT_REPO/actions/runs/$NORMAL_RUN_ID" --jq '[.path,.head_sha,.status,.conclusion,.event] | @tsv')" = "$(printf '.github/workflows/ci.yml\t%s\tcompleted\tsuccess\tpush' "$AUDIT_SHA")" || exit 1
+gh workflow run ci.yml --repo "$AUDIT_REPO" --ref "$AUDIT_REF" \
+  -f platform=linux -f audit_followups=true -f audit_public_vkorc1=true
+```
+
+The workflow has no `candidate_sha` input. A ref check is not an atomic SHA
+dispatch: record the created run's actual `head_sha` and URL before treating
+its evidence as this target; if the ref moved, stop acceptance and retain the
+actual identity, without an automatic retry or tag. This instruction does not
+authorize executing the command now.
+
+| Job / Scope | Acceptance And Retained Artifacts |
+| --- | --- |
+| Normal Linux/Windows | Successful same-source baseline and all five stripped-child filter receipts/counts; `child_rust_min_stack:null` is required per executed filter. No missing result becomes zero or pass. macOS normal CI is separate. |
+| `vkorc1-gui-audit` | Execute both `promoter_action_rows_` tests, `promoter_pair_` and the existing focused filters. Require eight synthetic learner steps, refusal/retry, unsuffixed two-output result, three-Seq oracle parity and enforced network isolation. Retain `vkorc1-gui-audit-SHA`: receipt, build/filter logs, raw screenshots, native ledger/semantic snapshots, project/oracle, generation projections and labelled synthetic base view. This is not public-locus or physical-host acceptance. |
+| Public preparation in that job | Require the new saved-marker checks, actual complete `vcf_alt`/raw SPDI, both conditional bare-choice probe results and unchanged-state refusal when multiallelic. Direct/shared reports and full ordered sequence records must agree; exactly one reviewed genomic-forward C/T difference and unchanged source. Retain `vkorc1-public-audit-SHA`: receipt, raw NCBI response and URL/date/hash, starter/final projects, command logs, context/fragment reports, base comparison and reference manifests/input hashes. |
+
+Hash downloaded artifact archives separately from each original file, then
+verify each receipt's file digests; retain failures without normalizing bytes.
+The public preparation requires NCBI and Ensembl network access and the complete
+catalogued GRCh38 reference, with potentially substantial build/time/disk cost.
+The synthetic GUI replay stays network-isolated. This same existing flag also
+enables the scroll CPU smoke and macOS headless CLI **build** jobs; none invokes
+an inner agent or model, and none accepts a package or native latency.
+
+The [physical-host checklist](glen_final_candidate_execution_handoff.md#vkorc1-0804-physical-host-checklist)
+is **pending Glen**. Public replay/remaining Windows and filter checks are
+**pending owner dispatch**, with normal CI required first. `.13` aim and release
+selection remain an **owner decision**; independent extracted-installer checks
+remain separate. No new gate is marked passed by these offline changes.
+
 ## Owner-Requested Main Integration
 
 ### Protein Expression Neutral Draft Follow-Up (2026-10-14)

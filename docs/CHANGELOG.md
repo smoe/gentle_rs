@@ -1,5 +1,28 @@
 # GENtle Changelog
 
+## 2026-10-15 - Prepare Remaining VKORC1 Acceptance Without Dispatch
+
+- Reconcile Claude's dated request with existing records: Windows synthetic
+  dbSNP/SPDI/pair coverage is already evidenced at df5c8244; de9df8af CI has
+  null child-stack receipts but aborts in its first filter on both platforms.
+  Rehash both original local logs without retrieval or rewriting evidence.
+  Preserve the later 6b7109db focused Linux 12/12 repair pass independently;
+  Windows, other filters, native/public and package gates remain open.
+- Prepare one owner-approved ci.yml request targeting the committed Python
+  repair 6112095d, with Linux/audit_followups/audit_public_vkorc1 inputs,
+  successful normal-CI and exact-ref guards, known side jobs and per-job
+  artifact criteria. This is not an executed dispatch, a main freeze or a
+  selected .13 aim; a different merged source needs deliberate owner selection.
+- Add the physical macOS/Linux and native-Windows 08.04 checklist: multiallelic
+  refusal with unchanged state/history/view, explicit-T unsuffixed pair, C/T
+  identity, viewport access, genomic-forward labels and approved raw captures.
+  Keep isolation blocks environmental and extracted-package checks separate.
+- Record the bounded request/scope and typed residual verdicts. All 41 offline
+  public/native-helper, frozen-CI and runner tests pass; owner-command Bash
+  syntax and whitespace checks pass. No local Rust, network retrieval, model,
+  push, workflow dispatch, package or release execution. Historical receipts,
+  scientific fixtures, engine/GUI/workflow code and Cargo.lock are unchanged.
+
 ## 2026-10-15 - Verify The dbSNP Worker Repair On Linux
 
 - Verify Glen's copied 34-entry evidence inventory and raw runner/exit records

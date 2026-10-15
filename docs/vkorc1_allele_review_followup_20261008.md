@@ -53,6 +53,13 @@ Those dbSNP tests are not Unix-only. Keep this historical unit-test evidence
 separate from newer-source/default-stack, real-data and native GUI acceptance;
 Unix-only mock-BLAST tests elsewhere retain their own platform limits.
 
+The named Windows passes are
+`engine::tests::dbsnp_fetch_checks_reference_and_assembly_and_retains_non_snv_spdi`,
+`engine::tests::test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance`,
+`dna_sequence::tests::dbsnp_spdi_genbank_round_trip_preserves_wrapped_json` and
+`main_area_dna::tests::variant_followup_allele_pair_rolls_back_late_refusal_and_preserves_history`.
+The mock payload uses `file://`, not Unix-only mock-resource machinery.
+
 ## Still Open
 
 ### 2026-10-14 Default-Stack Follow-Up
@@ -170,3 +177,49 @@ Return the exact tested candidate and retained evidence paths/hashes with a
 typed verdict distinguishing product defects, missing/incompatible data,
 environmental failures and pending human scientific review. Do not combine
 passes from the old `91038fe0` review or nearby revisions into a new acceptance.
+
+## Public Audit And Remaining Acceptance Preparation (2026-10-15)
+
+The Python public audit now requires the saved rs9923231 marker's reference
+and assembly checks to match, assembly fallback to be false, SNV class,
+genomic-forward C with a reported T, GRCh38 and NC_000016.* at one-based
+31096368. It retains the actual complete alternate list and raw SPDI entries
+before validating them; an invalid marker stops the run with unverified evidence
+retained. No A,G,T set is assumed. A multiallelic bare choice must refuse with
+unchanged persisted state; a single alternate is explicitly not applicable,
+not a fabricated refusal. Thirty helper tests pass using hand-crafted data
+and mocked ingress, without executing GENtle or contacting a provider.
+
+Tasks 1/2 of the [bounded acceptance request](vkorc1_acceptance_codex_prompt_20261014.md)
+were already represented in the retained Windows correction and terminal
+`de9df8af` records. Rehashing the original Linux/Windows logs locally confirms
+their existing digests; no historical audit file is changed or fetched again.
+Do not replace an aborted filter's absent result summary with invented
+pass/fail/ignored totals:
+
+| Stripped-child Filter At `de9df8af` | Linux | Windows |
+| --- | --- | --- |
+| `dbsnp_` | 11 selected; stack abort/134; no completed P/F/I summary; null child-stack receipt present | 11 selected; child 0xffffffff/step 127; no completed P/F/I summary; null child-stack receipt present |
+| `materialize_variant_allele` | Not run; no receipt | Not run; no receipt |
+| `reporter_construct_handoff_` | Not run; no receipt | Not run; no receipt |
+| `variant_followup_allele_pair_` | Not run; no receipt | Not run; no receipt |
+| `test_support::heavy_stack_tests` | Not run; no receipt | Not run; no receipt |
+
+macOS was skipped. The primary failure is a product stack overflow, not an
+environmental isolation failure; selected-platform failure is a cascade.
+Glen's older Linux selections were 11/2/7/2 plus two helper tests. The repair
+adds one dbSNP probe, explaining the [later 12/12 focused Linux pass](#focused-linux-repair-verification-2026-10-15)
+at `6b7109db`. That closes only the reproduced Linux defect there, not Windows,
+the four unrun filters, newer source, or the quick-xml `svg_dimensions_` gate.
+
+The [ledger's prepared owner request](glen_audit_followups_20261008.md#prepared-vkorc1-next-actions-2026-10-15)
+and [physical-host checklist](glen_final_candidate_execution_handoff.md#vkorc1-0804-physical-host-checklist)
+carry the residual work. No dispatch or physical run has occurred here.
+
+| Item | Typed Status / Scope |
+| --- | --- |
+| Windows synthetic-coverage claim | **closed** at `df5c8244`; not physical Windows acceptance |
+| Public audit assertions | **closed** as a Python implementation/offline regression repair; not live-data acceptance |
+| Remaining Windows/default-stack and public replay | **pending owner dispatch**, with successful same-source normal CI required first |
+| Physical 08.04 GUI and native Windows | **pending Glen**, with approved isolation and capture consent |
+| .13 aim and release acceptance | **owner decision**; package/extracted-installer acceptance stays separate |

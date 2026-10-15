@@ -91,6 +91,32 @@ Codex ran no local Rust or native acceptance; no extra dispatch is authorized.
 | FLNA | Inspect normal-size native presentation and genomic-minus/local-plus orientation. The [human 24-bp teaching-exon choice and separate version-label clarification are closed](audits/glen_followups_20261008/flna_teaching_exon_f35a58e6/README.md); preserve annotation `.10` versus UniProt `.9` without rewriting the original decision. Historical release provenance and scientific/experimental confirmation remain open. The 2400-px rendering is already evidenced; keep the draft inactive. |
 | 04.09 | Inspect the existing native Shell/report presentation, without claiming a new specialist GUI or a completed real-import verdict. Complete real-reference import/save/reopen acceptance only after an evidenced performance repair, at that repair's exact SHA, with unchanged raw HSPs, policies and reference bindings. A timed-out attempt is not a failed biological verdict. |
 
+### VKORC1 08.04 Physical-Host Checklist
+
+At release preparation, Glen should use a disposable public/synthetic project
+on physical macOS **or** Linux, and separately on native Windows. Name the
+source SHA and whether the binary is a dev build or an extracted package;
+record the actual profile, binary/lock/input hashes and platform. A CI Xvfb
+pass or headless Rust test does not substitute for these platform verdicts.
+
+1. With a valid multiallelic marker and an empty alternate field, request the
+   pair. Require refusal, identical project/history/active-view snapshots and
+   no `_reference` output. Record the actual reported alternates; do not infer
+   a multiallelic refusal from a single-alternate record.
+2. Retry with genomic-forward **T**. Require exactly two new insert sequences
+   with the requested unsuffixed reference/alternate IDs, identical lengths
+   and exactly one C-to-T difference at the marker; the source stays unchanged.
+3. At default and minimum window size, reach the pair action and all analysis/
+   export rows using vertical scrolling only. Horizontal scrolling inside the
+   parameter grid remains allowed; it must not hide the action rows.
+4. Confirm genomic-forward allele labels. Do not complement T for a minus-strand
+   gene, enter/derive clinical `-1639G>A` nomenclature or claim a clinical effect.
+5. Retain approved raw screenshots with SHA-256, semantic before/after evidence
+   and an explicit pass/fail/blocked per step and platform. Keep annotations
+   separate. A host-policy/isolation block is environmental, not a product
+   failure: stop without `sudo`/unshare policy bypass or enabling a capture
+   bridge. Physical checks and extracted-package acceptance remain distinct.
+
 ### Frozen Native Attempts: Diagnose Before Changing Code
 
 The [retained `df5c8244` review and no-rerun supplement](audits/glen_followups_20261008/candidate_df5c8244/GLEN_REVIEW.md)
