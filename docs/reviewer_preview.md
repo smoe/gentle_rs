@@ -1,63 +1,84 @@
 # Reviewer Quickstart (Internal Preview)
 
-This page is for internal colleagues evaluating preview builds.
+This page is embedded in `Help -> Reviewer Quickstart` and is for colleagues
+evaluating GENtle `0.1.0-internal.13`. Reconciled 2026-10-15; it is an inspection
+guide, not an acceptance result. Use `Help -> About GENtle` to retain the exact
+source revision and build identity of the executable you actually test.
 
-## Internal-only warning
+## Internal-Only Warning
 
-GENtle `0.1.0` preview builds are internal engineering milestones.
+Internal preview builds are engineering milestones, not validated assays.
 
 - Not a public/stable release.
 - Not intended for production, clinical, or regulated workflows.
 - APIs, UI behavior, and file formats may still change.
 
-## Known limitations (preview scope)
+## Short Offline Command Check
 
-- GUI polish and publication-quality visual tuning are still in progress.
-- Primer workflows are implemented, but GUI-first PCR/primer node-specific interfaces are still evolving.
-- Async BLAST baseline exists for shell/MCP/agent usage; multi-job orchestration UX is still being expanded.
-- Some advanced workflows remain shell-first and are not yet represented by dedicated GUI dialogs.
-- Preview defaults for adaptive/helical DNA-letter rendering are optimized for clarity, but exact visual preferences may still be tuned.
+Use an already-built `gentle_cli` from the candidate being reviewed. The commands
+below are for a POSIX shell, run from the repository root with that executable
+on `PATH`; on Windows use the same workflow paths with separate fresh state
+files and `gentle_cli.exe`. Compilation is not part of this walkthrough.
 
-## 10-minute reviewer walkthrough
-
-Run from repository root:
+Each example loads its own input. Keep separate state files: combining the
+examples would reuse the same sequence ID, not extend the first workflow.
 
 ```bash
-STATE=/tmp/gentle_preview_state.json
-rm -f "$STATE"
-
-# 1) Load + branch + reverse-complement workflow example
-cargo run --bin gentle_cli -- --state "$STATE" workflow @docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json
-
-# 2) Digest/ligation/extract baseline workflow example
-cargo run --bin gentle_cli -- --state "$STATE" workflow @docs/examples/workflows/digest_ligation_extract_region_minimal.json
-
-# 3) Fast deterministic primer-pair report (internal backend)
-cargo run --bin gentle_cli -- --state "$STATE" primers design '{"DesignPrimerPairs":{"template":"pgex_fasta","roi_start_0based":100,"roi_end_0based":300,"forward":{"min_length":18,"max_length":22,"location_0based":null,"start_0based":80,"end_0based":130,"min_tm_c":50.0,"max_tm_c":72.0,"min_gc_fraction":0.2,"max_gc_fraction":0.8,"max_anneal_hits":5},"reverse":{"min_length":18,"max_length":22,"location_0based":null,"start_0based":280,"end_0based":340,"min_tm_c":50.0,"max_tm_c":72.0,"min_gc_fraction":0.2,"max_gc_fraction":0.8,"max_anneal_hits":5},"min_amplicon_bp":120,"max_amplicon_bp":400,"max_pairs":5,"report_id":"preview_pgex_fast"}}' --backend internal
-cargo run --bin gentle_cli -- --state "$STATE" primers show-report preview_pgex_fast
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/gentle-review.XXXXXX")
+gentle_cli --version
+gentle_cli --state "$WORK/branch.json" workflow @docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json
+gentle_cli --state "$WORK/digest.json" workflow @docs/examples/workflows/digest_ligation_extract_region_minimal.json
 ```
 
 Expected outcomes:
 
-- Workflow command returns operation records with created IDs.
-- Primer design returns report ID `preview_pgex_fast` with `effective_backend.used = internal`.
-- `primers show-report` returns the persisted report payload.
+- Branch workflow creates `pgex_fasta_branch` and `pgex_fasta_branch_rc`.
+- Digest/ligation workflow creates `lig_extract`, a 120-base extract.
+- Both commands return operation records and save independent state files in
+  the fresh directory. Retain them with your feedback; no existing project is
+  removed or overwritten.
 
-## GUI checks for this preview
+## GUI Checks
 
-1. Open sequence window and zoom linear map.
-2. Confirm top-right routing diagnostics update (`DNA MODE`, density/columns/reason).
-3. Confirm `Configuration -> Graphics` defaults:
-   - mode: `Auto adaptive`
-   - compressed letters enabled
-4. Use `Apply` in Configuration to persist graphics defaults across restart.
+1. Use `File -> Open Tutorial Project...` to load
+   `Load FASTA, branch, and reverse-complement`. Inspect the graph, then
+   double-click the original or derived sequence to open the DNA viewer.
+2. Select a short interval and exercise `Go to selection` / `Zoom to selection`;
+   the viewport changes, not the sequence. Resize the window and check that
+   wrapped controls remain reachable. See [DNA viewer controls](gui.md).
+3. For a separate primer-design check, follow
+   [Simple PCR From a Selected Core Region](tutorial/04-01_simple_pcr_selection_gui.md)
+   from its starter project, not a completed report. It opens the dedicated
+   `PCR Designer`; inspect the selected pair, backend and saved report.
+   Allow the tutorial's stated time rather than promising a ten-minute run.
+4. Save to a new project path, close, reopen and compare the sequence and
+   report identifiers. Report failures with the exact candidate revision.
 
-## Reporting feedback
+The same persisted reports can be inspected through `primers list-reports`,
+`primers show-report REPORT_ID` and `primers export-report REPORT_ID OUTPUT.json`.
+CLI/headless UI intents acknowledge a request; they do not prove a GUI opened.
+
+## Known Limits And Pending Acceptance
+
+- Generated primer pairs are not order-ready without the required specificity,
+  oligo-QC, coverage and approval evidence.
+- Managed BLAST has asynchronous admission and a bounded queue; migration of
+  other long-running commands is incomplete. Resource preparation may need
+  explicit external tools and references; this walkthrough downloads none.
+- Current-candidate native/independent-package, startup/latency and real-locus
+  acceptance remain pending. Published `.12` CI package smokes, historical Linux
+  screenshots and nearby revisions do not certify the executable under review.
+- Some advanced operations remain shared-shell-first. Proposed persisted primer
+  filtered views are not existing commands; see the
+  [remaining specialist scope](primer_design_specialist_plan.md).
+
+## Reporting Feedback
 
 When reporting issues, include:
 
-- command/workflow used,
+- exact executable version/source revision and OS,
+- command/workflow or tutorial step used,
 - sequence ID and view span,
-- screenshots (if visual),
+- screenshots only through an explicitly approved capture path (if visual),
 - exact warning/error text,
 - whether behavior reproduced after restart.

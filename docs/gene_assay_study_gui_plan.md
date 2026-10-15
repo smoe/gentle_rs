@@ -1,9 +1,10 @@
 # Gene Assay Study Workspace
 
-Status: implementation slices for internal .11, 2026-09-18. Not Claude-reviewed;
-an optional read-only consultation was offered. Work continues on
-`gentle_rs_2_main`, fast-forwarded to local `main` at `8597a6ee`. No .10 release
-action, tag or publication is part of this work.
+Status reviewed 2026-10-07: the study workspace and paged report presentation
+are implemented. Glen's [2026-09-20 G1-G6 result](gene_assay_study_glen_acceptance_20260920.md)
+records manual public-reference GUI acceptance at `3c1c32bc`, not biological
+validation or acceptance of the current candidate. Original implementation and
+verification history follows below; it is not a request to rebuild the workspace.
 
 ## Existing Contracts
 
@@ -53,6 +54,25 @@ and its digest-bound study plans, evidence, panels and handoffs for that separat
 acceptance; published images cannot substitute for the missing inputs.
 
 ## Verification Handoff
+
+### Remaining Current-Candidate Acceptance
+
+Glen should replay [04.08](tutorial/04-08_gene_assay_study_gui.md) with matching
+GUI/CLI binaries at one frozen SHA, preserving source/design-universe separation,
+coverage versus discrimination and unresolved evidence. Retain raw captures and
+receipt hashes outside private production state; do not change constraints to
+obtain a green panel. The historical G1-G6 report and screenshot ledger define
+what was observed, not prescribed pair counts for later versions.
+
+For a real panel above 40 transcripts, 24 assays or 80 band rows, exercise the
+independent page controls through the final entries, check unchanged report/
+export content and inspect coverage-scope wording. The 13-transcript acceptance
+and synthetic pagination test do not establish large-panel GUI performance.
+Authentic genome/whole-transcriptome specificity, order approval and the original
+typed paper-facing source bundle remain pending. Do not reconstruct that bundle
+from a PDF. Classify input/environment gaps separately from product failures.
+
+### Historical Implementation Verification
 
 Follow-up, 2026-09-19: the previously interrupted ten study tests and eleven
 `command_execution::tests` all passed locally at `8284c4ca` using

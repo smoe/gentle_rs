@@ -1,5 +1,27 @@
 # GENtle Changelog
 
+## 2026-10-15 - Integrate Recovered Documentation Without Replacing Newer Work
+
+- Rebase the recovered October 7 cleanup onto current main, preserving the
+  published .12 evidence, .13 scope, Ubuntu runner pin, newer VKORC1 and
+  sequence-design work, and conditional primer panel fan-out plan. Retain the
+  exact original snapshot on a separate backup branch.
+- Refresh the embedded preview for .13, consolidate completed request links
+  into their historical result, and retain the older acceptance scope with an
+  explicit historical boundary. Do not reopen completed package/CI gates or
+  turn pending native/scientific work into acceptance.
+- Carry over documentation-lifecycle and catalog guards with LF/CRLF tests;
+  preserve version-pinned historical links and the newer historical pointer.
+  No runtime Rust, dependency, generated tutorial/scientific baseline, provider,
+  model, push, dispatch or publication change is included.
+- Verification: 231 offline checks run, 228 pass and three explicitly disabled
+  real-binary checks skip. The seven focused status tests also pass separately;
+  visual inspection covers 66 tutorials, 86 declarations and 87 assets. Main's
+  publication, .13 gate/priority and conditional fan-out sections are preserved
+  verbatim. Whitespace and release-gate checks pass; session-close reports four
+  OK, two intentional worktree/manual-scope warnings and no failures. Roadmap
+  remains 400 lines; Rust/real-CLI and native acceptance are not claimed.
+
 ## 2026-10-15 - Integrate The Ubuntu 24.04 Runner Pin
 
 - Merge `pin-ubuntu-2404` (`5e12565a`) at the owner's request, pinning ten
@@ -2229,6 +2251,42 @@
   Locked offline Cargo check, formatting and whitespace checks pass. An
   intermediate parallel ATtRACT test failure passes serially but remains a
   separate synchronization investigation, not a fix claimed by this change.
+## 2026-10-07 - Reconcile Documentation Lifecycles And Embedded Preview
+
+- Rebase the isolated tutorial work onto local `main` at `b1c47ed6`; public
+  `origin/main` remains `04debbe0`. Preserve both completed changes and the
+  original checkout's unrelated outputs. No push, release or private report
+  regeneration is included.
+- Retire three completed implementation/review prompts, replace the historical
+  tutorial-regeneration request with a compact reported acceptance record, and
+  point the old gene-assay request to its dated result. Keep active sequence-
+  design, TSS, latency and scientific/native acceptance handoffs unchanged.
+- Refresh the embedded Reviewer Quickstart for `.12`, fresh independent
+  offline states, current selection controls and PCR Designer. Reconcile the
+  22 routines/23 templates, RNA, legacy intake and sequencing-confirmation
+  plans with source; preserve their real residuals. The ROI-capture option is
+  still inactive, not evidence of completed annotation-independent capture.
+  Persisted primer filtered views remain proposals, not registered commands.
+- Shorten the roadmap's orientation section and retain its detailed pending
+  acceptance scope/CI decisions in the `.12` ledger without changing gates or
+  relabelling historical results. Add the four-part retirement rule to the
+  canonical architecture/maintenance docs. Record verified duplicate glossary
+  descriptor identities as a separate protocol/backlog follow-up; leave the
+  generated parity matrix and glossary unchanged.
+- Add the no-build semantic status guard and seven deterministic regressions
+  to the existing fast tutorial checkout suite, including actual LF/CRLF Git
+  clones. These check documentation/source contracts, not workflow execution,
+  GUI acceptance, biology, performance or current Rust compilation. No runtime
+  logic, fixtures, dependency/catalog JSON or generated scientific output changes.
+- Validation on macOS arm64: all 49 fast checkout tests pass, including the
+  seven status guards and LF/CRLF regressions; 95 additional tutorial/evidence/
+  release-policy tests pass with six explicit unconfigured-binary skips.
+  The standalone status and visual checks pass (61 tutorial entries, 72 visual
+  declarations, 77 inspected assets); whitespace is clean. Session-close reports
+  four OK, two warnings (intentional dirty edits and manual scope confirmation),
+  no failures. Rust tests/checks and native GUI/platform acceptance remain
+  deferred under the owner's no-local-build policy. No runtime acceptance is
+  inferred from these source/text checks.
 
 ## 2026-10-07 - Preserve Transcript CDS Identity Through Exon Skipping
 
@@ -2881,9 +2939,10 @@
   regressions, and document the shared contract.
 - Remove three surplus README trailing blank lines. No local builds or tests
   run; the `.12` report-regeneration blocker remains open for Glen.
-- Add the [post-integration Glen prompt](internal_12_tutorial_regeneration_glen_prompt.md)
-  with the exact merged SHA, three stale reports, safe regeneration procedure
-  and pending gates. A handoff is not execution or release acceptance.
+- Add the post-integration Glen prompt with the exact merged SHA, three stale
+  reports, safe regeneration procedure and pending gates. Its later
+  [recorded result](internal_12_tutorial_baseline_acceptance.md) supersedes the
+  request, not pending native/package acceptance.
 
 ## 2026-10-01 - Prepare `v0.1.0-internal.12` And Stage Package Optimization
 
@@ -4698,7 +4757,7 @@
   output directories and reject reused panel identities.
 - Add catalogued manual/hybrid tutorial [04.08](tutorial/04-08_gene_assay_study_gui.md),
   a supplied-binary offline preparation helper, and a
-  [forwardable screenshot request for Glen](gene_assay_study_glen_acceptance.md).
+  [dated GUI acceptance result](gene_assay_study_glen_acceptance_20260920.md).
   Reuse the public PATZ1 fixture without weakening it: comparison panels do not
   establish feasibility of the stricter separate study plan, and the teaching
   dossier remains pending. Original paper-facing source inputs, live GUI

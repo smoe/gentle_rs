@@ -14091,17 +14091,6 @@ This supports:
 4. Save/export artifacts
 5. Optionally export final state for handoff
 
-## Planned next additions
-
-- richer sequence-editing and annotation operation set
-- ligation protocol presets with sticky/blunt compatibility derivation
-- render/view model endpoint for frontend-independent graphical representation
-- schema publication for strict client-side validation
-- CRISPR guide-design next phase:
-  - off-target search/ranking contracts
-  - on-target efficacy model integration hooks
-  - guide-design macro/template expansion into deterministic `Workflow` JSON
-  - see draft: `docs/rna_guides_spec.md`
 ## Annotated TSS Viewer Intent
 
 `ui open|focus|close tss-view` without options is a `gentle.ui_intent.v1`

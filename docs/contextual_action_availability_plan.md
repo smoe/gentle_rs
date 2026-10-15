@@ -388,9 +388,9 @@ these deterministic tests.
 ## Claude Consultation
 
 An earlier direct read-only attempt failed authentication and produced no
-review. The user then forwarded the
-[original review prompt](contextual_action_availability_review_prompt.md)
-and supplied Claude's source-based critique on 2026-09-14. The summary above
+review. The user then supplied Claude's source-based critique on 2026-09-14;
+that review is incorporated above, and its completed request was retired on
+2026-10-07. The summary above
 separates that feedback from Codex's corrections and revised scope.
 
 The user approved starting implementation after this review. Slices 0 and 1

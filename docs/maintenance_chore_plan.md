@@ -163,6 +163,27 @@ Pass criteria:
   minimal follow-up/fix recorded with evidence. Codex readability reviews may be
   recorded as `codex` sign-offs, but human scientific approval remains distinct.
 
+### Retiring Plans And Handoffs
+
+File age alone is not a retirement criterion. During the drift scan, distinguish
+current contracts, active plans, pending acceptance handoffs and historical
+results. A completed request can leave top-level `docs/` only when:
+
+1. Its implementation or verification has a recorded result.
+2. Every still-open item is represented in an active plan or the roadmap.
+3. Canonical documentation describes the resulting contract.
+4. Inbound links point to the result rather than the old request.
+
+Git retains retired instructions. Keep dated evidence and pending scientific,
+GUI, platform and release acceptance; implementation alone does not close them.
+Check links and tutorial wording after a move. Embedded help, such as the
+Reviewer Quickstart, must be refreshed rather than deleted.
+
+Run `python3 scripts/check_documentation_status.py` after this reconciliation
+or a preview/catalog change. The semantic guard and its fast LF/CRLF regressions
+are documented in [testing.md](testing.md); they do not execute examples or
+substitute for source review and current-candidate acceptance.
+
 ### Portable Tutorial Checkouts
 
 The required Windows CI job and sampled Linux/macOS job each reuse their built

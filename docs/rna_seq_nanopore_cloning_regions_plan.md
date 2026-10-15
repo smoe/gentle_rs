@@ -1,167 +1,64 @@
-# RNA-seq Evidence for Cloning-Candidate Regions (Nanopore cDNA First)
+# RNA-Read Evidence For Cloning Regions: Status And Remaining Work
 
-Status: in progress (phase-1 baseline implementation underway)
+Source review: 2026-10-07. The Nanopore cDNA mapping/report baseline is
+implemented; it is not merely phase-1 scaffolding. This residual plan does not
+authorize a second mapping engine.
 
-Related follow-up plan:
+## Existing Baseline
 
-- `docs/rna_read_origin_sparse_index_plan.md` (multi-gene sparse seed index,
-  origin classes, antisense-ready ROI seed-capture model)
+The shared RNA-read engine supports FASTA intake, transcript seed filtering,
+explicit read-orientation handling, exon-path/junction support, multi-gene
+targeting and strand/origin diagnostics. Interpretation's phase-1 streaming pass
+is seed-filter-only; the separate mapping/alignment path supplies retained-read
+alignment. Do not promise that interpretation itself performs inline DP.
 
-## Goal and scope
+Persisted reports drive the RNA Mapping GUI and shared inspect/export routes.
+Batch sample sheets, per-read exon paths, exon/transition abundance, score-density
+and alignment exports already exist. Samples retain their own report/resource
+context; aggregate counts are not automatically normalized expression.
 
-Near-term objective: support cloning-oriented interpretation for small genomic
-regions of interest (ROI) using deterministic RNA-seq evidence overlays.
+The [origin plan](rna_read_origin_sparse_index_plan.md) distinguishes actual
+multi-gene targeting from the still-inactive annotation-independent ROI capture
+option. Canonical interfaces are in [CLI](cli.md), [protocol](protocol.md) and
+[GUI](gui.md); implementation is in `src/engine/analysis/rna_reads.rs` and
+`src/main_area_dna/rna_read_mapping_ui.rs`.
 
-In scope:
+## Remaining Work
 
-- small-region genomic workflows tied to cloning-candidate decisions
-- exon-aware evidence display in ROI context
-- suggestion-first curation support with explicit user confirmation before any
-  feature edit
+### Calibration And Background
 
-Out of scope (initial phase):
+Positive/control preflight and explicit threshold recommendations already
+exist. They do not establish a calibrated transcriptome-wide background model.
+Before replacing bootstrap thresholds with SNR-normalized bands, retain
+representative background/control data, species/library/error-profile context,
+a denominator and reproducible threshold rules. Validate false-positive and
+false-negative behavior; do not infer trans-splicing from unmatched seeds or
+expression changes from unnormalized abundance.
 
-- full whole-transcriptome alignment/quantification pipeline inside GENtle
-- transposon interpretation policy/modeling decisions
+### Suggestion-To-Curation And Primer Guidance
 
-## Implementation phases
+A dedicated RNA-evidence curation-suggestion contract remains a proposal.
+Define a content-bound report of proposed feature changes, evidence and reasons
+before a separate, confirmed shared-engine mutation. Existing general feature
+editing is not evidence that this automatic suggestion pipeline exists.
+RNA support may guide candidate choice, but cannot replace complete primer
+specificity, coverage and oligo-QC gates.
 
-### Phase 1: initial Nanopore cDNA evidence baseline
+### Cohort Presentation And Scale Acceptance
 
-- Ingest externally generated Nanopore cDNA-derived evidence for a selected
-  genomic ROI.
-- Apply deterministic filtering suitable for long-read error profiles.
-- Support partial mapping overlays against genomic region/exon context.
-- Keep phase-1 execution seed-filter-only (no inline dynamic-programming
-  alignment) so streaming progress remains responsive on large FASTA inputs.
-- Keep read-orientation mode explicit in UI/CLI:
-  - cDNA mode: optional poly-T prefix reverse-complement normalization
-  - direct-RNA mode: no automatic reverse-complement normalization
-- Produce deterministic region-level summary outputs for inspection.
-- Persist per-report exon-support and exon-exon junction-support frequency
-  summaries so cohort-level downstream interpretation can reuse the same
-  engine-authored metrics.
-- Support batch sample-sheet export (TSV) for many runs/files, including
-  machine-readable frequency columns for each sample/report.
-- Export additional deterministic TSV artifacts:
-  - per-read exon-path table
-  - exon/transition abundance table
-- Keep the initial seed-hit gate deterministic (`min_seed_hit_fraction=0.30`)
-  as a bootstrap default, with explicit plan to replace/tune it once
-  transcriptome-scale background/noise estimates are available.
+The [roadmap](roadmap.md) retains virtualized multi-sample/gene-cohort alignment
+display. Use existing engine-authored support and sample-sheet fields rather
+than recomputing biology in the GUI. Large-cohort throughput, calibrated origin
+confidence and live GUI acceptance require their own measured evidence.
 
-### Phase 2: engine-owned summarized evidence model
+Transposon-specific modeling remains deferred pending a defined biological
+question. Full whole-transcriptome alignment/quantification, unsolicited remote
+retrieval and automatic annotation changes are not this track.
 
-- Promote imported evidence into engine-owned summarized views for ROI-level
-  interpretation.
-- Include coverage/junction/exon-support style summary metrics scoped to the
-  active ROI.
-- Implement seed-hash mapping cascade for shortlisted reads (no DP requirement):
-  - hash full reads in coding orientation and first map against exon-only seed
-    space for the scoped ROI
-  - unresolved seeds then map against exon-exon junction seed space
-  - remaining unresolved seeds optionally map against intronic seed space
-  - remaining unmatched seeds are retained as noise/error indicators and
-    potential trans-splicing signal for downstream clustering/inspection
-- Add deterministic sample-sheet merge/append semantics so large cohorts can be
-  assembled without adapter-specific post-processing logic.
-- Keep seed-capture workflow abstraction documented:
-  model seed-hash filtering as a reusable biotech-style enrichment operation
-  that can be composed in standard workflows (deferred implementation).
-- Expose inspect/export parity for those summaries across GUI/shared shell/CLI
-  routes.
+## Verification For Future Slices
 
-### Phase 2b: any-strand joint-run hardening (all-overlap scope)
-
-Goal: keep one combined run over `+/-` transcript lanes while making
-cross-strand evidence assignment explicit, auditable, and deterministic.
-
-- Keep `all-overlap / any-strand` as one run contract:
-  no independent per-strand reruns required.
-- Add strand-partitioned seed diagnostics per read:
-  - best `+` transcript-chain score tuple
-  - best `-` transcript-chain score tuple
-  - final selected strand and deterministic reason string
-- Add strand-partitioned aggregate diagnostics per isoform row:
-  - assigned reads from same-strand evidence
-  - competing opposite-strand evidence counts
-  - ambiguity counters (near-tie rows) for review
-- Add deterministic tie-break policy for read assignment:
-  1. higher confirmed transition count
-  2. higher exon support count
-  3. lower median transcript gap
-  4. strand-consistent chain preference (if configured strict)
-  5. lower transcript feature id
-- Add optional strict mode:
-  require chain assignment and transition-confirmation support from the same
-  strand partition before a read can pass seed gate.
-- Keep default mode permissive but transparent:
-  mixed-strand seed reuse remains allowed, but diagnostics must disclose when
-  final assignment depends on cross-strand shared seeds.
-- Extend report schema and exports:
-  include per-read strand-assignment diagnostics and aggregate ambiguity
-  counters so GUI/shell/CLI/agents remain contract-equivalent.
-
-### Phase 3: suggestion-to-curation handoff
-
-- Add RNA-evidence-based curation suggestions integrated with the feature-edit
-  track.
-- Keep mutation paths explicit: apply-suggestion actions remain user-confirmed,
-  deterministic engine operations only (no GUI-only mutation logic).
-- Add evidence-to-primer handoff:
-  seed-support and origin diagnostics should be reusable as deterministic
-  guidance input for primer-target ranking, while final primer scoring remains
-  owned by shared primer-design engine contracts.
-
-### Phase 4: transcriptome-scale signal-to-noise calibration
-
-- Add a formal signal-to-noise model for full-transcriptome inputs where
-  cloning-ROI signal is expected to be a small minority.
-- Compute an empirical background seed-hit distribution per run/sample (or
-  cached cohort baseline) and derive dynamic acceptance bands from that
-  distribution.
-- Promote the fixed `30%` rule to a configurable bootstrap prior, then support
-  SNR-normalized decision thresholds (for example z-score/quantile gates) for
-  higher specificity on transcriptome-scale data.
-- Persist SNR diagnostics in report metadata so GUI/shell/CLI/agents can inspect
-  why reads were accepted/rejected under dynamic thresholds.
-
-## Deferred transposon direction
-
-Transposon-specific modeling and expression interpretation are explicitly
-tracked as deferred and pending Anze-led direction.
-
-## Acceptance criteria
-
-- Deterministic ROI evidence summaries exist for the Nanopore cDNA input path.
-- Batch sample-sheet export exists and preserves deterministic per-report
-  exon/junction frequency summaries.
-- Summary inspect/export semantics are consistent across GUI/shell/CLI.
-- Engine remains the biology source of truth (no adapter-local biology logic).
-- Dual-strand joint-run assignment is deterministic and auditable:
-  - one combined run can include any-strand scope,
-  - per-read strand decision diagnostics are exported,
-  - strict same-strand mode is available when higher specificity is needed.
-
-## Risks and constraints
-
-- Long-read error profile handling is filter-sensitive and must be explicit.
-- Initial mapping is intentionally partial and ROI-oriented.
-- Seed-space design must stay strand/direction aware so exon-only matching does
-  not over-count reverse/non-coding artifacts.
-- Full-scale mapping/quantification remains a later track.
-- Transcriptome-scale SNR estimation requires representative background data;
-  early calibration may need iterative retuning by dataset type/species.
-
-## Test and validation expectations (implementation phase)
-
-- Deterministic tests for ROI evidence import/filtering and summary stability.
-- Cross-adapter parity tests for summary visibility and export contracts.
-- Dual-strand joint-run tests:
-  - deterministic winner selection in `+/-` near-tie scenarios
-  - strict mode rejects mixed-strand-supported reads
-  - report/schema parity for strand diagnostics in GUI/shell/CLI exports
-- Documentation consistency checks:
-  - `docs/architecture.md` references this plan.
-  - `docs/roadmap.md` references this plan.
-  - no conflicting demo-first framing in this track.
+Preserve default single-gene behavior, explicit missing-target reporting,
+any-strand near-tie diagnostics and exact selected-subset export semantics.
+For each new proposal, require deterministic engine tests, adapter-equivalent
+inspection and provenance-bound fixtures. Keep real-data calibration and native
+GUI acceptance separate from synthetic regression results.

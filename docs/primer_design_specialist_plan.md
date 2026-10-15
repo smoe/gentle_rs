@@ -1,12 +1,17 @@
-# Primer Design Specialist Window Plan
+# Primer Design Specialist: Current Status And Remaining Scope
 
-Last updated: 2026-10-13
+Documentation reconciled 2026-10-15; preserve the 2026-10-13 source and conditional
+fan-out plan below. This residual plan is not implementation authorization or
+scientific acceptance.
 
 ## Verified Starting Point
 
 Engine and shared-shell support for primer-pair design is already available via
 `DesignPrimerPairs` plus report inspection/export (`primers design`,
 `primers list-reports`, `primers show-report`, `primers export-report`).
+
+The shared UI destination is `ui open|focus|close pcr-design`; a headless
+acknowledgement does not establish that a native window opened.
 
 The dedicated PCR Designer already provides pair-design forms, alternative
 pair/report inspection, backend provenance, Primer3 preflight and explicit PCR
@@ -117,7 +122,35 @@ attachment. All adapters use the shared engine; no dedicated GUI is in this slic
 Extend tutorial 04.09 only with implemented routes after approval. Glen/CI owns
 Rust execution and exact-candidate acceptance; no private report regeneration.
 
-## Remaining Scope (Requires Separate Approval)
+## Remaining Proposal: Persisted Filtered Views
+
+Session selection and display controls are not a portable, named filtered-view
+contract. Such a contract is still proposed, not registered as `primers view-*`
+commands. Do not advertise those commands or infer that exporting an existing
+report implements them.
+
+Before implementation, define an engine-owned view referencing the exact report
+ID/content hash, filter criteria, stable ordering/tie-breaks and selected pair
+ranks. A view must not alter scores or scientific gate outcomes. Retain the
+unfiltered report and make stale report bindings explicit. GUI, shared shell,
+MCP and other intended adapters must consume the same view and export contract.
+No second design algorithm or adapter-local ranking is warranted.
+
+Required deterministic tests for that future slice:
+
+- View create/inspect/export/delete and project save/reopen preserve the same
+  criteria, report binding and selected ranks.
+- Invalid criteria and stale report hashes fail consistently across adapters.
+- Equal-score ties have a stable ordering; a filtered export states its subset
+  without claiming completeness of the original search.
+- Explicit selected-pair handoff preserves the original backend and evidence;
+  filtering never turns generated assays into order-ready ones.
+
+Fresh native report browsing and handoff checks remain acceptance work, separate
+from these proposed commands. Engine-native single-primer design and broader
+specificity orchestration are outside this residual plan.
+
+## Other Remaining Scope (Requires Separate Approval)
 
 - Reuse the PCR Designer and shared report paths for a general specialist entry
   point, only where a verified presentation gap remains.
@@ -127,90 +160,3 @@ Rust execution and exact-candidate acceptance; no private report regeneration.
   workflows.
 - Preserve UI-intent and shared-shell parity expectations for agent/MCP/CLI
   pathways.
-
-## Interfaces
-
-### Engine
-
-- Add persisted report-view model for filtered primer alternatives
-  (metadata-backed, deterministic replay of view criteria).
-- Keep `DesignPrimerPairs` as the canonical pair-design operation.
-- Keep ranking/scoring logic engine-owned (no GUI-local biology forks).
-
-### Shell
-
-- Extend primer shell contract with filtered-view commands:
-  - `primers view-create`
-  - `primers view-list`
-  - `primers view-show`
-  - `primers view-export`
-  - `primers view-delete`
-- Keep existing report commands unchanged for backward compatibility.
-
-### UI intent
-
-- Add `primer-design` target to `ui open|focus` intent routing.
-- Allow optional context prefill (`seq_id`, ROI, report/view id) while
-  preserving deterministic argument validation.
-
-## Phases
-
-### Phase 1: specialist window + pair reports
-
-- Audit the existing PCR Designer before adding menu/palette entry points.
-- Reuse its pair-design form and report details; do not treat those implemented
-  controls or its backend/preflight display as outstanding engine work.
-- Identify any remaining general report-browser presentation gap explicitly.
-
-### Phase 2: persisted filtered views
-
-- Add filter controls for pair alternatives.
-- Add save/load/export/delete flows for filtered views.
-- Persist views in project metadata with deterministic IDs and payload schema.
-
-### Phase 3: UI-derived single-primer pane
-
-- Derive single-primer candidates from selected pair report/view.
-- Add ranking/filter inspection table for forward/reverse primer records.
-- Keep this pane explicitly UI-derived (engine-native single-primer op deferred).
-
-### Phase 4: PCR handoff polish + parity tests
-
-- Add explicit actions to push selected pair into PCR/PCR Advanced/PCR
-  Mutagenesis controls.
-- Add parity tests for shell/ui-intent behavior and deterministic filtered-view
-  payload semantics.
-
-## Acceptance Criteria
-
-- Users can run pair design in a dedicated GUI specialist window without using
-  strict engine operation forms.
-- Users can inspect alternative pair results and persist filtered views.
-- Persisted views survive project save/load and can be exported deterministically.
-- Selected primer pairs can be forwarded to PCR flows with explicit user action.
-- Shared-shell and UI-intent surfaces expose equivalent capabilities for agent
-  routes.
-
-## Test Matrix
-
-- Engine unit tests:
-  - filtered-view creation/validation/persistence/export/delete
-  - deterministic ordering and tie-break behavior under filter/sort constraints
-- Shell tests:
-  - parse/execute primer `view-*` commands
-  - stable error contracts for invalid view payloads/options
-- UI-intent tests:
-  - `ui open primer-design` and context prefill semantics
-  - target-specific option validation failures are deterministic
-- GUI behavior tests:
-  - report loading, filtering, view persistence lifecycle, PCR handoff actions
-
-## Risks / Follow-ups
-
-- Scope risk: mixing pair-design, single-primer UX, and specificity BLAST fanout
-  in one implementation pass can increase regressions; phase boundaries are used
-  to keep rollout deterministic.
-- Data-model risk: filtered-view persistence schema must remain stable across
-  adapter surfaces; schema/version tests are required.
-- Follow-up: introduce an engine-native single-primer design contract after this
-  UI track stabilizes.

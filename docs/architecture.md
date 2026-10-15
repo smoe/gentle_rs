@@ -737,6 +737,12 @@ Current priorities and release-gate rules are maintained in `docs/roadmap.md`.
 Completed work is recorded in `docs/CHANGELOG.md`. Durable implementation
 constraints and architectural decisions are indexed in `docs/decisions.md`.
 
+Documentation distinguishes current contracts, active plans, pending acceptance
+handoffs and historical results. Retire completed requests only after recording
+the result, transferring open items and updating inbound links; preserve pending
+scientific/platform acceptance. The [maintenance retirement checklist](maintenance_chore_plan.md#retiring-plans-and-handoffs)
+defines the procedure. Embedded help must be refreshed rather than deleted.
+
 ## 4. Engine model
 
 ### State
