@@ -20,8 +20,54 @@ from scripts import test_sequence_design_tutorial as tutorial
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# Hand-declared expectations, independent of the oracle's IUPAC dictionary and
+# Rust masks. Each row is (symbol, allowed bases, complemented allowed bases).
+IUPAC_LITERAL_MEMBERSHIPS = (
+    ("A", "A", "T"), ("C", "C", "G"), ("G", "G", "C"), ("T", "T", "A"),
+    ("R", "AG", "CT"), ("Y", "CT", "AG"), ("S", "CG", "CG"), ("W", "AT", "AT"),
+    ("K", "GT", "AC"), ("M", "AC", "GT"), ("B", "CGT", "ACG"),
+    ("D", "AGT", "ACT"), ("H", "ACT", "AGT"), ("V", "ACG", "CGT"),
+    ("N", "ACGT", "ACGT"),
+)
+
 
 class SequenceDesignAuditOracleTests(unittest.TestCase):
+    def test_all_iupac_symbols_against_each_base_and_strand(self):
+        self.assertEqual(set(oracle.IUPAC), set("ACGTRYSWKMBDHVN"))
+        cases = 0
+        for symbol, forward, reverse in IUPAC_LITERAL_MEMBERSHIPS:
+            for base in "ACGT":
+                expected = {"forward": base in forward, "reverse": base in reverse,
+                            "both": base in forward or base in reverse}
+                for strand, present in expected.items():
+                    with self.subTest(symbol=symbol, base=base, strand=strand):
+                        self.assertEqual(oracle.motif_present(base, symbol, strand), present)
+                    cases += 1
+        self.assertEqual(cases, 180)
+
+    def test_all_iupac_pairs_against_overlapping_windows_on_each_strand(self):
+        cases = 0
+        for first, first_forward, first_reverse in IUPAC_LITERAL_MEMBERSHIPS:
+            for second, second_forward, second_reverse in IUPAC_LITERAL_MEMBERSHIPS:
+                pattern = first + second
+                for first_base in "ACGT":
+                    for second_base in "ACGT":
+                        sequence = "C" + (first_base + second_base) * 2 + "A"
+                        forward = any(sequence[i] in first_forward
+                                      and sequence[i + 1] in second_forward
+                                      for i in range(len(sequence) - 1))
+                        reverse = any(sequence[i] in second_reverse
+                                      and sequence[i + 1] in first_reverse
+                                      for i in range(len(sequence) - 1))
+                        expected = {"forward": forward, "reverse": reverse,
+                                    "both": forward or reverse}
+                        for strand, present in expected.items():
+                            with self.subTest(pattern=pattern, sequence=sequence, strand=strand):
+                                self.assertEqual(oracle.motif_present(sequence, pattern, strand),
+                                                 present)
+                            cases += 1
+        self.assertEqual(cases, 10_800)
+
     def test_literal_spaces_and_independent_joint_answer(self):
         cases = dict(oracle.audit_cases())
         self.assertEqual(len(cases), 18)

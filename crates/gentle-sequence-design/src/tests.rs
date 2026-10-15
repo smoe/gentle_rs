@@ -1383,6 +1383,126 @@ fn budget_failure_is_not_infeasibility_and_cancellation_discards_valid_candidate
 }
 
 #[test]
+fn iupac_single_symbols_match_literal_membership_on_every_strand() {
+    // Probe the production matcher directly; these one-base strings are not CDSs.
+    let mut cases = 0;
+    for (symbol, forward, reverse) in IUPAC_LITERAL_MEMBERSHIPS {
+        let pattern = String::from_utf8(vec![symbol]).unwrap();
+        for strand in [Strand::Forward, Strand::Reverse, Strand::Both] {
+            let mut request = input("ATGAAATAA", "MK", &[&pattern]);
+            request.motifs[0].strand = strand;
+            let prepared = prepare(&request).unwrap_or_else(|outcome| panic!("{outcome:?}"));
+            for base in b"ACGT" {
+                let sequence = [*base];
+                assert_eq!(
+                    prepared.matches(&sequence).unwrap(),
+                    literal_iupac_hits(&sequence, &[forward], &[reverse], strand),
+                    "{pattern} / {} / {strand:?}",
+                    *base as char
+                );
+                cases += 1;
+            }
+        }
+    }
+    assert_eq!(cases, 180);
+}
+
+#[test]
+fn iupac_symbol_pairs_preserve_reverse_order_overlaps_and_palindromes() {
+    let mut cases = 0;
+    for (first, first_forward, first_reverse) in IUPAC_LITERAL_MEMBERSHIPS {
+        for (second, second_forward, second_reverse) in IUPAC_LITERAL_MEMBERSHIPS {
+            let pattern = String::from_utf8(vec![first, second]).unwrap();
+            let forward = [first_forward, second_forward];
+            let reverse = [second_reverse, first_reverse];
+            for strand in [Strand::Forward, Strand::Reverse, Strand::Both] {
+                let mut request = input("ATGAAATAA", "MK", &[&pattern]);
+                request.motifs[0].strand = strand;
+                let prepared = prepare(&request).unwrap_or_else(|outcome| panic!("{outcome:?}"));
+                for first_base in b"ACGT" {
+                    for second_base in b"ACGT" {
+                        let sequence = [
+                            b'C',
+                            *first_base,
+                            *second_base,
+                            *first_base,
+                            *second_base,
+                            b'A',
+                        ];
+                        assert_eq!(
+                            prepared.matches(&sequence).unwrap(),
+                            literal_iupac_hits(&sequence, &forward, &reverse, strand),
+                            "{pattern} / {sequence:?} / {strand:?}"
+                        );
+                        cases += 1;
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(cases, 10_800);
+}
+
+// Hand-declared synthetic membership/complement sets, not derived from mask(),
+// complement(), Prepared patterns, or the Python oracle. Recreate by these rows.
+const IUPAC_LITERAL_MEMBERSHIPS: [(u8, &[u8], &[u8]); 15] = [
+    (b'A', b"A", b"T"),
+    (b'C', b"C", b"G"),
+    (b'G', b"G", b"C"),
+    (b'T', b"T", b"A"),
+    (b'R', b"AG", b"CT"),
+    (b'Y', b"CT", b"AG"),
+    (b'S', b"CG", b"CG"),
+    (b'W', b"AT", b"AT"),
+    (b'K', b"GT", b"AC"),
+    (b'M', b"AC", b"GT"),
+    (b'B', b"CGT", b"ACG"),
+    (b'D', b"AGT", b"ACT"),
+    (b'H', b"ACT", b"AGT"),
+    (b'V', b"ACG", b"CGT"),
+    (b'N', b"ACGT", b"ACGT"),
+];
+
+fn literal_iupac_hits(
+    sequence: &[u8],
+    forward: &[&[u8]],
+    reverse: &[&[u8]],
+    strand: Strand,
+) -> Vec<Match> {
+    let mut hits = vec![];
+    for (start, window) in sequence.windows(forward.len()).enumerate() {
+        let f = window
+            .iter()
+            .zip(forward)
+            .all(|(base, members)| members.contains(base));
+        let r = window
+            .iter()
+            .zip(reverse)
+            .all(|(base, members)| members.contains(base));
+        let directions: &[Strand] = match (strand, f, r, forward == reverse) {
+            (Strand::Forward, true, _, _) => &[Strand::Forward],
+            (Strand::Reverse, _, true, _) => &[Strand::Reverse],
+            (Strand::Both, true, true, true) => &[Strand::Both],
+            (Strand::Both, true, true, false) => &[Strand::Forward, Strand::Reverse],
+            (Strand::Both, true, false, _) => &[Strand::Forward],
+            (Strand::Both, false, true, _) => &[Strand::Reverse],
+            _ => &[],
+        };
+        for direction in directions {
+            hits.push(Match {
+                motif_index: 0,
+                interval: Interval {
+                    start,
+                    end: start + forward.len(),
+                },
+                strand: *direction,
+            });
+        }
+    }
+    hits
+}
+
+#[test]
 fn palindromes_overlap_reverse_iupac_and_cds_flank_boundary_are_evaluated() {
     let eco = input("ATGGAATTCTAA", "MEF", &["GAATTC"]);
     let result = solve(&eco, |_| false);

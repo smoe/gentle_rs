@@ -63,6 +63,12 @@ unrestricted eight-state oracle, a 36-state L/R oracle with mixed-direction
 synonyms and coupled motif/GC repairs. No fixture
 represents PATZ1 or another natural gene.
 
+Independent literal IUPAC tables check all 15 symbols against every base and
+strand (180 cases), plus all two-symbol patterns against repeated dinucleotides
+with flanks (10,800 cases). Rust checks complete hit coordinates, overlapping
+windows and palindrome deduplication; the Python audit oracle checks presence
+against separately declared memberships, without importing the Rust matcher.
+
 ```sh
 cargo test -p gentle-sequence-design
 ```
