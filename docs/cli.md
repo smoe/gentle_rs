@@ -6017,6 +6017,12 @@ Rendering export commands:
 - `arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]`
   - Calls engine operation `CreateArrangementSerial`.
   - Persists a serial lane setup that can be reused by `render-pool-gel-svg --arrangement`.
+  - For a resolved gene set, use `op` with `CreateGeneSetArrangement`, explicit
+    `resolution_id`, `member_bindings`, fresh `arrangement_id` and
+    `confirm_physical_placement=true`; see [tutorial 03.10](tutorial/03-10_gene_set_storage_projection.md).
+    This binds 1..24 exclusive singleton tubes without pooling or cloning and
+    creates the existing default rack draft. No new dedicated storage subcommand
+    or curated MCP tool is added; physical stock is not inferred.
 - `arrange-set-ladders ARR_ID [--ladders NAME[,NAME]]`
   - Calls engine operation `SetArrangementLadders`.
   - Persists one or two ladder names on an existing serial arrangement.

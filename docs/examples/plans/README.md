@@ -1,5 +1,11 @@
 # Gibson Planning Examples
 
+The companion `../workflows/gene_set_storage_starter.json` is hand-crafted:
+two literal eight-base source records and unannotated logical GENEA/GENEB
+labels. Tutorial 03.10 consumes it; no accession, genome annotation or physical
+stock is represented. Recreate it from the workflow literals. Its normalized
+stable IDs are `symbol:genea`/`symbol:geneb`, not the display labels.
+
 ## Synthetic Protein-Expression Review Inputs
 
 `protein_expression_requirements_in_house.json` and

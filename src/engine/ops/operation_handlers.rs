@@ -19,6 +19,8 @@ use std::{cmp::Ordering, fs};
 
 use super::feature_expert_ops::{DbsnpReferenceCheck, DbsnpResolvedPlacement};
 use super::*;
+#[path = "../analysis/gene_set_arrangement.rs"]
+mod gene_set_arrangement;
 #[path = "../analysis/transcript_capture.rs"]
 mod transcript_capture;
 use crate::engine::sequence_ops::{Primer3PairDesignOptions, PrimerDesignProgressContext};
@@ -42242,6 +42244,25 @@ impl GentleEngine {
                     ));
                     result.collection_operation = Some(report.collection_operation.clone());
                     result.collection_pool_export = Some(report);
+                }
+                Operation::CreateGeneSetArrangement {
+                    resolution_id,
+                    member_bindings,
+                    arrangement_id,
+                    name,
+                    confirm_physical_placement,
+                } => {
+                    let (report, rack_id) = self.create_gene_set_arrangement(
+                        &resolution_id,
+                        member_bindings,
+                        &arrangement_id,
+                        name,
+                        confirm_physical_placement,
+                        &result.op_id,
+                        run_id,
+                    )?;
+                    result.messages.push(format!("Created gene-set arrangement '{}' on rack draft '{}'; source tubes retained, no pooling", arrangement_id.trim(), rack_id));
+                    result.collection_operation = Some(report);
                 }
                 Operation::CreateGeneSetPool {
                     collection_subject,

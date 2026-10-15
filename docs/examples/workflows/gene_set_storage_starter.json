@@ -1,0 +1,12 @@
+{
+  "schema":"gentle.workflow_example.v1",
+  "id":"gene_set_storage_starter",
+  "title":"Synthetic gene-set storage starter",
+  "summary":"Creates two hand-crafted tubes and an unannotated logical gene set for explicit storage review; no physical stock claim.",
+  "test_mode":"always", "required_files":[], "tags":["offline","synthetic","storage"],
+  "workflow":{"run_id":"synthetic_storage_starter","ops":[
+    {"CreateSequenceFromText":{"sequence_text":"ACGTACGT","output_id":"storage_source_a","name":"Synthetic A","circular":false}},
+    {"CreateSequenceFromText":{"sequence_text":"GGCCTTAA","output_id":"storage_source_b","name":"Synthetic B","circular":false}},
+    {"ResolveGeneSet":{"source":{"source_kind":"explicit_members","members":["GENEA","GENEB"]}}}
+  ]}
+}

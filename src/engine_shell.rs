@@ -30769,6 +30769,18 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("CreateGeneSetPool")
         }),
         json!({
+            "id":"CreateGeneSetArrangement", "kind":"operation", "mutating":"true", "requires_confirmation":true,
+            "args":[
+                {"name":"RESOLUTION_ID","required":true,"subject_kind":"report","detail":"complete persisted gene-set resolution"},
+                {"name":"MEMBER_BINDINGS","required":true,"subject_kind":"container","detail":"one explicit exclusive singleton tube per member"},
+                {"name":"ARRANGEMENT_ID","required":true,"subject_kind":"other","detail":"fresh serial arrangement id"},
+                {"name":"CONFIRM_PHYSICAL_PLACEMENT","required":true,"subject_kind":"other","detail":"must be true; no implicit pooling or storage"}
+            ],
+            "reads":[], "effects":[], "precondition_expr":{"all":[]},
+            "description":"Explicitly project 1..24 resolved members onto existing serial/rack storage via op JSON; preserve logical identity and source tubes. No stock, fit or biological claim.",
+            "annotation_status":"fact_annotated", "registry":registry_metadata_for_introspection("CreateGeneSetArrangement")
+        }),
+        json!({
             "id": "gene-sets create-pool",
             "kind": "operation",
             "mutating": "true",

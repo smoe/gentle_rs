@@ -1,5 +1,9 @@
 # Gibson Physical Rack Tutorial
 
+For logical gene sets with explicitly bound source tubes, see
+[tutorial 03.10](03-10_gene_set_storage_projection.md). That path is a storage
+projection, not Gibson assembly or physical pooling.
+
 > Type: `GUI walkthrough + CLI parity`
 > Status: `manual/hybrid`
 > Drift note: this page is hand-written, but it is intentionally tied to the

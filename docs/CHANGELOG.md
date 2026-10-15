@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-10-15 - Add Explicit Minimal Gene-Set Storage Projection
+
+- Add `CreateGeneSetArrangement` on existing reviewed `op` routes. Require a
+  complete persisted set, exact distinct exclusive-singleton tube bindings,
+  fresh arrangement ID and explicit physical-placement intent; cap this first
+  slice at 24 members. Reuse serial/default-rack helpers without nested apply,
+  pooling, cloning, annotation inference or a second layout implementation.
+- Persist content-bound set/member/source snapshots and arrangement/rack links
+  under versioned projection metadata. Return the standard arrange report;
+  preserve source tubes and one outer undo boundary. Author refusal, order,
+  save/reopen, undo/redo and shared-shell parity regressions.
+- Add tutorial 03.10 with a synthetic executable starter and existing storage
+  labels/isometric/OpenSCAD exports. Keep it manual/hybrid; generated menu
+  registration, fresh runtime exports and Rust/parity acceptance remain Glen/CI.
+  No new GUI mapper, curated MCP tool, freezer template or inventory claim.
+
 ## 2026-10-15 - Make The Minimal Expression Tutorial Self-Contained
 
 - Add a documented hand-crafted coding-product starter and a separately labelled
