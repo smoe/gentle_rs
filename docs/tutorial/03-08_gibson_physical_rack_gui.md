@@ -189,7 +189,10 @@ What each one is for:
 - `Carrier labels SVG`
   - front strip + module labels
 - `OpenSCAD`
-  - parameterized printable geometry for later refinement or printing
+  - parameterized geometry draft for later refinement, not a qualified print
+  - openings start above a bottom floor; confirm fit/material/tolerances before
+    fabrication. Corner-radius metadata does not currently add fillets, and
+    sample labels remain in the separate SVG outputs, not embossed in the model.
 
 For reading occupied positions, compare the retained top-down **hero** view
 below with the isometric export. A1-A5 carry the two ladders and three sample

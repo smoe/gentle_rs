@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+## 2026-10-15 - Review Early Feature And Rack Documentation
+
+- Inventory early cloning/analysis and physical-container features against
+  .2-.9 release notes, current routes, deterministic test locations and tutorial
+  coverage. Record the demonstrated rack-floor defect separately from unrun
+  native/runtime checks; no family is claimed fully accepted or orphaned.
+- Correct omitted cell-culture template documentation and distinguish digital
+  geometry from qualified fabrication. Retain current no-fillet/no-embossing
+  limitations rather than expanding the model. Add concrete native rack/label
+  review to the final-release handoff. No local Rust or historical evidence edits.
+
 ## 2026-10-15 - Open Rack Wells Above Their Floors
 
 - Early-feature source/render review found bottom-origin OpenSCAD cutters
