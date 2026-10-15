@@ -98,9 +98,16 @@ Numeric limits, checked before search allocation: 12,000 bases, 16 motifs,
 evaluations, 4,096 recorded matches. A conservative 50,000,000 full-evaluation
 work-unit ceiling reduces the effective budget when necessary; reports disclose
 both requested and effective budgets. Work includes full DNA traversal plus all
-possible motif/base/strand checks. Excessive matches are a typed invalid resource
-outcome, not truncated evidence. Search-space counting uses checked `u64`;
-overflow is unknown, never infeasible.
+possible motif/base/strand checks. More than 4,096 matches in the original input
+remain a typed invalid resource outcome, not truncated evidence. If a later
+synonymous candidate crosses that cap, skip it (and its conflict-search subtree)
+and mark optimization incomplete even if the remaining traversal finishes.
+Retain and freshly validate any best candidate as `feasible`, with reason
+`validated_best_candidate_with_match_diagnostic_limit`; without one, return
+`search_exhausted` with reason `match_diagnostic_limit_exceeded`. Neither case
+proves minimum edits or infeasibility. Other validation errors, initial admission
+and apply-time validation remain strict; cancellation still discards all output.
+Search-space counting uses checked `u64`; overflow is unknown, never infeasible.
 At the engine approval boundary, loaded source IDs are capped at 4,096 bytes
 and digest fields at 128 bytes before preview copying/hashing. Oversized inline
 targets and mismatched request schema/purpose are also rejected before that work;
@@ -230,8 +237,8 @@ synthesis, large-insert performance or upstream DNA Chisel compatibility claim.
 | Outcome | Meaning |
 | --- | --- |
 | `invalid` / `unsupported` | Admission/resource rule failed; no applicable preview. |
-| `feasible` | Fully validated exact output; only complete enumeration/conflict search or unchanged feasible input proves minimum edits. A budget stop can retain a feasible candidate with optimization incomplete. |
-| `search_exhausted` | Budget ended without a feasible candidate; unresolved, not infeasible. |
+| `feasible` | Fully validated exact output; only complete enumeration/conflict search or unchanged feasible input proves minimum edits. A budget stop or candidate diagnostic limit can retain a feasible candidate with optimization incomplete. |
+| `search_exhausted` | Candidate/work budget or candidate diagnostic limit prevents a complete result without a feasible candidate; unresolved, not infeasible. |
 | `proven_infeasible` | An initial match lies wholly in frozen bases, GC count bounds are empty/unreachable, or complete enumeration/conflict search found no admissible variant. |
 | `cancelled` | External cancellation; diagnostics only, never output DNA/approval, even if a feasible candidate was already found. |
 

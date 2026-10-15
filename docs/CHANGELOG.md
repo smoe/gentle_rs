@@ -103,6 +103,27 @@
   opt1 as a separate fallback, not an implicit profile switch or acceptance.
 - Documentation only; no local Rust, Claude, push, dispatch or publication.
 
+## 2026-10-15 - Harden Sequence-Design Search Limits And Proof Tests
+
+- Treat an edited candidate's match-diagnostic overflow as incomplete search
+  in both strategies: skip that candidate/subtree, retain any freshly validated
+  best, and withhold optimality/infeasibility proofs. Initial-input overflow,
+  other validation failures and apply-time checks remain strict; cancellation
+  still clears output. No schema, algorithm ID, resource cap or biology changes.
+- Add six synthetic Rust regressions: larger-first lexicographic ties, exact
+  equality pruning, the real 4,096-to-4,140 match boundary, retention/cancellation
+  of a best before a later overflow, literal 4-6-position L/R spaces through
+  46,656 variants, and 256 fixed-seed joint motif/GC/window/protection cases.
+  Leave redundant-search/performance tuning separate from this correctness fix.
+- Verification: all 12 existing offline Python oracle/harness tests pass.
+  Independent Python fixture enumeration confirms 198 feasible/58 infeasible
+  seeded cases, the three literal optima and both overflow fixtures' counts.
+  This is fixture/policy evidence, not Rust execution: the authored tests,
+  `cargo test --locked -p gentle-sequence-design`, `cargo check -q --locked`
+  and Rust formatting checks remain unrun under the no-local-Rust restriction.
+  Preserve Glen's earlier source-bound verdict; no new acceptance freeze,
+  handoff bundle, dependency, fixture artifact, push or dispatch is introduced.
+
 ## 2026-10-15 - Verify The dbSNP Worker Repair On Linux
 
 - Verify Glen's copied 34-entry evidence inventory and raw runner/exit records

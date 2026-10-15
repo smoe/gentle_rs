@@ -157,6 +157,12 @@ serialized approvals stay compatible. Conflict search branches over all legal
 nonoriginal assignments in a current violated window, fixes one codon per level,
 and re-evaluates the full sequence. A complete tree, including sound edit-cost
 pruning, proves feasibility/optimality or infeasibility; a budget stop does not.
+The original input must fit the match-diagnostic cap. An edited candidate that
+exceeds it is skipped, including its conflict-search subtree, and makes the
+search incomplete; retain a freshly validated best if available, otherwise
+report unresolved exhaustion. Never discard a valid best as invalid input or
+claim a proof after that skip. Other validation errors and apply checks remain
+strict, and cancellation still clears any best result.
 No local-score substitution or performance claim follows from fewer visited
 candidates. Application checks the selected strategy/algorithm/policy binding
 without rerunning search.

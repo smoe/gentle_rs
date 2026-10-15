@@ -114,6 +114,10 @@ Expected toy output is `ATGGAATTTTAA`, one nucleotide edit at position 8.
 `search_exhausted` is unresolved, never infeasible; `cancelled` cannot be applied.
 Incomplete feasible search does not prove minimum edits. Translation preservation
 does not establish expression, folding, splicing or experimental suitability.
+The original input must fit the 4,096-match diagnostic cap. An edited candidate
+exceeding it is skipped with optimization incomplete, preserving any validated
+best; otherwise the result is `search_exhausted`, not invalid input or proven
+infeasibility. Apply still requires full output validation.
 Original source annotations are omitted from the new sequence. Full limits and
 algorithm: [design contract](dna_sequence_optimization_plan.md).
 

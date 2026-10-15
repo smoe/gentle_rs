@@ -88,6 +88,7 @@ pub(super) fn solve(input: &Input, mut cancel: impl FnMut(u64) -> bool) -> Outco
     let mut assigned_choice = None;
     let mut best: Option<(usize, Vec<u8>)> = None;
     let mut complete = false;
+    let mut diagnostic_limited = false;
     'search: loop {
         if cancel(outcome.evaluated_candidates) {
             return cancelled(outcome);
@@ -97,7 +98,12 @@ pub(super) fn solve(input: &Input, mut cancel: impl FnMut(u64) -> bool) -> Outco
         }
         outcome.evaluated_candidates += 1;
         let hits = match prepared.validate(&candidate) {
-            Ok(hits) => hits,
+            Ok(hits) => Some(hits),
+            Err(reason) if reason == MATCH_DIAGNOSTIC_LIMIT_EXCEEDED => {
+                // No conflict is available to expand this branch safely.
+                diagnostic_limited = true;
+                None
+            }
             Err(reason) => return Outcome::empty(Status::Invalid, reason),
         };
         let count = original
@@ -105,7 +111,7 @@ pub(super) fn solve(input: &Input, mut cancel: impl FnMut(u64) -> bool) -> Outco
             .zip(&candidate)
             .filter(|(before, after)| before != after)
             .count();
-        if hits.satisfied()
+        if hits.as_ref().is_some_and(Violations::satisfied)
             && best
                 .as_ref()
                 .is_none_or(|(old_count, old)| (count, &candidate) < (*old_count, old))
@@ -123,7 +129,7 @@ pub(super) fn solve(input: &Input, mut cancel: impl FnMut(u64) -> bool) -> Outco
             .as_ref()
             .is_none_or(|(best_count, _)| count < *best_count)
         {
-            hits.first_conflict()
+            hits.and_then(|hits| hits.first_conflict())
         } else {
             None
         };
@@ -155,7 +161,11 @@ pub(super) fn solve(input: &Input, mut cancel: impl FnMut(u64) -> bool) -> Outco
     if cancel(outcome.evaluated_candidates) {
         return cancelled(outcome);
     }
+    complete &= !diagnostic_limited;
     outcome.optimization_complete = complete;
+    if diagnostic_limited {
+        outcome.reason = MATCH_DIAGNOSTIC_LIMIT_EXCEEDED.into();
+    }
     if let Some((_, sequence)) = best {
         if let Err(reason) = prepared.validate(&sequence).and_then(|hits| {
             hits.satisfied()
@@ -173,6 +183,8 @@ pub(super) fn solve(input: &Input, mut cancel: impl FnMut(u64) -> bool) -> Outco
         outcome.minimum_edits_proven = complete;
         outcome.reason = if complete {
             "complete_conflict_search_or_unchanged_feasible_input"
+        } else if diagnostic_limited {
+            "validated_best_candidate_with_match_diagnostic_limit"
         } else {
             "validated_best_candidate_with_incomplete_optimization"
         }

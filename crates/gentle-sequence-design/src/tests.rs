@@ -1,5 +1,6 @@
-//! Hand-crafted synthetic fixtures; no natural gene is represented by these DNA strings.
-//! Recreate by concatenating the literal flank/codon strings in each test.
+//! Synthetic fixtures; no natural gene is represented by these DNA strings.
+//! Recreate from literal flank/codon strings or the fixed-seed LCG in the
+//! differential test; it uses explicit L/R synonym lists and no external inputs.
 //! The complete standard mapping below is independently declared in TCAG order;
 //! coupled-edit oracles enumerate their explicit four strings, not solver choices.
 
@@ -997,6 +998,314 @@ fn conflict_search_can_repair_new_violations_outside_the_original_match() {
         validate_output(&request, actual.sequence.as_deref().unwrap()).unwrap(),
         actual.edits
     );
+}
+
+#[test]
+fn conflict_search_replaces_an_equal_cost_lexicographically_larger_first_solution() {
+    let mut request = input("ATGAAAAAATAA", "MKK", &["AAAAAA"]);
+    request.motifs[0].strand = Strand::Forward;
+    request.max_evaluations = 2;
+    let first = solve_with_strategy(&request, SearchStrategy::ConflictDirected, |_| false);
+    assert_eq!(first.status, Status::Feasible);
+    assert_eq!(first.sequence.as_deref(), Some("ATGAAGAAATAA"));
+    assert_eq!(first.edits.len(), 1);
+    assert!(!first.minimum_edits_proven && !first.optimization_complete);
+
+    request.max_evaluations = 3;
+    let complete = solve_with_strategy(&request, SearchStrategy::ConflictDirected, |_| false);
+    assert_eq!(complete.status, Status::Feasible);
+    assert_eq!(complete.sequence.as_deref(), Some("ATGAAAAAGTAA"));
+    assert!(complete.sequence < first.sequence);
+    assert_eq!(complete.edits.len(), first.edits.len());
+    assert_eq!(complete.evaluated_candidates, 3);
+    assert!(complete.minimum_edits_proven && complete.optimization_complete);
+    assert_eq!(
+        validate_output(&request, complete.sequence.as_deref().unwrap()).unwrap(),
+        complete.edits
+    );
+}
+
+#[test]
+fn conflict_search_prunes_infeasible_equal_cost_nodes_without_visiting_their_children() {
+    let mut request = input("ATGAAAAAATAA", "MKK", &["AAAAAA", "AAAAAG"]);
+    for motif in &mut request.motifs {
+        motif.strand = Strand::Forward;
+    }
+    request.max_evaluations = 3;
+    // The first child is feasible with one edit. The second has one edit but
+    // remains infeasible; its two-edit child is valid, yet cannot win.
+    assert_eq!(validate_output(&request, "ATGAAGAAATAA").unwrap().len(), 1);
+    assert_eq!(edits(request.sequence.as_bytes(), b"ATGAAAAAGTAA").len(), 1);
+    assert_eq!(
+        validate_output(&request, "ATGAAAAAGTAA").unwrap_err(),
+        "forbidden_motifs_remain"
+    );
+    assert_eq!(validate_output(&request, "ATGAAGAAGTAA").unwrap().len(), 2);
+    let result = solve_with_strategy(&request, SearchStrategy::ConflictDirected, |_| false);
+    assert_eq!(result.status, Status::Feasible);
+    assert_eq!(result.sequence.as_deref(), Some("ATGAAGAAATAA"));
+    assert_eq!(result.evaluated_candidates, 3);
+    assert!(result.minimum_edits_proven && result.optimization_complete);
+}
+
+#[test]
+fn edited_candidate_match_limit_is_incomplete_not_invalid_or_infeasible() {
+    // Synthetic lysine repeats: AAG occurs once; the 15 poly-A patterns have
+    // sum(282 - length + 1, length=3..17) = 4095 hits. AAG -> AAA creates
+    // a 285-A run with 4140 hits and removes the single AAG match.
+    let dna = format!("ATGAAG{}TAA", "AAA".repeat(94));
+    let mut request = input(&dna, &format!("M{}", "K".repeat(95)), &["AAG"]);
+    request.motifs[0].strand = Strand::Forward;
+    request.motifs.extend((3..=17).map(|length| Motif {
+        pattern: "A".repeat(length),
+        strand: Strand::Forward,
+    }));
+    request.max_evaluations = 2;
+    let changed = format!("ATG{}TAA", "AAA".repeat(95));
+    let literal_count = |sequence: &str| {
+        request
+            .motifs
+            .iter()
+            .map(|motif| {
+                sequence
+                    .as_bytes()
+                    .windows(motif.pattern.len())
+                    .filter(|window| *window == motif.pattern.as_bytes())
+                    .count()
+            })
+            .sum::<usize>()
+    };
+    assert_eq!(literal_count(&dna), 4096);
+    assert_eq!(literal_count(&changed), 4140);
+    assert_eq!(edits(dna.as_bytes(), changed.as_bytes()).len(), 1);
+    assert_eq!(
+        translate(dna.as_bytes(), request.cds, &request.code),
+        translate(changed.as_bytes(), request.cds, &request.code)
+    );
+    assert_eq!(
+        validate_output(&request, &changed).unwrap_err(),
+        "match_diagnostic_limit_exceeded"
+    );
+    for strategy in [
+        SearchStrategy::FullEnumeration,
+        SearchStrategy::ConflictDirected,
+    ] {
+        let result = solve_with_strategy(&request, strategy, |_| false);
+        assert_eq!(result.status, Status::SearchExhausted, "{strategy:?}");
+        assert_eq!(result.reason, "match_diagnostic_limit_exceeded");
+        assert_eq!(result.initial_matches.len(), MAX_REPORTED_MATCHES);
+        assert_eq!(result.evaluated_candidates, 2);
+        assert_eq!(result.effective_evaluation_budget, 2);
+        assert!(result.sequence.is_none() && result.edits.is_empty());
+        assert!(!result.minimum_edits_proven && !result.optimization_complete);
+        let cancelled = solve_with_strategy(&request, strategy, |n| n == 2);
+        assert_eq!(cancelled.status, Status::Cancelled);
+        assert!(cancelled.sequence.is_none() && !cancelled.minimum_edits_proven);
+
+        let mut inadmissible = request.clone();
+        inadmissible.sequence = changed.clone();
+        let rejected = solve_with_strategy(&inadmissible, strategy, |_| false);
+        assert_eq!(rejected.status, Status::Invalid);
+        assert_eq!(rejected.reason, "match_diagnostic_limit_exceeded");
+        assert_eq!(rejected.evaluated_candidates, 0);
+    }
+}
+
+#[test]
+fn conflict_search_keeps_a_validated_best_after_a_later_match_limit() {
+    // M accepts A/C, not G. These distinct 32-base masks therefore have the
+    // same hits on this A/G repeat: 15 * (303 - 31) + one GAAAAAG = 4081.
+    let dna = format!("ATGAAAAAG{}TAA", "AAA".repeat(101));
+    let mut request = input(&dna, &format!("M{}", "K".repeat(103)), &["GAAAAAG"]);
+    request.motifs[0].strand = Strand::Forward;
+    request.motifs.push(Motif {
+        pattern: "A".repeat(32),
+        strand: Strand::Forward,
+    });
+    for position in 0..14 {
+        let mut pattern = "A".repeat(32);
+        pattern.replace_range(position..position + 1, "M");
+        request.motifs.push(Motif {
+            pattern,
+            strand: Strand::Forward,
+        });
+    }
+    let mut expected = dna.as_bytes().to_vec();
+    expected[5] = b'G';
+    for index in 0..101 {
+        let start = 9 + index * 3;
+        if index % 10 == 8 {
+            expected[start + 2] = b'G';
+        } else {
+            request.protected.push(Interval {
+                start,
+                end: start + 3,
+            });
+        }
+    }
+    let expected = String::from_utf8(expected).unwrap();
+    assert_eq!(validate_output(&request, &expected).unwrap().len(), 11);
+    request.max_evaluations = 12;
+    let before = solve_with_strategy(&request, SearchStrategy::ConflictDirected, |_| false);
+    assert_eq!(before.status, Status::Feasible);
+    assert_eq!(before.sequence.as_deref(), Some(expected.as_str()));
+    assert_eq!(
+        before.reason,
+        "validated_best_candidate_with_incomplete_optimization"
+    );
+
+    // The other root branch edits AAG -> AAA, creating 15 * (309 - 31) = 4170
+    // matches. The first branch's independently validated best must survive.
+    request.max_evaluations = 13;
+    let after = solve_with_strategy(&request, SearchStrategy::ConflictDirected, |_| false);
+    assert_eq!(after.status, Status::Feasible);
+    assert_eq!(after.sequence, before.sequence);
+    assert_eq!(after.edits, before.edits);
+    assert_eq!(after.initial_matches.len(), 4081);
+    assert_eq!(after.evaluated_candidates, 13);
+    assert_eq!(
+        after.reason,
+        "validated_best_candidate_with_match_diagnostic_limit"
+    );
+    assert!(!after.minimum_edits_proven && !after.optimization_complete);
+    let cancelled = solve_with_strategy(&request, SearchStrategy::ConflictDirected, |n| n == 13);
+    assert_eq!(cancelled.status, Status::Cancelled);
+    assert!(cancelled.sequence.is_none() && cancelled.edits.is_empty());
+    assert!(!cancelled.minimum_edits_proven && !cancelled.optimization_complete);
+}
+
+#[test]
+fn both_strategies_prove_literal_optima_in_large_leucine_arginine_spaces() {
+    for count in 4..=6 {
+        let mut dna = String::from("ATG");
+        let mut expected = String::from("ATG");
+        let mut protein = String::from("M");
+        for position in 0..count {
+            let (codon, best, residue) = if position % 2 == 0 {
+                ("CTT", "CTA", 'L')
+            } else {
+                ("CGT", "CGA", 'R')
+            };
+            dna.push_str(codon);
+            expected.push_str(best);
+            protein.push(residue);
+        }
+        dna.push_str("TAA");
+        expected.push_str("TAA");
+        let mut request = input(&dna, &protein, &["CTT", "CGT"]);
+        request.max_evaluations = MAX_EVALUATIONS;
+        for motif in &mut request.motifs {
+            motif.strand = Strand::Forward;
+        }
+        // Each original codon is forbidden, requiring >= count edits. CTA/CGA
+        // are the lexicographically first one-edit synonyms and satisfy all motifs.
+        for strategy in [
+            SearchStrategy::FullEnumeration,
+            SearchStrategy::ConflictDirected,
+        ] {
+            let result = solve_with_strategy(&request, strategy, |_| false);
+            assert_eq!(result.status, Status::Feasible, "{count}: {strategy:?}");
+            assert_eq!(result.search_space, Some(6u64.pow(count as u32)));
+            assert_eq!(result.sequence.as_deref(), Some(expected.as_str()));
+            assert_eq!(result.edits.len(), count);
+            assert!(result.minimum_edits_proven && result.optimization_complete);
+            assert_eq!(validate_output(&request, &expected).unwrap(), result.edits);
+        }
+    }
+}
+
+#[test]
+fn fixed_seed_joint_constraints_agree_between_complete_strategies() {
+    fn draw(state: &mut u64, upper: usize) -> usize {
+        *state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+        ((*state >> 32) as usize) % upper
+    }
+    let families = [
+        ('L', ["TTA", "TTG", "CTT", "CTC", "CTA", "CTG"]),
+        ('R', ["CGT", "CGC", "CGA", "CGG", "AGA", "AGG"]),
+    ];
+    let mut seed = 0x2026_1015_5eed_u64;
+    let mut feasible = 0;
+    let mut infeasible = 0;
+    for case in 0..256 {
+        let count = 2 + case % 3;
+        let mut dna = String::from("ATG");
+        let mut protein = String::from("M");
+        for _ in 0..count {
+            let (residue, synonyms) = families[draw(&mut seed, families.len())];
+            dna.push_str(synonyms[draw(&mut seed, synonyms.len())]);
+            protein.push(residue);
+        }
+        dna.push_str("TAA");
+        let mut request = input(&dna, &protein, &[]);
+        request.max_evaluations = MAX_EVALUATIONS;
+        let length = 3 + draw(&mut seed, 3);
+        let start = 3 + draw(&mut seed, count * 3 - length + 1);
+        let mut pattern = dna[start..start + length].to_string();
+        if case % 5 == 0 {
+            pattern.replace_range(1..2, "N");
+        }
+        request.motifs.push(Motif {
+            pattern,
+            strand: [Strand::Forward, Strand::Reverse, Strand::Both][draw(&mut seed, 3)],
+        });
+        if case % 4 != 0 {
+            let start = 3 + draw(&mut seed, count * 3);
+            request.protected.push(Interval {
+                start,
+                end: start + 1,
+            });
+        }
+        if case % 4 == 1 || case % 4 == 3 {
+            let min = 1000 + draw(&mut seed, 5) as u16 * 1000;
+            request.gc_content = Some(GcBounds {
+                min_basis_points: min,
+                max_basis_points: min + 2000 + draw(&mut seed, 4) as u16 * 1000,
+            });
+        }
+        if case % 4 >= 2 {
+            let min = draw(&mut seed, 5) as u16 * 1000;
+            request.gc_window = window_bounds(
+                4 + draw(&mut seed, 4),
+                min,
+                min + 4000 + draw(&mut seed, 3) as u16 * 1000,
+            );
+        }
+        let enumeration = solve(&request, |_| false);
+        let directed = solve_with_strategy(&request, SearchStrategy::ConflictDirected, |_| false);
+        assert_eq!(
+            directed.status, enumeration.status,
+            "case {case}: {request:?}"
+        );
+        assert_eq!(
+            directed.sequence, enumeration.sequence,
+            "case {case}: {request:?}"
+        );
+        assert_eq!(directed.edits, enumeration.edits, "case {case}");
+        assert_eq!(
+            directed.optimization_complete, enumeration.optimization_complete,
+            "case {case}"
+        );
+        assert_eq!(
+            directed.minimum_edits_proven, enumeration.minimum_edits_proven,
+            "case {case}"
+        );
+        match enumeration.status {
+            Status::Feasible => {
+                feasible += 1;
+                assert!(enumeration.minimum_edits_proven && enumeration.optimization_complete);
+                assert_eq!(
+                    validate_output(&request, enumeration.sequence.as_deref().unwrap()).unwrap(),
+                    enumeration.edits
+                );
+            }
+            Status::ProvenInfeasible => infeasible += 1,
+            other => panic!("case {case} must finish, got {other:?}: {request:?}"),
+        }
+    }
+    // Independently enumerated with literal L/R lists, regex motif matching
+    // and integer GC cross-products, not either solver's choices/predicates.
+    assert_eq!((feasible, infeasible), (198, 58));
 }
 
 #[test]

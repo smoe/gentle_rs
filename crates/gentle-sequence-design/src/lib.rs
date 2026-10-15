@@ -26,6 +26,7 @@ pub const MAX_PROTECTED_INTERVALS: usize = 256;
 pub const MAX_EVALUATIONS: u64 = 100_000;
 pub const MAX_TOTAL_MOTIF_WORK: u64 = 50_000_000;
 pub const MAX_REPORTED_MATCHES: usize = 4_096;
+const MATCH_DIAGNOSTIC_LIMIT_EXCEEDED: &str = "match_diagnostic_limit_exceeded";
 
 /// Enumeration remains the compatibility default; conflict search is explicit.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -436,7 +437,7 @@ impl Prepared<'_> {
                 };
                 for direction in directions {
                     if hits.len() == MAX_REPORTED_MATCHES {
-                        return Err("match_diagnostic_limit_exceeded".into());
+                        return Err(MATCH_DIAGNOSTIC_LIMIT_EXCEEDED.into());
                     }
                     hits.push(Match {
                         motif_index,
@@ -582,6 +583,7 @@ pub fn solve(input: &Input, mut cancel: impl FnMut(u64) -> bool) -> Outcome {
     let mut indices = vec![0usize; prepared.choices.len()];
     let mut best: Option<(usize, Vec<u8>)> = None;
     let mut complete = false;
+    let mut diagnostic_limited = false;
     loop {
         if cancel(outcome.evaluated_candidates) {
             return cancelled(outcome);
@@ -595,10 +597,14 @@ pub fn solve(input: &Input, mut cancel: impl FnMut(u64) -> bool) -> Outcome {
         }
         outcome.evaluated_candidates += 1;
         let hits = match prepared.validate(&candidate) {
-            Ok(hits) => hits,
+            Ok(hits) => Some(hits),
+            Err(reason) if reason == MATCH_DIAGNOSTIC_LIMIT_EXCEEDED => {
+                diagnostic_limited = true;
+                None
+            }
             Err(reason) => return Outcome::empty(Status::Invalid, reason),
         };
-        if hits.satisfied() {
+        if hits.is_some_and(|hits| hits.satisfied()) {
             let count = edits(original, &candidate).len();
             if best
                 .as_ref()
@@ -628,7 +634,11 @@ pub fn solve(input: &Input, mut cancel: impl FnMut(u64) -> bool) -> Outcome {
     if cancel(outcome.evaluated_candidates) {
         return cancelled(outcome);
     }
+    complete &= !diagnostic_limited;
     outcome.optimization_complete = complete;
+    if diagnostic_limited {
+        outcome.reason = MATCH_DIAGNOSTIC_LIMIT_EXCEEDED.into();
+    }
     if let Some((_, sequence)) = best {
         // Do not publish the search's cached evaluation as the final validator.
         if let Err(reason) = prepared.validate(&sequence).and_then(|h| {
@@ -649,6 +659,8 @@ pub fn solve(input: &Input, mut cancel: impl FnMut(u64) -> bool) -> Outcome {
         outcome.minimum_edits_proven = complete;
         outcome.reason = if complete {
             "complete_enumeration_or_unchanged_feasible_input"
+        } else if diagnostic_limited {
+            "validated_best_candidate_with_match_diagnostic_limit"
         } else {
             "validated_best_candidate_with_incomplete_optimization"
         }
