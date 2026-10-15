@@ -93,6 +93,21 @@ def fixture_abif_tag(tag, number=2):
 
 
 class SpecialistSourceTests(unittest.TestCase):
+    def test_expression_walkthrough_has_a_synthetic_end_to_end_starter(self):
+        workflow = read_json(ROOT / "docs/examples/workflows/protein_expression_review_starter.json")
+        product = workflow["workflow"]["ops"][0]["CreateSequenceFromText"]
+        self.assertEqual(product["output_id"], "expression_review_product")
+        self.assertEqual(product["sequence_text"], "ATG" + "CAC" * 6 + "GCTTAA")
+        requirements = read_json(ROOT / "docs/examples/plans/protein_expression_requirements_review_only.json")
+        self.assertTrue(requirements["outsourcing"]["allowed"])
+        self.assertEqual(requirements["outsourcing"]["approved_providers"], ["geneart"])
+        self.assertEqual(len(set(requirements) & {"yield_goal", "chassis", "localization", "folding", "toxicity_induction", "tag_policy", "scale_purification", "outsourcing"}), 8)
+        guide = (TUTORIALS / "09-03_protein_expression_handoff_cli.md").read_text()
+        for term in ("expression_review_product", "expression-review.gentle.json", "manual/hybrid", "agent_execute_plan", "not falsely labelled", "synthetic permissions"):
+            self.assertIn(term, guide)
+        mcp = (ROOT / "src/mcp_server.rs").read_text()
+        self.assertIn("fn protein_expression_mcp_plan_executor_matches_shared_shell_without_writes", mcp)
+
     def test_expression_draft_guide_matches_explicit_provider_glossary_contract(self):
         stem = "09-03_protein_expression_handoff_cli"
         source = read_json(TUTORIALS / "sources" / f"{stem}.json")

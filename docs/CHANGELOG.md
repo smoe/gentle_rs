@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-10-15 - Make The Minimal Expression Tutorial Self-Contained
+
+- Add a documented hand-crafted coding-product starter and a separately labelled
+  local-review-only requirements fixture. Tutorial 09.03 now has a literal
+  offline neutral/in-house/explicit-provider path without private project IDs.
+- Author deterministic MCP parity through the existing model-free
+  `agent_execute_plan` shell executor, checking scientific payload and unchanged
+  saved bytes/artifact count. Existing CLI/shared-shell cases remain unchanged.
+- Keep the chapter manual/hybrid: the project starter is an engine workflow,
+  but the report itself is a shared-shell contract, not a workflow operation.
+  Inspector/ranking remain deferred. Rust/runtime acceptance remains Glen/CI;
+  no provider, model, commercial action or local Rust execution is introduced.
+
 ## 2026-10-15 - Review Early Feature And Rack Documentation
 
 - Inventory early cloning/analysis and physical-container features against
