@@ -1,5 +1,15 @@
 # GENtle Changelog
 
+## 2026-10-15 - Open Rack Wells Above Their Floors
+
+- Early-feature source/render review found bottom-origin OpenSCAD cutters
+  leaving solid caps above all three rack/plate templates. Start cuts at the
+  declared floor and extend past the top; synchronize the three example SCAD
+  sources without changing profile, placement, dimensions or SVG projections.
+- Add an all-template synthetic operation regression. Rust execution remains
+  with Glen/CI; OpenSCAD render checks are separate from engine/fabrication
+  acceptance. No manufacturing, sterility or fit qualification is implied.
+
 ## 2026-10-15 - Select The Internal.13 Release Aim
 
 - Record the owner's early-feature/3D review, minimal provider-neutral expression

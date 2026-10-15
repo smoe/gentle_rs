@@ -476,6 +476,15 @@ remain source files, not pre-rendered STL meshes, so the dimensions can be
 reviewed and adjusted through OpenSCAD without adding a 3D rendering dependency
 to the documentation build.
 
+2026-10-15 correction: the three rack/plate SCAD examples below had cutters
+starting below the base and leaving caps over the openings. Their cutter
+origins were mechanically synchronized with the corrected shared exporter at
+`floor_thickness`, preserving dimensions and coordinates. This is not a claim
+that a current Rust binary regenerated them. The offline semantic regression is
+`python3 -m unittest scripts.test_early_feature_review`; Glen/CI must run the
+all-template operation regression and fresh exports. These are digital geometry
+drafts, not validated manufacturing, fit or cell-culture/sterility designs.
+
 `gibson_single_insert_arrangement_gel.svg` is the matching README gel export
 for the same single-insert Gibson baseline. For presentation, it intentionally
 reorders the same saved samples as `insert -> vector -> product` so the insert

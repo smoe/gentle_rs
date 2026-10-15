@@ -3462,7 +3462,7 @@ impl GentleEngine {
                 }
                 let (cx, cy) = Self::rack_physical_hole_center_mm(&spec, row, column);
                 scad.push_str(&format!(
-                    "        translate([{:.3}, {:.3}, -0.05]) cylinder(h=rack_height - floor_thickness + 0.10, d=opening_diameter);\n",
+                    "        translate([{:.3}, {:.3}, floor_thickness]) cylinder(h=rack_height - floor_thickness + 0.10, d=opening_diameter);\n",
                     cx, cy
                 ));
             }
