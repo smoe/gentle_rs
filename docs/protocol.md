@@ -5942,18 +5942,25 @@ Adapter-equivalence guarantee for UI-intent tools:
   - `neutral_service_draft` reuses `ExternalServiceDeliveryRouteRequest` with
     schema `gentle.external_service_delivery_route_request.v1`. It copies exact
     DNA/protein identity, name, molecule type, bp/aa length and readiness into
-    `source_target`; missing identities are explicitly unresolved. Supplied
-    chassis/localization/folding/toxicity topics populate `optimization_target`,
+    `source_target`, together with the observed `cds_assessment`. Missing,
+    unusable or multiple-CDS products have no draft, not a placeholder product.
+    Protein targets explicitly retain unresolved coding DNA and unperformed
+    reverse translation; references never masquerade as inline sequence letters.
+    Supplied yield/chassis/localization/folding/toxicity topics populate
+    `optimization_target`,
     tag policy and annotation-only evidence populate `vector_spec`, and yield/
     scale/purification/quality topics populate `delivery_options`. No vector,
     requirement or product is supplied by a vendor template. Null optional
     fields are omitted; false values and reviewed empty lists remain intact.
   - draft `request_metadata` records `human_review_only`, supplied requirements
-    ID/review metadata, unresolved question IDs and product-readiness status
+    ID/review metadata, service intent, unresolved question IDs, product-readiness
+    status and explicit no-design/no-prediction/no-submission nonclaims
   - `provider_binding.status` is `not_selected`, `withheld` or `projected`.
-    Without `--provider`, projection is null and provider candidates/actions
-    are empty. Explicit selection requires outsourcing permission, an
-    unambiguous usable product and active-catalog `protein_expression`
+    Without `--provider`, projection is null and provider-specific preflight/quote
+    actions are absent. With reviewed outsourcing permission, a read-only
+    `services providers list` suggestion explains explicit selection; it does
+    not select or approve a provider. Explicit selection requires outsourcing
+    permission, an unambiguous usable product and active-catalog `protein_expression`
     capability. A non-empty `outsourcing.approved_providers` must include it.
     Stable reasons are `product_identity_unresolved`, `product_not_ready`,
     `outsourcing_permission_missing`, `outsourcing_disallowed`,
@@ -5966,7 +5973,9 @@ Adapter-equivalence guarantee for UI-intent tools:
   - only a projected request produces a `product_draft_review_required`
     candidate; its legacy `example_request_path` is empty. Local preflight
     suggestions serialize that exact request. CDS quote suggestions additionally
-    require resolved questions; protein targets retain coding-route review.
+    require resolved questions and the canonical local preflight's `eligible`
+    and `quote_handoff_available` flags; protein targets retain coding-route
+    review.
     Partial requirements stay partial, even when a draft/preflight is available.
     GeneArt's bundled preflight keeps `direct_submission_available = false`.
   - project-bound request commands do not inline sequence letters; exact CDS

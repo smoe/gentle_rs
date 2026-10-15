@@ -1,5 +1,26 @@
 # GENtle Changelog
 
+## 2026-10-15 - Complete Provider-Neutral Expression Draft Boundaries
+
+- Build on the shared neutral-draft/provider-binding implementation in
+  `c670653e` and `1c44ac4a`. Withhold drafts for missing, unusable or ambiguous
+  products; retain observed CDS context and explicitly unresolved coding DNA
+  for protein-only targets. Map yield into optimization as well as delivery,
+  and keep review status, service intent and nonclaims in the neutral metadata.
+- Add explicit provider-discovery guidance without choosing a provider. Quote
+  suggestions now require the canonical local preflight's eligibility and
+  quote support as well as answered questions. No provider contact, submission,
+  ordering, new service schema, dependency or GUI surface is introduced.
+- Extend synthetic Rust/real-CLI tests for product/refusal/provenance boundaries,
+  unavailable quotes and blocked preflights, complete supplied-topic mapping,
+  state/history/revision equality and no-write direct/shared-shell preflight.
+  Update tutorial 09.03 and the existing architecture/interface contracts.
+- Verification: 82 offline specialist/tutorial/checkout checks run, 76 pass
+  and six optional binary checks skip. Scoped Rust formatting and whitespace
+  pass; session-close has four OK, two intentional worktree/scope warnings and
+  no failures. Authored Rust/CLI tests, tutorial generation and locked Cargo
+  check remain unrun locally; no runtime, native or provider acceptance follows.
+
 ## 2026-10-15 - Defer Coordinated Acceptance To Release Preparation
 
 - Apply the owner's development cadence: stop interim SHA freezes, recurring

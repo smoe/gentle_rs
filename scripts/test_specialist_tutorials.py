@@ -120,7 +120,10 @@ class SpecialistSourceTests(unittest.TestCase):
             self.assertIn("outsourcing_disallowed", text)
             self.assertIn("direct_submission_available = false", text)
             for field in ("neutral_service_draft", "provider_projection", "protein_seq_id",
-                          "unresolved question IDs", "no vendor-side action"):
+                          "unresolved question IDs", "no vendor-side action",
+                          "coding DNA as `unresolved`", "`not_performed`",
+                          "`eligible = true`", "`quote_handoff_available = true`",
+                          "`select_protein_expression_provider`"):
                 self.assertIn(field, text)
             self.assertNotIn("prepare_geneart_quote_packet_after_review", text)
             blocks = re.findall(r"```bash\r?\n(.*?)```", text, re.S)
@@ -139,12 +142,21 @@ class SpecialistSourceTests(unittest.TestCase):
         self.assertIn("project_external_service_delivery_request", builder)
         self.assertNotIn("fs::", builder)
         self.assertNotIn("geneart_protein_expression_request.json", builder)
+        self.assertNotIn('"unresolved_product"', builder)
+        for field in ("cds_assessment", "coding_dna_status", "reverse_translation_status",
+                      "service_intent", "nonclaims", "review_status"):
+            self.assertIn(f'"{field}"', builder)
+        shell = (ROOT / "src/engine_shell.rs").read_text(encoding="utf-8")
+        self.assertIn("preflight.eligible && preflight.quote_handoff_available", shell)
         cli = (ROOT / "tests/protein_expression_handoff_cli.rs").read_text(encoding="utf-8")
         for case in ("neutral", "selected", "protein", "in_house", "excluded", "partial",
-                     "missing_product", "missing_permission", "unsupported_capability"):
+                     "missing_product", "missing_permission", "unsupported_capability",
+                     "quote_unavailable", "blocked_preflight", "unknown_provider", "invalid_product"):
             self.assertIn(f'"{case}"', cli)
         self.assertRegex(cli, r"snapshot\(root\),\s*before")
         self.assertIn("quote_shell_arg(token)", cli)
+        self.assertIn('preflight.args(["services", "project-preflight", &request])', cli)
+        self.assertIn('"{case}: local preflight must not write"', cli)
         self.assertIn('"\\r\\n"', cli)
         self.assertIn("No network", (ROOT / "tests/protein_expression_handoff_README.md").read_text(encoding="utf-8"))
 

@@ -14960,10 +14960,7 @@ fn execute_planning_protein_expression_handoff_returns_reviewable_contract() {
     );
     assert!(report.service_handoff_candidates.is_empty());
     assert!(report.provider_projection.is_none());
-    assert_eq!(
-        report.neutral_service_draft.as_ref().unwrap().source_target["kind"],
-        "unresolved_product"
-    );
+    assert!(report.neutral_service_draft.is_none());
     assert!(report.suggested_next_actions.iter().any(|action| {
         action.action_id == "answer_yield_questions"
             && action.shell_line == "planning objective show"
@@ -15543,7 +15540,12 @@ fn protein_expression_handoff_read_only_report(
     seq_id: &str,
 ) -> crate::engine::ProteinExpressionHandoffReport {
     let before = serde_json::to_value(engine.state()).unwrap();
-    let revision = engine.mutation_revision();
+    let history = serde_json::to_value(engine.history_summary()).unwrap();
+    let revisions = (
+        engine.execution_revision(),
+        engine.structural_revision(),
+        engine.mutation_revision(),
+    );
     let result = execute_shell_command(
         engine,
         &ShellCommand::PlanningProteinExpressionHandoff {
@@ -15558,7 +15560,18 @@ fn protein_expression_handoff_read_only_report(
     .unwrap();
     assert!(!result.state_changed);
     assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
-    assert_eq!(engine.mutation_revision(), revision);
+    assert_eq!(
+        serde_json::to_value(engine.history_summary()).unwrap(),
+        history
+    );
+    assert_eq!(
+        (
+            engine.execution_revision(),
+            engine.structural_revision(),
+            engine.mutation_revision()
+        ),
+        revisions
+    );
     serde_json::from_value(result.output).unwrap()
 }
 
@@ -15579,7 +15592,27 @@ fn protein_expression_handoff_complete_neutral_draft_does_not_select_provider() 
         report
             .suggested_next_actions
             .iter()
-            .all(|action| !action.shell_line.starts_with("services "))
+            .all(|action| !action.shell_line.starts_with("services project-"))
+    );
+    let selection = report
+        .suggested_next_actions
+        .iter()
+        .find(|action| action.action_id == "select_protein_expression_provider")
+        .unwrap();
+    assert_eq!(selection.shell_line, "services providers list");
+    assert!(
+        report
+            .text_report
+            .as_ref()
+            .unwrap()
+            .contains(&selection.shell_line)
+    );
+    assert!(
+        report
+            .text_report
+            .as_ref()
+            .unwrap()
+            .contains("--provider PROVIDER_ID")
     );
     let draft = report.neutral_service_draft.unwrap();
     assert_eq!(
@@ -15589,6 +15622,15 @@ fn protein_expression_handoff_complete_neutral_draft_does_not_select_provider() 
     assert_eq!(draft.source_target["seq_id"], "reviewed_product");
     assert_eq!(draft.source_target["length_bp"], 27);
     assert_eq!(draft.source_target["name"], "Synthetic reviewed product");
+    assert_eq!(
+        draft.source_target["sequence_content"],
+        "project_reference_only"
+    );
+    assert_eq!(
+        draft.source_target["cds_assessment"],
+        serde_json::to_value(&report.cds_assessment).unwrap()
+    );
+    assert!(draft.source_target.get("sequence").is_none());
     assert!(draft.source_target.get("protein_seq_id").is_none());
     assert_eq!(
         draft.optimization_target.as_ref().unwrap()["chassis"]["acceptable_chassis"],
@@ -15638,6 +15680,9 @@ fn protein_expression_handoff_complete_neutral_draft_does_not_select_provider() 
         requirements["yield_goal"]["target_amount_unit"]
     );
     let metadata = draft.request_metadata.as_ref().unwrap();
+    assert_eq!(metadata["service_intent"], "protein_expression");
+    assert_eq!(metadata["review_status"], "review_required");
+    assert_eq!(metadata["nonclaims"].as_array().unwrap().len(), 3);
     assert_eq!(metadata["human_review_only"], true);
     assert_eq!(metadata["requirements_id"], requirements["requirements_id"]);
     assert_eq!(metadata["reviewed_by"], requirements["reviewed_by"]);
@@ -15647,6 +15692,72 @@ fn protein_expression_handoff_complete_neutral_draft_does_not_select_provider() 
     );
     assert_eq!(metadata["unresolved_question_ids"], serde_json::json!([]));
     assert!(metadata.get("template_path").is_none());
+    for topic in [
+        "yield_goal",
+        "chassis",
+        "localization",
+        "folding",
+        "toxicity_induction",
+    ] {
+        for (key, value) in requirements[topic].as_object().unwrap() {
+            assert_eq!(
+                &draft.optimization_target.as_ref().unwrap()[topic][key],
+                value,
+                "{topic}.{key}"
+            );
+        }
+    }
+    for (key, value) in requirements["tag_policy"].as_object().unwrap() {
+        assert_eq!(
+            &draft.vector_spec.as_ref().unwrap()["tag_policy"][key],
+            value,
+            "tag_policy.{key}"
+        );
+    }
+    for (key, value) in requirements["scale_purification"].as_object().unwrap() {
+        assert_eq!(
+            &draft.delivery_options.as_ref().unwrap()[key],
+            value,
+            "scale_purification.{key}"
+        );
+    }
+    for (key, value) in requirements["outsourcing"].as_object().unwrap() {
+        assert_eq!(&metadata["outsourcing"][key], value, "outsourcing.{key}");
+    }
+}
+
+#[test]
+fn protein_expression_handoff_neutral_and_selected_drafts_are_deterministic() {
+    let (mut engine, mut requirements) = protein_expression_handoff_test_input(false);
+    // An empty allowlist is not a provider choice or blanket external consent.
+    requirements["outsourcing"]["approved_providers"] = serde_json::json!([]);
+    for provider in [None, Some("geneart")] {
+        let first = protein_expression_handoff_read_only_report(
+            &mut engine,
+            Some(&requirements),
+            provider,
+            "reviewed_product",
+        );
+        let second = protein_expression_handoff_read_only_report(
+            &mut engine,
+            Some(&requirements),
+            provider,
+            "reviewed_product",
+        );
+        assert_eq!(first.neutral_service_draft, second.neutral_service_draft);
+        assert_eq!(first.provider_projection, second.provider_projection);
+        assert_eq!(first.suggested_next_actions, second.suggested_next_actions);
+        assert_eq!(first.text_report, second.text_report);
+        assert_eq!(first.provider_projection.is_some(), provider.is_some());
+        assert_eq!(
+            serde_json::to_string(&first.neutral_service_draft).unwrap(),
+            serde_json::to_string(&second.neutral_service_draft).unwrap()
+        );
+        assert_eq!(
+            serde_json::to_string(&first.provider_projection).unwrap(),
+            serde_json::to_string(&second.provider_projection).unwrap()
+        );
+    }
 }
 
 #[test]
@@ -15673,6 +15784,7 @@ fn protein_expression_handoff_explicit_projection_preserves_dna_and_protein_iden
         assert_eq!(request.vector_spec, draft.vector_spec);
         assert_eq!(request.delivery_options, draft.delivery_options);
         assert_eq!(request.request_metadata, draft.request_metadata);
+        assert_eq!(request.return_spec, draft.return_spec);
         let identity = if protein { "protein_seq_id" } else { "seq_id" };
         assert_eq!(request.source_target[identity], "reviewed_product");
         assert!(report.text_report.as_ref().unwrap().contains(if protein {
@@ -15694,6 +15806,11 @@ fn protein_expression_handoff_explicit_projection_preserves_dna_and_protein_iden
         assert_eq!(result.output["direct_submission_available"], false);
         assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
         if protein {
+            assert_eq!(draft.source_target["coding_dna_status"], "unresolved");
+            assert_eq!(
+                draft.source_target["reverse_translation_status"],
+                "not_performed"
+            );
             assert!(
                 report
                     .suggested_next_actions
@@ -15777,7 +15894,14 @@ fn protein_expression_handoff_projection_fails_closed_with_typed_reasons() {
                 .all(|action| !action.shell_line.starts_with("services ")),
             "{case}"
         );
-        assert!(report.neutral_service_draft.is_some());
+        let text = report.text_report.as_ref().unwrap();
+        assert!(!text.contains("services project-preflight "), "{case}");
+        assert!(!text.contains("services project-quote "), "{case}");
+        assert_eq!(
+            report.neutral_service_draft.is_some(),
+            !matches!(case, "missing_product" | "multiple_cds" | "invalid_cds"),
+            "{case}"
+        );
     }
 }
 
@@ -15796,7 +15920,11 @@ fn protein_expression_handoff_partial_requirements_leave_missing_fields_and_ques
         "reviewed_product",
     );
     let draft = report.neutral_service_draft.as_ref().unwrap();
-    assert!(draft.optimization_target.is_none());
+    let optimization = draft.optimization_target.as_ref().unwrap();
+    assert_eq!(optimization["yield_goal"]["metric"], "active_protein");
+    for topic in ["chassis", "localization", "folding", "toxicity_induction"] {
+        assert!(optimization.get(topic).is_none(), "{topic}");
+    }
     assert!(
         draft
             .vector_spec

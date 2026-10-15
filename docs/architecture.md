@@ -381,6 +381,10 @@ External-service integration rule:
   vendor example. V2 separates that draft from optional, explicit provider
   binding; missing permission, ambiguous product identity, provider exclusions
   or absent catalog capabilities withhold provider actions. V1 remains readable.
+  An unusable or unresolved product has no service draft. Drafts retain observed
+  CDS evidence and unresolved protein-to-DNA decisions; reviewed requirements
+  are requests, not designed constructs or predicted expression. Quote suggestions
+  additionally require canonical local preflight eligibility and quote support.
 - Provider-specific adapters (for example GeneArt) translate those contracts to
   official APIs or dashboard handoff packets; GUI/CLI/MCP/ClawBio must not
   hard-code vendor-specific biology or commerce behavior.

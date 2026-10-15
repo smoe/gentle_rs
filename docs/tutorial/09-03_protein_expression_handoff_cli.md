@@ -55,7 +55,8 @@ Expected outcome:
 
 This is the safest first response when no product sequence has been loaded.
 GENtle can still explain the choices, but it refuses to pretend that the
-product is already defined. The neutral draft records `unresolved_product`;
+product is already defined. `neutral_service_draft` is null until a usable,
+unambiguous product is present;
 `provider_binding.status` is `not_selected`, `provider_projection` is null and
 `service_handoff_candidates[]` is empty. Neither text nor structured actions
 offer provider preflight or quote work. Legacy v1 JSON remains readable, but
@@ -126,15 +127,20 @@ The record does not yet rerank chassis/vector candidates.
 Read the draft as a request, not an expression prediction:
 
 - `source_target` identifies the exact DNA `seq_id` or protein `protein_seq_id`,
-  its name, molecule type, bp/aa length and current readiness.
-- `optimization_target` holds supplied chassis, localization, folding/PTM/
-  cofactor/chaperone and toxicity/induction requirements.
+  its name, molecule type, bp/aa length, current readiness and observed
+  `cds_assessment`. These are project references, not inline sequence letters.
+  Protein-only targets explicitly mark coding DNA as `unresolved` and reverse
+  translation as `not_performed`; selecting a provider does not manufacture DNA.
+- `optimization_target` holds the reviewed yield goal, chassis, localization,
+  folding/PTM/cofactor/chaperone and toxicity/induction requirements.
 - `vector_spec` holds reviewed tag policy and any annotation-only tag evidence;
   it does not invent a vector or decide that an annotated tag must be retained.
 - `delivery_options` holds yield goal and supplied scale, purification, purity,
   endotoxin, buffer, QC and delivery-format requirements.
 - `request_metadata` carries the human-review boundary, supplied requirements
-  ID/reviewer/date, unresolved question IDs and product readiness.
+  ID/reviewer/date, service intent, unresolved question IDs, product readiness
+  and nonclaims. A requested yield is not a prediction of expression, folding
+  or synthesis success.
 
 ## Step 4: Interpret Chassis And Route Candidates
 
@@ -197,6 +203,11 @@ choose a final host/vector/tag, or submit anything to a provider.
 
 ## Step 6: Choose A Provider Explicitly, If Outsourcing Is Allowed
 
+When the product is usable and outsourcing is permitted but no provider is
+selected, `select_protein_expression_provider` suggests `services providers list`.
+Review that catalog, then choose `--provider PROVIDER_ID` explicitly. This is
+discovery, not approval of every provider or a request to run a quote.
+
 First prepare your own reviewed `reviewed-expression.json`; this is a learner
 input, not a bundled file. Only if outsourcing is actually approved, set
 `outsourcing.allowed` to `true` and record approved provider IDs (for example
@@ -230,9 +241,16 @@ or multiple-CDS product identity, unusable product readiness, or an unsupported
 provider/capability all suppress provider rows and commands. Partial biological
 requirements may still permit a **draft** projection and local preflight, but
 their question IDs remain visible. They suppress quote suggestions.
+An empty `approved_providers` list chooses nobody and grants no blanket external
+consent: outsourcing must still be allowed and a supported provider explicitly
+selected for local review. It is never submission or purchase permission.
 
 After checking the exact product and resolving all questions, a CDS handoff can
-offer `prepare_provider_protein_expression_quote_after_review`. Protein-only
+offer `prepare_provider_protein_expression_quote_after_review`, but only if
+the canonical local preflight also reports `eligible = true` and
+`quote_handoff_available = true`. A provider catalog may support expression
+without offering this quote route, or may require source facts not yet supplied;
+complete biological answers do not override either restriction. Protein-only
 targets retain reverse-translation/provider-target review rather than a quote
 shortcut. Nothing runs just because an action is listed. The draft route never
 writes files, changes project state, contacts a provider or submits an order.

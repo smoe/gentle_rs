@@ -34621,20 +34621,22 @@ fn protein_expression_service_handoff_candidates(
 
 fn protein_expression_service_quote_shell_line(
     service: &ProteinExpressionServiceHandoffCandidate,
-) -> String {
-    if service.status == "product_draft_review_required"
-        && let Ok(request_json) = serde_json::to_string(&service.draft_request_preview)
-    {
-        return format!("services project-quote {}", quote_shell_arg(&request_json));
+) -> Result<Option<String>, String> {
+    if service.status != "product_draft_review_required" {
+        return Ok(None);
     }
-    String::new()
+    let request_json = serde_json::to_string(&service.draft_request_preview)
+        .map_err(|error| format!("Could not serialize provider quote preview: {error}"))?;
+    let preflight = service_readiness::external_service_project_preflight(&request_json)?;
+    Ok((preflight.eligible && preflight.quote_handoff_available)
+        .then(|| format!("services project-quote {}", quote_shell_arg(&request_json))))
 }
 
 fn protein_expression_suggested_next_actions(
     product_definition: &ProteinExpressionProductDefinition,
     service_handoff: Option<&ProteinExpressionServiceHandoffCandidate>,
     missing_questions: &[PlanningCloningMissingQuestion],
-) -> Vec<PlanningCloningSuggestedNextAction> {
+) -> Result<Vec<PlanningCloningSuggestedNextAction>, String> {
     let mut actions = vec![];
     if !missing_questions.is_empty() {
         actions.push(PlanningCloningSuggestedNextAction {
@@ -34664,11 +34666,12 @@ fn protein_expression_suggested_next_actions(
             });
             if let Some(service) = service_handoff
                 && missing_questions.is_empty()
+                && let Some(shell_line) = protein_expression_service_quote_shell_line(service)?
             {
                 actions.push(PlanningCloningSuggestedNextAction {
                     action_id: "prepare_provider_protein_expression_quote_after_review".to_string(),
                     label: format!("Prepare {} protein-expression quote packet after review", service.provider),
-                    shell_line: protein_expression_service_quote_shell_line(service),
+                    shell_line,
                     rationale: "After product and outsourcing constraints are reviewed, prepare the provider-neutral quote packet without submitting it.".to_string(),
                 });
             }
@@ -34710,7 +34713,7 @@ fn protein_expression_suggested_next_actions(
         _ => {}
     }
 
-    actions
+    Ok(actions)
 }
 
 fn build_protein_expression_handoff_text(report: &ProteinExpressionHandoffReport) -> String {
@@ -34769,7 +34772,7 @@ fn build_protein_expression_handoff_text(report: &ProteinExpressionHandoffReport
         if report.neutral_service_draft.is_some() {
             "present (human review only)"
         } else {
-            "not present (legacy report)"
+            "not present (product unresolved or legacy report)"
         }
     ));
     lines.push(format!(
@@ -34778,6 +34781,13 @@ fn build_protein_expression_handoff_text(report: &ProteinExpressionHandoffReport
     ));
     if let Some(detail) = &report.provider_binding.detail {
         lines.push(detail.clone());
+    }
+    lines.push("Review/handoff only: no provider contact, submission, ordering, construct design or yield prediction.".to_string());
+    for action in &report.suggested_next_actions {
+        if action.action_id == "select_protein_expression_provider" {
+            lines.push(format!("{}: {}", action.label, action.shell_line));
+            lines.push(action.rationale.clone());
+        }
     }
     if !report.cds_assessment.context_source.is_empty() {
         lines.push(format!(
@@ -34933,6 +34943,7 @@ fn execute_planning_protein_expression_handoff(
     let neutral_service_draft = protein_expression_neutral_service_draft(
         &product_definition,
         resolved_sequence,
+        &sequence_analysis.cds_assessment,
         requirements.as_ref(),
         &sequence_analysis.tag_assessment,
         &missing_questions,
@@ -34943,15 +34954,30 @@ fn execute_planning_protein_expression_handoff(
         resolved_sequence,
         &sequence_analysis.cds_assessment,
         requirements.as_ref(),
-        &neutral_service_draft,
+        neutral_service_draft.as_ref(),
     );
     let service_handoff_candidates =
         protein_expression_service_handoff_candidates(provider_projection.as_ref())?;
-    let suggested_next_actions = protein_expression_suggested_next_actions(
+    let mut suggested_next_actions = protein_expression_suggested_next_actions(
         &product_definition,
         service_handoff_candidates.first(),
         &missing_questions,
-    );
+    )?;
+    if neutral_service_draft.is_some()
+        && provider.is_none()
+        && requirements
+            .as_ref()
+            .and_then(|requirements| requirements.outsourcing.as_ref())
+            .and_then(|outsourcing| outsourcing.allowed)
+            == Some(true)
+    {
+        suggested_next_actions.push(PlanningCloningSuggestedNextAction {
+            action_id: "select_protein_expression_provider".to_string(),
+            label: "Review the catalog and select a provider explicitly".to_string(),
+            shell_line: "services providers list".to_string(),
+            rationale: "After review, rerun planning protein-expression-handoff with --provider PROVIDER_ID and the same product and requirements. Listing providers does not approve any provider or execute a preflight or quote.".to_string(),
+        });
+    }
 
     let status = if !sequence_analysis.product_readiness.status.is_empty() {
         sequence_analysis.product_readiness.status.as_str()
@@ -34975,7 +35001,7 @@ fn execute_planning_protein_expression_handoff(
         vector_route_candidates,
         missing_questions,
         service_handoff_candidates,
-        neutral_service_draft: Some(neutral_service_draft),
+        neutral_service_draft,
         provider_projection,
         provider_binding,
         warnings,

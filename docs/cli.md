@@ -7702,12 +7702,15 @@ Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'pl
     `provider_binding`, and readiness-driven `suggested_next_actions[]`.
     The draft uses `gentle.external_service_delivery_route_request.v1`, with
     exact project `seq_id` or `protein_seq_id`, bp/aa length and readiness.
-    Missing products are marked unresolved; no bundled example replaces them.
+    Missing, unusable or ambiguous products have no draft; no bundled example
+    replaces them. Draft source context includes CDS evidence and explicitly
+    unresolved coding DNA for protein-only targets.
   - `--requirements` accepts inline JSON, a JSON path, or `@FILE` using schema
     `gentle.protein_expression_requirements.v1`. Reviewed topic records resolve
     only their matching missing questions; partial requirements remain partial.
     Supplied topics populate neutral optimization, tag-policy and delivery
-    fields; metadata retains review provenance and unanswered question IDs.
+    fields (including yield in the optimization target); metadata retains
+    service intent, review provenance, nonclaims and unanswered question IDs.
     Missing fields stay absent; supplied false values and reviewed empty lists
     remain intact. Annotated tags are evidence, not a manufactured vector.
   - Without `--provider`, `provider_binding.status = not_selected`,
@@ -7718,6 +7721,10 @@ Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'pl
     catalog supports `protein_expression`; a non-empty `approved_providers`
     must include the selection. Otherwise binding is `withheld`, with typed
     reasons, and no provider actions. In-house actions remain available.
+    A usable neutral draft with outsourcing permission suggests reviewing
+    `services providers list` before explicitly selecting a provider; no default
+    provider is chosen. Quote suggestions additionally require an eligible,
+    quote-capable canonical local preflight, not merely complete answers.
   - If `--seq-id` is supplied, the route now performs read-only product-context
     analysis: annotated CDS features are summarized first, whole-sequence CDS
     sanity is used only as an explicit fallback, and the report records

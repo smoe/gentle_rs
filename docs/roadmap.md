@@ -163,8 +163,8 @@ optional provider projection. Supplied reviewed requirements and annotation
 evidence populate the draft; missing facts remain unanswered, never vendor
 example defaults. Provider binding requires explicit selection, permitted
 outsourcing, an unambiguous product and catalog capability/allowlist checks.
-V1 JSON remains readable. Semantic Rust and native acceptance remain external;
-local static checks do not establish service eligibility or wet-lab yield.
+No usable product means no draft; quote suggestions also require local preflight.
+V1 stays readable; external Rust checks and static checks do not prove wet-lab yield.
 Keep text, JSON, CLI and agent consumers on the same report and action rows.
 Do not add submission, ordering or automatic biological optimization.
 

@@ -41,6 +41,10 @@ fn protein_expression_handoff_cli_is_read_only_with_explicit_provider_and_catalo
             "missing_permission",
             "partial",
             "unsupported_capability",
+            "quote_unavailable",
+            "blocked_preflight",
+            "unknown_provider",
+            "invalid_product",
         ] {
             let temp = tempfile::Builder::new()
                 .prefix("expression repo's ")
@@ -49,6 +53,8 @@ fn protein_expression_handoff_cli_is_read_only_with_explicit_provider_and_catalo
             let root = temp.path();
             let mut sequence = DNAsequence::from_sequence(if case == "protein" {
                 "MHHHHHHA"
+            } else if case == "invalid_product" {
+                "ACGNNNT"
             } else {
                 "ATGCACCACCACCACCACCACGCTTAA"
             })
@@ -78,6 +84,9 @@ fn protein_expression_handoff_cli_is_read_only_with_explicit_provider_and_catalo
             if case == "partial" {
                 requirements = json!({"schema":"gentle.protein_expression_requirements.v1", "yield_goal":{"metric":"active_protein"}, "outsourcing":{"allowed":true}});
             }
+            if case == "unknown_provider" {
+                requirements["outsourcing"]["approved_providers"] = json!([]);
+            }
             let requirements_path = root.join("reviewed requirements.json");
             fs::write(
                 &requirements_path,
@@ -86,19 +95,48 @@ fn protein_expression_handoff_cli_is_read_only_with_explicit_provider_and_catalo
                     .replace('\n', newline),
             )
             .unwrap();
-            for directory in ["home", "config", "system", "runtime", "tmp"] {
+            for directory in [
+                "home", "config", "cache", "data", "system", "runtime", "tmp",
+            ] {
                 fs::create_dir(root.join(directory)).unwrap();
             }
-            if case == "unsupported_capability" {
+            if matches!(
+                case,
+                "unsupported_capability" | "quote_unavailable" | "blocked_preflight"
+            ) {
                 // An overlay replaces the provider, not just its display name.
                 let mut catalog: Value =
                     serde_json::from_str(include_str!("../assets/external_service_providers.json"))
                         .unwrap();
-                let mut provider = catalog["providers"][0].clone();
-                provider["capabilities"]
-                    .as_array_mut()
+                let mut provider = catalog["providers"]
+                    .as_array()
                     .unwrap()
-                    .retain(|capability| capability["service_kind"] != "protein_expression");
+                    .iter()
+                    .find(|provider| provider["provider"] == "geneart")
+                    .unwrap()
+                    .clone();
+                if case == "unsupported_capability" {
+                    provider["capabilities"]
+                        .as_array_mut()
+                        .unwrap()
+                        .retain(|capability| capability["service_kind"] != "protein_expression");
+                } else if case == "quote_unavailable" {
+                    let capability = provider["capabilities"]
+                        .as_array_mut()
+                        .unwrap()
+                        .iter_mut()
+                        .find(|capability| capability["service_kind"] == "protein_expression")
+                        .unwrap();
+                    capability["quote_handoff_supported"] = json!(false);
+                } else {
+                    let rule = provider["validation_rules"]
+                        .as_array_mut()
+                        .unwrap()
+                        .iter_mut()
+                        .find(|rule| rule["service_kind"] == "protein_expression")
+                        .unwrap();
+                    rule["required_source_fields"] = json!(["synthetic_missing_source_field"]);
+                }
                 catalog["providers"] = json!([provider]);
                 let directory = root.join(".gentle/catalogs");
                 fs::create_dir_all(&directory).unwrap();
@@ -123,22 +161,43 @@ fn protein_expression_handoff_cli_is_read_only_with_explicit_provider_and_catalo
                 "--requirements".to_string(),
                 format!("@{}", requirements_path.display()),
                 "--format".to_string(),
-                "json".to_string(),
+                if matches!(case, "selected" | "quote_unavailable" | "blocked_preflight") {
+                    "text"
+                } else {
+                    "json"
+                }
+                .to_string(),
             ];
             if case != "neutral" {
-                tokens.extend(["--provider".to_string(), "geneart".to_string()]);
+                tokens.extend([
+                    "--provider".to_string(),
+                    if case == "unknown_provider" {
+                        "synthetic_unknown_expression_provider"
+                    } else {
+                        "geneart"
+                    }
+                    .to_string(),
+                ]);
             }
             let before = snapshot(root);
             let mut outputs = Vec::new();
-            for shell in [false, true] {
+            let make_command = || {
                 let mut command = Command::new(env!("CARGO_BIN_EXE_gentle_cli"));
+                for (key, _) in std::env::vars_os() {
+                    if key.to_str().is_some_and(|key| key.starts_with("GENTLE_")) {
+                        command.env_remove(key);
+                    }
+                }
                 command
                     .env_remove("RUST_MIN_STACK")
                     .env("GENTLE_ASSET_ROOT", env!("CARGO_MANIFEST_DIR"))
                     .env("GENTLE_SYSTEM_CONFIG_ROOT", root.join("system"))
                     .env("GENTLE_PROJECT_ROOT", root)
                     .env("HOME", root.join("home"))
+                    .env("USERPROFILE", root.join("home"))
                     .env("XDG_CONFIG_HOME", root.join("config"))
+                    .env("XDG_CACHE_HOME", root.join("cache"))
+                    .env("XDG_DATA_HOME", root.join("data"))
                     .env("XDG_RUNTIME_DIR", root.join("runtime"))
                     .env("TMPDIR", root.join("tmp"))
                     .env("TMP", root.join("tmp"))
@@ -146,6 +205,10 @@ fn protein_expression_handoff_cli_is_read_only_with_explicit_provider_and_catalo
                     .current_dir(root)
                     .arg("--state")
                     .arg(&state_path);
+                command
+            };
+            for shell in [false, true] {
+                let mut command = make_command();
                 if shell {
                     command.arg("shell").arg(
                         tokens
@@ -172,7 +235,8 @@ fn protein_expression_handoff_cli_is_read_only_with_explicit_provider_and_catalo
                 );
                 let expected = match case {
                     "neutral" => "not_selected",
-                    "selected" | "protein" | "partial" => "projected",
+                    "selected" | "protein" | "partial" | "quote_unavailable"
+                    | "blocked_preflight" => "projected",
                     _ => "withheld",
                 };
                 assert_eq!(report["provider_binding"]["status"], expected, "{case}");
@@ -192,7 +256,7 @@ fn protein_expression_handoff_cli_is_read_only_with_explicit_provider_and_catalo
                             .all(|action| !action["shell_line"]
                                 .as_str()
                                 .unwrap()
-                                .starts_with("services "))
+                                .starts_with("services project-"))
                     );
                 } else {
                     let identity = if case == "protein" {
@@ -204,10 +268,90 @@ fn protein_expression_handoff_cli_is_read_only_with_explicit_provider_and_catalo
                         report["provider_projection"]["source_target"][identity],
                         "synthetic_product"
                     );
+                    let request = serde_json::to_string(&report["provider_projection"]).unwrap();
+                    let mut preflight = make_command();
+                    if shell {
+                        preflight.arg("shell").arg(format!(
+                            "services project-preflight {}",
+                            quote_shell_arg(&request)
+                        ));
+                    } else {
+                        preflight.args(["services", "project-preflight", &request]);
+                    }
+                    let result = preflight.output().unwrap();
+                    assert!(
+                        result.status.success(),
+                        "{case}: {}",
+                        String::from_utf8_lossy(&result.stderr)
+                    );
+                    let readiness: Value = serde_json::from_slice(&result.stdout).unwrap();
+                    assert_eq!(readiness["eligible"], case != "blocked_preflight");
+                    assert_eq!(
+                        readiness["quote_handoff_available"],
+                        !matches!(case, "quote_unavailable" | "blocked_preflight")
+                    );
+                    assert_eq!(readiness["direct_submission_available"], false);
+                    assert_eq!(
+                        snapshot(root),
+                        before,
+                        "{case}: local preflight must not write"
+                    );
                 }
                 if case == "partial" {
-                    assert!(report["neutral_service_draft"]["optimization_target"].is_null());
+                    assert_eq!(
+                        report["neutral_service_draft"]["optimization_target"]["yield_goal"]["metric"],
+                        "active_protein"
+                    );
+                    assert!(
+                        report["neutral_service_draft"]["optimization_target"]
+                            .get("chassis")
+                            .is_none()
+                    );
                     assert!(!report["missing_questions"].as_array().unwrap().is_empty());
+                }
+                if matches!(case, "missing_product" | "invalid_product") {
+                    assert!(report["neutral_service_draft"].is_null());
+                }
+                if case == "protein" {
+                    assert_eq!(
+                        report["neutral_service_draft"]["source_target"]["coding_dna_status"],
+                        "unresolved"
+                    );
+                    assert_eq!(
+                        report["neutral_service_draft"]["source_target"]["reverse_translation_status"],
+                        "not_performed"
+                    );
+                }
+                if matches!(
+                    case,
+                    "quote_unavailable" | "blocked_preflight" | "partial" | "protein"
+                ) {
+                    assert!(
+                        report["suggested_next_actions"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .all(|action| !action["shell_line"]
+                                .as_str()
+                                .unwrap()
+                                .starts_with("services project-quote "))
+                    );
+                }
+                if let Some(text) = report["text_report"].as_str() {
+                    for action in report["suggested_next_actions"].as_array().unwrap() {
+                        let line = action["shell_line"].as_str().unwrap();
+                        if line.starts_with("services project-") {
+                            assert!(
+                                text.contains(line),
+                                "{case}: text omitted an available action"
+                            );
+                        }
+                    }
+                    assert_eq!(
+                        text.contains("services project-quote "),
+                        case == "selected",
+                        "{case}: text must not invent quote readiness"
+                    );
                 }
                 // Time of report generation is the sole expected adapter difference.
                 report
