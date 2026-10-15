@@ -11,6 +11,21 @@
   dispatch, local Rust build/check/test, package build or publication is run;
   hosted verification and release acceptance remain pending.
 
+## 2026-10-15 - Add Exhaustive IUPAC Matcher Coverage
+
+- Add literal, independently declared base/complement memberships for all 15
+  IUPAC symbols in Rust and Python tests. Cover 180 symbol/base/strand cases
+  and 10,800 two-symbol/repeated-dinucleotide/strand cases with fixed flanks.
+- Rust compares complete production-matcher hit records, including overlapping
+  windows, half-open coordinates, reverse-complement order and palindrome
+  deduplication. Python checks the existing audit oracle's presence predicate
+  without deriving expectations from Rust masks or the oracle's mapping.
+- All 14 offline Python oracle/harness tests pass; whitespace checks pass.
+  Rust tests, Cargo check and Rust formatting remain unrun locally under the
+  owner restriction. Record those checks for Glen/CI without requesting another
+  interim acceptance freeze. No production matcher/solver, scientific fixture,
+  tutorial, generated artifact, dependency or approval semantics change.
+
 ## 2026-10-15 - Prepare Remaining VKORC1 Acceptance Without Dispatch
 
 - Reconcile Claude's dated request with existing records: Windows synthetic
