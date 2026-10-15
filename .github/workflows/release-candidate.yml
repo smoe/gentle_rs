@@ -37,7 +37,7 @@ permissions:
 
 jobs:
   resolve:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       tag: ${{ steps.identity.outputs.tag }}
       revision: ${{ steps.identity.outputs.revision }}

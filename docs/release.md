@@ -233,27 +233,28 @@ The [official runner migration notice](https://github.com/actions/runner-images/
 announces the rolling `ubuntu-latest` transition to Ubuntu 26 from
 2026-10-19 through 2026-11-19. It corroborates the earlier
 [historical handoff](https://github.com/smoe/gentle_rs/blob/7c52082c24fca85817d70956146623eef6f24607/docs/internal_12_candidate_preparation.md#ubuntu-runner-decision),
-not a current runner-image verdict or Ubuntu 26 qualification. The source
-inventory reviewed on 2026-10-13 is:
+not a current runner-image verdict or Ubuntu 26 qualification. On 2026-10-15,
+the owner requested integration of `pin-ubuntu-2404` (`5e12565a`) into main,
+pinning the ten formerly rolling hosts below. No push or dispatch ran here.
 
-| Workflow | `ubuntu-latest` jobs |
+| Workflow | Jobs pinned to `ubuntu-24.04` |
 | --- | --- |
 | [ci.yml](../.github/workflows/ci.yml) | `release-policy`, `select-platform`, `headless-linux`, `linux`, `ci-summary` |
 | [container.yml](../.github/workflows/container.yml) | `container-build-check`, `container-publish` |
 | [release.yml](../.github/workflows/release.yml) | `collect-packages`, `publish-release` |
 | [release-candidate.yml](../.github/workflows/release-candidate.yml) | `resolve` |
 
-The Linux `build-installers` matrix already pins **`ubuntu-24.04`**, as do CI's
-`vkorc1-gui-audit` and `gui-scroll-audit` jobs; they are not rolling consumers.
-Rolling hosts can change system dependencies, graphics/fonts, Docker/BuildKit
-and runtime libraries even at the same source and lockfile. The owner decision
-is now to integrate the separate `pin-ubuntu-2404` branch before October 19
-and before selecting `.13`'s candidate; Ubuntu 26 qualification remains separate.
-The [preparation handoff](internal_13_preparation_handoff.md#owner-procedure)
-requires pushing the merged tip before dispatch. This checkout leaves all ten
-workflow hosts unchanged. Preparing the pin is not merge, push, dispatch,
-package acceptance or publication authority;
-approved build-only work still follows
+The Linux `build-installers` matrix and CI's `vkorc1-gui-audit` and
+`gui-scroll-audit` jobs already pinned **`ubuntu-24.04`** and are unchanged.
+No `ubuntu-latest` hosts remain in these workflows. Release-specific image
+updates can still change dependencies, graphics/fonts, Docker/BuildKit and
+runtime libraries at the same source/lockfile; the label is not an exact image
+digest. Ubuntu 26 qualification remains separate. The
+[preparation handoff](internal_13_preparation_handoff.md#owner-procedure)
+still requires an owner-approved push of the integrated tip before candidate
+selection or dispatch. Build/test steps, permissions, triggers and dependencies
+are unchanged; the opt1 fallback remains unmerged. Integration is not hosted
+CI, package acceptance or publication. Approved build-only work follows
 [candidate verification](#build-only-candidate-verification).
 
 ## Candidate Approval

@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+## 2026-10-15 - Integrate The Ubuntu 24.04 Runner Pin
+
+- Merge `pin-ubuntu-2404` (`5e12565a`) at the owner's request, pinning ten
+  formerly rolling jobs across CI, release, container and candidate workflows.
+  Build steps, permissions, triggers, dependencies and package profiles stay
+  unchanged; this is not an exact runner-image pin or Ubuntu 26 qualification.
+- Reconcile release instructions and candidate status with the integration.
+  Keep `package-opt1-fallback` separate and opt2 active. No push, workflow
+  dispatch, local Rust build/check/test, package build or publication is run;
+  hosted verification and release acceptance remain pending.
+
 ## 2026-10-15 - Prepare Remaining VKORC1 Acceptance Without Dispatch
 
 - Reconcile Claude's dated request with existing records: Windows synthetic

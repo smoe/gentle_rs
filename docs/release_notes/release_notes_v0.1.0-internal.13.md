@@ -80,9 +80,11 @@ and [preparation handoff](../internal_13_preparation_handoff.md) retain details.
   fixture/worker stacks, and the owner's completed dependency/lock refresh at
   their actual evidence boundaries. Focused Linux dbSNP verification passes
   12/12 at `6b7109db`; it is not a Windows or full-suite pass at this candidate.
-- Local `pin-ubuntu-2404` and `package-opt1-fallback` branches are prepared but
-  **unmerged and unpushed**. Main keeps opt2. Pin before candidate selection;
-  select opt1 only after hosted opt2 failure and repeat gates at the new source.
+- The owner-requested `pin-ubuntu-2404` integration pins ten formerly rolling
+  jobs to Ubuntu 24.04; its hosted verification remains pending. The separate
+  `package-opt1-fallback` remains **unmerged** and main keeps opt2. Publish the
+  integrated source before candidate selection; select opt1 only after hosted
+  opt2 failure and repeat gates at the new source. No push ran during integration.
 
 ## Development Baseline
 

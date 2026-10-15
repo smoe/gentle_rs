@@ -22,11 +22,12 @@ families, review-time test locations and all template/geometry limitations.
 No inspected family is orphaned; the well-floor/cap defect is corrected, not
 claimed independently accepted. Temporary reference PNGs remain outside Git.
 
-### Separate, Unmerged Branches
+### Runner Pin And Separate Fallback
 
 - `pin-ubuntu-2404`: `5e12565acad7486c50b12a2d8c37313d74a8aa2f`, rebased onto
-  local main `420d913e`. Pins the ten rolling jobs; no Ubuntu 26 qualification.
-  Owner must integrate/push before **2026-10-19** and before candidate selection.
+  local main `420d913e`, integrated into main at the owner's request on
+  2026-10-15. Pins the ten rolling jobs; no Ubuntu 26 qualification. No push
+  performed here; owner-approved push is required before candidate selection.
 - `package-opt1-fallback`: `5f9f9e4a5b9aaafc3f51e74fd20c9a8ca991938d`, based on
   this task's `a5cfe580`. One optional commit switches native/container selection,
   receipts, paths, archive suffixes and policy tests together; both Cargo recipes
@@ -90,9 +91,9 @@ were executed here. Integrate this task into main without losing unrelated
 work, complete the external/generated follow-up above, then:
 
 1. Push approved main. Preserve the push run's Windows and sampled Unix results.
-2. Merge `pin-ubuntu-2404` on main before October 19, reconcile any main changes,
-   **and push the merged tip again**. Selecting a candidate before this second
-   push would use unpinned workflow definitions and the wrong source.
+2. Confirm the integrated `5e12565a` pin is present in pushed main before
+   October 19 and before candidate selection. An older published source still
+   uses unpinned workflow definitions; the local merge is not hosted evidence.
 3. Record the clean full candidate SHA, matching pushed main, lock hash and
    profile. Keep main at that tip while dispatching; if it moves, reselect and
    rerun rather than combining different workflow/source results.
@@ -104,8 +105,7 @@ work, complete the external/generated follow-up above, then:
 
 ```bash
 # In the clean, integrated main checkout; owner authorization required.
-git push origin main
-git merge pin-ubuntu-2404
+git merge-base --is-ancestor 5e12565acad7486c50b12a2d8c37313d74a8aa2f HEAD
 git push origin main
 CANDIDATE_SHA=$(git rev-parse HEAD)
 test "$CANDIDATE_SHA" = "$(git rev-parse origin/main)"

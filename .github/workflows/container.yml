@@ -41,7 +41,7 @@ jobs:
   container-build-check:
     name: Container Build Check
     needs: candidate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     env:
@@ -175,7 +175,7 @@ jobs:
 
   container-publish:
     name: Publish GHCR Image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [candidate, container-build-check]
     if: >-
       needs.candidate.outputs.publish == 'true' &&
