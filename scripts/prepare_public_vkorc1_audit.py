@@ -15,6 +15,7 @@ from html import escape
 import json
 from pathlib import Path
 import os
+import re
 import shutil
 import subprocess
 import urllib.request
@@ -59,6 +60,92 @@ def assert_reviewed_fragment(report: dict, operation: dict) -> None:
     assert len(recommended) == 1 and recommended[0]["recommended"] is True
     body = operation["ExtractRegion"]
     assert (body["from"], body["to"]) == (recommended[0]["start_0based"], recommended[0]["end_0based_exclusive"]), "tutorial fragment differs from current engine recommendation"
+
+
+def fetched_marker_evidence(project: dict) -> dict:
+    """Retain the actual saved marker before validating its engine attestations."""
+    try:
+        features = project["sequences"][CONTEXT]["seq"]["features"]
+    except (KeyError, TypeError) as error:
+        raise ValueError("Fetched project has no rs9923231 marker features") from error
+    markers = []
+    for index, feature in enumerate(features):
+        qualifiers = {}
+        for key, value in feature.get("qualifiers", []):
+            qualifiers.setdefault(key, []).append(value)
+        if feature.get("kind") == "variation" and (
+                "rs9923231" in qualifiers.get("label", []) or
+                "dbSNP:rs9923231" in qualifiers.get("db_xref", [])):
+            markers.append((index, qualifiers))
+    if len(markers) != 1:
+        raise ValueError("Expected exactly one fetched rs9923231 variation marker")
+    index, qualifiers = markers[0]
+    raw_alternates = qualifiers.get("vcf_alt", [])
+    alternates = raw_alternates[0].split(",") if (
+        len(raw_alternates) == 1 and isinstance(raw_alternates[0], str)) else []
+    return {"status": "observed_unverified", "sequence_id": CONTEXT,
+            "feature_index": index, "qualifiers": qualifiers,
+            "vcf_alt_raw": raw_alternates, "vcf_alt": alternates,
+            "dbsnp_spdi": qualifiers.get("dbsnp_spdi", [])}
+
+
+def assert_verified_marker(evidence: dict) -> None:
+    """Check this audit's genomic-forward locus, not another allele resolver."""
+    def single(key):
+        values = evidence["qualifiers"].get(key, [])
+        if len(values) != 1 or not isinstance(values[0], str):
+            raise ValueError(f"Fetched marker requires exactly one string {key}")
+        return values[0]
+
+    expected = {"label": "rs9923231", "gentle_generated": "dbsnp_variant_marker",
+                "dbsnp_reference_check": "match", "dbsnp_assembly_check": "match",
+                "dbsnp_assembly_fallback": "false", "dbsnp_variant_class": "snv",
+                "vcf_ref": "C", "genomic_position_1based": "31096368"}
+    for key, value in expected.items():
+        if single(key) != value:
+            raise ValueError(f"Fetched marker {key} must be {value!r}")
+    assembly, chromosome = single("assembly_name"), single("chromosome")
+    if not re.fullmatch(r"GRCh38(?:\.p[0-9]+)?", assembly):
+        raise ValueError("Fetched marker assembly_name must name the GRCh38 family")
+    if not re.fullmatch(r"NC_000016\.[1-9][0-9]*", chromosome):
+        raise ValueError("Fetched marker chromosome must be a versioned NC_000016 accession")
+    raw_alternates = single("vcf_alt")
+    alternates = raw_alternates.split(",")
+    if ("T" not in alternates or any(base not in ("A", "G", "T") for base in alternates)
+            or len(set(alternates)) != len(alternates)):
+        raise ValueError("Fetched marker vcf_alt must contain unique reference-distinct SNV bases including T")
+    if not evidence["dbsnp_spdi"]:
+        raise ValueError("Fetched marker requires raw dbsnp_spdi entries")
+    for raw in evidence["dbsnp_spdi"]:
+        try:
+            spdi = json.loads(raw)
+        except (TypeError, ValueError) as error:
+            raise ValueError("Fetched marker dbsnp_spdi is not JSON") from error
+        if not isinstance(spdi, dict) or (spdi.get("seq_id"), spdi.get("position")) != (chromosome, 31096367):
+            raise ValueError("Fetched marker dbsnp_spdi disagrees with the selected genomic placement")
+    evidence.update(expected)
+    evidence.update(status="verified", assembly_name=assembly, chromosome=chromosome,
+                    genomic_position_1based=31096368)
+
+
+def bare_alternate_probe(state: Path, alternates: list[str], invoke, error_path: Path) -> dict:
+    """A unique alternate has no ambiguity refusal to test; never invent one."""
+    if not alternates:
+        raise ValueError("Bare alternate probe requires observed alternates")
+    result = {"observed_alternates": list(alternates), "executed": False}
+    if len(alternates) == 1:
+        return dict(result, status="not_applicable_single_alternate")
+    before = sha(state)
+    invoke()  # Caller requires a nonzero CLI exit; no engine execution here.
+    after = sha(state)
+    if after != before:
+        raise ValueError("Bare alternate refusal modified the persisted project")
+    error = error_path.read_text(encoding="utf-8")
+    match = re.search(r"multiple alternate alleles '([^']+)'; choose one explicitly", error)
+    if not match or set(match[1].split(",")) != set(alternates):
+        raise ValueError("Bare alternate error does not identify the observed multiallelic refusal")
+    return dict(result, status="refused", executed=True, state_sha256_before=before,
+                state_sha256_after=after, error_message=error)
 
 
 def pair_content(project: dict) -> dict:
@@ -181,6 +268,10 @@ def audit(repo: Path, binary: Path, root: Path) -> int:
         op(seed, prepare, "prepare-complete-reference")
         op(seed, fetch, "fetch-retained-public-slice")
         initial = json.loads(seed.read_bytes())
+        receipt["fetched_marker"] = fetched_marker_evidence(initial)
+        assert_verified_marker(receipt["fetched_marker"])
+        observed_alternates = receipt["fetched_marker"]["vcf_alt"]
+        receipt["bare_alternate_probes"] = {}
         initial_bases = initial["sequences"][CONTEXT]["seq"]["seq"]
         routes = {route: root / f"{route}.project.gentle.json" for route in ("direct", "shared")}
         for state in routes.values():
@@ -204,7 +295,8 @@ def audit(repo: Path, binary: Path, root: Path) -> int:
             shared_report = json.loads((root / ("shared-" + name)).read_bytes())
             assert report_content(direct_report) == report_content(shared_report), f"{name} parity changed"
         context = json.loads((root / "direct-context.json").read_bytes())
-        assert context["genomic_ref"] == "C" and context["genomic_alt"] == "A,G,T"
+        assert context["genomic_ref"] == receipt["fetched_marker"]["vcf_ref"]
+        assert context["genomic_alt"] == ",".join(observed_alternates)
         assert context["variant_start_0based"] == 3000 and context["promoter_overlap"] is True
         assert context["genome_anchor"]["anchor_verified"] is True
         assert context["chosen_transcript_id"] == "ENST00000498155"
@@ -219,16 +311,16 @@ def audit(repo: Path, binary: Path, root: Path) -> int:
             refused = copy.deepcopy(alternate)
             refused["MaterializeVariantAllele"].pop("alternate_allele")
             refused["MaterializeVariantAllele"]["output_id"] = "ambiguous_alternate"
-            before = sha(state)
-            if route == "direct":
-                op(state, refused, route + "-ambiguous-refusal", False)
-            else:
-                line = commands["reviewed_t_insert"].replace(" --alternate-base T", "")
-                line = line.replace(PREFIX + "alternate", "ambiguous_alternate")
-                cli(state, ["shell", line], route + "-ambiguous-refusal", False)
-            assert sha(state) == before, "refusal modified persisted project"
-            error = (root / (route + "-ambiguous-refusal.stderr.txt")).read_text()
-            assert "multiple alternate alleles 'A,G,T'; choose one explicitly" in error
+            def probe():
+                if route == "direct":
+                    op(state, refused, route + "-ambiguous-refusal", False)
+                else:
+                    line = commands["reviewed_t_insert"].replace(" --alternate-base T", "")
+                    line = line.replace(PREFIX + "alternate", "ambiguous_alternate")
+                    cli(state, ["shell", line], route + "-ambiguous-refusal", False)
+            receipt["bare_alternate_probes"][route] = bare_alternate_probe(
+                state, observed_alternates, probe,
+                root / (route + "-ambiguous-refusal.stderr.txt"))
             if route == "shared":
                 shutil.copy2(state, root / "public-starter.project.gentle.json")
                 cli(state, ["shell", commands["reference_insert"]], route + "-reference")

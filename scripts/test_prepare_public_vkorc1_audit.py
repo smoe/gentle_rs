@@ -1,6 +1,7 @@
 """Hand-crafted inline tests for the public audit helper's narrow assertions."""
 
 from contextlib import redirect_stdout
+import copy
 import hashlib
 import io
 import json
@@ -20,6 +21,133 @@ from scripts.prepare_public_vkorc1_audit import (
 )
 
 
+def synthetic_marker_project(alternates=("G", "T")):
+    """Hand-crafted saved-project fragment; never loaded as real VKORC1 data."""
+    qualifiers = [
+        ["label", "rs9923231"], ["db_xref", "dbSNP:rs9923231"],
+        ["gentle_generated", "dbsnp_variant_marker"],
+        ["dbsnp_reference_check", "match"], ["dbsnp_assembly_check", "match"],
+        ["dbsnp_assembly_fallback", "false"], ["dbsnp_variant_class", "snv"],
+        ["vcf_ref", "C"], ["vcf_alt", ",".join(alternates)],
+        ["assembly_name", "GRCh38.p14"], ["chromosome", "NC_000016.10"],
+        ["genomic_position_1based", "31096368"],
+    ]
+    qualifiers.extend(["dbsnp_spdi", json.dumps({
+        "seq_id": "NC_000016.10", "position": 31096367,
+        "deleted_sequence": "C", "inserted_sequence": allele,
+    })] for allele in ("C", *alternates))
+    return {"sequences": {public_audit.CONTEXT: {"seq": {
+        "seq": list(b"aaCaa"), "features": [{"kind": "variation", "qualifiers": qualifiers}],
+    }}}}
+
+
+class PublicMarkerEvidenceTests(unittest.TestCase):
+    def checked_marker(self, project):
+        evidence = public_audit.fetched_marker_evidence(project)
+        public_audit.assert_verified_marker(evidence)
+        return evidence
+
+    def test_complete_marker_retains_actual_alternates_and_raw_spdi_without_mutation(self):
+        for alternates in (("G", "T"), ("T",), ("A", "T")):
+            project = synthetic_marker_project(alternates)
+            before = copy.deepcopy(project)
+            evidence = self.checked_marker(project)
+            self.assertEqual(project, before)
+            self.assertEqual(evidence["status"], "verified")
+            self.assertEqual(evidence["vcf_alt"], list(alternates))
+            self.assertEqual(evidence["vcf_alt_raw"], [",".join(alternates)])
+            self.assertEqual(evidence["dbsnp_spdi"], [
+                value for key, value in project["sequences"][public_audit.CONTEXT]["seq"]["features"][0]["qualifiers"]
+                if key == "dbsnp_spdi"])
+            self.assertEqual(evidence["chromosome"], "NC_000016.10")
+            self.assertEqual(evidence["genomic_position_1based"], 31096368)
+
+    def test_missing_duplicate_and_unsafe_qualifiers_fail_closed(self):
+        bad_values = {
+            "dbsnp_reference_check": ("mismatch", "unavailable"),
+            "dbsnp_assembly_check": ("mismatch", "unavailable"),
+            "dbsnp_assembly_fallback": ("true", None),
+            "dbsnp_variant_class": ("non_snv",), "vcf_ref": ("G", "CC"),
+            "vcf_alt": ("A,G", "T,N", "T,T", "C,T", "", "TT"),
+            "assembly_name": ("GRCh37.p13", "notGRCh38", "GRCh380"),
+            "chromosome": ("NC_000015.10", "16", "NC_000016.unknown"),
+            "genomic_position_1based": ("31096367", "31096369", "invalid"),
+        }
+        for key, values in bad_values.items():
+            for value in (*values, "__missing__", "__duplicate__"):
+                with self.subTest(key=key, value=value):
+                    project = synthetic_marker_project()
+                    qualifiers = project["sequences"][public_audit.CONTEXT]["seq"]["features"][0]["qualifiers"]
+                    if value == "__missing__":
+                        qualifiers[:] = [row for row in qualifiers if row[0] != key]
+                    elif value == "__duplicate__":
+                        qualifiers.append(next(row.copy() for row in qualifiers if row[0] == key))
+                    else:
+                        next(row for row in qualifiers if row[0] == key)[1] = value
+                    with self.assertRaisesRegex(ValueError, key):
+                        self.checked_marker(project)
+
+    def test_missing_or_ambiguous_marker_and_missing_spdi_are_not_passes(self):
+        project = synthetic_marker_project()
+        features = project["sequences"][public_audit.CONTEXT]["seq"]["features"]
+        features.append(copy.deepcopy(features[0]))
+        for invalid in ({"sequences": {}}, project):
+            with self.assertRaises(ValueError):
+                self.checked_marker(invalid)
+        project = synthetic_marker_project()
+        qualifiers = project["sequences"][public_audit.CONTEXT]["seq"]["features"][0]["qualifiers"]
+        qualifiers[:] = [row for row in qualifiers if row[0] != "dbsnp_spdi"]
+        with self.assertRaisesRegex(ValueError, "dbsnp_spdi"):
+            self.checked_marker(project)
+
+    def test_spdi_is_retained_but_invalid_or_incompatible_entries_fail(self):
+        for value in ("not json", "[]", json.dumps({"seq_id": "NC_000015.10", "position": 31096367}),
+                      json.dumps({"seq_id": "NC_000016.10", "position": 31096368})):
+            project = synthetic_marker_project()
+            qualifiers = project["sequences"][public_audit.CONTEXT]["seq"]["features"][0]["qualifiers"]
+            next(row for row in qualifiers if row[0] == "dbsnp_spdi")[1] = value
+            evidence = public_audit.fetched_marker_evidence(project)
+            self.assertIn(value, evidence["dbsnp_spdi"])
+            with self.assertRaisesRegex(ValueError, "dbsnp_spdi"):
+                public_audit.assert_verified_marker(evidence)
+            self.assertEqual(evidence["status"], "observed_unverified")
+
+    def test_bare_alternate_refusal_is_conditional_and_preserves_persisted_state(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            state, error = root / "state.json", root / "refusal.stderr.txt"
+            state.write_bytes(b"hand-crafted unchanged project bytes\n")
+            calls = []
+            def refuse():
+                calls.append("called")
+                error.write_text("multiple alternate alleles 'G,T'; choose one explicitly\n")
+            single = public_audit.bare_alternate_probe(state, ["T"], refuse, error)
+            self.assertEqual(calls, [])
+            self.assertFalse(error.exists())
+            self.assertEqual(single["status"], "not_applicable_single_alternate")
+            self.assertFalse(single["executed"])
+            multiple = public_audit.bare_alternate_probe(state, ["G", "T"], refuse, error)
+            self.assertEqual(calls, ["called"])
+            self.assertEqual(multiple["status"], "refused")
+            self.assertEqual(multiple["state_sha256_before"], multiple["state_sha256_after"])
+            self.assertEqual(multiple["observed_alternates"], ["G", "T"])
+
+    def test_unrelated_refusal_changed_state_or_wrong_alternates_do_not_pass(self):
+        for case in ("changed_state", "wrong_error", "wrong_alternates"):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                state, error = root / "state.json", root / "stderr.txt"
+                state.write_bytes(b"synthetic original project\n")
+                def invoke():
+                    if case == "changed_state":
+                        state.write_bytes(b"unexpected mutation\n")
+                    error.write_text("unrelated error" if case == "wrong_error" else
+                                     "multiple alternate alleles 'A,T'; choose one explicitly" if case == "wrong_alternates" else
+                                     "multiple alternate alleles 'G,T'; choose one explicitly")
+                with self.assertRaises(ValueError):
+                    public_audit.bare_alternate_probe(state, ["G", "T"], invoke, error)
+
+
 class PublicAuditIdentityTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="public audit identity ")
@@ -35,7 +163,7 @@ class PublicAuditIdentityTests(unittest.TestCase):
             "assets/genomes.json": b"{}\n",
             public_audit.SOURCE: b"{}\n",
             public_audit.WORKFLOW: json.dumps({"workflow": {"ops": [
-                {"PrepareGenome": {}}, {"FetchGenomeSequence": {}},
+                {"PrepareGenome": {}}, {"FetchDbSnpRegion": {}},
             ]}}).encode(),
         }
         for name, payload in files.items():
@@ -57,7 +185,7 @@ class PublicAuditIdentityTests(unittest.TestCase):
         self.evidence = self.root / "evidence"
         self.version = f"GENtle synthetic\nSource revision synthetic+git.{self.revision}\n"
 
-    def version_probe(self, version=None, mutate=False):
+    def version_probe(self, version=None, mutate=False, fetched_project=None):
         original_run = subprocess.run
 
         def run(command, **kwargs):
@@ -68,6 +196,16 @@ class PublicAuditIdentityTests(unittest.TestCase):
                 return subprocess.CompletedProcess(
                     command, 0, stdout=output if kwargs.get("text") else output.encode(),
                 )
+            if fetched_project is not None and command[0] == str(self.binary):
+                if command[3] != "op":
+                    raise AssertionError("Unexpected synthetic CLI command before marker validation")
+                operation = json.loads(command[4])
+                if "FetchDbSnpRegion" in operation:
+                    Path(command[2]).write_text(json.dumps(fetched_project), encoding="utf-8")
+                elif "PrepareGenome" not in operation:
+                    raise AssertionError("Unexpected synthetic operation before marker validation")
+                kwargs["stdout"].write(b"{}\n")
+                return subprocess.CompletedProcess(command, 0)
             return original_run(command, **kwargs)
 
         return patch.object(subprocess, "run", side_effect=run)
@@ -130,6 +268,42 @@ class PublicAuditIdentityTests(unittest.TestCase):
         self.assertEqual(receipt["tutorial_source_sha256"], hashlib.sha256((self.repo / public_audit.SOURCE).read_bytes()).hexdigest())
         self.assertFalse(receipt["native_gui_accepted"])
         self.assertFalse(receipt["human_scientific_approval"])
+
+    def test_saved_marker_is_validated_before_context_or_allele_work(self):
+        project = synthetic_marker_project()
+        qualifiers = project["sequences"][public_audit.CONTEXT]["seq"]["features"][0]["qualifiers"]
+        next(row for row in qualifiers if row[0] == "dbsnp_reference_check")[1] = "mismatch"
+        # This stand-in is neither a network response nor an executable GENtle.
+        response = io.BytesIO(b'{"refsnp_id":"9923231"}')
+        response.url, response.status, response.headers = REFSNP_URL, 200, {"Date": "synthetic"}
+        with self.version_probe(fetched_project=project), redirect_stdout(io.StringIO()), \
+                patch.object(public_audit.urllib.request, "urlopen", return_value=response):
+            self.assertEqual(public_audit.audit(self.repo, self.binary, self.evidence), 1)
+        receipt = json.loads((self.evidence / "receipt.json").read_bytes())
+        self.assertEqual(receipt["status"], "fail")
+        self.assertIn("dbsnp_reference_check", receipt["message"])
+        self.assertEqual(receipt["fetched_marker"]["status"], "observed_unverified")
+        self.assertEqual(receipt["fetched_marker"]["vcf_alt"], ["G", "T"])
+        self.assertEqual(receipt["fetched_marker"]["qualifiers"]["dbsnp_reference_check"], ["mismatch"])
+        self.assertEqual([command["label"] for command in receipt["commands"]],
+                         ["prepare-complete-reference", "fetch-retained-public-slice"])
+        self.assertIn("source.project.gentle.json", receipt["artifacts"])
+        self.assertFalse((self.evidence / "direct.project.gentle.json").exists())
+
+    def test_valid_two_alternate_marker_reaches_next_phase_without_three_allele_assumption(self):
+        project = synthetic_marker_project()
+        response = io.BytesIO(b'{"refsnp_id":"9923231"}')
+        response.url, response.status, response.headers = REFSNP_URL, 200, {"Date": "synthetic"}
+        with self.version_probe(fetched_project=project), redirect_stdout(io.StringIO()), \
+                patch.object(public_audit.urllib.request, "urlopen", return_value=response):
+            self.assertEqual(public_audit.audit(self.repo, self.binary, self.evidence), 1)
+        receipt = json.loads((self.evidence / "receipt.json").read_bytes())
+        self.assertEqual(receipt["fetched_marker"]["status"], "verified")
+        self.assertEqual(receipt["fetched_marker"]["vcf_alt"], ["G", "T"])
+        self.assertTrue(receipt["fetched_marker"]["dbsnp_spdi"])
+        self.assertIn("agent_parity", receipt["message"], "synthetic source intentionally stops the next phase")
+        self.assertTrue((self.evidence / "direct.project.gentle.json").exists())
+        self.assertTrue((self.evidence / "shared.project.gentle.json").exists())
 
     def test_completion_refuses_changed_source_or_binary(self):
         identity = checkout_identity(self.repo, self.revision)

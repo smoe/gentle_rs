@@ -36,6 +36,26 @@
   no failures. Authored Rust/CLI tests, tutorial generation and locked Cargo
   check remain unrun locally; no runtime, native or provider acceptance follows.
 
+## 2026-10-15 - Assert Public VKORC1 Marker Evidence Before Replay
+
+- Make the public 08.04 audit inspect the saved rs9923231 marker before
+  context or allele work: require matching reference/assembly checks, no
+  fallback, SNV class, genomic-forward C with a reported T, GRCh38 and
+  NC_000016.* at one-based 31096368. Retain every actual alternate and raw
+  SPDI qualifier in the receipt, including an unverified snapshot on failure.
+- Remove the fixed A,G,T assumption. Multiallelic bare-alternate probes must
+  fail with the matching reason and unchanged persisted state; a unique
+  alternate is explicitly not applicable, without claiming a refusal or
+  creating an extra output. Direct/shared context still matches actual data.
+- Add hand-crafted qualifier/placement and conditional-refusal tests plus
+  mocked ingress tests through the actual audit driver. All 30 public/native
+  helper tests pass offline; neither GENtle nor a network endpoint is invoked.
+  No engine, allele policy, GUI, workflow or historical evidence is changed.
+- Windows portability correction and terminal de9df8af default-stack failure
+  were already retained; do not re-fetch, repeat or relabel those results.
+  Owner-dispatch preparation and the remaining physical-host checks follow
+  separately. No Rust build/test/check, push, dispatch, model or release run.
+
 ## 2026-10-15 - Defer Coordinated Acceptance To Release Preparation
 
 - Apply the owner's development cadence: stop interim SHA freezes, recurring
