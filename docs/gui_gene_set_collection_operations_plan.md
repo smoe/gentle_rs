@@ -317,6 +317,18 @@ Tests:
 
 ### Phase 6: containers, arrangements, and storage projections
 
+Minimal `.13` slice, 2026-10-15: `CreateGeneSetArrangement` uses the existing
+generic `op` shell/CLI/MCP/workflow boundary, complete-resolution and exclusive
+singleton bindings plus `confirm_physical_placement=true`. Order 1..24 source
+tubes by the persisted resolution, then reuse serial arrangement creation and
+its default `small_tube_4x6` rack. No pooling/cloning/stock inference occurs.
+`gene_set_arrangement:<arrangement_id>` metadata binds the exact resolution
+digest, ordered source snapshots/report, arrangement and rack; outer apply owns
+one undo boundary. Existing labels/isometric/OpenSCAD use the storage template.
+[Tutorial 03.10](tutorial/03-10_gene_set_storage_projection.md) has an executable
+starter; generated registration and runtime replay remain with Glen/CI. GUI
+creation controls, freezer-box templates, inventory and ranking are deferred.
+
 - Allow explicit conversion of logical collections into:
   - a physical pool/container (landed for complete gene-set resolutions via
     explicit singleton source bindings and derived aliquots)

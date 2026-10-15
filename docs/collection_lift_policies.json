@@ -3,6 +3,16 @@
   "policies": [
     {
       "source": "engine_operation",
+      "name": "CreateGeneSetArrangement",
+      "subjects": [
+        {"subject_kind":"gene_set_resolution","context_requirement":"context_agnostic","support":{"status":"supported","mode":"arrange","result_payload_kind":"gentle.gene_set_storage_projection.v1"}},
+        {"subject_kind":"project_sequences","support":{"status":"rejected","reason":"unsupported_subject_kind","detail":"Use explicit CreateArrangementSerial for project containers without gene-set provenance."}},
+        {"subject_kind":"container","support":{"status":"rejected","reason":"unsupported_subject_kind","detail":"Storage projection consumes a complete logical gene-set resolution plus explicit singleton bindings."}},
+        {"subject_kind":"arrangement","support":{"status":"rejected","reason":"unsupported_subject_kind","detail":"Use existing rack placement for a stored arrangement."}}
+      ]
+    },
+    {
+      "source": "engine_operation",
       "name": "CreateGeneSetPool",
       "subjects": [
         {

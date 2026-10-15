@@ -5,6 +5,13 @@ authorization. The owner confirmed `.12` at `5e6201a6`; its
 [published ledger](release_notes/release_notes_v0.1.0-internal.12.md#publication-evidence)
 remains separate from this development-version validation.
 
+**2026-10-15 scope update:** the owner selected early-feature/3D review and
+minimal expression/storage tutorial paths for `.13`. Use the current
+[preparation handoff](internal_13_preparation_handoff.md) and release-note ledger
+for ordered candidate gates; the version commands below remain required, not
+the complete release scope. Performance/live-agent/historical-science work is
+non-blocking carry-forward, not a newly selected release aim.
+
 **2026-10-13 follow-up:** the owner subsequently requests a bounded opt-level
 increase. Future packaging now selects `package-opt2`; `package-opt1` remains
 unchanged. The rollover-only checks below still validate version/tutorial
@@ -91,7 +98,10 @@ It does not validate the subsequent local baseline
 `024ed6c0520d38c4221517219d44c792084de4e5` or the rollover commits. No new run was
 dispatched. Retain the [dated update and prior failure history](glen_audit_followups_20261008.md#repaired-source-audit-authorization-at-8b6f8186).
 
-## Candidate Aims: Not Selected
+## Historical Candidate Suggestions: Not The Selected Aim
+
+The October 13 suggestions below are retained for context. The October 15 owner
+selection above supersedes them; they are not current blocking alternatives.
 
 1. **Measured startup and interactive responsiveness.** The
    [native baseline](glen_native_gui_audit_20260927.md) exposed the
@@ -125,8 +135,8 @@ authorized by any of these choices.
 
 ## Owner Decisions
 
-- Select a `.13` aim, or leave it undecided; the candidates above are proposals.
-- Decide whether to merge the separate local `pin-ubuntu-2404` commit before
+- The owner selected A/B/C; complete the current preparation/readiness checks.
+- Integrate and push the separate local `pin-ubuntu-2404` commit before
   the [October 19 rolling migration](release.md#ubuntu-runner-decision). It
   pins only the ten currently rolling hosts and updates that inventory; it
   does not qualify Ubuntu 26 or dispatch CI.

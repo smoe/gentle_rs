@@ -247,10 +247,12 @@ The Linux `build-installers` matrix already pins **`ubuntu-24.04`**, as do CI's
 `vkorc1-gui-audit` and `gui-scroll-audit` jobs; they are not rolling consumers.
 Rolling hosts can change system dependencies, graphics/fonts, Docker/BuildKit
 and runtime libraries even at the same source and lockfile. The owner decision
-remains open: whether to merge the separate local `pin-ubuntu-2404` proposal
-before October 19 and qualify Ubuntu 26 separately for `.13`. The release
-rollover branch leaves all ten workflow hosts unchanged. Preparing the pin is
-not merge, push, dispatch, package acceptance or publication authority;
+is now to integrate the separate `pin-ubuntu-2404` branch before October 19
+and before selecting `.13`'s candidate; Ubuntu 26 qualification remains separate.
+The [preparation handoff](internal_13_preparation_handoff.md#owner-procedure)
+requires pushing the merged tip before dispatch. This checkout leaves all ten
+workflow hosts unchanged. Preparing the pin is not merge, push, dispatch,
+package acceptance or publication authority;
 approved build-only work still follows
 [candidate verification](#build-only-candidate-verification).
 
@@ -294,6 +296,14 @@ review from exact-package acceptance. Keep all tags/assets unchanged; native,
 scientific, live-agent and performance approval is not inferred from publication.
 
 ## Build-Only Candidate Verification
+
+For `.13`, follow the ordered [preparation procedure](internal_13_preparation_handoff.md#owner-procedure):
+integrate/push preparation, merge/push the Ubuntu pin, select one candidate,
+full Linux plus Windows/macOS CI, then build-only installers/container and
+Glen's readiness review. Main stays opt2; a separately prepared opt1 fallback
+requires an owner-selected new candidate after hosted failure, not mixed-profile
+receipts or reuse of `.12` acceptance. The [.13 ledger](release_notes/release_notes_v0.1.0-internal.13.md#internal13-acceptance-ledger)
+starts Pending. These are future approved actions, not executed commands here.
 
 After the tutorial fix and candidate changes are merged, record one clean
 candidate commit and use it for both workflows. Run these commands only after

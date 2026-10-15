@@ -23,6 +23,86 @@
   push, workflow dispatch, package or release execution. Historical receipts,
   scientific fixtures, engine/GUI/workflow code and Cargo.lock are unchanged.
 
+## 2026-10-15 - Prepare Internal.13 Candidate Handoff
+
+- Draft user-facing A/B/C and post-.12 release notes with explicit verification
+  boundaries and an entirely Pending candidate ledger. Reconcile the old
+  undecided-aim handoff; keep native latency/import/profile/live-agent and
+  historical scientific work non-blocking without manufacturing acceptance.
+- Document owner integration/push, separate Ubuntu-pin merge/push before
+  selection, full Linux plus Windows/macOS CI, opt2 build-only packages/container,
+  conditional opt1 new-candidate fallback, Glen's checks, owner publication and
+  post-confirmation .14 rollover. Pin/fallback stay separate and unmerged.
+- Record new tutorial catalog/generated replay and fresh storage SCAD as
+  external prerequisites. No local Rust, Claude, push, dispatch, provider/model
+  action, historical evidence rewrite or publication is performed.
+- Verification: 80 offline tutorial/checkout tests complete, 77 pass and three
+  optional real-binary cases skip; active opt2 and separate fallback policy
+  suites each pass 103/103, pin-branch candidate checks 46/46. Whitespace passes;
+  session-close reports four OK, two intentional scope/worktree warnings and
+  no failures. Roadmap remains 400 lines; Rust/runtime acceptance stays pending.
+
+## 2026-10-15 - Add Explicit Minimal Gene-Set Storage Projection
+
+- Add `CreateGeneSetArrangement` on existing reviewed `op` routes. Require a
+  complete persisted set, exact distinct exclusive-singleton tube bindings,
+  fresh arrangement ID and explicit physical-placement intent; cap this first
+  slice at 24 members. Reuse serial/default-rack helpers without nested apply,
+  pooling, cloning, annotation inference or a second layout implementation.
+- Persist content-bound set/member/source snapshots and arrangement/rack links
+  under versioned projection metadata. Return the standard arrange report;
+  preserve source tubes and one outer undo boundary. Author refusal, order,
+  save/reopen, undo/redo and shared-shell parity regressions.
+- Add tutorial 03.10 with a synthetic executable starter and existing storage
+  labels/isometric/OpenSCAD exports. Keep it manual/hybrid; generated menu
+  registration, fresh runtime exports and Rust/parity acceptance remain Glen/CI.
+  No new GUI mapper, curated MCP tool, freezer template or inventory claim.
+
+## 2026-10-15 - Make The Minimal Expression Tutorial Self-Contained
+
+- Add a documented hand-crafted coding-product starter and a separately labelled
+  local-review-only requirements fixture. Tutorial 09.03 now has a literal
+  offline neutral/in-house/explicit-provider path without private project IDs.
+- Author deterministic MCP parity through the existing model-free
+  `agent_execute_plan` shell executor, checking scientific payload and unchanged
+  saved bytes/artifact count. Existing CLI/shared-shell cases remain unchanged.
+- Keep the chapter manual/hybrid: the project starter is an engine workflow,
+  but the report itself is a shared-shell contract, not a workflow operation.
+  Inspector/ranking remain deferred. Rust/runtime acceptance remains Glen/CI;
+  no provider, model, commercial action or local Rust execution is introduced.
+
+## 2026-10-15 - Review Early Feature And Rack Documentation
+
+- Inventory early cloning/analysis and physical-container features against
+  .2-.9 release notes, current routes, deterministic test locations and tutorial
+  coverage. Record the demonstrated rack-floor defect separately from unrun
+  native/runtime checks; no family is claimed fully accepted or orphaned.
+- Correct omitted cell-culture template documentation and distinguish digital
+  geometry from qualified fabrication. Retain current no-fillet/no-embossing
+  limitations rather than expanding the model. Add concrete native rack/label
+  review to the final-release handoff. No local Rust or historical evidence edits.
+
+## 2026-10-15 - Open Rack Wells Above Their Floors
+
+- Early-feature source/render review found bottom-origin OpenSCAD cutters
+  leaving solid caps above all three rack/plate templates. Start cuts at the
+  declared floor and extend past the top; synchronize the three example SCAD
+  sources without changing profile, placement, dimensions or SVG projections.
+- Add an all-template synthetic operation regression. Rust execution remains
+  with Glen/CI; OpenSCAD render checks are separate from engine/fabrication
+  acceptance. No manufacturing, sterility or fit qualification is implied.
+
+## 2026-10-15 - Select The Internal.13 Release Aim
+
+- Record the owner's early-feature/3D review, minimal provider-neutral expression
+  draft and explicit collection-to-storage tutorial scope. Inspector remains
+  stretch-only and ranking is deferred. Keep latency/import/profile/live-agent
+  and historical scientific checks open but non-blocking for this release.
+- Require one selected source's three-platform CI, build-only package/container
+  smokes, Glen's rollover/tutorial/readiness verdict and owner approval. Prepare
+  opt1 as a separate fallback, not an implicit profile switch or acceptance.
+- Documentation only; no local Rust, Claude, push, dispatch or publication.
+
 ## 2026-10-15 - Verify The dbSNP Worker Repair On Linux
 
 - Verify Glen's copied 34-entry evidence inventory and raw runner/exit records

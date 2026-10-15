@@ -4750,6 +4750,73 @@ mod tests {
     }
 
     #[test]
+    fn protein_expression_mcp_plan_executor_matches_shared_shell_without_writes() {
+        // Hand-crafted synthetic product/requirements, documented in plans/README.md.
+        let temp = tempdir().unwrap();
+        let state_path = temp.path().join("expression review.json");
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "expression_review_product".into(),
+            crate::dna_sequence::DNAsequence::from_sequence("ATGCACCACCACCACCACCACGCTTAA").unwrap(),
+        );
+        state.save_to_path(&state_path.to_string_lossy()).unwrap();
+        let before = fs::read(&state_path).unwrap();
+        for provider in [None, Some("geneart")] {
+            let mut tokens = vec![
+                "planning".to_string(),
+                "protein-expression-handoff".into(),
+                "--seq-id".into(),
+                "expression_review_product".into(),
+                "--requirements".into(),
+                include_str!(
+                    "../docs/examples/plans/protein_expression_requirements_review_only.json"
+                )
+                .into(),
+                "--format".into(),
+                "json".into(),
+            ];
+            if let Some(provider) = provider {
+                tokens.extend(["--provider".into(), provider.into()]);
+            }
+            let mut engine = GentleEngine::from_state(
+                ProjectState::load_from_path(&state_path.to_string_lossy()).unwrap(),
+            );
+            let expected =
+                execute_shell_command(&mut engine, &parse_shell_tokens(&tokens).unwrap()).unwrap();
+            assert!(!expected.state_changed);
+            let command = tokens
+                .iter()
+                .map(|token| crate::engine_shell::quote_shell_arg(token))
+                .collect::<Vec<_>>()
+                .join(" ");
+            let response = run_tool(
+                DEFAULT_MCP_STATE_PATH,
+                "agent_execute_plan",
+                json!({
+                    "state_path": state_path, "candidate_id":"expression-review",
+                    "plan":{"schema":"gentle.agent_plan_result.v1","assistant_message":"Synthetic local review only","questions":[],"candidates":[{
+                        "candidate_id":"expression-review","title":"Expression review","rationale":"Read-only synthetic draft","kind":"shell","mutating":false,"requires_confirmation":false,"execution_mode":"auto","shell_command":command
+                    }]}
+                }),
+            );
+            assert_eq!(response["result"]["isError"], false, "{response}");
+            let execution = &response["result"]["structuredContent"];
+            assert_eq!(execution["state_changed"], false);
+            let mut actual = execution["output"].clone();
+            let mut expected = expected.output;
+            for report in [&mut actual, &mut expected] {
+                report
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("generated_at_unix_ms");
+            }
+            assert_eq!(actual, expected);
+            assert_eq!(fs::read(&state_path).unwrap(), before);
+            assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
+        }
+    }
+
+    #[test]
     fn mcp_exon_skip_plan_and_materialize_use_shared_shell_contract() {
         thread::Builder::new()
             .name("mcp-exon-skip".to_string())

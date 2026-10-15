@@ -106,6 +106,19 @@ use deterministic collision suppression at readable sizes, with all suppressed
 facts retained in shared summaries, hovers and structured records. No renderer
 performs a UniProt fetch or claims transcript validity/global absence.
 
+## Explicit Gene-Set Storage Projection
+
+A logical gene set does not imply physical samples or placement permission.
+`CreateGeneSetArrangement` requires a complete persisted resolution, one
+explicit exclusive-singleton binding per distinct member and a separate true
+physical-placement flag. The existing outer apply owns one serial arrangement,
+its default rack and content-bound source/projection metadata; do not nest
+operations or create a pool/aliquot implicitly. The minimal slice is 1..24 tubes.
+Source-set/member order and sequence snapshots remain inspectable; later rack
+edits do not rewrite the creation evidence. Digital placement is neither a
+verified freezer inventory nor qualified fabrication. Generic reviewed `op`
+routes supply parity; no GUI-only mapping or new automatic planner is implied.
+
 ## Synthetic Sequence-Design Boundaries
 
 Status: active for experimental synonymous motif removal and explicit GC constraints;

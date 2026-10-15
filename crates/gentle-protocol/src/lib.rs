@@ -5715,6 +5715,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "BuildGeneSetPromoterCohort",
     "InspectRegulatoryPartnerScreen",
     "CreateGeneSetPool",
+    "CreateGeneSetArrangement",
     "ImportIsoformPanel",
     "ImportUniprotSwissProt",
     "FetchUniprotSwissProt",

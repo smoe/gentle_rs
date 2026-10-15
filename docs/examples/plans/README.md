@@ -1,5 +1,24 @@
 # Gibson Planning Examples
 
+The companion `../workflows/gene_set_storage_starter.json` is hand-crafted:
+two literal eight-base source records and unannotated logical GENEA/GENEB
+labels. Tutorial 03.10 consumes it; no accession, genome annotation or physical
+stock is represented. Recreate it from the workflow literals. Its normalized
+stable IDs are `symbol:genea`/`symbol:geneb`, not the display labels.
+
+## Synthetic Protein-Expression Review Inputs
+
+`protein_expression_requirements_in_house.json` and
+`protein_expression_requirements_review_only.json` are hand-crafted tutorial
+09.03 inputs, not measured requirements or provider approval. Recreate them
+from their literal fields. The latter permits a **local** explicit GeneArt
+review projection for the synthetic starter only; it grants no network,
+commercial or real-project consent. All eight reviewed topics stay explicit.
+`../workflows/protein_expression_review_starter.json` creates the literal
+27-bp `ATG` + six His codons + Ala + stop product. No accession or natural gene
+is represented. Consumed by tutorial 09.03 and its source/MCP parity tests;
+the existing CLI integration matrix independently constructs the same shape.
+
 This folder contains canonical example payloads for
 `gentle.gibson_assembly_plan.v1`.
 

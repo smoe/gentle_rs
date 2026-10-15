@@ -1,0 +1,20 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "protein_expression_review_starter",
+  "title": "Synthetic protein-expression review starter",
+  "summary": "Creates one hand-crafted 27-bp coding product for tutorial 09.03; no biological accession, optimization, provider call or expression claim.",
+  "test_mode": "always",
+  "required_files": [],
+  "tags": ["offline", "synthetic", "protein-expression"],
+  "workflow": {
+    "run_id": "synthetic_expression_review",
+    "ops": [
+      {"CreateSequenceFromText": {
+        "sequence_text": "ATGCACCACCACCACCACCACGCTTAA",
+        "output_id": "expression_review_product",
+        "name": "Synthetic review-only MHHHHHHA product",
+        "circular": false
+      }}
+    ]
+  }
+}

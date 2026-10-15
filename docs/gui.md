@@ -4883,13 +4883,17 @@ Exports:
   family layered on top of the same rack snapshot:
   - `Storage PCR tube rack`
   - `Pipetting PCR tube rack`
+  - `Cell-culture plate` (use an explicit plate profile for the intended well format)
 - `Fabrication SVG...` exports a top-view planning/fabrication sketch for the
   currently shown rack using the selected physical template.
 - `Isometric SVG...` exports a presentation-grade pseudo-3D rack figure for
   the currently shown rack using that same physical template. This is the
   intended README/documentation-facing hero export for the current rack layer.
-- `OpenSCAD...` exports one parameterized 3D-printable OpenSCAD source file
-  for the currently shown rack using that same physical template.
+- `OpenSCAD...` exports one parameterized 3D model draft for the currently
+  shown rack using that same physical template. Wells open above the declared
+  bottom floor. Rendering is not fit, manufacturing or cell-culture validation;
+  corner-radius metadata does not currently round the cube, and occupancy text
+  belongs to the separate SVG/label outputs, not embossed model labels.
 - `Carrier labels SVG...` exports one carrier-matched front-strip plus
   module-label SVG sheet for the currently shown rack using that same physical
   template and the currently selected carrier-label preset.

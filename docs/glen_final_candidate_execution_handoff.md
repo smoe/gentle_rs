@@ -39,6 +39,24 @@ is a new regression, not erasure of those passes.
 
 ## Remaining Native And Human Checks
 
+### Internal.13 Early Features
+
+At the selected `.13` release source, use the [early-feature review](audits/early_feature_review_20261015.md)
+as an inventory, not native acceptance. Verify serial arrangement order, pool
+versus singleton/derived-aliquot identity, undo/save/reopen and explicit storage
+placement. In the Rack window exercise sample and block drag/drop, multi-select,
+blocked slots, profile/template changes and compact-window export access.
+Print a test label sheet at 100% scale and inspect coordinates/arrangement scope;
+retain the printer settings rather than inferring physical size from a screen.
+Freshly export all rack projections. Compare top/bottom floors, open wells,
+occupied SVG positions, carrier labels and simulation JSON on the same rack.
+Review all three SCAD templates in 3D; no label embossing or rounded corners is
+currently promised, and no fit/sterility/material claim follows. Run the new
+`rack_openscad_all_templates_` regression plus existing `rack_`, `arrangement`,
+`pool`, digest/ligation/Gibson, cartoon, dotplot and guide filters in CI.
+Record pass/fail/not-run and exact source/platform; local review ran no Rust.
+These are `.13` release-preparation checks, not a redispatch of old evidence.
+
 These four residual tutorial checks are the active consolidated request, not
 the historical command list below. Use only an explicitly named source and
 its same-SHA GUI binary on an approved native host, retaining input/binary

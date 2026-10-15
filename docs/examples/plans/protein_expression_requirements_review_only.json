@@ -1,0 +1,14 @@
+{
+  "schema": "gentle.protein_expression_requirements.v1",
+  "requirements_id": "synthetic-local-review-do-not-order",
+  "yield_goal": {"metric": "purified_active_protein", "target_amount": 10.0, "target_amount_unit": "mg"},
+  "chassis": {"acceptable_chassis": ["e_coli"], "provider_managed_allowed": true},
+  "localization": {"target": "cytosolic", "secretion_required": false},
+  "folding": {"required_ptms": [], "required_cofactors": [], "required_chaperones": [], "disulfide_bonding_required": false},
+  "toxicity_induction": {"toxicity_expected": false, "induction_policy": "inducible"},
+  "tag_policy": {"strategy": "cleavable_affinity", "preferred_tags": ["6xHis"], "position": "N-terminal", "cleavage_policy": "TEV cleavage", "retention_policy": "remove after purification", "preserve_annotated_tags": false},
+  "scale_purification": {"production_scale": "1 L culture", "purification_endpoint": "affinity capture", "target_purity_percent": 90.0, "delivery_buffer": "PBS", "qc_requirements": ["SDS-PAGE"], "delivery_format": "soluble protein"},
+  "outsourcing": {"allowed": true, "approved_providers": ["geneart"], "data_sharing_notes": "Synthetic local projection only; never provider contact or real-project consent."},
+  "reviewed_by": "synthetic-tutorial-reviewer",
+  "notes": ["Hand-crafted local review fixture, not a gene or authorized external service request. Do not order or reuse as real-product approval."]
+}

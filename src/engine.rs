@@ -3597,6 +3597,17 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         human_id: Option<String>,
     },
+    /// Explicitly places one bound source tube per resolved member into a serial
+    /// arrangement and its existing default small-tube rack. No pooling occurs.
+    CreateGeneSetArrangement {
+        resolution_id: String,
+        member_bindings: Vec<GeneSetPoolMemberBinding>,
+        arrangement_id: String,
+        #[serde(default)]
+        name: Option<String>,
+        #[serde(default)]
+        confirm_physical_placement: bool,
+    },
     CreateGeneSetPool {
         collection_subject: CollectionSubjectRef,
         #[serde(default)]

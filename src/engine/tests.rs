@@ -34962,6 +34962,56 @@ fn export_rack_fabrication_isometric_svg_and_openscad_include_template_markers()
     assert!(scad.contains("module gentle_rack()"));
     assert!(scad.contains("opening_diameter"));
     assert!(scad.contains("front_top_clearance = 5.000;"));
+    assert!(scad.contains(", floor_thickness]) cylinder(h=rack_height - floor_thickness + 0.10"));
+    assert!(!scad.contains(", -0.05]) cylinder"));
+}
+
+#[test]
+fn rack_openscad_all_templates_preserve_bottom_floor_and_open_top() {
+    // Synthetic one-tube layout; no physical fabrication or assay is implied.
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("floor_probe".into(), seq("ACGTACGT"));
+    let mut engine = GentleEngine::from_state(state);
+    let source = engine.state().container_state.seq_to_latest_container["floor_probe"].clone();
+    engine
+        .apply(Operation::CreateArrangementSerial {
+            container_ids: vec![source],
+            arrangement_id: Some("floor_probe".into()),
+            name: None,
+            ladders: None,
+        })
+        .unwrap();
+    let rack_id = engine.state().container_state.arrangements["floor_probe"]
+        .default_rack_id
+        .clone()
+        .unwrap();
+    let temp = tempdir().unwrap();
+    for template in [
+        RackPhysicalTemplateKind::StoragePcrTubeRack,
+        RackPhysicalTemplateKind::PipettingPcrTubeRack,
+        RackPhysicalTemplateKind::CellCulturePlate,
+    ] {
+        let path = temp.path().join(format!("{}.scad", template.as_str()));
+        engine
+            .apply(Operation::ExportRackOpenScad {
+                rack_id: rack_id.clone(),
+                path: path.display().to_string(),
+                template,
+            })
+            .unwrap();
+        let scad = fs::read_to_string(path).unwrap();
+        let cuts = scad
+            .lines()
+            .filter(|line| line.contains("cylinder("))
+            .collect::<Vec<_>>();
+        assert!(!cuts.is_empty());
+        assert!(cuts.iter().all(|line| {
+            line.contains(", floor_thickness]) cylinder(h=rack_height - floor_thickness + 0.10")
+        }));
+        assert!(!scad.contains(", -0.05]) cylinder"));
+    }
 }
 
 #[test]

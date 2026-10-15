@@ -1,5 +1,9 @@
 # Gibson Physical Rack Tutorial
 
+For logical gene sets with explicitly bound source tubes, see
+[tutorial 03.10](03-10_gene_set_storage_projection.md). That path is a storage
+projection, not Gibson assembly or physical pooling.
+
 > Type: `GUI walkthrough + CLI parity`
 > Status: `manual/hybrid`
 > Drift note: this page is hand-written, but it is intentionally tied to the
@@ -189,7 +193,10 @@ What each one is for:
 - `Carrier labels SVG`
   - front strip + module labels
 - `OpenSCAD`
-  - parameterized printable geometry for later refinement or printing
+  - parameterized geometry draft for later refinement, not a qualified print
+  - openings start above a bottom floor; confirm fit/material/tolerances before
+    fabrication. Corner-radius metadata does not currently add fillets, and
+    sample labels remain in the separate SVG outputs, not embossed in the model.
 
 For reading occupied positions, compare the retained top-down **hero** view
 below with the isometric export. A1-A5 carry the two ladders and three sample

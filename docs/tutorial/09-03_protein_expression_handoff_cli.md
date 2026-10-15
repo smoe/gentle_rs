@@ -91,15 +91,28 @@ enough for the biology.
 
 ## Step 3: Record Reviewed Requirements
 
+For a complete offline rehearsal, first create a fresh disposable project from
+this hand-crafted 27-bp synthetic product (M + six His + Ala + stop). Run from
+the repository root; use a new state filename, not a private project. This
+setup explicitly creates a sequence; the subsequent handoff is read-only.
+
+```bash
+cargo run --quiet --bin gentle_cli -- --state expression-review.gentle.json \
+  workflow @docs/examples/workflows/protein_expression_review_starter.json
+```
+
+The product ID is `expression_review_product`. It is not a natural gene,
+demonstrated expression construct or experimentally validated protein.
+
 Use `gentle.protein_expression_requirements.v1` to make reviewed answers
 portable instead of leaving them only in notes or chat. A complete synthetic
 in-house example is provided at
 `docs/examples/plans/protein_expression_requirements_in_house.json`.
 
 ```bash
-cargo run --quiet --bin gentle_cli -- --state path/to/project.gentle.json \
+cargo run --quiet --bin gentle_cli -- --state expression-review.gentle.json \
   planning protein-expression-handoff \
-  --seq-id target_cds_or_protein_product \
+  --seq-id expression_review_product \
   --requirements @docs/examples/plans/protein_expression_requirements_in_house.json \
   --format text
 ```
@@ -168,9 +181,9 @@ If the protein-coding product is already present in the GENtle project state,
 pass its sequence id:
 
 ```bash
-cargo run --quiet --bin gentle_cli -- --state path/to/project.gentle.json \
+cargo run --quiet --bin gentle_cli -- --state expression-review.gentle.json \
   planning protein-expression-handoff \
-  --seq-id target_cds_or_protein_product \
+  --seq-id expression_review_product \
   --objective '{"schema":"gentle.planning_objective.v1","biological_intent":"protein_expression_max_yield"}' \
   --format text
 ```
@@ -207,6 +220,21 @@ When the product is usable and outsourcing is permitted but no provider is
 selected, `select_protein_expression_provider` suggests `services providers list`.
 Review that catalog, then choose `--provider PROVIDER_ID` explicitly. This is
 discovery, not approval of every provider or a request to run a quote.
+
+To rehearse the positive path without real-product permission, use **only** the
+synthetic state from Step 3 and the separately labelled local-review fixture:
+
+```bash
+cargo run --quiet --bin gentle_cli -- --state expression-review.gentle.json \
+  planning protein-expression-handoff --seq-id expression_review_product \
+  --requirements @docs/examples/plans/protein_expression_requirements_review_only.json \
+  --provider geneart --format json
+```
+
+Compare with the in-house record: this report can contain a provider projection
+and local preflight action; neither command contacts GeneArt. Do not execute a
+quote/artifact action merely because it is suggested, and never apply these
+synthetic permissions to a real product.
 
 First prepare your own reviewed `reviewed-expression.json`; this is a learner
 input, not a bundled file. Only if outsourcing is actually approved, set
@@ -302,6 +330,18 @@ vector path should be considered. It should not replace the protein-expression
 handoff; it should follow it.
 
 ## ClawBio Use
+
+MCP clients can use the existing `agent_execute_plan` tool with a supplied,
+reviewed `kind: shell` candidate containing the same command. This deterministic
+executor does not call a model; there is no dedicated expression tool or GUI
+inspector yet. The direct CLI, shared shell and MCP executor parity regressions
+must run in Glen/CI before release acceptance.
+
+This chapter stays manual/hybrid: the generated project-chapter runner executes
+engine operations, while the planning handoff is a shared-shell report, not a
+workflow operation. The starter is an executable offline workflow; the full
+review tutorial is not falsely labelled a generated/checked chapter. Ranking,
+native inspector and wet-lab usefulness remain outside this minimal path.
 
 For ClawBio or another agent, the safe instruction is:
 

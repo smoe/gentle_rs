@@ -1,5 +1,26 @@
 # GENtle Engine Protocol (Draft v1)
 
+## Minimal Gene-Set Storage Projection
+
+`CreateGeneSetArrangement` is a mutating shared-engine operation reached through
+existing `op` JSON in GUI Shell, CLI, scripting, agents, workflows and MCP
+(`confirm=true`). It additionally requires `confirm_physical_placement=true`, a
+complete persisted `resolution_id`, explicit `member_bindings`
+(`stable_member_id`, `source_container_id`), fresh `arrangement_id` and optional
+name. Each of 1..24 distinct members binds a distinct exclusive singleton tube
+with one loaded sequence. No symbols, annotations or stock are inferred.
+
+Reuse the serial-arrangement helper/default rack rather than nested `apply`,
+preserve resolution order and create no DNA/aliquots/pool. The result carries
+standard `collection_operation` with `arrange` semantics. Persisted
+`gentle.gene_set_storage_projection.v1` metadata at
+`gene_set_arrangement:<arrangement_id>` binds the source-resolution SHA-256,
+ordered member/source/sequence snapshots and arrangement/rack IDs. Hashes bind
+content, not authenticated origin or physical stock. Later rack movement stays
+separate from that creation snapshot. Existing exports use the storage template;
+one outer apply owns journal/undo/redo. Refusals precede layout creation; GUI
+creation controls/freezer inventory remain deferred. See [tutorial 03.10](tutorial/03-10_gene_set_storage_projection.md).
+
 ## Primer Specificity Reference Binding
 
 Intended targets add optional `source_reference` and `reference_binding` records.
