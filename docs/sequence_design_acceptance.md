@@ -16,7 +16,8 @@ effective profile recipe, commands, binary hashes and inputs. Do not contact
 Glen from another thread, publish, dispatch CI or change private studies on the
 strength of this handoff. Rust execution remains with Glen/CI.
 
-The following closure table is deliberately still pending:
+The following criteria are evaluated by the [executed audit](#executed-audit-at-de9df8af)
+below. Their scoped pass is pinned to that source, not inherited by later main.
 
 | Gap | Executable evidence | Closure criterion |
 | --- | --- | --- |
@@ -27,6 +28,66 @@ The following closure table is deliberately still pending:
 | Cancellation/budget/proofs | Core and engine cancellation-after-feasibility and exhaustion tests | No applicable cancelled DNA; incomplete search proves neither minimum nor infeasibility |
 | Tutorial/adapters | Actual 06.07 CLI replay; shared-shell/direct-CLI/confirmed-MCP Rust tests | Same scientific payload and approval boundary, with explicit binary identity |
 | Native/usefulness/runtime | Independent native review and bounded measurements below | Separate scoped verdicts; unavailable checks remain `not_run` |
+
+## Executed Audit At `de9df8af`
+
+Glen executed the [issued handoff](glen_sequence_design_acceptance_handoff_20261014.md)
+on 2026-10-14 at `de9df8af0a56923df01a7492f61005b1fe079d8c`, clean detached
+tree `e3063e6b340e091e8d9c8079a7a5e295f82fada7`. Lockfile SHA-256:
+`0b9729e60698e14d464b48230e606377a4e2e48054c2450be6f85760e999a6b9`.
+His closing fetch retains that source. Verdict: sequence-design `prototype_pass`;
+whole candidate/release `incomplete`; biological suitability `not_run`.
+
+| Audited boundary | Executed result |
+| --- | --- |
+| Repair, single materialization, both GC contracts, cancellation/budget and adapters | 59 focused Rust passes: core 23, protocol 5, root library 27, CLI 4; locked check and parity check pass. |
+| Retained Python/CLI replay | 20 passes, zero skips: sixteen source/oracle/harness checks plus four actual CLI tests. The matrix has 18 cases through both strategies, not twenty distinct CLI tests. |
+| Native route | Linux/X11 under Xvfb/Openbox: Plan, reviewed Apply, created sequence window and same-session Undo/Redo. No model/provider call or Windows/macOS/Pi native result. |
+| Runtime | 360 deterministic process/JSON runs: 300/1,200/3,000 bp, both strategies, five separate/joint/protected policies, four budgets, three repeats, 15-s timeout. Zero timeouts/nonzero exits; no pure-core timing or speedup claim. |
+
+Platform: Debian forky/sid, amd64, Ryzen 5 3600, Rust/Cargo 1.96.1. The actual
+GUI command builds the default dev profile; the headless CLI uses `package-opt1`
+with no default features. These are distinct from installer/extracted-package
+acceptance or the current `.13` `package-opt2` recipe. The parent stack was unset,
+but frozen Cargo config restores 16 MiB; these are ordinary functional passes,
+not stripped-child/default-stack evidence. An initial missing offline dependency
+was fetched before the successful core run, not waived as a product pass.
+Producer CLI SHA-256:
+`bea6823292f88e9dc0bb51b76e2342a9d5b3c962f257ca8c63fad5e4bc4a8174`;
+GUI SHA-256: `0ac4355e2459027bf3d0a06ff95f2a2fdb75d00fa83c6fa1a7c218118d85f2d2`.
+
+Producer evidence root:
+`/home/clawbio/.openclaw/workspace/artifacts/gentle-sequence-design-acceptance-de9df8af-20261014/`.
+`REPORT.md`, `SUMMARY.json`, logs, observations and screenshots are available
+locally at `/private/tmp/gentle-sequence-design-acceptance-de9df8af-20261014/`.
+Original 1,600-entry `SHA256SUMS` SHA-256:
+`0257840beccc62a6f9035ff066781696110bbc8b8c542fc7603bf5308e4c6df2`.
+The separately delivered four-state archive has SHA-256
+`a738a6f1220537852ceefe5e4137d6188c9a6a275c2e8587724fa9d9b705f245`;
+its extracted root is `/private/tmp/gentle-de9df8af-four-saved-states-20261014/`
+and its handoff manifest SHA-256 is
+`ce53d7cbf91aeb524c6e1af11f149ade6c5760eba3b9dfa376190dc990aeccfa`.
+
+Codex independently checks 1,576/1,600 original file hashes across those two
+deliveries, including all four saved states against both original manifest and
+CLI observations. Only 24 shader-cache files remain absent; this is not a claim
+of complete package membership. All eight supplement hashes and its three
+original-provenance copies match. Rechecking the 36 retained oracle reports and
+approval digests passes offline. The four states preserve sentinel `ACGT`, exact
+output/receipt binding, explicitly unverified search claims and one matching
+operation/container/node per apply, including accepted valid non-minimal DNA.
+Raw sequence/open/undo/redo captures are inspected, not recaptured or relabelled
+as physical-platform acceptance. Original evidence stays outside the repository;
+content hashes do not authenticate origin. Binary hashes are producer records,
+not independently rehashed binaries in this delivery.
+
+Glen independently re-read the pruning argument and executed the oracle matrix;
+this is neither a general proof nor a claimed second-model/Claude source review.
+Usefulness, biological/experimental suitability, live models and native platforms
+beyond Linux/X11 remain `not_run`. The [separate terminal CI failure](audits/glen_followups_20261008/candidate_de9df8af/README.md)
+blocks overall acceptance; nothing here verifies the later worker repair
+`51a1634f` or newer main. The private core's [standalone compiler gate](decisions.md#workspace-compiler-compatibility)
+remains open; Rust 1.96.1 and moving `stable` CI do not select a minimum.
 
 ## CI Regression Evidence (Not Independent Acceptance)
 
@@ -66,8 +127,9 @@ Those skipped checks cover direct/shared-shell apply, the exhaustive two-strateg
 matrix, rehashed attacks and exhausted-search behavior. Ordinary workspace
 regressions do not substitute for their retained replay or an independent
 verdict. At inspection macOS was still running; no whole-run, native GUI,
-usefulness, runtime or release acceptance is claimed. No local Rust was run,
-and every closure-table item above remains pending.
+usefulness, runtime or release acceptance was claimed at that inspection. No
+local Rust was run; the table remained pending then. The separately pinned audit
+above records the later scoped closure rather than changing this CI's verdict.
 
 ## Exact-Candidate Functional Checks
 

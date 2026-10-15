@@ -491,6 +491,34 @@ SPDI round-trip and late pair-rollback tests. That does not certify the newer
 default-stack worker, real-reference/native GUI, or Unix-only mock-BLAST paths.
 No new push, local Rust, model call, package build or gate completion occurred.
 
+### Additional Sequence-Design Audit At `de9df8af` (2026-10-14)
+
+The [independent acceptance record](sequence_design_acceptance.md#executed-audit-at-de9df8af)
+binds Glen's scoped `prototype_pass` to exact
+`de9df8af0a56923df01a7492f61005b1fe079d8c`, the same updated lockfile, Debian
+amd64/Rust 1.96.1, dev GUI and headless `package-opt1` CLI. Preserve the failed
+normal-CI verdict above; this extra audit is not a rerun or acceptance of the
+later `51a1634f` worker repair. Parent-only stack removal is not a stripped-child
+receipt. The issued handoff's fabricated-SHA correction remains explicit.
+
+| Item | Additional Evidence / Still Open |
+| --- | --- |
+| 1. Preservation / Linux validation | Verify 1,576 original file hashes across the main delivery and four-state supplement; only 24 shader-cache files are omitted. All four states also match original replay receipts. Sequence-design has 59 focused Rust passes and locked check, not full Linux acceptance or later-source evidence. |
+| 2. 08.04 GUI/agent contracts | No new allele/reporter or 08.04 native result. The stripped-child failure and external worker-repair acceptance remain open; sequence-design MCP/CLI tests do not substitute. |
+| 3. Genuine live agent | Not run. The sequence-design GUI Shell replay uses no provider/model; it is not authenticated live-agent acceptance. |
+| 4. Honest visual evidence | Inspect source-bound virtual Linux/X11 sequence/open/Undo/Redo captures. This closes that bounded sequence-design native route, not physical-platform readability, other lessons, current Help/Promoter acceptance or human scientific approval. |
+| 5. Scroll benchmark | The 360 completed synthetic design processes measure process/JSON wall/CPU/RSS, not wheel-plus-next-frame execution or native latency. Final-source scroll evidence remains open. |
+| 6. .12 packages | The audit builds a dev GUI and opt1 headless CLI only. No installer, container or extracted-package acceptance; old released/validate-only evidence and newer opt2 gates stay separate. |
+
+Both strategies agree with the literal oracle in 18 cases (36 retained reports
+independently rechecked). The 20-test Python acceptance run includes four real
+CLI tests and sixteen source/oracle/harness checks, with zero skips. Do not
+miscount them as twenty real-CLI tests or count Codex's offline evidence review
+as another Rust run. Keep usefulness, the core's pre-extraction compiler gate,
+native platforms beyond Linux/X11 and biological suitability open. No original
+artifact is changed or copied into the repository, and no six-item completion,
+push, local Rust, workflow dispatch or publication is claimed.
+
 ### Glen's Frozen `df5c8244` Review And No-Rerun Supplement (2026-10-14)
 
 Retain the [qualified review, original Rust records and native logs](audits/glen_followups_20261008/candidate_df5c8244/GLEN_REVIEW.md)

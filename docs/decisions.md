@@ -10,6 +10,17 @@ Private component versions can remain independent. Third-party dependency
 requirements and vendored upstream metadata are not compatibility promises for
 the whole application and must not be erased to force dependency updates.
 
+A successful build establishes compatibility only with its recorded toolchain,
+features, dependencies and target; moving `stable` CI does not establish an older
+minimum. The private sequence-design core's standalone extraction/publication
+gate needs an explicitly verified compiler contract, not restoration of the
+unverified Rust 1.85 declaration. A future pinned older-toolchain job building
+and testing that dependency-free core alone would establish core-only evidence.
+It cannot by itself justify a workspace-wide `workspace.package.rust-version`:
+that broader declaration also needs matching workspace/dependency, feature and
+target verification. Selecting a number and adding those jobs are deferred;
+no new blanket publication gate for other members follows from this finding.
+
 ## Explicit Variant Allele Selection
 
 `MaterializeVariantAllele` is the shared engine boundary for single-base
@@ -81,7 +92,11 @@ performs a UniProt fetch or claims transcript validity/global absence.
 
 ## Synthetic Sequence-Design Boundaries
 
-Status: active for experimental synonymous motif removal and explicit GC constraints.
+Status: active for experimental synonymous motif removal and explicit GC constraints;
+Glen independently executed both strategies with motif/CDS-wide/window-GC checks
+at `de9df8af0a56923df01a7492f61005b1fe079d8c`, scoped `prototype_pass`.
+See the [source-bound acceptance record](sequence_design_acceptance.md#executed-audit-at-de9df8af).
+This changes no invariant or release, usefulness, biology or performance claim.
 
 Only explicit synthetic coding-insert requests authorize preview, never labels
 or natural assay templates. The pure independently versioned core has no root,
@@ -89,6 +104,9 @@ GUI, serialization, Python, file or network dependency. Root context resolution
 binds explicit codon/residue mapping rather than undeclared asset ordering.
 Its private component version does not follow GENtle's application-version
 rollover; only workspace-version-inheriting lockfile entries follow that bump.
+It stays private and in-workspace until its standalone compiler contract is
+verified under [workspace compiler policy](#workspace-compiler-compatibility).
+Glen's Rust 1.96.1 audit and CI's moving `stable` selection do not select an MSRV.
 Frozen bases, exact protein/start/stop and full-sequence motif evaluation are
 invariants. Bounded-search failure is unresolved, not infeasible; cancellation
 cannot publish an applicable proposal, including a valid intermediate result.

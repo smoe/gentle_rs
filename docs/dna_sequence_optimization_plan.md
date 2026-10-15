@@ -10,9 +10,10 @@ experimental development outside the `.12` release gate, not release acceptance,
 full DNA Chisel compatibility, or a measured performance improvement.
 Owner-requested follow-up on 2026-10-05 adds the explicit conflict-search slice
 below, based on integrated local `main` `d221aa1a`. Glen's later first-slice
-audit reported `needs_fix` at `85d23ddb`; independent repair/new-slice acceptance
-remains pending. Local tests do not substitute for his usefulness, performance
-or independent correctness verdict.
+audit reported `needs_fix` at `85d23ddb`; his later repair/GC audit at `de9df8af`
+returns a scoped `prototype_pass`, as recorded under [remaining stages](#remaining-stages).
+Local tests do not substitute for his independent execution or for the still
+separate usefulness, platform and biological verdicts.
 The earlier Claude review covers the original bounded proposal; no additional
 Claude review of this conflict-search implementation is claimed.
 The owner approved the CDS-wide GC slice after Claude's read-only review of
@@ -35,6 +36,12 @@ Those historical proposal stages do not override this owner-authorized contract.
 Compiler/dependency policy and edition now follow the root `Cargo.toml`.
 Earlier MSRV verification notes and handoffs below remain historical, not a
 current standalone compatibility claim.
+The missing standalone compiler contract remains a pre-extraction/publication
+gap for this private core, not a current runtime defect or authority to restore
+1.85. Glen's audit proves its recorded Rust 1.96.1 execution only. Future pinned
+core-only checks cannot establish a minimum for the dependency-bearing workspace;
+see [compiler policy](decisions.md#workspace-compiler-compatibility). No number
+or new CI job is selected here.
 
 ## Adopted first slice
 
@@ -530,28 +537,30 @@ no generated catalog, fixture, dependency, profile or release changes are includ
 The executable [synthetic tutorial 06.07](tutorial/06-07_synthetic_sequence_design.md)
 provides a joint motif/global/window-GC starting point and independent four-word
 oracle. Its local command checks and Codex source review do not close the
-independent native, usefulness or search audit stages below.
+independent gates by themselves. Glen's execution below closes only its pinned
+functional/native/runtime scope, not newer source or the remaining verdicts.
 
-1. Glen rechecks the approval/provenance repair at its exact integrated SHA,
-   including the two-edit/non-minimum example, unverified search receipt and
-   one coherent derivation through direct CLI, shared shell and confirmed MCP.
-   Then independently reviews the candidates and measures representative and
-   adversarial synthetic inserts, now including both explicit strategies at one
-   authorized exact revision. Keep the [first-slice pinned audit](glen_sequence_design_handoff_20261005.md)
-   historical rather than relabeling its SHA as new-search acceptance. Compare
-   feasibility/edits/proof status separately from candidate counts and wall/RSS;
-   retain coupled/new-conflict cases, budget stops and cancellation. Keep
-   maintenance value, performance and biological suitability as separate claims;
-   no `.12` delay or gate added.
-   Use the [current repair/GC acceptance procedure](sequence_design_acceptance.md)
-   and literal real-CLI audit matrix; source-only passes and skipped binary
-   tests cannot close this stage. The dated static cross-read is not a Claude
-   review or independent acceptance.
-2. Glen should now include the explicitly requested CDS-wide and sliding-window GC contracts and
-   coupled constraints at one authorized revision, without treating prior
-   motif-only proofs as GC acceptance. Decide usefulness before further search,
-   publication or specification expansion; never substitute local checks for
-   global constraints.
+1. Repair and motif/global/window-GC execution closed at exact
+   `de9df8af0a56923df01a7492f61005b1fe079d8c`, scoped `prototype_pass`:
+   59 focused Rust tests; 20 Python checks including four actual CLI tests with
+   zero skips; both strategies agree on all 18 literal-oracle cases. The valid
+   two-edit/non-minimum example retains unverified search claims, and direct/
+   shared-shell/confirmed-MCP, cancellation, persistence and single-operation
+   materialization checks pass. Native virtual Linux/X11 Plan/Apply/open/Undo/
+   Redo and 360 bounded synthetic process runs pass separately. Glen reports an
+   independent pruning cross-read; execution/oracle agreement is not a general
+   proof or a second-model/Claude review. See the [acceptance record](sequence_design_acceptance.md#executed-audit-at-de9df8af)
+   and manifest `0257840beccc62a6f9035ff066781696110bbc8b8c542fc7603bf5308e4c6df2`.
+   Keep the [first-slice pinned audit](glen_sequence_design_handoff_20261005.md)
+   unchanged. The whole candidate remains `incomplete` because of separate CI
+   stack failures; this run does not accept the later `51a1634f` repair.
+2. Native Windows/macOS/Pi, live-model quality, usefulness/maintenance value,
+   upstream comparison and biological/experimental suitability remain `not_run`.
+   Bounded process/JSON measurements are not a speedup or pure-core benchmark.
+   Settle usefulness before further search or specification expansion; verify
+   the private core's standalone compiler contract before extraction/publication.
+   No `.12` gate or release acceptance follows, and current-source checks remain
+   required rather than inherited from this frozen run.
 3. Codon harmonization/adaptation, distant repeat/hairpin interactions,
    RNA folding, other initiation/codes and DNA Chisel comparison remain explicit
    follow-ups with their own contracts, not unfinished obligations of this slice.

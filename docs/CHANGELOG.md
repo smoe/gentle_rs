@@ -1,5 +1,28 @@
 # GENtle Changelog
 
+## 2026-10-15 - Record Scoped Sequence-Design Acceptance
+
+- Record Glen's `prototype_pass` at exact `de9df8af`: 59 focused Rust passes,
+  20 Python checks including four real-CLI tests/no skips, 18 oracle cases through
+  both strategies, 360 bounded process runs and the virtual Linux/X11 native
+  route. Overall/release remains `incomplete` after the separately retained
+  stack failure; this does not accept `51a1634f`, newer main or `.12` packages.
+- Verify 1,576 of the 1,600 original manifest entries across the main delivery
+  and four-state supplement, including all saved states/receipts and 36 oracle
+  reports. Only shader-cache files are omitted. Keep original bytes external;
+  preserve the issued handoff and its fabricated-SHA correction notice.
+- Reconcile the plan, acceptance criteria, six-item ledger and one-line roadmap
+  entry without broadening native/usefulness/biological or performance claims.
+  Keep the unverified minimum removed: a future pinned core-only toolchain pass
+  cannot justify a workspace-wide floor. No compiler number, job or blanket
+  publication gate for other members is introduced.
+- Documentation only; no local Rust, push, workflow dispatch, model call,
+  package execution or publication. All 73 scoped offline release/compiler-policy,
+  oracle/source, stack-runner and frozen-CI checks pass. TOML, 141 local link
+  targets/new anchors, whitespace and release-gate checks pass; roadmap stays
+  400 lines. Session-close has four OK/two intentional worktree/manual-scope
+  warnings and no failures.
+
 ## 2026-10-14 - Retain Terminal `de9df8af` CI Failure
 
 - Follow run `38599805415` through completion. Linux and Windows pass default
