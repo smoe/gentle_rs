@@ -126,6 +126,23 @@ An authored contract is not an executed pass. Every completion needs an exact
 source SHA, platform/profile, command or run URL and retained evidence. New
 candidate results never overwrite or inherit the older candidate's verdict.
 
+### Focused Linux Stack Repair: Verified (2026-10-15)
+
+The [verified repair receipt](vkorc1_allele_review_followup_20261008.md#focused-linux-repair-verification-2026-10-15)
+closes the reproduced Linux `dbsnp_` failure at `6b7109db`: 12/12 named tests,
+actual `child_rust_min_stack:null`, Debian x86_64/Rust 1.96.1, unoptimized test
+profile/default features. Both the formerly crashing dialog fetch and explicit
+worker-stack probe pass. The runner's six Python tests also pass, independently
+of the Rust count. Codex verifies all 34 inventoried files and the supplied bundle;
+the test executable itself is omitted after run-owned scratch cleanup.
+
+For item 1, retain this successful bounded Linux record beside the unchanged
+older failures. For item 2, the production-worker repair is now Linux-verified,
+not merely authored. Windows, the other four Rust filters, full suites and
+native 08.04/release acceptance remain open. Items 3-6 receive no new live-agent,
+visual, scroll or package verdict from this run. Development continues without
+an interim source synchronization request; no local Rust, push or dispatch.
+
 ### Final-Candidate Review At `f35a58e6`
 
 Glen executed the consolidated request at exact

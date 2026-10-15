@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-10-15 - Verify The dbSNP Worker Repair On Linux
+
+- Verify Glen's copied 34-entry evidence inventory and raw runner/exit records
+  for `6b7109db`: all 12 `dbsnp_` tests pass with the child stack override removed,
+  including the formerly crashing fetch and explicit worker-stack regressions.
+  Debian x86_64/Rust 1.96.1, default-feature unoptimized test profile; runner
+  Python checks pass 6/6. The original failing CI evidence remains unchanged.
+- Close only this focused Linux defect verification, not Windows, the other
+  Rust families, broad/native/release acceptance or the overall six-item goal.
+  Update the ledger and release-preparation handoff without a new source freeze,
+  bundle, push or dispatch. Original evidence remains external; no local Rust.
+- Verification: all 11 local offline runner/frozen-CI checks pass, along with
+  raw receipt/name/exit validation, whitespace and release-gate checks. Roadmap
+  stays 400 lines; session-close has no failures and two intentional warnings.
+
 ## 2026-10-15 - Complete Provider-Neutral Expression Draft Boundaries
 
 - Build on the shared neutral-draft/provider-binding implementation in

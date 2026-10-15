@@ -123,6 +123,36 @@ counts and all five stripped-child receipts. Rust execution of the repair is
 still pending externally. The failed SHA/logs remain immutable, and no skip,
 larger ambient stack or ordinary CI summary substitutes for the rerun.
 
+### Focused Linux Repair Verification (2026-10-15)
+
+Glen verifies exact `6b7109dbb7fcc419866e1537dc9aa4cfa1ab70be`, tree
+`8d6e0ee93579c55873f3bb5cf53a1b6e6673018c`, in a clean detached checkout.
+On Debian x86_64/Rust-Cargo 1.96.1, the default-feature test profile passes all
+12 `dbsnp_` tests with an actual runner receipt: inherited stack `16777216`,
+child stack `null`. Named passes include the formerly overflowing GUI fetch
+and `dbsnp_worker_stack_is_explicit_and_named`. Exit is zero; tests take 2.47 s
+after a 6:06 cold build. Runner Python self-tests pass 6/6; formatting and
+whitespace checks pass. This closes the reproduced Linux failure at that source.
+
+Producer evidence is retained at
+`/home/clawbio/.openclaw/workspace/artifacts/gentle-6b7109db-verification-20261015/`;
+the owner-supplied copy is `/private/tmp/gentle-6b7109db-verification-20261015/`.
+Codex verifies all 34 inventory entries, safe exact membership (36 files including
+the inventory/companion), candidate tree and runner/test/exit records. Inventory
+SHA-256: `93ba9a64fa20ea318aeef3dd98a744eb8c86c92f529a93128f75980e0ba58c78`.
+The included bundle matches the original transfer. Test-binary SHA-256
+`1716c9c53cfe0f6591ccd121cff75eae61c0888d16b89441ad75d986ac76ca58`
+is a producer record; the binary was removed with run-owned scratch, not supplied
+for independent rehashing. The runner's executable path confirms the isolated
+target, despite the earlier environment snapshot showing an ambient shared target.
+
+No Windows, other four Rust filters, broad suite or GUI replay ran in this
+focused verification. The six Python runner checks are not those Rust filters.
+Keep the failed `de9df8af` CI unchanged; no newer-source, cross-platform or
+release acceptance is inferred. Remaining consolidated gates follow the
+[release-preparation cadence](decisions.md#development-and-release-verification-cadence),
+without another interim freeze, bundle or dispatch. Codex ran no local Rust.
+
 - Tutorial 08.04 live native GUI: confirm reference/alternate refusal, retry,
   unchanged source and honest genomic-forward C/T evidence. Reverse-strand
   gene nomenclature must not silently complement the selected allele.
