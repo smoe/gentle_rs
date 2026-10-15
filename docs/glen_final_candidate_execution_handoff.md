@@ -1,5 +1,12 @@
 # Glen: Consolidated Final-Candidate Checks
 
+Owner update, 2026-10-15: use this consolidated request at actual release
+preparation, not as a per-commit development gate. Follow the
+[development/release cadence](decisions.md#development-and-release-verification-cadence):
+no recurring interim freeze, bundle transfer or synchronized-SHA wait. Keep
+ordinary test identities and all historical evidence; none of the remaining
+acceptance criteria is waived. New task-specific checks can run independently.
+
 ## Current Status: Do Not Reissue The Full Request
 
 Reconciled with Glen's 2026-10-13 clarification and the retained

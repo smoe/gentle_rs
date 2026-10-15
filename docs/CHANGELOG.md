@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-10-15 - Defer Coordinated Acceptance To Release Preparation
+
+- Apply the owner's development cadence: stop interim SHA freezes, recurring
+  bundle transfers and waits for synchronized acceptance on every commit.
+  Continue main development and ordinary focused/CI checks; keep tested-source
+  identity as report metadata rather than repeated owner coordination.
+- Consolidate the open six-item/native/agent/scroll/package gates at actual
+  release preparation. Preserve historical evidence and pending failures;
+  no acceptance criterion, no-local-Rust rule or push/publication restriction
+  is waived. The old consolidated handoff is not an interim development blocker.
+- Verification: compiler-policy tests, whitespace and release-gate checks pass;
+  roadmap stays 400 lines. Session-close has no failures, with the existing
+  intentional worktree/manual-scope warnings. No local Rust or push.
+
 ## 2026-10-15 - Record Scoped Sequence-Design Acceptance
 
 - Record Glen's `prototype_pass` at exact `de9df8af`: 59 focused Rust passes,

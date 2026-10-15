@@ -27,6 +27,16 @@ historical evidence unchanged.
 Human scientific approval and an external auditor's performance verdict remain
 independent of code, replay, screenshot and packaging checks.
 
+On 2026-10-15 the owner defers coordinated SHA synchronization and full acceptance
+to actual release preparation, rather than intermediate development commits.
+The [development/release cadence](decisions.md#development-and-release-verification-cadence)
+supersedes older requests below to freeze/resend every changed tip or wait for
+its full acceptance before continuing development. The six-item checklist stays
+open at its recorded boundaries; no fresh bundle transfer or repeated source
+availability question is needed now. Ordinary checks still record what they
+tested, and observed defects remain actionable. This does not authorize a push,
+local Rust, model call, package build or publication.
+
 ## Owner-Requested Main Integration
 
 Integrate the 45 commits from codex tip

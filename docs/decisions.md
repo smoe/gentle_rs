@@ -1,5 +1,21 @@
 # GENtle Decisions
 
+## Development And Release Verification Cadence
+
+Owner decision, 2026-10-15: continue development on `main` without intermediate
+candidate freezes, recurring bundle handoffs or waits for synchronized acceptance
+at every commit. Run normal focused checks and available CI independently;
+record each result's actual revision/toolchain/profile as evidence metadata,
+not as a recurring coordination request. Fix observed regressions without
+requiring the full acceptance campaign before the next unrelated change.
+Consolidate the still-open cross-platform/native/agent/scroll/package gates at
+the actual release preparation, using one selected release candidate and
+rechecking affected gates if that candidate changes. Earlier passes never
+silently certify newer code. No pending gate is waived or marked complete.
+Existing no-local-Rust, no-push-without-request, authentication and publication
+restrictions remain unchanged. Do not issue a new bundle or SHA-sync request
+for routine development; an exceptional transfer requires an owner request.
+
 ## Workspace Compiler Compatibility
 
 The root `Cargo.toml` owns workspace-wide edition, resolver, any declared Rust
