@@ -269,6 +269,37 @@ class TutorialCheckoutTests(unittest.TestCase):
             self.assertEqual(known - set(missing), {"microarray_evidence_gui_cli"},
                              "the original missing-entry boundary is detectable in either checkout")
 
+    def test_release_tutorial_registration_survives_lf_and_crlf_checkouts(self):
+        from scripts.test_release_workflow_tutorials import STEMS, assert_manual_registration
+
+        # Real discovery bytes plus hand-authored sources/guides: registration
+        # is not a generated runtime chapter or a fabricated review sign-off.
+        paths = [Path("docs/tutorial") / name for name in
+                 ("catalog.json", "review_manifest.json", "manifest.json", "README.md", "sources/catalog_meta.json")]
+        for stem in STEMS:
+            paths.extend((Path(f"docs/tutorial/sources/{stem}.json"), Path(f"docs/tutorial/{stem}.md")))
+        payloads = {path: (checker.ROOT / path).read_bytes() for path in paths}
+        (self.root / ".gitattributes").write_bytes((checker.ROOT / ".gitattributes").read_bytes())
+        for path, payload in payloads.items():
+            target = self.root / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "release tutorial registration")
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"release-tutorial-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            self.assertEqual((target / paths[0]).read_bytes(), payloads[paths[0]])
+            assert_manual_registration(self, target)
+            catalog = json.loads((target / paths[0]).read_bytes())
+            catalog["entries"] = [row for row in catalog["entries"]
+                                  if row["id"] != "gene_set_storage_projection"]
+            (target / paths[0]).write_text(json.dumps(catalog), encoding="utf-8")
+            with self.assertRaises(AssertionError):
+                # No subTest here: failures must propagate for the negative control.
+                assert_manual_registration(unittest.TestCase(), target)
+
     def test_measured_gel_image_requests_and_checksums_survive_lf_crlf_checkouts(self):
         relative = Path("docs/tutorial/inputs/gel_sizing")
         names = ["gel_sizing_synthetic.png", "dna-analysis.json", "protein-analysis.json", "SHA256SUMS"]

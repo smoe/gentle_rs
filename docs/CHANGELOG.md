@@ -22,6 +22,30 @@
   CLI/parity gates. No push, new dispatch, model call or historical evidence
   rewrite is included; native screenshots retain their reported source boundary.
 
+## 2026-10-16 - Register And Gate The Minimal Release Tutorials
+
+- Register storage tutorial 03.10 in source/catalog/index discovery and the
+  review manifest without claiming a review or generated runtime chapter.
+  Refresh 09.03's discovery text for provider-neutral drafts and explicit
+  provider selection. Correct 03.10's direct-CLI versus shared-Shell result path.
+- Add opt-in real-CLI replay of the committed expression/storage starters in
+  isolated temporary projects: neutral/withheld/selected provider reports,
+  unchanged review files, placement refusals, persisted set/tube provenance,
+  reload and repeatable SVG/SCAD exports. Require an explicitly supplied binary;
+  missing binaries fail rather than skip. Wire replay after the existing CLI
+  smoke on Windows/macOS/Linux, without another build or workflow dispatch.
+- Add fast source/discovery CI coverage and a real LF/CRLF catalog regression
+  with a missing-registration negative control. Correct the external workflow
+  test command to `--lib workflow_examples` and retain the parity trio.
+- At local base `24de3978` plus this patch on macOS, 82 tutorial/source/checkout
+  tests and 103 packaging-policy tests pass; five optional real-binary cases
+  skip. YAML parsing and whitespace checks pass. Catalog projections were
+  updated directly against the source contract, not regenerated with Rust;
+  full generator freshness and real CLI replay remain unverified. No Rust,
+  GENtle binary, Claude, provider/model, push or dispatch was run. Workflow
+  snippets, fresh SCAD rendering, native/package and release acceptance remain
+  in the preparation handoff; no engine/schema changes or historical artifacts.
+
 ## 2026-10-15 - Integrate Recovered Documentation Without Replacing Newer Work
 
 - Rebase the recovered October 7 cleanup onto current main, preserving the

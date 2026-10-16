@@ -362,6 +362,20 @@ Biology or protein-expression handoff inspector for existing
 `gentle.protein_expression_handoff.v2` reports is the natural next GUI slice,
 not something this tutorial assumes exists today.
 
+For an offline replay with an already-built candidate CLI, run:
+
+```bash
+GENTLE_TUTORIAL_BIN_DIR=/absolute/path/to/candidate/bin \
+  python3 -m unittest scripts.test_release_workflow_tutorials -v
+```
+
+This creates the synthetic starter in a temporary project, checks neutral,
+in-house/withheld and explicitly selected provider reports, and asserts that
+review does not rewrite the saved project or create artifacts. It does not
+execute suggested preflight/quote actions or contact a provider. With no binary
+directory supplied, the runtime tests explicitly skip. Native GUI and human
+scientific acceptance are separate.
+
 ## Expected Outcome
 
 At the end of this tutorial you should have:

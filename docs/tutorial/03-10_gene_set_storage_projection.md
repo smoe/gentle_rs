@@ -36,7 +36,8 @@ duplicate bindings, nonexclusive/nonsingleton tubes, missing sequences and reuse
 arrangement IDs refuse before layout creation. This slice accepts 1..24 members
 on the existing 4-by-6 small-tube rack; resolved-set order determines lane order.
 
-Inspect `result.collection_operation`: `lifting_mode` is `arrange`, with exact
+Inspect `collection_operation` in the direct CLI output (`result.collection_operation`
+when using shared Shell): `lifting_mode` is `arrange`, with exact
 member/container/sequence-snapshot provenance. Persisted
 `gene_set_arrangement:storage_review` metadata links the source-resolution digest,
 report, arrangement and rack ID. The set, DNA and source tubes remain unchanged.
@@ -81,6 +82,18 @@ the source set or tubes; Redo restores them together. Save/reopen retains the
 record, not cross-process undo history. Run `gene_set_arrangement_`, rack-export,
 capability/parity and workflow checks externally; source tests are not acceptance.
 
-The starter is executable; the walkthrough stays manual/hybrid until external
-runtime replay and generated tutorial registration. Freezer boxes, physical
-inventory, barcode workflows and new GUI controls remain explicit follow-ups.
+The guide is registered as a manual/hybrid tutorial, not an executable generated
+chapter. The starter creates the inputs; placement and artifact writes remain
+explicit learner decisions. With an already-built candidate CLI, the offline
+replay test checks both tutorial starters, placement refusals, persisted
+provenance and repeatable exports without building Rust or running OpenSCAD:
+
+```bash
+GENTLE_TUTORIAL_BIN_DIR=/absolute/path/to/candidate/bin \
+  python3 -m unittest scripts.test_release_workflow_tutorials -v
+```
+
+Without that variable the real-CLI tests explicitly skip, never pass as runtime
+evidence. Fresh SCAD rendering and native GUI review remain separate checks.
+Freezer boxes, physical inventory, barcode workflows and new GUI controls remain
+explicit follow-ups.

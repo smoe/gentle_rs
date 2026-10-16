@@ -16,7 +16,7 @@
       "protein_workflows",
       "synthetic_biology"
     ],
-    "notes": "CLI/agent walkthrough for turning an underspecified high-yield protein-production request into a read-only GENtle handoff report with explicit chassis, route, missing-question, and GeneArt preflight scaffolding.",
+    "notes": "Offline synthetic product and reviewed requirements to a read-only provider-neutral expression draft. In-house and explicitly selected provider paths retain missing questions and human-review gates; no ordering or provider contact. Runtime acceptance remains pending.",
     "group": "09",
     "group_position": 3
   }

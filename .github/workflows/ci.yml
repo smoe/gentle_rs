@@ -279,6 +279,8 @@ jobs:
       - run: python3 -m unittest scripts.test_tutorial_checkouts -v
       - run: python3 -m unittest scripts.test_primer_specificity_multi_tutorial -v
       - run: python3 -m unittest scripts.test_synthetic_biology_tutorial -v
+      - name: Release tutorial source and discovery contracts (no Rust)
+        run: python3 -m unittest scripts.test_release_workflow_tutorials.ReleaseTutorialSourceTests scripts.test_storage_projection_tutorial scripts.test_early_feature_review -v
       - run: python3 -m unittest scripts.test_frozen_024ed6_audit -v
       - run: python3 -m unittest scripts.test_frozen_df5c8244_audit -v
       - run: python3 -m unittest scripts.test_frozen_de9df8af_ci -v
@@ -457,6 +459,11 @@ jobs:
           cargo run --bin gentle_cli -- workflow @docs/examples/workflows/load_and_digest_pgex.json
           cargo run --bin gentle_cli -- workflow @docs/examples/workflows/guides_filter_and_generate_oligos.json
           cargo run --bin gentle_cli -- workflow @docs/examples/workflows/digest_ligation_extract_region_minimal.json
+
+      - name: Expression and storage tutorial CLI replay
+        env:
+          GENTLE_TUTORIAL_BIN_DIR: ${{ github.workspace }}/target/debug
+        run: python3 -m unittest scripts.test_release_workflow_tutorials.ReleaseTutorialBinaryTests -v
 
       - name: Internal preview reviewer smoke
         run: |
@@ -647,6 +654,11 @@ jobs:
           cargo run --bin gentle_cli -- workflow @docs/examples/workflows/guides_filter_and_generate_oligos.json
           cargo run --bin gentle_cli -- workflow @docs/examples/workflows/digest_ligation_extract_region_minimal.json
 
+      - name: Expression and storage tutorial CLI replay
+        env:
+          GENTLE_TUTORIAL_BIN_DIR: ${{ github.workspace }}/target/debug
+        run: python3 -m unittest scripts.test_release_workflow_tutorials.ReleaseTutorialBinaryTests -v
+
       - name: Internal preview reviewer smoke
         run: |
           STATE="$RUNNER_TEMP/gentle_preview_state.json"
@@ -835,6 +847,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo run --bin gentle_cli -- workflow '@docs/examples/workflows/digest_ligation_extract_region_minimal.json'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Expression and storage tutorial CLI replay
+        env:
+          GENTLE_TUTORIAL_BIN_DIR: ${{ github.workspace }}/target/debug
+        run: python -m unittest scripts.test_release_workflow_tutorials.ReleaseTutorialBinaryTests -v
 
       - name: Internal preview reviewer smoke
         run: |

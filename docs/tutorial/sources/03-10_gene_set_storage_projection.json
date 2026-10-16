@@ -1,0 +1,35 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "gene_set_storage_projection",
+  "title": "Place A Logical Gene Set Into A Storage Rack",
+  "catalog": {
+    "order": 67,
+    "path": "docs/tutorial/03-10_gene_set_storage_projection.md",
+    "type": "gui_cli_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": [
+      "wet_lab_biologists",
+      "cli_first",
+      "agent_users",
+      "cloning_planning"
+    ],
+    "notes": "Offline synthetic gene set to explicitly bound source tubes, serial arrangement and storage rack, with labels, isometric SVG and OpenSCAD exports. Digital placement is not physical inventory; runtime and native acceptance remain pending.",
+    "network": "offline",
+    "interfaces": [
+      "CLI / shared Shell",
+      "native GUI / Arrangements and Racks",
+      "MCP / confirmed generic op"
+    ],
+    "starting_state": "Fresh disposable project and the committed gene_set_storage_starter workflow",
+    "produces": [
+      "source-bound storage projection record",
+      "serial arrangement and rack draft",
+      "labels and isometric SVG",
+      "OpenSCAD source"
+    ],
+    "group": "03",
+    "group_position": 10,
+    "prerequisites": ["gibson_physical_rack_gui"]
+  }
+}

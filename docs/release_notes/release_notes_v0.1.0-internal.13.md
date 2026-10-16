@@ -66,11 +66,12 @@ and [preparation handoff](../internal_13_preparation_handoff.md) retain details.
   [Tutorial 03.10](../tutorial/03-10_gene_set_storage_projection.md) supplies a
   synthetic starter and manual/hybrid path. No pooling, cloning, freezer-box
   template, automatic stock inference or dedicated GUI mapper is added.
-- Four Rust regressions and two offline source/tutorial checks are authored;
-  the two Python checks pass. Rust execution, generated catalog registration,
-  actual fresh exports and their OpenSCAD render remain Glen/CI prerequisites,
-  not accepted output. GUI Shell and existing generic MCP operations reuse the
-  shared contract and its approval boundary.
+- Four Rust regressions and offline source/tutorial checks are authored.
+  Tutorial discovery/source registration and LF/CRLF coverage are in place;
+  opt-in CLI replay for both starters is wired into platform CI. Rust execution,
+  generator freshness, actual fresh exports and their OpenSCAD render remain
+  Glen/CI prerequisites, not accepted output. GUI Shell and existing generic
+  MCP operations reuse the shared contract and its approval boundary.
 
 ### Post-.12 Repairs And Build Preparation
 
@@ -146,7 +147,7 @@ profile, run URLs, binary/artifact hashes and reviewer in the final receipts.
 | Full Linux CI | Pending | Explicit `platform=linux` dispatch, not sampled/headless alone |
 | Native build-only packages | Pending | Three packages, exact-source receipts and extracted smokes |
 | Headless container build-only | Pending | Same source/profile, runtime-cli no-network smokes, no publication |
-| Rollover/version/tutorial/parity | Pending | Glen's external checks, new starters and generated registration |
+| Rollover/version/tutorial/parity | Pending | Glen's external checks, starter replay and generator freshness |
 | A/B/C functional readiness | Pending | New Rust tests, both tutorial paths, fresh SCAD and native rack review |
 | Glen's release readiness verdict | Pending | Scoped verdict distinguishing blockers from carry-forward |
 | Owner tag/publication approval | Pending | Explicit approval after the preceding gates |
