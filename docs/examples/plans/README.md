@@ -5,6 +5,9 @@ two literal eight-base source records and unannotated logical GENEA/GENEB
 labels. Tutorial 03.10 consumes it; no accession, genome annotation or physical
 stock is represented. Recreate it from the workflow literals. Its normalized
 stable IDs are `symbol:genea`/`symbol:geneb`, not the display labels.
+The optional `scripts.test_release_workflow_tutorials` CLI replay uses these
+same literals in disposable projects, including negative confirmation/binding
+requests and repeated rack exports. No physical inventory fixture is implied.
 
 ## Synthetic Protein-Expression Review Inputs
 
@@ -18,6 +21,9 @@ commercial or real-project consent. All eight reviewed topics stay explicit.
 27-bp `ATG` + six His codons + Ala + stop product. No accession or natural gene
 is represented. Consumed by tutorial 09.03 and its source/MCP parity tests;
 the existing CLI integration matrix independently constructs the same shape.
+The optional release-tutorial replay also consumes these committed files
+directly, checks provider-neutral/in-house/selected-provider reports, and
+asserts unchanged project and artifact bytes after review.
 
 This folder contains canonical example payloads for
 `gentle.gibson_assembly_plan.v1`.

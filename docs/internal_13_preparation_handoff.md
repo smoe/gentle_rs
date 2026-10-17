@@ -54,21 +54,39 @@ cargo test --locked -j1 --lib gene_set_arrangement_
 cargo test --locked -j1 --lib protein_expression_
 cargo test --locked -j1 --test protein_expression_handoff_cli
 cargo test --locked -j1 --test capability_registry_parity
+cargo test --locked -j1 --test mcp_capability_surface
 cargo test --locked -j1 --test parity_matrix_freshness
-cargo test --locked -j1 --test workflow_examples
+cargo test --locked -j1 --lib workflow_examples -- --test-threads=1
 cargo test --locked -j1 --test release_version_consistency
 cargo check -q --locked -j1
 cargo build --locked -j1 --bin gentle_cli --bin gentle_examples_docs
 ```
 
-Before finalizing a candidate, use that freshly built docs binary to register
-tutorial 03.10 in source/catalog metadata, keeping it manual/hybrid like 03.08;
-review 09.03's source metadata as well. Generate/check workflow snippets for
-both new executable starters, catalog, manifest and parity matrix. Neither
-starter is a completed oracle for the user's task. Reconcile generated drift
-and LF/CRLF checks in a focused follow-up commit, then select the candidate
-containing it. Do **not** claim the unchanged old generated catalog covers 03.10.
+Tutorial 03.10 now has source/catalog/index registration and an unreviewed
+review-manifest entry; 09.03's discovery text describes the neutral draft and
+explicit provider gate. These are manual/hybrid guides, not generated runtime
+chapters, so neither adds a manifest chapter. The two catalog projections were
+updated directly from the existing source contract and tested under LF/CRLF;
+the Rust generator has **not** checked their freshness. Before finalizing a
+candidate, use the freshly built docs binary to generate/check workflow snippets
+for both starters and check the catalog, manifest and parity matrix. Reconcile
+any drift in a focused follow-up commit, then select the candidate containing it.
 Do not overwrite historical tutorial/scientific evidence to pass freshness.
+
+The new opt-in replay is also wired after the existing CLI smoke in all three
+platform CI jobs (no extra Rust build). To execute it with Glen's candidate:
+
+```bash
+GENTLE_TUTORIAL_BIN_DIR="$PWD/target/debug" \
+  python3 -m unittest scripts.test_release_workflow_tutorials -v
+```
+
+Without the variable, runtime cases skip explicitly; an invalid supplied binary
+directory fails. The test uses disposable states, the committed starters and
+requirements, checks neutral/in-house/selected reports without artifact writes,
+storage confirmation/binding/collision refusals, saved provenance and repeated
+SVG/SCAD bytes. It does not run OpenSCAD or replace native acceptance. Fast
+source/discovery tests run separately in `release-policy` without Rust.
 
 Replay tutorials [09.03](tutorial/09-03_protein_expression_handoff_cli.md) and
 [03.10](tutorial/03-10_gene_set_storage_projection.md) literally in fresh states.

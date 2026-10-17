@@ -522,7 +522,7 @@
         "protein_workflows",
         "synthetic_biology"
       ],
-      "notes": "CLI/agent walkthrough for turning an underspecified high-yield protein-production request into a read-only GENtle handoff report with explicit chassis, route, missing-question, and GeneArt preflight scaffolding.",
+      "notes": "Offline synthetic product and reviewed requirements to a read-only provider-neutral expression draft. In-house and explicitly selected provider paths retain missing questions and human-review gates; no ordering or provider contact. Runtime acceptance remains pending.",
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -2327,6 +2327,45 @@
           "regen_command": "Replay gibson_specialist_testing_baseline.json, apply docs/figures/gibson_single_insert_readme.plan.json and run render-lineage-svg as documented in docs/figures/README.md."
         }
       ]
+    },
+    {
+      "id": "gene_set_storage_projection",
+      "title": "Place A Logical Gene Set Into A Storage Rack",
+      "path": "docs/tutorial/03-10_gene_set_storage_projection.md",
+      "group": "03",
+      "group_label": "Cloning & Assembly",
+      "group_order": 3,
+      "group_position": 10,
+      "decimal_id": "03.10",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "wet_lab_biologists",
+        "cli_first",
+        "agent_users",
+        "cloning_planning"
+      ],
+      "notes": "Offline synthetic gene set to explicitly bound source tubes, serial arrangement and storage rack, with labels, isometric SVG and OpenSCAD exports. Digital placement is not physical inventory; runtime and native acceptance remain pending.",
+      "network": "offline",
+      "interfaces": [
+        "CLI / shared Shell",
+        "native GUI / Arrangements and Racks",
+        "MCP / confirmed generic op"
+      ],
+      "starting_state": "Fresh disposable project and the committed gene_set_storage_starter workflow",
+      "produces": [
+        "source-bound storage projection record",
+        "serial arrangement and rack draft",
+        "labels and isometric SVG",
+        "OpenSCAD source"
+      ],
+      "prerequisites": [
+        "gibson_physical_rack_gui"
+      ],
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "microarray_evidence_gui_cli",
