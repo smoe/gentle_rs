@@ -8678,6 +8678,13 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 - Existing arrangement order is preserved while coordinates are reflowed under
   the custom geometry.
 - A1-style row labels continue beyond `Z` as `AA`, `AB`, ...
+- Positive dimensions and checked `rows * columns <= 1536` are required before
+  coordinate expansion, placement/reflow, rendering or rack export. Refusals
+  use `ErrorCode::InvalidInput` with a `rack_grid_empty`, `rack_grid_overflow`
+  or `rack_grid_limit` reason. This resource budget does not constrain JSON
+  deserialization: historical snapshots remain intact, even if unsupported
+  for processing. Exports refuse before writing the target file. The limit
+  does not imply physical carrier capacity or compatibility.
 
 `SetRackBlockedCoordinates` semantics:
 
@@ -8772,6 +8779,30 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - front label-strip recess
 - Printable labels/front strips remain separate shared exports rather than
   being baked permanently into the 3D geometry in this first baseline.
+
+`InspectTubeProfiles {}` and `ExportTubeOpenScad { profile, path }` semantics:
+
+- Both use the canonical static `gentle.tube_profile.v1` table in
+  `gentle_protocol::labware`; neither changes saved project state. Existing
+  rack templates and container records acquire no new tube binding.
+- `profile` is exactly `eppendorf_safe_lock_0_5ml`,
+  `eppendorf_safe_lock_1_5ml` or `eppendorf_safe_lock_2_0ml`. Unknown IDs fail
+  deserialization rather than selecting a similar-looking tube.
+- Inspection returns all three rows in that order. Export returns its selected
+  row and writes one deterministic OpenSCAD outer-body/collar visualization.
+  `OpResult.tube_profiles` is optional/defaulted for old result readers.
+- Every dimension carries `value_mm`, a typed `basis` (`drawing`,
+  `approximate_drawing`, `not_documented`) and an optional source callout.
+  Source URL, raw-PDF SHA-256, document revision and page are retained. Unknown
+  cap plan outline remains null, not a diameter inferred from side-view width.
+- Source and approximation metadata accompany the SCAD. The solid body omits
+  cap, hinge and cavity; collar thickness, tip rounding and bottom interpolation
+  are labelled visualization assumptions. It is not a printable vessel or a
+  physical-fit, manufacturing, material, sterility or temperature qualification.
+- The operations are available through shared generic `op` adapters, not a new
+  labware parser. Export remains an explicit filesystem side effect under the
+  adapter's usual approval policy; a failed write returns `ErrorCode::Io`.
+- [Drawing provenance and verification boundaries](../data/labware/README.md).
 
 `ExportRackCarrierLabelsSvg` semantics:
 

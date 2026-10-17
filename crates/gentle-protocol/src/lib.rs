@@ -22,6 +22,8 @@ pub mod gene_sets;
 pub mod genomic_motif_evidence;
 pub mod genomic_regions;
 pub mod isoform_evidence;
+/// Drawing-backed tube visualization profiles and shared rack processing limits.
+pub mod labware;
 pub mod orthologs;
 pub mod promoter_cofactors;
 pub mod region_homology;
@@ -1899,6 +1901,11 @@ impl Default for RackProfileSnapshot {
 }
 
 impl RackProfileSnapshot {
+    /// Validate only when processing; historical oversized snapshots still deserialize.
+    pub fn processing_slot_count(&self) -> Result<usize, String> {
+        labware::admit_rack_grid(self.rows, self.columns)
+    }
+
     pub fn from_kind(kind: RackProfileKind) -> Self {
         let (rows, columns) = kind.dimensions();
         Self {
@@ -5685,6 +5692,8 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "ExportRackIsometricSvg",
     "ExportRackHeroSvg",
     "ExportRackOpenScad",
+    "InspectTubeProfiles",
+    "ExportTubeOpenScad",
     "ExportRackCarrierLabelsSvg",
     "ExportRackSimulationJson",
     "ExportDnaLadders",

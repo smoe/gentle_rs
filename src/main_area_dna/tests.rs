@@ -1208,6 +1208,7 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
     area.sequencing_confirmation_ui.trace_import_add_to_run = true;
 
     area.handle_imported_sequencing_trace_result(&OpResult {
+        tube_profiles: None,
         dna_sequence_design: None,
         dna_sequence_design_receipt: None,
         primer_group_target_design: None,
@@ -5369,6 +5370,7 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
     };
     area.handle_operation_success(
         super::OpResult {
+            tube_profiles: None,
             dna_sequence_design: None,
             dna_sequence_design_receipt: None,
             primer_group_target_design: None,

@@ -4913,6 +4913,17 @@ Exports:
 - Physical-rack exports intentionally remain rack-wide in this first baseline;
   arrangement-scoped occupancy labels/front strips still flow through the
   shared label-sheet export path instead of being baked into the 3D geometry.
+- `Tube reference models (visualization only)` is a separate collapsed section
+  in the Rack workspace. It offers source-backed Safe-Lock 0.5/1.5/2.0 ml
+  outer-body/collar OpenSCAD exports through the shared engine operation, without
+  requiring a rack or assigning a tube type to any sample. Source URLs are in
+  the hover; complete dimensions/provenance accompany the exported file.
+  Cap, hinge and cavity are omitted and assumptions are labelled. These are
+  not printable vessels or proof of compatibility with an existing template.
+- Grid processing is bounded to 1,536 positions with overflow-checked dimensions.
+  Unsupported saved racks still open unchanged; a visible explanation replaces
+  the grid and processing refuses, rather than expanding or truncating it.
+  No new Safe-Lock carrier, support mode, storage box or 96-well fit is implied.
 
 ## Engine Settings (Engine Ops)
 

@@ -230,15 +230,13 @@ impl GentleEngine {
         rows: usize,
         columns: usize,
     ) -> Result<(), EngineError> {
-        if rows == 0 || columns == 0 {
-            return Err(EngineError {
+        gentle_protocol::labware::admit_rack_grid(rows, columns)
+            .map(|_| ())
+            .map_err(|message| EngineError {
                 code: ErrorCode::InvalidInput,
-                message: "Custom rack profiles require rows >= 1 and columns >= 1".to_string(),
-
+                message,
                 cause_chain: vec![],
-            });
-        }
-        Ok(())
+            })
     }
 
     pub(crate) fn rack_coordinate_from_index(
@@ -353,6 +351,7 @@ impl GentleEngine {
         row: usize,
         column: usize,
     ) -> Result<String, EngineError> {
+        Self::validate_custom_rack_profile_dimensions(profile.rows, profile.columns)?;
         if row >= profile.rows || column >= profile.columns {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
@@ -383,6 +382,7 @@ impl GentleEngine {
         blocked_coordinates: &[String],
         drop_out_of_bounds: bool,
     ) -> Result<Vec<String>, EngineError> {
+        Self::validate_custom_rack_profile_dimensions(profile.rows, profile.columns)?;
         let mut rows = Vec::new();
         let mut seen = HashSet::new();
         for raw in blocked_coordinates {
@@ -488,6 +488,7 @@ impl GentleEngine {
         &self,
         rack: &Rack,
     ) -> Result<Vec<(usize, RackPlacementEntry)>, EngineError> {
+        Self::validate_custom_rack_profile_dimensions(rack.profile.rows, rack.profile.columns)?;
         let mut rows = Vec::with_capacity(rack.placements.len());
         for entry in &rack.placements {
             let index = Self::rack_index_from_coordinate(&rack.profile, &entry.coordinate)?;
@@ -1471,6 +1472,7 @@ impl GentleEngine {
         profile: &RackProfileSnapshot,
         template: RackAuthoringTemplate,
     ) -> Result<Vec<String>, EngineError> {
+        Self::validate_custom_rack_profile_dimensions(profile.rows, profile.columns)?;
         match template {
             RackAuthoringTemplate::BenchRows | RackAuthoringTemplate::PlateColumns => Ok(vec![]),
             RackAuthoringTemplate::PlateEdgeAvoidance => {
@@ -1630,6 +1632,7 @@ impl GentleEngine {
         rack: &Rack,
         arrangement_id: Option<&str>,
     ) -> Result<Vec<RackPlacementEntry>, EngineError> {
+        Self::validate_custom_rack_profile_dimensions(rack.profile.rows, rack.profile.columns)?;
         let arrangement_filter = arrangement_id
             .map(str::trim)
             .filter(|value| !value.is_empty());
@@ -2045,7 +2048,7 @@ impl GentleEngine {
 
                 cause_chain: vec![],
             })?;
-        let spec = Self::rack_physical_template_spec(template, &rack.profile);
+        let spec = Self::rack_physical_template_spec(template, &rack.profile)?;
         let rows = self.scoped_rack_entries(rack, arrangement_id)?;
         if rows.is_empty() {
             return Err(EngineError {
@@ -2250,7 +2253,8 @@ impl GentleEngine {
     fn rack_physical_template_spec(
         template: RackPhysicalTemplateKind,
         profile: &RackProfileSnapshot,
-    ) -> RackPhysicalTemplateSpec {
+    ) -> Result<RackPhysicalTemplateSpec, EngineError> {
+        Self::validate_custom_rack_profile_dimensions(profile.rows, profile.columns)?;
         let (
             family,
             pitch_x_mm,
@@ -2347,7 +2351,7 @@ impl GentleEngine {
             }
             RackPhysicalTemplateFamily::CellCulture => "cell_culture_plate_well",
         };
-        RackPhysicalTemplateSpec {
+        Ok(RackPhysicalTemplateSpec {
             kind: template,
             family,
             container_format: container_format.to_string(),
@@ -2367,7 +2371,7 @@ impl GentleEngine {
             front_label_strip_recess_mm,
             overall_width_mm,
             overall_depth_mm,
-        }
+        })
     }
 
     fn rack_arrangement_color(arrangement_id: &str) -> &'static str {
@@ -3347,7 +3351,7 @@ impl GentleEngine {
 
                 cause_chain: vec![],
             })?;
-        let spec = Self::rack_physical_template_spec(template, &rack.profile);
+        let spec = Self::rack_physical_template_spec(template, &rack.profile)?;
         let svg = self.export_rack_physical_svg_string(rack, &spec)?;
         fs::write(path, svg).map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -3375,7 +3379,7 @@ impl GentleEngine {
 
                 cause_chain: vec![],
             })?;
-        let spec = Self::rack_physical_template_spec(template, &rack.profile);
+        let spec = Self::rack_physical_template_spec(template, &rack.profile)?;
         let svg = self.export_rack_isometric_svg_string(rack, &spec)?;
         fs::write(path, svg).map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -3403,7 +3407,7 @@ impl GentleEngine {
 
                 cause_chain: vec![],
             })?;
-        let spec = Self::rack_physical_template_spec(template, &rack.profile);
+        let spec = Self::rack_physical_template_spec(template, &rack.profile)?;
         let svg = self.export_rack_hero_svg_string(rack, &spec)?;
         fs::write(path, svg).map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -3431,7 +3435,7 @@ impl GentleEngine {
 
                 cause_chain: vec![],
             })?;
-        let spec = Self::rack_physical_template_spec(template, &rack.profile);
+        let spec = Self::rack_physical_template_spec(template, &rack.profile)?;
         let blocked = rack
             .profile
             .blocked_coordinates
@@ -3501,7 +3505,7 @@ impl GentleEngine {
 
                 cause_chain: vec![],
             })?;
-        let spec = Self::rack_physical_template_spec(template, &rack.profile);
+        let spec = Self::rack_physical_template_spec(template, &rack.profile)?;
         let placements = self.sorted_rack_placements(rack)?;
         let blocked = rack
             .profile

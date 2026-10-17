@@ -9456,6 +9456,65 @@ fn open_arrangement_rack_dialog_materializes_default_rack_for_legacy_arrangement
 }
 
 #[test]
+fn labware_oversized_rack_gui_helpers_do_not_expand_the_saved_grid() {
+    for (rows, columns) in [(usize::MAX, 2), (1_000_000, 1_000_000)] {
+        let profile = RackProfileSnapshot::custom(rows, columns);
+        assert!(GENtleApp::rack_available_coordinates(&profile).is_empty());
+        assert!(GENtleApp::rack_edge_avoidance_coordinates(&profile).is_none());
+        let rack = Rack {
+            rack_id: "oversized".into(),
+            name: "Synthetic saved grid".into(),
+            profile,
+            placements: vec![],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        };
+        assert!(GENtleApp::rack_sorted_entries(&rack).is_empty());
+        let mut state = ProjectState::default();
+        state
+            .container_state
+            .racks
+            .insert(rack.rack_id.clone(), rack.clone());
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        app.open_rack_dialog("oversized");
+        assert!(app.show_rack_dialog);
+        let before = serde_json::to_value(app.engine.read().unwrap().state()).unwrap();
+        let ctx = egui::Context::default();
+        let output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1200.0, 2400.0),
+                )),
+                ..Default::default()
+            },
+            |ui| {
+                assert!(!app.render_rack_contents(ui));
+            },
+        );
+        let mut rendered_text = Vec::new();
+        for shape in &output.shapes {
+            collect_rendered_text_from_shape(&shape.shape, &mut rendered_text);
+        }
+        assert!(
+            rendered_text
+                .iter()
+                .any(|text| text == "Rack grid is not processed")
+        );
+        output.drop_without_applying_deltas();
+        assert_eq!(
+            serde_json::to_value(app.engine.read().unwrap().state()).unwrap(),
+            before
+        );
+        assert_eq!(
+            app.engine.read().unwrap().state().container_state.racks["oversized"].profile,
+            rack.profile
+        );
+    }
+}
+
+#[test]
 fn open_rack_dialog_prefills_custom_profile_editor_from_snapshot() {
     let mut state = ProjectState::default();
     state.container_state.racks.insert(
@@ -14481,6 +14540,7 @@ fn poll_prepare_success_after_cancel_request_reports_completion_prefix() {
     tx.send(GenomePrepareTaskMessage::Done {
         job_id: 54,
         result: Ok(OpResult {
+            tube_profiles: None,
             dna_sequence_design: None,
             dna_sequence_design_receipt: None,
             primer_group_target_design: None,
@@ -14771,6 +14831,7 @@ fn poll_track_import_refreshes_only_changed_sequence_windows() {
     tx.send(GenomeTrackImportTaskMessage::Done {
         job_id: 91,
         result: Ok(GenomeTrackTaskResult::Operation(OpResult {
+            tube_profiles: None,
             dna_sequence_design: None,
             dna_sequence_design_receipt: None,
             primer_group_target_design: None,
@@ -14945,6 +15006,7 @@ fn poll_track_import_refreshes_all_open_windows_when_changed_ids_missing() {
     tx.send(GenomeTrackImportTaskMessage::Done {
         job_id: 92,
         result: Ok(GenomeTrackTaskResult::Operation(OpResult {
+            tube_profiles: None,
             dna_sequence_design: None,
             dna_sequence_design_receipt: None,
             primer_group_target_design: None,
@@ -15341,6 +15403,7 @@ fn poll_track_autosync_marks_stale_result_and_allows_new_key_retry() {
 #[test]
 fn format_extract_region_status_includes_annotation_fallback_reason() {
     let status = GENtleApp::format_extract_region_status(&OpResult {
+        tube_profiles: None,
         dna_sequence_design: None,
         dna_sequence_design_receipt: None,
         primer_group_target_design: None,

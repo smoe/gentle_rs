@@ -899,7 +899,7 @@ impl GENtleApp {
     pub(super) fn rack_edge_avoidance_coordinates(
         profile: &crate::engine::RackProfileSnapshot,
     ) -> Option<Vec<String>> {
-        if profile.rows < 3 || profile.columns < 3 {
+        if profile.processing_slot_count().is_err() || profile.rows < 3 || profile.columns < 3 {
             return None;
         }
         let mut out = Vec::new();
@@ -1310,6 +1310,45 @@ impl GENtleApp {
         }
     }
 
+    fn prompt_export_tube_openscad(&mut self, profile: gentle_protocol::labware::TubeProfileId) {
+        let filename = format!("{}.visualization.scad", profile.as_str());
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&filename)
+            .add_filter("OpenSCAD", &["scad"])
+            .save_file()
+        else {
+            return;
+        };
+        let result = self
+            .engine
+            .write()
+            .unwrap()
+            .apply(Operation::ExportTubeOpenScad {
+                profile,
+                path: path.display().to_string(),
+            });
+        self.rack_view_status = match result {
+            Ok(result) => result.messages.join("\n"),
+            Err(error) => format!("Could not export tube visualization: {}", error.message),
+        };
+        self.app_status = self.rack_view_status.clone();
+    }
+
+    fn render_tube_model_controls(&mut self, ui: &mut Ui) {
+        ui.collapsing("Tube reference models (visualization only)", |ui| {
+            ui.small("Drawing-backed outer bodies and collars. Cap, hinge and cavity omitted; no physical fit or manufacturing qualification.");
+            for id in gentle_protocol::labware::TubeProfileId::ALL {
+                let profile = gentle_protocol::labware::tube_profile(id);
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(&profile.name).on_hover_text(&profile.source_url);
+                    if ui.button("Export tube OpenSCAD...").clicked() {
+                        self.prompt_export_tube_openscad(id);
+                    }
+                });
+            }
+        });
+    }
+
     pub(super) fn prompt_export_rack_carrier_labels_svg(&mut self, rack_id: &str) {
         let rack_id = rack_id.trim();
         if rack_id.is_empty() {
@@ -1418,6 +1457,9 @@ impl GENtleApp {
     pub(super) fn rack_sorted_entries(
         rack: &Rack,
     ) -> Vec<(usize, String, crate::engine::RackPlacementEntry)> {
+        if rack.profile.processing_slot_count().is_err() {
+            return Vec::new();
+        }
         let mut out = rack
             .placements
             .iter()
@@ -1767,6 +1809,9 @@ impl GENtleApp {
     pub(super) fn rack_available_coordinates(
         profile: &crate::engine::RackProfileSnapshot,
     ) -> Vec<String> {
+        if profile.processing_slot_count().is_err() {
+            return Vec::new();
+        }
         let blocked = profile
             .blocked_coordinates
             .iter()
@@ -2308,6 +2353,7 @@ impl GENtleApp {
         if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
             close_requested = true;
         }
+        self.render_tube_model_controls(ui);
         let Some(rack) = self.current_rack_snapshot() else {
             ui.small("No rack is currently selected.");
             return close_requested;
@@ -2683,6 +2729,12 @@ impl GENtleApp {
                 }
             }
         });
+        if let Err(reason) = rack.profile.processing_slot_count() {
+            ui.colored_label(ui.visuals().warn_fg_color, "Rack grid is not processed");
+            ui.label(reason);
+            ui.small("The saved rack is retained unchanged. Grid rendering, movement and rack exports are unavailable for this size.");
+            return close_requested;
+        }
         let sorted_entries = Self::rack_sorted_entries(&rack);
         let blocked_coordinates = rack
             .profile

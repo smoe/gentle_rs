@@ -49,6 +49,37 @@
   acceptance stays open under the owner's release cadence. No local Rust,
   push, restart, dispatch, model call or package operation is performed.
 
+## 2026-10-17 - Bound Rack Processing And Add Tube Reference Models
+
+- Add a shared 1,536-position engineering budget with checked multiplication
+  before rack coordinate expansion, reflow and export. Zero, oversized and
+  overflowing grids refuse with `InvalidInput`; historical snapshots still
+  deserialize intact. The GUI shows an unsupported-grid explanation instead
+  of expanding the grid, and export refusal preserves existing target files.
+- Add static Eppendorf Safe-Lock 0.5/1.5/2.0 ml drawing profiles, retaining
+  source PDF hashes/revisions/pages and exact, approximate or unknown dimension
+  status. Add deterministic solid outer-body/collar OpenSCAD visualizations;
+  cap, hinge and cavity remain omitted and interpolation is explicitly labelled.
+  No existing carrier geometry, persisted tube binding, fit/manufacturing claim,
+  support method, storage box or `.13` acceptance expansion is introduced.
+- Expose inspection/export through shared typed operations and generic `op`,
+  with artifact-write introspection and collapsed Rack-workspace controls.
+  Author protocol, renderer, engine, shared-shell/readiness and headless-GUI
+  regressions, including state preservation, legacy result decoding and I/O
+  refusals. Document source provenance and the deferred carrier decisions.
+- At base `1c5be317` plus this patch on macOS, both offline model tests passed
+  (all three body templates rendered with OpenSCAD 2026.04.04 and finite mesh
+  bounds checked); 71 tutorial/source/checkout tests passed, two explicit
+  real-CLI cases skipped. Formatting-only rustfmt and whitespace checks passed.
+  OpenSCAD initially failed Qt CPU detection inside the sandbox; the approved
+  outside-sandbox run passed after fixing the OFF-reader header assumption.
+- No local Rust compilation, test, Cargo check or native GENtle run was made
+  under the standing owner restriction. Rust/default/headless and native
+  acceptance remain Glen/CI work, as do byte-exact legacy carrier baselines
+  captured from the pre-change source. Template mesh checks are not execution
+  of the Rust exporter or evidence of physical fit. No dependency, push,
+  dispatch, release or scientific-output change is included.
+
 ## 2026-10-17 - Stabilize Reconstructed Container Identities
 
 - Address Glen's reported headless storage failure at `b2b6b30a` (three passes,
