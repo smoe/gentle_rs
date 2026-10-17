@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-10-18 - Commit Received Prompts And Consolidate Glen's Return Path
+
+- Preserve the three received release-link, sequence-design and original Claude
+  VKORC1 prompts verbatim as historical records, not active instructions.
+  Distinguish their stale status/proposed policy from current decisions and
+  retain the issued sequence-design handoff's SHA correction.
+- Add one covering Glen handoff for the next owner push: verify the metadata
+  repair, pending sequence-design Rust/actual-CLI paths and integrated .13
+  tutorial paths without another release freeze or implicit dispatch. Define
+  the owner-relayed response and small hash-manifested evidence delivery;
+  remaining six-gate and release/native/scientific verdicts stay separate.
+- Include the existing sequence-design README's `--locked` test instruction.
+  Leave `paper`, `output/` and historical evidence untouched. No local Rust,
+  push, workflow dispatch, model/provider call or package build is performed.
+- Offline verification: 114 tutorial-checkout/release-policy tests pass,
+  including LF/CRLF; documentation status, handoff link targets and whitespace
+  pass. Release-gate reports four OK; session-close reports four OK, two
+  expected working-tree/scope reminders and no failure. Roadmap stays 400 lines.
+
 ## 2026-10-18 - Retain Terminal Linux And Windows Regression Evidence
 
 - Follow run `39066178748` at `1c5be317` through terminal failure. Linux and

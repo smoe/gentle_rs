@@ -70,7 +70,7 @@ windows and palindrome deduplication; the Python audit oracle checks presence
 against separately declared memberships, without importing the Rust matcher.
 
 ```sh
-cargo test -p gentle-sequence-design
+cargo test -p gentle-sequence-design --locked
 ```
 
 Preserved translation does not establish expression, splicing, folding,
