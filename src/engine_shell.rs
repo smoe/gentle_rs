@@ -22178,6 +22178,35 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "ExportRackOpenScad",
             "Export rack OpenSCAD through the shared engine operation.",
         ),
+        json!({
+            "id": "InspectTubeProfiles",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [], "reads": [], "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Inspect source-backed Safe-Lock tube dimensions; no rack or sample required. No physical fit claim.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("InspectTubeProfiles")
+        }),
+        json!({
+            "id": "ExportTubeOpenScad",
+            "kind": "operation",
+            "mutating": "external",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "PROFILE", "required": true, "subject_kind": "other",
+                 "detail": "exact source-backed Safe-Lock profile ID from InspectTubeProfiles"},
+                external_output_arg()
+            ],
+            "reads": [],
+            "effects": [{"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"},
+                         "effect_kind": "external_handoff"}],
+            "precondition_expr": {"all": []},
+            "description": "Export a visualization-only tube body and collar; no cap, hinge, cavity, rack binding or fit claim.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ExportTubeOpenScad")
+        }),
         rack_export_descriptor(
             "racks carrier-labels-svg",
             "Export physical carrier labels for one persisted rack layout as SVG.",

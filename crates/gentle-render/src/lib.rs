@@ -8,6 +8,8 @@ mod feature_expert;
 /// Annotated measured-gel images; consumes engine-calibrated reports only.
 pub mod gel_image;
 mod gene_set_publication;
+/// Source-backed visualization-only tube outer-body OpenSCAD models.
+pub mod labware;
 pub mod pool_gel;
 pub mod protein_gel;
 pub mod protocol_cartoon;

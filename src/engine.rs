@@ -3557,6 +3557,13 @@ pub enum Operation {
         #[serde(default)]
         template: RackPhysicalTemplateKind,
     },
+    /// Inspect static drawing profiles; does not assign physical stock or fit.
+    InspectTubeProfiles {},
+    /// Write a visualization-only solid outer body, not a manufacturable tube.
+    ExportTubeOpenScad {
+        profile: gentle_protocol::labware::TubeProfileId,
+        path: String,
+    },
     ExportRackCarrierLabelsSvg {
         rack_id: String,
         path: String,
@@ -10188,6 +10195,8 @@ impl GentleEngine {
                 | Operation::ExportRackIsometricSvg { .. }
                 | Operation::ExportRackHeroSvg { .. }
                 | Operation::ExportRackOpenScad { .. }
+                | Operation::InspectTubeProfiles { .. }
+                | Operation::ExportTubeOpenScad { .. }
                 | Operation::ExportRackCarrierLabelsSvg { .. }
                 | Operation::ExportRackSimulationJson { .. }
                 | Operation::ExportDnaLadders { .. }

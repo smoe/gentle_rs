@@ -34886,6 +34886,207 @@ fn test_build_serial_gel_layout_for_render_explicit_auto_ignores_saved_arrangeme
 }
 
 #[test]
+fn labware_rack_grid_limits_refuse_before_changing_the_saved_rack() {
+    // Hand-crafted empty rack: resource admission, not physical capacity or fit.
+    let mut state = ProjectState::default();
+    state.container_state.racks.insert(
+        "bounded".into(),
+        Rack {
+            rack_id: "bounded".into(),
+            name: "Synthetic resource probe".into(),
+            profile: RackProfileSnapshot::custom(4, 6),
+            placements: vec![],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let before = serde_json::to_value(engine.state()).unwrap();
+    for (rows, columns) in [
+        (0, 1),
+        (1, 0),
+        (usize::MAX, 2),
+        (1_000_000, 1_000_000),
+        (1, 1_537),
+    ] {
+        let error = engine
+            .apply(Operation::SetRackProfileCustom {
+                rack_id: "bounded".into(),
+                rows,
+                columns,
+            })
+            .unwrap_err();
+        assert!(matches!(error.code, ErrorCode::InvalidInput));
+        assert!(error.message.starts_with("rack_grid_"));
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+    }
+    engine
+        .apply(Operation::SetRackProfileCustom {
+            rack_id: "bounded".into(),
+            rows: 32,
+            columns: 48,
+        })
+        .unwrap();
+    assert_eq!(
+        engine.state().container_state.racks["bounded"]
+            .profile
+            .processing_slot_count(),
+        Ok(1_536)
+    );
+}
+
+#[test]
+fn labware_oversized_saved_racks_reopen_but_exports_refuse_without_truncation() {
+    // Saved data must survive admission failure, including overflowing dimensions.
+    for (rows, columns) in [(1_000_000, 1_000_000), (usize::MAX, 2), (0, 1)] {
+        let mut state = ProjectState::default();
+        state.container_state.racks.insert(
+            "historical".into(),
+            Rack {
+                rack_id: "historical".into(),
+                name: "Synthetic unsupported historical grid".into(),
+                profile: RackProfileSnapshot::custom(rows, columns),
+                placements: vec![],
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+        let encoded = serde_json::to_vec(&state).unwrap();
+        let loaded: ProjectState = serde_json::from_slice(&encoded).unwrap();
+        let mut engine = GentleEngine::from_state(loaded);
+        let before = serde_json::to_value(engine.state()).unwrap();
+        assert_eq!(
+            engine.state().container_state.racks["historical"]
+                .profile
+                .rows,
+            rows
+        );
+        assert!(
+            GentleEngine::rack_available_coordinates_in_fill_order(
+                &engine.state().container_state.racks["historical"].profile
+            )
+            .is_err()
+        );
+        assert!(
+            GentleEngine::rack_coordinate_from_row_column(
+                &engine.state().container_state.racks["historical"].profile,
+                0,
+                0
+            )
+            .is_err()
+        );
+        assert!(
+            GentleEngine::rack_index_from_coordinate(
+                &engine.state().container_state.racks["historical"].profile,
+                "A1"
+            )
+            .is_err()
+        );
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("existing output's file");
+        fs::write(&path, b"preserve existing artifact").unwrap();
+        let path = path.to_str().unwrap().to_string();
+        let template = RackPhysicalTemplateKind::StoragePcrTubeRack;
+        for op in [
+            Operation::ExportRackLabelsSvg {
+                rack_id: "historical".into(),
+                path: path.clone(),
+                arrangement_id: None,
+                preset: RackLabelSheetPreset::CompactCards,
+            },
+            Operation::ExportRackFabricationSvg {
+                rack_id: "historical".into(),
+                path: path.clone(),
+                template,
+            },
+            Operation::ExportRackIsometricSvg {
+                rack_id: "historical".into(),
+                path: path.clone(),
+                template,
+            },
+            Operation::ExportRackHeroSvg {
+                rack_id: "historical".into(),
+                path: path.clone(),
+                template,
+            },
+            Operation::ExportRackOpenScad {
+                rack_id: "historical".into(),
+                path: path.clone(),
+                template,
+            },
+            Operation::ExportRackSimulationJson {
+                rack_id: "historical".into(),
+                path: path.clone(),
+                template,
+            },
+            Operation::ExportRackCarrierLabelsSvg {
+                rack_id: "historical".into(),
+                path: path.clone(),
+                arrangement_id: None,
+                template,
+                preset: RackCarrierLabelPreset::FrontStripAndCards,
+            },
+        ] {
+            let error = engine.apply(op).unwrap_err();
+            assert!(matches!(error.code, ErrorCode::InvalidInput));
+            assert!(error.message.starts_with("rack_grid_"));
+            assert_eq!(fs::read(&path).unwrap(), b"preserve existing artifact");
+            assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+        }
+    }
+}
+
+#[test]
+fn labware_tube_profile_inspection_and_model_exports_are_state_read_only() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let inspected = engine.apply(Operation::InspectTubeProfiles {}).unwrap();
+    assert_eq!(inspected.tube_profiles.unwrap().len(), 3);
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+    let directory = tempdir().unwrap();
+    for profile in gentle_protocol::labware::TubeProfileId::ALL {
+        let path = directory.path().join(format!("{}.scad", profile.as_str()));
+        let result = engine
+            .apply(Operation::ExportTubeOpenScad {
+                profile,
+                path: path.to_str().unwrap().into(),
+            })
+            .unwrap();
+        assert_eq!(result.tube_profiles.unwrap()[0].id, profile);
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            gentle_render::labware::render_tube_openscad(profile)
+        );
+        assert!(result.created_seq_ids.is_empty() && result.changed_seq_ids.is_empty());
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+    }
+    let error = engine
+        .apply(Operation::ExportTubeOpenScad {
+            profile: gentle_protocol::labware::TubeProfileId::EppendorfSafeLock15ml,
+            path: directory.path().to_str().unwrap().into(),
+        })
+        .unwrap_err();
+    assert!(matches!(error.code, ErrorCode::Io));
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+    assert!(
+        serde_json::from_value::<Operation>(serde_json::json!({
+            "ExportTubeOpenScad": { "profile": "unknown_tube", "path": "not-created.scad" }
+        }))
+        .is_err()
+    );
+    let old_result =
+        serde_json::to_value(engine.apply(Operation::InspectTubeProfiles {}).unwrap()).unwrap();
+    let mut old_result = old_result;
+    old_result.as_object_mut().unwrap().remove("tube_profiles");
+    assert!(
+        serde_json::from_value::<OpResult>(old_result)
+            .unwrap()
+            .tube_profiles
+            .is_none()
+    );
+}
+
+#[test]
 fn export_rack_fabrication_isometric_svg_and_openscad_include_template_markers() {
     let mut state = ProjectState::default();
     state
@@ -37347,9 +37548,18 @@ fn test_reconcile_containers_preserves_existing_bindings_on_reload() {
     let containers = &restored.state().container_state;
     assert_eq!(containers.containers.len(), 3);
     assert_eq!(containers.next_container_counter, 42);
-    assert_eq!(containers.seq_to_latest_container["middle"], "reviewed-tube");
-    assert_eq!(containers.seq_to_latest_container["a_missing"], "container-41");
-    assert_eq!(containers.seq_to_latest_container["z_missing"], "container-42");
+    assert_eq!(
+        containers.seq_to_latest_container["middle"],
+        "reviewed-tube"
+    );
+    assert_eq!(
+        containers.seq_to_latest_container["a_missing"],
+        "container-41"
+    );
+    assert_eq!(
+        containers.seq_to_latest_container["z_missing"],
+        "container-42"
+    );
     assert_eq!(
         serde_json::to_value(&containers.containers["reviewed-tube"]).unwrap(),
         serde_json::to_value(existing).unwrap()

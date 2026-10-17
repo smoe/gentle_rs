@@ -1,5 +1,27 @@
 # GENtle Changelog
 
+## 2026-10-18 - Integrate Rack And Tube Work Into Glen's Verification Request
+
+- Merge `gentle_rs_2_main` at `5b1da7d3` into main. Resolve only the roadmap's
+  session-summary conflict by retaining the current handoff/cadence and the
+  incoming rack/resource scope; preserve both histories and authored tests.
+- Extend the single Glen handoff with protocol/renderer, headless/default
+  labware and rack-export checks, source-bound tube provenance, generic-op
+  confirmation/state preservation and before/after legacy carrier baselines.
+  Native and physical-fit acceptance remain separate; no new carrier decision.
+- Explicitly retain the `8a0e2670` match-limit and `958b2238` 180/10,800-case
+  IUPAC follow-up, including actual CLI execution rather than skipped tests.
+  These commits were already integrated; offline passes do not close Rust
+  acceptance or replace the historical `de9df8af` verdict.
+- No local Rust, push, dispatch, model/provider call or package build. Preserve
+  `paper`, `output/`, historical evidence and the separate opt1 fallback.
+- Integration checks: 115 offline tutorial/release-policy/template-extraction
+  tests pass, plus 18 sequence-design oracle/harness tests; four actual-CLI
+  cases skip without a supplied binary and remain pending. Documentation,
+  links and whitespace pass; release-gate is four OK, and session-close has
+  four OK, two expected worktree/scope reminders and no failure. Roadmap stays
+  400 lines. No OpenSCAD mesh or Rust-exporter acceptance is claimed here.
+
 ## 2026-10-18 - Commit Received Prompts And Consolidate Glen's Return Path
 
 - Preserve the three received release-link, sequence-design and original Claude
@@ -67,6 +89,37 @@
   Optional GUI, authenticated-CLI and scroll jobs skip; native/agent/package
   acceptance stays open under the owner's release cadence. No local Rust,
   push, restart, dispatch, model call or package operation is performed.
+
+## 2026-10-17 - Bound Rack Processing And Add Tube Reference Models
+
+- Add a shared 1,536-position engineering budget with checked multiplication
+  before rack coordinate expansion, reflow and export. Zero, oversized and
+  overflowing grids refuse with `InvalidInput`; historical snapshots still
+  deserialize intact. The GUI shows an unsupported-grid explanation instead
+  of expanding the grid, and export refusal preserves existing target files.
+- Add static Eppendorf Safe-Lock 0.5/1.5/2.0 ml drawing profiles, retaining
+  source PDF hashes/revisions/pages and exact, approximate or unknown dimension
+  status. Add deterministic solid outer-body/collar OpenSCAD visualizations;
+  cap, hinge and cavity remain omitted and interpolation is explicitly labelled.
+  No existing carrier geometry, persisted tube binding, fit/manufacturing claim,
+  support method, storage box or `.13` acceptance expansion is introduced.
+- Expose inspection/export through shared typed operations and generic `op`,
+  with artifact-write introspection and collapsed Rack-workspace controls.
+  Author protocol, renderer, engine, shared-shell/readiness and headless-GUI
+  regressions, including state preservation, legacy result decoding and I/O
+  refusals. Document source provenance and the deferred carrier decisions.
+- At base `1c5be317` plus this patch on macOS, both offline model tests passed
+  (all three body templates rendered with OpenSCAD 2026.04.04 and finite mesh
+  bounds checked); 71 tutorial/source/checkout tests passed, two explicit
+  real-CLI cases skipped. Formatting-only rustfmt and whitespace checks passed.
+  OpenSCAD initially failed Qt CPU detection inside the sandbox; the approved
+  outside-sandbox run passed after fixing the OFF-reader header assumption.
+- No local Rust compilation, test, Cargo check or native GENtle run was made
+  under the standing owner restriction. Rust/default/headless and native
+  acceptance remain Glen/CI work, as do byte-exact legacy carrier baselines
+  captured from the pre-change source. Template mesh checks are not execution
+  of the Rust exporter or evidence of physical fit. No dependency, push,
+  dispatch, release or scientific-output change is included.
 
 ## 2026-10-17 - Stabilize Reconstructed Container Identities
 

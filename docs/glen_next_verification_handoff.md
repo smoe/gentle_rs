@@ -34,6 +34,12 @@ the selected .13 packaging recipe remains opt2. Codex runs no local Rust.
    ```
 
 2. **Sequence-design follow-up:** verify `8a0e2670` and `958b2238` are included.
+   The first retains a freshly validated best after edited-candidate match-cap
+   overflow, marking search incomplete without optimality/infeasibility proofs
+   instead of returning Invalid and discarding it. The second adds independent
+   180 single-symbol and 10,800 paired-symbol IUPAC cases without changing the
+   production matcher. Eighteen offline oracle/harness passes are not Rust
+   acceptance; this regression follow-up remains pending execution.
    Execute the core/protocol tests that the failed older workspace run did not
    reach, plus the shared engine and CLI boundaries:
 
@@ -74,6 +80,41 @@ the selected .13 packaging recipe remains opt2. Codex runs no local Rust.
    no optional-binary skip is acceptance. Retain LF/CRLF and quoted-path results,
    deterministic container order, conservative expression refusals and unchanged
    review state/files. Report drift; do not regenerate historical evidence.
+
+4. **Merged rack safety and tube reference models:** verify the integrated
+   `gentle_rs_2_main` commit `5b1da7d3981e7a2a4280cadc4b86b9345d82896c`.
+   Run its protocol/renderer, headless engine/shell and default GUI regressions,
+   then existing rack export and capability/parity checks:
+
+   ```sh
+   cargo test --locked -p gentle-protocol -j1 labware::tests::
+   cargo test --locked -p gentle-render -j1 labware::tests::
+   cargo test --locked --lib --no-default-features -j1 labware_ -- --test-threads=1
+   cargo test --locked --lib -j1 labware_ -- --test-threads=1
+   cargo test --locked --lib -j1 rack_ -- --test-threads=1
+   python3 -m unittest scripts.test_labware_models -v
+   ```
+
+   Require positive, overflow-checked admission through 1,536 slots, refusal
+   above the limit, unchanged unsupported saved racks on reopen, and refusal
+   before overwriting any existing export. Exercise generic `op` inspection
+   and all three tube exports with quoted paths: deterministic SCAD, legacy
+   result decoding, explicit artifact-write confirmation and unchanged project
+   state/history. Generator/parity checks must include the new operation IDs.
+   OpenSCAD mesh checks alone do not execute the Rust exporter; missing
+   OpenSCAD is a recorded skip, not mesh acceptance. Keep source URL/digest/
+   revision/page and exact/approximate/unknown dimensions intact.
+
+   Follow [the provenance and legacy-baseline boundary](../data/labware/README.md#verification-boundary).
+   In separate isolated checkouts, compare raw SCAD, simulation JSON and spec
+   JSON for the same fixed rack and all three existing carrier templates,
+   before this feature at `1c5be3175323eec41359b980b5a41e22c7edaec1` and at
+   the tested integrated source. Retain input and before/after hashes outside
+   Git; no source-only or template-only result proves byte identity. Native
+   Rack controls remain a release-stage check, not new capture authority here.
+   Tube models are body/collar visualizations with cap/hinge/cavity omitted,
+   not printable vessels or fit evidence. New carriers, support/pitch,
+   96-position interpretation and storage boxes remain deferred owner choices.
 
 Use `--locked` throughout. If dependencies are already cached, `--offline` may
 also be used; otherwise record retrieval failures as environmental. Do not

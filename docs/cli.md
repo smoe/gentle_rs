@@ -6133,12 +6133,34 @@ Rendering export commands:
   - Calls engine operation `SetRackProfileCustom`.
   - Reflows occupied positions onto one custom A1-style rack geometry.
   - A1-style row labels continue beyond `Z` as `AA`, `AB`, ...
+  - Dimensions must be positive and their checked product at most 1,536 slots.
+    This is a processing budget, not a physical-capacity or fit claim. Larger
+    historical rack snapshots still load, but grid processing and rack exports
+    refuse them without truncating the saved data or overwriting an output.
 - `racks set-blocked RACK_ID COORD[,COORD...]...`
   - Calls engine operation `SetRackBlockedCoordinates`.
   - Reserves one normalized blocked-coordinate set on the rack and reflows
     occupied positions across the remaining available slots.
 - `racks set-blocked RACK_ID --clear`
   - Clears all blocked rack coordinates.
+
+Tube reference models use the existing generic `op` route, also available to
+the GUI Shell and inner agent; there is no second labware command parser:
+
+```text
+op '{"InspectTubeProfiles":{}}'
+op '{"ExportTubeOpenScad":{"profile":"eppendorf_safe_lock_1_5ml","path":"tube.visualization.scad"}}'
+```
+
+Inspection returns `tube_profiles` with drawing source URLs/digests and per-field
+`drawing`, `approximate_drawing` or `not_documented` basis. Available profile IDs
+are `eppendorf_safe_lock_0_5ml`, `eppendorf_safe_lock_1_5ml` and
+`eppendorf_safe_lock_2_0ml`. Export writes the explicitly selected file and
+returns the selected profile, but neither operation changes project state.
+Normal adapter confirmation policies still apply to artifact writes. The SCAD
+is an outer-body/collar visualization with labelled assumptions, not a printable
+vessel; cap, hinge and cavity are omitted. No fit with existing rack/plate
+templates is inferred. See [drawing provenance](../data/labware/README.md).
 
 RNA secondary-structure text command:
 

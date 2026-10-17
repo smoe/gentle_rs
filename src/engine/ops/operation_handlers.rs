@@ -38079,6 +38079,27 @@ impl GentleEngine {
         result: &mut OpResult,
     ) -> Result<(), EngineError> {
         match op {
+            Operation::InspectTubeProfiles {} => {
+                result.tube_profiles = Some(
+                    gentle_protocol::labware::TubeProfileId::ALL
+                        .into_iter()
+                        .map(gentle_protocol::labware::tube_profile)
+                        .collect(),
+                );
+            }
+            Operation::ExportTubeOpenScad { profile, path } => {
+                let source = gentle_render::labware::render_tube_openscad(profile);
+                fs::write(&path, source).map_err(|error| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!("Could not write tube visualization '{path}': {error}"),
+                    cause_chain: vec![],
+                })?;
+                result.tube_profiles = Some(vec![gentle_protocol::labware::tube_profile(profile)]);
+                result.messages.push(format!(
+                    "Wrote tube outer-body visualization '{}' to '{}'; cap/hinge omitted; no fit or manufacturing claim",
+                    profile.as_str(), path
+                ));
+            }
             Operation::ExportRackLabelsSvg {
                 rack_id,
                 path,
@@ -38363,6 +38384,8 @@ impl GentleEngine {
             | op @ Operation::ExportRackIsometricSvg { .. }
             | op @ Operation::ExportRackHeroSvg { .. }
             | op @ Operation::ExportRackOpenScad { .. }
+            | op @ Operation::InspectTubeProfiles { .. }
+            | op @ Operation::ExportTubeOpenScad { .. }
             | op @ Operation::ExportRackCarrierLabelsSvg { .. }
             | op @ Operation::ExportRackSimulationJson { .. } => {
                 self.apply_rack_export_operation(op, result)?;
@@ -40492,6 +40515,7 @@ impl GentleEngine {
         let op_id = self.next_op_id();
         let mut parent_seq_ids: Vec<SeqId> = vec![];
         let mut result = OpResult {
+            tube_profiles: None,
             dna_sequence_design: None,
             dna_sequence_design_receipt: None,
             op_id,
@@ -40699,6 +40723,8 @@ impl GentleEngine {
                 | Operation::ExportRackIsometricSvg { .. }
                 | Operation::ExportRackHeroSvg { .. }
                 | Operation::ExportRackOpenScad { .. }
+                | Operation::InspectTubeProfiles { .. }
+                | Operation::ExportTubeOpenScad { .. }
                 | Operation::ExportRackCarrierLabelsSvg { .. }
                 | Operation::ExportRackSimulationJson { .. }
         ) {
@@ -42184,6 +42210,8 @@ impl GentleEngine {
                 | op @ Operation::ExportRackIsometricSvg { .. }
                 | op @ Operation::ExportRackHeroSvg { .. }
                 | op @ Operation::ExportRackOpenScad { .. }
+                | op @ Operation::InspectTubeProfiles { .. }
+                | op @ Operation::ExportTubeOpenScad { .. }
                 | op @ Operation::ExportRackCarrierLabelsSvg { .. }
                 | op @ Operation::ExportRackSimulationJson { .. } => {
                     self.apply_rack_export_operation(op, &mut result)?;

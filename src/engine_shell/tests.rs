@@ -12,6 +12,73 @@
 use super::*;
 
 #[test]
+fn labware_generic_op_route_preserves_profiles_models_and_project_state() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let payload = serde_json::to_string(&Operation::InspectTubeProfiles {}).unwrap();
+    let parsed = parse_shell_line(&format!("op {}", quote_shell_arg(&payload))).unwrap();
+    let inspected = execute_shell_command(&mut engine, &parsed).unwrap();
+    assert!(!inspected.state_changed);
+    assert_eq!(
+        inspected.output["result"]["tube_profiles"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("tube model's output.scad");
+    let profile = gentle_protocol::labware::TubeProfileId::EppendorfSafeLock20ml;
+    let op = Operation::ExportTubeOpenScad {
+        profile,
+        path: path.to_str().unwrap().into(),
+    };
+    let payload = serde_json::to_string(&op).unwrap();
+    let parsed = parse_shell_line(&format!("op {}", quote_shell_arg(&payload))).unwrap();
+    let output = execute_shell_command(&mut engine, &parsed).unwrap();
+    assert!(!output.state_changed);
+    assert_eq!(
+        output.output["result"]["tube_profiles"][0]["id"],
+        profile.as_str()
+    );
+    assert_eq!(
+        std::fs::read_to_string(path).unwrap(),
+        gentle_render::labware::render_tube_openscad(profile)
+    );
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+}
+
+#[test]
+fn labware_introspection_does_not_require_a_rack_and_declares_external_writes() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let descriptors = introspection_capability_descriptors(None);
+    for id in ["InspectTubeProfiles", "ExportTubeOpenScad"] {
+        let descriptor = descriptors.iter().find(|row| row["id"] == id).unwrap();
+        assert_eq!(descriptor["annotation_status"], "fact_annotated");
+        assert!(descriptor["reads"].as_array().unwrap().is_empty());
+        let readiness = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(&format!("introspect readiness {id}")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(readiness.output["readiness"][0]["readiness"], "ready");
+    }
+    let exported = descriptors
+        .iter()
+        .find(|row| row["id"] == "ExportTubeOpenScad")
+        .unwrap();
+    assert_eq!(exported["mutating"], "external");
+    assert_eq!(exported["requires_confirmation"], true);
+    assert_eq!(exported["effects"][0]["fact"], "artifact.written");
+    let inspected = descriptors
+        .iter()
+        .find(|row| row["id"] == "InspectTubeProfiles")
+        .unwrap();
+    assert_eq!(inspected["mutating"], "false");
+    assert!(inspected["effects"].as_array().unwrap().is_empty());
+}
+
+#[test]
 fn tss_collection_map_flags_preserve_subject_validation_and_approvals() {
     let mut engine = crate::engine::synthetic_tss_engine(false);
     let request = crate::engine::synthetic_tss_approval(&engine);

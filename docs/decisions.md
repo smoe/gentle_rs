@@ -1620,3 +1620,26 @@ Draft-only undo checkpoints retain the draft store and journal, not a copy of
 unrelated DNA state; these edits advance mutation but not structural revision.
 Draft request allocations are shared across journal copies as well as project
 snapshots; the serialized contract remains ordinary self-contained JSON.
+
+## Labware Reference And Resource Boundaries
+
+Status: active
+
+Rack grid admission is shared across engine and GUI processing. Dimensions
+must be positive, multiply without overflow, and fit the 1,536-position
+engineering processing budget. Apply admission before grid expansion,
+placement/reflow or export, never as a saved-project deserialization rule.
+Unsupported historical racks remain intact and visible as unsupported; they
+must not be silently truncated, processed as an empty valid grid, or exported
+over an existing artifact. Increasing this budget requires resource evidence,
+not a claim that a physical carrier holds that many tubes.
+
+Tube reference profiles are a static, source-backed shared contract, not new
+physical inventory records. Retain raw drawing digest/revision/page and mark
+each dimension as drawing-backed, approximate or unknown. Side-view cap width
+does not establish the plan-view hinge/cap outline. Visualization-only tube
+models must disclose omitted cap/hinge/cavity and interpolated geometry; they
+never imply fit, manufacturability, material or biological qualification.
+Existing PCR/plate templates are not a compatibility authority for Safe-Lock
+tubes. Carrier support, closed-cap pitch, 96-position interpretation and
+storage boxes need separate explicit decisions and evidence.

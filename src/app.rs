@@ -12434,6 +12434,7 @@ Error: `{err}`"
                 }
             })
             .map(|report| OpResult {
+                tube_profiles: None,
                 dna_sequence_design: None,
                 dna_sequence_design_receipt: None,
                 primer_group_target_design: None,
@@ -25315,6 +25316,12 @@ Error: `{err}`"
                 "Export rack OpenSCAD: rack_id={}, template={}, path={}",
                 rack_id.trim(),
                 template.as_str(),
+                path
+            ),
+            Operation::InspectTubeProfiles {} => "Inspect drawing-backed tube profiles".into(),
+            Operation::ExportTubeOpenScad { profile, path } => format!(
+                "Export visualization-only tube model: profile={}, path={}",
+                profile.as_str(),
                 path
             ),
             Operation::ExportRackCarrierLabelsSvg {

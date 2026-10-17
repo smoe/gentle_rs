@@ -14510,6 +14510,7 @@ impl GentleEngine {
         let run_id = "interactive".to_string();
         let checkpoint = self.maybe_capture_checkpoint(&op);
         let mut result = OpResult {
+            tube_profiles: None,
             dna_sequence_design: None,
             dna_sequence_design_receipt: None,
             primer_group_target_design: None,
@@ -14685,6 +14686,7 @@ impl GentleEngine {
         let run_id = "interactive".to_string();
         let checkpoint = self.maybe_capture_checkpoint(&op);
         let mut result = OpResult {
+            tube_profiles: None,
             dna_sequence_design: None,
             dna_sequence_design_receipt: None,
             primer_group_target_design: None,
