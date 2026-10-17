@@ -1,5 +1,27 @@
 # GENtle Changelog
 
+## 2026-10-17 - Stabilize Reconstructed Container Identities
+
+- Address Glen's reported headless storage failure at `b2b6b30a` (three passes,
+  one failed engine/shared-shell parity test). Sort sequence IDs before creating
+  missing fallback containers instead of assigning identities from randomized
+  HashMap iteration. Existing container IDs, source bindings and creation records
+  are not rewritten; no report/fixture comparison is relaxed.
+- Add synthetic engine reconstruction regressions across six insertion orders,
+  with exact ID/member assertions, idempotence, existing-counter continuation
+  and persisted-state reopen preservation. Keep the existing storage parity
+  test unchanged so it continues to exercise the actual public shell boundary.
+- Offline verification: 48 Python storage-tutorial/release-policy tests passed;
+  documentation-status guard and whitespace check passed; release-gate reported
+  four OK, no warnings/failures. Session-close reported four OK and two expected
+  reminders (dirty/untracked unrelated files and manual scope confirmation);
+  roadmap remains at 400 lines. These checks do not execute the Rust regressions.
+- Local Rust tests/checks and real-CLI acceptance remain unrun. Glen/CI should
+  repeat `gene_set_arrangement` and `reconcile_containers` headless and default-
+  feature library filters with an explicit isolated target, then the existing
+  CLI/parity gates. No push, new dispatch, model call or historical evidence
+  rewrite is included; native screenshots retain their reported source boundary.
+
 ## 2026-10-15 - Integrate Recovered Documentation Without Replacing Newer Work
 
 - Rebase the recovered October 7 cleanup onto current main, preserving the

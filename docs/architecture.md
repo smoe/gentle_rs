@@ -786,6 +786,11 @@ Container semantics now exist as first-class state.
 `SelectCandidate` remains explicit in-silico disambiguation when multiple
 possible products exist.
 
+When reconstructing sequence-only or partially populated container state,
+allocate missing singleton IDs in lexicographic sequence-ID order, never hash
+iteration order. Preserve existing IDs, membership bindings and creation records;
+repeated reconciliation must not allocate additional containers.
+
 Display state (`ProjectState.display`) now also carries repeat, TFBS, and VCF
 display/filter criteria so interactive GUI filtering and SVG export use one
 shared contract.

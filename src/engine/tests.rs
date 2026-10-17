@@ -37278,6 +37278,92 @@ fn test_set_parameter_gc_content_bin_size_bp_zero_fails() {
 }
 
 #[test]
+fn test_reconcile_containers_allocates_in_sequence_id_order() {
+    // Literal synthetic sequences exercise reconstruction, not biological stock.
+    let ids = (0..16)
+        .map(|index| format!("sequence_{index:02}"))
+        .collect::<Vec<_>>();
+    for rotation in [0, 5, 15] {
+        for reversed in [false, true] {
+            let mut insertion_order = ids.clone();
+            insertion_order.rotate_left(rotation);
+            if reversed {
+                insertion_order.reverse();
+            }
+            let mut state = ProjectState::default();
+            for id in insertion_order {
+                state.sequences.insert(id, seq("ACGT"));
+            }
+            let mut engine = GentleEngine::from_state(state);
+            let containers = &engine.state().container_state;
+            assert_eq!(containers.containers.len(), ids.len());
+            assert_eq!(containers.next_container_counter, 16);
+            for (index, id) in ids.iter().enumerate() {
+                let container_id = format!("container-{}", index + 1);
+                assert_eq!(
+                    containers.seq_to_latest_container.get(id),
+                    Some(&container_id)
+                );
+                let container = &containers.containers[&container_id];
+                assert_eq!(container.members.as_slice(), std::slice::from_ref(id));
+                assert!(matches!(container.kind, ContainerKind::Singleton));
+            }
+            let before = serde_json::to_value(containers).unwrap();
+            engine.reconcile_containers();
+            assert_eq!(
+                serde_json::to_value(&engine.state().container_state).unwrap(),
+                before
+            );
+        }
+    }
+}
+
+#[test]
+fn test_reconcile_containers_preserves_existing_bindings_on_reload() {
+    let mut state = ProjectState::default();
+    for id in ["z_missing", "middle", "a_missing"] {
+        state.sequences.insert(id.into(), seq("ACGT"));
+    }
+    let existing = Container {
+        container_id: "reviewed-tube".into(),
+        kind: ContainerKind::Singleton,
+        name: Some("Reviewed source tube".into()),
+        members: vec!["middle".into()],
+        declared_contents_exclusive: true,
+        created_by_op: Some("op-7".into()),
+        created_at_unix_ms: 123_456,
+    };
+    state
+        .container_state
+        .containers
+        .insert(existing.container_id.clone(), existing.clone());
+    state
+        .container_state
+        .seq_to_latest_container
+        .insert("middle".into(), existing.container_id.clone());
+    state.container_state.next_container_counter = 40;
+    let saved = serde_json::to_string(&state).unwrap();
+    let restored = GentleEngine::from_state(serde_json::from_str(&saved).unwrap());
+    let containers = &restored.state().container_state;
+    assert_eq!(containers.containers.len(), 3);
+    assert_eq!(containers.next_container_counter, 42);
+    assert_eq!(containers.seq_to_latest_container["middle"], "reviewed-tube");
+    assert_eq!(containers.seq_to_latest_container["a_missing"], "container-41");
+    assert_eq!(containers.seq_to_latest_container["z_missing"], "container-42");
+    assert_eq!(
+        serde_json::to_value(&containers.containers["reviewed-tube"]).unwrap(),
+        serde_json::to_value(existing).unwrap()
+    );
+    let before = serde_json::to_value(containers).unwrap();
+    let saved = serde_json::to_string(restored.state()).unwrap();
+    let reopened = GentleEngine::from_state(serde_json::from_str(&saved).unwrap());
+    assert_eq!(
+        serde_json::to_value(&reopened.state().container_state).unwrap(),
+        before
+    );
+}
+
+#[test]
 fn test_containers_created_on_load_and_digest() {
     let mut engine = GentleEngine::new();
     let load = engine

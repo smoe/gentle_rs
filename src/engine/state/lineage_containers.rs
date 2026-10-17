@@ -3809,7 +3809,9 @@ impl GentleEngine {
     }
 
     pub(super) fn reconcile_containers(&mut self) {
-        let seq_ids: Vec<SeqId> = self.state.sequences.keys().cloned().collect();
+        let mut seq_ids: Vec<SeqId> = self.state.sequences.keys().cloned().collect();
+        // Fallback IDs must not depend on randomized HashMap iteration.
+        seq_ids.sort_unstable();
         for seq_id in &seq_ids {
             if !self
                 .state
