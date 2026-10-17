@@ -73,6 +73,12 @@ four Rust filters and broad/native acceptance remain open; the failed older CI
 stays unchanged. Preserve runner receipts and per-platform counts; no parser
 broadening, ambient-stack substitution, local Rust or new dispatch is authorized.
 
+Later ordinary [CI at `1c5be317`](glen_audit_followups_20261008.md#completed-windows-job-and-terminal-run-2026-10-18)
+executes all five stripped-child families on Linux and native Windows: each
+passes 12/2/7/2/2 with null child-stack overrides. Do not reissue the old focused
+repair audit as unfinished software work. The run itself fails on unrelated
+README metadata; selected-release/native/package acceptance remains separate.
+
 At the final source, also verify the Promoter design action-row width repair:
 
 ```sh

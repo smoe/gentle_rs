@@ -1,5 +1,22 @@
 # GENtle Changelog
 
+## 2026-10-18 - Retain Terminal Linux And Windows Regression Evidence
+
+- Follow run `39066178748` at `1c5be317` through terminal failure. Linux and
+  Windows both fail the same README release-label guard, not separate runtime
+  defects; retain original final API snapshots and Windows CRLF/BOM log hashes
+  beside the earlier Linux and in-progress records.
+- Record the five actual stripped-child families passing 12/2/7/2/2 on each
+  platform, including named worker/SPDI tests and null stack overrides. Root
+  libraries pass 4,182/4,121 with 14 ignored each; those results do not turn the
+  failed workspace/candidate into a pass. The repair at `57a2403a` is untested
+  by this older run. Update the consolidated request so the finished bounded
+  stack audit is not reissued, while all native/agent/scroll/package gates stay
+  at their actual sources and scopes. No push, restart, dispatch or local Rust.
+- Offline documentation/retained-evidence checks pass 24/24; whitespace and
+  documentation status pass. Session-close has four OK, the expected unrelated
+  dirty-file/scope reminders and no failure; roadmap remains at 400 lines.
+
 ## 2026-10-17 - Catch README Release-Label Drift Before Rust CI
 
 - Diagnose Linux job `117494244802` at `1c5be317`: the root library passes

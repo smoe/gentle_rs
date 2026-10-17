@@ -210,8 +210,8 @@ selected release candidate, new dispatch or interim development freeze.
 
 [Push run 39066178748](https://github.com/smoe/gentle_rs/actions/runs/39066178748),
 attempt 1, has an initial retained snapshot with Linux and Windows running;
-the later Linux failure is recorded below. Windows remains running at that
-inspection; macOS and all three optional audit jobs are skipped. The completed
+both platform failures and the terminal run are recorded below. macOS and all
+three optional audit jobs are skipped. The completed
 [headless job 117494227645](https://github.com/smoe/gentle_rs/actions/runs/39066178748/job/117494227645)
 passes `cargo check --locked --no-default-features --bin gentle_cli --bin gentle_mcp`
 and the locked normal-dependency desktop-exclusion check. Its log verifies the
@@ -260,10 +260,38 @@ negative controls and real LF/CRLF checkout coverage. The unrelated crate README
 edit is not part of the repair. No newer-source Rust pass is claimed, and later
 CLI/tutorial/render steps skipped after this failure are not additional defects.
 
+#### Completed Windows Job And Terminal Run (2026-10-18)
+
+[Windows job 117494227975](https://github.com/smoe/gentle_rs/actions/runs/39066178748/job/117494227975)
+also fails solely at `release_metadata_matches_cargo_package_version`, with
+the same README-label assertion, after its root library passes 4,121 tests
+(zero failures, 14 ignored; 921.10 s). Its quiet workspace output gives
+aggregate counts, not named storage/sequence-design test evidence. The earlier
+workflow-example filter passes 94 tests. No platform-specific runtime fix is
+justified by this shared metadata defect.
+
+All five Windows stripped-child filters execute and pass with the same
+12/2/7/2/2 counts as Linux. Each runner JSON has
+`child_rust_min_stack:null`; the named dialog-fetch, explicit-worker-stack and
+both SPDI regressions are present. Windows is Server 2025/MSVC, image
+`20261007.264.1`, Rust 1.99.1 (`58cf8f9c3`), unoptimized dev/test profiles,
+incremental off. Cargo's version and binary hashes are not separately attested.
+Linux runs `cargo test --locked --workspace -j1`; Windows runs
+`cargo test -q --locked --workspace`. These are not package-opt1/opt2 builds.
+
+The run completes **failure** at 22:02:35 UTC on October 17
+(00:02:35 Europe/Berlin on October 18). Its selected-platform aggregation also
+fails because Linux and Windows fail; this is not a third product defect.
+Headless and safety remain successful; macOS and all three optional audits
+remain skipped. Later tutorial/CLI/render steps skip after the metadata failure.
+The local repair is `57a2403a`, not the tested source, and is not pushed or
+Rust-accepted by this observation. Development remains unfrozen; consolidate
+new-source and release-only acceptance on the owner's normal release path.
+
 | Item | Evidence And Remaining Boundary At This Observation |
 | --- | --- |
 | 1. Audit preservation / Linux validation | Original preservation remains verified. Fresh headless checks and the 4,182-test root library pass; Linux job fails on README metadata later. No full-workspace/candidate pass is recorded. |
-| 2. 08.04 GUI/agent contracts | All five Linux stripped-child families pass with null stack overrides and actual named tests. Windows logs remain pending; synthetic GUI job skips. Final-source physical/refusal/parity acceptance remains open. |
+| 2. 08.04 GUI/agent contracts | All five Linux and native-Windows stripped-child families pass with null stack overrides and actual named tests. This closes those software regressions at `1c5be317`, not final-source physical/native GUI acceptance. The synthetic GUI job skips; no model or scientific acceptance follows. |
 | 3. Genuine live agent | Not run; the audit-CLI build job is skipped, and even that build would not authenticate or exercise an agent. Earlier authorized agent evidence remains historical; no new model call is authorized here. |
 | 4. Honest visual evidence | Preservation/source guards pass without new captures. Current-source native readability and physical-platform evidence remain open; Glen's reported `b2b6b30a` screenshot work is not an inspected or re-labelled capture set here. |
 | 5. Scroll benchmarks | The optional CPU-smoke job is skipped. Retain the historical 24-case wheel/next-frame observations at their tested sources; there is no new CPU, timing-budget or native-latency pass. |
@@ -280,10 +308,13 @@ normalization under `/private/tmp/gentle-ci-1c5be317-20261017.kOX0jK/`:
 | `safety-job-117494228001.api-original.log` | `f13db70a411e2f9d590a3484ad27862833221a2da197d53cc2c53a9d362d390f` |
 | `jobs.linux-terminal.api-original.json` (Windows still running) | `cc270221d719809c3c3fea602e3c40eeb125114afaf88e995338d399d9190884` |
 | `linux-job-117494244802.api-original.log` | `a7611edfe9fef659b39f486b8747d6e2ab8d34d08fda1554584583caecc081a3` |
+| `windows-job-117494227975.api-original.log` (original CRLF/BOM retained) | `080142d3c92e557c9a56d6baa73e4c9528188ea5797631a7b726a1e40b01d142` |
+| `run.terminal.api-original.json` | `7dfff54bc48ba55472ed18b287c85f411d38c3d873759d7824587061552e91e0` |
+| `jobs.terminal.api-original.json` | `e91a5f58aefeb4ab25776775cf7c3466660a40d471b29285a6daa61a52b75b18` |
 
-These snapshots do not become terminal evidence when the run later finishes.
-Continue inspecting this same live run; retain its eventual logs/results with
-their actual source and skips. No local Rust, push, restart, workflow dispatch,
+The initial snapshots remain partial observations; only the separately retained
+terminal files establish the completed outcome. No run remains live here and
+no automatic restart/dispatch is requested. No local Rust, push, workflow dispatch,
 model/provider call, package build or scientific acceptance is included.
 
 ### Focused Linux Stack Repair: Verified (2026-10-15)
