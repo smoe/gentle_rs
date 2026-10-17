@@ -129,7 +129,7 @@ candidate acceptance. [Capture and generation provenance](docs/figures/README.md
 
 ## Project Status
 
-- Development version: `0.1.0-internal.13`. The [published `.12` release](https://github.com/smoe/gentle_rs/releases/tag/v0.1.0-internal.12)
+- Current package version: `0.1.0-internal.13`. The [published `.12` release](https://github.com/smoe/gentle_rs/releases/tag/v0.1.0-internal.12)
   provides Linux, macOS and Windows packages; its [evidence ledger](docs/release_notes/release_notes_v0.1.0-internal.12.md#publication-evidence)
   does not certify later source or scientific results.
 - `.13` focuses on early containers/racks/3D review, provider-neutral expression

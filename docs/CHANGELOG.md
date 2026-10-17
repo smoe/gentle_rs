@@ -1,5 +1,25 @@
 # GENtle Changelog
 
+## 2026-10-17 - Catch README Release-Label Drift Before Rust CI
+
+- Diagnose Linux job `117494244802` at `1c5be317`: the root library passes
+  4,182 tests (14 ignored), then the release-metadata integration test rejects
+  the renamed README package-version label. Retain the failure, log hashes,
+  five actual null-child-stack filter passes and remaining six-gate boundaries.
+  The four storage and two reconstruction regressions pass at that source;
+  neither a whole-workspace nor final-candidate pass follows.
+- Include the existing one-line working-tree README correction deliberately,
+  leaving the unrelated crate README change unstaged. Add an offline guard for
+  the exact version-label contract and renamed/stale/missing negative controls,
+  including LF/CRLF checks, to the existing fast tutorial-checkout CI gate.
+  Do not weaken the Rust guard or change the package version. Local Rust and
+  new-source acceptance remain unrun; no push, dispatch or package operation.
+- Local offline verification passes all 114 tutorial-checkout/release-policy
+  tests, including the README negative control and real LF/CRLF clones.
+  Documentation-status/whitespace checks pass; session-close reports four OK,
+  two expected dirty-file/scope reminders and no failures. Roadmap stays at
+  400 lines. The Rust integration test itself still needs external execution.
+
 ## 2026-10-17 - Record Integrated CI Without Inheriting Acceptance
 
 - Update the six-item Glen checklist from the existing push run at `1c5be317`:

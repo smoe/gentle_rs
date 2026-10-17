@@ -209,8 +209,9 @@ follow-ups (`8a0e2670`, `958b2238`) and sorted container reconstruction
 selected release candidate, new dispatch or interim development freeze.
 
 [Push run 39066178748](https://github.com/smoe/gentle_rs/actions/runs/39066178748),
-attempt 1, is still in progress in the retained snapshot: Linux and Windows
-are running; macOS and all three optional audit jobs are skipped. The completed
+attempt 1, has an initial retained snapshot with Linux and Windows running;
+the later Linux failure is recorded below. Windows remains running at that
+inspection; macOS and all three optional audit jobs are skipped. The completed
 [headless job 117494227645](https://github.com/smoe/gentle_rs/actions/runs/39066178748/job/117494227645)
 passes `cargo check --locked --no-default-features --bin gentle_cli --bin gentle_mcp`
 and the locked normal-dependency desktop-exclusion check. Its log verifies the
@@ -225,10 +226,44 @@ four actual-CLI skips, not runtime acceptance. Local preservation rechecks pass
 16/16 across the frozen `024ed6c0`, `df5c8244` and failed `de9df8af` records;
 neither hashes nor verdicts in those historical records are rewritten.
 
+#### Completed Linux Job: README Metadata Failure
+
+[Linux job 117494244802](https://github.com/smoe/gentle_rs/actions/runs/39066178748/job/117494244802)
+finishes with failure on 2026-10-17 at 21:32 UTC. The primary failure is
+`release_metadata_matches_cargo_package_version`: the concise README in
+`1c5be317` renamed the required `Current package version:` label to
+`Development version:`. The version number itself is correct. Retain this
+failure; the root-library pass below is not an entire-workspace pass.
+
+Linux dev/test default-feature results before the failure:
+
+- Root library: 4,182 pass, zero fail, 14 ignored, 1,089.52 s. Named results
+  include all four `gene_set_arrangement` tests, both `reconcile_containers`
+  regressions, 27 sequence-design engine/MCP tests and the earlier pair/refusal
+  contracts. The ordinary full suite retains the 16-MiB ambient stack setting.
+- The five earlier stripped-child filters pass independently: `dbsnp_` 12,
+  `materialize_variant_allele` 2, `reporter_construct_handoff_` 7,
+  `variant_followup_allele_pair_` 2 and `test_support::heavy_stack_tests` 2.
+  Each actual runner JSON has `child_rust_min_stack:null`; both named SPDI
+  tests execute. This supplies Linux evidence for those families, not Windows
+  or a physical/native GUI verdict.
+- The workflow-example filter passes 95 tests. Four sequence-design CLI unit
+  tests also pass in the later binary test target. The requested standalone
+  core/IUPAC and protocol package tests are not reached before the integration
+  test failure; no core diagnostic-limit acceptance is inferred. The four
+  Python actual-CLI oracle replays remain skipped in safety.
+
+The local working tree already contained the exact README label correction.
+The scoped repair retains that correction and adds a fast offline documentation
+guard mirroring the unchanged Rust assertion, with renamed/stale/missing-label
+negative controls and real LF/CRLF checkout coverage. The unrelated crate README
+edit is not part of the repair. No newer-source Rust pass is claimed, and later
+CLI/tutorial/render steps skipped after this failure are not additional defects.
+
 | Item | Evidence And Remaining Boundary At This Observation |
 | --- | --- |
-| 1. Audit preservation / Linux validation | Original preservation remains verified. Fresh same-source headless compile/dependency checks pass; the full Linux job is still running, so no full-suite verdict is recorded. |
-| 2. 08.04 GUI/agent contracts | Safety/source checks pass, not native execution. The optional synthetic GUI job is skipped; final-source physical/refusal/parity acceptance remains open. Inspect completed platform logs before attributing named Rust/default-stack passes. |
+| 1. Audit preservation / Linux validation | Original preservation remains verified. Fresh headless checks and the 4,182-test root library pass; Linux job fails on README metadata later. No full-workspace/candidate pass is recorded. |
+| 2. 08.04 GUI/agent contracts | All five Linux stripped-child families pass with null stack overrides and actual named tests. Windows logs remain pending; synthetic GUI job skips. Final-source physical/refusal/parity acceptance remains open. |
 | 3. Genuine live agent | Not run; the audit-CLI build job is skipped, and even that build would not authenticate or exercise an agent. Earlier authorized agent evidence remains historical; no new model call is authorized here. |
 | 4. Honest visual evidence | Preservation/source guards pass without new captures. Current-source native readability and physical-platform evidence remain open; Glen's reported `b2b6b30a` screenshot work is not an inspected or re-labelled capture set here. |
 | 5. Scroll benchmarks | The optional CPU-smoke job is skipped. Retain the historical 24-case wheel/next-frame observations at their tested sources; there is no new CPU, timing-budget or native-latency pass. |
@@ -243,6 +278,8 @@ normalization under `/private/tmp/gentle-ci-1c5be317-20261017.kOX0jK/`:
 | `jobs.api-original.json` (partial job observation) | `6a59727891f6b61fcb1882b01e28ee6be5e22d27840c059b224cb2f08d4f9a7c` |
 | `headless-job-117494227645.api-original.log` | `4a00f48e79f2e4a2c0c4e72edde57c084aed3358311cfa18d2f46dd21fa55eae` |
 | `safety-job-117494228001.api-original.log` | `f13db70a411e2f9d590a3484ad27862833221a2da197d53cc2c53a9d362d390f` |
+| `jobs.linux-terminal.api-original.json` (Windows still running) | `cc270221d719809c3c3fea602e3c40eeb125114afaf88e995338d399d9190884` |
+| `linux-job-117494244802.api-original.log` | `a7611edfe9fef659b39f486b8747d6e2ab8d34d08fda1554584583caecc081a3` |
 
 These snapshots do not become terminal evidence when the run later finishes.
 Continue inspecting this same live run; retain its eventual logs/results with

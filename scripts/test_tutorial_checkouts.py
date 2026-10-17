@@ -32,7 +32,7 @@ class DocumentationStatusTests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         root = Path(tmp.name) / "source"
         paths = {
-            "Cargo.toml", "build.rs", "src/app.rs",
+            "Cargo.toml", "README.md", "build.rs", "src/app.rs",
             "crates/gentle-shell/src/ui_intent.rs",
             "docs/reviewer_preview.md", "docs/primer_design_specialist_plan.md",
             "docs/cloning_pattern_catalog.md", "docs/cloning_routine_catalog_plan.md",
@@ -68,8 +68,24 @@ class DocumentationStatusTests(unittest.TestCase):
                 checker.prepare_checkout(root, clone, mode)
                 payload = (clone / "docs/reviewer_preview.md").read_bytes()
                 self.assertEqual(b"\r\n" in payload, mode[0] == "crlf")
+                self.assertEqual(doc_status.readme_version_errors(clone), [])
                 self.assertEqual(doc_status.preview_errors(clone), [])
                 self.assertEqual(doc_status.catalog_errors(clone), [])
+
+    def test_readme_release_guard_rejects_renamed_stale_and_missing_version(self):
+        root = self.fixture()
+        path = root / "README.md"
+        original = path.read_text(encoding="utf-8")
+        version = tomllib.loads((root / "Cargo.toml").read_text())["workspace"]["package"]["version"]
+        marker = f"Current package version: `{version}`."
+        self.assertIn(marker, original)
+        for newline in ("\n", "\r\n"):
+            for replacement in (f"Development version: `{version}`.",
+                                "Current package version: `obsolete`.", ""):
+                with self.subTest(newline=newline, replacement=replacement):
+                    path.write_bytes(original.replace(marker, replacement).replace("\n", newline).encode("utf-8"))
+                    self.assertEqual(doc_status.readme_version_errors(root),
+                                     [f"README project status must name Cargo package version {version}"])
 
     def test_stale_version_and_unsafe_shared_state_are_refused(self):
         root = self.fixture()

@@ -41,6 +41,15 @@ def links(text):
     return re.findall(r"\]\(([^\s)]+)\)", text)
 
 
+def readme_version_errors(root):
+    """Mirror the Rust release guard before CI spends time compiling/testing."""
+    version = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))["workspace"]["package"]["version"]
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    if f"Current package version: `{version}`." not in readme:
+        return [f"README project status must name Cargo package version {version}"]
+    return []
+
+
 def preview_errors(root):
     errors = []
     preview = (root / "docs/reviewer_preview.md").read_text(encoding="utf-8")
@@ -135,7 +144,7 @@ def lifecycle_errors(root):
 
 
 def check(root=ROOT):
-    return preview_errors(root) + catalog_errors(root) + lifecycle_errors(root)
+    return readme_version_errors(root) + preview_errors(root) + catalog_errors(root) + lifecycle_errors(root)
 
 
 if __name__ == "__main__":
