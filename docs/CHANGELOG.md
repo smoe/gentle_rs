@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-10-17 - Record Integrated CI Without Inheriting Acceptance
+
+- Update the six-item Glen checklist from the existing push run at `1c5be317`:
+  retain original run/job API snapshots and completed headless/safety log hashes.
+  Record Linux dev/headless compile success, the actual toolchain/profile and
+  18 sequence-design offline passes/four CLI skips, without a full-platform or
+  final-candidate verdict while Linux/Windows continue running.
+- Recheck 16 retained-record contracts without altering historical evidence.
+  Optional GUI, authenticated-CLI and scroll jobs skip; native/agent/package
+  acceptance stays open under the owner's release cadence. No local Rust,
+  push, restart, dispatch, model call or package operation is performed.
+
 ## 2026-10-17 - Stabilize Reconstructed Container Identities
 
 - Address Glen's reported headless storage failure at `b2b6b30a` (three passes,

@@ -197,6 +197,58 @@ An authored contract is not an executed pass. Every completion needs an exact
 source SHA, platform/profile, command or run URL and retained evidence. New
 candidate results never overwrite or inherit the older candidate's verdict.
 
+### Ordinary CI Observation At `1c5be317` (2026-10-17)
+
+The owner-pushed integrated source is
+`1c5be3175323eec41359b980b5a41e22c7edaec1`, tree
+`f964f9a0936bddaa621f63b05806760bce104f32`. Its committed lockfile SHA-256 is
+`0b9729e60698e14d464b48230e606377a4e2e48054c2450be6f85760e999a6b9`,
+calculated from the Git object, not a post-build lockfile. Both sequence-design
+follow-ups (`8a0e2670`, `958b2238`) and sorted container reconstruction
+(`577449e7`) are ancestors. This is ordinary regression observation, not a
+selected release candidate, new dispatch or interim development freeze.
+
+[Push run 39066178748](https://github.com/smoe/gentle_rs/actions/runs/39066178748),
+attempt 1, is still in progress in the retained snapshot: Linux and Windows
+are running; macOS and all three optional audit jobs are skipped. The completed
+[headless job 117494227645](https://github.com/smoe/gentle_rs/actions/runs/39066178748/job/117494227645)
+passes `cargo check --locked --no-default-features --bin gentle_cli --bin gentle_mcp`
+and the locked normal-dependency desktop-exclusion check. Its log verifies the
+exact checkout, Ubuntu 24.04.5/x86_64 (image `20261012.334.1`), Rust 1.99.1
+(`58cf8f9c3`), dev/unoptimized profile, incremental off and ambient 16-MiB
+`RUST_MIN_STACK`. No executable or binary hash is produced by this check.
+
+The completed [safety job 117494228001](https://github.com/smoe/gentle_rs/actions/runs/39066178748/job/117494228001)
+passes its offline contracts, including the new tutorial registration/replay
+source checks. Sequence-design has 18 offline oracle/harness/source passes and
+four actual-CLI skips, not runtime acceptance. Local preservation rechecks pass
+16/16 across the frozen `024ed6c0`, `df5c8244` and failed `de9df8af` records;
+neither hashes nor verdicts in those historical records are rewritten.
+
+| Item | Evidence And Remaining Boundary At This Observation |
+| --- | --- |
+| 1. Audit preservation / Linux validation | Original preservation remains verified. Fresh same-source headless compile/dependency checks pass; the full Linux job is still running, so no full-suite verdict is recorded. |
+| 2. 08.04 GUI/agent contracts | Safety/source checks pass, not native execution. The optional synthetic GUI job is skipped; final-source physical/refusal/parity acceptance remains open. Inspect completed platform logs before attributing named Rust/default-stack passes. |
+| 3. Genuine live agent | Not run; the audit-CLI build job is skipped, and even that build would not authenticate or exercise an agent. Earlier authorized agent evidence remains historical; no new model call is authorized here. |
+| 4. Honest visual evidence | Preservation/source guards pass without new captures. Current-source native readability and physical-platform evidence remain open; Glen's reported `b2b6b30a` screenshot work is not an inspected or re-labelled capture set here. |
+| 5. Scroll benchmarks | The optional CPU-smoke job is skipped. Retain the historical 24-case wheel/next-frame observations at their tested sources; there is no new CPU, timing-budget or native-latency pass. |
+| 6. .12 package acceptance | No package job executes in this normal CI. Published/validate-only `5e6201a6` opt1 evidence remains source-bound; independent native/extracted acceptance stays open. Current `.13` opt2 package gates remain on the owner's release path. |
+
+Original API snapshots and completed-job log bytes are retained without
+normalization under `/private/tmp/gentle-ci-1c5be317-20261017.kOX0jK/`:
+
+| File | SHA-256 |
+| --- | --- |
+| `run.api-original.json` (in-progress observation) | `4d05368e11cfa7a004ebc2d6133550927d7b8ca1ba0768d0e90527868d9c6a41` |
+| `jobs.api-original.json` (partial job observation) | `6a59727891f6b61fcb1882b01e28ee6be5e22d27840c059b224cb2f08d4f9a7c` |
+| `headless-job-117494227645.api-original.log` | `4a00f48e79f2e4a2c0c4e72edde57c084aed3358311cfa18d2f46dd21fa55eae` |
+| `safety-job-117494228001.api-original.log` | `f13db70a411e2f9d590a3484ad27862833221a2da197d53cc2c53a9d362d390f` |
+
+These snapshots do not become terminal evidence when the run later finishes.
+Continue inspecting this same live run; retain its eventual logs/results with
+their actual source and skips. No local Rust, push, restart, workflow dispatch,
+model/provider call, package build or scientific acceptance is included.
+
 ### Focused Linux Stack Repair: Verified (2026-10-15)
 
 The [verified repair receipt](vkorc1_allele_review_followup_20261008.md#focused-linux-repair-verification-2026-10-15)
