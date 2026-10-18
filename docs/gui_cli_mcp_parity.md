@@ -17,7 +17,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 58 | 757 | 0 |
+| GUI | 59 | 756 | 0 |
 | gentle_cli | 482 | 357 | 0 |
 | MCP | 181 | 520 | 50 |
 | JS | 78 | 580 | 69 |
@@ -514,7 +514,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | routines explain | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Planner and macro management remains shell workflow state until a portable operation is defined.<br>JS: Planner and macro management remains shell workflow state until a portable operation is defined.<br>Lua: Planner and macro management remains shell workflow state until a portable operation is defined.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | routines compare | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Planner and macro management remains shell workflow state until a portable operation is defined.<br>JS: Planner and macro management remains shell workflow state until a portable operation is defined.<br>Lua: Planner and macro management remains shell workflow state until a portable operation is defined.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | planning consult cloning | glossary-command | shell-only | shell-only | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| planning protein-expression-handoff | glossary-command | shell-only | shell-only | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| planning protein-expression-handoff | glossary-command | prominent | shell-only | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | planning profile show | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Planner and macro management remains shell workflow state until a portable operation is defined.<br>JS: Planner and macro management remains shell workflow state until a portable operation is defined.<br>Lua: Planner and macro management remains shell workflow state until a portable operation is defined.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | planning profile set | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Planner and macro management remains shell workflow state until a portable operation is defined.<br>JS: Planner and macro management remains shell workflow state until a portable operation is defined.<br>Lua: Planner and macro management remains shell workflow state until a portable operation is defined.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | planning profile clear | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Planner and macro management remains shell workflow state until a portable operation is defined.<br>JS: Planner and macro management remains shell workflow state until a portable operation is defined.<br>Lua: Planner and macro management remains shell workflow state until a portable operation is defined.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |

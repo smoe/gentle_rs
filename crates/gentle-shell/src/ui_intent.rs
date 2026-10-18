@@ -142,6 +142,7 @@ pub enum UiIntentTarget {
     GelImageEditor,
     TssView,
     SplicingExpert,
+    ProteinExpressionHandoff,
 }
 
 const UI_INTENT_TARGETS: [UiIntentTarget; UiIntentTarget::COUNT] = [
@@ -166,6 +167,7 @@ const UI_INTENT_TARGETS: [UiIntentTarget; UiIntentTarget::COUNT] = [
     UiIntentTarget::GelImageEditor,
     UiIntentTarget::TssView,
     UiIntentTarget::SplicingExpert,
+    UiIntentTarget::ProteinExpressionHandoff,
 ];
 
 const UI_INTENT_ACTION_NAMES: [&str; 3] = ["open", "focus", "close"];
@@ -305,7 +307,7 @@ pub struct UiIntentTargetCatalogRow {
 
 impl UiIntentTarget {
     /// Number of stable UI-intent destinations.
-    pub const COUNT: usize = 21;
+    pub const COUNT: usize = 22;
 
     /// Stable catalog order used by shell, MCP, and GUI discoverability.
     pub fn all() -> &'static [Self] {
@@ -315,6 +317,9 @@ impl UiIntentTarget {
     /// Parse stable shell spellings and common aliases.
     pub fn parse(raw: &str) -> Option<Self> {
         match raw.trim().to_ascii_lowercase().as_str() {
+            "protein-expression-handoff" | "protein_expression_handoff" => {
+                Some(Self::ProteinExpressionHandoff)
+            }
             "gel-image-editor" | "gel_image_editor" => Some(Self::GelImageEditor),
             "tss-view" | "tss_view" => Some(Self::TssView),
             "splicing-expert" | "splicing_expert" => Some(Self::SplicingExpert),
@@ -382,6 +387,7 @@ impl UiIntentTarget {
     /// Stable machine-readable spelling used in shell output payloads.
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::ProteinExpressionHandoff => "protein-expression-handoff",
             Self::GelImageEditor => "gel-image-editor",
             Self::TssView => "tss-view",
             Self::SplicingExpert => "splicing-expert",
@@ -409,6 +415,7 @@ impl UiIntentTarget {
     /// Stable human-facing title reused by UI-intent discovery surfaces.
     pub fn discoverability_title(self) -> &'static str {
         match self {
+            Self::ProteinExpressionHandoff => "Protein Expression Handoff",
             Self::GelImageEditor => "Gel Image Analysis",
             Self::TssView => "TSS / Regulatory View",
             Self::SplicingExpert => "Splicing Expert",
@@ -441,6 +448,9 @@ impl UiIntentTarget {
     /// Short discoverability copy for command palettes, agent helpers, and MCP.
     pub fn discoverability_detail(self) -> &'static str {
         match self {
+            Self::ProteinExpressionHandoff => {
+                "Inspect the shared read-only protein-expression report, unanswered requirements, CDS/tag evidence and explicit provider binding. Suggested commands are copy-only; no provider is selected automatically."
+            }
             Self::SplicingExpert => {
                 "Open/focus/close the Splicing Expert for explicit SEQ_ID FEATURE_ID. Inspect annotated isoforms, exon/junction evidence and primer/qPCR seeds. Closing retains project data; headless hosts only record the intent."
             }
@@ -493,6 +503,9 @@ impl UiIntentTarget {
     /// Search keywords shared across UI-intent discoverability surfaces.
     pub fn discoverability_keywords(self) -> &'static str {
         match self {
+            Self::ProteinExpressionHandoff => {
+                "synthetic biology protein expression handoff yield chassis vector tag provider readiness"
+            }
             Self::SplicingExpert => {
                 "splicing isoform transcript exon junction primer pair qpcr assay evidence"
             }
@@ -537,6 +550,7 @@ impl UiIntentTarget {
     /// Primary GUI location: application menu or a named, context-only viewer.
     pub fn menu_path(self) -> &'static str {
         match self {
+            Self::ProteinExpressionHandoff => "Services",
             Self::OpenSequence
             | Self::RecentProject
             | Self::TutorialProject
@@ -565,9 +579,11 @@ impl UiIntentTarget {
             Self::RecentProject | Self::TutorialProject | Self::TutorialGuide => {
                 &UI_INTENT_OPEN_ACTION_NAMES
             }
-            Self::Configuration | Self::GelImageEditor | Self::TssView | Self::SplicingExpert => {
-                &UI_INTENT_ACTION_NAMES
-            }
+            Self::Configuration
+            | Self::GelImageEditor
+            | Self::TssView
+            | Self::SplicingExpert
+            | Self::ProteinExpressionHandoff => &UI_INTENT_ACTION_NAMES,
             Self::PreparedReferences
             | Self::PrepareReferenceGenome
             | Self::RetrieveGenomeSequence
@@ -587,6 +603,7 @@ impl UiIntentTarget {
     /// Stable optional arguments accepted by the target's discoverability contract.
     pub fn optional_arguments(self) -> &'static [&'static str] {
         match self {
+            Self::ProteinExpressionHandoff => &UI_INTENT_OPTIONAL_ARGUMENTS_NONE,
             Self::SplicingExpert => &UI_INTENT_OPTIONAL_ARGUMENTS_NONE,
             Self::TssView => &UI_INTENT_OPTIONAL_ARGUMENTS_TSS,
             Self::PreparedReferences => &UI_INTENT_OPTIONAL_ARGUMENTS_PREPARED_REFERENCES,
@@ -605,6 +622,7 @@ impl UiIntentTarget {
     /// Structured argument contract accepted by this target.
     pub fn arguments(self) -> &'static [UiIntentArgument] {
         match self {
+            Self::ProteinExpressionHandoff => &UI_INTENT_ARGUMENTS_NONE,
             Self::SplicingExpert => &UI_INTENT_ARGUMENTS_SPLICING,
             Self::TssView => &UI_INTENT_ARGUMENTS_TSS,
             Self::PreparedReferences => &UI_INTENT_ARGUMENTS_PREPARED_REFERENCES,
@@ -660,6 +678,14 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     const TARGET_ALIAS_CASES: &[(&str, UiIntentTarget)] = &[
+        (
+            "protein-expression-handoff",
+            UiIntentTarget::ProteinExpressionHandoff,
+        ),
+        (
+            "protein_expression_handoff",
+            UiIntentTarget::ProteinExpressionHandoff,
+        ),
         ("open-sequence", UiIntentTarget::OpenSequence),
         ("splicing-expert", UiIntentTarget::SplicingExpert),
         ("splicing_expert", UiIntentTarget::SplicingExpert),
@@ -784,7 +810,8 @@ mod tests {
 
     fn assert_exhaustive_target_match(target: UiIntentTarget) {
         match target {
-            UiIntentTarget::GelImageEditor
+            UiIntentTarget::ProteinExpressionHandoff
+            | UiIntentTarget::GelImageEditor
             | UiIntentTarget::TssView
             | UiIntentTarget::SplicingExpert
             | UiIntentTarget::OpenSequence
@@ -847,6 +874,7 @@ mod tests {
             UiIntentTarget::GelImageEditor,
             UiIntentTarget::TssView,
             UiIntentTarget::SplicingExpert,
+            UiIntentTarget::ProteinExpressionHandoff,
         ];
         assert_eq!(UiIntentTarget::COUNT, expected.len());
         assert_eq!(UiIntentTarget::all(), expected.as_slice());
@@ -895,8 +923,9 @@ mod tests {
 
     #[test]
     fn ui_intent_catalog_rows_are_complete() {
-        let known_menus =
-            BTreeSet::from(["Edit", "File", "Genome", "Help", "Patterns", "Settings"]);
+        let known_menus = BTreeSet::from([
+            "Edit", "File", "Genome", "Help", "Patterns", "Services", "Settings",
+        ]);
         for target in UiIntentTarget::all() {
             let row = target.catalog_row();
             assert!(!row.title.trim().is_empty());

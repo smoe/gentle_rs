@@ -81,6 +81,21 @@ the selected .13 packaging recipe remains opt2. Codex runs no local Rust.
    deterministic container order, conservative expression refusals and unchanged
    review state/files. Report drift; do not regenerate historical evidence.
 
+   The merged `gentle_rs_3` inspector at `5893ebb03b4915ba1af2f77f1d7681904266b6f9`
+   supersedes the older preparation note deferring all inspector work. Include:
+
+   ```sh
+   cargo test --locked --lib -j1 protein_expression_inspector_ -- --test-threads=1
+   cargo test --locked -p gentle-shell -j1 ui_intent
+   ```
+
+   Require all seven inspector regressions to execute. Verify shared-report
+   parity, explicit/absent inputs, typed withholding, copy-only suggestions,
+   stale/closed-worker rejection and unchanged project/history/files. Check
+   canonical tutorial/catalog/parity freshness at this source; static metadata
+   edits are not generator acceptance. Native window review stays at release
+   preparation, without new capture authority or provider/model contact here.
+
 4. **Merged rack safety and tube reference models:** verify the integrated
    `gentle_rs_2_main` commit `5b1da7d3981e7a2a4280cadc4b86b9345d82896c`.
    Run its protocol/renderer, headless engine/shell and default GUI regressions,

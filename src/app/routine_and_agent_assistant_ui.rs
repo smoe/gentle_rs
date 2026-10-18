@@ -3656,6 +3656,7 @@ impl GENtleApp {
             self.app_status = summary.clone();
         }
         match target {
+            UiIntentTarget::ProteinExpressionHandoff => self.open_protein_expression_dialog(),
             UiIntentTarget::SplicingExpert => return Some("Splicing Expert requires explicit SEQ_ID FEATURE_ID; use ui open splicing-expert SEQ_ID FEATURE_ID".into()),
             UiIntentTarget::OpenSequence => self.prompt_open_sequence(),
             UiIntentTarget::TssView => return Some(self.apply_tss_view_intent(true)),
@@ -3986,6 +3987,7 @@ impl GENtleApp {
 
     fn apply_close_ui_intent_target(&mut self, target: UiIntentTarget) -> String {
         let was_open = match target {
+            UiIntentTarget::ProteinExpressionHandoff => self.close_protein_expression_dialog(),
             UiIntentTarget::SplicingExpert => {
                 return "Splicing Expert requires explicit SEQ_ID FEATURE_ID; no window was closed"
                     .into();

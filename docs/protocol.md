@@ -5690,6 +5690,7 @@ Shell/engine quick-install contracts:
     - `import-genome-track`
     - `pcr-design`
     - `sequencing-confirmation`
+    - `protein-expression-handoff` (no arguments; read-only report inspector)
     - `agent-assistant`
     - `prepare-helper-genome`
     - `retrieve-helper-sequence`
@@ -6025,10 +6026,15 @@ Adapter-equivalence guarantee for UI-intent tools:
   - this remains a review-gated handoff, not an autonomous construct designer:
     GENtle does not codon-optimize, mutate sequences, create constructs, query
     live providers, submit orders, or promise wet-lab yield
-  - GUI follow-up: a dedicated Synthetic Biology / protein-expression handoff
-    inspector should display `gentle.protein_expression_handoff.v2`
-    reports later; this protocol slice intentionally keeps GUI exposure to the
-    shared shell/CLI contract rather than adding a new dashboard
+  - the Services inspector presents this same v2 report through
+    `ui open|focus|close protein-expression-handoff` (no arguments). Headless
+    execution records the shared UI intent, not a report or a visible window.
+    GUI request fields are local scratch inputs; Inspect executes this shared
+    command against a history-free background snapshot without committing it.
+    Instance/revision/request checks reject stale pending/displayed results.
+    Product/provider selection remains explicit; no template supplies defaults.
+    Suggested actions are copy-only, and no new report schema, ranking,
+    biological rule, readiness gate or submission route is introduced.
 - `planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]`
   - inspect one planning profile scope or merged effective profile
 - `planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]`

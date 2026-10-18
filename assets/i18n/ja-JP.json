@@ -231,6 +231,7 @@
   "menu.patterns.browse_by_status": "Browse by Status",
   "menu.patterns.routine_catalog_unavailable": "Routine catalog unavailable",
   "menu.services.external_services": "External Services...",
+  "menu.services.protein_expression_handoff": "Protein Expression Handoff...",
   "menu.services.clawbio": "ClawBio...",
   "menu.services.shared_shell_routes": "Shared shell routes: services providers/preflight/quote",
   "menu.settings": "設定",

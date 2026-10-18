@@ -1,6 +1,6 @@
 # Plan a High-Yield Protein-Expression Handoff
 
-> Type: `CLI / agent walkthrough`
+> Type: `GUI / CLI / agent walkthrough`
 > Status: `manual/hybrid`
 > Drift note: this page is hand-written, but every operational step routes
 > through the shared `planning ...` and `services ...` shell/CLI contracts.
@@ -313,6 +313,80 @@ from a provider API, or submit an order.
 Never substitute the bundled tutorial protein for the selected project
 product. If no product-specific action is present, return to the missing
 questions instead of preparing a quote packet.
+
+## GUI Inspection Of The Same Handoff
+
+The inspector makes the same decisions inspectable without reading a terminal
+report. It does **not** introduce another expression algorithm. Start with the
+fresh synthetic project from Step 3, then open that saved state in GENtle. Do
+not start from a private product or reuse the fixture's permissions for one.
+
+Open **Services > Protein Expression Handoff...**, or use the command palette's
+**Protein Expression Handoff** entry. The GUI Shell and external agents can use:
+
+```text
+ui open protein-expression-handoff
+ui focus protein-expression-handoff
+ui close protein-expression-handoff
+```
+
+These intents take no product/provider arguments; they address one window.
+A headless host only records the intent. The `planning` command is still the
+route to obtain a report without a GUI.
+
+1. Leave **Product ID**, **Provider (optional)** and requirements empty, then
+   press **Inspect**. Expect `needs_product_definition`, the coding-boundary
+   questions, no neutral draft and no provider projection. Even though a
+   product is loaded, the window does not silently choose it. Product identity
+   matters: high-yield advice about the wrong CDS is not useful advice.
+2. Select `expression_review_product` from **Loaded products** (or enter that
+   exact ID), keeping provider and requirements blank, and inspect again.
+   Review **Readiness and product definition**, **Sequence and annotation
+   evidence**, **CDS and translation evidence**, and **Tag and signal-peptide
+   evidence**. Compare their fields with Step 5's shared-shell output, using
+   `--format text` when comparing the whole JSON including `text_report`.
+   Timestamps differ between inspections. Sequence/CDS candidates are not an
+   expression-success prediction, and synthetic histidines do not substitute
+   for an explicit tag-retention decision.
+3. Paste the complete contents of
+   [`protein_expression_requirements_in_house.json`](../examples/plans/protein_expression_requirements_in_house.json)
+   into **Reviewed requirements JSON (optional)**; the GUI field accepts
+   inline JSON, not an `@FILE` reference. With provider blank, expect
+   `provider_binding.status = not_selected`, a neutral draft, no provider
+   projection and no service handoff candidates. Inspect the unchanged chassis
+   and vector-route review candidates; their order is not a product-specific
+   ranking. A lower number does not prove a better host or more soluble protein.
+4. Enter `geneart` explicitly in **Provider (optional)**, keeping those in-house
+   requirements, and inspect. Expect `withheld` and `outsourcing_disallowed`
+   under **Provider binding and withholding reasons**, with provider projection
+   null and no provider actions. Naming a provider is not outsourcing permission.
+5. For this synthetic rehearsal **only**, replace the pasted requirements with
+   [`protein_expression_requirements_review_only.json`](../examples/plans/protein_expression_requirements_review_only.json).
+   Keep `geneart` selected and inspect. Expect `projected` with the same neutral
+   source/optimization/vector/delivery fields retained in the selected-provider
+   projection. Check the shared `suggested_next_actions[]`, warnings and review
+   gate. Projection is a local request value, never provider acceptance.
+6. Use **Copy report JSON** and **Copy report text** to compare with Step 6's
+   shared command (with `--format text` for the text-bearing JSON). Expand
+   **Suggested actions** and copy one command if useful, but do not execute a
+   quote/export command for this rehearsal. Copying an action merely places
+   the shared `shell_line` on the clipboard; the inspector has no Run, Submit
+   or Order action and does not contact a provider.
+7. Change or clear the product ID: the old report must disappear until another
+   inspection. An actual project edit or reopening/replacing the project must
+   also discard late results and require inspection again. Close during a
+   pending inspection, then reopen/focus: inputs remain local, no report from
+   the abandoned receiver is adopted, and the product/provider are not reset
+   to defaults. Stale evidence must not describe a newly selected product.
+
+For an acceptance run, retain the copied report and the exact source revision,
+compare scientific fields with the equivalent shared command, and verify that
+inspection/copy/open/focus/close leave project bytes and undo/redo counts
+unchanged. Separate deliberate project edits in checkpoint 7 from those
+read-only checks. Test a small window as well: inputs wrap and the report scrolls
+vertically so requirements and actions remain reachable. No screenshot capture
+or native acceptance is implied by this walkthrough. Rust/runtime/native checks
+remain for Glen/CI; this chapter stays `manual/hybrid`, not an automated GUI pass.
 
 ## Step 7: Ask For Cloning Strategy Only After Expression Constraints
 

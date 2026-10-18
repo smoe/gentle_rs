@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-10-18 - Integrate The Protein Expression Inspector
+
+- Merge `gentle_rs_3` at `5893ebb0` into main without conflicts, retaining its
+  read-only inspector, shared UI-intent route, tutorial/discovery changes and
+  seven authored adapter regressions. No provider/model execution is performed.
+- Keep the roadmap's 400-line layout with concrete pending verification
+  criteria. Extend the current Glen handoff for inspector/report parity,
+  missing inputs, stale workers, copy-only actions and canonical freshness;
+  source checks do not close Rust, native or biological acceptance.
+- Preserve the earlier CLI quick start, screenshot policy, unrelated `paper`,
+  `output/` and the other worktree's `outputs/`. No local Rust build/test/check,
+  push, dispatch, package operation or historical-evidence rewrite.
+- Integration source/documentation checks pass 21/21, including the existing
+  LF/CRLF documentation fixture; documentation status and whitespace pass.
+  Rust, actual-CLI, canonical generator and native inspector checks remain open.
+
 ## 2026-10-18 - Give The CLI Manual A First-Session Entry Point
 
 - Put a short introduction, read-only discovery commands, installed/source
@@ -35,6 +51,26 @@
   link fragments and whitespace pass; release-gate is four OK. Session-close
   has four OK, two expected dirty-file/scope reminders and no failure; the
   roadmap remains unchanged at 400 lines. `paper` and `output/` are untouched.
+
+## 2026-10-18 - Read-Only Protein Expression Handoff Inspector
+
+- Add Services/palette/shared `ui open|focus|close protein-expression-handoff`
+  access to the existing v2 handoff report. Explicit product, pasted reviewed
+  requirements and optional provider inputs run through the shared command on a
+  history-free background snapshot; no provider/product defaults are loaded.
+- Present readiness and unanswered questions, sequence/CDS/tag evidence,
+  unchanged candidate rows, neutral/provider drafts and typed withholding
+  reasons. Reports and shared suggested commands can be copied, not executed.
+  Request/project changes reject stale results; inspection never commits state.
+- Extend tutorial 09.03 with synthetic GUI neutral/withheld/projected paths,
+  report comparison, stale/close checkpoints and unchanged project/history
+  checks. Author deterministic GUI adapter and offline tutorial contracts.
+- Rust builds/tests, canonical parity generation and native acceptance remain
+  with Glen/CI; only source formatting was run locally, not Rust builds/tests/
+  checks. No push, provider/model call or capture.
+- Offline verification: 15 focused tutorial/source tests and 68 checkout tests
+  pass, including LF/CRLF policy coverage; whitespace is clean. Session-close
+  reports four OK, two expected dirty-worktree/scope reminders and no failure.
 
 ## 2026-10-18 - Integrate Rack And Tube Work Into Glen's Verification Request
 

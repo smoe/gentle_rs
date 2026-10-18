@@ -93,6 +93,35 @@ def fixture_abif_tag(tag, number=2):
 
 
 class SpecialistSourceTests(unittest.TestCase):
+    def test_expression_inspector_tutorial_uses_shared_copy_only_report_contract(self):
+        guide = (TUTORIALS / "09-03_protein_expression_handoff_cli.md").read_text(encoding="utf-8")
+        inspector = (ROOT / "src/app/protein_expression_ui.rs").read_text(encoding="utf-8")
+        source = read_json(TUTORIALS / "sources/09-03_protein_expression_handoff_cli.json")
+        self.assertEqual(source["catalog"]["type"], "gui_cli_walkthrough")
+        for text in (guide, guide.replace("\n", "\r\n")):
+            for term in ("Services > Protein Expression Handoff...",
+                         "ui open protein-expression-handoff",
+                         "ui focus protein-expression-handoff",
+                         "ui close protein-expression-handoff",
+                         "Copy report JSON", "Copy report text",
+                         "outsourcing_disallowed", "undo/redo", "late results",
+                         "manual/hybrid", "Rust/runtime/native checks"):
+                self.assertIn(term, text)
+        for term in ("PlanningProteinExpressionHandoff", "execute_shell_command",
+                     "clone_without_history", "binding.matches", "instance_id()",
+                     "mutation_revision()", "action.shell_line.clone()"):
+            self.assertIn(term, inspector)
+        for forbidden in ("ServicesQuoteExport", "ServicesProjectPreflight",
+                          "ServicesProvidersList", "commit_detached_execution",
+                          "geneart_protein_expression_request.json"):
+            self.assertNotIn(forbidden, inspector)
+        for case in ("matches_shared_shell_without_live_mutation",
+                     "missing_product_and_requirements_stay_absent",
+                     "ui_intents_reuse_and_close_without_defaults",
+                     "discards_late_results_after_request_or_project_changes",
+                     "adopts_current_results_and_invalidates_displayed_results"):
+            self.assertIn("fn protein_expression_inspector_" + case, inspector)
+
     def test_expression_walkthrough_has_a_synthetic_end_to_end_starter(self):
         workflow = read_json(ROOT / "docs/examples/workflows/protein_expression_review_starter.json")
         product = workflow["workflow"]["ops"][0]["CreateSequenceFromText"]
