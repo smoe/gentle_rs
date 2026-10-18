@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-10-18 - Give The GUI Manual A Guided Entry Point
+
+- Put a short menu-first session and task-based navigation before the advanced
+  GUI reference. Explain tutorial projects, sequence versus project opening,
+  explicit subject focus, save/export and session-local undo boundaries.
+- Link existing maps, primers, Gibson, reference/TSS evidence, gels, racks,
+  the merged read-only expression inspector and consent-bound help. Preserve
+  detailed reference sections, existing anchors, screenshots and confidence
+  limits; no new GUI or scientific acceptance is claimed.
+- Add an offline navigation/content guard. No local Rust, application/capture
+  execution, provider/model call, push or dispatch; `paper`, `output/`, other
+  worktrees and historical evidence remain untouched.
+- Final offline suite: 132 passes and five explicit binary-dependent skips
+  across 137 tests, including the merged specialist/tutorial contracts and
+  LF/CRLF coverage. Documentation, links and whitespace pass; release-gate is
+  four OK. Session-close has four OK, two expected worktree/scope reminders and
+  no failure. Runtime/native acceptance remains open; roadmap stays 400 lines.
+
 ## 2026-10-18 - Integrate The Protein Expression Inspector
 
 - Merge `gentle_rs_3` at `5893ebb0` into main without conflicts, retaining its

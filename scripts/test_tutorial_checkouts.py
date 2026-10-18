@@ -54,6 +54,29 @@ class DocumentationStatusTests(unittest.TestCase):
     def test_current_documentation_status_and_links(self):
         self.assertEqual(doc_status.check(), [])
 
+    def test_gui_manual_has_a_menu_first_entry_and_task_index(self):
+        text = (checker.ROOT / "docs/gui.md").read_text(encoding="utf-8")
+        intro = text.split("## Detailed Reference", 1)[0]
+        for required in (
+            "## Start Here", "## Find Your Task", "no shell commands are required",
+            "File -> Open Tutorial Project...", "File -> Open Sequence...",
+            "File -> Open Project...", "File -> Save Project...", "Cmd/Ctrl+K",
+            "Windows", "Operation History", "session's undo stack",
+            "| I Want To... | Start With |", "read-only inspector",
+            "not biological validation",
+        ):
+            self.assertIn(required, intro)
+        self.assertNotIn("cargo run", intro)
+        headings = [re.sub(r"[^\w -]", "", line.lstrip("#").strip().lower()).replace(" ", "-")
+                    for line in text.splitlines() if line.startswith("#")]
+        for target in re.findall(r"\]\(([^)]+)\)", intro):
+            path, _, fragment = target.partition("#")
+            with self.subTest(link=target):
+                if path:
+                    self.assertTrue((checker.ROOT / "docs" / path).is_file(), target)
+                elif fragment:
+                    self.assertIn(fragment, headings)
+
     def test_cli_manual_has_a_discovery_first_entry_and_task_index(self):
         text = (checker.ROOT / "docs/cli.md").read_text(encoding="utf-8")
         intro = text.split("## Standalone Reference-Bound Primer Specificity", 1)[0]

@@ -1,6 +1,63 @@
 # GENtle GUI Manual
 
-This page documents the current graphical interface of GENtle.
+Open a sequence, explore its annotations, or review the steps of an experiment.
+GENtle keeps sequences, derived products and analysis reports together in a
+project. You can start with a guided example; no shell commands are required.
+
+**Quick navigation:** [Start here](#start-here) |
+[Find your task](#find-your-task) | [What to trust today](#what-to-trust-today) |
+[Window controls](#open-windows-and-focus) | [Detailed reference](#detailed-reference) |
+[CLI manual](cli.md).
+
+## Start Here
+
+1. **Launch GENtle.** Open the installed desktop app. See
+   [installation](../INSTALL.md) if needed, or the
+   [source-launch reference](#start-the-gui) if you are working from a checkout.
+2. **Try a guided project first.** Choose `File -> Open Tutorial Project...`
+   and start with [Load FASTA, branch, and reverse-complement](tutorial/generated/chapters/02-01_load_branch_reverse_complement_pgex_fasta.md).
+   The walkthrough explains original inputs, derived sequences and lineage.
+3. **Bring your own data when ready.** `File -> Open Sequence...` imports
+   sequence files such as FASTA or GenBank into the current project and opens
+   their sequence windows. `File -> Open Project...` instead opens a saved
+   GENtle project. These are different starting points.
+4. **Choose a task.** Focus the sequence you want to work on, then use its
+   controls or open the command palette with `Cmd/Ctrl+K`. If an action is
+   dimmed, check its details for missing prerequisites.
+5. **Review and save.** Review a tool's preview or report before applying its
+   proposed changes. Use `File -> Save Project...` to retain your work, using a
+   separate filename for a tutorial or working copy. An exported image or report
+   is not a replacement for the saved project.
+
+The main project window shows the project and its lineage; sequence windows
+show maps and bases. Use the `Windows` menu to return to an open window.
+`Edit -> Operation History...` shows available undo/redo steps for this session;
+reopening a saved project is not the same as restoring a session's undo stack.
+
+## Find Your Task
+
+| I Want To... | Start With |
+| --- | --- |
+| Open or create a DNA sequence | `File -> Open Sequence...` or `File -> New Sequence...`; [sequence loading](#loading-and-creating-sequences) |
+| Inspect a map or edit annotations | [Map interactions](#map-interactions) and the [Feature Editor walkthrough](tutorial/02-05_feature_editor_gui_cli.md) |
+| Design PCR, qPCR or RT primers | Focus the intended DNA, then open PCR Designer; [primer tools](#primer-qpcr-and-sequence-specific-rt-design) |
+| Plan a Gibson assembly | `Patterns -> Gibson...`; [03.05: single-insert walkthrough](tutorial/03-05_gibson_specialist_testing_gui.md) |
+| Retrieve a genomic region or add reference context | `Genome -> Prepared References...`; [reference-genome tools](#reference-genomes-main-menu) |
+| Inspect TSS and regulatory evidence | [08.16: TSS evidence walkthrough](tutorial/08-16_tss_regulatory_view_gui.md) and the [regulatory-view reference](#tss--regulatory-dna-display) |
+| Size bands in a gel photograph | `Patterns -> Gel Image Analysis...`; [measured gel images](#measured-gel-images-11-development) |
+| Arrange samples or inspect a rack draft | `Open Rack` for an arrangement; [rack view and exports](#rack-view) |
+| Review a protein-expression draft | `Services > Protein Expression Handoff...`; [read-only inspector](#protein-expression-handoff) |
+| Get help with the visible window | `Agent help`; [preview-before-send screenshot help](#screenshot-capture-policy) and [Agent Assistant](#agent-assistant) |
+
+For more worked examples, use `Help -> Tutorials`. For an action's name or
+location, try the command palette before browsing the full reference.
+The [confidence map](#what-to-trust-today) distinguishes mature and experimental
+paths; a computed design or a software test is not biological validation.
+
+## Detailed Reference
+
+The sections below retain the full interface reference, specialist details
+and limitations. Use the task index above when you need a starting point.
 
 The existing GUI Shell / Agent Assistant accepts the read-only command
 `primers transcript-assay-specificity-matrix PANEL_REPORT_ID`. It inspects
