@@ -54,6 +54,32 @@ class DocumentationStatusTests(unittest.TestCase):
     def test_current_documentation_status_and_links(self):
         self.assertEqual(doc_status.check(), [])
 
+    def test_cli_manual_has_a_discovery_first_entry_and_task_index(self):
+        text = (checker.ROOT / "docs/cli.md").read_text(encoding="utf-8")
+        intro = text.split("## Standalone Reference-Bound Primer Specificity", 1)[0]
+        self.assertIn("## Start Here", intro)
+        self.assertIn("## Work With A Saved Project", intro)
+        commands = re.search(r"```sh\n(.*?)\n```", intro, re.S).group(1)
+        self.assertEqual(commands.splitlines(), [
+            "gentle_cli --version", "gentle_cli help", "gentle_cli help primers design",
+        ])
+        self.assertIn('gentle_cli --state "my project.gentle.json" state-summary', intro)
+        self.assertIn(".gentle_state.json", intro)
+        self.assertIn("unsaved state", intro)
+        index = text.split("### Commands\n", 1)[1].split("```bash", 1)[0]
+        self.assertIn("| I Want To... | Start With |", index)
+        self.assertIn("Reference examples, not a script", index)
+        self.assertIn("disposable project", index)
+        headings = [re.sub(r"[^\w -]", "", line.lstrip("#").strip().lower()).replace(" ", "-")
+                    for line in text.splitlines() if line.startswith("#")]
+        for target in re.findall(r"\]\(([^)]+)\)", intro + index):
+            path, _, fragment = target.partition("#")
+            with self.subTest(link=target):
+                if path:
+                    self.assertTrue((checker.ROOT / "docs" / path).is_file(), target)
+                elif fragment:
+                    self.assertIn(fragment, headings)
+
     def test_screenshot_docs_distinguish_gui_capture_from_disabled_cli_export(self):
         cli = (checker.ROOT / "docs/cli.md").read_text(encoding="utf-8")
         gui = (checker.ROOT / "docs/gui.md").read_text(encoding="utf-8")

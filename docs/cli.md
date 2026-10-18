@@ -1,5 +1,61 @@
 # GENtle CLI Manual
 
+Inspect a sequence project, repeat an analysis, or connect GENtle to a script
+or agent. The CLI uses the same engine as the desktop application; you do not
+need to start with raw operation JSON.
+
+**Quick navigation:** [Start here](#start-here) |
+[Find a command or workflow](#commands) | [Interfaces](#overview) |
+[Build from source](#build-and-run) | [Agent integration](agent_interface.md).
+
+## Start Here
+
+With `gentle_cli` installed and on your `PATH`, try these discovery commands:
+
+```sh
+gentle_cli --version
+gentle_cli help
+gentle_cli help primers design
+```
+
+They report the build, available commands and the syntax for one command;
+they do not modify a project or start a biological analysis. Use
+`gentle_cli help COMMAND ...` when you need an argument or option explained.
+For machine-readable discovery, use `gentle_cli capabilities` or
+`gentle_cli help --format json`.
+
+If the executable is not available yet, see [installation](../INSTALL.md).
+From a source checkout, replace `gentle_cli` with
+`cargo run --locked --bin gentle_cli --`, running from the repository root.
+For example: `cargo run --locked --bin gentle_cli -- help primers design`.
+
+For a worked first example, follow
+[Load FASTA, branch, and reverse-complement](tutorial/generated/chapters/02-01_load_branch_reverse_complement_pgex_fasta.md).
+It explains input records, derived sequences and the matching GUI/CLI steps.
+The [task index](#commands) leads to primer, evidence, design and storage routes.
+
+## Work With A Saved Project
+
+Replace the filename below with an existing saved project or a disposable
+working copy. This command inspects its contents:
+
+```sh
+gentle_cli --state "my project.gentle.json" state-summary
+```
+
+Put `--state PATH` before the command and use the same path for subsequent
+steps. Commands that change the project save their results there. Without
+`--state`, the default is `.gentle_state.json` in the working directory. A
+separate CLI process does not inherit the open GUI project's unsaved state.
+
+For commands shared with the GUI Shell, use `gentle_cli shell 'COMMAND ...'`
+in the terminal, but enter only `COMMAND ...` in the GUI Shell. The `op` route
+accepts one typed JSON operation; `workflow` runs a composed workflow. Those
+are alternatives for automation, not prerequisites for using named commands.
+
+The sections below are the detailed reference. Designs and computational
+scores still require review; they are not experimental validation.
+
 ## Standalone Reference-Bound Primer Specificity
 
 [Tutorial 04.09](tutorial/04-09_reference_bound_primer_specificity.md) explains
@@ -2430,6 +2486,27 @@ additive `selected_input_reads` and `*_evidence_units` fields make the counting
 unit explicit.
 
 ### Commands
+
+Looking for a starting point rather than every option? Choose a task below,
+or return to the [first-session guide](#start-here). Use
+`gentle_cli help COMMAND ...` for the current syntax.
+
+| I Want To... | Start With |
+| --- | --- |
+| Load FASTA and keep source/derived sequences separate | [02.01: load, branch and reverse-complement](tutorial/generated/chapters/02-01_load_branch_reverse_complement_pgex_fasta.md) |
+| Generate and review PCR primer pairs | `primers design`; [04.02: worked offline primer-pair review](tutorial/generated/chapters/04-02_pcr_selection_batch_primer_pairs_offline.md) |
+| Assess primer specificity against prepared references | [04.09: reference-bound specificity](tutorial/04-09_reference_bound_primer_specificity.md); [command details](#standalone-reference-bound-primer-specificity) |
+| Inspect regulatory evidence in a genomic locus | [08.16: TSS evidence and its CLI companion](tutorial/08-16_tss_regulatory_view_gui.md) |
+| Preview changes to an explicitly synthetic coding insert | `sequence-design plan`; [06.07: experimental synthetic redesign](tutorial/06-07_synthetic_sequence_design.md) |
+| Draft a protein-expression request without contacting a provider | [09.03: provider-neutral review draft](tutorial/09-03_protein_expression_handoff_cli.md) |
+| Project a gene set into a sample arrangement and rack | [03.10: explicit storage projection](tutorial/03-10_gene_set_storage_projection.md) |
+| Connect an outer agent or compare interfaces | [01.01: agent interfaces](tutorial/01-01_agent_interfaces.md); [MCP and capability discovery](agent_interface.md) |
+
+**Reference examples, not a script:** the commands below are independent.
+Many require previously loaded sequences, reports or local tools. Replace
+example IDs and filenames with your own, and use a disposable project when
+trying commands that change state. Repository fixture paths assume the
+repository root as the working directory.
 
 ```bash
 cargo run --bin gentle_cli -- --version

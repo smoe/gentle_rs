@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-10-18 - Give The CLI Manual A First-Session Entry Point
+
+- Put a short introduction, read-only discovery commands, installed/source
+  invocation guidance and explicit saved-project handling ahead of the advanced
+  reference. Link a worked sequence example without requiring raw JSON first.
+- Add a task-based tutorial index at the README-linked `#commands` anchor and
+  label the long command block as independent reference examples, not a script.
+  Preserve all existing reference sections/anchors, README version metadata,
+  tutorial sources and acceptance boundaries; no generated content is changed.
+- Add an offline guard for discovery-first ordering, safe project guidance and
+  the new navigation targets. No local Rust, GENtle execution, capture, model
+  call, push or dispatch is performed; Claude consultation was offered but not
+  requested or run. `paper` and `output/` remain untouched.
+- All 116 tutorial-checkout/release-policy tests pass, including navigation and
+  LF/CRLF checks; documentation status and whitespace pass. Release-gate reports
+  four OK, and session-close reports four OK, two expected dirty-file/scope
+  reminders and no failure. The roadmap remains unchanged at 400 lines.
+
 ## 2026-10-18 - Clarify GUI Screenshots Versus The Disabled CLI Bridge
 
 - Correct the CLI manual's blanket screenshot wording: desktop Linux/macOS
