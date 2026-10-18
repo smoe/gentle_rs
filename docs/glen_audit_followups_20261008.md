@@ -197,6 +197,75 @@ An authored contract is not an executed pass. Every completion needs an exact
 source SHA, platform/profile, command or run URL and retained evidence. New
 candidate results never overwrite or inherit the older candidate's verdict.
 
+### Focused Verification At `394dd5d` (2026-10-18)
+
+Glen tested `394dd5d0523ea91c19a8eb94d5ed8ad7bd5299b2`, tree
+`45bf6008ec3be0910b6bfd298563ca1a0b8f50e4`, in a clean detached checkout.
+Debian forky/x86_64, Ryzen 5 3600, Rust/Cargo 1.97.1; dev/test profiles,
+default/headless features as logged, one build job, debug info and incremental
+compilation disabled. Lockfile SHA-256:
+`0b9729e60698e14d464b48230e606377a4e2e48054c2450be6f85760e999a6b9`.
+This is focused functional evidence, not a selected release candidate.
+
+| Executed Boundary | Result At This Source |
+| --- | --- |
+| README metadata repair `57a2403a` | 4/4 release-version tests pass. |
+| Sequence-design `8a0e2670` / `958b2238` follow-up | Core/protocol/engine/CLI: 31/5/27/4, 67/67 Rust passes. Python/oracle/actual-CLI: 22/22, all four actual CLI cases execute, no skips; both strategies, joint GC, tampering, retention/proof limits, IUPAC, cancellation and persistence pass. |
+| Expression/storage/tutorials | Arrangement 4/4, expression 19/19, handoff 1/1, capability 20/20, MCP 6/6 and workflow examples 95/95. Real-binary starter suite 6/6, no skips. Tutorial/catalog/manifest freshness pass; newer `5893ebb0` GUI inspector is not in this source. |
+| Rack/labware | Protocol/render/headless/default/rack: 2/1/5/6/113, 127/127 Rust passes. Three real tube exports preserve quoted-path handling, source/dimension caveats and byteidentical project state. OpenSCAD is absent: one Python pass, one mesh skip. |
+| Historical carrier comparison | Nine raw SCAD/simulation/spec files byteidentical against `1c5be317`, using separately rebuilt source-bound binaries, the same fixed rack and literal output paths. Earlier wrong-binary outputs are excluded, not accepted. |
+| Locked check and headless CLI/docs build | Pass. No package/profile-performance or standalone compiler-minimum verdict follows. |
+
+Overall verdict remains **needs_fix**: `parity_matrix_freshness` fails (exit
+101, 0/1), and `parity-matrix-check` exits 1. Glen's successful canonical
+generation adds only `InspectTubeProfiles`, `ExportTubeOpenScad` and two
+shell-only entries per adapter. The retained
+[CI run 39082226380](https://github.com/smoe/gentle_rs/actions/runs/39082226380)
+is terminal failure at this SHA: headless/safety pass; Windows/macOS fail at
+the examples/tutorial drift step, with later cascade skips. The job metadata
+matches the locally reproduced defect; unavailable anonymous raw CI logs do
+not establish additional failures. Linux and optional audit jobs skip.
+
+Codex applies the retained generated delta on newer main, preserving its
+expression-inspector GUI row/count change. No local Cargo invocation occurs:
+`scripts/regenerate_parity_matrix.sh` invokes Cargo and is not run. The source
+registry/renderer and override inputs are unchanged since the tested SHA;
+the only glossary change is that inspector's `gui-menu` surfacing. Offline
+comparison against the hash-verified generated output checks this composition;
+Rust freshness and successful normal CI for the repair remain pending.
+
+The supplied 113,834-byte archive remains outside Git. Codex independently
+verifies its checksum, small manifest and all 210 listed files. Full evidence:
+`/home/clawbio/.openclaw/workspace/artifacts/gentle-394dd5d-verification-20261018/`.
+Local reviewed extraction:
+`/private/tmp/gentle-394dd5d-evidence-review/glen-verification-394dd5d-20261018/`.
+
+| Retained Identity | SHA-256 |
+| --- | --- |
+| `glen-verification-394dd5d-20261018-small.tar.gz` | `441f26ca9c51ab0abe90c3ab86783f8229085b30576a042f5a3ff919ef65f043` |
+| `SMALL_SHA256SUMS` | `4c54e2a486674f1036520949adbd0126bf37be40ba54e33e3678360ffb0b4c46` |
+| Original full `SHA256SUMS` (large members not supplied/rehashed here) | `408940014370a9d1f27e608d0f70f85e295512873da24c93ef755860df14c924` |
+| `REPORT.md` | `97d93b28166cee4e464cd19469d32197139193f085d271478f85f12446d9dafd` |
+| `command-exits.tsv` | `128fd6b5719d35ed97920e37d677411a47809e5944caee101adbf5ac923b0fb6` |
+| Canonical `generated/gui_cli_mcp_parity.expected.md` | `bc14f743e3528618412c051b2ca79bf0feda5edbacce84702101d90128029dc5` |
+
+Binary hashes are producer receipts, not independently rehashed binaries in
+this small delivery. The separate earlier source scan's interrupted `labware_`
+build remains an uncompleted attempt; the later named tests above provide the
+bounded runtime result. Neither report certifies newer source automatically.
+
+| Six-Item Checklist | Remaining Boundary After This Report |
+| --- | --- |
+| 1. Audit preservation / Linux validation | Preservation and these focused Linux checks verified; parity repair's freshness/CI and final-source full suites remain open. |
+| 2. 08.04 GUI/agent contracts | No new execution here; retain the historical Linux/Windows stripped-child passes separately from native/physical-host acceptance. |
+| 3. Genuine live agent | Not run; no model/provider call authorized or performed. |
+| 4. Honest native visuals | Not run here; no current-source capture, native inspector or scientific verdict. |
+| 5. Scroll benchmarks | Not run here; historical observations do not establish new native latency. |
+| 6. Package acceptance | Not run here; released `.12` opt1 and pending `.13` opt2/native/extracted gates stay separate. |
+
+No push, dispatch, local Rust, model call, package build, publication or human
+scientific approval follows. Continue development without an interim freeze.
+
 ### Ordinary CI Observation At `1c5be317` (2026-10-17)
 
 The owner-pushed integrated source is

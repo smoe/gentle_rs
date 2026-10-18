@@ -1,5 +1,27 @@
 # GENtle Changelog
 
+## 2026-10-18 - Repair Tube Parity Documentation And Record Glen's Return
+
+- Apply the two missing tube-operation rows and five shell-only count changes
+  from Glen's retained canonical generator output; preserve newer main's
+  expression-inspector surfacing. No runtime, glossary or policy change.
+- Verify the supplied archive checksum, small manifest and all 210 listed
+  files. Record the `394dd5d` source/toolchain, focused sequence-design and real
+  CLI passes, expression/storage replay, rack/labware and nine-file historical
+  carrier comparison, without promoting the separate failed CI to a pass.
+- Update the six-item ledger, sequence-design acceptance and remaining handoff:
+  completed source-bound checks are not reissued; parity freshness/normal CI
+  and the newer inspector remain pending. Native, live-agent, scroll, package
+  and scientific verdicts stay separate; roadmap remains 400 lines.
+- No local Rust, push, dispatch, model/provider call or package build. The
+  regeneration wrapper invokes Cargo, so apply only its hash-verified retained
+  delta and check it offline; canonical Rust freshness still requires Glen/CI.
+  Preserve `paper`, `output/`, raw audit deliveries and historical evidence.
+- Offline verification: 117 tutorial-checkout/release-policy tests pass,
+  including LF/CRLF. Retained-output composition, row totals, 42 local fragment
+  links, documentation status and whitespace pass. Release-gate is four OK;
+  session-close has four OK, two expected scope/worktree warnings, no failures.
+
 ## 2026-10-18 - Give The GUI Manual A Guided Entry Point
 
 - Put a short menu-first session and task-based navigation before the advanced

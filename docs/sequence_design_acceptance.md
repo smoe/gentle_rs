@@ -29,6 +29,25 @@ below. Their scoped pass is pinned to that source, not inherited by later main.
 | Tutorial/adapters | Actual 06.07 CLI replay; shared-shell/direct-CLI/confirmed-MCP Rust tests | Same scientific payload and approval boundary, with explicit binary identity |
 | Native/usefulness/runtime | Independent native review and bounded measurements below | Separate scoped verdicts; unavailable checks remain `not_run` |
 
+## Executed Regression Follow-Up At `394dd5d`
+
+On 2026-10-18 Glen executes the `8a0e2670` diagnostic-limit and `958b2238`
+IUPAC follow-ups at `394dd5d0523ea91c19a8eb94d5ed8ad7bd5299b2`:
+31 core, five protocol, 27 headless engine/MCP and four CLI unit tests pass.
+The Python/oracle/actual-CLI suite passes 22/22 with zero skips; all four actual
+CLI tests run. Retained-best/proof-limit, cancellation, lexical ties and the
+180/10,800 IUPAC oracle cases pass, as do both strategies' joint GC, tampering,
+materialization, save/reopen and same-session undo/redo checks. Locked check
+and headless CLI/docs build pass on Debian x86_64/Rust-Cargo 1.97.1, dev/test
+profiles with debug info and incremental compilation disabled.
+
+The [verified evidence receipt](glen_audit_followups_20261008.md#focused-verification-at-394dd5d-2026-10-18)
+records identity, hashes, logs and exclusions. Overall `needs_fix` is a separate
+generated parity-document drift, not a failing sequence-design test. Its local
+repair still needs Rust freshness/CI. This run supplies no new GUI, live-model,
+runtime-performance, compiler-minimum, package or scientific verdict; the older
+Linux/X11 and process measurements below remain separately attributed.
+
 ## Executed Audit At `de9df8af`
 
 Glen executed the [issued handoff](glen_sequence_design_acceptance_handoff_20261014.md)

@@ -5,6 +5,29 @@ This is the current covering request, not a release freeze or a request to
 repeat all historical audits. Older linked prompts are background, not new
 execution authority. Continue development independently of these checks.
 
+## Returned Results And Remaining Request
+
+Glen executed the pre-inspector checks below at
+`394dd5d0523ea91c19a8eb94d5ed8ad7bd5299b2`; see the
+[verified evidence and six-item status](glen_audit_followups_20261008.md#focused-verification-at-394dd5d-2026-10-18).
+README 4/4, sequence-design Rust 67/67 plus actual CLI suite 22/22, starter
+suite 6/6, workflows 95/95 and rack/labware 127/127 pass. The nine historical
+carrier outputs are byteidentical. Keep those checks closed at that source;
+do not reissue this entire original checklist as unfinished work.
+
+One reported defect is repaired locally: the parity matrix's two missing
+tube-operation rows/counts. Codex applies Glen's canonical generated delta and
+preserves newer inspector surfacing without running local Rust. On the next
+ordinary owner-pushed revision, run `parity-matrix-check` with its source-matched
+docs binary, `cargo test --locked -j1 --test parity_matrix_freshness`, and inspect
+normal CI. Run the seven inspector regressions and `gentle-shell` UI-intent
+checks in original item 3: `5893ebb0` postdates the tested source. Its updated
+09.03 tutorial/catalog projection also needs source-matched freshness checking.
+No new bundle or intermediate freeze is requested; final-candidate affected
+checks remain on the normal release path. OpenSCAD mesh execution remains
+`not_run` on Glen's host, not a failed Rust exporter. Native, agent, scroll and
+package boundaries below receive no new acceptance from this return.
+
 ## Source And Isolation
 
 Fetch published `smoe/gentle_rs main` once and record the resolved full SHA and
@@ -20,7 +43,7 @@ new GUI capture or package/container build is requested. Existing normal CI
 can be inspected without restarting it. Keep `package-opt1-fallback` separate;
 the selected .13 packaging recipe remains opt2. Codex runs no local Rust.
 
-## Focused Checks
+## Original Focused Checks And Inspector Follow-Up
 
 1. **README metadata repair:** verify the `57a2403a` repair is present. Run the
    release-version regression below and inspect the new normal push CI when
@@ -39,7 +62,7 @@ the selected .13 packaging recipe remains opt2. Codex runs no local Rust.
    instead of returning Invalid and discarding it. The second adds independent
    180 single-symbol and 10,800 paired-symbol IUPAC cases without changing the
    production matcher. Eighteen offline oracle/harness passes are not Rust
-   acceptance; this regression follow-up remains pending execution.
+   acceptance; execution subsequently passed at `394dd5d` as recorded above.
    Execute the core/protocol tests that the failed older workspace run did not
    reach, plus the shared engine and CLI boundaries:
 
