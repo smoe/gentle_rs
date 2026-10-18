@@ -7396,6 +7396,7 @@ fn assert_command_palette_ui_intent_side_effect(app: &GENtleApp, target: UiInten
         app.app_status
     );
     match target {
+        UiIntentTarget::ProteinExpressionHandoff => assert!(app.protein_expression_ui.open),
         UiIntentTarget::GelImageEditor => assert!(app.gel_image_editor.open),
         UiIntentTarget::PrepareReferenceGenome => {
             assert!(app.show_reference_genome_prepare_dialog);
@@ -7497,6 +7498,7 @@ fn command_palette_gui_prominent_ui_intents_dispatch_to_expected_windows() {
     assert_eq!(
         verified_targets,
         HashSet::from([
+            UiIntentTarget::ProteinExpressionHandoff.as_str(),
             UiIntentTarget::PrepareReferenceGenome.as_str(),
             UiIntentTarget::RetrieveGenomeSequence.as_str(),
             UiIntentTarget::BlastGenomeSequence.as_str(),
@@ -10612,6 +10614,10 @@ fn embedded_window_layer_id_for_root_configuration_and_assistants_use_hosted_win
 fn embedded_window_layer_id_for_root_tools_uses_hosted_window_ids() {
     let app = GENtleApp::default();
     let cases = [
+        (
+            GENtleApp::protein_expression_viewport_id(),
+            GENtleApp::hosted_protein_expression_window_id(),
+        ),
         (
             GENtleApp::prepare_genome_viewport_id(),
             egui::Id::new((

@@ -170,16 +170,11 @@ Do not add submission, ordering or automatic biological optimization.
 
 Keep the next synthetic-biology bridge slices in this order:
 
-1. Add a thin Synthetic Biology / Protein Expression Handoff inspector over
-   the shared report. It should display readiness, unanswered requirements,
-   sequence/CDS/tag evidence, candidates, and shared suggested actions; the
-   same window can later expose existing reporter recommendation and reporter
-   construct-handoff reports as sibling views.
-   Preserve explicit provider selection and typed withholding reasons from
-   v2; do not reconstruct requests or load provider defaults in this inspector.
-   Tutorial 09.03 and glossary now describe the shared --provider boundary.
-   Glen/CI must run the final committed neutral/binding/CLI regressions;
-   local source checks do not establish runtime or native acceptance.
+1. Verify the read-only Protein Expression Handoff inspector and tutorial
+   09.03 on the integrated source: shared-report parity, explicit selection,
+   typed withholding, stale-result rejection and unchanged project/history.
+   Glen/CI must execute authored Rust/CLI checks and native window review;
+   offline source checks do not establish runtime or native acceptance.
 2. Rank chassis, vector/tag
    routes, and provider candidates from structured biology, provider
    capabilities, and local inventory. Emit score components and rejection

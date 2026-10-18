@@ -41052,7 +41052,9 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
             })?;
             if matches!(
                 target,
-                UiIntentTarget::GelImageEditor | UiIntentTarget::TssView
+                UiIntentTarget::GelImageEditor
+                    | UiIntentTarget::TssView
+                    | UiIntentTarget::ProteinExpressionHandoff
             ) && tokens.len() != 3
             {
                 return Err(format!(

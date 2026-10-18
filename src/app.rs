@@ -74,6 +74,9 @@ mod configuration_ui;
 #[path = "app/external_services_ui.rs"]
 mod external_services_ui;
 
+#[path = "app/protein_expression_ui.rs"]
+mod protein_expression_ui;
+
 #[path = "app/clawbio_bridge.rs"]
 mod clawbio_bridge;
 
@@ -1103,6 +1106,7 @@ pub struct GENtleApp {
     command_palette_selected: usize,
     command_palette_focus_query: bool,
     external_services_ui: ExternalServicesUiState,
+    protein_expression_ui: protein_expression_ui::ProteinExpressionUiState,
     gene_set_inspector: gene_set_ui::GeneSetInspectorUiState,
     clawbio_panel: clawbio_ui::ClawBioPanelState,
     mirna_panel: mirna_ui::MirnaTargetScanPanelState,
@@ -3046,6 +3050,7 @@ impl Default for GENtleApp {
             command_palette_selected: 0,
             command_palette_focus_query: false,
             external_services_ui: ExternalServicesUiState::default(),
+            protein_expression_ui: protein_expression_ui::ProteinExpressionUiState::default(),
             gene_set_inspector: gene_set_ui::GeneSetInspectorUiState::default(),
             clawbio_panel: clawbio_ui::ClawBioPanelState::default(),
             mirna_panel: mirna_ui::MirnaTargetScanPanelState::default(),
@@ -5440,7 +5445,8 @@ Error: `{err}`"
     }
 
     fn has_active_background_jobs(&self) -> bool {
-        self.genome_prepare_task.is_some()
+        self.protein_expression_inspection_pending()
+            || self.genome_prepare_task.is_some()
             || self.genome_blast_task.is_some()
             || self.genome_track_import_task.is_some()
             || self.sequence_ingress_task.is_some()
@@ -17269,6 +17275,14 @@ Error: `{err}`"
                 self.render_pattern_routine_catalog_menu(ui);
             });
             ui.menu_button(self.tr("menu.services"), |ui| {
+                if ui.button(self.tr("menu.services.protein_expression_handoff")).clicked() {
+                    let ctx = ui.ctx().clone();
+                    self.execute_command_palette_action(
+                        &ctx,
+                        CommandPaletteAction::UiIntent(UiIntentTarget::ProteinExpressionHandoff),
+                    );
+                    ui.close();
+                }
                 if ui
                     .button(self.tr("menu.services.external_services"))
                     .on_hover_text(
@@ -25711,6 +25725,7 @@ impl GENtleApp {
             self.handle_root_keyboard_shortcuts(ctx);
 
             self.poll_prepare_reference_genome_task(ctx);
+            self.poll_protein_expression_report();
             self.poll_tutorial_project_task(ctx);
             self.poll_reference_genome_blast_task(ctx);
             self.poll_genome_track_import_task(ctx);
@@ -25787,6 +25802,7 @@ impl GENtleApp {
                 self.render_routine_assistant_dialog(ctx);
                 self.render_agent_assistant_dialog(ctx);
                 self.render_external_services_dialog(ctx);
+                self.render_protein_expression_dialog(ctx);
                 self.render_gene_set_inspector_dialog(ctx);
                 self.render_clawbio_dialog(ctx);
                 self.render_mirna_target_scan_dialog(ctx);

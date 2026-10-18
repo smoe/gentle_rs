@@ -2123,6 +2123,7 @@ Minimum MCP JSON-RPC flow:
     - `import-genome-track`
     - `pcr-design`
     - `sequencing-confirmation`
+    - `protein-expression-handoff` (no arguments; read-only report inspector)
     - `agent-assistant`
     - `prepare-helper-genome`
     - `retrieve-helper-sequence`
@@ -7880,9 +7881,12 @@ Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'pl
     provider permits a draft/local preflight; they withhold quote suggestions.
     The bundled GeneArt catalog keeps direct submission unavailable.
   - The route never designs, optimizes, submits, orders, writes files, changes
-    project state, queries live providers, or promises wet-lab yield. GUI exposure for this richer
-    handoff remains a future Synthetic Biology inspector slice rather than a
-    new dashboard in the CLI contract.
+    project state, queries live providers, or promises wet-lab yield.
+  - `ui open|focus|close protein-expression-handoff` addresses the read-only
+    Services inspector (no arguments). Headless hosts record the intent only;
+    use this `planning` command to obtain the actual report. The inspector runs
+    the same report on a background snapshot, preserves explicit product/provider
+    selection and exposes suggested commands for copying, not execution.
 - `planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]`
   - Shows one profile scope or merged effective profile.
 - `planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]`

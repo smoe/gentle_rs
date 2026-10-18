@@ -511,7 +511,7 @@
       "group_order": 9,
       "group_position": 3,
       "decimal_id": "09.03",
-      "type": "cli_walkthrough",
+      "type": "gui_cli_walkthrough",
       "status": "manual/hybrid",
       "source": "hand_written_markdown",
       "audiences": [
@@ -522,7 +522,7 @@
         "protein_workflows",
         "synthetic_biology"
       ],
-      "notes": "Offline synthetic product and reviewed requirements to a read-only provider-neutral expression draft. In-house and explicitly selected provider paths retain missing questions and human-review gates; no ordering or provider contact. Runtime acceptance remains pending.",
+      "notes": "Offline synthetic product and reviewed requirements to the shared read-only Protein Expression Handoff inspector and provider-neutral draft. GUI and CLI neutral, withheld and explicitly selected provider paths retain evidence, missing questions and human-review gates; no ordering or provider contact. Runtime/native acceptance remains pending.",
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"

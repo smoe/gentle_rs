@@ -36,6 +36,26 @@
   has four OK, two expected dirty-file/scope reminders and no failure; the
   roadmap remains unchanged at 400 lines. `paper` and `output/` are untouched.
 
+## 2026-10-18 - Read-Only Protein Expression Handoff Inspector
+
+- Add Services/palette/shared `ui open|focus|close protein-expression-handoff`
+  access to the existing v2 handoff report. Explicit product, pasted reviewed
+  requirements and optional provider inputs run through the shared command on a
+  history-free background snapshot; no provider/product defaults are loaded.
+- Present readiness and unanswered questions, sequence/CDS/tag evidence,
+  unchanged candidate rows, neutral/provider drafts and typed withholding
+  reasons. Reports and shared suggested commands can be copied, not executed.
+  Request/project changes reject stale results; inspection never commits state.
+- Extend tutorial 09.03 with synthetic GUI neutral/withheld/projected paths,
+  report comparison, stale/close checkpoints and unchanged project/history
+  checks. Author deterministic GUI adapter and offline tutorial contracts.
+- Rust builds/tests, canonical parity generation and native acceptance remain
+  with Glen/CI; only source formatting was run locally, not Rust builds/tests/
+  checks. No push, provider/model call or capture.
+- Offline verification: 15 focused tutorial/source tests and 68 checkout tests
+  pass, including LF/CRLF policy coverage; whitespace is clean. Session-close
+  reports four OK, two expected dirty-worktree/scope reminders and no failure.
+
 ## 2026-10-18 - Integrate Rack And Tube Work Into Glen's Verification Request
 
 - Merge `gentle_rs_2_main` at `5b1da7d3` into main. Resolve only the roadmap's

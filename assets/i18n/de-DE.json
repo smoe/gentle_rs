@@ -276,6 +276,7 @@
   "menu.patterns.browse_by_status": "Nach Status durchsuchen",
   "menu.patterns.routine_catalog_unavailable": "Routinenkatalog nicht verfügbar",
   "menu.services.external_services": "Externe Dienste...",
+  "menu.services.protein_expression_handoff": "Proteinexpressions-Handoff...",
   "menu.services.clawbio": "ClawBio...",
   "menu.services.shared_shell_routes": "Shared-Shell-Routen: services providers/preflight/quote",
   "menu.settings": "Einstellungen",
