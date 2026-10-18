@@ -277,6 +277,7 @@ jobs:
       - run: python3 -m unittest scripts.test_gui_startup_summary -v
       - run: python3 -m unittest scripts.test_container -v
       - run: python3 -m unittest scripts.test_tutorial_checkouts -v
+      - run: python3 -m unittest scripts.test_gel_tapestation.TapeStationFixtureTests -v
       - run: python3 -m unittest scripts.test_primer_specificity_multi_tutorial -v
       - run: python3 -m unittest scripts.test_synthetic_biology_tutorial -v
       - name: Release tutorial source and discovery contracts (no Rust)
@@ -464,6 +465,11 @@ jobs:
         env:
           GENTLE_TUTORIAL_BIN_DIR: ${{ github.workspace }}/target/debug
         run: python3 -m unittest scripts.test_release_workflow_tutorials.ReleaseTutorialBinaryTests -v
+
+      - name: TapeStation real-image sizing regression
+        env:
+          GENTLE_GEL_TEST_CLI: ${{ github.workspace }}/target/debug/gentle_cli
+        run: python3 -m unittest scripts.test_gel_tapestation.TapeStationBinaryTests -v
 
       - name: Internal preview reviewer smoke
         run: |
@@ -659,6 +665,11 @@ jobs:
           GENTLE_TUTORIAL_BIN_DIR: ${{ github.workspace }}/target/debug
         run: python3 -m unittest scripts.test_release_workflow_tutorials.ReleaseTutorialBinaryTests -v
 
+      - name: TapeStation real-image sizing regression
+        env:
+          GENTLE_GEL_TEST_CLI: ${{ github.workspace }}/target/debug/gentle_cli
+        run: python3 -m unittest scripts.test_gel_tapestation.TapeStationBinaryTests -v
+
       - name: Internal preview reviewer smoke
         run: |
           STATE="$RUNNER_TEMP/gentle_preview_state.json"
@@ -852,6 +863,11 @@ jobs:
         env:
           GENTLE_TUTORIAL_BIN_DIR: ${{ github.workspace }}/target/debug
         run: python -m unittest scripts.test_release_workflow_tutorials.ReleaseTutorialBinaryTests -v
+
+      - name: TapeStation real-image sizing regression
+        env:
+          GENTLE_GEL_TEST_CLI: ${{ github.workspace }}/target/debug/gentle_cli.exe
+        run: python -m unittest scripts.test_gel_tapestation.TapeStationBinaryTests -v
 
       - name: Internal preview reviewer smoke
         run: |

@@ -418,6 +418,40 @@ class TutorialCheckoutTests(unittest.TestCase):
         checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
         self.assertNotEqual((broken / relative / "dna-analysis.json").read_bytes(), payloads[relative / "dna-analysis.json"])
 
+    def test_public_tapestation_inputs_preserve_pdf_png_and_coordinate_hashes(self):
+        relative = Path("test_files/fixtures/gel_images/tapestation_26r266")
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        names = ("before.pdf", "after.pdf", "before.png", "after.png", "manifest.json",
+                 "region_summaries.json", "SHA256SUMS")
+        payloads = {}
+        for name in names:
+            path = relative / name
+            payloads[path] = (checker.ROOT / path).read_bytes()
+            destination = self.root / path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payloads[path])
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "public real gel evidence")
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"tapestation-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for path, payload in payloads.items():
+                self.assertEqual((target / path).read_bytes(), payload)
+            for line in (target / relative / "SHA256SUMS").read_text().splitlines():
+                digest, name = line.split("  ", 1)
+                self.assertEqual(hashlib.sha256((target / relative / name).read_bytes()).hexdigest(), digest)
+            manifest = json.loads((target / relative / "manifest.json").read_bytes())
+            for source in manifest["sources"]:
+                for kind in ("image", "pdf"):
+                    self.assertEqual(hashlib.sha256((target / relative / source[kind]).read_bytes()).hexdigest(),
+                                     source[f"{kind}_sha256"])
+        unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                 if not line.startswith(b"test_files/fixtures/gel_images/tapestation_26r266/*.json "))
+        broken = Path(self.tmp.name) / "tapestation-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        self.assertNotEqual((broken / relative / "manifest.json").read_bytes(), payloads[relative / "manifest.json"])
+
     def test_repeat_lesson_raw_rmsk_hash_survives_both_checkout_modes(self):
         relative = Path("test_files/fixtures/repeat_cohort/local_project.rmsk.txt")
         payload = (checker.ROOT / relative).read_bytes()

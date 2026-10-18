@@ -1,0 +1,41 @@
+{
+  "schema": "gentle.fixture.tapestation_region_summaries.v1",
+  "origin": "Manual transcription of the original TapeStation Region Tables, not GENtle measurements or reconstructed electropherograms.",
+  "source_pdf_sha256": {
+    "before": "46d23a1680382755a7e080c334a97dfe97ed5753646a8ef67d536b1b21ddd31f",
+    "after": "859ce71d2ec5f6031c1fcd635adee639ec39a545d306de3a5612d8806526df7f"
+  },
+  "cell_line_labels": "Anonymous cell_1/cell_2 associations supplied by the owner; primer labels do not establish molecular identity.",
+  "rows": [
+    {"source": "before", "lane": "B1", "pdf_pages": [3], "cell_line": "cell_1", "priming": "custom", "from_bp": 400, "to_bp": 5000, "average_size_bp": 1790, "region_concentration_ng_per_ul": 0.771, "region_molarity_nmol_per_l": 1.21, "percent_of_total": 41.83},
+    {"source": "before", "lane": "C1", "pdf_pages": [4, 5], "cell_line": "cell_2", "priming": "custom", "from_bp": 400, "to_bp": 5000, "average_size_bp": 1923, "region_concentration_ng_per_ul": 1.53, "region_molarity_nmol_per_l": 2.14, "percent_of_total": 58.99},
+    {"source": "before", "lane": "D1", "pdf_pages": [6], "cell_line": "cell_1", "priming": "manufacturer_crta", "from_bp": 400, "to_bp": 5000, "average_size_bp": 2221, "region_concentration_ng_per_ul": 25.6, "region_molarity_nmol_per_l": 22.2, "percent_of_total": 86.28},
+    {"source": "before", "lane": "E1", "pdf_pages": [7], "cell_line": "cell_2", "priming": "manufacturer_crta", "from_bp": 400, "to_bp": 5000, "average_size_bp": 1832, "region_concentration_ng_per_ul": 25.1, "region_molarity_nmol_per_l": 28.3, "percent_of_total": 81.21},
+    {"source": "after", "lane": "C1", "pdf_pages": [3], "cell_line": "cell_1", "priming": "custom", "from_bp": 500, "to_bp": 7000, "average_size_bp": 2528, "region_concentration_ng_per_ul": 1.89, "region_molarity_nmol_per_l": 2.01, "percent_of_total": 67.69},
+    {"source": "after", "lane": "D1", "pdf_pages": [4], "cell_line": "cell_2", "priming": "custom", "from_bp": 500, "to_bp": 7000, "average_size_bp": 2404, "region_concentration_ng_per_ul": 3.11, "region_molarity_nmol_per_l": 3.43, "percent_of_total": 80.55},
+    {"source": "after", "lane": "E1", "pdf_pages": [5], "cell_line": "cell_1", "priming": "manufacturer_crta", "from_bp": 500, "to_bp": 7000, "average_size_bp": 2333, "region_concentration_ng_per_ul": 26.1, "region_molarity_nmol_per_l": 22.2, "percent_of_total": 89.79},
+    {"source": "after", "lane": "F1", "pdf_pages": [7], "cell_line": "cell_2", "priming": "manufacturer_crta", "from_bp": 500, "to_bp": 7000, "average_size_bp": 1897, "region_concentration_ng_per_ul": 23.9, "region_molarity_nmol_per_l": 26.4, "percent_of_total": 85.36},
+    {"source": "after", "lane": "G1", "pdf_pages": [8], "cell_line": "cell_1", "priming": "custom_and_manufacturer", "from_bp": 500, "to_bp": 7000, "average_size_bp": 2230, "region_concentration_ng_per_ul": 13.6, "region_molarity_nmol_per_l": 12.8, "percent_of_total": 85.06},
+    {"source": "after", "lane": "H1", "pdf_pages": [9], "cell_line": "cell_2", "priming": "custom_and_manufacturer", "from_bp": 500, "to_bp": 7000, "average_size_bp": 2142, "region_concentration_ng_per_ul": 13.3, "region_molarity_nmol_per_l": 13.4, "percent_of_total": 82.92}
+  ],
+  "cleanup_pairs": [
+    {"cell_line": "cell_1", "priming": "custom", "before_lane": "B1", "after_lane": "C1"},
+    {"cell_line": "cell_2", "priming": "custom", "before_lane": "C1", "after_lane": "D1"},
+    {"cell_line": "cell_1", "priming": "manufacturer_crta", "before_lane": "D1", "after_lane": "E1"},
+    {"cell_line": "cell_2", "priming": "manufacturer_crta", "before_lane": "E1", "after_lane": "F1"}
+  ],
+  "after_priming_groups": [
+    {"cell_line": "cell_1", "custom_lane": "C1", "manufacturer_lane": "E1", "combined_lane": "G1"},
+    {"cell_line": "cell_2", "custom_lane": "D1", "manufacturer_lane": "F1", "combined_lane": "H1"}
+  ],
+  "full_distributions": null,
+  "quantitative_cleanup_effect": null,
+  "custom_enrichment_from_lane_subtraction": null,
+  "limitations": [
+    "Targeted priming and physical length enrichment are different experimental dimensions.",
+    "Before and after use different region windows, contrast settings and warning conditions; no common-window effect is computed.",
+    "The after region ends at 7000 bp, beyond the nominal D5000 100-5000 bp sizing range.",
+    "Region concentration/molarity and sample/peak-table concentration are different reported fields; they are not silently interchanged.",
+    "No full curve, mass fraction, cleanup recovery, subtraction or gene-specific enrichment is inferred from these summaries."
+  ]
+}

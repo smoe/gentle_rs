@@ -6,6 +6,9 @@
 This 15-minute exercise uses a drawn image, not an experiment. It teaches the
 manual calibration path shared by the GUI, CLI and agents. Automatic band
 detection, identity, concentration and experimental validation are not included.
+The optional [real TapeStation companion](#real-tapestation-companion) below
+adds a reproducible two-report comparison and explains which enrichment
+questions still need numerical electropherograms.
 
 ## Before You Start
 
@@ -134,6 +137,119 @@ Switching units does not convert existing ladder assignments. Apparent mass is
 not protein identity or quantity, and separate marker exposures are not silently
 registered. See the [full method and limitations](../gel_image_analysis.md).
 
+## Real TapeStation Companion
+
+Allow another 20 minutes. This part uses real owner-approved public data, **not**
+the synthetic image or its invented ladder assignments. It asks two separate
+questions: can GENtle reproduce reported peak sizes, and what can these reports
+actually tell us about physical length enrichment and combined priming?
+
+The [fixture and provenance](../../test_files/fixtures/gel_images/tapestation_26r266/README.md)
+retain both original PDFs, unscaled extracted images, confirmed coordinate
+assignments and vendor tables. The first report is **before additional cleanup**;
+it is not an experiment without custom primers. Targeted priming and physical
+length enrichment are different experimental dimensions.
+
+### 1. Keep Samples And Ladders Separate
+
+| Preparation | Cell 1, before | Cell 2, before | Cell 1, after | Cell 2, after |
+| --- | --- | --- | --- | --- |
+| Custom primers | B1 | C1 | C1 | D1 |
+| Manufacturer primers, labelled CRTA in the after report | D1 | E1 | E1 | F1 |
+| Both primer types | not supplied | not supplied | G1 | H1 |
+
+Before A1 is a ladder. After L1 and L2 are ladders; **E1/F1 is a cell-line pair
+split by L2**, not a reason to pair E1 with its adjacent sample. A lane identity
+always includes its source report. Do not mix the two cell lines, and do not
+infer which gene produced a band from its size.
+
+### 2. Run The Same Measured-Image Engine
+
+From the repository root, supply an existing CLI and a new output directory:
+
+```sh
+python3 scripts/gel_tapestation_acceptance.py \
+  --gentle-cli /absolute/path/to/gentle_cli \
+  --output-dir /tmp/gentle-tapestation-lesson
+```
+
+Use a suitable writable path on your platform; the output directory must not
+already exist. The replay invokes the existing GENtle import/analyze/inspect/
+export operations, never another sizing algorithm. It retains the actual binary
+and source identity, input hashes and exact engine requests. No Cargo build,
+network access, automatic peak detection or intensity measurement is performed.
+
+Inspect `comparison.json` and `receipt.json`. Expect 13 vendor sample-peak
+comparisons, 14 cross-ladder controls, 15 estimates without a vendor peak-table
+value and three out-of-calibration controls. `agreement_pass: null` is not a
+passed comparison. The after-report has no sample Peak Tables; a region mean
+is not a substitute. The 15/10000 bp markers are not sample fragments and do
+not extend the nine-band 100-5000 bp calibration.
+
+**GUI:** open the resulting `project.gentle.json` through **File -> Open Project**,
+then **Patterns -> Gel Image Analysis...**. Use **Reopen a saved report** to
+inspect `before_A1`, `after_L1` and `after_L2`. Review marks, calibration and
+warnings, then inspect their SVG/TSV exports. The two after analyses deliberately
+use separate ladder assignments; this grouping is not a recovered TapeStation
+internal calibration setting. Editing a mark requires a new analysis, not a
+silent replacement of the saved evidence.
+
+**Ask the inner agent:** "Show the retained before/after gel reports and their
+source hashes. Keep cell lines, ladder controls and absent comparison values
+separate. Explain the saved sizes without inventing a curve or claiming an
+enriched gene. Draft any import/analysis command for my approval."
+
+### 3. Compare What The PDFs Really Report
+
+The following are **vendor Region Table summaries, not GENtle distributions**.
+Their separately recorded source values and page references are in
+[`region_summaries.json`](../../test_files/fixtures/gel_images/tapestation_26r266/region_summaries.json).
+
+| Cell | Priming | Before average bp | Before % of total | After average bp | After % of total |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Custom | 1790 | 41.83 | 2528 | 67.69 |
+| 2 | Custom | 1923 | 58.99 | 2404 | 80.55 |
+| 1 | Manufacturer | 2221 | 86.28 | 2333 | 89.79 |
+| 2 | Manufacturer | 1832 | 81.21 | 1897 | 85.36 |
+| 1 | Combined | not supplied | not supplied | 2230 | 85.06 |
+| 2 | Combined | not supplied | not supplied | 2142 | 82.92 |
+
+**These are not matched-window effect estimates.** Before uses 400-5000 bp;
+after uses 500-7000 bp, whose upper limit exceeds the nominal D5000 sizing
+range. Changing the region alone changes its mean and included percentage.
+The reported custom means are higher afterwards, but this table cannot isolate
+cleanup's effect or calculate short-fragment removal, recovery or fold enrichment.
+Keep region and sample/peak-table concentration fields distinct as well.
+ScreenTape expiry warnings and differing image contrast also remain part of the
+evidence; absence of a warning is not proof of accurate quantification.
+
+### 4. Ask Whether The Mix Contains Custom-Like Structure
+
+Compare after G1 with **both C1 and E1** for cell 1, and after H1 with **both D1
+and F1** for cell 2. Similar sizes can suggest candidate structure to inspect,
+but do not identify its source or quantify enrichment. In the first retained
+GENtle replay, selected short custom-only marks are near 697/700 bp, whereas
+combined marks are near 644/635 bp. Do not automatically label those as the same
+band. These are selected annotation-assisted marks, not all peaks in a smear.
+
+GENtle currently does **not** compare full measured lane distributions or
+subtract lane intensities. Do not subtract PDF brightness or construct a smear
+by adding peak-table heights. For a useful comparison request numerical
+electropherograms with axis/signal units, calibration, marker handling,
+normalization and dilution/loading information for both runs. The supplied
+before-cleanup `.D5000` archive has encrypted measurement/model members and is
+not currently importable; its thumbnail is not raw detector data. A tabular
+export must contain curve samples, not merely another summary table.
+
+The [proposed profile-comparison plan](../gel_lane_profile_comparison_plan.md)
+starts with source-bound overlays, then common-support distributions, then
+explicit signed lane algebra. An exploratory expression such as combined minus
+scaled manufacturer could reveal a residual compatible with custom structure;
+it would not establish an additive reaction model or gene-specific enrichment.
+There is no GENtle command for that algebra yet. Preserve negative residuals,
+unknown scale factors and unavailable values rather than forcing a positive
+"custom contribution".
+
 ## Verification and Acceptance
 
 Fixture recreation, source checks and independent arithmetic are covered by
@@ -143,3 +259,7 @@ shared algorithm and editor. Run those and the exact commands above at one
 source SHA before calling this an executed learner pass. Native screenshots,
 Windows/macOS GUI and real-image scientific acceptance remain pending with
 Glen/the owner; this manual guide is not an automated GUI contract.
+The real companion additionally uses `scripts.test_gel_tapestation`, the
+hash-bound LF/CRLF fixture checks and the ordinary `gel_image` real-image
+regression. An executed CLI companion is not native-window or distribution/
+enrichment acceptance; numerical profile import and algebra remain proposed.

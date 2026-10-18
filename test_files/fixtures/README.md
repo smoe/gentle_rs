@@ -40,6 +40,9 @@ checks.
   - `clariomd.tp73_vendor_subset.manifest.json`
   - `clariomd.tp73_vendor_subset.AdTAp73alpha-AdGFP.tsv`
   - `clariomd.tp73_vendor_subset.AdTAp73beta-AdGFP.tsv`
+- `gel_images/tapestation_26r266/`
+  - Owner-approved public real D5000 reports, native PNGs and documented
+    annotation-assisted sizing expectations; see the adjacent `README.md`.
 - `probe_region_outputs/`
   - `README.md`
   - `clariom_pm_probe_interpretation/`

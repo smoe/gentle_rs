@@ -33,7 +33,9 @@ You do not need to understand the tutorial machinery before beginning.
   vendor coordinates and explicitly synthetic contrast values.
 - **Measure bands in a gel image:** use
   [Measured gel sizing](./10-03_measured_gel_sizing_gui_cli.md), with a drawn
-  ladder exercise and a band that must remain unestimated.
+  ladder exercise and a band that must remain unestimated, then the optional
+  real TapeStation cleanup/combined-priming companion. Full distributions and
+  lane subtraction remain a separate, input-bound follow-up.
 - **Investigate promoters or TFBS evidence:** begin with the
   [tutorial landscape](./landscape_overview.md) and choose the regulatory
   chapter matching your evidence source.
@@ -241,7 +243,7 @@ Context** when reporting confusion or an execution failure.
 
 - `10.01` [Confirm a Construct from an Imported Sequencing Trace (CLI Tutorial)](./10-01_sequencing_confirmation_trace_cli.md) - guided CLI; status `manual/hybrid` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Hands-on local walkthrough for seq-trace import, trace-aware seq-confirm run, and shared report export.
 - `10.02` [Inspect an Imported Sequencing Trace and Confirm a Construct (GUI Tutorial)](./10-02_sequencing_confirmation_gui.md) - guided GUI; status `manual/hybrid` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: GUI-first walkthrough for raw trace import, baseline-aware confirmation, chromatogram inspection, and lineage reopen.
-- `10.03` [Estimate a PCR Band's Size from a Gel Image](./10-03_measured_gel_sizing_gui_cli.md) - guided GUI/CLI; status `manual/hybrid`. Confirm ladder marks, explain the 707-bp midpoint and refuse extrapolation; optional synthetic apparent-kDa exercise.
+- `10.03` [Estimate a PCR Band's Size from a Gel Image](./10-03_measured_gel_sizing_gui_cli.md) - guided GUI/CLI; status `manual/hybrid`. Confirm ladder marks, explain the 707-bp midpoint and refuse extrapolation; optional synthetic apparent-kDa exercise and real TapeStation cleanup/combined-priming companion, without claiming full distributions or lane algebra.
 
 ## Confidence Map
 

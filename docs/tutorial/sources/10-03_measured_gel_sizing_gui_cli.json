@@ -17,7 +17,7 @@
     "status": "manual/hybrid",
     "source": "hand_written_markdown",
     "audiences": ["gui_first", "cli_first", "agent_users", "wet_lab_biologists"],
-    "notes": "Offline synthetic measured-image calibration, not virtual gel simulation. Confirm original pixel assignments, use log-size interpolation, retain out-of-range nulls and distinguish apparent kDa from identity or amount. Execution, native screenshots and real-image acceptance remain pending.",
+    "notes": "Offline measured-image calibration, not virtual gel simulation: a synthetic first exercise plus an optional real TapeStation before/after-cleanup companion. Confirm original pixels, compare vendor peaks and region summaries, keep cell-line/primer groups and out-of-range nulls separate. Full distributions, lane algebra, native screenshots and scientific enrichment acceptance are not supplied.",
     "estimated_minutes": 15,
     "difficulty": "beginner",
     "network": "offline",
