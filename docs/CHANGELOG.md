@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-10-18 - Clarify GUI Screenshots Versus The Disabled CLI Bridge
+
+- Correct the CLI manual's blanket screenshot wording: desktop Linux/macOS
+  `Agent help` uses egui/eframe viewport capture with local preview and explicit
+  sending; an agent-requested image still requires one-window user consent.
+  The reserved `screenshot-window` route and `--allow-screenshots` stay disabled.
+- Cross-link the GUI capture policy and document the separate macOS 14+
+  ScreenCaptureKit feature/Screen Recording permission boundary. Replace the
+  stale manual-only image wording with the existing SVG and reviewed tutorial
+  evidence/staging routes, without enabling background capture or publication.
+- Add an offline LF/CRLF semantic documentation regression. No capture,
+  provider/model call, runtime/policy change, local Rust build/check/test, push
+  or workflow dispatch is performed; native platform verification is not claimed.
+- All 115 tutorial-checkout/release-policy tests pass. Documentation status,
+  link fragments and whitespace pass; release-gate is four OK. Session-close
+  has four OK, two expected dirty-file/scope reminders and no failure; the
+  roadmap remains unchanged at 400 lines. `paper` and `output/` are untouched.
+
 ## 2026-10-18 - Integrate Rack And Tube Work Into Glen's Verification Request
 
 - Merge `gentle_rs_2_main` at `5b1da7d3` into main. Resolve only the roadmap's

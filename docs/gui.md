@@ -239,8 +239,11 @@ Example startup window:
 ![GENtle main window (empty project)](screenshots/screenshot_GUI_main_empty.png)<br>
 *Figure: Main window after startup with an empty project.*
 
-Screenshot capture policy:
+### Screenshot Capture Policy
 
+- Desktop builds on Linux and macOS support egui/eframe viewport capture,
+  subject to rendering-backend support. This captures GENtle's application
+  content, not the desktop or another application.
 - `Agent help` is an explicit, window-bound diagnostic action. A normal click
   captures only the GENtle viewport containing that button, then opens Agent
   Assistant with a local preview and a prompt for the user's problem report.
@@ -250,7 +253,10 @@ Screenshot capture policy:
   resulting image is still previewed before the separate `Ask Agent` action.
 - Right-clicking `Agent help` on macOS 14 or newer offers an optional complete-
   window capture through ScreenCaptureKit. This requires Screen Recording
-  permission; declining it simply leaves that optional feature unavailable.
+  permission and the `screenshot-capture` build feature (enabled by default).
+  Normal viewport capture does not require that permission; declining it leaves
+  only the optional native full-window path unavailable. GENtle may request a
+  restart after permission is granted.
 - No screenshot is sent until the user clicks `Ask Agent`. Auto-run cannot
   approve a screenshot; desktop capture and capture of non-GENtle windows are
   prohibited.
@@ -3359,9 +3365,9 @@ Screenshot command status:
 
 - `screenshot-window OUTPUT.png` is currently disabled by security policy.
 - This reserved artifact-export command is distinct from the explicit,
-  preview-before-send `Agent help` attachment flow described below.
-- Deterministic SVG exports and manual documentation updates remain the active
-  path for reproducible image artifacts.
+  preview-before-send [GUI screenshot help](#screenshot-capture-policy).
+- Prefer deterministic SVG exports for reproducible figures; reviewed tutorial
+  captures use the separate evidence-and-staging process, not this command.
 
 ## Agent Assistant
 
@@ -4105,9 +4111,11 @@ Persistence:
 
 ## Documentation automation status
 
-- Auto-updated documentation with embedded graphics is explicitly postponed.
-- Current policy is manual documentation updates with optional manual screenshot
-  artifacts.
+- `Agent help` screenshots are diagnostic attachments, not automatically
+  published documentation images.
+- Reproducible figures can use shared SVG exports. Native tutorial screenshots
+  follow the [source-bound evidence-and-staging process](testing.md#62-candidate-bound-tutorial-gate-for-external-auditors)
+  and review; repository screenshots are not updated automatically.
 
 ## About GENtle
 

@@ -54,6 +54,29 @@ class DocumentationStatusTests(unittest.TestCase):
     def test_current_documentation_status_and_links(self):
         self.assertEqual(doc_status.check(), [])
 
+    def test_screenshot_docs_distinguish_gui_capture_from_disabled_cli_export(self):
+        cli = (checker.ROOT / "docs/cli.md").read_text(encoding="utf-8")
+        gui = (checker.ROOT / "docs/gui.md").read_text(encoding="utf-8")
+        for newline in ("\n", "\r\n"):
+            with self.subTest(newline=newline):
+                text = cli.replace("\n", newline)
+                section = text.split("**Screenshot Capture: CLI Versus GUI**", 1)[1]
+                section = section.split("Cryptic-splicing inspection:", 1)[0]
+                for required in (
+                    "CLI/shared-shell export remains disabled",
+                    "screenshot-window is disabled by security policy",
+                    "`--allow-screenshots` is rejected",
+                    "GUI screenshot help is available", "Linux", "macOS",
+                    "egui/eframe", "`Ask Agent`", "`Allow one screenshot`",
+                    "macOS 14", "ScreenCaptureKit", "Screen Recording",
+                    "`screenshot-capture`", "gui.md#screenshot-capture-policy",
+                ):
+                    self.assertIn(required, section)
+                self.assertNotIn("Current status: disabled by security policy", section)
+        self.assertIn("### Screenshot Capture Policy", gui)
+        self.assertIn("Normal viewport capture does not require that permission", gui)
+        self.assertNotIn("Current policy is manual documentation updates", gui)
+
     def test_preview_and_catalog_survive_real_lf_crlf_checkouts(self):
         root = self.fixture()
         checker.git(root, "init", "--quiet")

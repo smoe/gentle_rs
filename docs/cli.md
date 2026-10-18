@@ -2667,7 +2667,8 @@ Global CLI options:
 - `--state PATH`: use a non-default project state file
 - `--progress` or `--progress-stderr`: print live progress events to `stderr`
 - `--progress-stdout`: print live progress events to `stdout`
-- `--allow-screenshots`: currently rejected (screenshot bridge disabled by security policy)
+- `--allow-screenshots`: rejected; the CLI screenshot bridge remains disabled,
+  independently of [user-approved GUI screenshot help](gui.md#screenshot-capture-policy)
 
 Place global progress options before the command name, for example
 `gentle_cli --state "$STATE" --progress-stderr rna-reads interpret ...`.
@@ -5365,7 +5366,7 @@ Shared shell command:
         into positive support
     - `op <operation-json-or-@file>`
     - `workflow <workflow-json-or-@file>`
-    - `screenshot-window OUTPUT.png` (currently disabled by security policy)
+    - `screenshot-window OUTPUT.png` (reserved CLI/shared-shell export; disabled by security policy)
     - `help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|gui-menu|js|lua|mcp]`
   - Use single quotes around JSON payloads to preserve whitespace:
     - `gentle_cli shell 'workflow {"run_id":"r1","ops":[]}'`
@@ -5375,12 +5376,31 @@ Shared shell command:
     - JSON output includes a `capability` object for glossary commands that are
       present in the shared protocol capability registry.
 
-Screenshot bridge:
+**Screenshot Capture: CLI Versus GUI**
 
-- Current status: disabled by security policy.
-- `screenshot-window` currently returns a deterministic disabled-policy message.
-- `--allow-screenshots` is rejected by argument parsing.
-- Manual documentation updates remain the current approach for image artifacts.
+- **CLI/shared-shell export remains disabled.** `screenshot-window OUTPUT.png`
+  returns the deterministic `screenshot-window is disabled by security policy`
+  error. `--allow-screenshots` is rejected by argument parsing; enabling the
+  `screenshot-capture` build feature does not enable this command.
+- **GUI screenshot help is available.** In desktop builds on Linux and macOS,
+  `Agent help` requests an egui/eframe capture of that GENtle viewport's content,
+  subject to rendering-backend support. This is not desktop capture or the
+  reserved CLI command. The image is previewed locally and sent to the selected
+  image-capable agent only when the user clicks `Ask Agent`.
+- An agent may request a screenshot, but cannot capture one itself. The user
+  must select a registered GENtle content window and click `Allow one screenshot`;
+  preview and the separate send action still follow. See
+  [GUI capture controls](gui.md#screenshot-capture-policy).
+- On macOS 14 or newer, right-clicking `Agent help` also offers complete-window
+  capture through ScreenCaptureKit, including native window chrome. This optional
+  path requires the `screenshot-capture` feature (enabled in default builds) and
+  macOS Screen Recording permission. Normal egui viewport capture does not need
+  that permission.
+- Automatic/background, headless, whole-desktop and other-application capture
+  remain prohibited. For reproducible documentation figures, prefer SVG exports;
+  reviewed tutorial screenshots use a separate
+  [evidence-and-staging process](testing.md#62-candidate-bound-tutorial-gate-for-external-auditors),
+  not automatic publication of Agent Assistant attachments.
 
 Cryptic-splicing inspection:
 
