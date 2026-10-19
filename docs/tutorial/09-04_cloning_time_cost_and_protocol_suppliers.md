@@ -122,6 +122,76 @@ Find the `restriction` row in `strategy_candidates`. Its estimate has
 despite displaying 3.2 h. The two numbers answer different questions. This
 advisory rejection neither changes the protocol nor executes another method.
 
+### 3.1 Read The Protocol Overview Without Running A Routine
+
+In **Patterns -> Routine Assistant**, find and select
+`restriction.digest_ligate_extract_sticky`. In the comparison stage, switch
+from **Explanation** to **Protocol Overview**. This is a dependency diagram,
+not an execution record or a validated Promega protocol.
+
+- Locate the two independent roots: digest-material preparation and preparation
+  of later ligation supplies. Follow both arrows into the ligation setup path.
+  This explains why preparation need not be added serially to the critical
+  path; it does not promise that one operator or shared equipment can do both.
+- Select or hover a step to inspect its source, prerequisites and
+  minimum/typical/maximum ranges. Magenta marks the **recorded typical** critical
+  path, not the minimum/maximum scenario or a completed laboratory action.
+- Zoom, fit or scroll the overview. Horizontal spacing is dependency depth,
+  **not an elapsed-time axis**. The 6-hour policy proxy remains separate from
+  the displayed 3.2-hour scenario; neither is changed by opening this tab.
+- Use **Copy SVG** for the portable figure with hover details. **Copy JSON**
+  retains the full explanation and the estimate needed to check its binding.
+- Select the Gibson alternative: its bench-step overview must say unavailable,
+  not display invented steps or an empty successful procedure. Legacy reports
+  without the new record also cannot establish a verified diagram.
+
+The graph currently has **seven synthetic bench steps**, not molecular inputs
+or outputs. It deliberately does not draw your vector, insert or assembled
+product: those identities and transfers are not bound by this model. GENtle's
+existing molecular `protocol-cartoon` illustrations remain separate, as does
+the lineage graph of actual project operations. Do not run a routine merely
+to obtain a diagram.
+
+### 3.2 Retain The Same Figure From Shared JSON
+
+The CLI, GUI and agent-facing shared shell return the same
+`planning.protocol_overview`, schema `gentle.planning_protocol_overview.v1`.
+MCP/script callers use the existing agent-plan executor with a read-only shell
+candidate `routines explain restriction.digest_ligate_extract_sticky`; MCP's
+tool is `agent_execute_plan`, not a new protocol-specific tool. This exercises
+the deterministic command path and requires no inner model or supplier call.
+Using the `in-stock.json` retained above:
+
+```bash
+python3 - "$RUN/in-stock.json" "$RUN/protocol-overview.svg" <<'PY'
+import json
+import sys
+with open(sys.argv[1], encoding="utf-8") as handle:
+    explanation = json.load(handle)
+overview = explanation["planning"]["protocol_overview"]
+if overview["status"] != "available":
+    raise SystemExit(overview["reason"])
+with open(sys.argv[2], "w", encoding="utf-8", newline="\n") as handle:
+    handle.write(overview["svg"])
+print(overview["source_estimate_sha256"], overview["content_sha256"])
+PY
+```
+
+Keep the full JSON alongside its SVG. The content bindings identify this
+routine/estimate/projection; they are not authenticated search, supplier or
+laboratory evidence. The GUI verifies the diagram against the actual estimate,
+including changed payload bytes, rather than trusting a claimed digest alone.
+Opening the view and copying these records do not change project state,
+ranking, guardrails, stock, lineage or execution approvals.
+
+**Native acceptance remains pending.** From a matching verified GUI build,
+retain real screenshots of: the complete seven-step overview with its timing
+proxy; a selected step's source/ranges; and the Gibson unavailable state.
+Record the exact revision, explanation/content hashes and active routine.
+Compare copied SVG node/edge IDs and hover details with JSON, and verify that
+viewing/copying leaves the project unchanged. No screenshots are fabricated;
+these checkpoints are not established by the authored headless tests.
+
 ## 4. Explain Cost Before Comparing It
 
 The synthetic in-stock estimate has a **known subtotal** of 39 EUR:

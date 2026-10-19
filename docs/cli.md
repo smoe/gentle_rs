@@ -7798,6 +7798,15 @@ Typed routine catalog command (`gentle_cli routines ...` or `gentle_cli shell 'r
   - `--seq-id` adds the same construct-reasoning planning context used by
     `routines list` / `routines compare`, including any variant-derived assay
     preferences and the resulting planning estimate for the explained routine.
+  - `planning.protocol_overview` contains source-bound JSON and `svg`, schema
+    `gentle.planning_protocol_overview.v1`. It shows recorded synthetic bench
+    prerequisites, parallel branches and the typical critical path, not
+    executed lineage or verified molecule transfers. Columns are dependency
+    depth, not time. Unmodelled routines return `unavailable`; legacy reports
+    without this field do not imply an empty valid procedure. The same shared
+    report is used by Routine Assistant and external/inner agents. See
+    [tutorial 09.04](tutorial/09-04_cloning_time_cost_and_protocol_suppliers.md)
+    for extracting its SVG without executing a routine.
 - `routines compare ROUTINE_A ROUTINE_B [--catalog PATH] [--seq-id SEQ_ID]`
   - Returns deterministic side-by-side comparison payload for two routines.
   - Response schema: `gentle.cloning_routine_compare.v1`.

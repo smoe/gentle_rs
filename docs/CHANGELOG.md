@@ -19,6 +19,37 @@
   regression still requires external execution; offline checks do not certify
   its Windows or integrated runtime behavior. Preserve unrelated local files.
 
+## 2026-10-19 - Add A Preliminary Read-Only Protocol Overview
+
+- Extend the shared `routines explain` report with a source-bound dependency
+  diagram and deterministic SVG. One synthetic restriction/ligation model has
+  recorded steps; unmodelled and legacy evidence remain unavailable, not zero
+  work. The projection copies schedule/scenario/source fields; no timing,
+  ranking, guardrail, cost or execution algorithm changes.
+- Add Routine Assistant's Protocol Overview tab with bounded, fixed node
+  geometry, zoom/fit/scroll, selectable source details, semantic targets and
+  SVG/full-explanation copying. Verify the actual estimate and diagram rather
+  than trusting wire fingerprints; changed bytes invalidate the view cache.
+  Keep planned dependencies separate from executed lineage and molecular
+  cartoons. No molecule/quantity/equipment identity, validated recipe, staffing
+  feasibility, scheduler, material transfer or order readiness is inferred.
+- Extend tutorial 09.04 with the GUI and shared JSON/SVG workflow and explicit
+  native screenshot checkpoints. Author deterministic graph/binding/escape/
+  budget/read-only, MCP executor parity and headless GUI/cache regressions; Rust execution and real
+  screenshots remain Glen/CI work under the owner restriction. No local Rust,
+  provider call, capture, push or `.13` acceptance expansion. The reviewed
+  Safe-Lock/PCR carrier proposal is not implemented by this graph slice;
+  preserve unrelated prompt files and `outputs/`.
+- At `8af42b97` plus this source patch, 88 offline tutorial/source/checkout
+  tests pass, including LF/CRLF; the 16 source checks were rerun after the
+  final teaching edits. Scoped rustfmt and whitespace pass. Session-close
+  has four OK, two expected worktree/plan warnings and no failures. No Rust
+  build/test/check or new native screenshot was run. Glen/CI should run
+  `cargo test --locked --lib planning_protocol`,
+  `cargo test --locked --lib routine_assistant_protocol_overview`, existing
+  `planning_wetlab` regressions, default/headless/gui-test-support checks and
+  the updated CLI tutorial replay before native screenshot acceptance.
+
 ## 2026-10-19 - Keep Cloning Bench Models Independent Of Ranking Policy
 
 - Correct the planning-v2 regression in which a new synthetic critical-path

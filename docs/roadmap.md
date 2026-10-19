@@ -153,7 +153,7 @@ deterministic until richer construct reasoning lands. The preferred v1 surface
 is one best candidate per the 11 catalogued routine families plus structured
 helper/vector ranking; `seq_id` stays traceability-only and unresolved
 marker/promoter/MCS constraints stay explicit questions rather than hidden
-heuristics. Keep bench-model display separate from legacy ranking/time-guardrail policy; verify counterfactual model-presence/duration invariance before changing calibrated cross-method ranking.
+heuristics. Keep bench-model display separate from legacy ranking/time-guardrail policy; verify counterfactual invariance before changing calibrated ranking. Verify the preliminary read-only Protocol Overview and 09.04 graph/JSON/SVG contract with Glen/CI and native GUI checks; material-flow binding and calibrated timing stay separate.
 High-yield protein-production requests should go through the separate
 read-only `planning protein-expression-handoff` route, which now surfaces
 product-readiness context for stored DNA/protein sequences, chassis/route

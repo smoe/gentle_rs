@@ -1674,6 +1674,17 @@ elapsed value. Guardrail passes do not bound the displayed scenario ranges
 or actual laboratory completion. Changing calibrated cross-method ranking is
 a separately approved policy change, not a reward for richer documentation.
 
+Protocol Overview is a read-only projection of the recorded bench schedule,
+not a scheduler, executed lineage, validated recipe or material-flow model.
+Its shared JSON/SVG binds the exact routine identity and estimate; consumers
+verify that binding rather than trusting a supplied content digest. Columns
+encode dependency depth, not time. Critical-path highlighting uses only the
+recorded typical path and stays unavailable if absent. A diagram neither
+changes ranking/guardrails nor establishes staffing, equipment capacity,
+reagent/sequence identity, physical execution or readiness. Do not generate
+bench steps from computational macro scripts or populate molecular protocol
+cartoons without explicit molecule bindings.
+
 Supplier discovery is independent of both these synthetic estimates and
 implemented service adapters. A country-coded readable HTML/PDF protocol is a
 dated document reference, not structured executable instructions, commercial

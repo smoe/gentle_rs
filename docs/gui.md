@@ -2443,6 +2443,20 @@ Patterns menu:
     (family/base duration plus delays). Bench-model availability/duration does
     not change ranking or guardrails, and the proxy is not measured lab time.
     Missing historical policy metadata displays as unknown, not reconstructed.
+  - comparison has `Explanation` / `Protocol Overview` tabs. The latter is a
+    read-only dependency graph from the exact shared explanation, with zoom,
+    fit, scroll/drag navigation, selectable steps, source/range details and
+    `Copy SVG` / `Copy JSON` (full explanation). It shows the recorded typical
+    critical path; columns are dependency depth, not time. Independent roots
+    express prerequisites only, not resource-feasible scheduling. The current
+    restriction example is synthetic; other routines/legacy records show
+    unavailable, never fabricated bench or material flows. Stale/tampered
+    diagrams fail rebinding. The content-keyed view cache never trusts pointer
+    identity or a supplied digest alone. Semantic IDs `routine.protocol.open`,
+    `.fit`, `.copy_svg`, `.copy_json` and `.step.STEP_ID` support later native
+    acceptance (`.explanation` returns to the text tab). Both the graph and
+    its detail panel scroll in a small window. No lineage entry, run, supplier
+    call or project edit results.
   - when Routine Assistant is opened from a sequence window with construct
     reasoning, that same strip now keeps the active `construct reasoning`
     sequence id plus variant effect tags / suggested assay ids visible, and

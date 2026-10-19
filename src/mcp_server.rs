@@ -4757,6 +4757,50 @@ mod tests {
     }
 
     #[test]
+    fn planning_protocol_mcp_plan_executor_matches_shared_shell_without_writes() {
+        // Hand-crafted empty project and bundled synthetic bench allowances;
+        // deterministic executor parity, not an inner-agent/model test.
+        let temp = tempdir().unwrap();
+        let state_path = temp.path().join("protocol overview.json");
+        ProjectState::default()
+            .save_to_path(&state_path.to_string_lossy())
+            .unwrap();
+        let before = fs::read(&state_path).unwrap();
+        for id in [
+            "restriction.digest_ligate_extract_sticky",
+            "gibson.two_fragment_overlap_preview",
+        ] {
+            let command = format!("routines explain {id}");
+            let mut engine = GentleEngine::from_state(
+                ProjectState::load_from_path(&state_path.to_string_lossy()).unwrap(),
+            );
+            let expected = execute_shell_command(
+                &mut engine,
+                &crate::engine_shell::parse_shell_line(&command).unwrap(),
+            )
+            .unwrap();
+            let response = run_tool(
+                DEFAULT_MCP_STATE_PATH,
+                "agent_execute_plan",
+                json!({
+                    "state_path":state_path,"candidate_id":"protocol-review",
+                    "plan":{"schema":"gentle.agent_plan_result.v1","assistant_message":"Synthetic bench overview","questions":[],"candidates":[{
+                        "candidate_id":"protocol-review","title":"Protocol overview","rationale":"Read-only dependency inspection",
+                        "kind":"shell","mutating":false,"requires_confirmation":false,"execution_mode":"auto","shell_command":command
+                    }]}
+                }),
+            );
+            assert_eq!(response["result"]["isError"], false, "{response}");
+            let actual = &response["result"]["structuredContent"];
+            assert_eq!(actual["state_changed"], false);
+            assert_eq!(actual["output"], expected.output);
+            crate::planning_protocol::from_explanation(&actual["output"]).unwrap();
+            assert_eq!(fs::read(&state_path).unwrap(), before);
+            assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
+        }
+    }
+
+    #[test]
     fn protein_expression_mcp_plan_executor_matches_shared_shell_without_writes() {
         // Hand-crafted synthetic product/requirements, documented in plans/README.md.
         let temp = tempdir().unwrap();

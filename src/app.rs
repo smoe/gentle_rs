@@ -92,6 +92,7 @@ mod evidence_preparation_ui;
 #[path = "app/agent_assistant_config.rs"]
 mod agent_assistant_config;
 
+mod planning_protocol_ui;
 #[path = "app/routine_and_agent_assistant_ui.rs"]
 mod routine_and_agent_assistant_ui;
 
@@ -1126,6 +1127,7 @@ pub struct GENtleApp {
     routine_assistant_bindings: BTreeMap<String, String>,
     routine_assistant_disambiguation_answers: BTreeMap<String, String>,
     routine_assistant_explain_output: Option<serde_json::Value>,
+    routine_assistant_protocol_view: bool,
     routine_assistant_compare_output: Option<serde_json::Value>,
     routine_assistant_preflight_output: Option<serde_json::Value>,
     grna_preflight_token: Option<grna_routine_ui::GrnaPreflightToken>,
@@ -3071,6 +3073,7 @@ impl Default for GENtleApp {
             routine_assistant_bindings: BTreeMap::new(),
             routine_assistant_disambiguation_answers: BTreeMap::new(),
             routine_assistant_explain_output: None,
+            routine_assistant_protocol_view: false,
             routine_assistant_compare_output: None,
             routine_assistant_preflight_output: None,
             grna_preflight_token: None,

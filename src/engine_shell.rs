@@ -30142,7 +30142,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         ),
         no_project_inspection_operation_descriptor(
             "routines explain",
-            "Explain one cloning routine from the typed routine catalog; routine id and catalog path validation happens during execution.",
+            "Explain one cloning routine, including source-bound planning.protocol_overview JSON/SVG for recorded synthetic bench dependencies (otherwise unavailable). Read-only, not executed lineage or a validated protocol; routine id and catalog path validation happens during execution.",
             vec![
                 json!({"name": "ROUTINE_ID", "required": true, "subject_kind": "other", "detail": "cloning routine id"}),
                 json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional cloning-routine catalog path"}),
@@ -57590,6 +57590,9 @@ fn execute_routines_command(
                 &routine_preference_context,
             )?;
 
+            let protocol_overview =
+                crate::planning_protocol::build(&routine.routine_id, &planning_estimate)?;
+
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({
@@ -57612,6 +57615,7 @@ fn execute_routines_command(
                         "routine_preference_context": routine_preference_context,
                         "estimate_schema": PLANNING_ESTIMATE_SCHEMA,
                         "estimate": planning_estimate,
+                        "protocol_overview": protocol_overview,
                         "seq_id": seq_id,
                     },
                 }),

@@ -1874,6 +1874,14 @@ Meta-planning layer (time/cost/local-fit) and lab-management agent constraints:
   are sums; elapsed ranges use dependency-only critical paths plus the existing
   delay heuristic. Other routines retain explicitly labelled legacy elapsed
   scalars and unknown breakdowns. These are not validated laboratory timings.
+- The read-only Protocol Overview projects those recorded steps through one
+  source-bound report and deterministic SVG in `routines explain`. Its GUI
+  uses the same dependency geometry/details, never another schedule. Columns
+  mean dependency depth, not elapsed time; arrows are prerequisites, not
+  material transfers. Unmodelled/legacy records stay unavailable. Planned
+  steps create no lineage nodes, engine operations or approvals. Existing
+  molecular protocol cartoons remain separate until material identities are
+  explicitly bound; computational macro scripts are not bench protocols.
 - Ranking and `max_time_hours` keep the original family/base scalar plus
   summed delays, independently of that display model. The shared explanation
   records `time_policy` and all views label this legacy policy proxy. Merely

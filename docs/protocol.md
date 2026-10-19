@@ -5886,6 +5886,27 @@ Adapter-equivalence guarantee for UI-intent tools:
     sequence-aware `routine_preference_context` plus a planning estimate for
     that routine, so explain-stage inspection stays aligned with list/compare
     ranking for the same construct-reasoning graph
+  - `planning.protocol_overview` is the additive, read-only
+    `gentle.planning_protocol_overview.v1` record: `available|unavailable`,
+    reason, routine ID, fixed dependency geometry, source-faithful scheduled
+    steps/edges, optional recorded typical critical-path IDs, non-claims and
+    deterministic SVG with shared hover details. Only 1..=128 synthetic steps
+    are admitted; malformed geometry inputs, unknown prerequisites or cycles
+    return stable JSON diagnostics. No model means unavailable, not zero work.
+  - `source_estimate_sha256` hashes canonical JSON `[routine_id, estimate]`;
+    object keys are sorted, arrays retain their recorded order. The content
+    digest hashes the canonical complete overview (including SVG) with its own
+    `content_sha256` empty. These are content bindings, not signatures or
+    validated protocol evidence. Rebuild/compare against the supplied estimate
+    before display; a re-digested tampered diagram still fails that comparison.
+    Old explanations lacking the record remain inspectable but cannot supply
+    a verified overview. The report is not persisted as project history.
+    CLI and the inner agent use the existing shared-shell explanation command;
+    MCP (`agent_execute_plan`) and scripting can use its existing read-only
+    shell-candidate executor. There is no new dedicated MCP/JS/Lua overview
+    method: their existing parity exclusions remain accurate. All return the
+    shared payload unchanged; no new mutating route or automatic execution is
+    introduced. Deterministic executor parity is not live-model acceptance.
 - `routines compare ROUTINE_A ROUTINE_B [--catalog PATH] [--seq-id SEQ_ID]`
   - shared-shell/CLI deterministic routine comparison surface
   - response schema: `gentle.cloning_routine_compare.v1`

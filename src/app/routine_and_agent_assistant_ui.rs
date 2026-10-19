@@ -4892,6 +4892,54 @@ impl GENtleApp {
                     "Primary routine: {} ({})",
                     routine.title, routine.routine_id
                 ));
+                ui.horizontal(|ui| {
+                    let explanation = ui.selectable_value(
+                        &mut self.routine_assistant_protocol_view,
+                        false,
+                        "Explanation",
+                    );
+                    let overview = ui.selectable_value(
+                        &mut self.routine_assistant_protocol_view,
+                        true,
+                        "Protocol Overview",
+                    );
+                    #[cfg(feature = "gui-test-support")]
+                    for (id, response, selected) in [
+                        (
+                            "routine.protocol.explanation",
+                            &explanation,
+                            !self.routine_assistant_protocol_view,
+                        ),
+                        (
+                            "routine.protocol.open",
+                            &overview,
+                            self.routine_assistant_protocol_view,
+                        ),
+                    ] {
+                        crate::gui_test_support::register_response(
+                            response,
+                            id,
+                            "window.routine_assistant",
+                            None,
+                            crate::gui_test_support::GuiTestWidgetKind::Tab,
+                            selected,
+                        );
+                    }
+                    #[cfg(not(feature = "gui-test-support"))]
+                    let _ = (explanation, overview);
+                });
+                if self.routine_assistant_protocol_view {
+                    egui::ScrollArea::vertical()
+                        .id_salt("routine_protocol_panel")
+                        .show(ui, |ui| {
+                            super::planning_protocol_ui::show(
+                                ui,
+                                &routine.routine_id,
+                                self.routine_assistant_explain_output.as_ref(),
+                            );
+                        });
+                    return close_requested;
+                }
                 if let Some(summary) = routine.summary.as_deref() {
                     ui.small(summary);
                 }

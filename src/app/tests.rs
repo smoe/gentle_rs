@@ -4772,6 +4772,62 @@ fn routine_assistant_compare_stage_displays_shared_wetlab_estimate_without_recal
 }
 
 #[test]
+fn routine_assistant_protocol_overview_uses_shared_report_and_unavailable_states() {
+    // Synthetic planning catalog; headless projection is not native acceptance.
+    for id in [
+        "restriction.digest_ligate_extract_sticky",
+        "gibson.two_fragment_overlap_preview",
+    ] {
+        let mut app = GENtleApp::default();
+        let before = serde_json::to_value(app.engine.read().unwrap().state()).unwrap();
+        let report = crate::engine_shell::execute_shell_command(
+            &mut app.engine.write().unwrap(),
+            &crate::engine_shell::parse_shell_line(&format!("routines explain {id}")).unwrap(),
+        )
+        .unwrap();
+        let overview = crate::planning_protocol::from_explanation(&report.output).unwrap();
+        app.routine_assistant_stage = RoutineAssistantStage::Compare;
+        app.routine_assistant_protocol_view = true;
+        app.routine_assistant_selected_routine_id = id.into();
+        app.routine_assistant_candidates = vec![CloningRoutineCatalogRow {
+            routine_id: id.into(),
+            title: "Synthetic planning test".into(),
+            ..Default::default()
+        }];
+        app.routine_assistant_explain_output = Some(report.output);
+        let texts = render_routine_assistant_contents_texts(&mut app);
+        for label in [
+            overview.reason.as_str(),
+            crate::planning_protocol::legend(&overview),
+            "Copy SVG",
+            "Copy JSON",
+        ] {
+            assert!(
+                texts.iter().any(|text| text.contains(label)),
+                "Missing {label}; {texts:?}"
+            );
+        }
+        assert!(
+            texts
+                .iter()
+                .any(|text| text.contains("Ranking/time-guardrail proxy:"))
+        );
+        assert_eq!(
+            serde_json::to_value(app.engine.read().unwrap().state()).unwrap(),
+            before
+        );
+        app.routine_assistant_explain_output.as_mut().unwrap()["routine"]["routine_id"] =
+            serde_json::json!("other");
+        let texts = render_routine_assistant_contents_texts(&mut app);
+        assert!(
+            texts
+                .iter()
+                .any(|text| text.contains("explanation belongs to another routine"))
+        );
+    }
+}
+
+#[test]
 fn routine_assistant_decision_trace_normalizes_disambiguation_and_preflight_history() {
     let mut app = GENtleApp::default();
     app.ensure_routine_assistant_decision_trace_started();

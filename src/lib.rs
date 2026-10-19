@@ -140,6 +140,8 @@ pub mod mirna;
 pub mod ncbi_genbank_xml;
 /// Open-reading-frame detection logic.
 pub mod open_reading_frame;
+/// Read-only, source-bound bench dependency diagrams and portable SVG.
+pub mod planning_protocol;
 /// Virtual pool gel model and rendering primitives.
 pub mod pool_gel;
 mod primer_import_trace;

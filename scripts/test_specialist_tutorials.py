@@ -32,6 +32,7 @@ import struct
 import subprocess
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from urllib.parse import unquote, urlsplit
 
 
@@ -93,6 +94,21 @@ def fixture_abif_tag(tag, number=2):
 
 
 class SpecialistSourceTests(unittest.TestCase):
+    def test_protocol_overview_guide_distinguishes_planned_dependencies_from_execution(self):
+        guide = (TUTORIALS / "09-04_cloning_time_cost_and_protocol_suppliers.md").read_text(encoding="utf-8")
+        for term in ("Protocol Overview", "seven synthetic bench steps", "not an elapsed-time axis",
+                     "planning.protocol_overview", "gentle.planning_protocol_overview.v1",
+                     "Copy SVG", "Copy JSON", "source_estimate_sha256", "content_sha256",
+                     "Native acceptance remains pending", "No screenshots are fabricated"):
+            self.assertIn(term,guide)
+        shared = (ROOT / "src/planning_protocol.rs").read_text(encoding="utf-8")
+        ui = (ROOT / "src/app/planning_protocol_ui.rs").read_text(encoding="utf-8")
+        self.assertIn('"gentle.planning_protocol_overview.v1"',shared)
+        self.assertIn("from_explanation(output)",ui)
+        self.assertIn("sha256_prefixed_bytes(&bytes)",ui)
+        self.assertIn("routine.protocol.copy_svg",ui)
+        self.assertNotIn("engine.apply(",ui)
+
     def test_cloning_planning_guide_and_protocol_supplier_scope(self):
         stem = "09-04_cloning_time_cost_and_protocol_suppliers"
         source = read_json(TUTORIALS / "sources" / f"{stem}.json")
@@ -566,6 +582,17 @@ class SpecialistBinaryTests(unittest.TestCase):
             self.assertEqual(policy["basis"], "legacy_family_scalar")
             self.assertEqual(policy["used_by"], ["composite_meta_score", "max_time_hours"])
             self.assertAlmostEqual(policy["hours"], 6.0 if name == "cloning_in_stock" else 90.0)
+            overview = report["planning"]["protocol_overview"]
+            self.assertEqual(overview["schema"], "gentle.planning_protocol_overview.v1")
+            self.assertEqual(overview["status"], "available")
+            self.assertEqual(len(overview["nodes"]), 7)
+            self.assertTrue(overview["source_estimate_sha256"].startswith("sha256:"))
+            svg = ET.fromstring(overview["svg"])
+            self.assertEqual(svg.attrib["data-source-estimate-sha256"], overview["source_estimate_sha256"])
+            self.assertEqual({node.attrib["data-step-id"] for node in svg.iter() if "data-step-id" in node.attrib},
+                             {node["step"]["step_id"] for node in overview["nodes"]})
+            self.assertEqual({(node.attrib["data-from"],node.attrib["data-to"]) for node in svg.iter() if "data-from" in node.attrib},
+                             {(edge["from"],edge["to"]) for edge in overview["edges"]})
             self.assertAlmostEqual(estimate["estimated_cost"], sum(estimate[field] for field in (
                 "routine_base_cost", "stock_drawn_material_cost",
                 "missing_material_purchase_proxy_cost", "machine_run_cost")))
@@ -582,7 +609,10 @@ class SpecialistBinaryTests(unittest.TestCase):
         self.assertAlmostEqual(estimates[0]["stock_drawn_material_cost"], 9.0)
         self.assertAlmostEqual(estimates[1]["stock_drawn_material_cost"], 2.0)
         self.assertAlmostEqual(estimates[1]["missing_material_purchase_proxy_cost"], 7.0)
-        legacy = self.invoke("routines", "explain", "gibson.two_fragment_overlap_preview")["planning"]["estimate"]
+        legacy_report = self.invoke("routines", "explain", "gibson.two_fragment_overlap_preview")
+        legacy = legacy_report["planning"]["estimate"]
+        self.assertEqual(legacy_report["planning"]["protocol_overview"]["status"], "unavailable")
+        self.assertEqual(legacy_report["planning"]["protocol_overview"]["nodes"], [])
         self.assertEqual(legacy["step_model"], "absent")
         self.assertEqual(legacy["estimated_time_hours_basis"], "legacy_family_scalar")
         for field in ("hands_on_hours", "unattended_hours", "elapsed_hours"):
