@@ -670,6 +670,12 @@ pub fn algebra(
             "Algebra needs 1..16 explicit profile terms",
         ));
     }
+    let receipt = algebra::request_json_v1(request)?;
+    if receipt.len() > 2048 {
+        return Err(EngineError::invalid_input(
+            "Algebra v1 receipt exceeds 2048 bytes; shorten operand IDs or use fewer terms",
+        ));
+    }
     for (p, t) in profiles.iter().zip(&request.terms) {
         compatible(profiles[0], p)?;
         if p.id != t.profile_id || !t.coefficient.is_finite() || t.coefficient.abs() > 1e6 {
@@ -694,16 +700,15 @@ pub fn algebra(
     let mut p = profiles[0].clone();
     p.id = request.output_id.clone();
     p.label = format!("Signed algebra {}", request.output_id);
-    p.source_sha256 = sha256_hex_bytes(
-        &serde_json::to_vec(&(profiles, request))
-            .map_err(|e| EngineError::internal(e.to_string()))?,
-    );
+    p.source_sha256 = algebra::input_digest_v1(profiles, request)?;
     p.evidence_kind = GelEvidenceKind::SignedResidual;
     p.edges = edges;
     p.weights = weights;
-    p.processing =
-        vec![serde_json::to_string(request).map_err(|e| EngineError::internal(e.to_string()))?];
+    p.processing = vec![receipt];
     p.warnings.push("Signed linear combination with explicit coefficients, not a gene-specific enrichment measurement or validated mixture model. Negative residuals retained; no distribution/p-value.".into());
     validate_profile(&p)?;
     Ok(p)
 }
+
+mod algebra;
+pub use algebra::inspect_algebra;

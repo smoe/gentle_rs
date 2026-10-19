@@ -100,6 +100,7 @@ struct GelJobResult {
     source: Option<Arc<GelSourceSummary>>,
     suggestions: Option<PendingSuggestions>,
     workbench: Option<Box<GelWorkbenchResult>>,
+    algebra_inspection: Option<workbench::AlgebraInspection>,
     message: String,
 }
 
@@ -154,6 +155,7 @@ fn execute_job(shared: &Arc<RwLock<GentleEngine>>, job: GelJob) -> Result<GelJob
             source: None,
             suggestions: None,
             workbench: None,
+            algebra_inspection: None,
             message: "Image ready. Marks use original pixel coordinates.".into(),
         });
     }
@@ -275,6 +277,12 @@ fn execute_job(shared: &Arc<RwLock<GentleEngine>>, job: GelJob) -> Result<GelJob
         .cloned()
         .collect::<Vec<_>>()
         .join("\n");
+    let algebra_inspection = result
+        .gel_workbench
+        .as_mut()
+        .and_then(|r| r.algebra.take())
+        .map(|presentation| workbench::AlgebraInspection::new(revision, presentation))
+        .transpose()?;
     Ok(GelJobResult {
         detached: mutates.then_some(detached),
         preview,
@@ -282,6 +290,7 @@ fn execute_job(shared: &Arc<RwLock<GentleEngine>>, job: GelJob) -> Result<GelJob
         source,
         suggestions,
         workbench: result.gel_workbench,
+        algebra_inspection,
         message,
     })
 }
@@ -409,6 +418,10 @@ impl GelImageEditor {
         self.bind_project(shared);
         self.sync_draft(shared);
         let revision = shared.read().unwrap().mutation_revision();
+        self.workbench.invalidate_algebra(revision);
+        if !self.open {
+            self.workbench.algebra_inspection = None;
+        }
         if self
             .workbench
             .pending
@@ -437,6 +450,21 @@ impl GelImageEditor {
         match outcome {
             Err(error) => self.status = error,
             Ok(mut result) => {
+                if let Some(mut inspection) = result.algebra_inspection.take() {
+                    let engine = shared.read().unwrap();
+                    if self.open
+                        && self
+                            .workbench
+                            .algebra_matches(&inspection, engine.mutation_revision())
+                    {
+                        inspection.install_texture(ctx);
+                        self.workbench.algebra_inspection = Some(inspection);
+                        self.status = result.message;
+                    } else {
+                        self.status = "Project or selected algebra result changed; stale inspection discarded.".into();
+                    }
+                    return;
+                }
                 if let Some(mut detached) = result.detached.take() {
                     let commit = shared
                         .write()
@@ -444,6 +472,7 @@ impl GelImageEditor {
                         .commit_detached_execution(&mut detached);
                     match commit {
                         Ok(old) => {
+                            self.workbench.algebra_inspection = None;
                             std::thread::spawn(move || drop(old));
                         }
                         Err(error) => {
@@ -495,10 +524,15 @@ impl GelImageEditor {
                 }
                 if let Some(output) = result.workbench {
                     if let Some(profile) = output.profile {
-                        self.status.push_str(&format!(
-                            "\nSaved profile: {} (run {}, lane {}, {:?})",
-                            profile.id, profile.run_id, profile.lane_id, profile.evidence_kind
-                        ));
+                        if profile.evidence_kind == GelEvidenceKind::SignedResidual {
+                            self.workbench.selected_algebra = profile.id.clone();
+                            self.status.push_str(&format!("\nSaved derived algebra profile: {}. Inspect to verify; inherited run/lane fields are not its identity.", profile.id));
+                        } else {
+                            self.status.push_str(&format!(
+                                "\nSaved profile: {} (run {}, lane {}, {:?})",
+                                profile.id, profile.run_id, profile.lane_id, profile.evidence_kind
+                            ));
+                        }
                     }
                     if let Some(comparison) = output.comparison {
                         self.workbench.saved_comparison = comparison.request.comparison_id;

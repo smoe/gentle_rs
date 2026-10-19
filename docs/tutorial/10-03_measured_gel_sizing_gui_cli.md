@@ -236,8 +236,9 @@ This size-only exercise does **not** compare full measured lane distributions or
 subtract lane intensities. The separate [development workbench](../gel_workbench.md)
 now provides explicit stored profiles, weighted QQ/shape comparisons and signed
 linear combinations, with new-source/native acceptance still pending. Image
-display profiles are not calibrated detector traces. Do not subtract PDF brightness or construct a smear
-by adding peak-table heights. For a useful comparison request numerical
+display profiles are not calibrated detector traces. Do not interpret subtraction
+of PDF brightness as biological enrichment or construct a smear by adding
+peak-table heights. For a quantitative comparison request numerical
 electropherograms with axis/signal units, calibration, marker handling,
 normalization and dilution/loading information for both runs. The supplied
 before-cleanup `.D5000` archive has encrypted measurement/model members whose
@@ -254,6 +255,60 @@ coefficients; this lesson's region summaries do not supply those inputs. Preserv
 unknown scale factors and unavailable values rather than forcing a positive
 "custom contribution".
 
+## Optional Synthetic Signed Algebra
+
+This separate exercise teaches arithmetic and report inspection, not enrichment
+of the public cell-line libraries. Create `/tmp/gentle-algebra-lesson` and use a
+fresh `state.json`; keep this project separate from the real companion. No image
+or external numerical export is needed. These are **invented integrated bins**,
+with `synthetic` evidence, not TapeStation fluorescence or molecule counts.
+
+| Size interval (bp) | Synthetic A | Synthetic B | A - B | Signed density per bp |
+| --- | --- | --- | --- | --- |
+| 100-150 | 2 | 3 | -1 | -0.02 |
+| 150-200 | unavailable | 1 | unavailable | unavailable |
+| 200-300 | 6 | 3 | 3 | 0.03 |
+
+The source digest below is SHA-256 of the literal UTF-8 recipe label
+`GENtle synthetic gel algebra v1` **without a trailing newline**, not a hash of
+experimental data. Recreate it with `printf %s 'GENtle synthetic gel algebra v1' | shasum -a 256`.
+Both inputs retain that declared teaching provenance. The illustrative `1/-1`
+coefficients are not an approved normalization policy for C1/E1/G1 or D1/F1/H1.
+
+<!-- gel-algebra-lesson:start -->
+```sh
+gentle_cli --state /tmp/gentle-algebra-lesson/state.json gel-image workbench '{"action":"import_profile","profile":{"id":"teaching_a","label":"Synthetic A","run_id":"synthetic_recipe","lane_id":"A","source_sha256":"788f3f75709fe4b0f3d32c39c39146dc3bb475824a7bf37d4feeb3032d7c5ff9","evidence_kind":"synthetic","size_kind":"linear_dna_bp","signal_units":"synthetic_area","edges":[100,150,200,300],"weights":[2,null,6],"measure":"synthetic_bin_integral","processing":["Invented teaching recipe; not a vendor measurement"]}}'
+gentle_cli --state /tmp/gentle-algebra-lesson/state.json gel-image workbench '{"action":"import_profile","profile":{"id":"teaching_b","label":"Synthetic B","run_id":"synthetic_recipe","lane_id":"B","source_sha256":"788f3f75709fe4b0f3d32c39c39146dc3bb475824a7bf37d4feeb3032d7c5ff9","evidence_kind":"synthetic","size_kind":"linear_dna_bp","signal_units":"synthetic_area","edges":[100,150,200,300],"weights":[3,1,3],"measure":"synthetic_bin_integral","processing":["Invented teaching recipe; not a vendor measurement"]}}'
+gentle_cli --state /tmp/gentle-algebra-lesson/state.json gel-image workbench '{"action":"algebra","output_id":"teaching_residual","range":[100,300],"terms":[{"profile_id":"teaching_a","coefficient":1},{"profile_id":"teaching_b","coefficient":-1}]}'
+gentle_cli --state /tmp/gentle-algebra-lesson/state.json gel-image workbench '{"action":"inspect_algebra","profile_id":"teaching_residual"}'
+gentle_cli --state /tmp/gentle-algebra-lesson/state.json gel-image workbench '{"action":"export","path":"/tmp/gentle-algebra-lesson/residual.json","title":"Synthetic signed algebra; no enrichment claim","analysis_ids":[],"algebra_ids":["teaching_residual"]}'
+gentle_cli --state /tmp/gentle-algebra-lesson/state.json gel-image workbench '{"action":"export","path":"/tmp/gentle-algebra-lesson/residual.pdf","title":"Synthetic signed algebra; no enrichment claim","analysis_ids":[],"algebra_ids":["teaching_residual"]}'
+```
+<!-- gel-algebra-lesson:end -->
+
+Expect `result.gel_workbench.algebra.verification == "verified"`, saved weights
+`[-1, null, 3]` and display densities `[-0.02, null, 0.03]`. The final bin is
+twice as wide as the first; plotting totals as heights would hide that difference.
+The black line is zero; the hatched interval is missing, not zero. There is no
+residual CDF, QQ, KS test or p-value. A coherent replay does not validate biology.
+
+**GUI:** open this saved project, choose **Patterns -> Gel Image Analysis...**,
+select `teaching_residual` under **Inspect saved signed algebra**, then **Verify
+and display saved algebra**. Read every operand's processing, coefficients and
+warnings. For PDF export select the algebra ID; existing before/after analyses
+can still be selected separately, in explicit order. Exports refuse existing
+files and changed/unverifiable residuals rather than trusting an old screen.
+
+**Ask the inner agent:** "Inspect teaching_residual and explain its signed
+density, missing interval, coefficients and verification status. Draft the
+shared export command. Do not fit a scale, identify a gene or claim enrichment."
+
+Real cell-line inspection must retain each operand's calibration: cell 1 uses
+C1/E1 on L1 and G1 on L2; cell 2 uses D1 on L1 and F1/H1 on L2. Keep those
+differences visible and review registration before interpreting any residual.
+This lesson supplies no biological coefficients, new raw curves or scientific
+acceptance. Reference overlays and automatic display factors remain deferred.
+
 ## Verification and Acceptance
 
 Fixture recreation, source checks and independent arithmetic are covered by
@@ -266,4 +321,7 @@ Glen/the owner; this manual guide is not an automated GUI contract.
 The real companion additionally uses `scripts.test_gel_tapestation`, the
 hash-bound LF/CRLF fixture checks and the ordinary `gel_image` real-image
 regression. An executed CLI companion is not native-window or distribution/
-enrichment acceptance; numerical profile import and algebra remain proposed.
+enrichment acceptance. The optional synthetic algebra commands are exercised by
+the shared Rust parser/engine regression; its PDF is generated from saved
+results. A separate regression verifies replay after serialization/reopening.
+Neither is a native GUI or real-data acceptance run.

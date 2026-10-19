@@ -2657,7 +2657,7 @@
         "agent_users",
         "wet_lab_biologists"
       ],
-      "notes": "Offline measured-image calibration, not virtual gel simulation: a synthetic first exercise plus an optional real TapeStation before/after-cleanup companion. Confirm original pixels, compare vendor peaks and region summaries, keep cell-line/primer groups and out-of-range nulls separate. Full distributions, lane algebra, native screenshots and scientific enrichment acceptance are not supplied.",
+      "notes": "Offline measured-image calibration, not virtual gel simulation: a synthetic first exercise plus an optional real TapeStation before/after-cleanup companion. Confirm original pixels, compare vendor peaks and region summaries, keep cell-line/primer groups and out-of-range nulls separate. Optional synthetic signed algebra teaches verified residual plots and PDF export, not measured cell-line distributions, native screenshots or scientific enrichment acceptance.",
       "estimated_minutes": 15,
       "difficulty": "beginner",
       "network": "offline",

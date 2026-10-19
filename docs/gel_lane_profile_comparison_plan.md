@@ -142,6 +142,21 @@ Biological replicates and controls are needed before inferential claims.
 
 ## Tests And Acceptance
 
+### Signed-Algebra Follow-Up (2026-10-20)
+
+Claude's supplied read-only review of `3a4e458b` was checked against unchanged
+gel sources on main. The revised bounded slice adds replay-verified standalone
+residual plots and report selection, not another statistical test. Freeze v1
+replay and expose full operand provenance before plotting; divide integrals by
+bin width for explicitly labelled display density. Cache the shared result in
+the GUI worker path. Fail closed on mismatching/unverifiable report export while
+keeping legacy inspection. Leave existing comparison pages and reference
+overlays unchanged; use `1/-1` only in a synthetic lesson, not as an approved
+public biological subtraction. Scope/verification are recorded in
+[the workbench contract](gel_workbench.md#verify-and-display-a-saved-residual).
+
+### Existing Acceptance Boundary
+
 - Preserve the existing size-only real-gel regression without changing its
   interpretation or passing expected sizes into engine requests.
 - For numeric import: bounded/malformed data, unknown units, unsorted/duplicate

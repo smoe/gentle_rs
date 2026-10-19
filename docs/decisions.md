@@ -1637,6 +1637,24 @@ gene identity nor additive reaction chemistry. Native encrypted measurement
 members remain unsupported, even when a thumbnail is explicitly admitted.
 Exports project frozen results; they never silently rescore or re-extract data.
 
+Signed gel algebra v1 freezes its calculation, profile/request digest field
+order and receipt bytes. Future algorithm/serialization changes require an
+explicit new version rather than reinterpreting saved evidence. Verification
+replays saved operands with bounded, memoized dependency traversal and compares
+the entire derived profile, not only a supplied digest. This proves internal
+consistency, not source authenticity. Unverifiable legacy results stay readable
+but cannot be report-exported; new structured imports cannot manufacture signed
+residuals. Derived identity uses the output ID and algebra input digest, not
+inherited run/lane metadata. Show all operand calibrations and warnings.
+
+The signed-density display divides each saved bin integral by its size width,
+labels the resulting units per bp/kDa and preserves its signed area and gaps.
+It does not change the integration measure or establish fluorescence, mass or
+molar density. No implicit normalization, fitted/reference scaling, clipping
+negative values, residual probability summaries or biological mixture claim is
+permitted. Renderers consume one engine-prepared record; GUI replay occurs only
+in a background inspection bound to project revision and selected result.
+
 ## Advisory Cloning Time And Cost Boundaries
 
 Status: active

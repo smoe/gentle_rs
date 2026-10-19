@@ -876,6 +876,143 @@ fn gel_workbench_signed_algebra_uses_explicit_unclipped_coefficients() {
     );
 }
 
+fn algebra_editor() -> (Arc<RwLock<GentleEngine>>, GelImageEditor, egui::Context) {
+    let shared = Arc::new(RwLock::new(GentleEngine::new()));
+    let ctx = egui::Context::default();
+    let mut editor = GelImageEditor {
+        open: true,
+        help: false,
+        ..Default::default()
+    };
+    import_numeric_pair(&shared, &mut editor, &ctx);
+    let inventory = workbench::Inventory {
+        store: shared.read().unwrap().state().gel_images.workbench.clone(),
+        ..Default::default()
+    };
+    let result = execute_job(
+        &shared,
+        GelJob::Workbench(editor.workbench.algebra_request(&inventory).unwrap()),
+    )
+    .unwrap();
+    pending_result(&mut editor, result);
+    editor.poll(&shared, &ctx);
+    assert_eq!(editor.workbench.selected_algebra, "residual_1");
+    (shared, editor, ctx)
+}
+
+#[test]
+fn gel_workbench_algebra_inspection_rasterizes_off_frame_and_reuses_shared_svg_result() {
+    let (shared, mut editor, ctx) = algebra_editor();
+    let result = execute_job(
+        &shared,
+        GelJob::Workbench(GelWorkbenchRequest::InspectAlgebra {
+            profile_id: "residual_1".into(),
+        }),
+    )
+    .unwrap();
+    assert!(result.detached.is_none());
+    let cached = result.algebra_inspection.as_ref().unwrap();
+    assert!(cached.pixels.is_some());
+    assert!(cached.texture.is_none());
+    assert_eq!(
+        &*cached.svg,
+        gentle_render::gel_workbench::render_algebra_svg(&cached.presentation).as_bytes()
+    );
+    let svg = cached.svg.clone();
+    pending_result(&mut editor, result);
+    editor.poll(&shared, &ctx);
+    assert!(
+        editor
+            .workbench
+            .algebra_inspection
+            .as_ref()
+            .unwrap()
+            .pixels
+            .is_none()
+    );
+    assert!(
+        editor
+            .workbench
+            .algebra_inspection
+            .as_ref()
+            .unwrap()
+            .texture
+            .is_some()
+    );
+    let revision = shared.read().unwrap().mutation_revision();
+    let history = shared.read().unwrap().operation_log().len();
+    for _ in 0..3 {
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    Pos2::ZERO,
+                    egui::vec2(1200.0, 1400.0),
+                )),
+                ..Default::default()
+            },
+            |ui| editor.contents(ui, &shared),
+        );
+        output.textures_delta.clear();
+        assert!(editor.job.is_none());
+        assert!(Arc::ptr_eq(
+            &svg,
+            &editor.workbench.algebra_inspection.as_ref().unwrap().svg
+        ));
+    }
+    assert_eq!(shared.read().unwrap().mutation_revision(), revision);
+    assert_eq!(shared.read().unwrap().operation_log().len(), history);
+    let inventory = workbench::Inventory {
+        store: shared.read().unwrap().state().gel_images.workbench.clone(),
+        ..Default::default()
+    };
+    editor.workbench.export_algebra = vec!["residual_1".into()];
+    let GelWorkbenchRequest::Export(request) = editor.workbench.export_request(&inventory).unwrap()
+    else {
+        panic!("export");
+    };
+    assert_eq!(request.algebra_ids, vec!["residual_1"]);
+}
+
+#[test]
+fn gel_workbench_algebra_inspection_rejects_stale_canceled_closed_and_changed_selection() {
+    for mode in 0..5 {
+        let (shared, mut editor, ctx) = algebra_editor();
+        let result = execute_job(
+            &shared,
+            GelJob::Workbench(GelWorkbenchRequest::InspectAlgebra {
+                profile_id: "residual_1".into(),
+            }),
+        )
+        .unwrap();
+        pending_result(&mut editor, result);
+        match mode {
+            0 => editor.canceled = true,
+            1 => editor.open = false,
+            2 => editor.workbench.selected_algebra = "other".into(),
+            3 => {
+                shared
+                    .write()
+                    .unwrap()
+                    .apply(Operation::CreateSequenceFromText {
+                        sequence_text: "ACGT".into(),
+                        output_id: Some("concurrent".into()),
+                        name: None,
+                        circular: false,
+                    })
+                    .unwrap();
+            }
+            _ => {
+                let other = Arc::new(RwLock::new(GentleEngine::new()));
+                editor.poll(&other, &ctx);
+                assert!(editor.workbench.algebra_inspection.is_none());
+                continue;
+            }
+        }
+        editor.poll(&shared, &ctx);
+        assert!(editor.workbench.algebra_inspection.is_none());
+    }
+}
+
 #[test]
 fn gel_workbench_extraction_binds_saved_calibration_lane_run_and_background() {
     let (shared, mut editor) = fixture();
@@ -1033,6 +1170,7 @@ fn gel_workbench_export_job_tracking_cannot_offer_cancellation_or_commit() {
             analysis_ids: vec![],
             comparison_ids: vec![],
             title: "Synthetic export".into(),
+            algebra_ids: vec![],
         })),
     );
     assert!(editor.export_running);
@@ -1051,6 +1189,7 @@ fn gel_workbench_export_job_tracking_cannot_offer_cancellation_or_commit() {
                 exported_sha256: Some("a".repeat(64)),
                 ..Default::default()
             })),
+            algebra_inspection: None,
             message: "Synthetic external-export receipt; no file produced".into(),
         },
     );

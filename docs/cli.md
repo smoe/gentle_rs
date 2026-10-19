@@ -400,6 +400,11 @@ algebra and saved before/after PDF/JSON export. It does not decode encrypted
 `.D5000` detector data, infer concentration from images or supply pixel-based
 significance p-values. Every command also works in GUI Shell and MCP `op`.
 
+`inspect_algebra` returns read-only replay verification and the shared signed
+density presentation; `export` accepts optional ordered `algebra_ids`. Mismatching
+or unverifiable residuals cannot be report-exported. See
+[the contract and limits](gel_workbench.md#verify-and-display-a-saved-residual).
+
 
 TATA-box evidence is available through
 `promoters tata-screen REQUEST_JSON_OR_@FILE [--output REPORT.json]` and the
