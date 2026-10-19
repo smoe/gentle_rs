@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-10-19 - Correct The Inspector Hosted-Layer Regression
+
+- Glen reproduces the small hosted-window assertion at `33e67234`: six of
+  seven inspector tests pass, and the exact failing test fails again alone.
+  Opening deliberately requests a foreground frame; the test incorrectly
+  asserts the middle layer. Production rendering/focus behavior is unchanged.
+- Exercise foreground-on-open and the following middle-layer frame explicitly,
+  retaining focus-request consumption, visible window, report and unchanged
+  engine-state assertions in each pass. Do not accept either layer loosely or
+  remove the visibility check. Rust execution remains pending with Glen/CI.
+- Eighteen offline specialist/tutorial source tests and whitespace pass. No
+  local Rust, push, dispatch, capture or provider/model call. The separate
+  newly observed MCP fact-annotation omission is not hidden by this test fix.
+
 ## 2026-10-19 - Integrate Both Branches And Narrow Glen's Follow-Up
 
 - Merge `gentle_rs_2_main` at `03e1b800` and `gentle_rs_3` at `b3b3e8a9`

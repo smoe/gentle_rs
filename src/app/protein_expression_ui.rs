@@ -961,25 +961,36 @@ mod tests {
         let before = serde_json::to_value(&*app.engine.read().unwrap()).unwrap();
         let ctx = egui::Context::default();
         ctx.set_embed_viewports(true);
-        ctx.begin_pass(egui::RawInput {
-            screen_rect: Some(egui::Rect::from_min_size(
-                egui::Pos2::ZERO,
-                Vec2::new(520.0, 400.0),
-            )),
-            ..Default::default()
-        });
-        app.render_protein_expression_dialog(&ctx);
-        assert!(
-            ctx.memory(|memory| memory.areas().is_visible(&egui::LayerId::new(
-                egui::Order::Middle,
-                GENtleApp::hosted_protein_expression_window_id(),
-            )))
-        );
-        crate::egui_compat::discard_test_pass_output(&ctx);
-        assert_eq!(
-            serde_json::to_value(&*app.engine.read().unwrap()).unwrap(),
-            before
-        );
-        assert!(app.protein_expression_ui.report.is_some());
+        let viewport_id = GENtleApp::protein_expression_viewport_id();
+        // Opening requests one foreground frame; later renders use the normal layer.
+        for expected_order in [egui::Order::Foreground, egui::Order::Middle] {
+            assert_eq!(
+                app.viewport_foreground_requested(viewport_id),
+                expected_order == egui::Order::Foreground
+            );
+            ctx.begin_pass(egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(520.0, 400.0),
+                )),
+                ..Default::default()
+            });
+            app.render_protein_expression_dialog(&ctx);
+            assert!(
+                ctx.memory(|memory| memory.areas().is_visible(&egui::LayerId::new(
+                    expected_order,
+                    GENtleApp::hosted_protein_expression_window_id(),
+                ))),
+                "expected the hosted inspector in {expected_order:?}"
+            );
+            assert!(!app.viewport_foreground_requested(viewport_id));
+            crate::egui_compat::discard_test_pass_output(&ctx);
+            assert_eq!(
+                serde_json::to_value(&*app.engine.read().unwrap()).unwrap(),
+                before
+            );
+            assert!(app.protein_expression_ui.open);
+            assert!(app.protein_expression_ui.report.is_some());
+        }
     }
 }
