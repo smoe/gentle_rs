@@ -128,6 +128,7 @@ fn protein_expression_handoff_cli_is_read_only_with_explicit_provider_and_catalo
                         .find(|capability| capability["service_kind"] == "protein_expression")
                         .unwrap();
                     capability["quote_handoff_supported"] = json!(false);
+                    capability["direct_api_implemented"] = json!(false);
                 } else {
                     let rule = provider["validation_rules"]
                         .as_array_mut()
@@ -285,11 +286,36 @@ fn protein_expression_handoff_cli_is_read_only_with_explicit_provider_and_catalo
                         String::from_utf8_lossy(&result.stderr)
                     );
                     let readiness: Value = serde_json::from_slice(&result.stdout).unwrap();
-                    assert_eq!(readiness["eligible"], case != "blocked_preflight");
+                    let expected_eligible =
+                        !matches!(case, "quote_unavailable" | "blocked_preflight");
                     assert_eq!(
-                        readiness["quote_handoff_available"],
-                        !matches!(case, "quote_unavailable" | "blocked_preflight")
+                        readiness["eligible"], expected_eligible,
+                        "{case}, shell={shell}, newline={newline:?}: {readiness}"
                     );
+                    assert_eq!(
+                        readiness["quote_handoff_available"], expected_eligible,
+                        "{case}, shell={shell}, newline={newline:?}: {readiness}"
+                    );
+                    let blocking_issues = readiness["blocking_issues"].as_array().unwrap();
+                    assert_eq!(
+                        blocking_issues.is_empty(),
+                        expected_eligible,
+                        "{case}, shell={shell}, newline={newline:?}: {readiness}"
+                    );
+                    if !expected_eligible {
+                        assert_eq!(readiness["capability_status"], "blocked", "{readiness}");
+                        let reason = if case == "quote_unavailable" {
+                            "no implemented quote handoff or submission adapter"
+                        } else {
+                            "synthetic_missing_source_field"
+                        };
+                        assert!(
+                            blocking_issues
+                                .iter()
+                                .any(|issue| issue.as_str().unwrap().contains(reason)),
+                            "{case}, shell={shell}, newline={newline:?}: {readiness}"
+                        );
+                    }
                     assert_eq!(readiness["direct_submission_available"], false);
                     assert_eq!(
                         snapshot(root),

@@ -173,7 +173,7 @@ Keep the next synthetic-biology bridge slices in this order:
 1. Verify the read-only Protein Expression Handoff inspector and tutorial
    09.03 on the integrated source: shared-report parity, explicit selection,
    typed withholding, stale-result rejection and unchanged project/history.
-   Glen/CI must execute authored Rust/CLI checks and native window review;
+   Glen/CI must execute Rust/CLI checks including quote-disabled refusals and native review;
    offline source checks do not establish runtime or native acceptance.
    Include the inspector, named MCP and inner-agent command parity regressions;
    keep unanswered inputs, copy-only actions and stale/closed-worker rejection.

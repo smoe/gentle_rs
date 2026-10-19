@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-10-19 - Align Expression CLI Preflight Expectations With Adapter Gates
+
+- The reported Windows real-CLI failure at the eligibility assertion is stale
+  after `293819fd`: its quote-disabled synthetic provider has no implemented
+  direct adapter either, so canonical preflight now correctly refuses it.
+  Correct the test expectation without relaxing production readiness policy.
+- Explicitly disable both adapters in the synthetic overlay and require the
+  missing-adapter blocking reason, distinct from the missing-source-field
+  negative control. Retain eligible positive controls, LF/CRLF and quoted-path
+  direct/shared-shell coverage, no quote/submission and unchanged file snapshots.
+  Assertion diagnostics now include case, route, newline and full preflight.
+- Verification: 19 offline specialist/tutorial source checks, scoped formatting,
+  documentation status, whitespace and the four release-policy checks pass.
+  Roadmap remains 400 lines; session-close has four OK, two expected scope/dirty
+  worktree warnings and no failures. Production code and catalogs are unchanged.
+- No local Rust build/test, provider contact, push or dispatch. The real CLI
+  regression still requires external execution; offline checks do not certify
+  its Windows or integrated runtime behavior. Preserve unrelated local files.
+
 ## 2026-10-19 - Keep Cloning Bench Models Independent Of Ranking Policy
 
 - Correct the planning-v2 regression in which a new synthetic critical-path

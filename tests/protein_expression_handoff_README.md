@@ -9,6 +9,11 @@ permission/allowlist facts only inside the temporary case. An active-catalog
 negative control copies the bundled provider record and removes its expression
 capability, disables quote support or requires a synthetic absent source field;
 it makes no claim about an actual provider's current services.
+The quote-disabled case also explicitly disables direct submission: its provider
+projection remains reviewable, but canonical preflight must be ineligible with
+the missing-adapter blocking reason. The independent missing-source-field case
+must retain its own blocking reason; positive controls remain eligible. Both
+CLI routes assert these results for LF and CRLF inputs with full case diagnostics.
 
 Recreate with:
 
