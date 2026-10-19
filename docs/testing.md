@@ -26,6 +26,47 @@ Execution:
 cargo test engine::tests::
 ```
 
+### Cloning Ranking Policy Snapshot
+
+`src/engine_shell/planning_wetlab_tests.rs` complements the existing
+model-present/absent counterfactual with absolute, ordered JSON consultation
+snapshots for the default objective and the synthetic waiting profile in
+`docs/examples/planning/cloning_waiting.json`. Rank, family and selected routine
+IDs are exact; scores use an absolute `1e-9` tolerance, not committed f64 bit
+patterns. Failures print expected and actual rows side by side. Expectations
+are literals, not another call to the production scoring/sort code.
+
+These are synthetic **policy drift guards**, not correctness, timing,
+laboratory success or method-recommendation evidence. Seven default rows are
+ordered within two exact-score ties (five and two families) by the alphabetical
+tiebreak. There are six distinct scores: those two tied groups plus four
+singletons. The waiting snapshot intentionally has a different order and
+Golden Gate family winner. Updating these literals requires an owner decision
+and a `docs/CHANGELOG.md` entry; do not automatically bless a new ranking.
+
+Additional tests sample time weights across former crossover thresholds and
+compare same-run score bits with normal, absent and altered bench models;
+check the policy-time slope, each row's basis/consumers, read-only state and a
+negative control that genuinely reorders the consultation and fails the pin.
+The seven new tests complement, not replace or weaken, the existing 13
+`planning_wetlab_` tests and the order-blind family-membership regression.
+JSON retains all eleven rows; the text report still shows only the top five.
+
+Glen/CI should execute the authored guards on the integrated revision:
+
+```bash
+cargo test --locked --lib planning_wetlab_
+cargo test --locked --lib execute_planning_consult_cloning_returns_ranked_report
+cargo check -q --locked
+```
+
+Under the standing no-local-Rust instruction, these new Rust checks have not
+been executed by Codex. Default expectations agree with Claude's measurements
+at `8af42b97`; the waiting literals were independently calculated offline from
+the bundled synthetic profile and existing policy. They still require actual
+Rust execution. No production scoring, contract, asset, roadmap, release
+scope/ledger or `.13` acceptance change is made by this test-only slice.
+
 ### Platform-Specific Coverage
 
 Native CI runs the real `app::tests::agent_gui_context_` discovery tests before

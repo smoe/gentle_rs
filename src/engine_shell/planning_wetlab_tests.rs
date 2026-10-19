@@ -2,6 +2,376 @@
 
 use super::*;
 
+type PlanningRankingSnapshotRow = (usize, &'static str, &'static str, f64);
+
+// Hand-authored policy snapshots of the bundled catalog/default objective, not
+// laboratory data or method recommendations. Changing these literals requires
+// an owner decision and a docs/CHANGELOG.md entry, not automatic re-blessing.
+// Seven default rows form two exact-score ties: their order is alphabetical,
+// not a biological preference. Six distinct scores = two ties + four singletons.
+const PLANNING_RANKING_DEFAULT_SNAPSHOT: [PlanningRankingSnapshotRow; 11] = [
+    (1, "sequence", "sequence.branch_reverse_complement", -0.15),
+    (2, "crispr", "crispr.guides.anchor_window_scan", -3.0),
+    (3, "golden_gate", "golden_gate.type_iis_multi_insert", -3.0),
+    (4, "pcr", "pcr.site_insertion_then_digest", -3.0),
+    (5, "ta_gc", "ta_gc.gc_single_insert", -3.0),
+    (6, "topo", "topo.blunt_single_insert", -3.0),
+    (7, "infusion", "infusion.multi_fragment_overlap", -3.15),
+    (
+        8,
+        "nebuilder_hifi",
+        "nebuilder_hifi.multi_fragment_overlap",
+        -3.15,
+    ),
+    (9, "gibson", "gibson.two_fragment_overlap_preview", -4.15),
+    (
+        10,
+        "restriction",
+        "restriction.digest_ligate_extract_sticky",
+        -5.3,
+    ),
+    (11, "gateway", "gateway.bp_single_insert", -7.15),
+];
+
+// Independent literals for docs/examples/planning/cloning_waiting.json. Its
+// ligase and equipment allowances change both family order and the Golden Gate
+// winner. Do not compute this expectation from the production score/sort.
+const PLANNING_RANKING_WAITING_SNAPSHOT: [PlanningRankingSnapshotRow; 11] = [
+    (1, "sequence", "sequence.branch_reverse_complement", -0.15),
+    (2, "crispr", "crispr.guides.anchor_window_scan", -3.0),
+    (3, "ta_gc", "ta_gc.gc_single_insert", -3.0),
+    (4, "topo", "topo.blunt_single_insert", -3.0),
+    (5, "pcr", "pcr.site_insertion_then_digest", -5.0),
+    (
+        6,
+        "golden_gate",
+        "golden_gate.type_iis_destination_cleanup",
+        -5.15,
+    ),
+    (7, "infusion", "infusion.multi_fragment_overlap", -39.8),
+    (
+        8,
+        "nebuilder_hifi",
+        "nebuilder_hifi.multi_fragment_overlap",
+        -39.8,
+    ),
+    (9, "gibson", "gibson.two_fragment_overlap_preview", -47.8),
+    (10, "gateway", "gateway.bp_single_insert", -63.8),
+    (
+        11,
+        "restriction",
+        "restriction.digest_ligate_extract_sticky",
+        -128.35,
+    ),
+];
+
+fn planning_ranking_test_engine(waiting: bool) -> GentleEngine {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    if waiting {
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::PlanningProfileSet {
+                scope: PlanningProfileScope::ProjectOverride,
+                payload_json: include_str!("../../docs/examples/planning/cloning_waiting.json")
+                    .into(),
+            },
+        )
+        .unwrap();
+    }
+    engine
+}
+
+fn planning_ranking_test_consult(
+    engine: &mut GentleEngine,
+    objective: Option<&PlanningObjective>,
+) -> PlanningCloningConsultation {
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let run = execute_shell_command(
+        engine,
+        &ShellCommand::PlanningConsultCloning {
+            seq_id: None,
+            objective_json: objective.map(|value| serde_json::to_string(value).unwrap()),
+            profile_scope: PlanningProfileScope::Effective,
+            output_format: "json".into(),
+        },
+    )
+    .unwrap();
+    assert!(!run.state_changed);
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+    serde_json::from_value(run.output).unwrap()
+}
+
+fn planning_ranking_snapshot_check(
+    report: &PlanningCloningConsultation,
+    expected: &[PlanningRankingSnapshotRow],
+) -> Result<(), String> {
+    let actual = &report.strategy_candidates;
+    if actual.len() == expected.len()
+        && actual
+            .iter()
+            .zip(expected)
+            .all(|(row, &(rank, family, routine_id, score))| {
+                row.rank == rank
+                    && row.family == family
+                    && row.routine_id == routine_id
+                    && (row.estimate.composite_meta_score - score).abs() <= 1e-9
+            })
+    {
+        return Ok(());
+    }
+    let mut lines = vec![format!(
+        "Planning policy snapshot drift: {} expected rows, {} actual. Owner approval and a changelog entry are required to update literals.\nexpected (rank family routine score) | actual",
+        expected.len(),
+        actual.len()
+    )];
+    for index in 0..expected.len().max(actual.len()) {
+        let left = expected
+            .get(index)
+            .map(|&(rank, family, id, score)| format!("{rank} {family} {id} {score:.12}"))
+            .unwrap_or_else(|| "<none>".into());
+        let right = actual
+            .get(index)
+            .map(|row| {
+                format!(
+                    "{} {} {} {:.12}",
+                    row.rank, row.family, row.routine_id, row.estimate.composite_meta_score
+                )
+            })
+            .unwrap_or_else(|| "<none>".into());
+        lines.push(format!("{left} | {right}"));
+    }
+    Err(lines.join("\n"))
+}
+
+#[test]
+fn planning_wetlab_ranking_default_absolute_policy_snapshot() {
+    let report = planning_ranking_test_consult(&mut planning_ranking_test_engine(false), None);
+    planning_ranking_snapshot_check(&report, &PLANNING_RANKING_DEFAULT_SNAPSHOT)
+        .unwrap_or_else(|diff| panic!("{diff}"));
+}
+
+#[test]
+fn planning_wetlab_ranking_waiting_absolute_policy_snapshot() {
+    let report = planning_ranking_test_consult(&mut planning_ranking_test_engine(true), None);
+    planning_ranking_snapshot_check(&report, &PLANNING_RANKING_WAITING_SNAPSHOT)
+        .unwrap_or_else(|diff| panic!("{diff}"));
+}
+
+#[test]
+fn planning_wetlab_ranking_ties_are_alphabetical_not_scientific_preferences() {
+    let report = planning_ranking_test_consult(&mut planning_ranking_test_engine(false), None);
+    planning_ranking_snapshot_check(&report, &PLANNING_RANKING_DEFAULT_SNAPSHOT)
+        .unwrap_or_else(|diff| panic!("{diff}"));
+    // Bit comparisons group only actual values from this one run; no committed
+    // platform-specific f64 bit patterns or raw equality to decimal literals.
+    let mut groups: Vec<Vec<&PlanningCloningStrategyCandidate>> = vec![];
+    for row in &report.strategy_candidates {
+        if let Some(group) = groups.iter_mut().find(|group| {
+            group[0].estimate.composite_meta_score.to_bits()
+                == row.estimate.composite_meta_score.to_bits()
+        }) {
+            group.push(row);
+        } else {
+            groups.push(vec![row]);
+        }
+    }
+    assert_eq!(
+        groups.iter().map(Vec::len).collect::<Vec<_>>(),
+        [1, 5, 2, 1, 1, 1]
+    );
+    let tied_families = groups
+        .iter()
+        .filter(|group| group.len() > 1)
+        .map(|group| {
+            assert!(group.windows(2).all(|rows| rows[0].family < rows[1].family));
+            group
+                .iter()
+                .map(|row| row.family.as_str())
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        tied_families,
+        vec![
+            vec!["crispr", "golden_gate", "pcr", "ta_gc", "topo"],
+            vec!["infusion", "nebuilder_hifi"]
+        ]
+    );
+    let singletons = groups
+        .iter()
+        .filter(|group| group.len() == 1)
+        .map(|group| group[0].estimate.composite_meta_score)
+        .collect::<Vec<_>>();
+    assert_eq!(singletons.len(), 4);
+    for (index, left) in singletons.iter().enumerate() {
+        for right in &singletons[index + 1..] {
+            assert!((left - right).abs() > 1e-9);
+        }
+    }
+}
+
+#[test]
+fn planning_wetlab_ranking_weight_sweep_is_bit_equal_across_bench_models() {
+    let catalog: CloningRoutineCatalog =
+        serde_json::from_str(include_str!("../../assets/cloning_routines.json")).unwrap();
+    let routine = catalog
+        .routines
+        .iter()
+        .find(|row| row.routine_id == "restriction.digest_ligate_extract_sticky")
+        .unwrap();
+    let normal = planning_wetlab_test_parse(&planning_wetlab_test_catalog()).unwrap();
+    let mut empty = planning_wetlab_test_catalog();
+    empty["routines"] = json!([]);
+    let absent = planning_wetlab_test_parse(&empty).unwrap();
+    let mut altered = planning_wetlab_test_catalog();
+    for step in altered["routines"][0]["steps"].as_array_mut().unwrap() {
+        step["hands_on_hours"] = json!({"min":10.0,"typical":20.0,"max":40.0});
+    }
+    let altered = planning_wetlab_test_parse(&altered).unwrap();
+    for waiting in [false, true] {
+        let engine = planning_ranking_test_engine(waiting);
+        let before = serde_json::to_value(engine.state()).unwrap();
+        for weight in [0.0, 0.03125, 0.375, 1.0, 2.0, 1e6] {
+            let objective = PlanningObjective {
+                weight_time: weight,
+                ..Default::default()
+            };
+            let estimate = |bench| {
+                estimate_routine_planning_with_bench_catalog(
+                    &engine,
+                    &objective,
+                    routine,
+                    &RoutinePreferenceContext::default(),
+                    bench,
+                )
+                .unwrap()
+            };
+            let legacy = estimate(&absent);
+            for bench in [&normal, &altered] {
+                let modeled = estimate(bench);
+                assert_eq!(
+                    modeled.composite_meta_score.to_bits(),
+                    legacy.composite_meta_score.to_bits(),
+                    "weight_time={weight}, waiting={waiting}"
+                );
+                assert_eq!(
+                    modeled.explanation["time_policy"],
+                    legacy.explanation["time_policy"]
+                );
+                assert!((modeled.estimated_time_hours - legacy.estimated_time_hours).abs() > 1e-9);
+            }
+        }
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+    }
+}
+
+#[test]
+fn planning_wetlab_ranking_time_weight_has_the_declared_policy_slope() {
+    for waiting in [false, true] {
+        let mut engine = planning_ranking_test_engine(waiting);
+        let zero = PlanningObjective {
+            weight_time: 0.0,
+            ..Default::default()
+        };
+        let intercepts = planning_ranking_test_consult(&mut engine, Some(&zero));
+        assert_eq!(intercepts.strategy_candidates.len(), 11);
+        for weight in [0.375, 2.0] {
+            let objective = PlanningObjective {
+                weight_time: weight,
+                ..Default::default()
+            };
+            let report = planning_ranking_test_consult(&mut engine, Some(&objective));
+            assert_eq!(report.strategy_candidates.len(), 11);
+            for row in &report.strategy_candidates {
+                let intercept = intercepts
+                    .strategy_candidates
+                    .iter()
+                    .find(|initial| initial.family == row.family)
+                    .unwrap();
+                assert_eq!(row.routine_id, intercept.routine_id);
+                let policy_hours = row.estimate.explanation["time_policy"]["hours"]
+                    .as_f64()
+                    .unwrap();
+                assert!(
+                    (policy_hours
+                        - intercept.estimate.explanation["time_policy"]["hours"]
+                            .as_f64()
+                            .unwrap())
+                    .abs()
+                        <= 1e-9
+                );
+                let expected = intercept.estimate.composite_meta_score - weight * policy_hours;
+                assert!(
+                    (row.estimate.composite_meta_score - expected).abs() <= 1e-9,
+                    "family={}, weight_time={weight}, waiting={waiting}: expected={expected:.12}, actual={:.12}",
+                    row.family,
+                    row.estimate.composite_meta_score
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn planning_wetlab_ranking_snapshot_rejects_a_real_weight_induced_reorder() {
+    let mut engine = planning_ranking_test_engine(false);
+    let baseline = planning_ranking_test_consult(&mut engine, None);
+    planning_ranking_snapshot_check(&baseline, &PLANNING_RANKING_DEFAULT_SNAPSHOT).unwrap();
+    let objective = PlanningObjective {
+        weight_time: 0.0,
+        ..Default::default()
+    };
+    let changed = planning_ranking_test_consult(&mut engine, Some(&objective));
+    let identities = |report: &PlanningCloningConsultation| {
+        report
+            .strategy_candidates
+            .iter()
+            .map(|row| (row.rank, row.family.clone(), row.routine_id.clone()))
+            .collect::<Vec<_>>()
+    };
+    assert_ne!(
+        identities(&baseline),
+        identities(&changed),
+        "negative control must reorder candidates, not merely change score values"
+    );
+    let diff = planning_ranking_snapshot_check(&changed, &PLANNING_RANKING_DEFAULT_SNAPSHOT)
+        .expect_err("guard must reject the changed consultation");
+    assert!(diff.contains("expected (rank family routine score) | actual"));
+}
+
+#[test]
+fn planning_wetlab_ranking_all_rows_declare_the_same_policy_basis() {
+    for waiting in [false, true] {
+        let report =
+            planning_ranking_test_consult(&mut planning_ranking_test_engine(waiting), None);
+        assert_eq!(report.strategy_candidates.len(), 11);
+        for row in &report.strategy_candidates {
+            let policy = &row.estimate.explanation["time_policy"];
+            assert_eq!(
+                policy["basis"], "legacy_family_scalar",
+                "family={}",
+                row.family
+            );
+            let consumers = policy["used_by"].as_array().unwrap();
+            for consumer in ["composite_meta_score", "max_time_hours"] {
+                assert!(
+                    consumers.iter().any(|value| value == consumer),
+                    "family={} lacks {consumer}",
+                    row.family
+                );
+            }
+            assert_eq!(
+                row.estimate.estimated_time_hours_basis,
+                if row.family == "restriction" {
+                    crate::engine::PlanningTimeBasis::StepModelCriticalPath
+                } else {
+                    crate::engine::PlanningTimeBasis::LegacyFamilyScalar
+                }
+            );
+        }
+    }
+}
+
 fn planning_wetlab_test_routine(id: &str) -> CloningRoutineDefinition {
     CloningRoutineDefinition {
         routine_id: id.into(),

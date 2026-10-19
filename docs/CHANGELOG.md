@@ -1,5 +1,33 @@
 # GENtle Changelog
 
+## 2026-10-19 - Guard Absolute Cloning Ranking Policy Against Drift
+
+- Add seven test-only guards beside the existing bench-model regressions:
+  literal default/waiting consultation rank-family-routine/score snapshots,
+  explicit tie structure, bit-identical model/weight counterfactuals, the
+  declared policy-time slope, row-wise basis/consumers and a real reorder
+  negative control. Read the real shared JSON consultation and assert state
+  unchanged; print side-by-side differences with tolerant score comparisons.
+- Correct the review's score-count slip: default results have six distinct
+  scores, with seven rows in two alphabetical tie blocks and four singletons.
+  Pin the waiting profile separately, including its different Golden Gate
+  family winner. These are synthetic policy snapshots, not laboratory evidence
+  or method recommendations; re-pinning needs an owner decision and changelog.
+- Keep all existing 13 bench tests and the order-blind family check unchanged.
+  No production scorer, weighting, sorting, contract, adapter, asset, bench
+  model, roadmap or release ledger changes. Text output still shows only five
+  candidates; deeper models and calibrated comparisons remain separate work.
+- Rust execution/build/check remains Glen/CI work under the standing owner
+  restriction. Claude measured the default at `8af42b97`; waiting expectations
+  were independently derived offline, not re-measured with a Rust binary here.
+  Authored tests do not establish a runtime, native, scientific or `.13` pass.
+  Preserve unrelated files, keep the previous goal paused and do not push.
+- Offline checks: both literal tables resolve to bundled routine IDs; existing
+  13 tests/helpers are byte-unchanged and seven new tests are authored. The 17
+  specialist source checks, scoped rustfmt and whitespace pass. Session-close
+  has four OK, two expected worktree/plan warnings and no failures. Production
+  files, assets and the 400-line roadmap are unchanged.
+
 ## 2026-10-19 - Align Expression CLI Preflight Expectations With Adapter Gates
 
 - The reported Windows real-CLI failure at the eligibility assertion is stale
