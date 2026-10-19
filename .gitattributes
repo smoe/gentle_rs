@@ -150,3 +150,9 @@ test_files/fixtures/probe_region_adapter_inputs/clariom_e_mtab_14704_tp73_glen_s
 docs/tutorial/inputs/gel_sizing/*.png binary
 docs/tutorial/inputs/gel_sizing/*.json text eol=lf
 docs/tutorial/inputs/gel_sizing/SHA256SUMS text eol=lf
+
+# Public TapeStation report bytes and hash-bound manual coordinate fixtures.
+test_files/fixtures/gel_images/tapestation_26r266/*.pdf binary
+test_files/fixtures/gel_images/tapestation_26r266/*.png binary
+test_files/fixtures/gel_images/tapestation_26r266/*.json text eol=lf
+test_files/fixtures/gel_images/tapestation_26r266/SHA256SUMS text eol=lf

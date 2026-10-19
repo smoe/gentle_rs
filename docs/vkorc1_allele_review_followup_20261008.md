@@ -62,6 +62,16 @@ The mock payload uses `file://`, not Unix-only mock-resource machinery.
 
 ## Still Open
 
+**Current status pointer (2026-10-18):** the dated stack observations below
+remain historical. The five stripped-child families subsequently passed on
+macOS/Windows at `b2b6b30a` and Linux/Windows at `1c5be317`; the
+[active audit ledger](glen_audit_followups_20261008.md#prepared-vkorc1-next-actions-2026-10-15)
+records their exact counts, source limits and failed overall runs. Do not
+reissue those bounded checks as absent or inherit them as a current-source
+pass. Live-data, physical/native GUI and package/scientific acceptance remain
+open; a future dispatch requires an explicit approved source and successful
+same-source normal CI, not the historical prepared SHA.
+
 ### 2026-10-14 Default-Stack Follow-Up
 
 Glen's retained `024ed6c0520d38c4221517219d44c792084de4e5` Linux/Rust 1.96.1
@@ -215,6 +225,11 @@ the four unrun filters, newer source, or the quick-xml `svg_dimensions_` gate.
 The [ledger's prepared owner request](glen_audit_followups_20261008.md#prepared-vkorc1-next-actions-2026-10-15)
 and [physical-host checklist](glen_final_candidate_execution_handoff.md#vkorc1-0804-physical-host-checklist)
 carry the residual work. No dispatch or physical run has occurred here.
+
+The following table preserves the **2026-10-15 preparation status**, not the
+current pending list. Later platform-filter evidence and the already-recorded
+`.13` aim are reconciled in the active ledger linked above; no historical
+receipt or failed-run outcome is changed.
 
 | Item | Typed Status / Scope |
 | --- | --- |

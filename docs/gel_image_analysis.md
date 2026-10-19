@@ -203,6 +203,56 @@ stale/canceled/project-switched result rejection, shared window intents and idle
 frames without texture reuploads or project mutations. These are not native
 window performance or real-gel accuracy verdicts.
 
+### Public TapeStation Regression
+
+The owner-approved [26R266 fixture](../test_files/fixtures/gel_images/tapestation_26r266/README.md)
+retains two original D5000 PDFs, their unscaled embedded PNGs, source warnings,
+sample associations and annotation-assisted pixel marks. Ordinary Rust tests
+and the existing native CI CLI build exercise the same import, sizing,
+persistence, shared-Shell inspection and export paths used by the editor.
+The [real-data companion in tutorial 10.03](tutorial/10-03_measured_gel_sizing_gui_cli.md#real-tapestation-companion)
+teaches the same replay, saved-report GUI inspection and vendor-summary limits.
+
+The first report supplies 13 sample-peak sizes for numerical comparison. The
+second supplies no sample Peak Tables: its region averages are **not** substituted
+for peak sizes. Two explicitly selected ladder analyses keep its blocks separate;
+14 cross-ladder checks measure display registration agreement, not raw assay
+accuracy. Calibration is limited to the nine 100-5000 bp ladder bands. The
+15/10000 bp alignment markers and an above-range sample mark remain null rather
+than extending the assay's range. ScreenTape expiry warnings, contrast changes
+and different region windows remain visible in the fixture and audit receipt.
+
+For a retained replay with an already built CLI, without Cargo or network:
+
+```sh
+python3 scripts/gel_tapestation_acceptance.py \
+  --gentle-cli /absolute/path/to/gentle_cli \
+  --output-dir /absolute/path/to/new-evidence-directory
+```
+
+The output includes the self-contained project, engine JSON/TSV/SVG exports,
+unrounded comparisons and a source/binary/input/artifact receipt. Missing vendor
+peak values retain `agreement_pass: null`; a valid engine estimate is not a
+passed vendor comparison. Existing directories are refused, and source identity
+uses canonical Git blobs so Windows checkout newlines do not masquerade as
+different calibration code. This is not automatic peak detection, smear
+quantification, a native GUI verdict, or an independent biological validation.
+
+### Distribution Comparison And Lane Algebra
+
+These are not implemented by the size-only editor. The PDFs' region summaries
+use different before/after windows, so they cannot supply a quantitative cleanup
+effect or full distribution. Targeted priming and physical length enrichment
+must remain separate. A combined-minus-manufacturer brightness subtraction from
+the processed gel is not a calibrated custom-primer contribution.
+
+The [proposed measured-profile plan](gel_lane_profile_comparison_plan.md)
+starts from exported numerical electropherograms, retains axis/units/normalization
+and sample provenance, and separates overlays, distribution measures and signed
+algebra. It records the correct cell-line pairings and the currently encrypted
+native `.D5000` boundary. No unsupported import command, normalization or
+gene-specific enrichment result is implied while those inputs are pending.
+
 ## Remaining Work
 
 1. Verified ladder catalogs and richer editable lane geometry; human native-window
@@ -211,10 +261,12 @@ window performance or real-gel accuracy verdicts.
    worker progress; expanded semantic controls for a full automated GUI tutorial.
 3. Reviewed rotation/crop and two-sided ladder corrections; explicitly registered
    Western marker exposures; optional restricted-range log-linear fitting.
-4. Reference-image validation with documented acquisition/provenance, sample
-   association and expected-versus-observed comparison without identity claims.
+4. Independent raw-acquisition gel-image validation beyond the processed-display
+   TapeStation regression, with provenance and no molecular identity claims.
 5. Glen's image-size/memory/repaint audits and human wet-lab acceptance, plus
    richer image/report inventory and readiness discovery for the inner agent.
+6. Shared measured-profile import, cleanup distributions and explicit lane
+   algebra under the [separate input-bound plan](gel_lane_profile_comparison_plan.md).
 
 Densitometry, concentration estimates and automatic ladder identification remain
 separate later capabilities, not hidden interpretations of this size report.

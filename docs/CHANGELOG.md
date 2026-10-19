@@ -1,5 +1,31 @@
 # GENtle Changelog
 
+## 2026-10-18 - Reconcile VKORC1 Platform Evidence And Audit Preparation
+
+- Recheck run `38774813595` at `b2b6b30a` through the GitHub run/jobs API and
+  decoded macOS/Windows logs: both execute all five stripped-child families
+  with 12/2/7/2/2 passes and null child stack overrides. Preserve the overall
+  failed run: macOS has two later storage-test failures, Windows one; full
+  Linux skips. Link the already-recorded newer Linux/Windows `1c5be317` passes
+  without converting that README-metadata failure into a green complete run.
+- Correct the active next-action section rather than rewriting old receipts.
+  Retain `6112095d` as implementation provenance, not an executable default;
+  require an explicitly approved full published SHA and successful same-source
+  normal push-CI run. Preserve ref/source/workflow/event/outcome guards and the
+  non-atomic-dispatch warning. No source is selected and no command dispatched.
+- Add an offline test of the actual documented Bash block using only a fake
+  `gh` function and empty PATH: missing/malformed inputs, moved refs and
+  mismatched/failed/incomplete/wrong-event CI cannot reach even a simulated
+  dispatch. Keep real-data, physical-host and package acceptance open and use
+  the single Glen handoff; the owner's existing `.13` aim is unchanged.
+- Complete the requested rebase onto main `8f37453b`, preserving canonical
+  parity/inspector and TapeStation follow-ups in the one 400-line roadmap.
+  No local Rust, Claude, push, live dbSNP/reference fetch or publication.
+- All 54 focused Python tests pass, including twelve offline command-guard
+  scenarios and unchanged frozen-evidence checks. Documentation status and
+  whitespace pass; real dispatch, new-source Rust and native/scientific
+  acceptance remain unrun.
+
 ## 2026-10-18 - Repair Tube Parity Documentation And Record Glen's Return
 
 - Apply the two missing tube-operation rows and five shell-only count changes
@@ -55,6 +81,51 @@
 - Integration source/documentation checks pass 21/21, including the existing
   LF/CRLF documentation fixture; documentation status and whitespace pass.
   Rust, actual-CLI, canonical generator and native inspector checks remain open.
+
+## 2026-10-18 - Teach The Real TapeStation Comparison And Bound Lane Algebra
+
+- Extend existing tutorial 10.03 with the public two-report replay, saved-report
+  GUI inspection, exact cell-line/priming/cleanup pairings and all ten vendor
+  region summaries. Keep the synthetic exercise intact and mark region windows
+  as unmatched; do not turn reported means into distributions or cleanup effects.
+- Retain a source/hash/page-bound transcription of those tables, with LF/CRLF
+  coverage and tutorial/pairing regressions. Distinguish physical length
+  enrichment from targeted priming, absent comparisons from passes, and selected
+  custom/mix peak marks from identified molecules or complete smear profiles.
+- Record a separate shared-engine plan for numeric trace import, source-bound
+  overlays, justified distribution measures and signed lane algebra. The
+  supplied original before-cleanup `.D5000` contains encrypted measurement/model
+  members; no trace is decoded or fabricated, no operational logs are published,
+  and the later export/file remains pending. No profile or algebra operation,
+  automatic detector, native GUI or biological acceptance is claimed.
+- Run 97 Python tests with two explicit unrelated release-binary skips; the
+  real gel CLI test and LF/CRLF checks pass. Catalog/manifest checks pass at
+  67 entries/30 executable chapters, using the existing `1c5be317` helper with
+  unchanged generator source; a fresh retained tutorial CLI replay also passes.
+  No local Rust build/check, push or new candidate acceptance is performed.
+
+## 2026-10-18 - Exercise Real TapeStation Gels Through GENtle
+
+- Retain the owner's two public-use-approved 26R266 D5000 PDFs, their unscaled
+  embedded gel PNGs and separately recorded annotation-assisted coordinates and
+  vendor values. Document extraction, hashes, lane associations, two-ladder
+  grouping, expired-ScreenTape warnings and the 100-5000 bp calibration limit.
+- Add an ordinary engine regression plus an existing-CLI replay for import,
+  sizing, project reopen, shared-Shell inspection and JSON/TSV/SVG export. Wire
+  the replay into native CI using its already-built CLI; no extra build or
+  dependency. Protect the hash-bound inputs with scoped LF/CRLF checkout tests.
+- The actual macOS CLI replay compares all 13 supplied vendor sample peaks
+  within 0.890%, and 14 cross-ladder controls within 3.671%. Three out-of-range
+  marks stay null; 15 after-cleanup estimates have no vendor peak-table value
+  and retain null agreement rather than a false pass. No calibration defect
+  was found and no sizing mathematics is changed. This is not automatic peak
+  detection, independent assay validation or a native GUI verdict.
+- Replay binary source is `1c5be3175323eec41359b980b5a41e22c7edaec1`; canonical
+  gel implementation files match working source `78e43576`. All 83 Python
+  tests complete with two explicit skips, including the supplied-CLI regression;
+  SVGs were rendered and inspected. New Rust-test compilation, Cargo check,
+  native Windows and whole-candidate acceptance remain pending with CI/Glen;
+  no local Rust build, push, dispatch or publication is performed.
 
 ## 2026-10-18 - Give The CLI Manual A First-Session Entry Point
 

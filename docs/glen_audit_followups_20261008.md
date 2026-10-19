@@ -41,19 +41,34 @@ local Rust, model call, package build or publication.
 
 **Preparation only, not dispatch approval or a development freeze.** Apply
 the release-preparation cadence above; the owner may continue other work.
-The Python assertion repair is committed at
+**Updated 2026-10-18:** the Python assertion repair was originally prepared at
 `6112095d721e166ae119d0d89039d4694a9eeb5f`, after integration of main
-`22b06a9b`. This is the exact prepared implementation target, not a selected
-`.13` release aim. The following documentation-only commit does not execute or
-accept it. No successful normal CI at this target is claimed here.
+`22b06a9b`. That is historical implementation provenance, not the default
+dispatch target or a selected `.13` release aim. No successful normal CI at
+that historical target is claimed here. Select an explicitly published source
+and its successful normal CI only when the owner prepares the actual audit;
+do not keep replacing an embedded SHA during ordinary development.
 
 The Windows coverage correction is already closed at `df5c8244`.
 The [terminal `de9df8af` records](audits/glen_followups_20261008/candidate_de9df8af/README.md)
 remain failed on Linux/Windows; both null child-stack receipts exist, but
 only the first filter ran. The [later focused Linux repair](vkorc1_allele_review_followup_20261008.md#focused-linux-repair-verification-2026-10-15)
-passes 12/12 at `6b7109db`; Windows and the other four filters remain open.
-Do not reissue that finished focused Linux audit or backfill newer-source,
-native, quick-xml or package acceptance from it.
+passes 12/12 at `6b7109db`. That bounded observation is superseded for the five
+software-filter families by the source-bound records below, not rewritten:
+
+| Tested source / normal CI run | Platform | Five stripped-child filters | Overall result |
+| --- | --- | --- | --- |
+| `b2b6b30a61a209e1e7532c28abd6e82b86902ade`, [38774813595](https://github.com/smoe/gentle_rs/actions/runs/38774813595) | macOS and Windows | Each platform passes `dbsnp_` 12, `materialize_variant_allele` 2, `reporter_construct_handoff_` 7, `variant_followup_allele_pair_` 2, `test_support::heavy_stack_tests` 2; all ten runner receipts have `child_rust_min_stack:null`. | Failed later: two `gene_set_arrangement` tests on macOS, one on Windows. Full Linux was skipped, not passed. |
+| `1c5be3175323eec41359b980b5a41e22c7edaec1`, [39066178748](https://github.com/smoe/gentle_rs/actions/runs/39066178748) | Linux and Windows | Both platforms pass the same five 12/2/7/2/2 families with null child-stack overrides; [retained detailed record](#completed-windows-job-and-terminal-run-2026-10-18). | Failed later at the README version-label guard; macOS was skipped. |
+
+The earlier macOS/Windows result was independently rechecked on 2026-10-18
+against the run API and decoded logs for
+[macOS job 116559658104](https://github.com/smoe/gentle_rs/actions/runs/38774813595/job/116559658104)
+and [Windows job 116559599111](https://github.com/smoe/gentle_rs/actions/runs/38774813595/job/116559599111).
+The named dialog-fetch, explicit-worker-stack and both SPDI regressions execute.
+These are historical software passes, not a green complete run or newer-source,
+native, live-data, quick-xml, scientific or package acceptance. Do not reissue
+the finished focused audit merely to close the stale Windows/four-filter label.
 
 ### One Owner-Approved Dispatch, After Successful Normal CI
 
@@ -61,21 +76,27 @@ Workflow: `.github/workflows/ci.yml`; inputs `platform=linux`,
 `audit_followups=true`, `audit_public_vkorc1=true`. Before approving this
 single run, require the published ref and a completed successful **normal**
 push CI run to name the exact prepared SHA. No push, tag creation, model call,
-workflow change, dispatch, network retrieval or authentication probe is done
-by this preparation. If merging produces a different SHA, the owner selects
+workflow change, dispatch, live dbSNP/GRCh38 retrieval or authentication probe
+is performed here; the CI evidence recheck above was read-only GitHub access.
+If merging produces a different SHA, the owner selects
 and records that source and its normal-CI result at release preparation;
 never silently substitute moving main or request a new freeze on every commit.
 
-The following is an unexecuted owner command. `NORMAL_RUN_ID` must identify
-that successful normal run. `main` is usable only while its published tip
+The following is an unexecuted **Bash** owner command. Set `AUDIT_SHA` explicitly
+to the approved full lowercase 40-character source SHA and `NORMAL_RUN_ID` to
+its successful normal push run. Neither failed run in the table qualifies.
+There is no default SHA, automatic latest-run selection, push or approval.
+`main` is usable only while its published tip
 equals `AUDIT_SHA`; these guards deliberately refuse any other source:
 
 ```bash
 set -euo pipefail
 AUDIT_REPO=smoe/gentle_rs
-AUDIT_SHA=6112095d721e166ae119d0d89039d4694a9eeb5f
 AUDIT_REF=main
+: "${AUDIT_SHA:?Set the explicitly approved published full source SHA}"
 : "${NORMAL_RUN_ID:?Set the successful normal-CI run ID for AUDIT_SHA}"
+[[ "$AUDIT_SHA" =~ ^[0-9a-f]{40}$ ]] || { printf '%s\n' 'AUDIT_SHA must be a full lowercase 40-character SHA' >&2; exit 1; }
+[[ "$NORMAL_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { printf '%s\n' 'NORMAL_RUN_ID must be a positive numeric run ID' >&2; exit 1; }
 test "$(gh api "repos/$AUDIT_REPO/git/ref/heads/$AUDIT_REF" --jq .object.sha)" = "$AUDIT_SHA" || exit 1
 test "$(gh api "repos/$AUDIT_REPO/actions/runs/$NORMAL_RUN_ID" --jq '[.path,.head_sha,.status,.conclusion,.event] | @tsv')" = "$(printf '.github/workflows/ci.yml\t%s\tcompleted\tsuccess\tpush' "$AUDIT_SHA")" || exit 1
 gh workflow run ci.yml --repo "$AUDIT_REPO" --ref "$AUDIT_REF" \
@@ -103,10 +124,15 @@ enables the scroll CPU smoke and macOS headless CLI **build** jobs; none invokes
 an inner agent or model, and none accepts a package or native latency.
 
 The [physical-host checklist](glen_final_candidate_execution_handoff.md#vkorc1-0804-physical-host-checklist)
-is **pending Glen**. Public replay/remaining Windows and filter checks are
-**pending owner dispatch**, with normal CI required first. `.13` aim and release
-selection remain an **owner decision**; independent extracted-installer checks
-remain separate. No new gate is marked passed by these offline changes.
+is **pending Glen**. Public replay, synthetic 08.04 GUI/button checks and fresh
+selected-source filter evidence are **pending owner-approved execution**, with
+successful same-source normal CI required before the optional dispatch. The
+historical macOS/Linux/Windows filter passes above are no longer unconfirmed.
+The `.13` aim is already recorded in the [roadmap](roadmap.md#13-priorities);
+these tasks do not change it. Release source/dispatch/publication remain owner
+decisions, and independent extracted-installer checks remain separate. Route
+remaining requests through the [single next-check handoff](glen_next_verification_handoff.md),
+not a new branch-specific Glen request. No full release gate is closed here.
 
 ## Owner-Requested Main Integration
 

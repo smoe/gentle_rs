@@ -1,0 +1,145 @@
+{
+  "schema": "gentle.tapestation_gel_regression.v1",
+  "publication_permission": "Owner supplied these experimental reports and explicitly approved public GENtle test use on 2026-10-18.",
+  "assay": "Agilent D5000 ScreenTape",
+  "software": "TapeStation Analysis Software 5.2",
+  "nominal_sizing_range_bp": [100, 5000],
+  "marking_method": "Codex-reviewed pixel centers read from instrument peak-indicator glyphs beside the lanes; annotation-assisted, not independent band detection. Half-pixel centers reflect raster glyph extent, not subpixel measurement accuracy.",
+  "comparison_relative_tolerance": 0.05,
+  "comparison_tolerance_basis": "Predeclared software/display consistency tolerance, not an assay accuracy claim. Do not tune marks or tolerance to GENtle output.",
+  "sources": [
+    {
+      "id": "before",
+      "pdf": "before.pdf",
+      "original_filename": "LibCheck_26R266 - 2026-10-06 - 12.46.57.pdf",
+      "pdf_sha256": "46d23a1680382755a7e080c334a97dfe97ed5753646a8ef67d536b1b21ddd31f",
+      "image": "before.png",
+      "image_sha256": "783a60b249b5722d93087f9c5be9751ae4e3f17263f62166225a38a2583e6a48",
+      "image_dimensions": [1375, 731],
+      "pdf_page_1based": 1,
+      "pdf_image_object": "5 0",
+      "contrast_percent": 130,
+      "warnings": ["Expired ScreenTape device (used after two weeks of first use): A1, B1, C1, D1, E1"],
+      "region_window_bp": [400, 5000],
+      "lanes": [
+        {"id": "A1", "role": "ladder", "center_x": 117.5},
+        {"id": "B1", "role": "sample", "cell": "26R266-1", "primers": "custom", "center_x": 190.5},
+        {"id": "C1", "role": "sample", "cell": "26R266-2", "primers": "custom", "center_x": 263.5},
+        {"id": "D1", "role": "sample", "cell": "26R266-1", "primers": "manufacturer", "center_x": 336.5},
+        {"id": "E1", "role": "sample", "cell": "26R266-2", "primers": "manufacturer", "center_x": 409.5}
+      ]
+    },
+    {
+      "id": "after",
+      "pdf": "after.pdf",
+      "original_filename": "26R266 ONT Libs nach extra CU - 2026-10-13.pdf",
+      "pdf_sha256": "859ce71d2ec5f6031c1fcd635adee639ec39a545d306de3a5612d8806526df7f",
+      "image": "after.png",
+      "image_sha256": "9bf36a8c8afa5a33c5b2be0aa6eb51e740e61f700a12abd685c7978117e44c7b",
+      "image_dimensions": [1375, 731],
+      "pdf_page_1based": 1,
+      "pdf_image_object": "5 0",
+      "contrast_percent": 119,
+      "warnings": ["Expired ScreenTape device (used after two weeks of first use): L1, C1, D1, E1"],
+      "region_window_bp": [500, 7000],
+      "region_warning": "The upper region boundary exceeds the nominal D5000 sizing range. Region averages are not sample peak sizes and must not be compared as peaks.",
+      "sample_peak_tables": "not included in this PDF; no numeric vendor sample-peak comparison is claimed",
+      "lanes": [
+        {"id": "L1", "role": "ladder", "center_x": 117.5},
+        {"id": "C1", "role": "sample", "cell": "26R266-1", "primers": "custom", "center_x": 190.5},
+        {"id": "D1", "role": "sample", "cell": "26R266-2", "primers": "custom", "center_x": 263.5},
+        {"id": "E1", "role": "sample", "cell": "26R266-1", "primers": "manufacturer_CRTA", "center_x": 336.5},
+        {"id": "L2", "role": "ladder", "center_x": 409.5},
+        {"id": "F1", "role": "sample", "cell": "26R266-2", "primers": "manufacturer_CRTA", "center_x": 482.5},
+        {"id": "G1", "role": "sample", "cell": "26R266-1", "primers": "custom_and_manufacturer_CRTA", "center_x": 555.5},
+        {"id": "H1", "role": "sample", "cell": "26R266-2", "primers": "custom_and_manufacturer_CRTA", "center_x": 628.5}
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "before_A1",
+      "source": "before",
+      "calibration_lane": "A1",
+      "sample_lanes": ["B1", "C1", "D1", "E1"],
+      "ladder_source": "D5000 report 2026-10-06 p2; 100-5000 bp only. Expired ScreenTape warning retained in fixture manifest; normalized display, contrast 130%.",
+      "references": [[5000, 165], [3500, 198], [2500, 241.5], [1500, 298.5], [1000, 337.5], [600, 386.5], [400, 427.5], [250, 470.5], [100, 519.5]],
+      "bands": [
+        {"id": "B1_peak1", "lane": "B1", "y": 478.5, "vendor_peak_bp": 215, "vendor_page_1based": 3},
+        {"id": "B1_peak2", "lane": "B1", "y": 460, "vendor_peak_bp": 280, "vendor_page_1based": 3},
+        {"id": "B1_peak3", "lane": "B1", "y": 374.5, "vendor_peak_bp": 683, "vendor_page_1based": 3},
+        {"id": "C1_peak1", "lane": "C1", "y": 481.5, "vendor_peak_bp": 203, "vendor_page_1based": 4},
+        {"id": "C1_peak2", "lane": "C1", "y": 460.5, "vendor_peak_bp": 278, "vendor_page_1based": 4},
+        {"id": "C1_peak3", "lane": "C1", "y": 410.5, "vendor_peak_bp": 475, "vendor_page_1based": 4},
+        {"id": "C1_peak4", "lane": "C1", "y": 375.5, "vendor_peak_bp": 673, "vendor_page_1based": 4},
+        {"id": "C1_peak5", "lane": "C1", "y": 336.5, "vendor_peak_bp": 1013, "vendor_page_1based": 4},
+        {"id": "C1_peak6", "lane": "C1", "y": 318.5, "vendor_peak_bp": 1219, "vendor_page_1based": 4},
+        {"id": "C1_peak7", "lane": "C1", "y": 266, "vendor_peak_bp": 2005, "vendor_page_1based": 4},
+        {"id": "C1_peak8", "lane": "C1", "y": 244.5, "vendor_peak_bp": 2435, "vendor_page_1based": 4},
+        {"id": "D1_peak1", "lane": "D1", "y": 263.5, "vendor_peak_bp": 2047, "vendor_page_1based": 6},
+        {"id": "E1_peak1", "lane": "E1", "y": 325, "vendor_peak_bp": 1149, "vendor_page_1based": 7},
+        {"id": "excluded_upper_marker", "lane": "B1", "y": 134.5, "expected_status": "outside_calibrated_range", "role": "excluded_marker_control"},
+        {"id": "excluded_lower_marker", "lane": "B1", "y": 616, "expected_status": "outside_calibrated_range", "role": "excluded_marker_control"}
+      ]
+    },
+    {
+      "id": "after_L1",
+      "source": "after",
+      "calibration_lane": "L1",
+      "sample_lanes": ["C1", "D1", "E1", "L2"],
+      "grouping_basis": "Explicit regression grouping by displayed block; not a recovered instrument-internal calibration assignment. L2 is a cross-ladder check, not a biological sample.",
+      "ladder_source": "D5000 report 2026-10-13 p2; 100-5000 bp only. Expired ScreenTape warning retained in fixture manifest; normalized display, contrast 119%.",
+      "references": [[5000, 165.5], [3500, 198.5], [2500, 242], [1500, 300.5], [1000, 340.5], [600, 390], [400, 430.5], [250, 471.5], [100, 520.5]],
+      "bands": [
+        {"id": "C1_peak1", "lane": "C1", "y": 244.5, "vendor_peak_bp": null},
+        {"id": "C1_peak2", "lane": "C1", "y": 268, "vendor_peak_bp": null},
+        {"id": "C1_peak3", "lane": "C1", "y": 312.5, "vendor_peak_bp": null},
+        {"id": "C1_peak4", "lane": "C1", "y": 375.5, "vendor_peak_bp": null},
+        {"id": "D1_above_calibration", "lane": "D1", "y": 162.5, "expected_status": "outside_calibrated_range"},
+        {"id": "D1_peak2", "lane": "D1", "y": 242.5, "vendor_peak_bp": null},
+        {"id": "D1_peak3", "lane": "D1", "y": 265.5, "vendor_peak_bp": null},
+        {"id": "D1_peak4", "lane": "D1", "y": 336.5, "vendor_peak_bp": null},
+        {"id": "D1_peak5", "lane": "D1", "y": 375, "vendor_peak_bp": null},
+        {"id": "E1_peak1", "lane": "E1", "y": 262, "vendor_peak_bp": null},
+        {"id": "L2_check_3500", "lane": "L2", "y": 197.5, "vendor_peak_bp": 3500, "role": "cross_ladder_check", "vendor_page_1based": 6},
+        {"id": "L2_check_2500", "lane": "L2", "y": 240.5, "vendor_peak_bp": 2500, "role": "cross_ladder_check", "vendor_page_1based": 6},
+        {"id": "L2_check_1500", "lane": "L2", "y": 298.5, "vendor_peak_bp": 1500, "role": "cross_ladder_check", "vendor_page_1based": 6},
+        {"id": "L2_check_1000", "lane": "L2", "y": 337.5, "vendor_peak_bp": 1000, "role": "cross_ladder_check", "vendor_page_1based": 6},
+        {"id": "L2_check_600", "lane": "L2", "y": 387.5, "vendor_peak_bp": 600, "role": "cross_ladder_check", "vendor_page_1based": 6},
+        {"id": "L2_check_400", "lane": "L2", "y": 427.5, "vendor_peak_bp": 400, "role": "cross_ladder_check", "vendor_page_1based": 6},
+        {"id": "L2_check_250", "lane": "L2", "y": 469.5, "vendor_peak_bp": 250, "role": "cross_ladder_check", "vendor_page_1based": 6}
+      ]
+    },
+    {
+      "id": "after_L2",
+      "source": "after",
+      "calibration_lane": "L2",
+      "sample_lanes": ["F1", "G1", "H1", "L1"],
+      "grouping_basis": "Explicit regression grouping by displayed block; not a recovered instrument-internal calibration assignment. L1 is a cross-ladder check, not a biological sample.",
+      "ladder_source": "D5000 report 2026-10-13 p6; 100-5000 bp only. No expiry warning on L2/F1/G1/H1; normalized display, contrast 119%.",
+      "references": [[5000, 165.5], [3500, 197.5], [2500, 240.5], [1500, 298.5], [1000, 337.5], [600, 387.5], [400, 427.5], [250, 469.5], [100, 518.5]],
+      "bands": [
+        {"id": "F1_peak1", "lane": "F1", "y": 320.5, "vendor_peak_bp": null},
+        {"id": "G1_peak1", "lane": "G1", "y": 258, "vendor_peak_bp": null},
+        {"id": "G1_peak2", "lane": "G1", "y": 380.5, "vendor_peak_bp": null},
+        {"id": "H1_peak1", "lane": "H1", "y": 259, "vendor_peak_bp": null},
+        {"id": "H1_peak2", "lane": "H1", "y": 317, "vendor_peak_bp": null},
+        {"id": "H1_peak3", "lane": "H1", "y": 382, "vendor_peak_bp": null},
+        {"id": "L1_check_3500", "lane": "L1", "y": 198.5, "vendor_peak_bp": 3500, "role": "cross_ladder_check", "vendor_page_1based": 2},
+        {"id": "L1_check_2500", "lane": "L1", "y": 242, "vendor_peak_bp": 2500, "role": "cross_ladder_check", "vendor_page_1based": 2},
+        {"id": "L1_check_1500", "lane": "L1", "y": 300.5, "vendor_peak_bp": 1500, "role": "cross_ladder_check", "vendor_page_1based": 2},
+        {"id": "L1_check_1000", "lane": "L1", "y": 340.5, "vendor_peak_bp": 1000, "role": "cross_ladder_check", "vendor_page_1based": 2},
+        {"id": "L1_check_600", "lane": "L1", "y": 390, "vendor_peak_bp": 600, "role": "cross_ladder_check", "vendor_page_1based": 2},
+        {"id": "L1_check_400", "lane": "L1", "y": 430.5, "vendor_peak_bp": 400, "role": "cross_ladder_check", "vendor_page_1based": 2},
+        {"id": "L1_check_250", "lane": "L1", "y": 471.5, "vendor_peak_bp": 250, "role": "cross_ladder_check", "vendor_page_1based": 2}
+      ]
+    }
+  ],
+  "nonclaims": [
+    "No independent peak detection or raw migration validation; vendor annotations inform the coordinates.",
+    "No gene, isoform, primer specificity, full-length cDNA, cleanup yield or read-length inference.",
+    "No region mean, concentration or fluorescence quantification by GENtle.",
+    "15 bp/10000 bp are alignment markers, not sample fragments or validated assay endpoints.",
+    "Different contrast and region windows preclude unqualified before/after intensity or mean-size comparisons."
+  ]
+}

@@ -1,12 +1,242 @@
-//! Entirely synthetic fixtures: a 160x220 grayscale image with rectangular bands
-//! at explicitly chosen pixel centers. Recreated in memory by synthetic_png;
-//! no private gel images, vendor photos, downloads, or simulated-gel renderer.
+//! Baseline synthetic fixture: a 160x220 image, recreated by synthetic_png.
+//! The explicitly named TapeStation test also uses owner-approved public real
+//! images; provenance and annotation-assisted coordinates live beside the PDFs
+//! in test_files/fixtures/gel_images/tapestation_26r266/README.md.
 //! Tests cover measured-gel math, import, engine persistence, shell parity and exports.
 
 use super::*;
 use crate::engine::{Engine, GentleEngine, Operation, ProjectState};
 use crate::engine_shell::{execute_shell_command, parse_shell_tokens};
 use std::sync::Arc;
+
+fn tapestation_request(
+    manifest: &serde_json::Value,
+    case: &serde_json::Value,
+) -> GelImageAnalysisRequest {
+    let source = manifest["sources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["id"] == case["source"])
+        .unwrap();
+    let center_x = |id: &str| {
+        source["lanes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["id"] == id)
+            .unwrap()["center_x"]
+            .as_f64()
+            .unwrap()
+    };
+    let calibration = case["calibration_lane"].as_str().unwrap();
+    let mut lane_ids = vec![calibration];
+    lane_ids.extend(
+        case["sample_lanes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|id| id.as_str().unwrap()),
+    );
+    GelImageAnalysisRequest {
+        report_id: case["id"].as_str().unwrap().into(),
+        image_id: source["id"].as_str().unwrap().into(),
+        image_sha256: source["image_sha256"].as_str().unwrap().into(),
+        size_kind: GelSizeKind::LinearDnaBp,
+        migration: GelMigrationDirection::Down,
+        lanes: lane_ids
+            .into_iter()
+            .map(|id| GelImageLane {
+                id: id.into(),
+                label: id.into(),
+                min: GelImagePoint {
+                    x: center_x(id) - 31.5,
+                    y: 100.0,
+                },
+                max: GelImagePoint {
+                    x: center_x(id) + 31.5,
+                    y: 640.0,
+                },
+            })
+            .collect(),
+        ladder: GelImageLadder {
+            lane_id: calibration.into(),
+            label: "D5000 100-5000 bp".into(),
+            source: case["ladder_source"].as_str().unwrap().into(),
+            gel_system: None,
+            prestained: false,
+            bands: case["references"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|row| GelLadderBand {
+                    id: format!("ref_{}", row[0].as_u64().unwrap()),
+                    size: row[0].as_f64().unwrap(),
+                    center: GelImagePoint {
+                        x: center_x(calibration),
+                        y: row[1].as_f64().unwrap(),
+                    },
+                })
+                .collect(),
+        },
+        sample_bands: case["bands"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| {
+                let id = row["id"].as_str().unwrap();
+                let lane = row["lane"].as_str().unwrap();
+                GelSampleBand {
+                    id: id.into(),
+                    lane_id: lane.into(),
+                    label: id.into(),
+                    center: GelImagePoint {
+                        x: center_x(lane),
+                        y: row["y"].as_f64().unwrap(),
+                    },
+                    position_half_width_px: Some(1.0),
+                }
+            })
+            .collect(),
+    }
+}
+
+#[test]
+fn tapestation_real_images_preserve_sources_and_match_vendor_peak_sizes() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("test_files/fixtures/gel_images/tapestation_26r266");
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(root.join("manifest.json")).unwrap()).unwrap();
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    for source in manifest["sources"].as_array().unwrap() {
+        let pdf = std::fs::read(root.join(source["pdf"].as_str().unwrap())).unwrap();
+        assert_eq!(
+            sha256_hex_bytes(&pdf),
+            source["pdf_sha256"].as_str().unwrap()
+        );
+        let result = engine
+            .apply(Operation::ImportGelImage {
+                request: GelImageImportRequest {
+                    image_id: source["id"].as_str().unwrap().into(),
+                    path: root
+                        .join(source["image"].as_str().unwrap())
+                        .to_str()
+                        .unwrap()
+                        .into(),
+                    tiff_page: None,
+                },
+            })
+            .unwrap();
+        let descriptor = result.gel_image.unwrap();
+        assert_eq!(descriptor.sha256, source["image_sha256"].as_str().unwrap());
+        assert_eq!((descriptor.width, descriptor.height), (1375, 731));
+    }
+    let tolerance = manifest["comparison_relative_tolerance"].as_f64().unwrap();
+    let (mut sample_comparisons, mut ladder_comparisons, mut missing_vendor, mut outside) =
+        (0, 0, 0, 0);
+    let directory = tempfile::tempdir().unwrap();
+    for case in manifest["cases"].as_array().unwrap() {
+        let request = tapestation_request(&manifest, case);
+        assert!(
+            request
+                .ladder
+                .bands
+                .iter()
+                .all(|band| (100.0..=5000.0).contains(&band.size))
+        );
+        let result = engine
+            .apply(Operation::AnalyzeGelImage {
+                request: Box::new(request.clone()),
+            })
+            .unwrap();
+        let report = result.gel_image_analysis.unwrap();
+        assert_eq!(
+            report.estimates.len(),
+            case["bands"].as_array().unwrap().len()
+        );
+        for band in case["bands"].as_array().unwrap() {
+            let measured = report
+                .estimates
+                .iter()
+                .find(|row| row.band_id == band["id"].as_str().unwrap())
+                .unwrap();
+            assert_eq!(measured.lane_id, band["lane"].as_str().unwrap());
+            assert_eq!(measured.center.y, band["y"].as_f64().unwrap());
+            if band["expected_status"] == "outside_calibrated_range" {
+                outside += 1;
+                assert_eq!(measured.status, GelBandSizingStatus::OutsideCalibratedRange);
+                assert_eq!(measured.estimated_size, None);
+                assert!(measured.reference_band_ids.is_empty());
+            } else {
+                assert_eq!(measured.status, GelBandSizingStatus::Interpolated);
+                assert_eq!(measured.reference_band_ids.len(), 2);
+                let size = measured.estimated_size.unwrap();
+                assert!(size.is_finite() && (100.0..=5000.0).contains(&size));
+                if let Some(expected) = band["vendor_peak_bp"].as_f64() {
+                    assert!(
+                        (size - expected).abs() / expected <= tolerance,
+                        "{}: {} vs TapeStation {}",
+                        measured.band_id,
+                        size,
+                        expected
+                    );
+                    if band["role"] == "cross_ladder_check" {
+                        ladder_comparisons += 1;
+                    } else {
+                        sample_comparisons += 1;
+                    }
+                } else {
+                    missing_vendor += 1;
+                }
+            }
+        }
+        let saved = serde_json::to_vec(engine.state()).unwrap();
+        let mut reopened = GentleEngine::from_state(serde_json::from_slice(&saved).unwrap());
+        let inspected = execute_shell_command(
+            &mut reopened,
+            &parse_shell_tokens(&[
+                "gel-image".into(),
+                "inspect".into(),
+                request.report_id.clone(),
+            ])
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            inspected.output["result"]["gel_image_analysis"],
+            serde_json::to_value(&report).unwrap()
+        );
+        let svg_path = directory
+            .path()
+            .join(format!("{} evidence.svg", request.report_id));
+        reopened
+            .apply(Operation::ExportGelImageAnalysis {
+                request: GelImageExportRequest {
+                    report_id: request.report_id,
+                    path: svg_path.to_str().unwrap().into(),
+                    format: GelImageExportFormat::Svg,
+                },
+            })
+            .unwrap();
+        let svg = std::fs::read_to_string(svg_path).unwrap();
+        assert!(svg.contains(&report.image.sha256));
+        assert!(svg.contains("No image warping"));
+        assert!(svg.contains("D5000"));
+        assert!(svg.contains("100-5000"));
+        if report.request.ladder.source.contains("Expired") {
+            assert!(svg.contains("Expired"));
+        }
+    }
+    assert_eq!(
+        (
+            sample_comparisons,
+            ladder_comparisons,
+            missing_vendor,
+            outside
+        ),
+        (13, 14, 15, 3)
+    );
+}
 
 fn synthetic_png() -> Vec<u8> {
     let mut pixels = image::GrayImage::from_pixel(160, 220, image::Luma([12]));
