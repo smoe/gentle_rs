@@ -39,6 +39,9 @@ impl GentleEngine {
         result: &mut OpResult,
     ) -> Result<(), EngineError> {
         match op {
+            Operation::GelWorkbench { request } => {
+                self.apply_gel_workbench(*request, result)?;
+            }
             Operation::SaveGelImageDraft { request } => {
                 let image = self
                     .state
@@ -115,13 +118,7 @@ impl GentleEngine {
                     &bytes,
                     request.tiff_page,
                 )?;
-                let retained_bytes = self
-                    .state
-                    .gel_images
-                    .images
-                    .values()
-                    .map(|image| image.descriptor.byte_count)
-                    .fold(0usize, usize::saturating_add);
+                let retained_bytes = self.gel_retained_source_bytes();
                 if retained_bytes.saturating_add(bytes.len()) > 128 * 1024 * 1024 {
                     return Err(EngineError::invalid_input(
                         "This initial self-contained gel store is limited to 128 MiB of original images per project",

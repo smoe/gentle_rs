@@ -85,6 +85,8 @@ pub mod feature_record_curation;
 pub mod gc_contents;
 /// Local measured-gel image import and deterministic manual band sizing.
 pub mod gel_image;
+/// Engine-owned measured profiles, band proposals and cross-gel comparisons.
+pub mod gel_workbench;
 /// Catalog-extensible gene-group knowledge records and validation helpers.
 pub mod gene_groups;
 /// Manifest-driven HTML and print publication bundles for reusable gene sets.

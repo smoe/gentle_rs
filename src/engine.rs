@@ -1276,6 +1276,8 @@ mod feature_coordinate_formulas;
 mod feature_expert_ops;
 #[path = "engine/io/gel_images.rs"]
 mod gel_images;
+#[path = "engine/io/gel_workbench.rs"]
+mod gel_workbench;
 #[path = "engine/analysis/gene_sets.rs"]
 mod gene_sets;
 #[path = "engine/io/genome_tracks.rs"]
@@ -3274,6 +3276,10 @@ pub enum Operation {
     },
     ImportGelImage {
         request: gentle_protocol::gel_image::GelImageImportRequest,
+    },
+    /// Persist or inspect provenance-bound measured profiles through one shared contract.
+    GelWorkbench {
+        request: Box<gentle_protocol::gel_workbench::GelWorkbenchRequest>,
     },
     AnalyzeGelImage {
         request: Box<gentle_protocol::gel_image::GelImageAnalysisRequest>,
@@ -10146,6 +10152,11 @@ impl GentleEngine {
     }
 
     fn operation_checkpoint_kind(op: &Operation) -> Option<EngineHistoryCheckpointKind> {
+        if let Operation::GelWorkbench { request } = op {
+            return request
+                .mutates()
+                .then_some(EngineHistoryCheckpointKind::Full);
+        }
         if matches!(op, Operation::SaveGelImageDraft { .. }) {
             return Some(EngineHistoryCheckpointKind::GelDraftsOnly);
         }

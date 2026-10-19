@@ -2,10 +2,14 @@
 
 The manual editor is included in the published `.10` source tag (`6fedd4de`
 and `76ac480a`). Its release inclusion does not establish real-image or native
-performance acceptance. `.11` follow-up is acceptance and verified ladder
-catalogs; automatic peak detection remains deferred.
+performance acceptance. Follow-ups include independent acceptance and verified
+ladder catalogs; proposed automatic marks must still be reviewed.
 Manual calibration is available in a point-and-click editor and through the
-same shared engine/Shell contract. Automatic band detection is not yet available.
+same shared engine/Shell contract. The development [gel workbench](gel_workbench.md)
+adds reviewable automatic band proposals, PDF-source extraction, saved profiles,
+QQ/shape comparisons, signed algebra and before/after PDF reports. Targeted local
+Rust and static PDF checks pass; native GUI/platform/scientific acceptance is
+separate (see the workbench's exact verification scope).
 
 ## What Is Measured
 
@@ -240,13 +244,15 @@ quantification, a native GUI verdict, or an independent biological validation.
 
 ### Distribution Comparison And Lane Algebra
 
-These are not implemented by the size-only editor. The PDFs' region summaries
+These are separate from the size-only editor's calibration contract. The new
+[workbench](gel_workbench.md) stores explicit profiles and comparisons, but does
+not turn the existing PDFs' region summaries into full distributions. Those summaries
 use different before/after windows, so they cannot supply a quantitative cleanup
 effect or full distribution. Targeted priming and physical length enrichment
 must remain separate. A combined-minus-manufacturer brightness subtraction from
 the processed gel is not a calibrated custom-primer contribution.
 
-The [proposed measured-profile plan](gel_lane_profile_comparison_plan.md)
+The [measured-profile plan](gel_lane_profile_comparison_plan.md)
 starts from exported numerical electropherograms, retains axis/units/normalization
 and sample provenance, and separates overlays, distribution measures and signed
 algebra. It records the correct cell-line pairings and the currently encrypted
@@ -257,7 +263,7 @@ gene-specific enrichment result is implied while those inputs are pending.
 
 1. Verified ladder catalogs and richer editable lane geometry; human native-window
    walkthrough across platforms. Current sizing requires explicit ladder values.
-2. Editable peak suggestions, saturation/smear quality checks and finer-grained
+2. Independent peak-proposal acceptance, saturation/smear quality checks and finer-grained
    worker progress; expanded semantic controls for a full automated GUI tutorial.
 3. Reviewed rotation/crop and two-sided ladder corrections; explicitly registered
    Western marker exposures; optional restricted-range log-linear fitting.
@@ -265,8 +271,8 @@ gene-specific enrichment result is implied while those inputs are pending.
    TapeStation regression, with provenance and no molecular identity claims.
 5. Glen's image-size/memory/repaint audits and human wet-lab acceptance, plus
    richer image/report inventory and readiness discovery for the inner agent.
-6. Shared measured-profile import, cleanup distributions and explicit lane
-   algebra under the [separate input-bound plan](gel_lane_profile_comparison_plan.md).
+6. Native/platform acceptance of the [locally checked profile workbench](gel_workbench.md#verification-boundary),
+   actual vendor trace export admission and standalone residual-profile PDF pages.
 
 Densitometry, concentration estimates and automatic ladder identification remain
 separate later capabilities, not hidden interpretations of this size report.

@@ -16,6 +16,8 @@ pub mod feature_location_edit;
 pub mod feature_record_curation;
 /// Portable measured-gel images, manual calibration requests, and sizing reports.
 pub mod gel_image;
+/// Measured-gel trace provenance, band proposals and cross-gel comparisons.
+pub mod gel_workbench;
 pub mod gene_groups;
 pub mod gene_set_publication;
 pub mod gene_sets;
@@ -5658,6 +5660,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "RenderLineageSvg",
     "RenderPoolGelSvg",
     "ImportGelImage",
+    "GelWorkbench",
     "AnalyzeGelImage",
     "SaveGelImageDraft",
     "ComputeTssTfbsProfiles",
@@ -7525,7 +7528,7 @@ fn infer_command_mutation(path: &str, operations: &[String]) -> CapabilityMutati
 fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
     if matches!(
         operation,
-        "ComputeTssTfbsProfiles" | "ExportTssTfbsProfiles"
+        "ComputeTssTfbsProfiles" | "ExportTssTfbsProfiles" | "GelWorkbench"
     ) || operation.starts_with("Fetch")
         || operation.starts_with("PrepareGenome")
         || operation.starts_with("PrepareCutRun")

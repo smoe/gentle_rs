@@ -511,3 +511,658 @@ fn gel_image_editor_menu_shell_and_window_inventory_share_one_target() {
         .is_err()
     );
 }
+
+fn detection_result(
+    shared: &Arc<RwLock<GentleEngine>>,
+    editor: &mut GelImageEditor,
+) -> GelJobResult {
+    // Reuses the synthetic two-lane image above, not a vendor reference.
+    editor.workbench.detection_lanes = editor
+        .draft
+        .as_ref()
+        .unwrap()
+        .lanes
+        .iter()
+        .map(|lane| lane.id.clone())
+        .collect();
+    editor.save_draft(shared);
+    let request = editor.detection_request().unwrap();
+    assert_eq!(
+        request.lanes.len(),
+        1,
+        "ladder is excluded even if selected"
+    );
+    assert_ne!(
+        request.lanes[0].id,
+        editor.draft.as_ref().unwrap().ladder.lane_id
+    );
+    let result = execute_job(
+        shared,
+        GelJob::Detect {
+            request,
+            draft: Box::new(editor.draft.clone().unwrap()),
+        },
+    )
+    .unwrap();
+    assert!(
+        result.detached.is_none(),
+        "detection must not commit a read-only engine"
+    );
+    assert!(
+        !result
+            .suggestions
+            .as_ref()
+            .unwrap()
+            .suggestions
+            .bands
+            .is_empty()
+    );
+    result
+}
+
+#[test]
+fn gel_workbench_pending_suggestions_require_exact_draft_and_request_identity() {
+    for case in [
+        "draft",
+        "detector",
+        "selection",
+        "stored_draft",
+        "cancel",
+        "project",
+    ] {
+        let (shared, mut editor) = fixture();
+        let ctx = egui::Context::default();
+        editor.poll(&shared, &ctx);
+        let result = detection_result(&shared, &mut editor);
+        let original_count = editor.draft.as_ref().unwrap().sample_bands.len();
+        pending_result(&mut editor, result);
+        match case {
+            "draft" => {
+                editor.draft.as_mut().unwrap().sample_bands[0].label = "Edited while pending".into()
+            }
+            "detector" => editor.workbench.prominence = 0.2,
+            "selection" => editor.workbench.detection_lanes.clear(),
+            "stored_draft" => {
+                let mut draft = editor.draft.clone().unwrap();
+                draft.lanes[1].label = "External draft edit".into();
+                shared
+                    .write()
+                    .unwrap()
+                    .apply(Operation::SaveGelImageDraft {
+                        request: Arc::new(draft),
+                    })
+                    .unwrap();
+            }
+            "cancel" => editor.canceled = true,
+            _ => {}
+        }
+        if case == "project" {
+            editor.poll(&Arc::new(RwLock::new(GentleEngine::new())), &ctx);
+        } else {
+            editor.poll(&shared, &ctx);
+        }
+        assert!(editor.workbench.pending.is_none(), "{case}");
+        assert_eq!(
+            shared.read().unwrap().state().gel_images.drafts["gel"]
+                .sample_bands
+                .len(),
+            original_count,
+            "{case}"
+        );
+    }
+}
+
+#[test]
+fn gel_workbench_reviewed_proposals_append_only_explicit_sample_marks() {
+    let (shared, mut editor) = fixture();
+    let ctx = egui::Context::default();
+    editor.poll(&shared, &ctx);
+    let result = detection_result(&shared, &mut editor);
+    let ladder = editor.draft.as_ref().unwrap().ladder.clone();
+    let count = editor.draft.as_ref().unwrap().sample_bands.len();
+    let revision = shared.read().unwrap().mutation_revision();
+    pending_result(&mut editor, result);
+    editor.poll(&shared, &ctx);
+    assert_eq!(shared.read().unwrap().mutation_revision(), revision);
+    assert_eq!(
+        editor.draft.as_ref().unwrap().sample_bands.len(),
+        count,
+        "polling proposals must not accept them"
+    );
+    editor.accept_suggestions(&shared);
+    assert_eq!(
+        editor.draft.as_ref().unwrap().sample_bands.len(),
+        count,
+        "no selection means no acceptance"
+    );
+    let pending = editor.workbench.pending.as_ref().unwrap();
+    editor
+        .workbench
+        .selected_suggestions
+        .insert(pending.suggestions.bands[0].id.clone());
+    editor.accept_suggestions(&shared);
+    let draft = editor.draft.as_ref().unwrap();
+    assert_eq!(draft.ladder, ladder);
+    assert_eq!(draft.sample_bands.len(), count + 1);
+    assert!(
+        draft
+            .sample_bands
+            .iter()
+            .all(|band| band.lane_id != ladder.lane_id)
+    );
+    assert_eq!(
+        &*shared.read().unwrap().state().gel_images.drafts["gel"],
+        draft
+    );
+    assert!(editor.workbench.pending.is_none());
+    assert!(
+        shared
+            .read()
+            .unwrap()
+            .state()
+            .gel_images
+            .analyses
+            .is_empty(),
+        "accepted drafts are not sizing reports"
+    );
+}
+
+#[test]
+fn gel_workbench_suggestions_cannot_be_accepted_after_review_target_changes() {
+    for change_detector in [false, true] {
+        let (shared, mut editor) = fixture();
+        let ctx = egui::Context::default();
+        editor.poll(&shared, &ctx);
+        let result = detection_result(&shared, &mut editor);
+        pending_result(&mut editor, result);
+        editor.poll(&shared, &ctx);
+        let pending = editor.workbench.pending.as_ref().unwrap();
+        editor
+            .workbench
+            .selected_suggestions
+            .insert(pending.suggestions.bands[0].id.clone());
+        let saved = shared.read().unwrap().state().gel_images.drafts["gel"].clone();
+        let revision = shared.read().unwrap().mutation_revision();
+        if change_detector {
+            editor.workbench.dark_bands = !editor.workbench.dark_bands;
+        } else {
+            editor.draft.as_mut().unwrap().lanes[1].max.x -= 1.0;
+        }
+        editor.accept_suggestions(&shared);
+        assert_eq!(shared.read().unwrap().mutation_revision(), revision);
+        assert!(Arc::ptr_eq(
+            &saved,
+            &shared.read().unwrap().state().gel_images.drafts["gel"]
+        ));
+        assert!(editor.workbench.pending.is_none());
+    }
+}
+
+#[test]
+fn gel_workbench_empty_inventory_disables_dependent_actions_without_an_image() {
+    let inventory = workbench::Inventory::default();
+    let mut editor = GelImageEditor::default();
+    assert!(editor.detection_request().is_none());
+    assert!(editor.workbench.compare_request(&inventory).is_none());
+    assert!(editor.workbench.extraction_request(&inventory).is_none());
+    assert!(editor.workbench.algebra_request(&inventory).is_none());
+    assert!(editor.workbench.export_request(&inventory).is_none());
+    editor.workbench.left = "missing".into();
+    editor.workbench.right = "also_missing".into();
+    editor.workbench.export_analyses.push("missing".into());
+    assert!(editor.workbench.compare_request(&inventory).is_none());
+    assert!(editor.workbench.export_request(&inventory).is_none());
+    let shared = Arc::new(RwLock::new(GentleEngine::new()));
+    let revision = shared.read().unwrap().mutation_revision();
+    let ctx = egui::Context::default();
+    let mut output = ctx.run_ui(egui::RawInput::default(), |ui| editor.contents(ui, &shared));
+    output.textures_delta.clear();
+    assert!(editor.job.is_none());
+    assert_eq!(shared.read().unwrap().mutation_revision(), revision);
+}
+
+// Hand-crafted integrated-bin profiles, recreated here. They model no real
+// instrument or biology and exercise only GUI request/result plumbing.
+fn numeric_profile(id: &str, run: &str, hash_digit: char, weights: [f64; 2]) -> GelProfile {
+    GelProfile {
+        id: id.into(),
+        label: format!("Synthetic {id}"),
+        run_id: run.into(),
+        lane_id: "lane_2".into(),
+        source_sha256: hash_digit.to_string().repeat(64),
+        evidence_kind: GelEvidenceKind::VendorTrace,
+        size_kind: GelSizeKind::LinearDnaBp,
+        signal_units: "synthetic integrated signal".into(),
+        edges: vec![100.0, 200.0, 400.0],
+        weights: weights.into_iter().map(Some).collect(),
+        measure: "synthetic_integrated_bins_v1".into(),
+        processing: vec!["Hand-crafted GUI test bins".into()],
+        warnings: vec![],
+    }
+}
+
+fn import_numeric_pair(
+    shared: &Arc<RwLock<GentleEngine>>,
+    editor: &mut GelImageEditor,
+    ctx: &egui::Context,
+) {
+    for profile in [
+        numeric_profile("left", "before_run", 'a', [2.0, 6.0]),
+        numeric_profile("right", "after_run", 'b', [4.0, 1.0]),
+    ] {
+        let result = execute_job(
+            shared,
+            GelJob::Workbench(GelWorkbenchRequest::ImportProfile { profile }),
+        )
+        .unwrap();
+        assert!(result.detached.is_some());
+        pending_result(editor, result);
+        editor.poll(shared, ctx);
+    }
+    editor.workbench.left = "left".into();
+    editor.workbench.right = "right".into();
+    editor.workbench.range = [100.0, 400.0];
+}
+
+#[test]
+fn gel_workbench_cross_run_comparison_is_saved_and_idle_frames_do_not_rescore() {
+    let shared = Arc::new(RwLock::new(GentleEngine::new()));
+    let ctx = egui::Context::default();
+    let mut editor = GelImageEditor {
+        help: false,
+        ..Default::default()
+    };
+    import_numeric_pair(&shared, &mut editor, &ctx);
+    assert!(
+        editor.image.is_none(),
+        "numeric-only projects must not need an image texture"
+    );
+    let inventory = workbench::Inventory {
+        analyses: BTreeMap::new(),
+        store: shared.read().unwrap().state().gel_images.workbench.clone(),
+    };
+    let request = editor.workbench.compare_request(&inventory).unwrap();
+    let result = execute_job(&shared, GelJob::Workbench(request)).unwrap();
+    assert!(
+        shared
+            .read()
+            .unwrap()
+            .state()
+            .gel_images
+            .workbench
+            .comparisons
+            .is_empty()
+    );
+    pending_result(&mut editor, result);
+    editor.poll(&shared, &ctx);
+    let report = shared
+        .read()
+        .unwrap()
+        .state()
+        .gel_images
+        .workbench
+        .comparisons["comparison_1"]
+        .clone();
+    assert_eq!(report.left.run_id, "before_run");
+    assert_eq!(report.right.run_id, "after_run");
+    assert_ne!(report.left.source_sha256, report.right.source_sha256);
+    assert!(report.p_value.is_none());
+    let revision = shared.read().unwrap().mutation_revision();
+    let history = shared.read().unwrap().operation_log().len();
+    editor.workbench.range = [1.0, 2.0];
+    editor.workbench.left.clear();
+    for _ in 0..3 {
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    Pos2::ZERO,
+                    egui::vec2(1200.0, 1400.0),
+                )),
+                ..Default::default()
+            },
+            |ui| editor.contents(ui, &shared),
+        );
+        output.textures_delta.clear();
+        assert!(editor.job.is_none());
+    }
+    assert!(Arc::ptr_eq(
+        &report,
+        &shared
+            .read()
+            .unwrap()
+            .state()
+            .gel_images
+            .workbench
+            .comparisons["comparison_1"]
+    ));
+    assert_eq!(shared.read().unwrap().mutation_revision(), revision);
+    assert_eq!(shared.read().unwrap().operation_log().len(), history);
+    assert_eq!(report.request.range, [100.0, 400.0]);
+}
+
+#[test]
+fn gel_workbench_signed_algebra_uses_explicit_unclipped_coefficients() {
+    let shared = Arc::new(RwLock::new(GentleEngine::new()));
+    let ctx = egui::Context::default();
+    let mut editor = GelImageEditor::default();
+    import_numeric_pair(&shared, &mut editor, &ctx);
+    editor.workbench.coefficients = [1.0, -2.0];
+    let inventory = workbench::Inventory {
+        analyses: BTreeMap::new(),
+        store: shared.read().unwrap().state().gel_images.workbench.clone(),
+    };
+    let request = editor.workbench.algebra_request(&inventory).unwrap();
+    let GelWorkbenchRequest::Algebra(algebra) = &request else {
+        panic!("typed algebra");
+    };
+    assert_eq!(algebra.terms[0].coefficient, 1.0);
+    assert_eq!(algebra.terms[1].coefficient, -2.0);
+    let result = execute_job(&shared, GelJob::Workbench(request)).unwrap();
+    pending_result(&mut editor, result);
+    editor.poll(&shared, &ctx);
+    let store = shared.read().unwrap().state().gel_images.workbench.clone();
+    let output = &store.profiles["residual_1"];
+    assert_eq!(output.weights, vec![Some(-6.0), Some(4.0)]);
+    assert_eq!(output.evidence_kind, GelEvidenceKind::SignedResidual);
+    editor.workbench.left = output.id.clone();
+    assert!(
+        editor
+            .workbench
+            .compare_request(&workbench::Inventory {
+                analyses: BTreeMap::new(),
+                store
+            })
+            .is_none()
+    );
+}
+
+#[test]
+fn gel_workbench_extraction_binds_saved_calibration_lane_run_and_background() {
+    let (shared, mut editor) = fixture();
+    let ctx = egui::Context::default();
+    editor.poll(&shared, &ctx);
+    let mut analysis = editor.draft.clone().unwrap();
+    analysis.report_id = "calibration".into();
+    let result = execute_job(&shared, GelJob::Analyze(analysis)).unwrap();
+    pending_result(&mut editor, result);
+    editor.poll(&shared, &ctx);
+    let report = shared.read().unwrap().state().gel_images.analyses["calibration"].clone();
+    let inventory = workbench::Inventory {
+        analyses: [("calibration".into(), report.clone())]
+            .into_iter()
+            .collect(),
+        ..Default::default()
+    };
+    editor.workbench.analysis_id = "calibration".into();
+    editor.workbench.lane_id = report.request.ladder.lane_id.clone();
+    editor.workbench.run_id = "Explicit run label".into();
+    editor.workbench.background = 0.1;
+    assert!(
+        editor.workbench.extraction_request(&inventory).is_none(),
+        "ladder is not a sample profile"
+    );
+    editor.workbench.lane_id = report.request.lanes[1].id.clone();
+    editor.draft.as_mut().unwrap().migration = GelMigrationDirection::Left;
+    let request = editor.workbench.extraction_request(&inventory).unwrap();
+    let GelWorkbenchRequest::ExtractProfile(extract) = &request else {
+        panic!("typed extraction");
+    };
+    assert_eq!(extract.analysis_id, "calibration");
+    assert_eq!(extract.run_id, "Explicit run label");
+    assert!(!extract.dark_bands);
+    assert_eq!(extract.background, 0.1);
+    assert!(extract.masked_ranges.is_empty());
+    let result = execute_job(&shared, GelJob::Workbench(request)).unwrap();
+    assert!(result.detached.is_some());
+    let profile = result.workbench.as_ref().unwrap().profile.as_ref().unwrap();
+    assert_eq!(profile.evidence_kind, GelEvidenceKind::ImageDisplay);
+    assert_eq!(profile.lane_id, report.request.lanes[1].id);
+    assert!(profile.weights.iter().flatten().any(|w| *w > 0.0));
+    pending_result(&mut editor, result);
+    editor.poll(&shared, &ctx);
+    assert!(
+        shared
+            .read()
+            .unwrap()
+            .state()
+            .gel_images
+            .workbench
+            .profiles
+            .contains_key("profile_1")
+    );
+}
+
+#[test]
+fn gel_workbench_mutating_jobs_reject_stale_and_canceled_results() {
+    for canceled in [false, true] {
+        let shared = Arc::new(RwLock::new(GentleEngine::new()));
+        let ctx = egui::Context::default();
+        let mut editor = GelImageEditor::default();
+        editor.poll(&shared, &ctx);
+        let result = execute_job(
+            &shared,
+            GelJob::Workbench(GelWorkbenchRequest::ImportProfile {
+                profile: numeric_profile("pending", "synthetic run", 'a', [2.0, 6.0]),
+            }),
+        )
+        .unwrap();
+        pending_result(&mut editor, result);
+        if canceled {
+            editor.canceled = true;
+        } else {
+            shared
+                .write()
+                .unwrap()
+                .apply(Operation::CreateSequenceFromText {
+                    sequence_text: "ACGT".into(),
+                    output_id: Some("concurrent".into()),
+                    name: None,
+                    circular: false,
+                })
+                .unwrap();
+        }
+        editor.poll(&shared, &ctx);
+        assert!(
+            shared
+                .read()
+                .unwrap()
+                .state()
+                .gel_images
+                .workbench
+                .profiles
+                .is_empty()
+        );
+    }
+}
+
+#[test]
+fn gel_workbench_export_is_external_and_preserves_explicit_analysis_order() {
+    let (shared, editor) = fixture();
+    let mut analysis = editor.draft.clone().unwrap();
+    analysis.report_id = "a_before".into();
+    let first = execute_job(&shared, GelJob::Analyze(analysis.clone()))
+        .unwrap()
+        .report
+        .unwrap();
+    analysis.report_id = "z_after".into();
+    let second = execute_job(&shared, GelJob::Analyze(analysis))
+        .unwrap()
+        .report
+        .unwrap();
+    let inventory = workbench::Inventory {
+        analyses: [("a_before".into(), first), ("z_after".into(), second)]
+            .into_iter()
+            .collect(),
+        ..Default::default()
+    };
+    let mut state = WorkbenchUi::default();
+    state.export_analyses = vec!["z_after".into(), "a_before".into()];
+    let request = state.export_request(&inventory).unwrap();
+    let GelWorkbenchRequest::Export(export) = &request else {
+        panic!("typed PDF export");
+    };
+    assert_eq!(export.analysis_ids, ["z_after", "a_before"]);
+    assert!(!request.mutates());
+    assert!(GelJob::Workbench(request).is_external_export());
+    assert!(
+        GelJob::Export(GelImageExportRequest {
+            report_id: "a_before".into(),
+            path: "unused.json".into(),
+            format: GelImageExportFormat::Json,
+        })
+        .is_external_export()
+    );
+    assert!(!GelJob::Workbench(GelWorkbenchRequest::Inspect {}).is_external_export());
+    state.export_analyses.push("removed_report".into());
+    assert!(state.export_request(&inventory).is_none());
+}
+
+#[test]
+fn gel_workbench_export_job_tracking_cannot_offer_cancellation_or_commit() {
+    let shared = Arc::new(RwLock::new(GentleEngine::new()));
+    let revision = shared.read().unwrap().mutation_revision();
+    let ctx = egui::Context::default();
+    let mut editor = GelImageEditor::default();
+    // Invalid suffix stops before rendering or writing; this tests dispatch
+    // classification without requiring a native PDF renderer or a file dialog.
+    editor.start(
+        &shared,
+        &ctx,
+        GelJob::Workbench(GelWorkbenchRequest::Export(GelWorkbenchExportRequest {
+            path: "not-a-pdf.txt".into(),
+            analysis_ids: vec![],
+            comparison_ids: vec![],
+            title: "Synthetic export".into(),
+        })),
+    );
+    assert!(editor.export_running);
+    assert!(editor.job.is_some());
+    assert!(!editor.canceled);
+    assert_eq!(shared.read().unwrap().mutation_revision(), revision);
+    pending_result(
+        &mut editor,
+        GelJobResult {
+            detached: None,
+            preview: None,
+            report: None,
+            source: None,
+            suggestions: None,
+            workbench: Some(Box::new(GelWorkbenchResult {
+                exported_sha256: Some("a".repeat(64)),
+                ..Default::default()
+            })),
+            message: "Synthetic external-export receipt; no file produced".into(),
+        },
+    );
+    editor.poll(&shared, &ctx);
+    assert!(!editor.export_running);
+    assert!(editor.status.contains("no project commit"));
+    assert_eq!(shared.read().unwrap().mutation_revision(), revision);
+}
+
+#[test]
+fn gel_workbench_qq_coordinates_use_saved_size_values_and_upward_right_axis() {
+    let rect = egui::Rect::from_min_size(egui::pos2(10.0, 20.0), egui::vec2(200.0, 200.0));
+    let range = [100.0, 500.0];
+    assert_eq!(
+        workbench::qq_position(rect, range, 100.0, 100.0),
+        Some(rect.left_bottom())
+    );
+    assert_eq!(
+        workbench::qq_position(rect, range, 500.0, 500.0),
+        Some(rect.right_top())
+    );
+    assert_eq!(
+        workbench::qq_position(rect, range, 200.0, 400.0),
+        Some(egui::pos2(60.0, 70.0))
+    );
+    assert_eq!(
+        workbench::qq_position(rect, range, 300.0, 300.0),
+        Some(rect.center())
+    );
+    for (bounds, left, right) in [
+        (range, f64::NAN, 200.0),
+        (range, 200.0, 501.0),
+        (range, 99.0, 200.0),
+        ([500.0, 100.0], 200.0, 300.0),
+    ] {
+        assert!(
+            workbench::qq_position(rect, bounds, left, right).is_none(),
+            "no clipping into the plot"
+        );
+    }
+}
+
+#[test]
+fn gel_workbench_native_import_requires_pdf_object_and_thumbnail_opt_in() {
+    let mut request = GelWorkbenchRequest::ImportSource(GelSourceImportRequest {
+        image_id: "source".into(),
+        path: "synthetic.pdf".into(),
+        pdf_object: None,
+        allow_native_thumbnail: false,
+    });
+    assert!(
+        workbench::prepare_file_request(&mut request)
+            .unwrap_err()
+            .contains("explicit PDF")
+    );
+    let GelWorkbenchRequest::ImportSource(source) = &mut request else {
+        unreachable!()
+    };
+    source.pdf_object = Some(17);
+    assert!(workbench::prepare_file_request(&mut request).is_ok());
+    let GelWorkbenchRequest::ImportSource(source) = &mut request else {
+        unreachable!()
+    };
+    source.path = "synthetic.D5000".into();
+    assert!(
+        workbench::prepare_file_request(&mut request)
+            .unwrap_err()
+            .contains("Encrypted numerical")
+    );
+    let GelWorkbenchRequest::ImportSource(source) = &mut request else {
+        unreachable!()
+    };
+    source.allow_native_thumbnail = true;
+    assert!(workbench::prepare_file_request(&mut request).is_ok());
+}
+
+#[test]
+fn gel_workbench_numeric_file_request_roundtrips_without_guessing_integration() {
+    let request = GelWorkbenchRequest::ImportProfileFile(GelProfileFileRequest {
+        path: "synthetic bins.csv".into(),
+        profile_id: "bins".into(),
+        label: "Synthetic bins".into(),
+        run_id: "run_a".into(),
+        lane_id: "lane_2".into(),
+        size_kind: GelSizeKind::LinearDnaBp,
+        signal_units: "synthetic signal".into(),
+        measure: "caller_declared_integrated_bins".into(),
+    });
+    let json = serde_json::to_string(&request).unwrap();
+    assert!(json.contains("import_profile_file"));
+    let mut parsed = serde_json::from_str::<GelWorkbenchRequest>(&json).unwrap();
+    assert_eq!(request, parsed);
+    assert!(parsed.mutates());
+    assert!(workbench::prepare_file_request(&mut parsed).is_ok());
+}
+
+#[test]
+fn gel_workbench_removed_image_preview_is_not_adopted() {
+    let (shared, mut editor) = fixture();
+    let ctx = egui::Context::default();
+    editor.poll(&shared, &ctx);
+    let result = execute_job(&shared, GelJob::Preview(editor.image.clone().unwrap())).unwrap();
+    shared
+        .write()
+        .unwrap()
+        .state_mut()
+        .gel_images
+        .images
+        .remove("gel");
+    pending_result(&mut editor, result);
+    editor.poll(&shared, &ctx);
+    assert!(editor.image.is_none());
+    assert!(editor.texture.is_none());
+    assert!(editor.status.contains("stale preview"));
+}

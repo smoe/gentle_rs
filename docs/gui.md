@@ -158,8 +158,14 @@ until reanalysis. Results include a calibration plot and JSON/TSV/SVG exports.
 See [the walkthrough and limitations](gel_image_analysis.md#graphical-walkthrough).
 Image loading and analysis run in background workers; canceled or stale mutation
 results do not commit. Existing virtual gel previews remain simulations.
-Automatic detection, native responsiveness and real-gel acceptance remain pending;
-this development is not a `.10` release requirement.
+The [development workbench](gel_workbench.md) additionally exposes PDF/native
+preview import, reviewable band proposals, stored profiles from selected sample
+lanes, cross-gel selectors, QQ/shape summaries, explicit signed combinations
+and saved before/after PDF reports. These use the shared engine in background
+workers; [test scope and evidence](gel_workbench.md#verification-boundary) stay
+separate from pending native responsiveness and real-gel acceptance. Numerical
+`.D5000` decoding is unsupported; a native thumbnail is
+display-only. This development is not an added `.13` release requirement.
 
 
 ## What To Trust Today

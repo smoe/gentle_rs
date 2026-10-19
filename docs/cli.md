@@ -368,8 +368,9 @@ The following routes share typed engine operations with GUI Shell and MCP `op`:
 - `gel-image analyze REQUEST_JSON_OR_@FILE`
 - `gel-image inspect REPORT_ID`
 - `gel-image export REQUEST_JSON_OR_@FILE`
+- `gel-image workbench REQUEST_JSON_OR_@FILE`
 
-They size manually confirmed bands in bp or apparent kDa, not band
+The original five routes size manually confirmed bands in bp or apparent kDa, not band
 intensity or concentration. See [measured-gel sizing](gel_image_analysis.md)
 for requests, original-image retention, calibration limits and exports.
 `save-draft` retains incomplete `GelImageAnalysisRequest` assignments without
@@ -381,6 +382,13 @@ Introspection describes these routes and their confirmation requirements.
 Only validated analyses contribute `report.exists` (`gel_image_analysis`);
 imported images and saved drafts are not sizing reports. Report readiness is
 advisory: execution still validates the original image hash and calibration.
+
+The [development workbench](gel_workbench.md) adds typed `action` requests for
+PDF extraction/explicit native thumbnails, read-only band proposals, persisted
+image/numeric profiles, QQ/KS-distance/Wasserstein comparisons, signed linear
+algebra and saved before/after PDF/JSON export. It does not decode encrypted
+`.D5000` detector data, infer concentration from images or supply pixel-based
+significance p-values. Every command also works in GUI Shell and MCP `op`.
 
 
 TATA-box evidence is available through

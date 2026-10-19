@@ -460,6 +460,20 @@ Out-of-range rows have a typed status and null size, not an extrapolated value.
 Optional localization bounds are not statistical or total-calibration intervals.
 See [the full contract and request example](gel_image_analysis.md).
 
+`GelWorkbench { request: GelWorkbenchRequest }` adds an `action`-tagged shared
+request from `gentle_protocol::gel_workbench`. `import_source`, `import_profile`,
+`import_profile_file`, `extract_profile`, `compare` and `algebra` persist immutable
+records under the default-empty `gel_images.workbench`; ordinary project history
+and serialization apply. `detect_bands` and `inspect` are read-only, while
+`export` writes a new PDF/JSON without a project edit and is classified as an
+external side effect. Discovery conservatively requires confirmation for the
+mixed-action operation; no approval bypass is added. Results are returned in
+`OpResult.gel_workbench`. Legacy image-analysis v1 semantics are unchanged.
+Profiles retain integrated-bin weights, explicit null gaps, original source
+digest and evidence/measure/units. Comparisons freeze both full profiles and
+the explicit common-support range. Signed residuals do not define probability
+distributions; `p_value` remains null. See [the contract, examples and limits](gel_workbench.md).
+
 
 ## TATA-Box Evidence
 

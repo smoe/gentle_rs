@@ -16998,6 +16998,11 @@ fn parse_gel_image_command(tokens: &[String]) -> Result<ShellCommand, String> {
     };
     let payload = tokens.get(2..).unwrap_or_default().join(" ");
     let operation = match tokens.get(1).map(String::as_str) {
+        Some("workbench") => Operation::GelWorkbench {
+            request: Box::new(parse_required_json_payload::<gentle_protocol::gel_workbench::GelWorkbenchRequest>(
+                &payload, "gel-image workbench",
+            )?),
+        },
         Some("import") => Operation::ImportGelImage {
             request: parse_required_json_payload::<GelImageImportRequest>(
                 &payload,
@@ -17025,7 +17030,7 @@ fn parse_gel_image_command(tokens: &[String]) -> Result<ShellCommand, String> {
             report_id: tokens[2].clone(),
         },
         _ => return Err(
-            "gel-image requires import|save-draft|analyze|export REQUEST_JSON_OR_@FILE or inspect REPORT_ID"
+            "gel-image requires import|save-draft|analyze|export|workbench REQUEST_JSON_OR_@FILE or inspect REPORT_ID"
                 .into(),
         ),
     };
@@ -21176,6 +21181,17 @@ fn genomic_region_capability_descriptor(
 
 fn gel_image_capability_descriptor(id: &str) -> Value {
     match id {
+        "gel-image workbench" | "GelWorkbench" => {
+            return json!({
+                "id": id, "kind": "operation", "mutating": "external", "requires_confirmation": true,
+                "args": [{"name":"REQUEST_JSON_OR_@FILE","required":true,"subject_kind":"other",
+                    "detail":"GelWorkbenchRequest: import_source, detect_bands, import_profile, extract_profile, compare, algebra, inspect or export"}],
+                "reads": [], "effects": [{"effect_kind":"may_on_success","description":"Persist source-bound profiles/comparisons or explicitly export a new PDF/JSON; detection and inspection are read-only."}],
+                "precondition_expr":{"all":[]}, "annotation_status":"fact_annotated",
+                "description":"Measured-gel workbench: review image band proposals, compare compatible profiles with QQ/KS-distance/Wasserstein, preserve signed algebra and export saved before/after evidence. No independent-fragment p-value or biological identity claim.",
+                "registry":registry_metadata_for_introspection(id)
+            });
+        }
         "gel-image inspect" | "InspectGelImageAnalysis" => {
             return report_show_operation_descriptor(
                 id,
@@ -21669,6 +21685,8 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         tata_capability_descriptor("MaterializeTataBoxFeatures", true),
         gel_image_capability_descriptor("gel-image import"),
         gel_image_capability_descriptor("ImportGelImage"),
+        gel_image_capability_descriptor("gel-image workbench"),
+        gel_image_capability_descriptor("GelWorkbench"),
         gel_image_capability_descriptor("gel-image save-draft"),
         gel_image_capability_descriptor("SaveGelImageDraft"),
         gel_image_capability_descriptor("gel-image analyze"),
@@ -65870,6 +65888,7 @@ fn execute_op_command(
     if matches!(
         &op,
         Operation::ImportGelImage { .. }
+            | Operation::GelWorkbench { .. }
             | Operation::PlanDnaSequenceDesign { .. }
             | Operation::SaveGelImageDraft { .. }
             | Operation::AnalyzeGelImage { .. }
@@ -65887,7 +65906,7 @@ fn execute_op_command(
             Operation::ImportGelImage { .. }
                 | Operation::AnalyzeGelImage { .. }
                 | Operation::SaveGelImageDraft { .. }
-        );
+        ) || matches!(&op, Operation::GelWorkbench { request } if request.mutates());
         let result = if matches!(
             &op,
             Operation::ComputeTssTfbsProfiles { .. }

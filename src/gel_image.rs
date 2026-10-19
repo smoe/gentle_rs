@@ -13,7 +13,7 @@ use image::{ImageFormat, ImageReader, Limits};
 use crate::digest_utils::sha256_hex_bytes;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 pub const MAX_GEL_IMAGE_BYTES: usize = 16 * 1024 * 1024;
 pub const MAX_GEL_IMAGE_PIXELS: u64 = 32 * 1024 * 1024;
@@ -91,9 +91,27 @@ pub fn import_gel_image_bytes(
         .decode()
         .map_err(|error| EngineError::invalid_input(format!("Cannot decode gel image: {error}")))?;
     let mut preview = Cursor::new(Vec::new());
-    decoded
-        .thumbnail(1600, 1600)
-        .to_rgb8()
+    let alpha_composited = match &decoded {
+        image::DynamicImage::ImageLumaA8(p) => p.pixels().any(|p| p.0[1] != u8::MAX),
+        image::DynamicImage::ImageLumaA16(p) => p.pixels().any(|p| p.0[1] != u16::MAX),
+        image::DynamicImage::ImageRgba8(p) => p.pixels().any(|p| p.0[3] != u8::MAX),
+        image::DynamicImage::ImageRgba16(p) => p.pixels().any(|p| p.0[3] != u16::MAX),
+        image::DynamicImage::ImageRgba32F(p) => p.pixels().any(|p| p.0[3] != 1.0),
+        _ => false,
+    };
+    let thumbnail = decoded.thumbnail(1600, 1600);
+    let preview_pixels = if alpha_composited {
+        // PDF soft masks and transparent rasters must look like the white-alpha
+        // display diagnostic, not reveal otherwise invisible stored RGB values.
+        let top = thumbnail.to_rgba8();
+        let mut white =
+            image::RgbaImage::from_pixel(top.width(), top.height(), image::Rgba([255; 4]));
+        image::imageops::overlay(&mut white, &top, 0, 0);
+        image::DynamicImage::ImageRgba8(white).to_rgb8()
+    } else {
+        thumbnail.to_rgb8()
+    };
+    preview_pixels
         .write_to(&mut preview, ImageFormat::Png)
         .map_err(|error| EngineError::internal(format!("Cannot create gel preview: {error}")))?;
     let mut warnings = vec![
@@ -107,6 +125,9 @@ pub fn import_gel_image_bytes(
     }
     if format == ImageFormat::Tiff {
         warnings.push("Only explicitly selected TIFF page 0 is analyzed; other pages/exposures are not combined.".into());
+    }
+    if alpha_composited {
+        warnings.push("Display preview composites native transparency over white (alpha_white_v1); original pixels/alpha and sizing coordinates are unchanged.".into());
     }
     Ok(GelImageRecord {
         descriptor: GelImageDescriptor {
@@ -186,7 +207,7 @@ fn contains(lane: &GelImageLane, point: GelImagePoint) -> bool {
     point.x >= lane.min.x && point.x <= lane.max.x && point.y >= lane.min.y && point.y <= lane.max.y
 }
 
-fn interpolate(
+pub(crate) fn interpolate(
     bands: &[GelLadderBand],
     direction: GelMigrationDirection,
     coordinate: f64,
