@@ -6035,6 +6035,14 @@ Adapter-equivalence guarantee for UI-intent tools:
     Product/provider selection remains explicit; no template supplies defaults.
     Suggested actions are copy-only, and no new report schema, ranking,
     biological rule, readiness gate or submission route is introduced.
+  - MCP `protein_expression_handoff` delegates to this same shared command.
+    Optional `seq_id`, `provider`, `format` (`json|text`), `profile_scope`
+    (`effective`), `state_path`, inline `objective` and inline `requirements`
+    map directly to its operands; unknown fields and object-as-path strings
+    are refused. The structured result is this report, not a second schema.
+    Read-only execution never persists state or runs suggested actions. MCP
+    sees saved state, not unsaved GUI edits. Inner-agent guidance points to
+    the same report/inspector with no inferred product or default provider.
 - `planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]`
   - inspect one planning profile scope or merged effective profile
 - `planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]`

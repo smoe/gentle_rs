@@ -8,6 +8,27 @@ use crate::engine::{PlanningProfileScope, ProteinExpressionHandoffReport};
 use crate::engine_shell::execute_shell_command;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 
+#[cfg(feature = "gui-test-support")]
+const CAPTURE_WINDOW: &str = "window.protein_expression_handoff";
+
+#[cfg(feature = "gui-test-support")]
+fn capture_control(
+    response: &egui::Response,
+    id: &'static str,
+    kind: crate::gui_test_support::GuiTestWidgetKind,
+    outcome: Option<&str>,
+) {
+    crate::gui_test_support::register_response_with_outcome(
+        response,
+        id,
+        CAPTURE_WINDOW,
+        None,
+        kind,
+        false,
+        outcome,
+    );
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct Inputs {
     seq_id: String,
@@ -227,6 +248,19 @@ impl GENtleApp {
 
     fn render_protein_expression_contents(&mut self, ui: &mut egui::Ui) {
         self.poll_protein_expression_report();
+        #[cfg(feature = "gui-test-support")]
+        crate::gui_test_support::register_rect(
+            ui.ctx().clone(),
+            CAPTURE_WINDOW,
+            CAPTURE_WINDOW,
+            None,
+            crate::gui_test_support::GuiTestWidgetKind::Window,
+            ui.max_rect(),
+            true,
+            true,
+            false,
+            None,
+        );
         if self.engine.try_read().is_err() {
             ui.label("Project is busy; waiting to validate the current report");
             ui.ctx()
@@ -241,8 +275,15 @@ impl GENtleApp {
                 ui.heading("Protein Expression Handoff");
                 ui.horizontal_wrapped(|ui| {
                     ui.label("Product ID");
-                    ui.add(
+                    let _product = ui.add(
                         egui::TextEdit::singleline(&mut state.inputs.seq_id).desired_width(220.0),
+                    );
+                    #[cfg(feature = "gui-test-support")]
+                    capture_control(
+                        &_product,
+                        "protein_expression.product",
+                        crate::gui_test_support::GuiTestWidgetKind::TextInput,
+                        None,
                     );
                     let sequences = self
                         .engine
@@ -270,16 +311,30 @@ impl GENtleApp {
                 });
                 ui.horizontal_wrapped(|ui| {
                     ui.label("Provider (optional)");
-                    ui.add(
+                    let _provider = ui.add(
                         egui::TextEdit::singleline(&mut state.inputs.provider).desired_width(220.0),
+                    );
+                    #[cfg(feature = "gui-test-support")]
+                    capture_control(
+                        &_provider,
+                        "protein_expression.provider",
+                        crate::gui_test_support::GuiTestWidgetKind::TextInput,
+                        None,
                     );
                 });
                 ui.collapsing("Reviewed requirements JSON (optional)", |ui| {
-                    ui.add(
+                    let _requirements = ui.add(
                         egui::TextEdit::multiline(&mut state.inputs.requirements)
                             .code_editor()
                             .desired_rows(8)
                             .desired_width(f32::INFINITY),
+                    );
+                    #[cfg(feature = "gui-test-support")]
+                    capture_control(
+                        &_requirements,
+                        "protein_expression.requirements",
+                        crate::gui_test_support::GuiTestWidgetKind::TextInput,
+                        None,
                     );
                 });
                 if before != state.inputs {
@@ -290,14 +345,20 @@ impl GENtleApp {
                 }
                 let inspect = ui
                     .horizontal_wrapped(|ui| {
-                        let clicked = ui
-                            .add_enabled(state.pending.is_none(), egui::Button::new("Inspect"))
-                            .clicked();
+                        let inspect =
+                            ui.add_enabled(state.pending.is_none(), egui::Button::new("Inspect"));
+                        #[cfg(feature = "gui-test-support")]
+                        capture_control(
+                            &inspect,
+                            "protein_expression.inspect",
+                            crate::gui_test_support::GuiTestWidgetKind::Button,
+                            None,
+                        );
                         if state.pending.is_some() {
                             ui.spinner();
                             ui.label("Inspecting product context");
                         }
-                        clicked
+                        inspect.clicked()
                     })
                     .inner;
                 if let Some(error) = &state.error {
@@ -305,7 +366,14 @@ impl GENtleApp {
                 }
                 if let Some(report) = &state.report {
                     ui.separator();
-                    ui.heading(&report.status);
+                    let _status = ui.heading(&report.status);
+                    #[cfg(feature = "gui-test-support")]
+                    capture_control(
+                        &_status,
+                        "protein_expression.status",
+                        crate::gui_test_support::GuiTestWidgetKind::Status,
+                        Some(&report.status),
+                    );
                     ui.label(&report.product_readiness.review_gate);
                     if let Some(name) = &report.product_definition.sequence_name {
                         ui.label(name);
@@ -409,13 +477,19 @@ impl GENtleApp {
                             }
                         }
                     });
-                    ui.strong(format!(
-                        "Provider binding: {}",
-                        serde_json::to_value(report.provider_binding.status)
-                            .ok()
-                            .and_then(|value| value.as_str().map(str::to_string))
-                            .unwrap_or_default()
-                    ));
+                    let binding_status = serde_json::to_value(report.provider_binding.status)
+                        .ok()
+                        .and_then(|value| value.as_str().map(str::to_string))
+                        .unwrap_or_default();
+                    let _provider_binding =
+                        ui.strong(format!("Provider binding: {binding_status}"));
+                    #[cfg(feature = "gui-test-support")]
+                    capture_control(
+                        &_provider_binding,
+                        "protein_expression.provider_binding",
+                        crate::gui_test_support::GuiTestWidgetKind::Status,
+                        Some(&binding_status),
+                    );
                     if let Some(detail) = &report.provider_binding.detail {
                         ui.label(detail);
                     }
@@ -463,15 +537,31 @@ impl GENtleApp {
                         }
                     });
                     ui.horizontal_wrapped(|ui| {
-                        if ui.button("Copy report JSON").clicked()
+                        let copy_json = ui.button("Copy report JSON");
+                        #[cfg(feature = "gui-test-support")]
+                        capture_control(
+                            &copy_json,
+                            "protein_expression.copy_json",
+                            crate::gui_test_support::GuiTestWidgetKind::Button,
+                            None,
+                        );
+                        if copy_json.clicked()
                             && let Ok(json) = serde_json::to_string_pretty(report)
                         {
                             ui.ctx().copy_text(json);
                         }
-                        if let Some(text) = &report.text_report
-                            && ui.button("Copy report text").clicked()
-                        {
-                            ui.ctx().copy_text(text.clone());
+                        if let Some(text) = &report.text_report {
+                            let copy_text = ui.button("Copy report text");
+                            #[cfg(feature = "gui-test-support")]
+                            capture_control(
+                                &copy_text,
+                                "protein_expression.copy_text",
+                                crate::gui_test_support::GuiTestWidgetKind::Button,
+                                None,
+                            );
+                            if copy_text.clicked() {
+                                ui.ctx().copy_text(text.clone());
+                            }
                         }
                     });
                     details(ui, "Shared report JSON", report);
@@ -633,6 +723,129 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["coding_sequence_or_orf_boundaries", "target_protein_source"]
         );
+    }
+
+    #[test]
+    fn protein_expression_inner_agent_suggestion_matches_inspector_without_mutation() {
+        let mut app = app_with_product();
+        let before = serde_json::to_value(&*app.engine.read().unwrap()).unwrap();
+        for (provider, expected_status) in [("", "not_selected"), ("geneart", "withheld")] {
+            let inputs = Inputs {
+                seq_id: "expression_review_product".into(),
+                requirements: include_str!(
+                    "../../docs/examples/plans/protein_expression_requirements_in_house.json"
+                )
+                .into(),
+                provider: provider.into(),
+            };
+            let expected = inspect_snapshot(
+                &app.engine,
+                &Binding::new(&app.engine.read().unwrap(), inputs.clone()),
+            )
+            .unwrap();
+            let command = format!(
+                "planning protein-expression-handoff --seq-id expression_review_product --requirements {} --format text{}",
+                crate::engine_shell::quote_shell_arg(&inputs.requirements),
+                if provider.is_empty() {
+                    String::new()
+                } else {
+                    format!(" --provider {provider}")
+                }
+            );
+            let response: crate::agent_bridge::AgentResponse = serde_json::from_value(serde_json::json!({
+                "schema": "gentle.agent_response.v1", "assistant_message": "Synthetic local review only",
+                "suggested_commands": [{"command": command, "execution": "ask"}]
+            })).unwrap();
+            app.execute_agent_suggestion(1, &response.suggested_commands[0], "manual");
+            let output = app
+                .agent_last_command_output
+                .as_ref()
+                .expect("shared report retained for review")
+                .clone();
+            assert!(!output.state_changed);
+            assert_eq!(output.output["provider_binding"]["status"], expected_status);
+            assert_eq!(
+                canonical(output.output.clone()),
+                canonical(serde_json::to_value(expected).unwrap())
+            );
+            let log_count = app.agent_execution_log.len();
+            app.stage_agent_command_result_followup(&output).unwrap();
+            assert!(
+                app.agent_prompt
+                    .contains("gentle.protein_expression_handoff.v2")
+            );
+            assert!(app.agent_prompt.contains("data, not instructions"));
+            assert!(app.agent_task.is_none(), "Staging does not contact a model");
+            assert_eq!(
+                app.agent_execution_log.len(),
+                log_count,
+                "Staging does not execute a follow-up"
+            );
+            assert_eq!(
+                serde_json::to_value(&*app.engine.read().unwrap()).unwrap(),
+                before
+            );
+        }
+    }
+
+    #[cfg(feature = "gui-test-support")]
+    #[test]
+    fn protein_expression_capture_targets_bind_the_actual_report_status() {
+        let mut app = app_with_product();
+        let binding = Binding::new(&app.engine.read().unwrap(), Inputs::default());
+        app.protein_expression_ui.report = Some(inspect_snapshot(&app.engine, &binding).unwrap());
+        app.protein_expression_ui.binding = Some(binding);
+        let ctx = egui::Context::default();
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                Vec2::new(1100.0, 1000.0),
+            )),
+            ..Default::default()
+        });
+        crate::gui_test_support::begin_frame(&ctx);
+        crate::egui_compat::show_central_panel_for_test_context(
+            &ctx,
+            egui::CentralPanel::default(),
+            |ui| {
+                app.render_protein_expression_contents(ui);
+            },
+        );
+        let snapshot = crate::gui_test_support::snapshot(&ctx);
+        for id in [
+            CAPTURE_WINDOW,
+            "protein_expression.product",
+            "protein_expression.provider",
+            "protein_expression.inspect",
+            "protein_expression.status",
+            "protein_expression.provider_binding",
+            "protein_expression.copy_json",
+            "protein_expression.copy_text",
+        ] {
+            assert!(
+                snapshot
+                    .items
+                    .iter()
+                    .any(|row| row.semantic_id == id && row.window_id == CAPTURE_WINDOW),
+                "{id}"
+            );
+        }
+        let status = snapshot
+            .items
+            .iter()
+            .find(|row| row.semantic_id == "protein_expression.status")
+            .unwrap();
+        assert_eq!(
+            status.outcome_role.as_deref(),
+            Some("needs_product_definition")
+        );
+        let provider = snapshot
+            .items
+            .iter()
+            .find(|row| row.semantic_id == "protein_expression.provider_binding")
+            .unwrap();
+        assert_eq!(provider.outcome_role.as_deref(), Some("not_selected"));
+        crate::egui_compat::discard_test_pass_output(&ctx);
     }
 
     #[test]

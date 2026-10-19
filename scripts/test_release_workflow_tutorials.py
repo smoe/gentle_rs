@@ -65,6 +65,8 @@ def assert_manual_registration(test, root):
                             decimal_id=stem[:5].replace("-", "."),
                             review_status="unreviewed", review_issue_template="Tutorial confusion",
                             review_issue_template_path=".github/ISSUE_TEMPLATE/tutorial-confusion.md")
+            if source.get("graphics"):
+                expected["graphics"] = source["graphics"]
             test.assertEqual(row, expected)
             test.assertEqual(row["status"], "manual/hybrid")
             test.assertEqual(row["source"], "hand_written_markdown")

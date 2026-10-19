@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-10-18 - Keep the [active VKORC1 audit guidance](glen_audit_followups_20261008.md#prepared-vkorc1-next-actions-2026-10-15) bound to an explicitly approved published SHA and successful same-source normal CI; historical platform-filter passes do not select a new candidate or authorize dispatch. Verify the canonical parity repair, post-audit inspector and public TapeStation regression through current-source CI and the [remaining handoff](glen_next_verification_handoff.md#returned-results-and-remaining-request). Retain Glen's focused `394dd5d` results at their source; raw-gel/native/scientific checks stay separate. Preserve rack/tube and sequence-design follow-ups; carrier support stays undecided. Continue the [release-only cadence](decisions.md#development-and-release-verification-cadence) without interim freezes or repeated bundles. Full-suite/native/live-agent/scroll/package gates remain for release preparation; no local Rust/Claude, push, dispatch or historical-evidence rewrite; `.11` DMG stays deferred.
+Last session: 2026-10-19 - Verify the integrated parity repair and newer expression inspector/MCP/agent-command/locator paths through the [concise post-push Glen request](glen_parity_expression_followup_20261019.md); do not reissue completed `394dd5d` audits. Keep public TapeStation/native CI, [guarded VKORC1 audit preparation](glen_audit_followups_20261008.md#prepared-vkorc1-next-actions-2026-10-15) and historical source-bound evidence separate; no dispatch or new capture is requested here. The integrated tutorial images remain teaching evidence, not an accepted newer-source GUI run. Continue the [release-only cadence](decisions.md#development-and-release-verification-cadence) without interim freezes or repeated bundles. Carrier support stays undecided; full-suite/native/live-agent/scroll/package and scientific gates remain for release preparation. No local Rust/Claude, push, provider call, publication or paper/output/history edits; `.11` DMG stays deferred.
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in
@@ -175,10 +175,10 @@ Keep the next synthetic-biology bridge slices in this order:
    typed withholding, stale-result rejection and unchanged project/history.
    Glen/CI must execute authored Rust/CLI checks and native window review;
    offline source checks do not establish runtime or native acceptance.
-   Include all seven `protein_expression_inspector_` adapter regressions.
-   Preserve absent product/requirements as unanswered, not inferred defaults.
-   Keep actions copy-only; edits and close must discard stale worker results.
-   Check shared UI-intent registration and canonical tutorial/parity freshness.
+   Include the inspector, named MCP and inner-agent command parity regressions;
+   keep unanswered inputs, copy-only actions and stale/closed-worker rejection.
+   Review the four retained macOS 09.03 captures at `9f01098b`; retain integrated typed/snapshot evidence separately.
+   Check shared UI intents, semantic locators and canonical tutorial/parity freshness.
    Reporter sibling views and ranking remain separate follow-ups.
 2. Rank chassis, vector/tag
    routes, and provider candidates from structured biology, provider

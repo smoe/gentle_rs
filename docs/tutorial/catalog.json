@@ -522,10 +522,40 @@
         "protein_workflows",
         "synthetic_biology"
       ],
-      "notes": "Offline synthetic product and reviewed requirements to the shared read-only Protein Expression Handoff inspector and provider-neutral draft. GUI and CLI neutral, withheld and explicitly selected provider paths retain evidence, missing questions and human-review gates; no ordering or provider contact. Runtime/native acceptance remains pending.",
+      "notes": "Offline synthetic product and reviewed requirements to the shared read-only Protein Expression Handoff inspector and provider-neutral draft. GUI, CLI, named MCP and inner-agent command paths retain evidence, explicit selection, missing questions and review gates; no ordering or provider contact. Four real macOS teaching captures at 9f01098b are retained; integrated Rust/native parity acceptance remains pending.",
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/protein_expression_handoff_cli/missing_product.raw.png",
+          "caption": "A loaded project does not silently choose the product to express.",
+          "illustrates_step": 1,
+          "capture_date": "2026-10-18"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/protein_expression_handoff_cli/neutral_product.raw.png",
+          "caption": "Sequence evidence and reviewed requirements produce a neutral draft, not an expression-success prediction.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-18"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/protein_expression_handoff_cli/provider_withheld.raw.png",
+          "caption": "Naming a provider cannot override the reviewed in-house restriction.",
+          "illustrates_step": 4,
+          "capture_date": "2026-10-18"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_gui_acceptance/protein_expression_handoff_cli/provider_projected.raw.png",
+          "caption": "Local provider projection preserves the reviewed draft; the inspector does not submit or run the command.",
+          "illustrates_step": 5,
+          "capture_date": "2026-10-18"
+        }
+      ]
     },
     {
       "id": "simple_pcr_selection_gui",

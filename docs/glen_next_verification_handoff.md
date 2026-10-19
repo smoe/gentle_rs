@@ -1,9 +1,13 @@
 # Glen: Next Verification And Return
 
-Prepared 2026-10-18. Steffen should forward **this file after his push**.
-This is the current covering request, not a release freeze or a request to
-repeat all historical audits. Older linked prompts are background, not new
-execution authority. Continue development independently of these checks.
+Updated 2026-10-19: after his push, Steffen should forward the
+**[concise parity/expression follow-up](glen_parity_expression_followup_20261019.md)**.
+Only that message is active for this request. The execution checklists and
+earlier capture requests below are retained background, not renewed authority
+or a request to repeat completed checks. No release freeze is selected.
+
+The original covering request was prepared 2026-10-18. Its source-bound return
+and historical procedures follow; continue development independently.
 
 ## Returned Results And Remaining Request
 
@@ -38,8 +42,10 @@ from this checkout; preserve the primary checkout, shared caches and historical
 evidence. A later main commit does not invalidate this scoped report or require
 another synchronization request, but it is not automatically accepted by it.
 
-No push, workflow dispatch, tag, publication, provider contact, live model,
-new GUI capture or package/container build is requested. Existing normal CI
+No push, workflow dispatch, tag, release publication, provider contact, live model
+or package/container build is requested. The owner's follow-up additionally
+requests only the four synthetic inspector tutorial screenshots described below;
+no unrelated GUI/desktop/private-data capture is authorized. Existing normal CI
 can be inspected without restarting it. Keep `package-opt1-fallback` separate;
 the selected .13 packaging recipe remains opt2. Codex runs no local Rust.
 
@@ -110,6 +116,10 @@ the selected .13 packaging recipe remains opt2. Codex runs no local Rust.
    ```sh
    cargo test --locked --lib -j1 protein_expression_inspector_ -- --test-threads=1
    cargo test --locked -p gentle-shell -j1 ui_intent
+   cargo test --locked --lib -j1 mcp_server::protein_expression::tests:: -- --test-threads=1
+   cargo test --locked --lib -j1 protein_expression_inner_agent_suggestion_ -- --test-threads=1
+   cargo test --locked --lib -j1 protein_expression_agent_card_ -- --test-threads=1
+   cargo test --locked --lib --features gui-test-support -j1 protein_expression_capture_targets_ -- --test-threads=1
    ```
 
    Require all seven inspector regressions to execute. Verify shared-report
@@ -117,7 +127,18 @@ the selected .13 packaging recipe remains opt2. Codex runs no local Rust.
    stale/closed-worker rejection and unchanged project/history/files. Check
    canonical tutorial/catalog/parity freshness at this source; static metadata
    edits are not generator acceptance. Native window review stays at release
-   preparation, without new capture authority or provider/model contact here.
+   preparation. The later owner request additionally asks for the four
+   [09.03 screenshot checkpoints](tutorial/09-03_protein_expression_handoff_cli.md#required-tutorial-screenshots)
+   from a verified binary and clean synthetic profile. Four manual macOS PNGs
+   at `9f01098b` are now retained with binary/input/image hashes and limits in
+   the linked archive. They do not contain the uncompiled parity follow-up.
+   Review them; retain typed GUI reports and semantic snapshots at the integrated
+   candidate separately, without treating these images as automated acceptance.
+   No provider/model contact, unrelated capture or automatic capture is allowed.
+   Also execute the named MCP `protein_expression_handoff` discovery/report/
+   refusal regressions, the deterministic inner-agent command comparison and
+   the `gui-test-support` status/locator test. The new control card is guidance,
+   not evidence of a model's behavior; compare actual reports on saved state.
 
 4. **Merged rack safety and tube reference models:** verify the integrated
    `gentle_rs_2_main` commit `5b1da7d3981e7a2a4280cadc4b86b9345d82896c`.

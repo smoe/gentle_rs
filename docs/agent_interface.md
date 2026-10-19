@@ -483,6 +483,35 @@ Key properties:
   proposal-digest approval are separate gates; neither substitutes for the other.
 - UI-intent tools are currently non-mutating query/intent routes
 
+#### Protein Expression Handoff
+
+MCP `protein_expression_handoff` is a read-only wrapper of
+`planning protein-expression-handoff`, not a provider endpoint. Optional
+arguments are `state_path`, `seq_id`, inline object `objective`, inline object
+`requirements`, `provider`, `profile_scope` (`effective` only) and `format`
+(`json` or `text`, default `json`). Unknown fields and path/string operands for
+the JSON objects are refused; biological validation remains in the shared
+builder. The tool returns the same `gentle.protein_expression_handoff.v2` in
+`structuredContent`, without saving state, writing files or running the
+suggested preflight/quote commands. No `confirm` parameter is needed or accepted.
+
+Omitted product/requirements/provider inputs remain absent. Explicit provider
+selection still needs reviewed permission, catalog capability and usable product
+identity; refusal is the shared typed `provider_binding`, never a default vendor.
+The GUI inspector, direct CLI and inner-agent suggested commands use that same
+builder. The inner-agent control card directs users to the report and
+`ui open|focus|close protein-expression-handoff`, preserving draft/nonclaim and
+copy-only boundaries. This is deterministic command-path parity, not a live
+model-quality or wet-lab verdict.
+
+MCP reads the saved `state_path`; save the GUI project before comparing it to
+MCP. Unsaved GUI edits are not visible to the external agent. Compare the same
+inputs/format and exclude only `generated_at_unix_ms`; request `format: "text"`
+to compare the inspector's text-bearing report. The handoff is not expression
+readiness, predicted yield, provider acceptance, submission or order permission.
+Tutorial [09.03](tutorial/09-03_protein_expression_handoff_cli.md#interface-parity)
+contains request examples and the separately pending screenshot checkpoints.
+
 #### Primer reports and panel specificity
 
 `primer_reports` projects the shared primer report routes with a bounded
@@ -710,10 +739,6 @@ an agent has selected a deterministic operation.
 - `panels render-isoform-svg`
 - `panels validate-isoform`
 - `planning consult cloning`
-- `planning protein-expression-handoff` (shared shell/CLI only; v2 builds a
-  neutral draft. Optional `--provider PROVIDER` requires explicit permitted
-  catalog-supported binding before any provider preflight/quote suggestion.
-  It is not a new MCP tool or submission route.)
 - `planning objective clear`
 - `planning objective set`
 - `planning objective show`

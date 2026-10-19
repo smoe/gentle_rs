@@ -43,6 +43,7 @@ const MAX_MCP_JSON_DEPTH: usize = 96;
 const MCP_STDIO_STACK_SIZE: usize = 16 * 1024 * 1024;
 
 mod primer_tools;
+mod protein_expression;
 
 pub const DEFAULT_MCP_STATE_PATH: &str = ".gentle_state.json";
 
@@ -1270,6 +1271,7 @@ fn tool_list() -> Value {
     }
     if let Some(items) = tools.as_array_mut() {
         items.extend(primer_tools::descriptors());
+        items.push(protein_expression::descriptor());
     }
     project_mcp_tools_from_registry(&mut tools);
     if let Some(items) = tools.as_array_mut() {
@@ -1406,6 +1408,7 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
         "capabilities" => &["capabilities"],
         "state_summary" => &["state-summary"],
         "runtime_status" => &["introspect runtime"],
+        "protein_expression_handoff" => &["planning protein-expression-handoff"],
         "agent_systems" => &["agents list"],
         "agent_preflight" => &["agents preflight"],
         "agent_models" => &["agents discover-models"],
@@ -3739,6 +3742,9 @@ fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
             promoter_reporter_panel_materialize_tool_result(default_state_path, &params.arguments)
         }
         "agent_systems" => agent_systems_tool_result(default_state_path, &params.arguments),
+        "protein_expression_handoff" => {
+            protein_expression::call(default_state_path, &params.arguments)
+        }
         "agent_preflight" => agent_preflight_tool_result(default_state_path, &params.arguments),
         "agent_models" => agent_models_tool_result(default_state_path, &params.arguments),
         "agent_plan" => agent_plan_tool_result(default_state_path, &params.arguments),

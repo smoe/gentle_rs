@@ -1,5 +1,26 @@
 # GENtle Changelog
 
+## 2026-10-19 - Integrate Both Branches And Narrow Glen's Follow-Up
+
+- Merge `gentle_rs_2_main` at `03e1b800` and `gentle_rs_3` at `b3b3e8a9`
+  into main, preserving public TapeStation fixtures/regressions, guarded
+  VKORC1 preparation, expression MCP/agent alignment and retained teaching
+  captures. Both integrations are conflict-free; no new capture is performed.
+- Preserve the tube parity repair and newer expression registry projection.
+  Commit one concise post-push Glen request for canonical parity/catalog
+  freshness, seven inspector tests and the new MCP/agent/semantic-locator
+  paths. The old covering checklist becomes background; completed `394dd5d`
+  audits are not reissued and no model or native acceptance is inferred.
+- No local Rust, Claude invocation, push, dispatch, provider/model call,
+  package build or publication. Preserve `paper`, `output/`, other worktrees,
+  historical evidence and the separate opt1 fallback. External execution of
+  the integrated source remains pending, not an interim development freeze.
+- Integration checks: 35 focused source/fixture/audit-guard tests and 118
+  tutorial-checkout/release-policy tests pass, including LF/CRLF. Matrix row
+  totals, tube/MCP rows, handoff shell syntax/links, documentation status and
+  whitespace pass; roadmap remains 400 lines. Release-gate is four OK;
+  session-close has four OK, two expected worktree/scope warnings, no failures.
+
 ## 2026-10-18 - Reconcile VKORC1 Platform Evidence And Audit Preparation
 
 - Recheck run `38774813595` at `b2b6b30a` through the GitHub run/jobs API and
@@ -47,6 +68,35 @@
   including LF/CRLF. Retained-output composition, row totals, 42 local fragment
   links, documentation status and whitespace pass. Release-gate is four OK;
   session-close has four OK, two expected scope/worktree warnings, no failures.
+
+## 2026-10-18 - Protein Expression Interface Parity And Tutorial Screenshots
+
+- Expose named, read-only MCP `protein_expression_handoff` through the existing
+  shared command, with strict optional arguments and inline object payloads.
+  Register discovery/parity surfaces and remove its stale MCP exclusion; no
+  new biology, readiness rule, provider default or submission route is added.
+- Add an inner-agent control-card rule for the same report/inspector, explicit
+  product/provider choices, typed withholding and reviewed-result feedback.
+  Author MCP/shared-shell/GUI and deterministic inner-agent command comparisons;
+  source checks do not establish live-model behavior or native acceptance.
+- Add read-only semantic window/control/status locators for capture, preserving
+  copy-only actions and project state. Extend 09.03 with four-interface examples
+  and the required four synthetic screenshots, captions and provenance. Repair
+  stale tutorial text claiming the MCP tool/GUI inspector did not exist.
+- Retain four real window-only macOS captures from the owner-rebuilt GUI at
+  `9f01098b`, with exact binary/input/image hashes and an unchanged synthetic
+  project. Add image references/graphics metadata and a manual receipt with
+  explicit missing typed-report/snapshot evidence; no automated acceptance is
+  fabricated. The parity follow-up is not compiled into this binary.
+  No local Rust build/test/check, model/provider call, push or paused-goal
+  change is performed here.
+- Offline verification: 19 focused source/tutorial/publication tests and 71
+  checkout tests pass, including the real PNG/project bindings under LF/CRLF.
+  The visual archive checker passes for 67 tutorials. Whitespace is clean;
+  session-close has four OK, two expected worktree/scope warnings, no failure.
+  Canonical Rust generator/parity checks and the authored adapter tests remain
+  unexecuted locally; the captures establish neither integrated adapter parity
+  nor release/native scientific acceptance.
 
 ## 2026-10-18 - Give The GUI Manual A Guided Entry Point
 

@@ -5946,6 +5946,12 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
 
 const MCP_TOOL_NAMES: &[(&str, &str, &str, CapabilityMutation)] = &[
     (
+        "protein_expression_handoff",
+        "Protein Expression Handoff",
+        "Inspect the shared read-only protein-expression handoff; provider selection is explicit and never submits or orders.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
         "capabilities",
         "Capabilities",
         "Return shared GENtle engine capabilities.",
@@ -6230,6 +6236,7 @@ const MCP_TOOL_NAMES: &[(&str, &str, &str, CapabilityMutation)] = &[
 ];
 
 const MCP_PROMINENT_GLOSSARY_COMMAND_PATHS: &[&str] = &[
+    "planning protein-expression-handoff",
     "primers list-reports",
     "primers show-report",
     "primers export-report",

@@ -490,6 +490,13 @@ providers. Tutorial [09.03](tutorial/09-03_protein_expression_handoff_cli.md#gui
 provides synthetic neutral/withheld/projected checkpoints. Native GUI acceptance
 remains separate from source and unit checks.
 
+The named MCP `protein_expression_handoff` tool and inner-agent suggestions
+reach the same builder. MCP compares saved `state_path` only, so save GUI edits
+before comparing reports. Native tutorial screenshot capture remains pending;
+the inspector exposes window/control/status semantic IDs under
+`gui-test-support` for locating the actual rendered controls without injecting
+input or disclosing pasted requirements in the semantic snapshot.
+
 ## External Services Window
 
 Access:

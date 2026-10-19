@@ -1,0 +1,170 @@
+{
+  "schema": "gentle.manual_gui_tutorial_evidence.v1",
+  "status": "captured_not_accepted",
+  "capture_date": "2026-10-18",
+  "tutorial_id": "protein_expression_handoff_cli",
+  "automated_gui_acceptance": false,
+  "four_interface_runtime_parity_verified": false,
+  "inner_agent_invoked": false,
+  "provider_contact_performed": false,
+  "network_enforcement": "not sandbox-isolated; no provider/model action executed; empty credential environment",
+  "input_policy": "hand-crafted synthetic product and reviewed tutorial requirements only",
+  "producer": {
+    "revision": "9f01098b749c79fb5c9eccfcfb184bb085c63357",
+    "package_version": "0.1.0-internal.13",
+    "build_id": "1792287947606",
+    "gentle_gui_sha256": "2352feabdeea3d4924af55ad211119e4b43934bb26f21e84824d29a21df2e9d0",
+    "source_clean_at_build": "not independently attested",
+    "parity_followup_in_binary": false,
+    "starter_cli_revision": "1c5be3175323eec41359b980b5a41e22c7edaec1",
+    "starter_cli_sha256": "f38780893ca3ad2087ff4ee15224d4e70b17217ec9dd3cfec53ae94f89826561",
+    "host": "macOS 27.0.1 (26A434), arm64"
+  },
+  "capture": {
+    "method": "native window-only screencapture via screenshot skill take_screenshot.py",
+    "tool_script_sha256": "56eeabe2dac5d23915b9a0fb57a07431fad2d310c5444f60f71f09299899232b",
+    "window_title": "Protein Expression Handoff",
+    "app_bundle_name": "GENtleTutorial",
+    "logical_window_rect": [
+      270,
+      55,
+      900,
+      772
+    ],
+    "content_pixel_ratio": 2,
+    "native_shadow_retained": true,
+    "reencoded_or_annotated": false
+  },
+  "isolation": {
+    "fresh_home_xdg_tmp": true,
+    "environment": "env -i with explicit locale, asset and catalog roots",
+    "inherited_credentials": false,
+    "locale": "en_US.UTF-8",
+    "timezone": "UTC",
+    "launch_method": "temporary native app bundle executes the owner-built binary with --project"
+  },
+  "inputs": [
+    {
+      "path": "docs/examples/workflows/protein_expression_review_starter.json",
+      "observed_file_sha256": "cede1912b1d4344b58891a81e9e0fd267cb6289271548db670977c31948099a5",
+      "canonical_json_sha256": "0693f2778ad9c7267ea3589258d7bd8875dd24171605e38ea800da5d412cdbd2"
+    },
+    {
+      "path": "docs/examples/plans/protein_expression_requirements_in_house.json",
+      "observed_file_sha256": "e310bb4242d656ab7fbc52985b956606bcb5d67fb7a95e911b6ad5820a77211e",
+      "canonical_json_sha256": "b1e90db68ebbbbb1af40cfb71fe56023ba1c0f68b8ac96102039a5d19f037440"
+    },
+    {
+      "path": "docs/examples/plans/protein_expression_requirements_review_only.json",
+      "observed_file_sha256": "43ff18aa4948dfb6f38fd067e553d99b0296d62a11c173af25c453dc011b31b7",
+      "canonical_json_sha256": "1caba2bc84df1c7fe7bdce2ed3b15bb1acc43a801fde02d12a2a6e3ed61e8ad8"
+    }
+  ],
+  "project": {
+    "path": "synthetic.gentle.json",
+    "before_sha256": "45647b179371d60646ecdffe210d37a2a27ce3b7db4fe548076b13e945af5f48",
+    "after_sha256": "45647b179371d60646ecdffe210d37a2a27ce3b7db4fe548076b13e945af5f48",
+    "unchanged_at_last_capture": true,
+    "workflow_recreation_is_semantic_not_byte_identical": true
+  },
+  "captures": [
+    {
+      "id": "missing_product",
+      "illustrates_step": 1,
+      "raw_png": "missing_product.raw.png",
+      "raw_png_sha256": "600a7a319647428d30d48f0d629de270d9e01cf0914059bbf6f0b1000ee39618",
+      "png_dimensions_px": [
+        2024,
+        1768
+      ],
+      "captured_at_utc": "2026-10-18T18:23:01.430893+00:00",
+      "native_window_id": 454,
+      "request": {
+        "seq_id": null,
+        "provider": null,
+        "requirements_fixture": null
+      },
+      "observed_report_status": "needs_product_definition",
+      "observed_provider_binding": "not_selected",
+      "observation_method": "manual visual inspection; not a typed report verifier",
+      "semantic_snapshot": null,
+      "retained_report_json": null,
+      "image_transforms": []
+    },
+    {
+      "id": "neutral_product",
+      "illustrates_step": 3,
+      "raw_png": "neutral_product.raw.png",
+      "raw_png_sha256": "8bddd09b6d98a8b9a703f3ef506bd71aebfb901ba10208accf4a3c9e2c7c834b",
+      "png_dimensions_px": [
+        2024,
+        1768
+      ],
+      "captured_at_utc": "2026-10-18T18:23:43.253923+00:00",
+      "native_window_id": 454,
+      "request": {
+        "seq_id": "expression_review_product",
+        "provider": null,
+        "requirements_fixture": "in_house"
+      },
+      "observed_report_status": "whole_sequence_cds_candidate",
+      "observed_provider_binding": "not_selected",
+      "observation_method": "manual visual inspection; not a typed report verifier",
+      "semantic_snapshot": null,
+      "retained_report_json": null,
+      "image_transforms": []
+    },
+    {
+      "id": "provider_withheld",
+      "illustrates_step": 4,
+      "raw_png": "provider_withheld.raw.png",
+      "raw_png_sha256": "806bd0b35ce944bb837a744acc05300a9f6d36b5ca726d974da2e0ba286e9fe5",
+      "png_dimensions_px": [
+        2024,
+        1768
+      ],
+      "captured_at_utc": "2026-10-18T18:24:13.206078+00:00",
+      "native_window_id": 454,
+      "request": {
+        "seq_id": "expression_review_product",
+        "provider": "geneart",
+        "requirements_fixture": "in_house"
+      },
+      "observed_report_status": "whole_sequence_cds_candidate",
+      "observed_provider_binding": "withheld",
+      "observation_method": "manual visual inspection; not a typed report verifier",
+      "semantic_snapshot": null,
+      "retained_report_json": null,
+      "image_transforms": []
+    },
+    {
+      "id": "provider_projected",
+      "illustrates_step": 5,
+      "raw_png": "provider_projected.raw.png",
+      "raw_png_sha256": "7bf6416b27e2a201690e8e607cf1d9923da0f0fb130cd6dec29310a582b15b82",
+      "png_dimensions_px": [
+        2024,
+        1768
+      ],
+      "captured_at_utc": "2026-10-18T18:26:50.645717+00:00",
+      "native_window_id": 553,
+      "request": {
+        "seq_id": "expression_review_product",
+        "provider": "geneart",
+        "requirements_fixture": "review_only"
+      },
+      "observed_report_status": "whole_sequence_cds_candidate",
+      "observed_provider_binding": "projected",
+      "observation_method": "manual visual inspection; not a typed report verifier",
+      "semantic_snapshot": null,
+      "retained_report_json": null,
+      "image_transforms": []
+    }
+  ],
+  "remaining_checks": [
+    "Execute authored Rust and canonical parity/freshness tests in Glen/CI.",
+    "Compare the four shared-interface reports on saved state at one verified candidate.",
+    "Retain semantic snapshots and copied typed GUI reports for full acceptance.",
+    "Native Windows/Linux and live-model behavior were not tested."
+  ]
+}

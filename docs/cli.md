@@ -7887,6 +7887,11 @@ Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'pl
     use this `planning` command to obtain the actual report. The inspector runs
     the same report on a background snapshot, preserves explicit product/provider
     selection and exposes suggested commands for copying, not execution.
+  - External agents can call the named MCP `protein_expression_handoff` tool
+    with the same explicit inputs; `requirements`/`objective` are inline JSON
+    objects instead of `@FILE` operands. Save the project first when comparing
+    with MCP's `state_path`. The inner assistant proposes this shared command;
+    neither agent path selects a provider or runs follow-up actions implicitly.
 - `planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]`
   - Shows one profile scope or merged effective profile.
 - `planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]`

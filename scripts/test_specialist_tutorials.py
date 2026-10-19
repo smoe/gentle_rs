@@ -93,6 +93,111 @@ def fixture_abif_tag(tag, number=2):
 
 
 class SpecialistSourceTests(unittest.TestCase):
+    def test_expression_four_interface_routes_and_discovery_are_explicit(self):
+        transport = (ROOT / "src/mcp_server/protein_expression.rs").read_text(encoding="utf-8")
+        dispatcher = (ROOT / "src/mcp_server.rs").read_text(encoding="utf-8")
+        registry = (ROOT / "crates/gentle-protocol/src/lib.rs").read_text(encoding="utf-8")
+        agent = (ROOT / "src/agent_bridge.rs").read_text(encoding="utf-8")
+        for token in ("run_non_mutating_shell_tool", "deny_unknown_fields",
+                      '"additionalProperties": false', "value.is_object()",
+                      "protein_expression_handoff_mcp_and_inner_agent_match_shared_report_without_writes",
+                      "mcp_tool_call_for_capability_surface_tests", "fs::read(&state_path)"):
+            self.assertIn(token, transport)
+        self.assertIn("items.push(protein_expression::descriptor())", dispatcher)
+        self.assertIn("protein_expression::call(default_state_path, &params.arguments)", dispatcher)
+        self.assertIn('"protein_expression_handoff" => &["planning protein-expression-handoff"]', dispatcher)
+        self.assertIn('"protein_expression_handoff",', registry)
+        self.assertIn('"planning protein-expression-handoff",', registry)
+        self.assertIn("Protein-expression review:", agent)
+        self.assertIn("MCP protein_expression_handoff", agent)
+        self.assertIn("no inferred product or default provider", (ROOT / "docs/protocol.md").read_text())
+        inspector = (ROOT / "src/app/protein_expression_ui.rs").read_text()
+        self.assertIn("fn protein_expression_inner_agent_suggestion_matches_inspector_without_mutation", inspector)
+        ledger = (ROOT / "docs/agent_interface.md").read_text()
+        exclusions = ledger.split("#### Intentionally MCP-excluded shell commands", 1)[1]
+        exclusions = exclusions.split("### 4)", 1)[0]
+        self.assertNotIn("`planning protein-expression-handoff`", exclusions)
+        guide = (TUTORIALS / "09-03_protein_expression_handoff_cli.md").read_text()
+        for text in (guide, guide.replace("\n", "\r\n")):
+            for term in ("## Interface Parity", "structuredContent", "unsaved GUI edits",
+                         "exclude", "generated_at_unix_ms"):
+                self.assertIn(term, text)
+            examples = [json.loads(block) for block in re.findall(r"```json\r?\n(.*?)```", text, re.S)]
+            request = next(row for row in examples if row.get("name") == "protein_expression_handoff")
+            self.assertEqual(request["arguments"]["format"], "text")
+            self.assertNotIn("provider", request["arguments"])
+            refusal = next(row for row in examples if row.get("provider") == "geneart")
+            self.assertIs(refusal["requirements"]["outsourcing"]["allowed"], False)
+
+    def test_expression_screenshot_checkpoints_require_real_scoped_capture(self):
+        guide = (TUTORIALS / "09-03_protein_expression_handoff_cli.md").read_text()
+        inspector = (ROOT / "src/app/protein_expression_ui.rs").read_text()
+        for term in ("manual teaching captures", "raw PNG", "not a scientific oracle",
+                     "no full generic-runner", "starter/project hashes",
+                     "no retained semantic snapshot or typed GUI report JSON"):
+            # The locator paragraph says an observation is not a scientific
+            # oracle; keep whitespace-independent prose checks readable.
+            self.assertIn(term, " ".join(guide.split()))
+        for name in ("missing_product", "neutral_product", "provider_withheld", "provider_projected"):
+            self.assertIn(f"`{name}.raw.png`", guide)
+        for control in ("window.protein_expression_handoff", "protein_expression.product",
+                        "protein_expression.provider", "protein_expression.requirements",
+                        "protein_expression.inspect", "protein_expression.status",
+                        "protein_expression.provider_binding", "protein_expression.copy_json",
+                        "protein_expression.copy_text"):
+            self.assertIn(f'"{control}"', inspector)
+        self.assertIn("fn protein_expression_capture_targets_bind_the_actual_report_status", inspector)
+        self.assertNotIn("there is no dedicated expression tool or GUI", guide)
+        self.assertNotIn("natural next GUI slice", guide)
+
+    def test_expression_manual_captures_retain_exact_images_and_honest_limits(self):
+        source = read_json(TUTORIALS / "sources/09-03_protein_expression_handoff_cli.json")
+        folder = ROOT / "docs/screenshots/tutorial_gui_acceptance/protein_expression_handoff_cli"
+        evidence = read_json(folder / "evidence.json")
+        self.assertEqual(evidence["schema"], "gentle.manual_gui_tutorial_evidence.v1")
+        self.assertEqual(evidence["status"], "captured_not_accepted")
+        for flag in ("automated_gui_acceptance", "four_interface_runtime_parity_verified",
+                     "inner_agent_invoked", "provider_contact_performed"):
+            self.assertIs(evidence[flag], False)
+        self.assertEqual(evidence["producer"]["revision"], "9f01098b749c79fb5c9eccfcfb184bb085c63357")
+        self.assertIs(evidence["producer"]["parity_followup_in_binary"], False)
+        self.assertEqual(len(evidence["producer"]["gentle_gui_sha256"]), 64)
+        self.assertEqual(len(source["graphics"]), 4)
+        guide = (TUTORIALS / source["catalog"]["path"].split("/")[-1]).read_text()
+        catalog = read_json(TUTORIALS / "catalog.json")
+        entry = next(row for row in catalog["entries"] if row["id"] == source["id"])
+        self.assertEqual(entry["graphics"], source["graphics"])
+        for graphic, capture in zip(source["graphics"], evidence["captures"]):
+            path = ROOT / graphic["path"]
+            self.assertEqual(path, folder / capture["raw_png"])
+            self.assertIn(f"/{path.name})", guide)
+            self.assertEqual(graphic["capture_date"], evidence["capture_date"])
+            self.assertEqual(graphic["illustrates_step"], capture["illustrates_step"])
+            raw = path.read_bytes()
+            self.assertEqual(hashlib.sha256(raw).hexdigest(), capture["raw_png_sha256"])
+            self.assertEqual(raw[:8], b"\x89PNG\r\n\x1a\n")
+            self.assertEqual(list(struct.unpack(">II", raw[16:24])), capture["png_dimensions_px"])
+            self.assertGreaterEqual(min(capture["png_dimensions_px"]), 1000)
+            self.assertEqual(capture["image_transforms"], [])
+            self.assertIsNone(capture["semantic_snapshot"])
+            self.assertIsNone(capture["retained_report_json"])
+        self.assertEqual([row["observed_provider_binding"] for row in evidence["captures"]],
+                         ["not_selected", "not_selected", "withheld", "projected"])
+        project = evidence["project"]
+        raw = (folder / project["path"]).read_bytes()
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), project["before_sha256"])
+        self.assertEqual(project["before_sha256"], project["after_sha256"])
+        record = json.loads(raw)["sequences"]["expression_review_product"]["seq"]
+        self.assertEqual(bytes(record["seq"]).decode(), "ATGCACCACCACCACCACCACGCTTAA")
+        for item in evidence["inputs"]:
+            # Original byte hashes are historical; JSON content binding must
+            # survive CRLF checkouts of the unpinned source input documents.
+            text = (ROOT / item["path"]).read_text()
+            for candidate in (text, text.replace("\n", "\r\n")):
+                canonical = json.dumps(json.loads(candidate), sort_keys=True,
+                                       separators=(",", ":")).encode()
+                self.assertEqual(hashlib.sha256(canonical).hexdigest(), item["canonical_json_sha256"])
+
     def test_expression_inspector_tutorial_uses_shared_copy_only_report_contract(self):
         guide = (TUTORIALS / "09-03_protein_expression_handoff_cli.md").read_text(encoding="utf-8")
         inspector = (ROOT / "src/app/protein_expression_ui.rs").read_text(encoding="utf-8")

@@ -6500,7 +6500,8 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
-            "gui-menu"
+            "gui-menu",
+            "mcp"
          ],
          "path": "planning protein-expression-handoff",
          "summary": "Return a read-only provider-neutral protein-expression draft from product evidence and reviewed requirements; project provider actions only after explicit permitted catalog-supported selection.",
