@@ -7786,6 +7786,10 @@ Typed routine catalog command (`gentle_cli routines ...` or `gentle_cli shell 'r
   - Also includes planning-aware estimate rows:
     `estimated_time_hours`, `estimated_cost`, `local_fit_score`,
     `composite_meta_score`.
+    Additional axes expose hands-on/unattended/elapsed ranges, time basis and
+    stock-draw, missing-material purchasing proxy, machine and base costs.
+    Unknown ranges print `unknown`; a legacy scalar and step-model path have
+    different labelled bases, not like-for-like duration evidence.
   - `--seq-id` applies the same sequence-aware construct-reasoning preference
     context used by `routines list`.
 
@@ -7794,7 +7798,7 @@ Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'pl
 - Planning schemas:
   - `gentle.planning_profile.v1`
   - `gentle.planning_objective.v1`
-  - `gentle.planning_estimate.v1`
+  - `gentle.planning_estimate.v2` (output-only; profile/objective stay v1)
   - `gentle.planning_suggestion.v1`
   - `gentle.planning_sync_status.v1`
   - `gentle.planning_cloning_consultation.v1`
@@ -7817,6 +7821,24 @@ Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'pl
     scale/purification endpoint before any construct route is accepted.
   - `strategy_candidates[]` are one best routine per the 11 catalogued routine
     families; reporter handoffs are not treated as peer strategy families.
+  - Each candidate's estimate separates hands-on work, unattended work and
+    elapsed time as minimum/typical/maximum scenarios. Only
+    `restriction.digest_ligate_extract_sticky` has a synthetic bench-step
+    model. Other routines retain labelled legacy elapsed scalars, with all
+    three breakdown ranges unknown, not zero. The text report uses the same
+    labels as Routine Assistant; JSON retains dependencies and provenance.
+  - Cost is split into stock-drawn material value, one-unit missing-material
+    purchasing proxy, machine-run cost and routine-base cost. The four sum to
+    the retained total, with unknown/unpriced classes explicitly listed.
+    These are not package prices, orderable quotes or quantity-aware stock
+    accounting. Machine occupancy retains the old base-duration approximation.
+  - `routines list` exposes the same fields and full `planning_estimate`;
+    `routines explain restriction.digest_ligate_extract_sticky` shows each
+    step, delay and critical-path scenario. The model permits dependency-only
+    overlap, not staffing/resource scheduling; times are synthetic defaults,
+    not validated wet-lab performance or a completion date. See the
+    [estimate contract](protocol.md) and
+    [asset provenance](../assets/cloning_wetlab_steps.README.md).
   - `vector_candidates[]` use structured helper/vector catalog fields only;
     marker, promoter/expression, host-target, and MCS/site constraints remain
     explicit `missing_questions[]` until structured profile fields exist.

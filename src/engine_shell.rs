@@ -227,6 +227,8 @@ pub use gentle_shell::{
 // execution contracts stay in this file so GUI Shell and CLI shell keep one
 // visible behavior surface.
 mod command_parsers;
+mod planning_wetlab;
+pub(crate) use planning_wetlab::estimate_display_lines as planning_estimate_display_lines;
 mod protein_expression_service_draft;
 pub(crate) mod routine_bindings;
 mod tss_profiles;
@@ -4691,7 +4693,7 @@ fn estimate_routine_planning(
     objective: &PlanningObjective,
     routine: &CloningRoutineDefinition,
     routine_preference_context: &RoutinePreferenceContext,
-) -> PlanningEstimate {
+) -> Result<PlanningEstimate, String> {
     let profile = engine.planning_effective_profile();
     let material_classes = infer_routine_material_classes(routine);
     let machine_classes = infer_routine_machine_classes(routine);
@@ -4699,7 +4701,18 @@ fn estimate_routine_planning(
 
     let base_time_hours = default_routine_base_time_hours(routine);
     let mut estimated_time_hours = base_time_hours;
-    let mut estimated_cost = default_routine_base_cost(routine);
+    let routine_base_cost = default_routine_base_cost(routine);
+    let mut estimated_cost = routine_base_cost;
+    let mut stock_drawn_material_cost = 0.0;
+    let mut missing_material_purchase_proxy_cost = 0.0;
+    let mut machine_run_cost = 0.0;
+    let mut machine_queue_hours = 0.0;
+    let mut stock_drawn_material_classes = vec![];
+    let mut missing_material_proxy_classes = vec![];
+    let mut unpriced_material_classes = vec![];
+    let mut material_cost_rows = vec![];
+    let mut machine_cost_rows = vec![];
+    let mut unpriced_machine_classes = vec![];
     let procurement_default_days = if profile.procurement_business_days_default.is_finite()
         && profile.procurement_business_days_default > 0.0
     {
@@ -4713,12 +4726,28 @@ fn estimate_routine_planning(
     let mut procurement_delay_business_days = 0.0;
     for class in &material_classes {
         if let Some(item) = profile.inventory.get(class) {
-            if let Some(unit_cost) = item
+            let price = item
                 .unit_cost
-                .filter(|value| value.is_finite() && *value >= 0.0)
-            {
+                .filter(|value| value.is_finite() && *value >= 0.0);
+            if let Some(unit_cost) = price {
+                // Preserve the legacy total's material-then-machine addition order.
                 estimated_cost += unit_cost;
+                if item.available {
+                    stock_drawn_material_cost += unit_cost;
+                } else {
+                    missing_material_purchase_proxy_cost += unit_cost;
+                }
+            } else {
+                unpriced_material_classes.push(class.clone());
             }
+            if item.available {
+                stock_drawn_material_classes.push(class.clone());
+            } else {
+                missing_material_proxy_classes.push(class.clone());
+            }
+            material_cost_rows.push(json!({"class": class, "unit_cost": price,
+                "available": item.available,
+                "bucket": if item.available { "stock_drawn_material_cost" } else { "missing_material_purchase_proxy_cost" }}));
             if !item.available {
                 missing_materials.push(class.clone());
                 procurement_delay_business_days += item
@@ -4728,6 +4757,8 @@ fn estimate_routine_planning(
             }
         } else {
             unknown_materials.push(class.clone());
+            material_cost_rows
+                .push(json!({"class": class, "unit_cost": null, "bucket": "unknown"}));
         }
     }
 
@@ -4738,19 +4769,69 @@ fn estimate_routine_planning(
                 missing_machines.push(class.clone());
             }
             if machine.queue_business_days.is_finite() && machine.queue_business_days > 0.0 {
-                estimated_time_hours +=
-                    planning_business_days_to_elapsed_hours(machine.queue_business_days);
+                let queue = planning_business_days_to_elapsed_hours(machine.queue_business_days);
+                estimated_time_hours += queue;
+                machine_queue_hours += queue;
             }
-            if let Some(run_cost_per_hour) = machine
+            let rate = machine
                 .run_cost_per_hour
-                .filter(|value| value.is_finite() && *value >= 0.0)
-            {
-                estimated_cost += run_cost_per_hour * base_time_hours;
+                .filter(|value| value.is_finite() && *value >= 0.0);
+            if let Some(run_cost_per_hour) = rate {
+                let cost = run_cost_per_hour * base_time_hours;
+                estimated_cost += cost;
+                machine_run_cost += cost;
+            } else {
+                unpriced_machine_classes.push(class.clone());
             }
+            machine_cost_rows.push(json!({"class": class, "run_cost_per_hour": rate,
+                "basis_hours": base_time_hours, "cost": rate.map(|rate| rate * base_time_hours)}));
+        } else {
+            unpriced_machine_classes.push(class.clone());
+            machine_cost_rows.push(json!({"class": class, "run_cost_per_hour": null,
+                "basis_hours": base_time_hours, "cost": null}));
         }
     }
-    estimated_time_hours +=
+    let procurement_delay_hours =
         planning_business_days_to_elapsed_hours(procurement_delay_business_days);
+    estimated_time_hours += procurement_delay_hours;
+    let model = planning_wetlab::bundled()?.model(&routine.routine_id);
+    let schedule = model
+        .map(|model| model.schedule(machine_queue_hours + procurement_delay_hours))
+        .transpose()
+        .map_err(|err| err.to_string())?;
+    let hands_on_hours = schedule.as_ref().map(|row| row.hands_on);
+    let unattended_hours = schedule.as_ref().map(|row| row.unattended);
+    let elapsed_hours = schedule.as_ref().map(|row| row.elapsed);
+    let step_model = if model.is_some() {
+        crate::engine::PlanningStepModel::Present
+    } else {
+        crate::engine::PlanningStepModel::Absent
+    };
+    let estimated_time_hours_basis = if let Some(elapsed) = elapsed_hours {
+        estimated_time_hours = elapsed.typical;
+        crate::engine::PlanningTimeBasis::StepModelCriticalPath
+    } else {
+        crate::engine::PlanningTimeBasis::LegacyFamilyScalar
+    };
+    if !estimated_time_hours.is_finite() || !estimated_cost.is_finite() {
+        return Err(
+            json!({"code":"planning_estimate_overflow", "routine_id":routine.routine_id})
+                .to_string(),
+        );
+    }
+    let cost_assumptions = vec![
+        "Material costs are known-unit subtotals; missing prices are not evidence of zero cost.".into(),
+        "Package sizes, minimum order quantities, remaining aliquots and expiry are not modeled.".into(),
+        "The missing-material purchasing figure is a one-unit-per-class proxy, not a quotable price.".into(),
+        "The stock-draw figure is an aliquot-value estimate, not a replacement cost or quantity-aware consumption calculation.".into(),
+        "Classes absent from the profile contribute to neither material subtotal and remain unknown_material_classes.".into(),
+        "Machine cost retains the legacy base_time_hours occupancy approximation; routine base cost retains its legacy zero default.".into(),
+        "Unpriced machine classes contribute no charge to the known subtotal; this does not establish free instrument use.".into(),
+        "Shipping, tax, repeat allowances and currencies not explicitly supplied by the profile are not inferred.".into(),
+    ];
+    let critical_paths = schedule.as_ref().map(|row| json!({
+        "min": row.critical_paths[0], "typical": row.critical_paths[1], "max": row.critical_paths[2]
+    }));
 
     let capability_set = profile
         .capabilities
@@ -4803,39 +4884,79 @@ fn estimate_routine_planning(
         - (objective.weight_time * estimated_time_hours)
         - (objective.weight_cost * estimated_cost);
 
-    PlanningEstimate {
+    let schedule = schedule.map(|row| row.rows).unwrap_or_default();
+    let explanation = json!({
+        "step_catalog_schema": planning_wetlab::SCHEMA,
+        "step_model": step_model,
+        "estimated_time_hours_basis": estimated_time_hours_basis,
+        "critical_paths": critical_paths,
+        "step_schedule": schedule,
+        "time_assumptions": [
+            "Step durations are synthetic planning defaults, not measured or validated protocol times.",
+            "Each step's hands-on and unattended work is sequential; independent steps may overlap.",
+            "Minimum, typical and maximum paths are independent scenarios, not confidence intervals.",
+            "No staffing, shared-equipment capacity, holiday calendar or completion date is modeled.",
+            "Existing summed queue/procurement delays precede all bench steps; no procurement parallelism is inferred.",
+            "Unmodeled routines retain a non-decomposable legacy family/base scalar."
+        ],
+        "machine_queue_hours": machine_queue_hours,
+        "procurement_delay_hours": procurement_delay_hours,
+        "stock_drawn_material_classes": stock_drawn_material_classes,
+        "missing_material_proxy_classes": missing_material_proxy_classes,
+        "unpriced_material_classes": unpriced_material_classes,
+        "material_cost_rows": material_cost_rows,
+        "machine_cost_rows": machine_cost_rows,
+        "unpriced_machine_classes": unpriced_machine_classes,
+        "machine_run_cost_basis_hours": base_time_hours,
+        "currency": profile.currency,
+        "cost_coverage": if unknown_materials.is_empty() && unpriced_material_classes.is_empty() && unpriced_machine_classes.is_empty() { "known_unit_subtotals_only" } else { "incomplete_known_unit_subtotals" },
+        "cost_components": {
+            "routine_base_cost": routine_base_cost,
+            "stock_drawn_material_cost": stock_drawn_material_cost,
+            "missing_material_purchase_proxy_cost": missing_material_purchase_proxy_cost,
+            "machine_run_cost": machine_run_cost,
+            "estimated_cost": estimated_cost
+        },
+        "objective_schema": PLANNING_OBJECTIVE_SCHEMA,
+        "profile_schema": PLANNING_PROFILE_SCHEMA,
+        "base_time_hours": base_time_hours,
+        "base_cost": routine_base_cost,
+        "procurement_business_days_default": procurement_default_days,
+        "procurement_delay_business_days": procurement_delay_business_days,
+        "required_material_classes": material_classes,
+        "required_machine_classes": machine_classes,
+        "required_capabilities": required_capabilities,
+        "missing_material_classes": missing_materials,
+        "unknown_material_classes": unknown_materials,
+        "missing_machine_classes": missing_machines,
+        "missing_capabilities": missing_capabilities,
+        "routine_preference_context": routine_preference_context,
+        "routine_family_alignment_bonus": routine_family_alignment_bonus,
+        "routine_family_alignment_sources": routine_family_alignment_sources,
+        "weights": {"time": objective.weight_time, "cost": objective.weight_cost, "local_fit": objective.weight_local_fit},
+        "guardrails_enforced": objective.enforce_guardrails,
+    });
+    Ok(PlanningEstimate {
         schema: PLANNING_ESTIMATE_SCHEMA.to_string(),
         estimated_time_hours,
+        estimated_time_hours_basis,
+        hands_on_hours,
+        unattended_hours,
+        elapsed_hours,
+        step_model,
+        schedule,
         estimated_cost,
+        stock_drawn_material_cost,
+        missing_material_purchase_proxy_cost,
+        machine_run_cost,
+        routine_base_cost,
+        cost_assumptions,
         local_fit_score,
         composite_meta_score,
         passes_guardrails,
         guardrail_failures,
-        explanation: json!({
-            "objective_schema": PLANNING_OBJECTIVE_SCHEMA,
-            "profile_schema": PLANNING_PROFILE_SCHEMA,
-            "base_time_hours": base_time_hours,
-            "base_cost": default_routine_base_cost(routine),
-            "procurement_business_days_default": procurement_default_days,
-            "procurement_delay_business_days": procurement_delay_business_days,
-            "required_material_classes": material_classes,
-            "required_machine_classes": machine_classes,
-            "required_capabilities": required_capabilities,
-            "missing_material_classes": missing_materials,
-            "unknown_material_classes": unknown_materials,
-            "missing_machine_classes": missing_machines,
-            "missing_capabilities": missing_capabilities,
-            "routine_preference_context": routine_preference_context,
-            "routine_family_alignment_bonus": routine_family_alignment_bonus,
-            "routine_family_alignment_sources": routine_family_alignment_sources,
-            "weights": {
-                "time": objective.weight_time,
-                "cost": objective.weight_cost,
-                "local_fit": objective.weight_local_fit,
-            },
-            "guardrails_enforced": objective.enforce_guardrails,
-        }),
-    }
+        explanation,
+    })
 }
 
 fn resolve_workflow_template_bindings_for_preflight(
@@ -34372,14 +34493,17 @@ fn build_planning_cloning_consultation_text(report: &PlanningCloningConsultation
     lines.push("Top strategy candidates:".to_string());
     for candidate in report.strategy_candidates.iter().take(5) {
         lines.push(format!(
-            "{}. {} ({}) score {:.3}, time {:.1} h, cost {:.2}",
+            "{}. {} ({}) score {:.3}",
             candidate.rank,
             candidate.title,
             candidate.family,
-            candidate.estimate.composite_meta_score,
-            candidate.estimate.estimated_time_hours,
-            candidate.estimate.estimated_cost
+            candidate.estimate.composite_meta_score
         ));
+        lines.extend(
+            planning_estimate_display_lines(&candidate.estimate)
+                .into_iter()
+                .map(|line| format!("   {line}")),
+        );
     }
     lines.push(String::new());
     lines.push("Vector candidates:".to_string());
@@ -35141,7 +35265,7 @@ fn execute_planning_consult_cloning(
         if family.is_empty() || !expected_families.contains(&family) {
             continue;
         }
-        let estimate = estimate_routine_planning(engine, &objective, routine, &preference_context);
+        let estimate = estimate_routine_planning(engine, &objective, routine, &preference_context)?;
         let mut rationale = vec![format!(
             "Ranked with existing planning estimate meta-score ({:.3}).",
             estimate.composite_meta_score
@@ -57197,8 +57321,10 @@ fn execute_routines_command(
                         &planning_objective,
                         &routine,
                         &routine_preference_context,
-                    );
+                    )?;
                     let mut payload = serde_json::to_value(&routine).unwrap_or_else(|_| json!({}));
+                    let estimate_payload = serde_json::to_value(&estimate)
+                        .map_err(|err| format!("Could not serialize planning estimate: {err}"))?;
                     if let Some(obj) = payload.as_object_mut() {
                         obj.insert(
                             "estimated_time_hours".to_string(),
@@ -57213,14 +57339,25 @@ fn execute_routines_command(
                             "composite_meta_score".to_string(),
                             json!(estimate.composite_meta_score),
                         );
-                        obj.insert(
-                            "planning_estimate".to_string(),
-                            serde_json::to_value(&estimate).unwrap_or_else(|_| json!({})),
-                        );
+                        for field in [
+                            "hands_on_hours",
+                            "unattended_hours",
+                            "elapsed_hours",
+                            "estimated_time_hours_basis",
+                            "step_model",
+                            "stock_drawn_material_cost",
+                            "missing_material_purchase_proxy_cost",
+                            "machine_run_cost",
+                            "routine_base_cost",
+                            "cost_assumptions",
+                        ] {
+                            obj.insert(field.into(), estimate_payload[field].clone());
+                        }
+                        obj.insert("planning_estimate".to_string(), estimate_payload);
                     }
-                    (routine, estimate, payload)
+                    Ok((routine, estimate, payload))
                 })
-                .collect::<Vec<_>>();
+                .collect::<Result<Vec<_>, String>>()?;
             if planning_enabled {
                 planning_rows.sort_by(
                     |(left_routine, left_estimate, _), (right_routine, right_estimate, _)| {
@@ -57394,7 +57531,7 @@ fn execute_routines_command(
                 &planning_objective,
                 &routine,
                 &routine_preference_context,
-            );
+            )?;
 
             Ok(ShellRunResult {
                 state_changed: false,
@@ -57593,19 +57730,24 @@ fn execute_routines_command(
                 &planning_objective,
                 &left,
                 &routine_preference_context,
-            );
+            )?;
             let right_estimate = estimate_routine_planning(
                 engine,
                 &planning_objective,
                 &right,
                 &routine_preference_context,
-            );
+            )?;
             axis_rows.push(json!({
                 "axis": "estimated_time_hours",
                 "left": format!("{:.2}", left_estimate.estimated_time_hours),
                 "right": format!("{:.2}", right_estimate.estimated_time_hours),
+                "comparable": left_estimate.estimated_time_hours_basis == right_estimate.estimated_time_hours_basis,
                 "same": (left_estimate.estimated_time_hours - right_estimate.estimated_time_hours).abs() < 1e-9,
             }));
+            axis_rows.extend(planning_wetlab::comparison_axes(
+                &left_estimate,
+                &right_estimate,
+            ));
             axis_rows.push(json!({
                 "axis": "estimated_cost",
                 "left": format!("{:.2}", left_estimate.estimated_cost),

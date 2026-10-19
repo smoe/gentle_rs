@@ -16253,13 +16253,74 @@ pub struct PlanningObjective {
     pub enforce_guardrails: bool,
 }
 
+/// Independent minimum/typical/maximum planning scenarios, not probabilities.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct TimeRange {
+    pub min: f64,
+    pub typical: f64,
+    pub max: f64,
+}
+
+/// Whether a separately curated bench-step model exists for this routine.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanningStepModel {
+    Present,
+    #[default]
+    Absent,
+}
+
+/// The legacy scalar is not a decomposable bench-time measurement.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanningTimeBasis {
+    StepModelCriticalPath,
+    #[default]
+    LegacyFamilyScalar,
+}
+
+/// Origin of a bench allowance, never provenance for an in-silico macro step.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct PlanningBenchStepSource {
+    pub kind: String,
+    pub note: String,
+}
+
+/// Dependency-only schedule; ranges retain their separate scenario paths.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct ScheduledStep {
+    pub step_id: String,
+    pub label: String,
+    pub hands_on_hours: TimeRange,
+    pub unattended_hours: TimeRange,
+    pub earliest_start_hours: TimeRange,
+    pub earliest_finish_hours: TimeRange,
+    pub depends_on: Vec<String>,
+    pub source: PlanningBenchStepSource,
+}
+
+/// Output-only advisory estimate. Missing ranges remain unknown; cost buckets
+/// are priced-unit subtotals, not a complete material requirement or quote.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
-/// Deterministic estimate payload produced by planning evaluation.
 pub struct PlanningEstimate {
     pub schema: String,
     pub estimated_time_hours: f64,
+    pub estimated_time_hours_basis: PlanningTimeBasis,
+    pub hands_on_hours: Option<TimeRange>,
+    pub unattended_hours: Option<TimeRange>,
+    pub elapsed_hours: Option<TimeRange>,
+    pub step_model: PlanningStepModel,
+    pub schedule: Vec<ScheduledStep>,
     pub estimated_cost: f64,
+    pub stock_drawn_material_cost: f64,
+    pub missing_material_purchase_proxy_cost: f64,
+    pub machine_run_cost: f64,
+    pub routine_base_cost: f64,
+    pub cost_assumptions: Vec<String>,
     pub local_fit_score: f64,
     pub composite_meta_score: f64,
     pub passes_guardrails: bool,

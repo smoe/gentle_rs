@@ -1621,6 +1621,32 @@ unrelated DNA state; these edits advance mutation but not structural revision.
 Draft request allocations are shared across journal copies as well as project
 snapshots; the serialized contract remains ordinary self-contained JSON.
 
+## Advisory Cloning Time And Cost Boundaries
+
+Status: active
+
+Bench-planning allowances are separate from computational cloning macros.
+`gentle.cloning_wetlab_steps.v1` initially admits only hand-authored synthetic
+defaults for `restriction.digest_ligate_extract_sticky`, not laboratory
+measurements or enzyme-specific protocols. The output-only estimate v2 keeps
+unknown breakdowns as optional ranges; a missing model never means zero work.
+Other routines retain explicitly labelled legacy elapsed scalars.
+
+Hands-on and unattended work sum separately; elapsed minimum/typical/maximum
+scenarios use their own dependency-only critical paths. Existing summed queue
+and purchasing delays form a disclosed prefix. This is idealized concurrency,
+not staffing, equipment-capacity or calendar scheduling, and no success,
+yield or actual completion date follows. Invalid IDs, ranges and dependency
+cycles fail explicitly rather than dropping steps or fabricating a breakdown.
+
+The retained cost total preserves its old accumulation and is decomposed into
+routine base, stock-drawn material, missing-material purchasing proxy and
+machine run. Machine charges retain the legacy base-duration approximation.
+Material values are known-unit subtotals, not package/quantity-aware stock
+accounting or quotes. Unknown/unpriced classes remain visible and never
+establish zero cost. All surfaces consume the same estimate and explanation;
+ranking and guardrails remain advisory, not execution or purchase approval.
+
 ## Labware Reference And Resource Boundaries
 
 Status: active
