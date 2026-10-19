@@ -495,6 +495,12 @@ builder. The tool returns the same `gentle.protein_expression_handoff.v2` in
 `structuredContent`, without saving state, writing files or running the
 suggested preflight/quote commands. No `confirm` parameter is needed or accepted.
 
+`introspect capabilities` and `introspect all` expose this MCP tool as
+fact-annotated, with the same empty mandatory reads, effects and project
+preconditions as the shared inspection command. Its seven transport arguments
+remain optional; inline JSON and provider refusals are still validated during
+execution. Inspection readiness is not product or expression readiness.
+
 Omitted product/requirements/provider inputs remain absent. Explicit provider
 selection still needs reviewed permission, catalog capability and usable product
 identity; refusal is the shared typed `provider_binding`, never a default vendor.

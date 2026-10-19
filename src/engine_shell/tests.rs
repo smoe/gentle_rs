@@ -34726,6 +34726,53 @@ fn execute_introspect_primer_mcp_contracts_preserve_shared_semantics() {
 }
 
 #[test]
+fn execute_introspect_protein_expression_mcp_contract_preserves_shared_read_only_semantics() {
+    let mut engine = GentleEngine::default();
+    let before = serde_json::to_value(&engine).unwrap();
+    for route in ["introspect capabilities", "introspect all"] {
+        let command = parse_shell_line(route).unwrap();
+        let result = execute_shell_command(&mut engine, &command).unwrap();
+        assert!(!result.state_changed);
+        let payload = if route == "introspect all" {
+            &result.output["capabilities"]
+        } else {
+            &result.output
+        };
+        let capabilities = payload["capabilities"].as_array().unwrap();
+        let descriptor = |id: &str| capabilities.iter().find(|row| row["id"] == id).unwrap();
+        let mcp = descriptor("protein_expression_handoff");
+        let shared = descriptor("planning protein-expression-handoff");
+        assert_eq!(mcp["annotation_status"], "fact_annotated");
+        assert_eq!(mcp["registry"]["source"], "mcp_tool");
+        assert_eq!(mcp["mutating"], "false");
+        assert_eq!(mcp["requires_confirmation"], false);
+        for field in ["reads", "effects", "precondition_expr"] {
+            assert_eq!(mcp[field], shared[field], "{route}: {field}");
+        }
+        assert_eq!(mcp["reads"], json!([]));
+        assert_eq!(mcp["effects"], json!([]));
+        assert_eq!(mcp["precondition_expr"], json!({"all": []}));
+        let args = mcp["args"].as_array().unwrap();
+        assert_eq!(args.len(), 7);
+        for name in [
+            "state_path",
+            "seq_id",
+            "objective",
+            "requirements",
+            "provider",
+            "profile_scope",
+            "format",
+        ] {
+            assert!(
+                args.iter()
+                    .any(|arg| arg["name"] == name && arg["required"] == false)
+            );
+        }
+        assert_eq!(serde_json::to_value(&engine).unwrap(), before);
+    }
+}
+
+#[test]
 fn execute_introspect_all_capability_section_has_full_fact_annotations() {
     let mut engine = GentleEngine::default();
 

@@ -223,6 +223,70 @@ An authored contract is not an executed pass. Every completion needs an exact
 source SHA, platform/profile, command or run URL and retained evidence. New
 candidate results never overwrite or inherit the older candidate's verdict.
 
+### Parity And Expression Verification At `33e67234` (2026-10-19)
+
+Glen's clean detached source is
+`33e67234f278002be95c31226e2a945ebd927fdb`, tree
+`e1ad5133456fa1567bd8bff7861465c0075a7c05`. Debian forky/x86_64,
+Rust/Cargo 1.97.1, Python 3.14.8; locked, unoptimized dev/test profiles,
+debug info/incremental off, one Cargo job. Docs use headless features;
+ordinary tests use defaults; the locator adds `gui-test-support`.
+Lockfile SHA-256 remains
+`0b9729e60698e14d464b48230e606377a4e2e48054c2450be6f85760e999a6b9`.
+
+| Requested Boundary | Executed Result |
+| --- | --- |
+| Canonical parity repair | Docs build and `parity-matrix-check` pass; tube rows 2/2, exact updated MCP projection retained; Rust freshness 1/1. This closes the `8f37453b` repair's focused freshness gate at this source, not the whole CI run. |
+| Catalog / manifest | Fresh: 67 entries / 30 chapters. |
+| Inspector | 6/7 pass; small hosted-window assertion fails, exit 101. Exact isolated rerun fails 0/1, same assertion; no cascade or resource refusal. |
+| Other expression contracts | MCP 3/3, UI intents 6/6, deterministic inner-agent suggestion 1/1, control card 1/1 and semantic locator 1/1 pass. Missing/invalid inputs, provider withholding/projection, shared reports and unchanged state/files are covered without a live model. |
+| Python | 86/86 pass, zero skips. |
+
+Eleven requested groups pass, one fails; the extra isolated rerun is diagnostic,
+not a second requested group. The hosted-window test expects `Middle` even
+though `open_protein_expression_dialog` queues foreground focus. The shared
+window builder deliberately uses `Foreground` for that first render and clears
+the request afterward. Local test repair `7bc3158f` checks both foreground-open
+and subsequent middle-layer frames, preserving report/state assertions. No
+production GUI behavior changes; the repaired test remains Rust-unverified.
+
+Glen's retained [CI run 39235913232](https://github.com/smoe/gentle_rs/actions/runs/39235913232)
+snapshot is **in progress** at `2026-10-19T11:43:21Z`, not a pass. A separate
+read-only Codex observation still finds the run/macOS in progress, headless and
+safety successful, and Windows completed/failure. Its original
+[Windows log 118004808487](https://github.com/smoe/gentle_rs/actions/runs/39235913232/job/118004808487)
+reports 4,137 root-library passes, three failures and 14 ignored: the hosted
+assertion plus two full-registry introspection tests. Both additional tests
+identify the new `protein_expression_handoff` MCP descriptor as `registry_only`.
+They are another primary contract omission, not cascading inspector failures.
+Local repair registers the existing read-only/no-project inspection contract
+with seven optional MCP arguments and adds a direct/aggregate regression;
+Rust/normal-CI acceptance remains pending. Other passed focused groups are not
+reissued. Linux and optional audit jobs skip by workflow policy.
+
+Codex verifies the 29,717-byte archive and all 66 manifest-listed files. The
+manifest's absolute producer prefix
+`/tmp/gentle-parity-followup-20261019-S3xmWa/evidence/` is remapped exactly to
+the delivered root; its bytes and digests are unchanged. Local evidence root:
+`/private/tmp/gentle-parity-expression-33e67234-review-20261019/`.
+The original extracted delivery remains in its `gentle-parity-expression-followup-33e67234/`
+subdirectory; later CI observations are separate files beside it.
+
+| Evidence Identity | SHA-256 |
+| --- | --- |
+| `gentle-parity-expression-followup-33e67234.tar.gz` | `af36e633e77fd9ba5502a7ebd64270369d0491b6163189af605438f4442b9b2e` |
+| Original `SHA256SUMS` | `dfeef7dec1c5842107b1205fc694bd4a2362ab0ab3a9fcff84abd66e6f4d106d` |
+| `REPORT.md` | `5fd5800ee8ea9e16563922359110656765258e42de28b661898e6c7641794893` |
+| Later `ci-run-observed-now.json` | `1bea60bd00ac81f25e61abe3f55f648934a4f570e726b91d30d48086aa6a20ed` |
+| Later `ci-jobs-observed-now.json` | `94eac3c6beb77940bfdbcd0bd879ec852192d65820ea08ec5c819850299e9002` |
+| Original ANSI-bearing Windows job log | `6ce20f85a7d73ede2aaacf0b16341ee28570e1e5e2f11a19880e58722e3a9eef` |
+
+Binary digests are producer receipts; binaries were not delivered or rehashed
+here. For checklist item 1, record focused parity closure and the still-open
+inspector/introspection/full-suite boundary. Items 2-6 receive no new native
+08.04, live-agent, visual, scroll or package verdict. No goal-wide closure,
+human scientific approval, local Rust, push, dispatch or model call follows.
+
 ### Focused Verification At `394dd5d` (2026-10-18)
 
 Glen tested `394dd5d0523ea91c19a8eb94d5ed8ad7bd5299b2`, tree

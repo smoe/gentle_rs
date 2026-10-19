@@ -1,5 +1,30 @@
 # GENtle Changelog
 
+## 2026-10-19 - Annotate The Expression MCP Introspection Contract
+
+- The completed Windows job at `33e67234` exposes two additional primary
+  full-registry failures: the newly named expression tool remains registry-only
+  in `introspect capabilities` and `introspect all`. Register it with the
+  existing read-only/no-project inspection helper and its seven optional
+  transport arguments; no biology, runtime dispatch or readiness policy changes.
+- Add a focused direct/aggregate regression for shared facts, optional arguments,
+  registry identity and unchanged engine state. Keep the existing all-registry
+  assertions intact; neither weakening tests nor hiding missing annotations.
+- Verify Glen's archive and all 66 manifest-listed files, record focused parity
+  closure and the inspector failure at their actual source, and narrow the
+  remaining handoff to the hosted-layer and introspection repairs. Passed
+  expression/parity groups and earlier audits are not reissued.
+- Retain the in-progress CI observation separately from its completed Windows
+  failure; no normal-CI, native, live-model, package or scientific pass is
+  inferred. No local Rust, push, dispatch or provider call; preserve unrelated
+  `paper`, `output/`, the untracked planning prompt and historical evidence.
+- Offline verification: 132 tutorial-checkout/release-policy/specialist tests
+  pass, including LF/CRLF. Documentation status, the five-command recheck's
+  shell syntax/links, unchanged production inspector and whitespace pass.
+  Roadmap remains 400 lines; release-gate is four OK and session-close has
+  four OK, two expected scope/worktree warnings, no failures. Both repaired
+  Rust boundaries still require external execution.
+
 ## 2026-10-19 - Correct The Inspector Hosted-Layer Regression
 
 - Glen reproduces the small hosted-window assertion at `33e67234`: six of

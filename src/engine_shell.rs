@@ -28473,6 +28473,19 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             ],
         ),
         no_project_inspection_operation_descriptor(
+            "protein_expression_handoff",
+            "Inspect the saved project's shared read-only protein-expression handoff through MCP; omitted product context remains a report finding, and provider selection never submits or contacts a provider.",
+            vec![
+                json!({"name": "state_path", "required": false, "subject_kind": "other", "detail": "saved project path; defaults to the MCP server startup state path"}),
+                json!({"name": "seq_id", "required": false, "subject_kind": "sequence", "detail": "explicit optional product id; omitted inputs remain unanswered"}),
+                json!({"name": "objective", "required": false, "subject_kind": "other", "detail": "inline planning objective JSON object only; not a path or string"}),
+                json!({"name": "requirements", "required": false, "subject_kind": "other", "detail": "inline reviewed requirements JSON object only; not a path or string"}),
+                json!({"name": "provider", "required": false, "subject_kind": "other", "detail": "explicit optional provider id; selection is not outsourcing permission"}),
+                json!({"name": "profile_scope", "required": false, "subject_kind": "other", "detail": "currently effective only"}),
+                json!({"name": "format", "required": false, "subject_kind": "other", "detail": "json or text; defaults to json"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
             "planning profile show",
             "Inspect one planning profile scope or the merged effective planning profile without project-state preconditions.",
             vec![
