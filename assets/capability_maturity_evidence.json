@@ -1,0 +1,5 @@
+{
+  "schema": "gentle.capability_maturity_evidence.v1",
+  "description": "Explicit public scoped attestations only. Empty means no imported maturity evidence, not a failed test or biological absence. Existing prose, parity and tutorial reviews are not automatically converted into execution, native, performance or biological verdicts.",
+  "records": []
+}

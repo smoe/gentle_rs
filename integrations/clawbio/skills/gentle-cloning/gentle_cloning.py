@@ -10,6 +10,7 @@ import dataclasses
 import datetime as dt
 import hashlib
 import html
+import importlib.util
 import json
 import math
 import os
@@ -980,7 +981,29 @@ def _skill_info_payload(script_path: Path) -> dict[str, Any]:
             "suggested_action_kind": "ui_intent",
             "suggested_action_ui_intent_field": "ui_intent",
         },
+        "capability_maturity": _capability_maturity_info(script_path),
     }
+
+
+def _capability_maturity_info(script_path: Path) -> dict[str, Any]:
+    root = script_path.resolve().parent
+    unavailable = {
+        "schema": "gentle.clawbio_capability_maturity.v1",
+        "path": str(root / "CAPABILITY_MATURITY.json"),
+        "status": "unavailable",
+        "runtime_binding": "not_checked",
+        "availability": "not_checked",
+        "diagnostic": "capability_maturity_reader_missing",
+    }
+    helper = root / "capability_maturity.py"
+    if not helper.is_file():
+        return unavailable
+    spec = importlib.util.spec_from_file_location("gentle_capability_maturity", helper)
+    if spec is None or spec.loader is None:
+        return unavailable
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.skill_info(root)
 
 
 def _skill_info_chat_summary_lines(info: dict[str, Any]) -> list[str]:
@@ -992,6 +1015,7 @@ def _skill_info_chat_summary_lines(info: dict[str, Any]) -> list[str]:
         f"Request schema: {info.get('request_schema')}; result schema: {info.get('result_schema')}.",
         "Use request mode `version` when you need the installed local GENtle rewrite runtime version.",
         "Use request mode `intents` to compare the installed wrapper's live intent descriptor with ClawBio's on-disk snapshot.",
+        "Capability maturity is optional scoped evidence, not permission or local availability; runtime binding is not checked by skill-info.",
         "Use `resources status` or `services status` to check RNAfold/ViennaRNA and rnapkin executable-resource readiness.",
         CLASSICAL_GENTLE_DISAMBIGUATION,
     ]
@@ -1096,6 +1120,7 @@ def _intents_runtime_payload(script_path: Path) -> dict[str, Any]:
                 ),
                 "requires_slots": _runtime_route_requires_slots(route),
                 "plan_step_count": len(route.get("plan") or []),
+                **{key: route[key] for key in ("capability_id", "capability_steps") if key in route},
             }
         )
     return {
@@ -1110,6 +1135,7 @@ def _intents_runtime_payload(script_path: Path) -> dict[str, Any]:
         "route_count": len(routes),
         "routes": routes,
         "warnings": warnings,
+        "capability_maturity": _capability_maturity_info(script_path),
     }
 
 

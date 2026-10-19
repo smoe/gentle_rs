@@ -4,6 +4,10 @@
   "description": "Focused OpenClaw/ClawBio routing for GENtle annotated-start preview, approval-bound TSS-window collections, validation, GUI handoff, and explicit registry removal.",
   "version": "0.1.0",
   "status": "mvp",
+  "capability_maturity": {
+    "schema": "gentle.clawbio_capability_maturity.v1",
+    "path": "CAPABILITY_MATURITY.json"
+  },
   "has_script": false,
   "has_tests": true,
   "has_demo": false,

@@ -37,6 +37,20 @@
             "timeout_secs": 180
           }
         }
+      ],
+      "capability_id": "gentle-cloning/telegram_guide_isoforms_gene",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "services guide"
+            }
+          ]
+        }
       ]
     },
     {
@@ -59,6 +73,20 @@
           "skill": "gentle-cloning",
           "input": "examples/request_export_lab_assistant_instructions.json"
         }
+      ],
+      "capability_id": "gentle-cloning/lab_assistant_handoff_export",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "engine_operation",
+              "name": "ExportLabAssistantInstructions"
+            }
+          ]
+        }
       ]
     },
     {
@@ -79,6 +107,28 @@
           "skill": "gentle-cloning",
           "input": "examples/request_workflow_gibson_lab_assistant_handoff_demo.json"
         }
+      ],
+      "capability_id": "gentle-cloning/demo_lab_assistant_handoff",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "workflow",
+          "scope": "workflow",
+          "registry_refs": [
+            {
+              "source": "engine_operation",
+              "name": "LoadFile"
+            },
+            {
+              "source": "engine_operation",
+              "name": "ApplyGibsonAssemblyPlan"
+            },
+            {
+              "source": "engine_operation",
+              "name": "ExportLabAssistantInstructions"
+            }
+          ]
+        }
       ]
     },
     {
@@ -97,6 +147,15 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_skill_info.json"
+        }
+      ],
+      "capability_id": "gentle-cloning/skill_info",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "skill-info",
+          "scope": "wrapper_metadata",
+          "registry_refs": []
         }
       ]
     },
@@ -118,6 +177,15 @@
           "skill": "gentle-cloning",
           "input": "examples/request_intents_runtime.json"
         }
+      ],
+      "capability_id": "gentle-cloning/intents_runtime",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "intents",
+          "scope": "wrapper_metadata",
+          "registry_refs": []
+        }
       ]
     },
     {
@@ -138,6 +206,20 @@
           "skill": "gentle-cloning",
           "input": "examples/request_services_telegram_guide.json"
         }
+      ],
+      "capability_id": "gentle-cloning/telegram_guide_overview",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "services guide"
+            }
+          ]
+        }
       ]
     },
     {
@@ -155,6 +237,20 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_services_telegram_guide_readiness.json"
+        }
+      ],
+      "capability_id": "gentle-cloning/telegram_guide_readiness",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "services guide"
+            }
+          ]
         }
       ]
     },
@@ -174,6 +270,20 @@
           "skill": "gentle-cloning",
           "input": "examples/request_services_telegram_guide_gene_context.json"
         }
+      ],
+      "capability_id": "gentle-cloning/telegram_guide_gene_context",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "services guide"
+            }
+          ]
+        }
       ]
     },
     {
@@ -191,6 +301,20 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_services_telegram_guide_tfbs.json"
+        }
+      ],
+      "capability_id": "gentle-cloning/telegram_guide_tfbs",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "services guide"
+            }
+          ]
         }
       ]
     },
@@ -210,6 +334,20 @@
           "skill": "gentle-cloning",
           "input": "examples/request_services_telegram_guide_inline_dna.json"
         }
+      ],
+      "capability_id": "gentle-cloning/telegram_guide_inline_dna",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "services guide"
+            }
+          ]
+        }
       ]
     },
     {
@@ -227,6 +365,20 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_services_telegram_guide_cloning.json"
+        }
+      ],
+      "capability_id": "gentle-cloning/telegram_guide_cloning",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "services guide"
+            }
+          ]
         }
       ]
     },
@@ -251,6 +403,20 @@
           "skill": "gentle-cloning",
           "input": "examples/request_services_telegram_guide_isoforms.json"
         }
+      ],
+      "capability_id": "gentle-cloning/telegram_guide_isoforms",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "services guide"
+            }
+          ]
+        }
       ]
     },
     {
@@ -270,6 +436,20 @@
           "skill": "gentle-cloning",
           "input": "examples/request_services_telegram_guide_follow_up.json"
         }
+      ],
+      "capability_id": "gentle-cloning/telegram_guide_follow_up",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "services guide"
+            }
+          ]
+        }
       ]
     },
     {
@@ -287,6 +467,20 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_capabilities.json"
+        }
+      ],
+      "capability_id": "gentle-cloning/capabilities",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "capabilities",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "capabilities"
+            }
+          ]
         }
       ]
     },
@@ -308,6 +502,28 @@
           "skill": "gentle-cloning",
           "input": "examples/request_workflow_clariom_pm_probe_interpretation.json"
         }
+      ],
+      "capability_id": "gentle-cloning/clariom_pm_probe_interpretation",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "workflow",
+          "scope": "workflow",
+          "registry_refs": [
+            {
+              "source": "engine_operation",
+              "name": "LoadFile"
+            },
+            {
+              "source": "engine_operation",
+              "name": "ProjectProbeRegionOutput"
+            },
+            {
+              "source": "engine_operation",
+              "name": "InterpretProbeRegionEvidence"
+            }
+          ]
+        }
       ]
     },
     {
@@ -326,6 +542,15 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_runtime_version.json"
+        }
+      ],
+      "capability_id": "gentle-cloning/runtime_version",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "version",
+          "scope": "runtime_unregistered",
+          "registry_refs": []
         }
       ]
     },
@@ -351,6 +576,20 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_services_status.json"
+        }
+      ],
+      "capability_id": "gentle-cloning/services_status",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "services status"
+            }
+          ]
         }
       ]
     },
@@ -389,6 +628,20 @@
             "timeout_secs": 180
           }
         }
+      ],
+      "capability_id": "gentle-cloning/sequence_delivery_route",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "services delivery-route"
+            }
+          ]
+        }
       ]
     },
     {
@@ -411,6 +664,20 @@
           "skill": "gentle-cloning",
           "input": "examples/request_services_providers_list.json"
         }
+      ],
+      "capability_id": "gentle-cloning/external_service_provider_catalog",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "services providers list"
+            }
+          ]
+        }
       ]
     },
     {
@@ -431,6 +698,20 @@
           "skill": "gentle-cloning",
           "input": "examples/request_services_providers_doctor.json"
         }
+      ],
+      "capability_id": "gentle-cloning/external_service_provider_doctor",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "services providers doctor"
+            }
+          ]
+        }
       ]
     },
     {
@@ -448,6 +729,20 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_services_metabion_oligo_preflight.json"
+        }
+      ],
+      "capability_id": "gentle-cloning/metabion_oligo_preflight",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "services project-preflight"
+            }
+          ]
         }
       ]
     },
@@ -470,6 +765,20 @@
           "skill": "gentle-cloning",
           "input": "examples/request_services_metabion_oligo_quote.json"
         }
+      ],
+      "capability_id": "gentle-cloning/metabion_oligo_quote_handoff",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "services project-quote"
+            }
+          ]
+        }
       ]
     },
     {
@@ -489,6 +798,20 @@
           "skill": "gentle-cloning",
           "input": "examples/request_services_metabion_mblock_quote.json"
         }
+      ],
+      "capability_id": "gentle-cloning/metabion_mblock_quote_handoff",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "services project-quote"
+            }
+          ]
+        }
       ]
     },
     {
@@ -507,6 +830,20 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_services_geneart_cloned_gene_preflight.json"
+        }
+      ],
+      "capability_id": "gentle-cloning/geneart_cloned_gene_preflight",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "services project-preflight"
+            }
+          ]
         }
       ]
     },
@@ -529,6 +866,20 @@
           "skill": "gentle-cloning",
           "input": "examples/request_services_geneart_cloned_gene_quote.json"
         }
+      ],
+      "capability_id": "gentle-cloning/geneart_cloned_gene_quote_handoff",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "services project-quote"
+            }
+          ]
+        }
       ]
     },
     {
@@ -547,6 +898,20 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_services_geneart_protein_expression_preflight.json"
+        }
+      ],
+      "capability_id": "gentle-cloning/geneart_protein_expression_preflight",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "services project-preflight"
+            }
+          ]
         }
       ]
     },
@@ -567,6 +932,20 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_services_geneart_protein_expression_quote.json"
+        }
+      ],
+      "capability_id": "gentle-cloning/geneart_protein_expression_quote_handoff",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "services project-quote"
+            }
+          ]
         }
       ]
     },
@@ -597,6 +976,15 @@
           "skill": "gentle-cloning",
           "input": "examples/request_resources_status.json"
         }
+      ],
+      "capability_id": "gentle-cloning/resources_status",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_unregistered",
+          "registry_refs": []
+        }
       ]
     },
     {
@@ -619,6 +1007,20 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_planning_protein_expression_handoff.json"
+        }
+      ],
+      "capability_id": "gentle-cloning/protein_expression_handoff",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "planning protein-expression-handoff"
+            }
+          ]
         }
       ]
     },
@@ -664,6 +1066,20 @@
             "timeout_secs": 180
           }
         }
+      ],
+      "capability_id": "gentle-cloning/protein_residue_genomic_coordinates",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "protein-residue-genomic-coordinates",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "engine_operation",
+              "name": "QueryProteinResidueGenomicCoordinates"
+            }
+          ]
+        }
       ]
     },
     {
@@ -681,6 +1097,28 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_workflow_isoform_protein_gel_demo.json"
+        }
+      ],
+      "capability_id": "gentle-cloning/demo_isoform_protein_gel",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "workflow",
+          "scope": "workflow",
+          "registry_refs": [
+            {
+              "source": "engine_operation",
+              "name": "LoadFile"
+            },
+            {
+              "source": "engine_operation",
+              "name": "DeriveProteinSequences"
+            },
+            {
+              "source": "engine_operation",
+              "name": "RenderProteinGelSvg"
+            }
+          ]
         }
       ]
     },
@@ -700,6 +1138,28 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_workflow_isoform_protein_2d_gel_demo.json"
+        }
+      ],
+      "capability_id": "gentle-cloning/demo_isoform_protein_2d_gel",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "workflow",
+          "scope": "workflow",
+          "registry_refs": [
+            {
+              "source": "engine_operation",
+              "name": "LoadFile"
+            },
+            {
+              "source": "engine_operation",
+              "name": "DeriveProteinSequences"
+            },
+            {
+              "source": "engine_operation",
+              "name": "RenderProtein2dGelSvg"
+            }
+          ]
         }
       ]
     },
@@ -722,6 +1182,40 @@
           "skill": "gentle-cloning",
           "input": "examples/request_workflow_simple_pcr_primer_design_offline.json"
         }
+      ],
+      "capability_id": "gentle-cloning/simple_pcr_primer_design",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "workflow",
+          "scope": "workflow",
+          "registry_refs": [
+            {
+              "source": "engine_operation",
+              "name": "LoadFile"
+            },
+            {
+              "source": "engine_operation",
+              "name": "SetParameter"
+            },
+            {
+              "source": "engine_operation",
+              "name": "ExtractRegion"
+            },
+            {
+              "source": "engine_operation",
+              "name": "DesignPrimerPairs"
+            },
+            {
+              "source": "engine_operation",
+              "name": "ExportPrimerDesignReport"
+            },
+            {
+              "source": "engine_operation",
+              "name": "RenderProtocolCartoonSvg"
+            }
+          ]
+        }
       ]
     },
     {
@@ -741,6 +1235,20 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_primers_preflight_auto.json"
+        }
+      ],
+      "capability_id": "gentle-cloning/primer_preflight",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "primer-preflight",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers preflight"
+            }
+          ]
         }
       ]
     },
@@ -777,6 +1285,20 @@
             }
           }
         }
+      ],
+      "capability_id": "gentle-cloning/primer_seed_from_feature",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "primer-seed-from-feature",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers seed-from-feature"
+            }
+          ]
+        }
       ]
     },
     {
@@ -812,6 +1334,20 @@
             }
           }
         }
+      ],
+      "capability_id": "gentle-cloning/primer_seed_from_splicing",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "primer-seed-from-splicing",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers seed-from-splicing"
+            }
+          ]
+        }
       ]
     },
     {
@@ -846,6 +1382,15 @@
               "description": "Zero-based feature index to seed a probe-based qPCR assay from"
             }
           }
+        }
+      ],
+      "capability_id": "gentle-cloning/qpcr_taqman_seed_from_feature",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "qpcr-seed-from-feature",
+          "scope": "runtime_unregistered",
+          "registry_refs": []
         }
       ]
     },
@@ -898,6 +1443,15 @@
             }
           }
         }
+      ],
+      "capability_id": "gentle-cloning/qpcr_taqman_seed_from_splicing",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "qpcr-seed-from-splicing",
+          "scope": "runtime_unregistered",
+          "registry_refs": []
+        }
       ]
     },
     {
@@ -916,6 +1470,20 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_design_pcr_primers_tp53_operation.json"
+        }
+      ],
+      "capability_id": "gentle-cloning/pcr_primer_design_operation",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "primer-design",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers design"
+            }
+          ]
         }
       ]
     },
@@ -936,6 +1504,20 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_design_qpcr_taqman_tp53_operation.json"
+        }
+      ],
+      "capability_id": "gentle-cloning/qpcr_taqman_design_operation",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "qpcr-design",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers design-qpcr"
+            }
+          ]
         }
       ]
     },
@@ -983,6 +1565,15 @@
             }
           }
         }
+      ],
+      "capability_id": "gentle-cloning/transcript_qpcr_panel",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "transcript-qpcr-panel",
+          "scope": "runtime_unregistered",
+          "registry_refs": []
+        }
       ]
     },
     {
@@ -1004,6 +1595,28 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_workflow_cdna_pcr_qpcr_assay_test_offline.json"
+        }
+      ],
+      "capability_id": "gentle-cloning/cdna_pcr_qpcr_assay_test",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "workflow",
+          "scope": "workflow",
+          "registry_refs": [
+            {
+              "source": "engine_operation",
+              "name": "LoadFile"
+            },
+            {
+              "source": "engine_operation",
+              "name": "TestCdnaPcr"
+            },
+            {
+              "source": "engine_operation",
+              "name": "TestCdnaQpcr"
+            }
+          ]
         }
       ]
     },
@@ -1029,6 +1642,28 @@
           "skill": "gentle-cloning",
           "input": "examples/request_workflow_cdna_pcr_qpcr_product_gel_nonspecific_offline.json"
         }
+      ],
+      "capability_id": "gentle-cloning/cdna_pcr_qpcr_product_gel_nonspecific",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "workflow",
+          "scope": "workflow",
+          "registry_refs": [
+            {
+              "source": "engine_operation",
+              "name": "LoadFile"
+            },
+            {
+              "source": "engine_operation",
+              "name": "TestCdnaPcr"
+            },
+            {
+              "source": "engine_operation",
+              "name": "TestCdnaQpcr"
+            }
+          ]
+        }
       ]
     },
     {
@@ -1047,6 +1682,20 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_cdna_pcr_test_demo_direct.json"
+        }
+      ],
+      "capability_id": "gentle-cloning/cdna_pcr_direct_test",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "cdna-pcr-test",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers test-cdna-pcr"
+            }
+          ]
         }
       ]
     },
@@ -1068,6 +1717,20 @@
           "skill": "gentle-cloning",
           "input": "examples/request_cdna_qpcr_taqman_test_demo_direct.json"
         }
+      ],
+      "capability_id": "gentle-cloning/cdna_qpcr_taqman_direct_test",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "cdna-qpcr-test",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers test-cdna-qpcr"
+            }
+          ]
+        }
       ]
     },
     {
@@ -1085,6 +1748,20 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_primer_reports_list.json"
+        }
+      ],
+      "capability_id": "gentle-cloning/primer_report_list",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "primer-report-list",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers list-reports"
+            }
+          ]
         }
       ]
     },
@@ -1104,6 +1781,20 @@
           "skill": "gentle-cloning",
           "input": "examples/request_primer_report_show_demo.json"
         }
+      ],
+      "capability_id": "gentle-cloning/primer_report_show",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "primer-report-show",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers show-report"
+            }
+          ]
+        }
       ]
     },
     {
@@ -1121,6 +1812,20 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_primer_report_export_demo.json"
+        }
+      ],
+      "capability_id": "gentle-cloning/primer_report_export",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "primer-report-export",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers export-report"
+            }
+          ]
         }
       ]
     },
@@ -1141,6 +1846,20 @@
           "skill": "gentle-cloning",
           "input": "examples/request_qpcr_reports_list.json"
         }
+      ],
+      "capability_id": "gentle-cloning/qpcr_report_list",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "qpcr-report-list",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers list-qpcr-reports"
+            }
+          ]
+        }
       ]
     },
     {
@@ -1159,6 +1878,20 @@
           "skill": "gentle-cloning",
           "input": "examples/request_qpcr_report_show_demo.json"
         }
+      ],
+      "capability_id": "gentle-cloning/qpcr_report_show",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "qpcr-report-show",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers show-qpcr-report"
+            }
+          ]
+        }
       ]
     },
     {
@@ -1176,6 +1909,20 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_qpcr_report_export_demo.json"
+        }
+      ],
+      "capability_id": "gentle-cloning/qpcr_report_export",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "qpcr-report-export",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers export-qpcr-report"
+            }
+          ]
         }
       ]
     },
@@ -1215,6 +1962,20 @@
             }
           }
         }
+      ],
+      "capability_id": "gentle-cloning/pcr_protocol_cartoon",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "pcr-protocol-cartoon",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "protocol-cartoon render-svg"
+            }
+          ]
+        }
       ]
     },
     {
@@ -1235,6 +1996,32 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_workflow_gene_panel_isoform_protein_gel_ensembl.json"
+        }
+      ],
+      "capability_id": "gentle-cloning/ensembl_gene_panel_protein_gel",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "workflow",
+          "scope": "workflow",
+          "registry_refs": [
+            {
+              "source": "engine_operation",
+              "name": "FetchEnsemblGene"
+            },
+            {
+              "source": "engine_operation",
+              "name": "ImportEnsemblGeneSequence"
+            },
+            {
+              "source": "engine_operation",
+              "name": "DeriveProteinSequences"
+            },
+            {
+              "source": "engine_operation",
+              "name": "RenderProteinGelReportsSvg"
+            }
+          ]
         }
       ]
     },
@@ -1288,6 +2075,32 @@
             "timeout_secs": 600
           }
         }
+      ],
+      "capability_id": "gentle-cloning/ensembl_gene_protein_2d_gel",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "gene-protein-2d-gel",
+          "scope": "workflow",
+          "registry_refs": [
+            {
+              "source": "engine_operation",
+              "name": "FetchEnsemblGene"
+            },
+            {
+              "source": "engine_operation",
+              "name": "ImportEnsemblGeneSequence"
+            },
+            {
+              "source": "engine_operation",
+              "name": "DeriveProteinSequences"
+            },
+            {
+              "source": "engine_operation",
+              "name": "RenderProtein2dGelSvg"
+            }
+          ]
+        }
       ]
     },
     {
@@ -1305,6 +2118,32 @@
           "skill": "gentle-cloning",
           "input": "examples/request_gene_protein_2d_gel_ensembl_demo.json"
         }
+      ],
+      "capability_id": "gentle-cloning/demo_ensembl_gene_protein_2d_gel",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "gene-protein-2d-gel",
+          "scope": "workflow",
+          "registry_refs": [
+            {
+              "source": "engine_operation",
+              "name": "FetchEnsemblGene"
+            },
+            {
+              "source": "engine_operation",
+              "name": "ImportEnsemblGeneSequence"
+            },
+            {
+              "source": "engine_operation",
+              "name": "DeriveProteinSequences"
+            },
+            {
+              "source": "engine_operation",
+              "name": "RenderProtein2dGelSvg"
+            }
+          ]
+        }
       ]
     },
     {
@@ -1321,6 +2160,28 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_workflow_trypsin_digest_gel_demo.json"
+        }
+      ],
+      "capability_id": "gentle-cloning/demo_trypsin_digest_gel",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "workflow",
+          "scope": "workflow",
+          "registry_refs": [
+            {
+              "source": "engine_operation",
+              "name": "LoadFile"
+            },
+            {
+              "source": "engine_operation",
+              "name": "DeriveProteinSequences"
+            },
+            {
+              "source": "engine_operation",
+              "name": "RenderProteaseDigestGelSvg"
+            }
+          ]
         }
       ]
     },
@@ -1360,6 +2221,20 @@
             "timeout_secs": 180
           }
         }
+      ],
+      "capability_id": "gentle-cloning/construct_reasoning_recommended_inspections",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "construct-reasoning-list-inspections",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "construct-reasoning list-inspection-actions"
+            }
+          ]
+        }
       ]
     },
     {
@@ -1396,6 +2271,20 @@
             "timeout_secs": 180
           }
         }
+      ],
+      "capability_id": "gentle-cloning/construct_reasoning_run_recommended_inspection",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "construct-reasoning-run-inspection",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "construct-reasoning run-inspection-action"
+            }
+          ]
+        }
       ]
     },
     {
@@ -1415,6 +2304,20 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "demo": true
+        }
+      ],
+      "capability_id": "gentle-cloning/explicit_demo",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "demo",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "protocol-cartoon render-svg"
+            }
+          ]
         }
       ]
     }

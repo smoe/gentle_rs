@@ -128,7 +128,7 @@ backed by current engine records. Carry forward to `.13` Glen's validation of ex
 
 For ClawBio/OpenClaw specifically, keep new integration work centered on
 descriptor/runtime parity (`INTENTS.json`, `mode=intents`, examples, and
-trigger-keyword drift checks) plus explicit scope/presentation contracts rather
+trigger-keyword drift checks; verify [scoped maturity discovery](capability_maturity.md) with Glen/CI) plus explicit scope/presentation contracts rather
 than adding more biology-specific wrapper modes. Following 08.15's six TSS descriptor routes, extend the existing 08.16/08.17 cases plus the new `promoters tss-view-svg --collection ID OUTPUT_DIR` route through the same delegate with artifact-write/selection approvals, using the settled per-window scale policy and ordered SVG/index/receipt contract; retain model-quality and GUI-host acceptance separately. After the first GENtle-side
 ClawBio panel, the next bridge work should stay contract-led: reserve any
 action-level `skill_alias` field on the ClawBio side before GENtle honors it,

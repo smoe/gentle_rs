@@ -6,6 +6,8 @@
 //! shared analysis enums, and the portable engine error payload.
 
 pub mod biological_context;
+/// Scoped capability-maturity evidence, separate from availability and approval.
+pub mod capability_maturity;
 pub mod collection_subjects;
 pub mod construct_reasoning;
 pub mod cryptic_splicing;

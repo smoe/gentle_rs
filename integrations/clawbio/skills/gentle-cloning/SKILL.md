@@ -1,51 +1,9 @@
 ---
 name: gentle-cloning
 description: >-
-  GENtle Cloning is ClawBio's specialist for deterministic, parser-validated
-  DNA design and genome-context analysis. It executes real GENtle commands
-  and workflows on local data — not free-form LLM advice — and returns
-  auditable bundles. The skill is the in-application action layer for
-  cloning: ClawBio chat remains the orchestration and conversation layer,
-  while this skill carries out the cloning-side work under engine-validated
-  bounds, with the GUI as the inspection and review surface.
-
-  Capabilities: (1) translation of cohort or patient-data observations,
-  differential-expression hits, splice-variant observations, perturbation
-  requests, or direct DNA fragment input into sequence-grounded mechanistic
-  follow-up; (2) stateless DNA-fragment inspection (restriction sites, TFBS
-  hits) for fast read-only checks without project-state mutation;
-  (3) reusable local reference preparation, including prepared Ensembl
-  caches and BLAST-ready indices that other bioinformatics tools can reuse;
-  (4) transcript-native protein-residue-to-genomic-codon mapping;
-  (5) RNA secondary-structure readiness via ViennaRNA/RNAfold and rnapkin
-  executable resources; (6) the full PCR/qPCR/TaqMan automation family —
-  Primer3 preflight, seed helpers, PCR primer design, probe-based
-  qPCR/TaqMan design, transcript-derived cDNA PCR/qPCR assay testing,
-  report inspection/export, PCR protocol cartoons, restriction-cloning PCR
-  handoffs, and assistant-ready wet-lab cloning instruction exports;
-  (7) transcript qPCR panel tables with shared reverse/probe components and
-  characteristic forward primers; (8) transcript-native protein-gel /
-  protein 2D-gel / protease digest figures for bundled example loci,
-  parameterized Ensembl genes, and Ensembl gene panels; and
-  (9) bench-side handoff outputs including arrangements, rack placements,
-  label sheets, and fabrication templates that connect digital planning to
-  physical sample handling within the same replayable workflow; and
-  (10) provider-neutral external-service delivery routing, catalog, preflight,
-  and quote/handoff packets for configured GeneArt and Metabion service routes
-  without portal scraping, credential use, or order submission.
-
-  Each successful run produces a versioned ClawBio bundle with `report.md`,
-  `result.json`, and reproducibility files (`commands.sh`, `environment.yml`,
-  `execution_manifest.json`, `checksums.sha256`), plus a PNG-first
-  preferred-artifacts set for figure-producing runs. Operation-level
-  provenance is tracked in a shared lineage graph so every derived sequence is
-  traceable to its source inputs and the operations that produced it. The
-  parser-validated boundary means
-  the skill never invents filesystem search, content scanning, or shell-like
-  commands: unknown slash commands are rejected with structured suggestions
-  rather than fabricated execution. Adversarial content in imported sequence
-  records or external documents therefore cannot extend the skill's
-  effective vocabulary.
+  Run deterministic GENtle sequence, cloning, primer and genome-context
+  workflows through ClawBio. Use for sequence-grounded analysis and auditable
+  handoffs, not free-form biological advice; preserve review and approval gates.
 version: 0.3.0
 author: GENtle project
 license: MIT
@@ -476,6 +434,13 @@ design, cloning workflow execution, genome-context-aware sequence planning, and
 sequence-grounded follow-up to patient or cohort observations. Your role is to
 translate structured user intent into reproducible `gentle_cli` commands, run
 them without hidden improvisation, and return an auditable skill bundle.
+
+Discovery is intentionally brief. See the [capability scope](references/capability_scope.md)
+and the detailed sections below for supported workflows and their boundaries.
+Inspect optional `CAPABILITY_MATURITY.json`/`skill-info` metadata when discussing
+evidence. Missing metadata never means verified and does not disable normal
+use under existing checks. Evidence maturity is separate from local readiness,
+scientific outcome and approval; this catalog does not authorize execution.
 
 ## Execution Contract
 

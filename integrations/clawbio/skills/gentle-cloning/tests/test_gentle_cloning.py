@@ -2649,6 +2649,11 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
     assert payload["resolver"] is None
     assert payload["command"] is None
     assert payload["request"]["mode"] == "skill-info"
+    maturity = payload["stdout_json"].pop("capability_maturity")
+    assert maturity["status"] == "available"
+    assert maturity["runtime_binding"] == "not_checked"
+    assert maturity["maturity"] == "unassessed"
+    assert maturity["capability_count"] == 59
     assert payload["stdout_json"] == {
         "schema": "gentle.clawbio_skill_info.v1",
         "name": "gentle-cloning",
@@ -2750,6 +2755,7 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
         "Request schema: gentle.clawbio_skill_request.v1; result schema: gentle.clawbio_skill_result.v1.",
         "Use request mode `version` when you need the installed local GENtle rewrite runtime version.",
         "Use request mode `intents` to compare the installed wrapper's live intent descriptor with ClawBio's on-disk snapshot.",
+        "Capability maturity is optional scoped evidence, not permission or local availability; runtime binding is not checked by skill-info.",
         "Use `resources status` or `services status` to check RNAfold/ViennaRNA and rnapkin executable-resource readiness.",
         "This skill reports the locally installed ClawBio GENtle rewrite runtime, not the classical GENtle desktop release line.",
     ]
@@ -7523,7 +7529,12 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
         )
     )
 
-    description = catalog_entry["description"]
+    assert len(catalog_entry["description"]) <= 1024
+    assert "not free-form biological advice" in catalog_entry["description"]
+    assert "approval gates" in catalog_entry["description"]
+    description = " ".join((
+        Path(__file__).resolve().parents[1] / "references/capability_scope.md"
+    ).read_text(encoding="utf-8").split())
     assert "patient-data observations" in description
     assert "differential-expression hits" in description
     assert "splice-variant observations" in description

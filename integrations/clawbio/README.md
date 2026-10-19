@@ -127,6 +127,23 @@ Catalog registration:
 
 Shared skill-intent descriptor:
 
+- Each skill now has a short discovery description and an optional generated
+  `CAPABILITY_MATURITY.json`, advertised by its catalog entry. The generic
+  `skill-info`/`intents` response includes a compact reference without running
+  GENtle. `capabilities` keeps its existing UI-discovery meaning.
+- To inspect trust scope, read `stdout_json.capability_maturity` from the usual
+  `request_skill_info.json` run, then inspect the referenced sidecar. Initial
+  maturity is unassessed for all routes: existing test/tutorial prose has not
+  been converted into audit evidence. A working Linux primer demo is not a
+  Windows, real-reference, isoform-specificity or wet-lab pass.
+- Catalog availability does not mean tool/resource readiness. Check actual
+  readiness separately and retain the usual approval-bound workflow. Missing
+  metadata does not disable ordinary use. Older ClawBio readers may ignore the
+  new route/catalog fields; no host policy or permission is changed. Deploy
+  matching descriptors/runtime and renew digest-bound proposals after updates.
+  See [the shared contract](../../docs/capability_maturity.md) for evidence
+  scope, generation and checks. No feedback collection or telemetry is enabled.
+
 - GENtle ships `skills/gentle-cloning/INTENTS.json` using ClawBio's
   `clawbio.skill_intents.v1` descriptor shape. This is intentionally
   chat-runner-neutral: Roboterri, a Discord bot, and future chat adapters can

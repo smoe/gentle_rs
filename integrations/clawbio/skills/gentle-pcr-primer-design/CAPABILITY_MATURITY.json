@@ -1,0 +1,1116 @@
+{
+  "availability": "not_checked",
+  "capabilities": [
+    {
+      "capability_id": "gentle-pcr-primer-design/approved_isoform_operation_batch",
+      "definition_sha256": "sha256:600729015b03abfb0b083bd87a78a1223b0554412594345b4cc96daca8336dba",
+      "evidence": [],
+      "intent_id": "approved_isoform_operation_batch",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:3400de941d6825a838d2ea4d22cd26734d70715008a2bd33b3395803339d88d5",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers execute-gene-isoform-study-workflow",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/approved_isoform_study_checkpoint_reuse",
+      "definition_sha256": "sha256:36661a66a4ddbfae5cf6ae7ad90b1ebdcd4cc0c6082362e1dea4e30c05323d38",
+      "evidence": [],
+      "intent_id": "approved_isoform_study_checkpoint_reuse",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:5a7e1a3209dde6bd9365a66084d199883d978a63e803c744a536f1bb5e62da16",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers execute-gene-isoform-study-workflow-batch",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/approved_isoform_study_plan",
+      "definition_sha256": "sha256:8ea53298ca3d8927f757fd8def5b6e2017acfffc8498702086f0cb59694ad0ed",
+      "evidence": [],
+      "intent_id": "approved_isoform_study_plan",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:cbd189f64b1908439318d2280ab16704e6344d9252c8932a078285953611c489",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers plan-gene-isoform-study",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/approved_isoform_study_workflow_batch",
+      "definition_sha256": "sha256:ff685e6189573d8afdf9fa981740959d11b939a30255b107387c6f7788cd154a",
+      "evidence": [],
+      "intent_id": "approved_isoform_study_workflow_batch",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:7d1c52a8adb561cd56adce19977569a64ea16ac45890794257d4ec592224d5e1",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers execute-gene-isoform-study-workflow-batch",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/cdna_product_gel_workflow",
+      "definition_sha256": "sha256:61e0c7f775c7c45c1584505549ae1c86f659fef28181d9a439240f26bb5193d4",
+      "evidence": [],
+      "intent_id": "cdna_product_gel_workflow",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:8708539e07c851454284bb1c5d3b803c84e1546895aaa5b5e1ecacb1ae156744",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [],
+          "request_mode": "workflow",
+          "scope": "runtime_unregistered",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/collection_primer_specificity",
+      "definition_sha256": "sha256:67c3a17ae0db18d2651b1ae735f87273aac3d8d070e48fc9fa84ffd9f46caa51",
+      "evidence": [],
+      "intent_id": "collection_primer_specificity",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:e8d459bf8b1deb58f5b921b25a5d32a4af24a59ecdb6515c5edf21aecac96299",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "collections run primer-specificity",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/compose_assay_routine",
+      "definition_sha256": "sha256:515aaf33dd8a2a6330a2b1f843a9a14e586bfd289454e0d59ab96a8bb4de685f",
+      "evidence": [],
+      "intent_id": "compose_assay_routine",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:436b1b809122ea2e9d5112d46a49edc5d0646a95f78989adb6dba93917bebe5f",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers compose-gene-assay-routine",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/compose_isoform_study_workflow_batch",
+      "definition_sha256": "sha256:ac63a9b5e95ec5e866c41fd6c6fbd4f56bd2703e4ae50d504fbffe536d4b6104",
+      "evidence": [],
+      "intent_id": "compose_isoform_study_workflow_batch",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:434de27b9b6138bf23d7bcfddbbe293b13293522668fcaec72276618b55f37a7",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers compose-gene-isoform-study-workflow-batch",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/conventional_pcr_design",
+      "definition_sha256": "sha256:3c535b403c7ad04e0894ffb65f4ca9fad04164fded0edd33be0ee5f0a078e08d",
+      "evidence": [],
+      "intent_id": "conventional_pcr_design",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:1a4d093ac63795836eeea1de6df3933586721ff575522dc053bdbfca9e455830",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers design",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/dual_space_specificity_plan",
+      "definition_sha256": "sha256:b44ad0c99b997ba4b756c2cd9345c67390be8df15494b2c2a758369d67ab5968",
+      "evidence": [],
+      "intent_id": "dual_space_specificity_plan",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:dcd904cb39da3fec2fac499ac9430ef3721ed640233e1015101b8a5b43303834",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers specificity-plan",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        },
+        {
+          "registry_refs": [
+            {
+              "name": "primers specificity-plan",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 1
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/experimental_assay_report",
+      "definition_sha256": "sha256:313bd4c3c0771e28e99bea129f62f7c57d0440bcfca50e9b5a490e613313c933",
+      "evidence": [],
+      "intent_id": "experimental_assay_report",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:dcdb83fd50a4e4673de217605e9aad70f8ca1fefeffecb63854b4b63bfef93df",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers experimental-handoff",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/genomic_specificity_plan",
+      "definition_sha256": "sha256:dcd3b8997366e6b8877cb2d2785a242d907b7b196bbf1de256dd647efc32eee1",
+      "evidence": [],
+      "intent_id": "genomic_specificity_plan",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:f92ff6205429119a19ca297881dd047371ce1a42e58d5ae5a9ae1f0a9b50a23f",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers specificity-plan",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/imported_primer_review",
+      "definition_sha256": "sha256:b1660d1c12b2de0e66156970f2010df4c2d6080a59b02e6e19f3ce2a0c106d2f",
+      "evidence": [],
+      "intent_id": "imported_primer_review",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:c7349230485f70d58002fca3e1ab62036df119e05a7bba38189a825aedcb15a4",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers import-external-pairs",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/inspect_isoform_study_checkpoint_reuse",
+      "definition_sha256": "sha256:0282e8afb79dac9bc1620573411f58707b45a54e22df6cd2729b8a4632bcd182",
+      "evidence": [],
+      "intent_id": "inspect_isoform_study_checkpoint_reuse",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:b58acf660fac430502518414751f0d4abad6d01a8d644e4fd6d2f8cbf16eb813",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers inspect-gene-isoform-study-reuse",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/missing_primer3_preflight_demo",
+      "definition_sha256": "sha256:3b7f5a543e0343b06fe2f06689b4a061a70463499c804e5f3e217711196a05c9",
+      "evidence": [],
+      "intent_id": "missing_primer3_preflight_demo",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:945b948acb933fcd31612a3c4f79ec4e65a2e023c827d97db513f4d72d190c44",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers preflight",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/normalize_isoform_study_request",
+      "definition_sha256": "sha256:7ebb76d9cb800a18534278c46c0699938965079911c0bdbaac65202206660e31",
+      "evidence": [],
+      "intent_id": "normalize_isoform_study_request",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:5f89bc494af188454a443f0b5e951ff51a60dd8f4d4964178395c3a325e01709",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers plan-gene-isoform-study",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/offline_conventional_pcr_demo",
+      "definition_sha256": "sha256:46ebbca2ce7f06eb01251a38d94ad15809396ec8b6e8460662a8d449e9aa4a92",
+      "evidence": [],
+      "intent_id": "offline_conventional_pcr_demo",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:867ef34f5b2d19929025025b364dd35c264c145b09f49071065789b848d2198f",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "LoadFile",
+              "source": "engine_operation"
+            },
+            {
+              "name": "SetParameter",
+              "source": "engine_operation"
+            },
+            {
+              "name": "ExtractRegion",
+              "source": "engine_operation"
+            },
+            {
+              "name": "DesignPrimerPairs",
+              "source": "engine_operation"
+            },
+            {
+              "name": "ExportPrimerDesignReport",
+              "source": "engine_operation"
+            },
+            {
+              "name": "RenderProtocolCartoonSvg",
+              "source": "engine_operation"
+            }
+          ],
+          "request_mode": "workflow",
+          "scope": "workflow",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/offline_imported_primer_demo",
+      "definition_sha256": "sha256:28211901ad5a643a9a4664187df75fc9a5c73ff946332ad2db4937e3b542703b",
+      "evidence": [],
+      "intent_id": "offline_imported_primer_demo",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:da92764d2fb31ea12ff53ee48a4ce3635eeb8602fdd708022a1b3cbf4220145c",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "LoadFile",
+              "source": "engine_operation"
+            },
+            {
+              "name": "ImportExternalPrimerPairs",
+              "source": "engine_operation"
+            }
+          ],
+          "request_mode": "workflow",
+          "scope": "workflow",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/offline_patz1_transcript_panel_demo",
+      "definition_sha256": "sha256:be9deddc9126faff8a2e5c76335c6a68d14077a3971c9e96e85afeee79c2c75c",
+      "evidence": [],
+      "intent_id": "offline_patz1_transcript_panel_demo",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:237e024010a5ab0f7e8cbcbe94c543ad59b8b0747b102c2f43dc47605429931a",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "LoadFile",
+              "source": "engine_operation"
+            },
+            {
+              "name": "SetParameter",
+              "source": "engine_operation"
+            },
+            {
+              "name": "DesignTranscriptAssayPanel",
+              "source": "engine_operation"
+            },
+            {
+              "name": "ComposeGeneTranscriptAssayRoutine",
+              "source": "engine_operation"
+            }
+          ],
+          "request_mode": "workflow",
+          "scope": "workflow",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/pcr_protocol_cartoon",
+      "definition_sha256": "sha256:a2d30b763354d52420e8d3be41bb562c0ed16a6792a6b5596974193a333a4d2a",
+      "evidence": [],
+      "intent_id": "pcr_protocol_cartoon",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:c21895119765f965ba3f68d4a353a1fd02d51648639d08104f966844a3417d72",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "protocol-cartoon render-svg",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/primer_design_preflight",
+      "definition_sha256": "sha256:f5d5da389c7e2fd6230aa04b9952cfadece8bdf33df417e19dd8719ed86021e8",
+      "evidence": [],
+      "intent_id": "primer_design_preflight",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:d71deae86ade0ec2937831ab2e9cb2d9873e9c3bc56df9eae444bbaaa9a22316",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers preflight",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/primer_report_export",
+      "definition_sha256": "sha256:b790429b12d3a2ec62c7a4d7705b64da2fc0a9850e370f9c5ffd18ab11f56bea",
+      "evidence": [],
+      "intent_id": "primer_report_export",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:a4d1c7af307939f48f6b4cc3dc7fa1402ff36a0e6f34d7978734c689bbe0a2a9",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers export-report",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/primer_report_list",
+      "definition_sha256": "sha256:9b4539c9c7c81d59a595f080a8afeafdd91c4cab83d94773f24b23c64b38df89",
+      "evidence": [],
+      "intent_id": "primer_report_list",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:c55df303f59a9a8be5c1af390ab443c41e3a58fc6fcce501d28e46a7d2eee6e9",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers list-reports",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/primer_report_show",
+      "definition_sha256": "sha256:8b33954fe25b9f1da7d644da043968a42df3211028ce789050f556d223fb0311",
+      "evidence": [],
+      "intent_id": "primer_report_show",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:730b30eb964521cd5b9125897924718039343f35aa618030c947ae5a473d6cdf",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers show-report",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/qpcr_report_export",
+      "definition_sha256": "sha256:f4ff93e500f6ad3d443f45fe2acfa926371e9a51374c86d8872cf81772357d48",
+      "evidence": [],
+      "intent_id": "qpcr_report_export",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:22475c8bb5fd0a9f25e9f312f4fac10cfd4e756a4efe6f8a7afe1fec755bc123",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers export-qpcr-report",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/qpcr_report_list",
+      "definition_sha256": "sha256:72565c8c1b85230fa976dcf92ad8ec15b2e5d53229ee1e1c3e6380e23d5ad8c4",
+      "evidence": [],
+      "intent_id": "qpcr_report_list",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:2fa1e483b391036d67fbfb3584a399f330b86cb1904ad8d5136a4291aea8c264",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers list-qpcr-reports",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/qpcr_report_show",
+      "definition_sha256": "sha256:b59849ddbe98644573f38a441127bb2fe3e18b6eaca5150e53d547989ca0029d",
+      "evidence": [],
+      "intent_id": "qpcr_report_show",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:39b518dbd98148b57336bb4a2fbe67ad749173890a683bcbf4a15ec662cc0f95",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers show-qpcr-report",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/qpcr_taqman_design",
+      "definition_sha256": "sha256:5be79411d7b5210cb2bb149302c973e7999ff50dcca6eb56bca1c88c33e8e30c",
+      "evidence": [],
+      "intent_id": "qpcr_taqman_design",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:923b8884ae44e7ac89bfafa55333a841d84064c7cea32a2a87ad01b717a6e462",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers design-qpcr",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/specificity_plan_only_demo",
+      "definition_sha256": "sha256:e1d0afeaad97dd07cd2ab3ec47e40205d8df8b7d283606dba6ad7097d5e01495",
+      "evidence": [],
+      "intent_id": "specificity_plan_only_demo",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:a8bbbf8a4e06a4aafdfe5f1b207216851124e0083407f2a2f7ed0e8e04ddc020",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers specificity-plan",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/terminal_exon_sequence_specific_rt_primer_pool",
+      "definition_sha256": "sha256:06e0a89469b649837d29ac177bf8cc3e441a5baefbaed40306ed46c129576b80",
+      "evidence": [],
+      "intent_id": "terminal_exon_sequence_specific_rt_primer_pool",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:f65fdb6d46c91909b22b5adc98af02aab5a90f800be12c3518adf03b8e039f72",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers design-terminal-exon-rt-pool",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/transcript_assay_panel_design",
+      "definition_sha256": "sha256:712cfc72fa4f4a57130f03b5d234600c93107cb9043f85bc3fafce8562cf2baf",
+      "evidence": [],
+      "intent_id": "transcript_assay_panel_design",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:4c081e4b1560b98f1fbd6b637788837fcee8d1d68b63719c7608df963aaecc47",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers design-transcript-assay-panel",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    },
+    {
+      "capability_id": "gentle-pcr-primer-design/transcriptome_specificity_plan",
+      "definition_sha256": "sha256:2b08923a7aede187fe65d266625d97be3074ec4658738c3ab84487793cf999b4",
+      "evidence": [],
+      "intent_id": "transcriptome_specificity_plan",
+      "maturity": "unassessed",
+      "route_sha256": "sha256:65023abb9a3f6084127ac0b1a2a8a9f7a2c5f560eebe222e10f690adc10f88ef",
+      "skill": "gentle-pcr-primer-design",
+      "skill_version": "0.7.0",
+      "steps": [
+        {
+          "registry_refs": [
+            {
+              "name": "primers specificity-plan",
+              "source": "glossary_command"
+            }
+          ],
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "step_index": 0
+        }
+      ]
+    }
+  ],
+  "policy": "existing_execution_checks",
+  "runtime_binding": "not_checked",
+  "schema": "gentle.clawbio_capability_maturity.v1",
+  "source_files": [
+    {
+      "path": "assets/capability_maturity_evidence.json",
+      "sha256": "sha256:d78a1e8605cda8cf581aa2e17f2857f63d3d4df52f361809261f1d76e62ae170"
+    },
+    {
+      "path": "docs/examples/assets/cdna_assay_demo.gb",
+      "sha256": "sha256:5fc57105538ea725199cc641d945bb7509ce863f38338f853b41988bd128d700"
+    },
+    {
+      "path": "docs/examples/assets/cdna_assay_nonspecific_demo.gb",
+      "sha256": "sha256:985f18375ac3057907de0ecfafb0241777a0fbb7ccfa601acc7508ac42fc7336"
+    },
+    {
+      "path": "docs/examples/workflows/cdna_pcr_qpcr_assay_test_offline.json",
+      "sha256": "sha256:283143a851538c9500c8bdcd0a20e627f082341db0157aff62c90089c965e9b1"
+    },
+    {
+      "path": "docs/examples/workflows/cdna_pcr_qpcr_product_gel_nonspecific_offline.json",
+      "sha256": "sha256:5ed27faa033da2b02a1f479c5deec8ac7073903e96b9a92ffd1adab676cefae4"
+    },
+    {
+      "path": "docs/examples/workflows/gene_panel_isoform_protein_gel_ensembl.json",
+      "sha256": "sha256:9166910334a5855e6d230c85dc95174a7adccad4d8ad3b4db6112585740ff215"
+    },
+    {
+      "path": "docs/examples/workflows/gibson_arrangements_baseline.json",
+      "sha256": "sha256:2bea4b16c277c37d7f41abde6c092e3ef46f6fcc916b793cb40b3bc9f4147549"
+    },
+    {
+      "path": "docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json",
+      "sha256": "sha256:18e671f623f1290eecbdc14508adfbf2200c4df31467a6345e3635accd626317"
+    },
+    {
+      "path": "docs/examples/workflows/simple_pcr_primer_design_offline.json",
+      "sha256": "sha256:d726b26e8172d33cfafe49c1104eea5043d60fa7fe29c066d947cc88b1c7e889"
+    },
+    {
+      "path": "docs/examples/workflows/tp73_isoform_protein_2d_gel_offline.json",
+      "sha256": "sha256:2cd28f73978e93b8124d089be22fdf7e9d5b929f17bb30efda63ab4cd51e76a5"
+    },
+    {
+      "path": "docs/examples/workflows/tp73_isoform_protein_gel_offline.json",
+      "sha256": "sha256:b5f6ef0d5d34b21066c0214a476b9d87813c24d11d67f289fbe1da748c19563c"
+    },
+    {
+      "path": "docs/examples/workflows/tp73_variant1_trypsin_digest_gel_offline.json",
+      "sha256": "sha256:47efa6f1d3394040beb9eb908f67f663ac0657bc39fe6ebbcaf17c1cfb022604"
+    },
+    {
+      "path": "docs/glossary.json",
+      "sha256": "sha256:7c79c1239652d876dbbf3b9ada4f3240cf2380f7cea2c232b748c8511c146bc4"
+    },
+    {
+      "path": "docs/tutorial/inputs/gibson_insert_demo.fa",
+      "sha256": "sha256:0005a9072135c32060a7cfa6af546e77ba056f27cf4b272e5cc9a5c046986902"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/INTENTS.json",
+      "sha256": "sha256:76b5463699dc8b4905b22b0a26695b4c12c49f279f09aa170f90ecc232f2b217"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/capability_maturity.py",
+      "sha256": "sha256:f9fb6d2be22bdefad583505b0fdd2c37039c5e99ad3a7b6f347ddff79004848c"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/catalog_entry.json",
+      "sha256": "sha256:c9801e24c40e46ab2761881a009327c7c6ee57d62e885be05ee3cd3b3e316258"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_capabilities.json",
+      "sha256": "sha256:f6b145d1d1ab4266b92bb885c44ebf2c649dc43788740003529ca5478b0ccee7"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_cdna_pcr_test_demo_direct.json",
+      "sha256": "sha256:c6374fba4a4a2e841467c8660b4b4e27f73c766ec147e31405dd5418e08fff92"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_cdna_qpcr_taqman_test_demo_direct.json",
+      "sha256": "sha256:e90d7457251f88865193650b30530750033c35121c90e76f1a707c3084e33007"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_design_pcr_primers_tp53_operation.json",
+      "sha256": "sha256:88fb3fe1b762ab6821fdb85dcd7ccbefb5ea8655e36fd7c8e3170224979c0c13"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_design_qpcr_taqman_tp53_operation.json",
+      "sha256": "sha256:a5a95edbce00850692edc24496bc69ce5aca11c53591f2c71d0f56b7bfbf8c2a"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_export_lab_assistant_instructions.json",
+      "sha256": "sha256:724abcc8fd4243279a9b6675ae8b8d6ef3f59e2afb6744be3b38f07a53e08625"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_gene_protein_2d_gel_ensembl_demo.json",
+      "sha256": "sha256:e9697a6b87c7f7851a1a9bf3720a12f768259cec10f9cf7fd5e0ce9efe36e1ca"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_intents_runtime.json",
+      "sha256": "sha256:b5b25645379745514a532a6f9cc2a2671bd556d0049dc9564096165814820fa2"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_planning_protein_expression_handoff.json",
+      "sha256": "sha256:f85d6e9d3b46027d3b9649411f66a930f2445b9067b07ee6dfdda9b3ae2b6bb5"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_primer_report_export_demo.json",
+      "sha256": "sha256:a970df5cf8242e59602128feebe67f991620f8e056efb84dba5d81c91632d773"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_primer_report_show_demo.json",
+      "sha256": "sha256:a7625f811d50d597171c319f7d2139ba926f0bdcdc6414881becc4a81a033349"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_primer_reports_list.json",
+      "sha256": "sha256:6e3d20f38b0b5103042f7efabbd7e00dcbe0fa609d5714b1e7c569deb8812e22"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_primers_preflight_auto.json",
+      "sha256": "sha256:1c64716f6b7edc6c9b79abec9ab14d8b2a7482db8200ed6e71e279fd261ac8ac"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_qpcr_report_export_demo.json",
+      "sha256": "sha256:5da37861b8f602062891342e12ba610311057a262a3275df24d6f69584f2ec35"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_qpcr_report_show_demo.json",
+      "sha256": "sha256:806c15784863d4f792ffa7a1013b02f859268c6108c421eed14803947bb6c592"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_qpcr_reports_list.json",
+      "sha256": "sha256:3f8df283946c402c1f15ff4b9a6a3f48cd45b8afe60dd7dac978971885ff6aee"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_resources_status.json",
+      "sha256": "sha256:a5602dd9cb2fdeb29e3b9474785955a3f589aa24e99347f000b7efeb07c75b34"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_runtime_version.json",
+      "sha256": "sha256:ba518574c37ee4da42188bdf5cf23bf4239dfdfa560301da2995385ddb028e12"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_services_geneart_cloned_gene_preflight.json",
+      "sha256": "sha256:7c54114675feae25c0612dd5c2161771893995a754af0ed63a2446e9ef519401"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_services_geneart_cloned_gene_quote.json",
+      "sha256": "sha256:7023f940d676efce4df9e6ac062246a65ad97ead70c5e28a05c61b414813dcb2"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_services_geneart_protein_expression_preflight.json",
+      "sha256": "sha256:007ba10c81d6e119830d91069e88138642afc3bd36f0586f27ee6deb2f3c664d"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_services_geneart_protein_expression_quote.json",
+      "sha256": "sha256:2253b06c2b630b20b17ea8fc8f3321f77cb47937041bfd03abe47ddf210696cb"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_services_metabion_mblock_quote.json",
+      "sha256": "sha256:73ef12d8c0ec79656b5b8fde0a0ce99adf33e560a29b91a47086fa8ad5f636e1"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_services_metabion_oligo_preflight.json",
+      "sha256": "sha256:65285f7d5b43c8f9b347d0277b4298adc9c5917bb32a5c519bf8390c8b5cbe19"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_services_metabion_oligo_quote.json",
+      "sha256": "sha256:3aa6f874feefbf8d2fcc5c301d3ce0401cf8d78243d2e785846c70e878ce9f30"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_services_providers_doctor.json",
+      "sha256": "sha256:eed0c3597c0a806c4a90d331ccd00f71931daad09c5a7f4ca31a9d21ed1ba9e9"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_services_providers_list.json",
+      "sha256": "sha256:b64e535479e5e76791a75d49e92a1d8561a916c543efac5eb4ac2b49c27e7472"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_services_status.json",
+      "sha256": "sha256:baa41eefefe927c9d7da46968328fd80d33e27b42f9e171270e5bf3382ba7234"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_services_telegram_guide.json",
+      "sha256": "sha256:6f8150c9b0b4bdddc91388c63cae28990854cb36f2ed65560ac058d9b09b5f06"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_services_telegram_guide_cloning.json",
+      "sha256": "sha256:fa9b16aa928e38ba30fe40beb161e79ff9d218c809407b121c4a4efa8cc6d070"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_services_telegram_guide_follow_up.json",
+      "sha256": "sha256:6d82d28e4b2d6f28b7fed21fbed4a5ab50620246ee55225447b64cb9d43fff9f"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_services_telegram_guide_gene_context.json",
+      "sha256": "sha256:7251e541c61f835bdfc3c2320f036a660923d0799cefc5db8d4f0cfed1cd791c"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_services_telegram_guide_inline_dna.json",
+      "sha256": "sha256:145d7bca924f40d876fcaf37d887f805a7eec294fbd1b14feb6dfefe3a059c07"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_services_telegram_guide_isoforms.json",
+      "sha256": "sha256:74d281bccfab5d361aee605b51623f0dd291fa8c20cb29773e94afabf0187102"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_services_telegram_guide_readiness.json",
+      "sha256": "sha256:c249cb9d724a5f010907a97f187c043b24c9e7ab1d390f051428e7a29447841c"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_services_telegram_guide_tfbs.json",
+      "sha256": "sha256:d8af183ccc52b91da3b2ba337415aa6c0f96dac4531698f9573ae4c0c112cc6c"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_skill_info.json",
+      "sha256": "sha256:440d164e5b7fbf818160e6319c371aed7504e71cfd0b889127892cb5d02607b7"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_workflow_cdna_pcr_qpcr_assay_test_offline.json",
+      "sha256": "sha256:a90b6c2172932c197cfe7357705fcf5a170887a4606d26b517c132804be19059"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_workflow_cdna_pcr_qpcr_product_gel_nonspecific_offline.json",
+      "sha256": "sha256:3fc4b17af58ebcadb7bb535a01305658c479d60e6c6487cd403a2cd8a985e230"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_workflow_clariom_pm_probe_interpretation.json",
+      "sha256": "sha256:904baf9a0721bdae7294d81d12d8b1f50e458372dc90634d0ad16b779044e185"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_workflow_gene_panel_isoform_protein_gel_ensembl.json",
+      "sha256": "sha256:8b0330380f99aafdde8dc1b46ee99a19a0a92141891d60f925a981f6aabcde42"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_workflow_gibson_lab_assistant_handoff_demo.json",
+      "sha256": "sha256:174ccc7b773a077221671566f566483bdb6b112c6ad2f1834fb0c961519eb4bf"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_workflow_isoform_protein_2d_gel_demo.json",
+      "sha256": "sha256:a673875966a94fb8d0ae974541c77e042f9c3d465d4e185b037ceff5855090f8"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_workflow_isoform_protein_gel_demo.json",
+      "sha256": "sha256:68e662dc38a219169a5ea23b8a9854fb635d74cdfc9235c159d61687fe0d7546"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_workflow_simple_pcr_primer_design_offline.json",
+      "sha256": "sha256:abf7f8d35444491d1e8061c166048d5ded151025fc6dbf547bff0a4ed0cc158f"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/request_workflow_trypsin_digest_gel_demo.json",
+      "sha256": "sha256:b0d18349f1d314838ef5cc903318b374fdbcb10b61d15f03eb3e95ae4e3e2d31"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/examples/workflows/clariom_pm_probe_interpretation.workflow.json",
+      "sha256": "sha256:7aeb9a890dce5542dedb983e5af75b999e81f54454e8f18d989db0825c3b3160"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-cloning/gentle_cloning.py",
+      "sha256": "sha256:a0e4e8aa5f497f2994fd711956e8c3c520b8e38e9bde62aff584d1b7e4df863f"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-pcr-primer-design/INTENTS.json",
+      "sha256": "sha256:f08c9aefcab62b7c11e62d9ac8a196239a5a19e5061c6907e4e6cde7e9328d93"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-pcr-primer-design/catalog_entry.json",
+      "sha256": "sha256:3dfc23302b1a7f22917eaabdc16520162f91f08a1e930f03479af360feddc594"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-pcr-primer-design/examples/request_conventional_pcr_offline.json",
+      "sha256": "sha256:fb5c96aeeac585be6251fa5077af224de63ec29339ccf7613b37e54046ef6382"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-pcr-primer-design/examples/request_imported_primer_review_offline.json",
+      "sha256": "sha256:10cb3f7d5db7a55c054c35eb74891d40c2b623c22177b32709698929e5e89c6c"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-pcr-primer-design/examples/request_missing_primer3_preflight.json",
+      "sha256": "sha256:52858b9d76741690dd7417bbc586e3eef4d3241f91b7447c05d338e05aac3621"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-pcr-primer-design/examples/request_patz1_transcript_assay_offline.json",
+      "sha256": "sha256:590c27fa1ed1a9bc3933e45b7fe5df8f73d3a776bb57d4701e204803bd2627ff"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-pcr-primer-design/examples/request_primer_preflight.json",
+      "sha256": "sha256:0a4bb8f339463e73e60008f5a3a654a7a85ddde283c9c13a3807fa56bcc0fca3"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-pcr-primer-design/examples/request_specificity_plan_only.json",
+      "sha256": "sha256:1f1fb6c62db736a0097e42300ae1631a0ada978644a759d5d8e0ff3525222f70"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-pcr-primer-design/examples/synthetic_imported_primer_pairs.json",
+      "sha256": "sha256:d2e4b6a86306eef04a979a69597ee4824c12bbbcc0963da2580fc252924418e8"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-pcr-primer-design/examples/workflows/imported_primer_review_offline.workflow.json",
+      "sha256": "sha256:ebab30f282a2ca4b8021e2da06805e6e4943b204cf01bce5db4f9ae75ef5c367"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-tss-collection/INTENTS.json",
+      "sha256": "sha256:9e7a2bc2e58ddae9fbae65bc206b91e7806a80fd51d63ce254310974eae357ef"
+    },
+    {
+      "path": "integrations/clawbio/skills/gentle-tss-collection/catalog_entry.json",
+      "sha256": "sha256:78d08d6c4a89e85874fe613b4908d4ae81bff33d9948c35578bf4a96b1ab55ef"
+    },
+    {
+      "path": "test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json",
+      "sha256": "sha256:11e2a7b4cbb83af5868902b1834ecbfe6c5e7ddb80e521c1060abf7a4d8418a9"
+    },
+    {
+      "path": "test_files/fixtures/transcript_assay_panel/patz1/patz1_assay_isoform_evidence.json",
+      "sha256": "sha256:267a8fc00da8fea653dd440259987b20fc68422554cfed8bbff61809d4eeaaf5"
+    },
+    {
+      "path": "test_files/fixtures/transcript_assay_panel/patz1/patz1_assay_minus_strand.gb",
+      "sha256": "sha256:d6e8c4867cfd9ec32c85140f233c943e50267a9e3c20d85c93d02a2b08d88af0"
+    },
+    {
+      "path": "test_files/pGEX-3X.gb",
+      "sha256": "sha256:2fa271027cbbdcca1f471133ff57497894a356f26d63b080f9ab6fe5808cd3cc"
+    },
+    {
+      "path": "test_files/tp73.ncbi.gb",
+      "sha256": "sha256:9acebbd259f535a9f780006632e2fde3d796d4674783b313d5b28930ff898ab4"
+    }
+  ]
+}

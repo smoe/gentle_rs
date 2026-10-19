@@ -31793,6 +31793,7 @@ fn introspection_capabilities_payload(kind_filter: Option<&str>) -> Value {
         "route": "capabilities",
         "annotation_scope": "registry_with_fact_annotated_slice",
         "capabilities": introspection_capability_descriptors(kind_filter),
+        "capability_maturity": gentle_protocol::capability_maturity::bundled_capability_maturity(),
     })
 }
 
