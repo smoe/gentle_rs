@@ -8,6 +8,169 @@ use serde::{Deserialize, Serialize};
 /// Resource budget for processing a rectangular grid, not a carrier capacity claim.
 pub const MAX_RACK_PROCESSING_POSITIONS: usize = 1_536;
 
+/// Engineering assumptions in millimetres, not manufacturing tolerances.
+pub const RADIAL_CLEARANCE_COLLAR: f64 = 0.15;
+pub const RADIAL_CLEARANCE_FLOOR: f64 = 0.30;
+pub const MIN_COLLAR_LEDGE: f64 = 0.20;
+pub const TIP_CLEARANCE: f64 = 2.0;
+pub const CYLINDER_ENGAGEMENT: f64 = 3.0;
+pub const COLLAR_TOP_MARGIN: f64 = 5.0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+/// Intended support only; neither mode establishes physical fit.
+pub enum RackTubeSupportMode {
+    CollarSeated,
+    FloorSeated,
+}
+
+impl RackTubeSupportMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::CollarSeated => "collar_seated",
+            Self::FloorSeated => "floor_seated",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+/// Pure drawing-derived straight-bore parameters; dimensions are millimetres.
+pub struct TubeCarrierGeometry {
+    pub opening_diameter_mm: f64,
+    pub bore_depth_mm: f64,
+    pub pitch_mm: f64,
+    pub edge_margin_mm: f64,
+}
+
+fn required_dimension(value: &DrawingDimension, name: &str) -> Result<f64, String> {
+    value
+        .value_mm
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .filter(|_| value.basis != DimensionBasis::NotDocumented)
+        .ok_or_else(|| format!("tube_dimension_unavailable: {name}"))
+}
+
+impl TubeCarrierGeometry {
+    /// Recheck a proposed bore against every profile, including synthetic inputs.
+    pub fn validate(
+        &self,
+        profiles: &[TubeProfile],
+        mode: RackTubeSupportMode,
+    ) -> Result<(), String> {
+        if profiles.is_empty() {
+            return Err("tube_profiles_empty: carrier needs drawing profiles".into());
+        }
+        for value in [
+            self.opening_diameter_mm,
+            self.bore_depth_mm,
+            self.pitch_mm,
+            self.edge_margin_mm,
+        ] {
+            if !value.is_finite() || value <= 0.0 {
+                return Err(
+                    "carrier_geometry_invalid: dimensions must be finite and positive".into(),
+                );
+            }
+        }
+        for profile in profiles {
+            let body = required_dimension(&profile.body_outer_diameter, "body outer diameter")?;
+            let length = required_dimension(&profile.body_length, "body length")?;
+            if self.opening_diameter_mm <= body || self.opening_diameter_mm >= self.pitch_mm {
+                return Err(
+                    "carrier_opening_invalid: body clearance or pitch is insufficient".into(),
+                );
+            }
+            match mode {
+                RackTubeSupportMode::CollarSeated => {
+                    let collar =
+                        required_dimension(&profile.collar_outer_diameter, "collar diameter")?;
+                    if self.opening_diameter_mm > collar - 2.0 * MIN_COLLAR_LEDGE {
+                        return Err("collar_ledge_insufficient: opening leaves less than 0.20 mm radial ledge".into());
+                    }
+                    if self.bore_depth_mm < length + TIP_CLEARANCE {
+                        return Err(
+                            "tip_clearance_insufficient: suspended tip needs 2.0 mm clearance"
+                                .into(),
+                        );
+                    }
+                }
+                RackTubeSupportMode::FloorSeated => {
+                    let cylinder = required_dimension(
+                        &profile.cylindrical_section_length,
+                        "cylindrical section",
+                    )?;
+                    if cylinder >= length {
+                        return Err(
+                            "tube_dimension_invalid: cylinder must be shorter than body".into()
+                        );
+                    }
+                    if self.bore_depth_mm <= length - cylinder + CYLINDER_ENGAGEMENT {
+                        return Err("bore_engages_cone_only: require more than 3.0 mm cylindrical engagement".into());
+                    }
+                    if self.bore_depth_mm >= length - COLLAR_TOP_MARGIN {
+                        return Err(
+                            "collar_not_above_top: require more than 5.0 mm above the bore".into(),
+                        );
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Conservative Safe-Lock carrier; side-view width is not a measured cap outline.
+pub fn derive_tube_carrier_geometry(
+    profiles: &[TubeProfile],
+    mode: RackTubeSupportMode,
+) -> Result<TubeCarrierGeometry, String> {
+    if profiles.is_empty() {
+        return Err("tube_profiles_empty: carrier needs drawing profiles".into());
+    }
+    let mut body: f64 = 0.0;
+    let mut length: f64 = 0.0;
+    let mut lower: f64 = 0.0;
+    let mut pitch: f64 = 0.0;
+    for profile in profiles {
+        body = body.max(required_dimension(
+            &profile.body_outer_diameter,
+            "body outer diameter",
+        )?);
+        let profile_length = required_dimension(&profile.body_length, "body length")?;
+        length = length.max(profile_length);
+        if mode == RackTubeSupportMode::FloorSeated {
+            let cylinder =
+                required_dimension(&profile.cylindrical_section_length, "cylindrical section")?;
+            if cylinder >= profile_length {
+                return Err("tube_dimension_invalid: cylinder must be shorter than body".into());
+            }
+            lower = lower.max(profile_length - cylinder);
+        }
+        pitch = pitch.max(
+            required_dimension(&profile.closed_side_view_width, "closed side-view width").map_err(
+                |_| "cap_envelope_unknown: closed side-view width is unavailable".to_string(),
+            )?,
+        );
+    }
+    let (clearance, depth) = match mode {
+        RackTubeSupportMode::CollarSeated => (RADIAL_CLEARANCE_COLLAR, length + TIP_CLEARANCE),
+        // The strict lower bound is rounded to the next whole millimetre.
+        RackTubeSupportMode::FloorSeated => (
+            RADIAL_CLEARANCE_FLOOR,
+            (lower + CYLINDER_ENGAGEMENT).floor() + 1.0,
+        ),
+    };
+    let opening = body + 2.0 * clearance;
+    let geometry = TubeCarrierGeometry {
+        opening_diameter_mm: opening,
+        bore_depth_mm: depth,
+        pitch_mm: pitch,
+        edge_margin_mm: (pitch - opening) / 2.0,
+    };
+    geometry.validate(profiles, mode)?;
+    Ok(geometry)
+}
+
 /// Admit a grid before multiplying dimensions, allocating coordinates or painting.
 pub fn admit_rack_grid(rows: usize, columns: usize) -> Result<usize, String> {
     if rows == 0 || columns == 0 {
@@ -233,6 +396,109 @@ pub fn tube_profile(id: TubeProfileId) -> TubeProfile {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn safe_lock_profiles() -> Vec<TubeProfile> {
+        [
+            TubeProfileId::EppendorfSafeLock15ml,
+            TubeProfileId::EppendorfSafeLock20ml,
+        ]
+        .into_iter()
+        .map(tube_profile)
+        .collect()
+    }
+
+    #[test]
+    fn labware_carriers_derive_both_support_modes_from_both_profiles() {
+        let profiles = safe_lock_profiles();
+        for (mode, opening, depth, edge) in [
+            (RackTubeSupportMode::CollarSeated, 10.15, 42.0, 4.925),
+            (RackTubeSupportMode::FloorSeated, 10.45, 22.0, 4.775),
+        ] {
+            let geometry = derive_tube_carrier_geometry(&profiles, mode).unwrap();
+            assert!((geometry.opening_diameter_mm - opening).abs() < 1e-10);
+            assert_eq!(geometry.bore_depth_mm, depth);
+            assert_eq!(geometry.pitch_mm, 20.0);
+            assert!((geometry.edge_margin_mm - edge).abs() < 1e-10);
+            geometry.validate(&profiles, mode).unwrap();
+            let mut reversed = profiles.clone();
+            reversed.reverse();
+            assert_eq!(
+                derive_tube_carrier_geometry(&reversed, mode).unwrap(),
+                geometry
+            );
+        }
+    }
+
+    #[test]
+    fn labware_carrier_refuses_insufficient_collar_ledge() {
+        let mut profiles = safe_lock_profiles();
+        profiles[0].collar_outer_diameter.value_mm = Some(10.15);
+        assert!(
+            derive_tube_carrier_geometry(&profiles, RackTubeSupportMode::CollarSeated)
+                .unwrap_err()
+                .starts_with("collar_ledge_insufficient:")
+        );
+    }
+
+    #[test]
+    fn labware_carrier_refuses_cone_only_engagement() {
+        let mut profiles = safe_lock_profiles();
+        let geometry =
+            derive_tube_carrier_geometry(&profiles, RackTubeSupportMode::FloorSeated).unwrap();
+        // Synthetic longer cone makes this proposed bore unsafe.
+        profiles[0].cylindrical_section_length.value_mm = Some(19.0);
+        assert!(
+            geometry
+                .validate(&profiles, RackTubeSupportMode::FloorSeated)
+                .unwrap_err()
+                .starts_with("bore_engages_cone_only:")
+        );
+    }
+
+    #[test]
+    fn labware_carrier_refuses_collar_at_or_below_top() {
+        let mut profiles = safe_lock_profiles();
+        profiles[0].body_length.value_mm = Some(25.0);
+        profiles[1].cylindrical_section_length.value_mm = Some(20.0);
+        // The other synthetic profile requires a bore deeper than this collar permits.
+        assert!(
+            derive_tube_carrier_geometry(&profiles, RackTubeSupportMode::FloorSeated)
+                .unwrap_err()
+                .starts_with("collar_not_above_top:")
+        );
+    }
+
+    #[test]
+    fn labware_carrier_refuses_unknown_cap_envelope() {
+        let mut profiles = safe_lock_profiles();
+        profiles[0].closed_side_view_width.value_mm = None;
+        assert!(
+            derive_tube_carrier_geometry(&profiles, RackTubeSupportMode::FloorSeated)
+                .unwrap_err()
+                .starts_with("cap_envelope_unknown:")
+        );
+    }
+
+    #[test]
+    fn labware_carrier_refuses_invalid_and_unproven_dimensions() {
+        assert!(derive_tube_carrier_geometry(&[], RackTubeSupportMode::FloorSeated).is_err());
+        for value in [
+            None,
+            Some(f64::NAN),
+            Some(f64::INFINITY),
+            Some(0.0),
+            Some(-1.0),
+        ] {
+            let mut profiles = safe_lock_profiles();
+            profiles[0].body_outer_diameter.value_mm = value;
+            assert!(
+                derive_tube_carrier_geometry(&profiles, RackTubeSupportMode::FloorSeated).is_err()
+            );
+        }
+        let mut profiles = safe_lock_profiles();
+        profiles[0].body_outer_diameter.basis = DimensionBasis::NotDocumented;
+        assert!(derive_tube_carrier_geometry(&profiles, RackTubeSupportMode::FloorSeated).is_err());
+    }
 
     #[test]
     fn rack_grid_admission_checks_zeros_overflow_and_resource_budget() {

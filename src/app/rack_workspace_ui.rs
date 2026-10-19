@@ -871,6 +871,12 @@ impl GENtleApp {
             RackPhysicalTemplateKind::StoragePcrTubeRack => "Storage PCR tube rack",
             RackPhysicalTemplateKind::PipettingPcrTubeRack => "Pipetting PCR tube rack",
             RackPhysicalTemplateKind::CellCulturePlate => "Cell culture plate",
+            RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated => {
+                "Safe-Lock 1.5/2.0 ml - collar seated (unverified)"
+            }
+            RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated => {
+                "Safe-Lock 1.5/2.0 ml - floor seated (unverified)"
+            }
         }
     }
 
@@ -3320,6 +3326,8 @@ impl GENtleApp {
                             RackPhysicalTemplateKind::StoragePcrTubeRack,
                             RackPhysicalTemplateKind::PipettingPcrTubeRack,
                             RackPhysicalTemplateKind::CellCulturePlate,
+                            RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated,
+                            RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated,
                         ] {
                             ui.selectable_value(
                                 &mut self.rack_physical_template_kind,

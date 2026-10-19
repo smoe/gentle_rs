@@ -5069,7 +5069,12 @@ Exports:
 - Grid processing is bounded to 1,536 positions with overflow-checked dimensions.
   Unsupported saved racks still open unchanged; a visible explanation replaces
   the grid and processing refuses, rather than expanding or truncating it.
-  No new Safe-Lock carrier, support mode, storage box or 96-well fit is implied.
+  The physical-template combo additionally offers Safe-Lock 1.5/2.0 ml collar-
+  and floor-seated carriers, both explicitly unverified at 20-mm pitch.
+  New exports retain support mode, assumptions and nonclaims. Selecting a
+  template neither assigns tube identity to samples nor qualifies fabrication,
+  cap clearance, ice/freezer use or commercial-rack compatibility. Storage
+  boxes and denser unchecked spacing remain deferred.
 
 ## Engine Settings (Engine Ops)
 

@@ -52,8 +52,49 @@ No physical fit, closed/open-cap clearance, fabrication, material, sterility,
 freezer, autoclave or cell-culture qualification follows. Existing PCR-rack and
 plate templates are unchanged and are not manufacturer-backed compatibility
 evidence. A 96-position layout is not proof that these tubes fit an ordinary
-96-well plate or an ANSI/SLAS carrier. New carriers, support mode, boxes,
-inserts and lids remain deferred.
+96-well plate or an ANSI/SLAS carrier. Safe-Lock carriers now offer the explicit
+support modes below. Boxes, inserts, lids and denser unchecked spacing stay deferred.
+
+## Safe-Lock 1.5/2.0 ml carriers
+
+`safe_lock_tube_rack_collar_seated` suspends the tube at its collar;
+`safe_lock_tube_rack_floor_seated` rests its tip on the floor. Both derive
+worst-case dimensions over both manufacturer profiles, not nominal volume.
+They are `tube_rack`, format `eppendorf_safe_lock_1_5ml_or_2_0ml`, with
+`geometry_basis=drawing_derived_unverified`. They do not modify the three older
+templates. New optional spec fields are omitted for old templates.
+
+All constants below are **engineering assumptions**, not manufacturer
+tolerances, fabrication guidance or physical qualification:
+
+| Assumption (mm) | Value / derivation |
+| --- | --- |
+| `RADIAL_CLEARANCE_COLLAR` | 0.15; opening 9.85 + 2x0.15 = 10.15 |
+| `RADIAL_CLEARANCE_FLOOR` | 0.30; opening 9.85 + 2x0.30 = 10.45 |
+| `MIN_COLLAR_LEDGE` | 0.20 radially; opening must not exceed 10.8 - 0.4 |
+| `TIP_CLEARANCE` | 2.0; suspended bore depth 40 + 2 = 42 |
+| `CYLINDER_ENGAGEMENT` | strictly more than 3.0; longest lower part 38.9 - 20 = 18.9 |
+| Floor bore rounding | strictly next whole mm above 18.9 + 3 = 21.9, hence 22 |
+| `COLLAR_TOP_MARGIN` | strictly more than 5.0 above a floor-seated bore; depth < 38.9 - 5 |
+| Floor thickness | 2.0; total heights 44.0 / 24.0 |
+| Closed-cap pitch | 20.0 both axes; conservative approximate side-view width, **not** measured cap outline |
+| Edge margin | (pitch - opening)/2; 4.925 / 4.775 |
+| Front clearance / label-strip depth / recess | 10.0 / 6.0 / 0.8 |
+| Corner-radius parameter | 2.0; existing straight-edged SCAD block remains unchanged |
+
+The existing overall-size formula is retained: a 4x9 grid is 180.0 mm wide
+and 85.075 / 85.225 mm deep. A1 is (10, 15.075 / 15.225); D9 is
+(170, 75.075 / 75.225). Closed-cap clearance remains unverified. Straight
+bores preserve the floor and open top; no material, ice/freezer/autoclave,
+sterility or commercial-rack compatibility claim follows.
+
+Shared derivation rejects absent/nonfinite/unproven dimensions and unknown
+side-view envelopes. `TubeCarrierGeometry::validate` also checks nominated
+bores against synthetic profiles: `collar_ledge_insufficient`,
+`bore_engages_cone_only`, `collar_not_above_top`, `cap_envelope_unknown` retain
+stable prefixes. Cone-only regression validates a proposed 22-mm bore against
+a synthetic longer cone; derivation otherwise raises the bore when possible.
+Every new-template SVG/SCAD/JSON includes unverified geometry disclosures.
 
 ## Verification boundary
 
@@ -72,3 +113,5 @@ JSON). Compare them with this change before accepting legacy byte identity.
 If those baselines are committed, include provenance, scoped LF checkout policy
 and LF/CRLF checkout coverage. No legacy geometry formula or template identity
 is intentionally changed here; source inspection is not a byte-exact pass.
+The new carrier Rust tests are authored but not locally executed. Native
+GUI controls, fresh source-matched exports and physical fit remain unverified.

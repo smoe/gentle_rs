@@ -8876,6 +8876,15 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - `storage_pcr_tube_rack`
   - `pipetting_pcr_tube_rack`
   - `cell_culture_plate`
+  - `safe_lock_tube_rack_collar_seated`
+  - `safe_lock_tube_rack_floor_seated`
+- New Safe-Lock templates are `family=tube_rack`, format
+  `eppendorf_safe_lock_1_5ml_or_2_0ml`, conservative 20-mm pitch. Optional
+  `support_mode`, `tube_profiles`, `geometry_basis`, `nonclaims` and `assumptions`
+  are omitted for legacy specs and included in new simulation records.
+  New SVG/SCAD exports disclose the same unverified boundary. Unknown dimensions
+  and unsafe support geometry fail with stable refusal-code prefixes before
+  writing. See [derivation and provenance](../data/labware/README.md).
 - The export consumes:
   - rack geometry (`rows`, `columns`, blocked coordinates)
   - saved rack occupancy and arrangement ids for visual planning markers
@@ -8903,8 +8912,8 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 `ExportRackHeroSvg` semantics:
 
 - Writes one deterministic README-facing hero SVG for a saved rack.
-- Supports the built-in `storage_pcr_tube_rack`, `pipetting_pcr_tube_rack`,
-  and `cell_culture_plate` physical templates.
+- Supports all built-in physical templates listed above, including both
+  unverified Safe-Lock support modes.
 - Uses the same linked rack snapshot as the technical rack exports, but renders
   a presentation-specific top-down rack/plate:
   - a rack/plate outline with a clipped upper-left orientation corner

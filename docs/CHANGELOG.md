@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-10-20 - Add Drawing-Derived Safe-Lock Support Modes
+
+- Add collar-seated and floor-seated 1.5/2.0 ml carriers through existing rack
+  exports, parser, generic operation and GUI selector. Derive conservative
+  worst-case openings/depths at 20-mm pitch from both source profiles. Record
+  named engineering assumptions and unverified geometry in every new export.
+- Preserve old template arms/numbers/identities, floor/open-top SCAD and omitted
+  optional metadata for legacy JSON. Author drawing/refusal, 4x9 coordinate,
+  old-key absence, resource/no-write, shell/generic-op and GUI-label regressions.
+  Record the owner's support/spacing/PCR intent and later box use cases.
+- No new parity rows, release gate, local Rust, provider action or publication.
+  Glen/CI retain Rust/native acceptance, nine committed byte baselines and
+  source-matched mesh checks. Existing historical evidence remains unchanged.
+- Verification: 21 source/tutorial tests, documentation status, scoped rustfmt
+  and whitespace pass. Two Python tube-template tests pass (three existing
+  tube meshes) outside the sandbox after its Qt NEON probe failure; this is
+  neither new-carrier nor Rust exporter execution. Roadmap stays 400 lines.
+
 ## 2026-10-19 - Guard Absolute Cloning Ranking Policy Against Drift
 
 - Add seven test-only guards beside the existing bench-model regressions:

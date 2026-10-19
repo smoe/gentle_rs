@@ -1737,5 +1737,13 @@ does not establish the plan-view hinge/cap outline. Visualization-only tube
 models must disclose omitted cap/hinge/cavity and interpolated geometry; they
 never imply fit, manufacturability, material or biological qualification.
 Existing PCR/plate templates are not a compatibility authority for Safe-Lock
-tubes. Carrier support, closed-cap pitch, 96-position interpretation and
-storage boxes need separate explicit decisions and evidence.
+tubes. Owner decisions recorded 2026-10-19: offer both collar-seated and
+floor-seated 1.5/2.0 ml carriers; use a conservative 20-mm approximate
+side-view pitch without claiming measured cap clearance. The 96-position
+intent is small 0.2-ml PCR tubes at 9-mm pitch, not 0.5-ml Safe-Lock tubes;
+new PCR dimensions require an independently retained official drawing reference.
+Storage boxes serve transport between institutes on ice and freezer
+organisation; boxes/inserts/lids and denser unchecked pitch remain later
+decisions, not thermal/material qualification. New template metadata is
+optional and omitted for legacy templates so their serialized bytes and
+geometry remain unchanged. No new template establishes verified fit.

@@ -2240,6 +2240,7 @@ impl GentleEngine {
                 card_y += module_card_height_mm + module_gap_mm;
             }
         }
+        Self::append_carrier_disclosures_svg(&mut svg, &spec);
         svg.push_str("</svg>");
         fs::write(path, svg).map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -2300,6 +2301,20 @@ impl GentleEngine {
                 8.0,
                 1.2,
             ),
+            RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated => {
+                return Self::safe_lock_carrier_spec(
+                    template,
+                    profile,
+                    gentle_protocol::labware::RackTubeSupportMode::CollarSeated,
+                );
+            }
+            RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated => {
+                return Self::safe_lock_carrier_spec(
+                    template,
+                    profile,
+                    gentle_protocol::labware::RackTubeSupportMode::FloorSeated,
+                );
+            }
             RackPhysicalTemplateKind::CellCulturePlate => {
                 let (pitch_x_mm, pitch_y_mm, opening_diameter_mm, edge_margin_mm) =
                     match profile.kind {
@@ -2350,6 +2365,7 @@ impl GentleEngine {
                 "pcr_tube_0_2ml"
             }
             RackPhysicalTemplateFamily::CellCulture => "cell_culture_plate_well",
+            RackPhysicalTemplateFamily::TubeRack => "eppendorf_safe_lock_1_5ml_or_2_0ml",
         };
         Ok(RackPhysicalTemplateSpec {
             kind: template,
@@ -2371,7 +2387,81 @@ impl GentleEngine {
             front_label_strip_recess_mm,
             overall_width_mm,
             overall_depth_mm,
+            ..Default::default()
         })
+    }
+
+    fn safe_lock_carrier_spec(
+        kind: RackPhysicalTemplateKind,
+        profile: &RackProfileSnapshot,
+        mode: gentle_protocol::labware::RackTubeSupportMode,
+    ) -> Result<RackPhysicalTemplateSpec, EngineError> {
+        use gentle_protocol::labware::{TubeProfileId, derive_tube_carrier_geometry, tube_profile};
+        let ids = vec![
+            TubeProfileId::EppendorfSafeLock15ml,
+            TubeProfileId::EppendorfSafeLock20ml,
+        ];
+        let profiles = ids.iter().copied().map(tube_profile).collect::<Vec<_>>();
+        let geometry =
+            derive_tube_carrier_geometry(&profiles, mode).map_err(|message| EngineError {
+                code: ErrorCode::InvalidInput,
+                message,
+                cause_chain: vec![],
+            })?;
+        let pitch = geometry.pitch_mm as f32;
+        let opening = geometry.opening_diameter_mm as f32;
+        let edge = geometry.edge_margin_mm as f32;
+        let front = 10.0;
+        Ok(RackPhysicalTemplateSpec {
+            kind,
+            family: RackPhysicalTemplateFamily::TubeRack,
+            container_format: "eppendorf_safe_lock_1_5ml_or_2_0ml".into(),
+            rows: profile.rows,
+            columns: profile.columns,
+            pitch_x_mm: pitch,
+            pitch_y_mm: pitch,
+            opening_diameter_mm: opening,
+            inner_wall_mm: pitch - opening,
+            outer_wall_mm: edge,
+            floor_thickness_mm: 2.0,
+            rack_height_mm: geometry.bore_depth_mm as f32 + 2.0,
+            edge_margin_mm: edge,
+            corner_radius_mm: 2.0,
+            front_top_clearance_mm: front,
+            front_label_strip_depth_mm: 6.0,
+            front_label_strip_recess_mm: 0.8,
+            overall_width_mm: 2.0 * edge + opening + (profile.columns - 1) as f32 * pitch,
+            overall_depth_mm: front + edge + opening + (profile.rows - 1) as f32 * pitch,
+            support_mode: Some(mode),
+            tube_profiles: ids,
+            geometry_basis: Some("drawing_derived_unverified".into()),
+            nonclaims: vec![
+                "No verified physical fit or cap clearance; not a commercial rack replica".into(),
+                "No material, sterility, freezer, ice, thermal or autoclave suitability".into(),
+                "Conservative spacing from approximate side-view width, not a measured cap outline".into(),
+            ],
+            assumptions: vec![
+                "RADIAL_CLEARANCE_COLLAR=0.15 mm; RADIAL_CLEARANCE_FLOOR=0.30 mm".into(),
+                "MIN_COLLAR_LEDGE=0.20 mm; TIP_CLEARANCE=2.0 mm".into(),
+                "CYLINDER_ENGAGEMENT=3.0 mm; COLLAR_TOP_MARGIN=5.0 mm".into(),
+                "Floor-seated depth rounded strictly upward to a whole mm; floor=2.0 mm".into(),
+                "pitch=20.0 mm conservative approximate side-view envelope; cap outline unmeasured".into(),
+                "front_top_clearance=10.0 mm; label strip depth=6.0 mm; recess=0.8 mm; corner radius=2.0 mm".into(),
+            ],
+        })
+    }
+
+    fn append_carrier_disclosures_svg(svg: &mut String, spec: &RackPhysicalTemplateSpec) {
+        if spec.support_mode.is_none() {
+            return;
+        }
+        let text = format!(
+            "drawing_derived_unverified; {}; assumptions: {}",
+            spec.nonclaims.join("; "),
+            spec.assumptions.join("; ")
+        );
+        let escaped = Self::xml_escape(&text);
+        svg.push_str(&format!("<desc>{escaped}</desc><text x=\"2\" y=\"3\" font-size=\"2\">Drawing-derived; unverified fit/material/temperature</text>"));
     }
 
     fn rack_arrangement_color(arrangement_id: &str) -> &'static str {
@@ -2967,6 +3057,9 @@ impl GentleEngine {
                 RackPhysicalTemplateFamily::CellCulture => (
                     "#fff7ed", "#fed7aa", "#fdba74", "#ea580c", "#fff7ed", "#9a3412",
                 ),
+                RackPhysicalTemplateFamily::TubeRack => (
+                    "#f0fdfa", "#ccfbf1", "#99f6e4", "#115e59", "#f0fdfa", "#134e4a",
+                ),
             };
         let skew_x = 0.48;
         let skew_y = 0.32;
@@ -3127,6 +3220,7 @@ impl GentleEngine {
             RackPhysicalTemplateFamily::Storage => 3.0,
             RackPhysicalTemplateFamily::Pipetting => 4.0,
             RackPhysicalTemplateFamily::CellCulture => 1.6,
+            RackPhysicalTemplateFamily::TubeRack => 3.0,
         };
         for row in 0..spec.rows {
             for column in 0..spec.columns {
@@ -3352,7 +3446,12 @@ impl GentleEngine {
                 cause_chain: vec![],
             })?;
         let spec = Self::rack_physical_template_spec(template, &rack.profile)?;
-        let svg = self.export_rack_physical_svg_string(rack, &spec)?;
+        let mut svg = self.export_rack_physical_svg_string(rack, &spec)?;
+        if spec.support_mode.is_some() {
+            let mut disclosure = String::new();
+            Self::append_carrier_disclosures_svg(&mut disclosure, &spec);
+            svg = svg.replacen("</svg>", &format!("{disclosure}</svg>"), 1);
+        }
         fs::write(path, svg).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write rack fabrication SVG '{}': {e}", path),
@@ -3380,7 +3479,12 @@ impl GentleEngine {
                 cause_chain: vec![],
             })?;
         let spec = Self::rack_physical_template_spec(template, &rack.profile)?;
-        let svg = self.export_rack_isometric_svg_string(rack, &spec)?;
+        let mut svg = self.export_rack_isometric_svg_string(rack, &spec)?;
+        if spec.support_mode.is_some() {
+            let mut disclosure = String::new();
+            Self::append_carrier_disclosures_svg(&mut disclosure, &spec);
+            svg = svg.replacen("</svg>", &format!("{disclosure}</svg>"), 1);
+        }
         fs::write(path, svg).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write rack isometric SVG '{}': {e}", path),
@@ -3408,7 +3512,12 @@ impl GentleEngine {
                 cause_chain: vec![],
             })?;
         let spec = Self::rack_physical_template_spec(template, &rack.profile)?;
-        let svg = self.export_rack_hero_svg_string(rack, &spec)?;
+        let mut svg = self.export_rack_hero_svg_string(rack, &spec)?;
+        if spec.support_mode.is_some() {
+            let mut disclosure = String::new();
+            Self::append_carrier_disclosures_svg(&mut disclosure, &spec);
+            svg = svg.replacen("</svg>", &format!("{disclosure}</svg>"), 1);
+        }
         fs::write(path, svg).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write rack hero SVG '{}': {e}", path),
@@ -3458,6 +3567,20 @@ impl GentleEngine {
             spec.front_label_strip_recess_mm,
             spec.corner_radius_mm
         );
+        if let Some(mode) = spec.support_mode {
+            let mut header = format!(
+                "// support_mode={}\n// geometry_basis={}\n",
+                mode.as_str(),
+                spec.geometry_basis.as_deref().unwrap_or("unavailable")
+            );
+            for text in &spec.nonclaims {
+                header.push_str(&format!("// nonclaim: {text}\n"));
+            }
+            for text in &spec.assumptions {
+                header.push_str(&format!("// assumption: {text}\n"));
+            }
+            scad.insert_str(0, &header);
+        }
         for row in 0..spec.rows {
             for column in 0..spec.columns {
                 let coordinate = Self::rack_coordinate_from_row_column(&rack.profile, row, column)?;

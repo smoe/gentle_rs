@@ -34986,54 +34986,207 @@ fn labware_oversized_saved_racks_reopen_but_exports_refuse_without_truncation() 
         let path = directory.path().join("existing output's file");
         fs::write(&path, b"preserve existing artifact").unwrap();
         let path = path.to_str().unwrap().to_string();
-        let template = RackPhysicalTemplateKind::StoragePcrTubeRack;
-        for op in [
-            Operation::ExportRackLabelsSvg {
-                rack_id: "historical".into(),
-                path: path.clone(),
-                arrangement_id: None,
-                preset: RackLabelSheetPreset::CompactCards,
-            },
-            Operation::ExportRackFabricationSvg {
-                rack_id: "historical".into(),
-                path: path.clone(),
-                template,
-            },
-            Operation::ExportRackIsometricSvg {
-                rack_id: "historical".into(),
-                path: path.clone(),
-                template,
-            },
-            Operation::ExportRackHeroSvg {
-                rack_id: "historical".into(),
-                path: path.clone(),
-                template,
-            },
-            Operation::ExportRackOpenScad {
-                rack_id: "historical".into(),
-                path: path.clone(),
-                template,
-            },
-            Operation::ExportRackSimulationJson {
-                rack_id: "historical".into(),
-                path: path.clone(),
-                template,
-            },
-            Operation::ExportRackCarrierLabelsSvg {
-                rack_id: "historical".into(),
-                path: path.clone(),
-                arrangement_id: None,
-                template,
-                preset: RackCarrierLabelPreset::FrontStripAndCards,
-            },
+        for template in [
+            RackPhysicalTemplateKind::StoragePcrTubeRack,
+            RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated,
+            RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated,
         ] {
-            let error = engine.apply(op).unwrap_err();
-            assert!(matches!(error.code, ErrorCode::InvalidInput));
-            assert!(error.message.starts_with("rack_grid_"));
-            assert_eq!(fs::read(&path).unwrap(), b"preserve existing artifact");
-            assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+            for op in [
+                Operation::ExportRackLabelsSvg {
+                    rack_id: "historical".into(),
+                    path: path.clone(),
+                    arrangement_id: None,
+                    preset: RackLabelSheetPreset::CompactCards,
+                },
+                Operation::ExportRackFabricationSvg {
+                    rack_id: "historical".into(),
+                    path: path.clone(),
+                    template,
+                },
+                Operation::ExportRackIsometricSvg {
+                    rack_id: "historical".into(),
+                    path: path.clone(),
+                    template,
+                },
+                Operation::ExportRackHeroSvg {
+                    rack_id: "historical".into(),
+                    path: path.clone(),
+                    template,
+                },
+                Operation::ExportRackOpenScad {
+                    rack_id: "historical".into(),
+                    path: path.clone(),
+                    template,
+                },
+                Operation::ExportRackSimulationJson {
+                    rack_id: "historical".into(),
+                    path: path.clone(),
+                    template,
+                },
+                Operation::ExportRackCarrierLabelsSvg {
+                    rack_id: "historical".into(),
+                    path: path.clone(),
+                    arrangement_id: None,
+                    template,
+                    preset: RackCarrierLabelPreset::FrontStripAndCards,
+                },
+            ] {
+                let error = engine.apply(op).unwrap_err();
+                assert!(matches!(error.code, ErrorCode::InvalidInput));
+                assert!(error.message.starts_with("rack_grid_"));
+                assert_eq!(fs::read(&path).unwrap(), b"preserve existing artifact");
+                assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+            }
         }
     }
+}
+
+#[test]
+fn labware_carriers_preserve_legacy_json_and_export_both_support_modes() {
+    // Hand-crafted empty 4x9 grid; geometry, not physical or scientific evidence.
+    let mut state = ProjectState::default();
+    state.container_state.racks.insert(
+        "carrier".into(),
+        Rack {
+            rack_id: "carrier".into(),
+            name: "Synthetic carrier".into(),
+            profile: RackProfileSnapshot::custom(4, 9),
+            placements: vec![],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let directory = tempdir().unwrap();
+    for template in [
+        RackPhysicalTemplateKind::StoragePcrTubeRack,
+        RackPhysicalTemplateKind::PipettingPcrTubeRack,
+        RackPhysicalTemplateKind::CellCulturePlate,
+        RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated,
+        RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated,
+    ] {
+        let path = directory.path().join(format!("{}.json", template.as_str()));
+        engine
+            .apply(Operation::ExportRackSimulationJson {
+                rack_id: "carrier".into(),
+                template,
+                path: path.to_str().unwrap().into(),
+            })
+            .unwrap();
+        let report: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        let spec = &report["physical_template"];
+        let is_collar = template == RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated;
+        let is_floor = template == RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated;
+        if !is_collar && !is_floor {
+            for key in [
+                "support_mode",
+                "tube_profiles",
+                "geometry_basis",
+                "nonclaims",
+                "assumptions",
+            ] {
+                assert!(
+                    spec.get(key).is_none(),
+                    "legacy {} gained {key}",
+                    template.as_str()
+                );
+            }
+            continue;
+        }
+        let opening = if is_collar { 10.15 } else { 10.45 };
+        let height = if is_collar { 44.0 } else { 24.0 };
+        let edge = (20.0 - opening) / 2.0;
+        assert_eq!(spec["family"], "tube_rack");
+        assert_eq!(
+            spec["container_format"],
+            "eppendorf_safe_lock_1_5ml_or_2_0ml"
+        );
+        assert_eq!(spec["geometry_basis"], "drawing_derived_unverified");
+        assert_eq!(spec["tube_profiles"].as_array().unwrap().len(), 2);
+        for (key, expected) in [
+            ("opening_diameter_mm", opening),
+            ("rack_height_mm", height),
+            ("pitch_x_mm", 20.0),
+            ("pitch_y_mm", 20.0),
+            ("edge_margin_mm", edge),
+            ("overall_width_mm", 180.0),
+            ("overall_depth_mm", 10.0 + edge + opening + 3.0 * 20.0),
+        ] {
+            assert!(
+                (spec[key].as_f64().unwrap() - expected).abs() < 1e-4,
+                "{key}"
+            );
+        }
+        let slots = report["slots"].as_array().unwrap();
+        assert_eq!(slots.len(), 36);
+        let first = &slots[0];
+        let last = &slots[35];
+        assert_eq!(first["coordinate"], "A1");
+        assert_eq!(last["coordinate"], "D9");
+        for (slot, x, y) in [
+            (first, 10.0, 10.0 + opening / 2.0),
+            (last, 170.0, 70.0 + opening / 2.0),
+        ] {
+            assert!((slot["center_mm"]["x"].as_f64().unwrap() - x).abs() < 1e-4);
+            assert!((slot["center_mm"]["y"].as_f64().unwrap() - y).abs() < 1e-4);
+        }
+        let scad_path = directory.path().join(format!("{}.scad", template.as_str()));
+        engine
+            .apply(Operation::ExportRackOpenScad {
+                rack_id: "carrier".into(),
+                template,
+                path: scad_path.to_str().unwrap().into(),
+            })
+            .unwrap();
+        let scad = fs::read_to_string(scad_path).unwrap();
+        assert!(scad.contains("// geometry_basis=drawing_derived_unverified"));
+        assert!(scad.contains("// support_mode="));
+        assert!(scad.contains("// nonclaim:"));
+        assert!(scad.contains("// assumption:"));
+        for (name, op) in [
+            (
+                "fabrication",
+                Operation::ExportRackFabricationSvg {
+                    rack_id: "carrier".into(),
+                    template,
+                    path: path.to_str().unwrap().into(),
+                },
+            ),
+            (
+                "isometric",
+                Operation::ExportRackIsometricSvg {
+                    rack_id: "carrier".into(),
+                    template,
+                    path: path.to_str().unwrap().into(),
+                },
+            ),
+            (
+                "hero",
+                Operation::ExportRackHeroSvg {
+                    rack_id: "carrier".into(),
+                    template,
+                    path: path.to_str().unwrap().into(),
+                },
+            ),
+            (
+                "labels",
+                Operation::ExportRackCarrierLabelsSvg {
+                    rack_id: "carrier".into(),
+                    template,
+                    path: path.to_str().unwrap().into(),
+                    arrangement_id: None,
+                    preset: RackCarrierLabelPreset::FrontStripAndCards,
+                },
+            ),
+        ] {
+            engine.apply(op).unwrap();
+            let svg = fs::read_to_string(&path).unwrap();
+            assert!(svg.contains("drawing_derived_unverified"), "{name}");
+            assert!(svg.contains("No verified physical fit"), "{name}");
+        }
+    }
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
 }
 
 #[test]
@@ -35193,6 +35346,8 @@ fn rack_openscad_all_templates_preserve_bottom_floor_and_open_top() {
         RackPhysicalTemplateKind::StoragePcrTubeRack,
         RackPhysicalTemplateKind::PipettingPcrTubeRack,
         RackPhysicalTemplateKind::CellCulturePlate,
+        RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated,
+        RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated,
     ] {
         let path = temp.path().join(format!("{}.scad", template.as_str()));
         engine

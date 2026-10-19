@@ -9617,6 +9617,25 @@ fn labware_oversized_rack_gui_helpers_do_not_expand_the_saved_grid() {
 }
 
 #[test]
+fn labware_carrier_gui_labels_disclose_support_and_unverified_status() {
+    for (template, mode) in [
+        (
+            RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated,
+            "collar seated",
+        ),
+        (
+            RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated,
+            "floor seated",
+        ),
+    ] {
+        let label = GENtleApp::rack_physical_template_label(template);
+        assert!(label.contains("Safe-Lock 1.5/2.0 ml"));
+        assert!(label.contains(mode));
+        assert!(label.contains("unverified"));
+    }
+}
+
+#[test]
 fn open_rack_dialog_prefills_custom_profile_editor_from_snapshot() {
     let mut state = ProjectState::default();
     state.container_state.racks.insert(

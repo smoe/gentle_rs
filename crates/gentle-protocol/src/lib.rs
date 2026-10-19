@@ -1803,6 +1803,8 @@ pub enum RackPhysicalTemplateKind {
     PipettingPcrTubeRack,
     #[serde(rename = "cell_culture_plate")]
     CellCulturePlate,
+    SafeLockTubeRackCollarSeated,
+    SafeLockTubeRackFloorSeated,
 }
 
 impl RackPhysicalTemplateKind {
@@ -1811,6 +1813,8 @@ impl RackPhysicalTemplateKind {
             Self::StoragePcrTubeRack => "storage_pcr_tube_rack",
             Self::PipettingPcrTubeRack => "pipetting_pcr_tube_rack",
             Self::CellCulturePlate => "cell_culture_plate",
+            Self::SafeLockTubeRackCollarSeated => "safe_lock_tube_rack_collar_seated",
+            Self::SafeLockTubeRackFloorSeated => "safe_lock_tube_rack_floor_seated",
         }
     }
 }
@@ -1822,6 +1826,7 @@ pub enum RackPhysicalTemplateFamily {
     Storage,
     Pipetting,
     CellCulture,
+    TubeRack,
 }
 
 impl RackPhysicalTemplateFamily {
@@ -1830,6 +1835,7 @@ impl RackPhysicalTemplateFamily {
             Self::Storage => "storage",
             Self::Pipetting => "pipetting",
             Self::CellCulture => "cell_culture",
+            Self::TubeRack => "tube_rack",
         }
     }
 }
@@ -1857,6 +1863,16 @@ pub struct RackPhysicalTemplateSpec {
     pub front_label_strip_recess_mm: f32,
     pub overall_width_mm: f32,
     pub overall_depth_mm: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub support_mode: Option<labware::RackTubeSupportMode>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tube_profiles: Vec<labware::TubeProfileId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub geometry_basis: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub nonclaims: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub assumptions: Vec<String>,
 }
 
 impl Default for RackPhysicalTemplateSpec {
@@ -1881,6 +1897,11 @@ impl Default for RackPhysicalTemplateSpec {
             front_label_strip_recess_mm: 0.0,
             overall_width_mm: 0.0,
             overall_depth_mm: 0.0,
+            support_mode: None,
+            tube_profiles: vec![],
+            geometry_basis: None,
+            nonclaims: vec![],
+            assumptions: vec![],
         }
     }
 }

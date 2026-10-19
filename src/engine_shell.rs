@@ -16849,8 +16849,14 @@ fn parse_rack_physical_template_kind(value: &str) -> Result<RackPhysicalTemplate
         "cell_culture_plate" | "culture_plate" | "cell_culture" | "plate" => {
             Ok(RackPhysicalTemplateKind::CellCulturePlate)
         }
+        "safe_lock_tube_rack_collar_seated" => {
+            Ok(RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated)
+        }
+        "safe_lock_tube_rack_floor_seated" => {
+            Ok(RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated)
+        }
         other => Err(format!(
-            "Unsupported rack physical template '{other}' (expected storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate)"
+            "Unsupported rack physical template '{other}' (expected storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate|safe_lock_tube_rack_collar_seated|safe_lock_tube_rack_floor_seated)"
         )),
     }
 }
@@ -46309,7 +46315,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 "fabrication-svg" => {
                     if tokens.len() < 4 {
                         return Err(
-                            "racks fabrication-svg requires RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]"
+                            "racks fabrication-svg requires RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate|safe_lock_tube_rack_collar_seated|safe_lock_tube_rack_floor_seated]"
                                 .to_string(),
                         );
                     }
@@ -46352,7 +46358,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 "isometric-svg" => {
                     if tokens.len() < 4 {
                         return Err(
-                            "racks isometric-svg requires RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]"
+                            "racks isometric-svg requires RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate|safe_lock_tube_rack_collar_seated|safe_lock_tube_rack_floor_seated]"
                                 .to_string(),
                         );
                     }
@@ -46393,7 +46399,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 "hero-svg" => {
                     if tokens.len() < 4 {
                         return Err(
-                            "racks hero-svg requires RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]"
+                            "racks hero-svg requires RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate|safe_lock_tube_rack_collar_seated|safe_lock_tube_rack_floor_seated]"
                                 .to_string(),
                         );
                     }
@@ -46432,7 +46438,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 "openscad" => {
                     if tokens.len() < 4 {
                         return Err(
-                            "racks openscad requires RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]"
+                            "racks openscad requires RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate|safe_lock_tube_rack_collar_seated|safe_lock_tube_rack_floor_seated]"
                                 .to_string(),
                         );
                     }
@@ -46471,7 +46477,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 "carrier-labels-svg" => {
                     if tokens.len() < 4 {
                         return Err(
-                            "racks carrier-labels-svg requires RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate] [--preset front_strip_and_cards|front_strip_only|module_cards_only]"
+                            "racks carrier-labels-svg requires RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate|safe_lock_tube_rack_collar_seated|safe_lock_tube_rack_floor_seated] [--preset front_strip_and_cards|front_strip_only|module_cards_only]"
                                 .to_string(),
                         );
                     }
@@ -46535,7 +46541,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 "simulation-json" => {
                     if tokens.len() < 4 {
                         return Err(
-                            "racks simulation-json requires RACK_ID OUTPUT.json [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]"
+                            "racks simulation-json requires RACK_ID OUTPUT.json [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate|safe_lock_tube_rack_collar_seated|safe_lock_tube_rack_floor_seated]"
                                 .to_string(),
                         );
                     }

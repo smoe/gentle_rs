@@ -12,6 +12,50 @@
 use super::*;
 
 #[test]
+fn labware_carrier_templates_round_trip_shell_and_generic_operations() {
+    for template in [
+        RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated,
+        RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated,
+    ] {
+        let parsed = parse_shell_line(&format!(
+            "racks openscad rack-1 {} --template {}",
+            quote_shell_arg("carrier's model.scad"),
+            template.as_str()
+        ))
+        .unwrap();
+        match parsed {
+            ShellCommand::RacksOpenScad {
+                template: actual,
+                output,
+                ..
+            } => {
+                assert_eq!(actual, template);
+                assert_eq!(output, "carrier's model.scad");
+            }
+            other => panic!("Unexpected carrier command: {other:?}"),
+        }
+        let op = Operation::ExportRackOpenScad {
+            rack_id: "rack-1".into(),
+            template,
+            path: "carrier.scad".into(),
+        };
+        let encoded = serde_json::to_string(&op).unwrap();
+        assert!(encoded.contains(template.as_str()));
+        assert!(parse_shell_line(&format!("op {}", quote_shell_arg(&encoded))).is_ok());
+    }
+    let error = parse_rack_physical_template_kind("unknown").unwrap_err();
+    for name in [
+        "storage_pcr_tube_rack",
+        "pipetting_pcr_tube_rack",
+        "cell_culture_plate",
+        "safe_lock_tube_rack_collar_seated",
+        "safe_lock_tube_rack_floor_seated",
+    ] {
+        assert!(error.contains(name));
+    }
+}
+
+#[test]
 fn labware_generic_op_route_preserves_profiles_models_and_project_state() {
     let mut engine = GentleEngine::from_state(ProjectState::default());
     let before = serde_json::to_value(engine.state()).unwrap();

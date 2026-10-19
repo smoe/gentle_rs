@@ -1,5 +1,44 @@
 # Glen: Next Verification And Return
 
+## Carrier Follow-Up, 2026-10-20
+
+After the next ordinary owner push, verify the new carrier changes without
+repeating completed sequence-design/expression/gel campaigns. Record the source
+SHA, toolchain/profile, lock/binary/input hashes, commands, pass/fail/not-run
+and artifact locations. No new interim freeze, publication or scientific approval.
+Use a clean checkout and explicit run-owned `CARGO_TARGET_DIR`.
+
+```sh
+cargo test --locked -p gentle-protocol labware
+cargo test --locked -p gentle-render labware
+cargo test --locked --lib labware_ -- --test-threads=1
+cargo test --locked --lib rack_openscad_all_templates_preserve_bottom_floor_and_open_top -- --test-threads=1
+cargo check -q --locked
+python3 -m unittest scripts.test_labware_models -v
+```
+
+Check both Safe-Lock support modes, exact 4x9 dimensions/A1/D9, refusal reasons,
+generic-op/shared-shell/GUI labels, unverified disclosures and unchanged project
+state. Verify the canonical parity projection: only template arguments change,
+no operation or command rows are added. Retain native GUI tube/carrier export
+control acceptance separately; authored GUI tests are not live acceptance.
+
+Capture and commit the nine original carrier baselines from `1c5be317` source-
+matched binaries: SCAD, simulation JSON and the embedded physical spec for each
+legacy template on one fixed synthetic rack. Document exact recreation and raw
+hashes; add scoped LF rules, LF/CRLF coverage in `scripts.test_tutorial_checkouts`
+and Rust byte-comparison tests. Compare against new-source raw exports, without
+normalizing or regenerating away differences. Glen's earlier 9/9 comparison is
+historical evidence, not a committed fixture or this source's pass.
+
+Render both new Safe-Lock carriers in OpenSCAD from real source-matched GENtle
+exports. Require finite nonempty meshes, expected bounds, 2-mm floors and open
+bores. Retain original SCAD/spec/mesh hashes and logs; optional tool skips are
+not acceptance. Physical fit, cap clearance and thermal/material suitability
+remain unverified even with successful mesh renders.
+
+## Historical Covering Request, 2026-10-19
+
 Updated 2026-10-19: after his push, Steffen should forward the
 **[concise parity/expression follow-up](glen_parity_expression_followup_20261019.md)**.
 Only that message is active for this request. The execution checklists and
