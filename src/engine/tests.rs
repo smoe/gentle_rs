@@ -34990,6 +34990,7 @@ fn labware_oversized_saved_racks_reopen_but_exports_refuse_without_truncation() 
             RackPhysicalTemplateKind::StoragePcrTubeRack,
             RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated,
             RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated,
+            RackPhysicalTemplateKind::PcrTube96PositionCarrier,
         ] {
             for op in [
                 Operation::ExportRackLabelsSvg {
@@ -35190,15 +35191,110 @@ fn labware_carriers_preserve_legacy_json_and_export_both_support_modes() {
 }
 
 #[test]
+fn labware_pcr96_carrier_has_bound_footprint_centers_and_refuses_other_grids() {
+    for (rows, columns) in [(8, 12), (8, 11), (12, 8), (16, 24)] {
+        let mut state = ProjectState::default();
+        state.container_state.racks.insert(
+            "pcr".into(),
+            Rack {
+                rack_id: "pcr".into(),
+                name: "Synthetic PCR grid".into(),
+                profile: RackProfileSnapshot::custom(rows, columns),
+                placements: vec![],
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+        let mut engine = GentleEngine::from_state(state);
+        let before = serde_json::to_value(engine.state()).unwrap();
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("PCR carrier's export.json");
+        fs::write(&path, b"preserve prior artifact").unwrap();
+        let template = RackPhysicalTemplateKind::PcrTube96PositionCarrier;
+        let op = Operation::ExportRackSimulationJson {
+            rack_id: "pcr".into(),
+            template,
+            path: path.to_str().unwrap().into(),
+        };
+        if rows != 8 || columns != 12 {
+            let error = engine.apply(op).unwrap_err();
+            assert!(matches!(error.code, ErrorCode::InvalidInput));
+            assert!(error.message.starts_with("carrier_requires_8x12:"));
+            assert_eq!(fs::read(&path).unwrap(), b"preserve prior artifact");
+            let error = engine
+                .apply(Operation::ExportRackOpenScad {
+                    rack_id: "pcr".into(),
+                    template,
+                    path: path.to_str().unwrap().into(),
+                })
+                .unwrap_err();
+            assert!(error.message.starts_with("carrier_requires_8x12:"));
+            assert_eq!(fs::read(&path).unwrap(), b"preserve prior artifact");
+        } else {
+            let payload = serde_json::to_string(&op).unwrap();
+            let parsed = crate::engine_shell::parse_shell_line(&format!(
+                "op {}",
+                crate::engine_shell::quote_shell_arg(&payload)
+            ))
+            .unwrap();
+            let result = execute_shell_command(&mut engine, &parsed).unwrap();
+            assert!(!result.state_changed);
+            let report: serde_json::Value =
+                serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            let spec = &report["physical_template"];
+            assert_eq!(spec["container_format"], "eppendorf_pcr_tube_0_2ml");
+            assert_eq!(spec["support_mode"], "floor_seated");
+            for (field, expected) in [
+                ("overall_width_mm", 127.76),
+                ("overall_depth_mm", 85.48),
+                ("opening_diameter_mm", 6.6),
+                ("rack_height_mm", 15.0),
+            ] {
+                assert!((spec[field].as_f64().unwrap() - expected).abs() < 1e-4);
+            }
+            let slots = report["slots"].as_array().unwrap();
+            assert_eq!(slots.len(), 96);
+            for (slot, label, x, y) in [
+                (&slots[0], "A1", 14.38, 11.24),
+                (&slots[95], "H12", 113.38, 74.24),
+            ] {
+                assert_eq!(slot["coordinate"], label);
+                assert!((slot["center_mm"]["x"].as_f64().unwrap() - x).abs() < 1e-4);
+                assert!((slot["center_mm"]["y"].as_f64().unwrap() - y).abs() < 1e-4);
+            }
+        }
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+    }
+}
+
+#[test]
 fn labware_tube_profile_inspection_and_model_exports_are_state_read_only() {
     let mut engine = GentleEngine::from_state(ProjectState::default());
     let before = serde_json::to_value(engine.state()).unwrap();
     let inspected = engine.apply(Operation::InspectTubeProfiles {}).unwrap();
-    assert_eq!(inspected.tube_profiles.unwrap().len(), 3);
+    assert_eq!(inspected.tube_profiles.unwrap().len(), 4);
     assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
     let directory = tempdir().unwrap();
     for profile in gentle_protocol::labware::TubeProfileId::ALL {
         let path = directory.path().join(format!("{}.scad", profile.as_str()));
+        if profile == gentle_protocol::labware::TubeProfileId::EppendorfPcrTube02ml {
+            fs::write(&path, b"preserve existing visualization").unwrap();
+            let error = engine
+                .apply(Operation::ExportTubeOpenScad {
+                    profile,
+                    path: path.to_str().unwrap().into(),
+                })
+                .unwrap_err();
+            assert!(matches!(error.code, ErrorCode::InvalidInput));
+            assert!(
+                error
+                    .message
+                    .starts_with("tube_model_dimension_unavailable:")
+            );
+            assert_eq!(fs::read(&path).unwrap(), b"preserve existing visualization");
+            assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+            continue;
+        }
         let result = engine
             .apply(Operation::ExportTubeOpenScad {
                 profile,
@@ -35208,7 +35304,7 @@ fn labware_tube_profile_inspection_and_model_exports_are_state_read_only() {
         assert_eq!(result.tube_profiles.unwrap()[0].id, profile);
         assert_eq!(
             fs::read_to_string(&path).unwrap(),
-            gentle_render::labware::render_tube_openscad(profile)
+            gentle_render::labware::render_tube_openscad(profile).unwrap()
         );
         assert!(result.created_seq_ids.is_empty() && result.changed_seq_ids.is_empty());
         assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
@@ -35368,6 +35464,31 @@ fn rack_openscad_all_templates_preserve_bottom_floor_and_open_top() {
         }));
         assert!(!scad.contains(", -0.05]) cylinder"));
     }
+    engine
+        .apply(Operation::SetRackProfileCustom {
+            rack_id: rack_id.clone(),
+            rows: 8,
+            columns: 12,
+        })
+        .unwrap();
+    let path = temp.path().join("pcr96.scad");
+    engine
+        .apply(Operation::ExportRackOpenScad {
+            rack_id,
+            path: path.to_str().unwrap().into(),
+            template: RackPhysicalTemplateKind::PcrTube96PositionCarrier,
+        })
+        .unwrap();
+    let source = fs::read_to_string(path).unwrap();
+    assert_eq!(
+        source
+            .lines()
+            .filter(|line| line
+                .contains(", floor_thickness]) cylinder(h=rack_height - floor_thickness + 0.10"))
+            .count(),
+        96
+    );
+    assert!(source.contains("floor_thickness = 2.000;"));
 }
 
 #[test]

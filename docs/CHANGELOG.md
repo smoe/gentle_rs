@@ -1,5 +1,35 @@
 # GENtle Changelog
 
+## 2026-10-20 - Bind PCR96 Carrier To The Official Tube Drawing
+
+- Meet the conditional source gate using Eppendorf's Technical Drawings tab:
+  retain URL/raw SHA-256/revision/page-4 callouts and product-page confirmation
+  of 0.2 ml. Use conservative maximum OD 6.0 rather than the 5.8-mm main body;
+  retain unknown seating collar and cap geometry, never use open-cap width
+  as closed-cap clearance. Do not redistribute the PDF or model 0.1 ml tubes.
+- Add the distinct floor-seated 8x12 carrier: 6.6-mm opening, 13-mm bore,
+  2-mm floor, nominal 127.76 x 85.48 footprint and 9-mm pitch. Check standard
+  text from SLAS, not the cell-culture template. Reject other grids before
+  writes; retain explicit fit/cap/holder/thermal and standard-compliance limits.
+- Make the shared tube renderer validate incomplete/nonfinite dimensions and
+  return a structured error, mapped to engine InvalidInput before file writes.
+  PCR inspection works; its body-and-collar visualization explicitly refuses
+  the undocumented collar rather than crashing or fabricating geometry.
+- Author profile/derivation/grid/footprint/A1/H12, incomplete-renderer,
+  no-overwrite, floor/open-top, shell/generic-op and GUI label regressions.
+  Extend the Python harness to actual SCAD fragments with literal geometry
+  for all three new carriers. No new parity rows, release ledger or Rust run.
+  Glen's handoff keeps legacy byte fixtures and source-matched/native acceptance
+  separate. Preserve unrelated local files; no push, dispatch or publication.
+- Verification at `78517c07` plus this PCR slice: 97 offline source/tutorial,
+  LF/CRLF and SCAD-fragment checks pass. Final four-test mesh-harness rerun
+  passes with all three carrier and three original tube meshes; this is not
+  Rust derivation/exporter execution or fit evidence. Scoped formatting,
+  documentation status, whitespace and four release-policy checks pass.
+  Session-close has four OK/two expected scope/worktree warnings/no failures;
+  roadmap stays 400 lines. Parity rows/counts are unchanged by inspection;
+  canonical Rust freshness, all authored Rust tests and native GUI remain open.
+
 ## 2026-10-20 - Add Drawing-Derived Safe-Lock Support Modes
 
 - Add collar-seated and floor-seated 1.5/2.0 ml carriers through existing rack

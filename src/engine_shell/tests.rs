@@ -16,6 +16,7 @@ fn labware_carrier_templates_round_trip_shell_and_generic_operations() {
     for template in [
         RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated,
         RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated,
+        RackPhysicalTemplateKind::PcrTube96PositionCarrier,
     ] {
         let parsed = parse_shell_line(&format!(
             "racks openscad rack-1 {} --template {}",
@@ -50,6 +51,7 @@ fn labware_carrier_templates_round_trip_shell_and_generic_operations() {
         "cell_culture_plate",
         "safe_lock_tube_rack_collar_seated",
         "safe_lock_tube_rack_floor_seated",
+        "pcr_tube_96_position_carrier",
     ] {
         assert!(error.contains(name));
     }
@@ -68,7 +70,7 @@ fn labware_generic_op_route_preserves_profiles_models_and_project_state() {
             .as_array()
             .unwrap()
             .len(),
-        3
+        4
     );
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("tube model's output.scad");
@@ -87,7 +89,7 @@ fn labware_generic_op_route_preserves_profiles_models_and_project_state() {
     );
     assert_eq!(
         std::fs::read_to_string(path).unwrap(),
-        gentle_render::labware::render_tube_openscad(profile)
+        gentle_render::labware::render_tube_openscad(profile).unwrap()
     );
     assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
 }

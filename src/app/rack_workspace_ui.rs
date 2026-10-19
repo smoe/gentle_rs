@@ -877,6 +877,9 @@ impl GENtleApp {
             RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated => {
                 "Safe-Lock 1.5/2.0 ml - floor seated (unverified)"
             }
+            RackPhysicalTemplateKind::PcrTube96PositionCarrier => {
+                "PCR 0.2 ml - 8x12 carrier (unverified)"
+            }
         }
     }
 
@@ -1347,7 +1350,9 @@ impl GENtleApp {
                 let profile = gentle_protocol::labware::tube_profile(id);
                 ui.horizontal_wrapped(|ui| {
                     ui.label(&profile.name).on_hover_text(&profile.source_url);
-                    if ui.button("Export tube OpenSCAD...").clicked() {
+                    if ui.button("Export tube OpenSCAD...")
+                        .on_hover_text("Required drawing dimensions must be documented. Incomplete profiles (including the PCR seating collar) are refused without overwriting files.")
+                        .clicked() {
                         self.prompt_export_tube_openscad(id);
                     }
                 });
@@ -3328,6 +3333,7 @@ impl GENtleApp {
                             RackPhysicalTemplateKind::CellCulturePlate,
                             RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated,
                             RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated,
+                            RackPhysicalTemplateKind::PcrTube96PositionCarrier,
                         ] {
                             ui.selectable_value(
                                 &mut self.rack_physical_template_kind,

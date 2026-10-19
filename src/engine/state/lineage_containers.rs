@@ -2315,6 +2315,9 @@ impl GentleEngine {
                     gentle_protocol::labware::RackTubeSupportMode::FloorSeated,
                 );
             }
+            RackPhysicalTemplateKind::PcrTube96PositionCarrier => {
+                return Self::pcr96_carrier_spec(profile);
+            }
             RackPhysicalTemplateKind::CellCulturePlate => {
                 let (pitch_x_mm, pitch_y_mm, opening_diameter_mm, edge_margin_mm) =
                     match profile.kind {
@@ -2447,6 +2450,50 @@ impl GentleEngine {
                 "Floor-seated depth rounded strictly upward to a whole mm; floor=2.0 mm".into(),
                 "pitch=20.0 mm conservative approximate side-view envelope; cap outline unmeasured".into(),
                 "front_top_clearance=10.0 mm; label strip depth=6.0 mm; recess=0.8 mm; corner radius=2.0 mm".into(),
+            ],
+        })
+    }
+
+    fn pcr96_carrier_spec(
+        profile: &RackProfileSnapshot,
+    ) -> Result<RackPhysicalTemplateSpec, EngineError> {
+        use gentle_protocol::labware::{
+            RackTubeSupportMode, TubeProfileId, derive_pcr96_carrier_geometry, tube_profile,
+        };
+        let id = TubeProfileId::EppendorfPcrTube02ml;
+        let geometry =
+            derive_pcr96_carrier_geometry(&tube_profile(id), profile.rows, profile.columns)
+                .map_err(|message| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message,
+                    cause_chain: vec![],
+                })?;
+        let opening = geometry.opening_diameter_mm as f32;
+        Ok(RackPhysicalTemplateSpec {
+            kind: RackPhysicalTemplateKind::PcrTube96PositionCarrier,
+            family: RackPhysicalTemplateFamily::TubeRack,
+            container_format: id.as_str().into(), rows: 8, columns: 12,
+            pitch_x_mm: 9.0, pitch_y_mm: 9.0, opening_diameter_mm: opening,
+            inner_wall_mm: 9.0 - opening, outer_wall_mm: 2.0,
+            floor_thickness_mm: 2.0, rack_height_mm: geometry.bore_depth_mm as f32 + 2.0,
+            edge_margin_mm: 14.38 - opening / 2.0, corner_radius_mm: 2.0,
+            front_top_clearance_mm: 11.24 - opening / 2.0,
+            front_label_strip_depth_mm: 6.0, front_label_strip_recess_mm: 0.8,
+            overall_width_mm: 127.76, overall_depth_mm: 85.48,
+            support_mode: Some(RackTubeSupportMode::FloorSeated), tube_profiles: vec![id],
+            geometry_basis: Some("drawing_derived_unverified".into()),
+            nonclaims: vec![
+                "No verified fit or cap clearance; not a 96-well plate or thermocycler block".into(),
+                "No thermal contact or fit with any commercial rack or plate holder".into(),
+                "No material, sterility, freezer, ice or autoclave suitability".into(),
+            ],
+            assumptions: vec![
+                "RADIAL_CLEARANCE_FLOOR=0.30 mm; CYLINDER_ENGAGEMENT=3.0 mm; COLLAR_TOP_MARGIN=5.0 mm".into(),
+                "Maximum upper body diameter=6.0 mm, not just 5.8-mm lower cylinder; opening=6.6 mm".into(),
+                "Bore rounded strictly upward to 13.0 mm; floor=2.0 mm; height=15.0 mm".into(),
+                "9.0-mm cap/strip spacing is a format assumption, not checked for this tube; no closed-cap envelope is documented".into(),
+                "Nominal ANSI/SLAS 1-2004 footprint and 4-2004 well positions only, not full standard compliance".into(),
+                "front clearance=7.94 mm; strip depth=6.0 mm; recess=0.8 mm; corner radius=2.0 mm".into(),
             ],
         })
     }

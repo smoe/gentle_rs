@@ -8878,6 +8878,7 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - `cell_culture_plate`
   - `safe_lock_tube_rack_collar_seated`
   - `safe_lock_tube_rack_floor_seated`
+  - `pcr_tube_96_position_carrier`
 - New Safe-Lock templates are `family=tube_rack`, format
   `eppendorf_safe_lock_1_5ml_or_2_0ml`, conservative 20-mm pitch. Optional
   `support_mode`, `tube_profiles`, `geometry_basis`, `nonclaims` and `assumptions`
@@ -8885,6 +8886,13 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   New SVG/SCAD exports disclose the same unverified boundary. Unknown dimensions
   and unsafe support geometry fail with stable refusal-code prefixes before
   writing. See [derivation and provenance](../data/labware/README.md).
+- PCR96 is a separate floor-seated `tube_rack`, format
+  `eppendorf_pcr_tube_0_2ml`, exact 8x12 admission with `carrier_requires_8x12`
+  otherwise. Direct nominal footprint 127.76 x 85.48 mm and A1/H12 positions
+  are not calculated from the legacy symmetric margins. Inspection includes
+  the page-4 PCR profile; tube-model export validates required dimensions and
+  returns `InvalidInput` / `tube_model_dimension_unavailable` before writing
+  for its unknown seating collar. No 96-well plate, holder or thermal claim.
 - The export consumes:
   - rack geometry (`rows`, `columns`, blocked coordinates)
   - saved rack occupancy and arrangement ids for visual planning markers

@@ -124,6 +124,32 @@ pub fn derive_tube_carrier_geometry(
     profiles: &[TubeProfile],
     mode: RackTubeSupportMode,
 ) -> Result<TubeCarrierGeometry, String> {
+    derive_carrier_geometry(profiles, mode, None)
+}
+
+/// Explicit 8x12 layout; 9-mm cap compatibility is assumed, never verified.
+pub fn derive_pcr96_carrier_geometry(
+    profile: &TubeProfile,
+    rows: usize,
+    columns: usize,
+) -> Result<TubeCarrierGeometry, String> {
+    if rows != 8 || columns != 12 {
+        return Err(
+            "carrier_requires_8x12: PCR carrier needs exactly 8 rows and 12 columns".into(),
+        );
+    }
+    derive_carrier_geometry(
+        std::slice::from_ref(profile),
+        RackTubeSupportMode::FloorSeated,
+        Some(9.0),
+    )
+}
+
+fn derive_carrier_geometry(
+    profiles: &[TubeProfile],
+    mode: RackTubeSupportMode,
+    fixed_pitch: Option<f64>,
+) -> Result<TubeCarrierGeometry, String> {
     if profiles.is_empty() {
         return Err("tube_profiles_empty: carrier needs drawing profiles".into());
     }
@@ -146,11 +172,16 @@ pub fn derive_tube_carrier_geometry(
             }
             lower = lower.max(profile_length - cylinder);
         }
-        pitch = pitch.max(
-            required_dimension(&profile.closed_side_view_width, "closed side-view width").map_err(
-                |_| "cap_envelope_unknown: closed side-view width is unavailable".to_string(),
-            )?,
-        );
+        if let Some(fixed) = fixed_pitch {
+            pitch = fixed;
+        } else {
+            pitch = pitch.max(
+                required_dimension(&profile.closed_side_view_width, "closed side-view width")
+                    .map_err(|_| {
+                        "cap_envelope_unknown: closed side-view width is unavailable".to_string()
+                    })?,
+            );
+        }
     }
     let (clearance, depth) = match mode {
         RackTubeSupportMode::CollarSeated => (RADIAL_CLEARANCE_COLLAR, length + TIP_CLEARANCE),
@@ -197,14 +228,17 @@ pub enum TubeProfileId {
     EppendorfSafeLock15ml,
     #[serde(rename = "eppendorf_safe_lock_2_0ml")]
     EppendorfSafeLock20ml,
+    #[serde(rename = "eppendorf_pcr_tube_0_2ml")]
+    EppendorfPcrTube02ml,
 }
 
 impl TubeProfileId {
-    /// Stable inspection order: 0.5, 1.5, then 2.0 ml.
-    pub const ALL: [Self; 3] = [
+    /// Stable inspection order: Safe-Lock 0.5/1.5/2.0 ml, then PCR 0.2 ml.
+    pub const ALL: [Self; 4] = [
         Self::EppendorfSafeLock05ml,
         Self::EppendorfSafeLock15ml,
         Self::EppendorfSafeLock20ml,
+        Self::EppendorfPcrTube02ml,
     ];
 
     /// The same stable identity used by the JSON contract.
@@ -213,6 +247,7 @@ impl TubeProfileId {
             Self::EppendorfSafeLock05ml => "eppendorf_safe_lock_0_5ml",
             Self::EppendorfSafeLock15ml => "eppendorf_safe_lock_1_5ml",
             Self::EppendorfSafeLock20ml => "eppendorf_safe_lock_2_0ml",
+            Self::EppendorfPcrTube02ml => "eppendorf_pcr_tube_0_2ml",
         }
     }
 }
@@ -231,7 +266,7 @@ pub enum DimensionBasis {
 pub struct DrawingDimension {
     pub value_mm: Option<f64>,
     pub basis: DimensionBasis,
-    /// Callout on page 1 of this profile's source drawing; None means unknown.
+    /// Callout on the profile's cited drawing page; None means unknown.
     pub source_callout: Option<String>,
 }
 
@@ -353,6 +388,7 @@ pub fn tube_profile(id: TubeProfileId) -> TubeProfile {
             19.0,
             TubeBottomShape::Rounded,
         ),
+        TubeProfileId::EppendorfPcrTube02ml => return pcr_tube_profile(),
     };
     TubeProfile {
         schema: "gentle.tube_profile.v1".into(),
@@ -393,9 +429,71 @@ pub fn tube_profile(id: TubeProfileId) -> TubeProfile {
     }
 }
 
+fn pcr_tube_profile() -> TubeProfile {
+    let unknown = || DrawingDimension {
+        value_mm: None,
+        basis: DimensionBasis::NotDocumented,
+        source_callout: None,
+    };
+    TubeProfile {
+        schema: "gentle.tube_profile.v1".into(),
+        id: TubeProfileId::EppendorfPcrTube02ml,
+        name: "Eppendorf PCR Tube 0.2 ml".into(), nominal_volume_ml: 0.2,
+        source_url: "https://www.eppendorf.com/product-media/doc/en/17413036/Consumables_Technical-data_PCR-Tubes_PCR-Tube-Strips_Cap-Strips.pdf".into(),
+        source_sha256: "sha256:67b84dea22bcb2cbea26907b8f1116c506210f1917744feb64b2fafb6745b40d".into(),
+        source_document: "0012 595 670-00/2026-05".into(), source_page_1based: 4,
+        body_outer_diameter: DrawingDimension::measured(6.0, "maximum upper body/rim diameter 6; main cylindrical body diameter 5.8"),
+        body_inner_diameter: DrawingDimension::measured(5.2, "upper inner diameter 5.2"),
+        collar_outer_diameter: unknown(),
+        body_length: DrawingDimension::measured(20.8, "overall body length with cap open"),
+        cylindrical_section_length: DrawingDimension::measured(11.1, "top to outer conical transition"),
+        closed_height: unknown(), closed_side_view_width: unknown(),
+        open_90_height: unknown(), open_90_side_view_width: unknown(),
+        cap_plan_outline_width: unknown(), bottom_shape: TubeBottomShape::ConicalWithRoundedTip,
+        nonclaims: vec![
+            "Drawing reference only; no physical fit, cap clearance or thermal/material qualification".into(),
+            "No sufficient seating collar documented: maximum rim 6.0 versus main body 5.8 mm".into(),
+            "22 mm is open-cap side-view width, not closed-cap or 90-degree geometry".into(),
+        ],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn labware_pcr_profile_and_96_carrier_preserve_unknowns_and_require_8x12() {
+        let profile = tube_profile(TubeProfileId::EppendorfPcrTube02ml);
+        assert_eq!(profile.nominal_volume_ml, 0.2);
+        assert_eq!(profile.source_page_1based, 4);
+        assert_eq!(profile.collar_outer_diameter.value_mm, None);
+        assert_eq!(profile.closed_side_view_width.value_mm, None);
+        assert_eq!(profile.body_outer_diameter.value_mm, Some(6.0));
+        assert_eq!(profile.body_length.value_mm, Some(20.8));
+        assert_eq!(profile.cylindrical_section_length.value_mm, Some(11.1));
+        let geometry = derive_pcr96_carrier_geometry(&profile, 8, 12).unwrap();
+        assert!((geometry.opening_diameter_mm - 6.6).abs() < 1e-10);
+        assert_eq!(geometry.bore_depth_mm, 13.0);
+        assert_eq!(geometry.pitch_mm, 9.0);
+        for (rows, columns) in [(8, 11), (12, 8), (16, 24)] {
+            assert!(
+                derive_pcr96_carrier_geometry(&profile, rows, columns)
+                    .unwrap_err()
+                    .starts_with("carrier_requires_8x12:")
+            );
+        }
+        assert!(
+            derive_tube_carrier_geometry(&[profile.clone()], RackTubeSupportMode::FloorSeated)
+                .unwrap_err()
+                .starts_with("cap_envelope_unknown:")
+        );
+        let encoded = serde_json::to_string(&profile).unwrap();
+        assert_eq!(
+            serde_json::from_str::<TubeProfile>(&encoded).unwrap(),
+            profile
+        );
+    }
 
     fn safe_lock_profiles() -> Vec<TubeProfile> {
         [

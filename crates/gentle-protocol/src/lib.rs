@@ -1805,6 +1805,8 @@ pub enum RackPhysicalTemplateKind {
     CellCulturePlate,
     SafeLockTubeRackCollarSeated,
     SafeLockTubeRackFloorSeated,
+    #[serde(rename = "pcr_tube_96_position_carrier")]
+    PcrTube96PositionCarrier,
 }
 
 impl RackPhysicalTemplateKind {
@@ -1815,6 +1817,7 @@ impl RackPhysicalTemplateKind {
             Self::CellCulturePlate => "cell_culture_plate",
             Self::SafeLockTubeRackCollarSeated => "safe_lock_tube_rack_collar_seated",
             Self::SafeLockTubeRackFloorSeated => "safe_lock_tube_rack_floor_seated",
+            Self::PcrTube96PositionCarrier => "pcr_tube_96_position_carrier",
         }
     }
 }

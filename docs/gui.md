@@ -5030,6 +5030,9 @@ Exports:
   - `Storage PCR tube rack`
   - `Pipetting PCR tube rack`
   - `Cell-culture plate` (use an explicit plate profile for the intended well format)
+  - `Safe-Lock 1.5/2.0 ml - collar seated (unverified)`
+  - `Safe-Lock 1.5/2.0 ml - floor seated (unverified)`
+  - `PCR 0.2 ml - 8x12 carrier (unverified)`
 - `Fabrication SVG...` exports a top-view planning/fabrication sketch for the
   currently shown rack using the selected physical template.
 - `Isometric SVG...` exports a presentation-grade pseudo-3D rack figure for
@@ -5075,6 +5078,11 @@ Exports:
   template neither assigns tube identity to samples nor qualifies fabrication,
   cap clearance, ice/freezer use or commercial-rack compatibility. Storage
   boxes and denser unchecked spacing remain deferred.
+  `PCR 0.2 ml - 8x12 carrier (unverified)` requires exactly eight rows and twelve
+  columns. Nominal plate-format coordinates imply neither thermocycler use nor
+  holder fit. The separate PCR reference profile retains an unknown seating
+  collar; its tube-body export currently reports a structured refusal, not a
+  fabricated collar. Safe-Lock tube-body exports remain available.
 
 ## Engine Settings (Engine Ops)
 

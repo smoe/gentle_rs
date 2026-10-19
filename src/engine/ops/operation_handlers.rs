@@ -38088,7 +38088,14 @@ impl GentleEngine {
                 );
             }
             Operation::ExportTubeOpenScad { profile, path } => {
-                let source = gentle_render::labware::render_tube_openscad(profile);
+                let source =
+                    gentle_render::labware::render_tube_openscad(profile).map_err(|message| {
+                        EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message,
+                            cause_chain: vec![],
+                        }
+                    })?;
                 fs::write(&path, source).map_err(|error| EngineError {
                     code: ErrorCode::Io,
                     message: format!("Could not write tube visualization '{path}': {error}"),

@@ -115,3 +115,51 @@ and LF/CRLF checkout coverage. No legacy geometry formula or template identity
 is intentionally changed here; source inspection is not a byte-exact pass.
 The new carrier Rust tests are authored but not locally executed. Native
 GUI controls, fresh source-matched exports and physical fit remain unverified.
+
+## PCR 0.2 ml drawing and 96-position carrier
+
+On 2026-10-20, Eppendorf's [product page](https://www.eppendorf.com/de-en/Products/PCR/PCR-Consumables/PCR-Tubes-PCR-Tube-Strips-Cap-Strips-p-PF-8634)
+confirms individual 0.2 ml tubes (0030124332). Its Technical Drawings tab links
+[Technical Data Sheet 0012 595 670-00/2026-05](https://www.eppendorf.com/product-media/doc/en/17413036/Consumables_Technical-data_PCR-Tubes_PCR-Tube-Strips_Cap-Strips.pdf).
+Raw PDF SHA-256: `67b84dea22bcb2cbea26907b8f1116c506210f1917744feb64b2fafb6745b40d`.
+The PDF is not redistributed. Re-download, hash the original bytes and visually
+inspect **page 4** (individual 0.2 ml tube); page 7 depicts the 0.2 ml strip.
+No 0.1 ml or 0.5 ml PCR tube is added.
+
+Page 4 callouts: body length 20.8, outer conical transition at 11.1 from the
+top, main cylindrical OD 5.8, upper OD 6.0, upper inner diameter 5.2, all mm.
+The profile conservatively uses **6.0 mm maximum OD**, not just the 5.8-mm
+lower cylinder. The rim does not document a 0.20-mm radial seating ledge over
+the main body; `collar_outer_diameter` remains `not_documented`. Closed height,
+closed-cap width, 90-degree cap geometry and cap plan outline are also unknown.
+The **22-mm open-cap side-view width is not a closed-cap envelope**. The
+reference profile is inspectable; the current body-and-collar visualization
+refuses this profile with `tube_model_dimension_unavailable` rather than
+inventing a collar. Missing/nonfinite dimensions in future profiles now refuse
+before file writes instead of panicking.
+
+`pcr_tube_96_position_carrier` is floor-seated only, `family=tube_rack`, format
+`eppendorf_pcr_tube_0_2ml`. It requires exactly 8 rows and 12 columns, including
+custom grids; 8x11, 12x8 and 16x24 refuse `carrier_requires_8x12` before writes.
+The same floor-support constraints produce an opening of 6.0 + 2x0.30 = 6.6 mm,
+a 13-mm bore (strictly above 20.8 - 11.1 + 3), and 2-mm floor / 15-mm total
+height. Using the maximum upper OD is a deliberate conservative interpretation
+of the drawing, not a changed clearance constant.
+
+Nominal positions were checked against official SLAS standard text:
+[ANSI/SLAS 1-2004 (R2012), section 4.1.1, page 4](https://www.slas.org/SLAS/assets/File/public/standards/ANSI_SLAS_1-2004_FootprintDimensions.pdf)
+and [ANSI/SLAS 4-2004 (R2012), sections 4.1.1-4.1.3, pages 4-5](https://www.slas.org/SLAS/assets/File/public/standards/ANSI_SLAS_4-2004_WellPositions.pdf).
+The spec directly sets 127.76 x 85.48 mm, 9-mm pitch, A1 (14.38, 11.24) and
+H12 (113.38, 74.24). `edge_margin=11.08` and `front_top_clearance=7.94`
+retain those centers in the existing coordinate generator; the old symmetric
+size formula is not reused. Outer-wall parameter 2.0, label depth 6.0,
+recess 0.8 and corner parameter 2.0 mm are engineering assumptions. Full
+standard compliance, flange/holder fit, thermal contact and thermocycler use
+are **not** established. Nine-mm cap/strip compatibility is an explicit,
+unverified format assumption, not a measured single-tube closed-cap clearance.
+
+`scripts.test_labware_models` additionally exercises the actual rack SCAD
+format strings with literal expected dimensions for both Safe-Lock modes and
+PCR96. It checks finite nonempty meshes and outer bounds, with no Rust build.
+This does not run the Rust derivation/exporter and cannot replace Glen's
+source-matched export, legacy-byte or native/physical checks.

@@ -1742,6 +1742,12 @@ floor-seated 1.5/2.0 ml carriers; use a conservative 20-mm approximate
 side-view pitch without claiming measured cap clearance. The 96-position
 intent is small 0.2-ml PCR tubes at 9-mm pitch, not 0.5-ml Safe-Lock tubes;
 new PCR dimensions require an independently retained official drawing reference.
+That gate was met on 2026-10-20: the [PCR drawing reference](../data/labware/README.md#pcr-02-ml-drawing-and-96-position-carrier)
+binds raw PDF bytes, revision and page 4. The explicit floor-seated 8x12 carrier
+uses nominal plate-format coordinates without claiming a plate, thermocycler
+block, thermal contact or commercial-holder fit. Missing collar/cap dimensions
+remain unknown; the visualization renderer must refuse incomplete dimensions
+without panic or file overwrite. Standard coordinates do not qualify hardware.
 Storage boxes serve transport between institutes on ice and freezer
 organisation; boxes/inserts/lids and denser unchecked pitch remain later
 decisions, not thermal/material qualification. New template metadata is

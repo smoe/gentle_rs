@@ -37,6 +37,23 @@ bores. Retain original SCAD/spec/mesh hashes and logs; optional tool skips are
 not acceptance. Physical fit, cap clearance and thermal/material suitability
 remain unverified even with successful mesh renders.
 
+Include the conditional PCR slice, whose source gate is now met: Eppendorf
+`0012 595 670-00/2026-05`, page 4, raw SHA-256
+`67b84dea22bcb2cbea26907b8f1116c506210f1917744feb64b2fafb6745b40d`.
+The [source record](../data/labware/README.md#pcr-02-ml-drawing-and-96-position-carrier)
+explains maximum OD 6.0 versus main-cylinder 5.8 mm, unknown seating collar,
+6.6-mm opening, 13-mm floor bore and checked nominal standard coordinates.
+The same filters cover new footprint/A1/H12, 8x11/12x8/16x24 refusals,
+no-overwrite, shell/generic-op and GUI labels. Run the renderer's complete
+tests too (`cargo test --locked -p gentle-render`): its older source-binding
+test name does not include `labware`. Verify clean `InvalidInput` when exporting
+the PCR tube visualization (unknown collar), not a crash or invented dimension.
+Render a third, PCR96 carrier mesh using an exact 8x12 grid. Keep all legacy
+and Safe-Lock checks; inspect new-template SVG disclosures without inferring
+full ANSI/SLAS compliance. No dense spacing, boxes, 0.1 ml profile or thermal
+contact is implemented. The offline mesh harness uses literal parameters and
+actual SCAD format strings, not a freshly built Rust exporter.
+
 ## Historical Covering Request, 2026-10-19
 
 Updated 2026-10-19: after his push, Steffen should forward the

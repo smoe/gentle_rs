@@ -7,6 +7,7 @@ by this test. Mesh bounds are visualization checks, never physical fit evidence.
 """
 
 import math
+import json
 import os
 from pathlib import Path
 import re
@@ -40,7 +41,76 @@ def openscad_binary():
     return str(native) if native.is_file() else shutil.which("openscad")
 
 
+def carrier_template(source, rows, columns, width, depth, height, opening, edge, front,
+                     pitch=20, outer_wall=None):
+    """Exercise actual SCAD format strings, not the unexecuted Rust derivation."""
+    source = source.split("pub(super) fn export_rack_openscad(", 1)[1].split(
+        "pub(super) fn export_rack_simulation_json(", 1)[0]
+    fragments = re.findall(
+        r'(?:let mut scad = format!|scad.push_str\(&format!)\(\s*("(?:\\.|[^"\\])*")', source)
+    if len(fragments) != 3:
+        raise ValueError("carrier SCAD format strings changed; review the harness")
+    header, bore, strip = [json.loads(value).replace("{:.3}", "{:.3f}") for value in fragments]
+    end = re.search(r'scad.push_str\(("(?:\\.|[^"\\])*")\)', source)
+    if not end:
+        raise ValueError("carrier SCAD terminator missing")
+    result = header.format("synthetic", "unverified", "tube_rack", "reference_only",
+                           width, depth, height, opening, 2.0, front, 6.0, 0.8, 2.0)
+    for row in range(rows):
+        for column in range(columns):
+            result += bore.format(edge + opening / 2 + column * pitch,
+                                  front + opening / 2 + row * pitch)
+    outer_wall = edge if outer_wall is None else outer_wall
+    result += strip.format(outer_wall / 2, 0.8, width - outer_wall, max(front - 1.6, 0))
+    return result + json.loads(end.group(1))
+
+
 class LabwareTemplateTests(unittest.TestCase):
+    def test_carrier_scad_fragments_preserve_floor_open_top_and_newline_semantics(self):
+        source = (ROOT / "src/engine/state/lineage_containers.rs").read_text()
+        args = (4, 9, 180.0, 85.075, 44.0, 10.15, 4.925, 10.0)
+        scad = carrier_template(source, *args)
+        self.assertEqual(scad, carrier_template(source.replace("\n", "\r\n"), *args))
+        self.assertEqual(scad.count(", floor_thickness]) cylinder(h=rack_height - floor_thickness + 0.10"), 36)
+        self.assertIn("translate([10.000, 15.075, floor_thickness])", scad)
+        self.assertIn("translate([170.000, 75.075, floor_thickness])", scad)
+        self.assertNotIn(", -0.05]) cylinder", scad)
+        pcr = carrier_template(source, 8, 12, 127.76, 85.48, 15.0, 6.6, 11.08, 7.94, 9, 2)
+        self.assertEqual(pcr.count(" cylinder("), 96)
+        self.assertIn("translate([14.380, 11.240, floor_thickness])", pcr)
+        self.assertIn("translate([113.380, 74.240, floor_thickness])", pcr)
+
+    def test_carrier_meshes_have_expected_outer_bounds(self):
+        binary = openscad_binary()
+        if not binary:
+            self.skipTest("OpenSCAD unavailable; source-matched exporter acceptance remains separate")
+        source = (ROOT / "src/engine/state/lineage_containers.rs").read_text()
+        # Hand-derived engineering assumptions, not generated Rust output or fit evidence.
+        cases = [("collar", 4, 9, 180.0, 85.075, 44.0, 10.15, 4.925, 10.0),
+                 ("floor", 4, 9, 180.0, 85.225, 24.0, 10.45, 4.775, 10.0),
+                 ("pcr96", 8, 12, 127.76, 85.48, 15.0, 6.6, 11.08, 7.94, 9, 2)]
+        with tempfile.TemporaryDirectory(prefix="gentle carrier models ") as directory:
+            for name, *args in cases:
+                with self.subTest(carrier=name):
+                    scad = Path(directory) / f"{name}.scad"
+                    mesh = scad.with_suffix(".off")
+                    scad.write_text(carrier_template(source, *args), encoding="utf-8")
+                    result = subprocess.run([binary, "-o", str(mesh), str(scad)],
+                                            capture_output=True, text=True, timeout=120)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertNotIn("ERROR:", result.stderr)
+                    tokens = mesh.read_text(encoding="utf-8").split()
+                    self.assertEqual(tokens[0], "OFF")
+                    count, faces, _ = map(int, tokens[1:4])
+                    self.assertGreater(count, 0)
+                    self.assertGreater(faces, 0)
+                    points = [tuple(map(float, tokens[start:start + 3]))
+                              for start in range(4, 4 + 3 * count, 3)]
+                    self.assertTrue(all(math.isfinite(value) for point in points for value in point))
+                    for axis, expected in enumerate(args[2:5]):
+                        self.assertAlmostEqual(min(point[axis] for point in points), 0, places=4)
+                        self.assertAlmostEqual(max(point[axis] for point in points), expected, places=3)
+
     def test_template_extraction_accepts_both_checkout_newlines(self):
         source = (ROOT / "crates/gentle-render/src/labware.rs").read_text()
         lf = body_template(source)
