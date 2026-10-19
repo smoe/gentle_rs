@@ -6454,7 +6454,7 @@
             "cli-direct"
          ],
          "path": "routines list",
-         "summary": "List cloning routines from the typed routine catalog with optional filters.",
+         "summary": "List cloning routines with optional filters and shared estimates separating time ranges/basis and stock-draw, purchasing-proxy, machine and base cost subtotals; unmodeled breakdowns remain unknown.",
          "usage": "routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]"
       },
       {
@@ -6466,7 +6466,7 @@
             "cli-direct"
          ],
          "path": "routines explain",
-         "summary": "Return a structured explanation for one cloning routine, including requirements, failure modes, and likely confusing alternatives.",
+         "summary": "Explain one cloning routine, including requirements, alternatives and synthetic time/cost provenance. Stock-draw is unit-value, not replacement cost; purchasing proxy omits package quantities and is not a quote.",
          "usage": "routines explain ROUTINE_ID [--catalog PATH]"
       },
       {
@@ -6478,7 +6478,7 @@
             "cli-direct"
          ],
          "path": "routines compare",
-         "summary": "Compare two cloning routines with deterministic difference axes and shared/unique vocabulary tags.",
+         "summary": "Compare routines with deterministic axes, including hands-on/unattended/elapsed ranges, explicit legacy versus step-model time basis and four cost subtotals; unknown ranges are not zero.",
          "usage": "routines compare ROUTINE_A ROUTINE_B [--catalog PATH]"
       },
       {
@@ -6489,7 +6489,7 @@
             "gui-shell"
          ],
          "path": "planning consult cloning",
-         "summary": "Return a read-only cloning strategy and vector-choice consultation using the effective local planning profile, helper/vector catalog, host catalog, and routine estimates.",
+         "summary": "Return a read-only cloning strategy/vector consultation with separate hands-on, unattended and elapsed estimates and stock-draw/purchasing-proxy/machine/base costs. One synthetic step model is available; other breakdowns remain unknown. No timings are validated protocols or prices orderable quotes.",
          "usage": "planning consult cloning [--seq-id SEQ_ID] [--objective JSON_OR_@FILE] [--profile-scope effective] [--format json|text]"
       },
       {

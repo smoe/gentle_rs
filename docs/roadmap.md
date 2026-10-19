@@ -332,7 +332,7 @@ cohort comparisons, and rollback paths for state patches; defer autonomous wet-l
   collection when the `Operation` enum grows.
 - GUI batch display for RNA-read gene-cohort alignments with virtualization for
   thousands of per-read aligned-column blocks.
-- Vendor-protocol and deeper wet-lab process modeling primitives.
+- Vendor-protocol and deeper wet-lab process modeling beyond the single-routine synthetic time/cost breakdown; quantities, dated offers, resource scheduling and other routines remain parked.
 - Automatic cross-gene homology anchors on top of explicit `query_anchor_bp`.
 - Catalog-extensible gene-group and ontology bridge after the next release scope
   is selected.

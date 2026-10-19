@@ -39,6 +39,29 @@
   local Rust, push, dispatch, capture or provider/model call. The separate
   newly observed MCP fact-annotation omission is not hidden by this test fix.
 
+## 2026-10-19 - Separate Advisory Cloning Time And Cost
+
+- Add output-only planning estimate v2: optional hands-on, unattended and
+  elapsed scenario ranges, an explicit time basis, and dependency-aware step
+  schedules. One restriction/ligation routine uses documented synthetic
+  planning defaults; the other 21 retain labelled legacy elapsed scalars and
+  unknown breakdowns, never invented zero work. In-silico macros are unchanged.
+- Preserve the previous cost total while exposing stock-draw value, a one-unit
+  missing-material purchasing proxy, machine run and routine base. Explain
+  per-class contributions, unknown prices, delay prefixes and legacy machine
+  occupancy basis. These figures are not orderable quotes or resource-aware
+  schedules, and no wet-lab success or platform acceptance is established.
+- Surface the same fields and labels in shared consultation/list/explain/
+  compare output and Routine Assistant. Preserve routing gaps, ranking formulas,
+  guardrails, profile/objective schemas and the broader parked wet-lab work;
+  no release gate or candidate ledger is changed.
+- Verification: 37 focused default-feature Rust unit tests and the canonical
+  parity-freshness test pass, as do `cargo check -q --locked`, 72 LF/CRLF
+  checkout tests, scoped formatting, documentation status and whitespace.
+  The macOS test linker emits its large `__eh_frame` warning; full-suite and
+  native/platform acceptance remain separate. Session-close has no failures;
+  unrelated `outputs/` is preserved and nothing is pushed.
+
 ## 2026-10-19 - Integrate Both Branches And Narrow Glen's Follow-Up
 
 - Merge `gentle_rs_2_main` at `03e1b800` and `gentle_rs_3` at `b3b3e8a9`

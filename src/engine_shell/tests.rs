@@ -14718,6 +14718,9 @@ fn execute_planning_rejects_schema_mismatch() {
     assert!(err.contains("Unsupported planning objective schema"));
 }
 
+#[path = "planning_wetlab_tests.rs"]
+mod planning_wetlab_tests;
+
 #[test]
 fn execute_planning_sync_payload_validation_rejects_unknown_fields() {
     let mut engine = GentleEngine::default();

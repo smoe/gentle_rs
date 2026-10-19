@@ -5870,6 +5870,8 @@ Adapter-equivalence guarantee for UI-intent tools:
     - `estimated_cost`
     - `local_fit_score`
     - `composite_meta_score`
+    - hands-on, unattended and elapsed ranges, time basis, and four cost
+      components (defined below); unknown ranges are never numeric zero
   - `--seq-id` applies the same active-sequence construct-reasoning context
     used by `routines list`, so compare-stage estimates stay aligned with
     variant-driven assay preferences
@@ -5877,7 +5879,7 @@ Adapter-equivalence guarantee for UI-intent tools:
 - Planning meta-layer contracts (shared shell/CLI, engine-owned):
   - profile schema: `gentle.planning_profile.v1`
   - objective schema: `gentle.planning_objective.v1`
-  - estimate schema: `gentle.planning_estimate.v1`
+  - estimate schema: `gentle.planning_estimate.v2` (output-only)
   - suggestion schema: `gentle.planning_suggestion.v1`
   - sync-status schema: `gentle.planning_sync_status.v1`
   - cloning-consultation schema:
@@ -5889,12 +5891,59 @@ Adapter-equivalence guarantee for UI-intent tools:
   - purchasing latency heuristic in v1:
     - each missing required material class adds default
       `procurement_business_days_default` (default `10`) to estimate
-      (Monday-Friday business-day model; no holiday calendar yet)
+      (a planning approximation, not a completion date)
     - business-day delays are converted to `estimated_time_hours` with a
-      deterministic weekend-aware factor (`24h * 7/5` per business day)
+      deterministic factor (`24h * 7/5` per business day), not a dated calendar
   - schema compatibility rule:
     - profile/objective payloads with mismatched schema ids are rejected
       (`InvalidInput`) instead of silently coerced
+- Estimate v2 time/cost boundaries:
+  - `estimated_time_hours` remains elapsed hours; `estimated_cost` retains the
+    previous known-cost total. Ranking/guardrail formulas are unchanged, but
+    the modeled routine's elapsed input now uses its typical critical path.
+  - `hands_on_hours`, `unattended_hours`, `elapsed_hours` are optional
+    `TimeRange { min, typical, max }`, with finite nonnegative ordered values.
+    Minimum, typical and maximum are separate scenarios, not confidence
+    intervals. Hands-on/unattended totals sum work across steps; elapsed uses
+    dependencies, so independent steps can overlap.
+  - `step_model` is `present` only for
+    `restriction.digest_ligate_extract_sticky`; all other 21 bundled routines
+    emit `absent`, null ranges and an empty `schedule`, never zero work.
+    `estimated_time_hours_basis` distinguishes `step_model_critical_path` from
+    `legacy_family_scalar`. The latter retains the original non-decomposable
+    family/base scalar plus delays, not a hands-on or unattended estimate.
+  - The separate `gentle.cloning_wetlab_steps.v1` asset contains hand-authored
+    `synthetic_planning_default` allowances. Unknown routine IDs, invalid
+    ranges/dependencies and cycles fail with JSON diagnostics, never fallback
+    estimates. Computational Digest/Ligation/ExtractRegion operations acquire
+    no bench durations. See [asset provenance](../assets/cloning_wetlab_steps.README.md).
+  - Each `ScheduledStep` exposes ID, label, dependencies, source, hands-on and
+    unattended ranges, and range-valued `earliest_start_hours` /
+    `earliest_finish_hours`. Within a step the two durations are sequential;
+    lexical topological ordering and critical-path tie breaks are stable.
+    Explanation records each scenario's path and every scheduled step.
+    Existing summed machine queues and missing-class purchasing delays form a
+    prefix to all steps, not parallel orders. Staffing/equipment capacity,
+    holidays, repeats and actual completion dates are not modeled.
+  - The four cost buckets are `routine_base_cost`,
+    `stock_drawn_material_cost` (available classes' unit values),
+    `missing_material_purchase_proxy_cost` (one unit per unavailable class),
+    and `machine_run_cost`. Their sum reconciles to `estimated_cost` within
+    floating-point tolerance; the retained total keeps its original addition
+    order. Machine charges still use `run_cost_per_hour * base_time_hours`,
+    not the new critical-path duration. Routine base retains its zero default.
+  - `cost_assumptions` and explanation disclose that stock draw is an
+    aliquot-value approximation, not replacement cost; missing material is a
+    purchasing proxy, not a quote. Package sizes, minimum orders, aliquot
+    quantities, expiry, shipping and tax are not inferred. Unknown material
+    classes and unpriced material/machine classes contribute nothing to the
+    known subtotal but remain listed; omitted prices never establish zero cost.
+    Explanation retains per-class rows, currency and all four components.
+  - Legacy v1 estimates deserialize with unknown ranges and legacy time basis;
+    their absent v2 cost components must display as unknown, not default zero.
+    Estimates are never accepted as command input; profile/objective schema
+    validation remains v1. No execution, purchasing, success or yield claim
+    follows from an estimate or guardrail pass.
 - `planning consult cloning [--seq-id SEQ_ID] [--objective JSON_OR_@FILE] [--profile-scope effective] [--format json|text]`
   - read-only consultation route for cloning-strategy and vector-choice
     planning

@@ -4828,14 +4828,16 @@ impl GENtleApp {
                                     }
                                     if let Some(score) = routine.composite_meta_score {
                                         ui.small(format!(
-                                            "planning score: {:.3} | fit: {:.3} | time: {:.2} h | cost: {:.2}",
+                                            "planning score: {:.3} | fit: {}",
                                             score,
-                                            routine.local_fit_score.unwrap_or_default(),
-                                            routine.estimated_time_hours.unwrap_or_default(),
-                                            routine.estimated_cost.unwrap_or_default()
+                                            routine.local_fit_score.map(|value| format!("{value:.3}"))
+                                                .unwrap_or_else(|| "unknown".into())
                                         ));
                                     }
                                     if let Some(estimate) = routine.planning_estimate.as_ref() {
+                                        for line in crate::engine_shell::planning_estimate_display_lines(estimate) {
+                                            ui.small(line);
+                                        }
                                         let bonus = estimate
                                             .explanation
                                             .get("routine_family_alignment_bonus")
@@ -4905,31 +4907,25 @@ impl GENtleApp {
                     let local_fit = estimate
                         .get("local_fit_score")
                         .and_then(|value| value.as_f64());
-                    let time_hours = estimate
-                        .get("estimated_time_hours")
-                        .and_then(|value| value.as_f64());
-                    let cost = estimate
-                        .get("estimated_cost")
-                        .and_then(|value| value.as_f64());
-                    if composite.is_some()
-                        || local_fit.is_some()
-                        || time_hours.is_some()
-                        || cost.is_some()
-                    {
+                    if composite.is_some() || local_fit.is_some() {
                         ui.small(format!(
-                            "sequence-aware planning: score {} | fit {} | time {} h | cost {}",
+                            "sequence-aware planning: score {} | fit {}",
                             composite
                                 .map(|value| format!("{value:.3}"))
                                 .unwrap_or_else(|| "-".to_string()),
                             local_fit
                                 .map(|value| format!("{value:.3}"))
-                                .unwrap_or_else(|| "-".to_string()),
-                            time_hours
-                                .map(|value| format!("{value:.2}"))
-                                .unwrap_or_else(|| "-".to_string()),
-                            cost.map(|value| format!("{value:.2}"))
                                 .unwrap_or_else(|| "-".to_string())
                         ));
+                    }
+                    if let Ok(typed) =
+                        serde_json::from_value::<crate::engine::PlanningEstimate>(estimate.clone())
+                    {
+                        for line in crate::engine_shell::planning_estimate_display_lines(&typed) {
+                            ui.small(line);
+                        }
+                    } else {
+                        ui.small("Planning time/cost breakdown unknown");
                     }
                     let bonus = estimate
                         .get("explanation")

@@ -15,6 +15,8 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 ## Findings
 
+Planning estimate v2 adds hands-on, unattended and elapsed ranges, explicit legacy/step-model time basis, and stock-draw/purchasing-proxy/machine/base cost components to the existing shared `routines list|explain|compare` and `planning consult cloning` payloads. Routine Assistant displays the same data. These field additions do not close adapter routing gaps: the cells below remain authoritative. See [the estimate contract](protocol.md) for unknown ranges, synthetic defaults and non-quote limitations.
+
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
 | GUI | 59 | 758 | 0 |

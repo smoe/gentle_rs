@@ -944,7 +944,7 @@ pub const SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA: &str =
 pub const PLANNING_METADATA_KEY: &str = "planning";
 pub const PLANNING_PROFILE_SCHEMA: &str = "gentle.planning_profile.v1";
 pub const PLANNING_OBJECTIVE_SCHEMA: &str = "gentle.planning_objective.v1";
-pub const PLANNING_ESTIMATE_SCHEMA: &str = "gentle.planning_estimate.v1";
+pub const PLANNING_ESTIMATE_SCHEMA: &str = "gentle.planning_estimate.v2";
 pub const PLANNING_SUGGESTION_SCHEMA: &str = "gentle.planning_suggestion.v1";
 pub const PLANNING_SYNC_STATUS_SCHEMA: &str = "gentle.planning_sync_status.v1";
 pub const PLANNING_CLONING_CONSULTATION_SCHEMA: &str = "gentle.planning_cloning_consultation.v1";
@@ -3029,7 +3029,18 @@ impl Default for PlanningEstimate {
         Self {
             schema: PLANNING_ESTIMATE_SCHEMA.to_string(),
             estimated_time_hours: 0.0,
+            estimated_time_hours_basis: PlanningTimeBasis::LegacyFamilyScalar,
+            hands_on_hours: None,
+            unattended_hours: None,
+            elapsed_hours: None,
+            step_model: PlanningStepModel::Absent,
+            schedule: vec![],
             estimated_cost: 0.0,
+            stock_drawn_material_cost: 0.0,
+            missing_material_purchase_proxy_cost: 0.0,
+            machine_run_cost: 0.0,
+            routine_base_cost: 0.0,
+            cost_assumptions: vec![],
             local_fit_score: 1.0,
             composite_meta_score: 0.0,
             passes_guardrails: true,

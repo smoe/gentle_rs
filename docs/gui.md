@@ -2421,6 +2421,13 @@ Patterns menu:
   - when planning context is active, the goal stage now shows a compact
     helper-aware planning context strip plus candidate planning metrics
     (guardrail pass state, score/fit/time/cost, family-alignment bonus).
+    Goal and comparison stages display the shared estimate's hands-on,
+    unattended and elapsed ranges, with unknown breakdowns for unmodeled
+    routines and an explicit legacy-scalar label. Stock-draw value,
+    missing-material purchasing proxy, machine/base cost and known-unit total
+    are separately labelled. Only the restriction/ligation routine has a
+    synthetic step model; none of these figures is a validated protocol time
+    or an orderable quote. The GUI derives no second estimate.
   - when Routine Assistant is opened from a sequence window with construct
     reasoning, that same strip now keeps the active `construct reasoning`
     sequence id plus variant effect tags / suggested assay ids visible, and
@@ -3452,7 +3459,9 @@ Status output note:
 - `routines list` / `routines compare` include planning estimates when planning
   data is configured:
   `estimated_time_hours`, `estimated_cost`, `local_fit_score`,
-  `composite_meta_score`.
+  `composite_meta_score`, plus optional hands-on/unattended/elapsed ranges,
+  time basis and stock-draw/purchasing-proxy/machine/base cost components.
+  Unknown breakdowns are not displayed as zero.
 
 Screenshot command status:
 

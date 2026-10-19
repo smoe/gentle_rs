@@ -4547,6 +4547,7 @@ fn routine_assistant_trace_persists_planning_context_candidate_scores_and_macro_
                 "routine_family_alignment_bonus": 0.25,
                 "routine_family_alignment_sources": ["helper profile"]
             }),
+            ..Default::default()
         }),
         ..Default::default()
     }];
@@ -4699,6 +4700,7 @@ fn routine_assistant_compare_stage_renders_sequence_aware_planning_summary() {
         "planning": {
             "seq_id": "variant_demo_seq",
             "estimate": {
+                "schema": "gentle.planning_estimate.v1",
                 "composite_meta_score": 0.93,
                 "local_fit_score": 0.81,
                 "estimated_time_hours": 4.5,
@@ -4714,9 +4716,9 @@ fn routine_assistant_compare_stage_renders_sequence_aware_planning_summary() {
 
     let texts = render_routine_assistant_contents_texts(&mut app);
     assert!(
-        texts.iter().any(|text| text.contains(
-            "sequence-aware planning: score 0.930 | fit 0.810 | time 4.50 h | cost 12.00"
-        )),
+        texts
+            .iter()
+            .any(|text| text.contains("sequence-aware planning: score 0.930 | fit 0.810")),
         "rendered texts: {texts:?}"
     );
     assert!(
@@ -4725,6 +4727,48 @@ fn routine_assistant_compare_stage_renders_sequence_aware_planning_summary() {
             .any(|text| text.contains("alignment bonus: +0.16 (variant_derived)")),
         "rendered texts: {texts:?}"
     );
+    for label in [
+        "Elapsed: 4.50 h (legacy family scalar",
+        "Hands-on: unknown",
+        "Cost components: unknown (legacy estimate)",
+    ] {
+        assert!(
+            texts.iter().any(|text| text.contains(label)),
+            "rendered texts: {texts:?}"
+        );
+    }
+}
+
+#[test]
+fn routine_assistant_compare_stage_displays_shared_wetlab_estimate_without_recalculation() {
+    // Synthetic bundled planning defaults, rendered headlessly; not native GUI acceptance.
+    let mut app = GENtleApp::default();
+    let report = crate::engine_shell::execute_shell_command(
+        &mut app.engine.write().unwrap(),
+        &crate::engine_shell::parse_shell_line(
+            "routines explain restriction.digest_ligate_extract_sticky",
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let estimate: PlanningEstimate =
+        serde_json::from_value(report.output["planning"]["estimate"].clone()).unwrap();
+    app.routine_assistant_stage = RoutineAssistantStage::Compare;
+    app.routine_assistant_selected_routine_id = "restriction.digest_ligate_extract_sticky".into();
+    app.routine_assistant_candidates = vec![CloningRoutineCatalogRow {
+        routine_id: "restriction.digest_ligate_extract_sticky".into(),
+        title: "Synthetic planning example".into(),
+        family: "restriction".into(),
+        ..Default::default()
+    }];
+    app.routine_assistant_explain_output = Some(report.output);
+    let texts = render_routine_assistant_contents_texts(&mut app);
+    for line in crate::engine_shell::planning_estimate_display_lines(&estimate) {
+        assert!(
+            texts.iter().any(|text| text.contains(&line)),
+            "Missing {line}; rendered: {texts:?}"
+        );
+    }
 }
 
 #[test]

@@ -6525,6 +6525,15 @@ The cell vocabulary is the architecture-doc parity policy:\n\n",
 from each descriptor's `surfacing_justifications` map.\n\n",
     );
     out.push_str("## Findings\n\n");
+    out.push_str(
+        "Planning estimate v2 adds hands-on, unattended and elapsed ranges, explicit \
+legacy/step-model time basis, and stock-draw/purchasing-proxy/machine/base cost \
+components to the existing shared `routines list|explain|compare` and \
+`planning consult cloning` payloads. Routine Assistant displays the same data. \
+These field additions do not close adapter routing gaps: the cells below \
+remain authoritative. See [the estimate contract](protocol.md) for unknown \
+ranges, synthetic defaults and non-quote limitations.\n\n",
+    );
     out.push_str("| Adapter | prominent | shell-only | gap |\n");
     out.push_str("|---|---:|---:|---:|\n");
     for adapter in capability_parity_adapters() {

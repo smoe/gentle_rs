@@ -1861,7 +1861,7 @@ Meta-planning layer (time/cost/local-fit) and lab-management agent constraints:
 - Engine-owned planning contracts:
   - `gentle.planning_profile.v1`
   - `gentle.planning_objective.v1`
-  - `gentle.planning_estimate.v1`
+  - `gentle.planning_estimate.v2` (output-only; input schemas remain v1)
   - `gentle.planning_suggestion.v1`
   - `gentle.planning_sync_status.v1`
 - Effective profile merge order is deterministic:
@@ -1869,14 +1869,22 @@ Meta-planning layer (time/cost/local-fit) and lab-management agent constraints:
 - Routine-ranking payloads include planning estimates:
   - `estimated_time_hours`, `estimated_cost`, `local_fit_score`,
     `composite_meta_score`, and machine-readable explanation details.
+- A separate synthetic bench-step catalog models one restriction/ligation
+  routine, never the computational macro script. Hands-on and unattended work
+  are sums; elapsed ranges use dependency-only critical paths plus the existing
+  delay heuristic. Other routines retain explicitly labelled legacy elapsed
+  scalars and unknown breakdowns. These are not validated laboratory timings.
+- Cost totals retain their previous arithmetic, exposing stock-drawn material,
+  one-unit missing-material purchasing proxy, machine-run and routine-base
+  components. Unknown/unpriced classes remain explicit; none is an orderable
+  quote or quantity-aware inventory calculation.
 - Purchasing simplification (explicit v1 design decision):
   - missing required local material class adds procurement delay,
   - default delay is `10` business days (`procurement_business_days_default`),
   - item-level override supported (`inventory.<class>.procurement_business_days`),
   - delay is applied once per missing required class (deduplicated),
-  - business-day model currently excludes weekends only (no holiday calendar),
-  - business-day delays map to `estimated_time_hours` using deterministic
-    weekend-aware conversion (`24h * 7/5` per business day).
+  - business-day delays map to `estimated_time_hours` using the deterministic
+    approximation `24h * 7/5` per business day, not an actual calendar or date.
 - Lab-management agent integration policy:
   - sync mode supports both pull and push suggestion capture,
   - all incoming/outgoing agent updates are persisted as `pending` suggestions

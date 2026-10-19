@@ -1,0 +1,66 @@
+{
+  "schema": "gentle.cloning_wetlab_steps.v1",
+  "routines": [
+    {
+      "routine_id": "restriction.digest_ligate_extract_sticky",
+      "steps": [
+        {
+          "step_id": "prepare_digest",
+          "label": "Prepare digest materials",
+          "hands_on_hours": {"min": 0.1, "typical": 0.15, "max": 0.25},
+          "unattended_hours": {"min": 0.0, "typical": 0.0, "max": 0.0},
+          "depends_on": [],
+          "source": {"kind": "synthetic_planning_default", "note": "Hand-authored setup allowance for demonstrating planning arithmetic; not measured or a laboratory instruction."}
+        },
+        {
+          "step_id": "digest_incubation",
+          "label": "Digest incubation allowance",
+          "hands_on_hours": {"min": 0.0, "typical": 0.0, "max": 0.0},
+          "unattended_hours": {"min": 1.0, "typical": 2.0, "max": 3.0},
+          "depends_on": ["prepare_digest"],
+          "source": {"kind": "synthetic_planning_default", "note": "Synthetic one/two/three-hour incubation range to separate elapsed from human effort; not an enzyme-specific protocol."}
+        },
+        {
+          "step_id": "prepare_ligation_materials",
+          "label": "Prepare later ligation materials independently",
+          "hands_on_hours": {"min": 0.1, "typical": 0.2, "max": 0.3},
+          "unattended_hours": {"min": 0.0, "typical": 0.0, "max": 0.0},
+          "depends_on": [],
+          "source": {"kind": "synthetic_planning_default", "note": "Synthetic parallel branch; staffing, reagent readiness and shared-equipment contention are not modeled."}
+        },
+        {
+          "step_id": "recover_fragments",
+          "label": "Fragment recovery allowance",
+          "hands_on_hours": {"min": 0.15, "typical": 0.25, "max": 0.4},
+          "unattended_hours": {"min": 0.05, "typical": 0.1, "max": 0.2},
+          "depends_on": ["digest_incubation"],
+          "source": {"kind": "synthetic_planning_default", "note": "Hand-authored bench recovery allowance, not a duration for the in-silico ExtractRegion operation."}
+        },
+        {
+          "step_id": "prepare_ligation",
+          "label": "Ligation setup allowance",
+          "hands_on_hours": {"min": 0.05, "typical": 0.1, "max": 0.15},
+          "unattended_hours": {"min": 0.0, "typical": 0.0, "max": 0.0},
+          "depends_on": ["recover_fragments", "prepare_ligation_materials"],
+          "source": {"kind": "synthetic_planning_default", "note": "Synthetic join of recovered material and the independently prepared supplies; no sequence compatibility or reaction success claim."}
+        },
+        {
+          "step_id": "ligation_incubation",
+          "label": "Ligation incubation allowance",
+          "hands_on_hours": {"min": 0.0, "typical": 0.0, "max": 0.0},
+          "unattended_hours": {"min": 0.15, "typical": 0.5, "max": 1.0},
+          "depends_on": ["prepare_ligation"],
+          "source": {"kind": "synthetic_planning_default", "note": "Hand-authored unattended interval, not an empirically validated ligation protocol or yield estimate."}
+        },
+        {
+          "step_id": "review_recovery",
+          "label": "Review recovered material and downstream verification needs",
+          "hands_on_hours": {"min": 0.05, "typical": 0.1, "max": 0.2},
+          "unattended_hours": {"min": 0.0, "typical": 0.0, "max": 0.0},
+          "depends_on": ["ligation_incubation"],
+          "source": {"kind": "synthetic_planning_default", "note": "Synthetic human-review allowance only; transformation, screening, sequencing and verification success are outside this model."}
+        }
+      ]
+    }
+  ]
+}
