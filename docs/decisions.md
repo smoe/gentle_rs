@@ -1663,6 +1663,17 @@ accounting or quotes. Unknown/unpriced classes remain visible and never
 establish zero cost. All surfaces consume the same estimate and explanation;
 ranking and guardrails remain advisory, not execution or purchase approval.
 
+Bench-model presence and duration must not change policy outcomes. Preserve
+the original family/base scalar plus summed queues/purchasing delays as the
+time input to `composite_meta_score` and `max_time_hours`, even when the
+displayed elapsed estimate has a critical-path basis. Expose this separately
+as `explanation.time_policy` with hours, `legacy_family_scalar` basis and
+the two consumers. Historical reports missing this record remain unknown;
+do not reconstruct their scoring basis from a newer model or their displayed
+elapsed value. Guardrail passes do not bound the displayed scenario ranges
+or actual laboratory completion. Changing calibrated cross-method ranking is
+a separately approved policy change, not a reward for richer documentation.
+
 Supplier discovery is independent of both these synthetic estimates and
 implemented service adapters. A country-coded readable HTML/PDF protocol is a
 dated document reference, not structured executable instructions, commercial

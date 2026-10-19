@@ -104,7 +104,7 @@ class SpecialistSourceTests(unittest.TestCase):
         for newline in ("\n", "\r\n"):
             text = guide.replace("\n", newline)
             for term in ("0.8 h", "2.6 h", "3.2 h", "87.2 h", "39 EUR",
-                         "country_code", "text_pdf", "catalog_only",
+                         "country_code", "text_pdf", "catalog_only", "explanation.time_policy",
                          "non-exhaustive", "No screenshots are fabricated",
                          "not Promega prices", "legacy_family_scalar"):
                 self.assertIn(term, text)
@@ -562,9 +562,21 @@ class SpecialistBinaryTests(unittest.TestCase):
             self.assertAlmostEqual(estimate["unattended_hours"]["typical"], 2.6)
             self.assertAlmostEqual(estimate["estimated_cost"], 39.0)
             self.assertAlmostEqual(estimate["machine_run_cost"], 30.0)
+            policy = estimate["explanation"]["time_policy"]
+            self.assertEqual(policy["basis"], "legacy_family_scalar")
+            self.assertEqual(policy["used_by"], ["composite_meta_score", "max_time_hours"])
+            self.assertAlmostEqual(policy["hours"], 6.0 if name == "cloning_in_stock" else 90.0)
             self.assertAlmostEqual(estimate["estimated_cost"], sum(estimate[field] for field in (
                 "routine_base_cost", "stock_drawn_material_cost",
                 "missing_material_purchase_proxy_cost", "machine_run_cost")))
+            if name == "cloning_in_stock":
+                guarded = self.invoke("planning", "consult", "cloning", "--objective", json.dumps({
+                    "schema": "gentle.planning_objective.v1", "max_time_hours": 5}), "--format", "json")
+                restriction = next(row["estimate"] for row in guarded["strategy_candidates"]
+                                   if row["family"] == "restriction")
+                self.assertAlmostEqual(restriction["estimated_time_hours"], 3.2)
+                self.assertFalse(restriction["passes_guardrails"])
+                self.assertIn("max_time_hours_exceeded (6.0 > 5.0)", restriction["guardrail_failures"])
         self.assertAlmostEqual(estimates[0]["elapsed_hours"]["typical"], 3.2)
         self.assertAlmostEqual(estimates[1]["elapsed_hours"]["typical"], 87.2)
         self.assertAlmostEqual(estimates[0]["stock_drawn_material_cost"], 9.0)

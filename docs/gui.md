@@ -2439,6 +2439,10 @@ Patterns menu:
     are separately labelled. Only the restriction/ligation routine has a
     synthetic step model; none of these figures is a validated protocol time
     or an orderable quote. The GUI derives no second estimate.
+    A separate shared label shows the legacy ranking/time-guardrail proxy
+    (family/base duration plus delays). Bench-model availability/duration does
+    not change ranking or guardrails, and the proxy is not measured lab time.
+    Missing historical policy metadata displays as unknown, not reconstructed.
   - when Routine Assistant is opened from a sequence window with construct
     reasoning, that same strip now keeps the active `construct reasoning`
     sequence id plus variant effect tags / suggested assay ids visible, and

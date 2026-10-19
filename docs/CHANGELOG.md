@@ -1,5 +1,31 @@
 # GENtle Changelog
 
+## 2026-10-19 - Keep Cloning Bench Models Independent Of Ranking Policy
+
+- Correct the planning-v2 regression in which a new synthetic critical-path
+  estimate changed both `composite_meta_score` and `max_time_hours` guardrails.
+  Retain the original family/base duration plus summed delays for both policy
+  decisions; display elapsed ranges independently. Model presence or revised
+  bench durations no longer reward a routine with a better rank or guardrail.
+- Record `explanation.time_policy` and use shared text/GUI/comparison labels
+  for the legacy proxy. Historical reports lacking that record remain unknown,
+  not reconstructed. Neither a policy comparison nor a guardrail pass proves
+  laboratory duration or bounds the displayed scenario ranges. Calibrated
+  cross-method ranking remains a separate policy decision.
+- Add synthetic same-routine model-present/absent/altered regressions, all-22
+  routine score checks, full consultation-order counterfactuals and a finite
+  display/non-finite policy-time rejection. Extend tutorial 09.04 and its CLI
+  regression with the distinct 6/90-hour policy and 3.2/87.2-hour display values.
+- Verification on macOS at `293819fd` plus this repair: 13 focused bench-model
+  tests and four existing consultation regressions pass; the rebuilt CLI passes
+  the tutorial/guardrail replay. The 87 source/checkout tests (including LF/CRLF),
+  rerun source tests, 68-entry catalog freshness, locked build/check, scoped
+  formatting and whitespace pass. The known large `__eh_frame` linker warning
+  remains non-blocking. Session-close has four OK, two expected worktree/plan
+  warnings and no failures. No full-suite, native GUI, Windows or scientific
+  acceptance is inferred. Supplier records, cloning macros and unrelated
+  `outputs/` are unchanged; no push.
+
 ## 2026-10-19 - Teach Advisory Cloning Planning And Protocol Supplier Discovery
 
 - Add tutorial 09.04 with two provenance-documented synthetic profiles:

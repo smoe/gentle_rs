@@ -7846,6 +7846,14 @@ Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'pl
     model. Other routines retain labelled legacy elapsed scalars, with all
     three breakdown ranges unknown, not zero. The text report uses the same
     labels as Routine Assistant; JSON retains dependencies and provenance.
+  - Ranking and `max_time_hours` still use the original family/base scalar
+    plus summed delays, not the displayed critical path. Inspect
+    `planning_estimate.explanation.time_policy` (or
+    `planning.estimate.explanation.time_policy` in `routines explain`) for its
+    hours, legacy basis and consumers. Text and
+    comparison explicitly label this policy proxy; old reports without it
+    stay unknown. Bench-model coverage/duration cannot change scores, family
+    winners or guardrails. Neither the proxy nor a pass is validated lab time.
   - Cost is split into stock-drawn material value, one-unit missing-material
     purchasing proxy, machine-run cost and routine-base cost. The four sum to
     the retained total, with unknown/unpriced classes explicitly listed.

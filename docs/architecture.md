@@ -1874,6 +1874,12 @@ Meta-planning layer (time/cost/local-fit) and lab-management agent constraints:
   are sums; elapsed ranges use dependency-only critical paths plus the existing
   delay heuristic. Other routines retain explicitly labelled legacy elapsed
   scalars and unknown breakdowns. These are not validated laboratory timings.
+- Ranking and `max_time_hours` keep the original family/base scalar plus
+  summed delays, independently of that display model. The shared explanation
+  records `time_policy` and all views label this legacy policy proxy. Merely
+  adding/changing a synthetic bench model cannot improve a candidate's score,
+  change its family winner or change a guardrail verdict. A calibrated timing
+  policy would require a separate decision, not automatic cross-basis ranking.
 - Cost totals retain their previous arithmetic, exposing stock-drawn material,
   one-unit missing-material purchasing proxy, machine-run and routine-base
   components. Unknown/unpriced classes remain explicit; none is an orderable

@@ -36,6 +36,13 @@ prefix before bench steps. The legacy business-day conversion and lack of
 holiday/date anchoring remain unchanged. For the other routines, the three
 new ranges are unknown and only the labelled legacy scalar is available.
 
+Scoring and the `max_time_hours` guardrail retain the legacy family/base scalar
+plus summed delays for every routine. Adding/removing this model, or changing
+its synthetic durations, must not alter those policy decisions. The shared
+estimate discloses `explanation.time_policy`; these uncalibrated proxies are
+not cross-method laboratory-time evidence. Old reports without recorded
+policy metadata stay unknown, not reinterpreted through the current model.
+
 Material figures are one priced unit per inferred material class: existing
 stock versus a missing-material purchasing proxy. They are neither a complete
 bill of materials nor an orderable quote. Package sizes, quantities, expiry,

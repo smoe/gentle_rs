@@ -4694,6 +4694,22 @@ fn estimate_routine_planning(
     routine: &CloningRoutineDefinition,
     routine_preference_context: &RoutinePreferenceContext,
 ) -> Result<PlanningEstimate, String> {
+    estimate_routine_planning_with_bench_catalog(
+        engine,
+        objective,
+        routine,
+        routine_preference_context,
+        planning_wetlab::bundled()?,
+    )
+}
+
+fn estimate_routine_planning_with_bench_catalog(
+    engine: &GentleEngine,
+    objective: &PlanningObjective,
+    routine: &CloningRoutineDefinition,
+    routine_preference_context: &RoutinePreferenceContext,
+    bench_catalog: &planning_wetlab::Catalog,
+) -> Result<PlanningEstimate, String> {
     let profile = engine.planning_effective_profile();
     let material_classes = infer_routine_material_classes(routine);
     let machine_classes = infer_routine_machine_classes(routine);
@@ -4794,7 +4810,8 @@ fn estimate_routine_planning(
     let procurement_delay_hours =
         planning_business_days_to_elapsed_hours(procurement_delay_business_days);
     estimated_time_hours += procurement_delay_hours;
-    let model = planning_wetlab::bundled()?.model(&routine.routine_id);
+    let policy_time_hours = estimated_time_hours;
+    let model = bench_catalog.model(&routine.routine_id);
     let schedule = model
         .map(|model| model.schedule(machine_queue_hours + procurement_delay_hours))
         .transpose()
@@ -4813,7 +4830,10 @@ fn estimate_routine_planning(
     } else {
         crate::engine::PlanningTimeBasis::LegacyFamilyScalar
     };
-    if !estimated_time_hours.is_finite() || !estimated_cost.is_finite() {
+    if !estimated_time_hours.is_finite()
+        || !policy_time_hours.is_finite()
+        || !estimated_cost.is_finite()
+    {
         return Err(
             json!({"code":"planning_estimate_overflow", "routine_id":routine.routine_id})
                 .to_string(),
@@ -4864,10 +4884,10 @@ fn estimate_routine_planning(
             ));
         }
         if let Some(max_time_hours) = objective.max_time_hours
-            && estimated_time_hours > max_time_hours
+            && policy_time_hours > max_time_hours
         {
             guardrail_failures.push(format!(
-                "max_time_hours_exceeded ({estimated_time_hours:.1} > {max_time_hours:.1})"
+                "max_time_hours_exceeded ({policy_time_hours:.1} > {max_time_hours:.1})"
             ));
         }
         for capability in &objective.required_capabilities {
@@ -4881,7 +4901,7 @@ fn estimate_routine_planning(
         routine_family_alignment_bonus(routine, routine_preference_context);
     let composite_meta_score = (objective.weight_local_fit * local_fit_score)
         + routine_family_alignment_bonus
-        - (objective.weight_time * estimated_time_hours)
+        - (objective.weight_time * policy_time_hours)
         - (objective.weight_cost * estimated_cost);
 
     let schedule = schedule.map(|row| row.rows).unwrap_or_default();
@@ -4889,6 +4909,11 @@ fn estimate_routine_planning(
         "step_catalog_schema": planning_wetlab::SCHEMA,
         "step_model": step_model,
         "estimated_time_hours_basis": estimated_time_hours_basis,
+        "time_policy": {
+            "hours": policy_time_hours,
+            "basis": crate::engine::PlanningTimeBasis::LegacyFamilyScalar,
+            "used_by": ["composite_meta_score", "max_time_hours"]
+        },
         "critical_paths": critical_paths,
         "step_schedule": schedule,
         "time_assumptions": [
@@ -4897,7 +4922,8 @@ fn estimate_routine_planning(
             "Minimum, typical and maximum paths are independent scenarios, not confidence intervals.",
             "No staffing, shared-equipment capacity, holiday calendar or completion date is modeled.",
             "Existing summed queue/procurement delays precede all bench steps; no procurement parallelism is inferred.",
-            "Unmodeled routines retain a non-decomposable legacy family/base scalar."
+            "Unmodeled routines retain a non-decomposable legacy family/base scalar.",
+            "Ranking and max_time_hours retain the legacy family/base scalar plus summed delays regardless of bench-model presence; this policy proxy is not a measured laboratory duration."
         ],
         "machine_queue_hours": machine_queue_hours,
         "procurement_delay_hours": procurement_delay_hours,

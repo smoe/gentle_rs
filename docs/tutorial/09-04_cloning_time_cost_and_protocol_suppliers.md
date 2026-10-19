@@ -78,6 +78,7 @@ compatibility. The unbound consultation is retained for comparison.
 | `unattended_hours.typical` | 2.6 h | Incubation still occupies elapsed time without continuous human work |
 | `elapsed_hours.typical` | 3.2 h | Dependency-compatible preparation overlaps; do not add every step serially |
 | `step_model` / `estimated_time_hours_basis` | `present` / `step_model_critical_path` | These identify the origin of the displayed scalar |
+| `explanation.time_policy.hours` | 6 h | Preserved legacy proxy for ranking and the time guardrail; not measured bench time |
 
 Inspect `schedule[]`: step IDs, dependencies, earliest start/finish ranges and
 source notes explain the calculation. `explanation.critical_paths` records a
@@ -98,6 +99,28 @@ In the Gibson comparison, the three breakdown ranges are `null`/`unknown`,
 Only the restriction/ligation routine currently has a step model. A missing
 breakdown does not mean zero effort, nor does comparing differently based
 scalars prove which method is faster in your laboratory.
+
+Giving one procedure a richer description must not, by itself, make it win a
+comparison. `composite_meta_score` and the `max_time_hours` guardrail therefore
+retain the **old family/base scalar plus delays** for every routine, separately
+recorded in `explanation.time_policy`. Here that proxy is 6 h, even though the
+displayed synthetic critical path is 3.2 h. Changing the bench model cannot
+change ordering or a guardrail verdict. A guardrail pass is not a promise that
+the experiment, or even the displayed maximum scenario, fits within that time.
+Historical reports missing the policy record display its basis as unknown;
+do not guess it from their elapsed value. A calibrated timing comparison would
+need a separately reviewed policy and suitable evidence for every method.
+
+Try the policy limit explicitly while the in-stock profile is still active:
+
+```bash
+g planning consult cloning --objective '{"schema":"gentle.planning_objective.v1","max_time_hours":5}' --format json > "$RUN/time-guardrail.json"
+```
+
+Find the `restriction` row in `strategy_candidates`. Its estimate has
+`passes_guardrails=false` and a `max_time_hours_exceeded (6.0 > 5.0)` failure,
+despite displaying 3.2 h. The two numbers answer different questions. This
+advisory rejection neither changes the protocol nor executes another method.
 
 ## 4. Explain Cost Before Comparing It
 
@@ -132,6 +155,9 @@ ranges stay unchanged. The disclosed delay prefix adds
 `2.5 x 24 x 7/5 = 84 h`, making typical elapsed time 87.2 h.
 This is the existing business-day approximation, not a promised completion
 date: no start date, holidays, weekend calendar or vendor delivery is known.
+The ranking/time-guardrail proxy separately becomes `6 + 84 = 90 h`, not
+87.2 h. Machine charges still use the original 6 h occupancy approximation,
+not either delay-inclusive figure. This keeps the three purposes inspectable.
 
 The known subtotal stays 39 EUR, but stock-draw value becomes 2 and the
 missing-material purchasing proxy becomes 7. The distinction helps explain

@@ -5926,8 +5926,21 @@ Adapter-equivalence guarantee for UI-intent tools:
       (`InvalidInput`) instead of silently coerced
 - Estimate v2 time/cost boundaries:
   - `estimated_time_hours` remains elapsed hours; `estimated_cost` retains the
-    previous known-cost total. Ranking/guardrail formulas are unchanged, but
-    the modeled routine's elapsed input now uses its typical critical path.
+    previous known-cost total. The modeled routine's displayed elapsed scalar
+    uses its typical critical path, **not** the time input used by scoring or
+    the `max_time_hours` guardrail.
+  - `explanation.time_policy` records `hours`, `basis=legacy_family_scalar`
+    and `used_by=[composite_meta_score,max_time_hours]`. Preserve the original
+    family/base scalar plus summed delays for those policy decisions across
+    every routine, regardless of bench-model availability/duration. Reject a
+    non-finite policy time even if the displayed critical path remains finite.
+    This restores the pre-v2 ranking and time-guardrail behaviour, rather than
+    comparing incomparable timing evidence or rewarding newly modelled routines.
+    The shared text labels the legacy proxy, and comparison exposes
+    `time_policy_proxy_hours`; comparability there means the same policy basis,
+    not measured laboratory durations. Missing historical policy metadata is
+    unknown, never inferred from `estimated_time_hours`. A policy guardrail
+    pass does not bound real elapsed time or the displayed scenario ranges.
   - `hands_on_hours`, `unattended_hours`, `elapsed_hours` are optional
     `TimeRange { min, typical, max }`, with finite nonnegative ordered values.
     Minimum, typical and maximum are separate scenarios, not confidence

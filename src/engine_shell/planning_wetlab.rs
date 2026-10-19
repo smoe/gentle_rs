@@ -330,6 +330,17 @@ fn basis_key(estimate: &PlanningEstimate) -> &'static str {
     }
 }
 
+fn policy_time_hours(estimate: &PlanningEstimate) -> Option<f64> {
+    let policy = estimate.explanation.get("time_policy")?;
+    if policy.get("basis")?.as_str()? != "legacy_family_scalar" {
+        return None;
+    }
+    policy
+        .get("hours")?
+        .as_f64()
+        .filter(|hours| hours.is_finite() && *hours >= 0.0)
+}
+
 /// Thin adapters display these shared labels without deriving another estimate.
 pub(crate) fn estimate_display_lines(estimate: &PlanningEstimate) -> Vec<String> {
     let basis = match estimate.estimated_time_hours_basis {
@@ -348,6 +359,10 @@ pub(crate) fn estimate_display_lines(estimate: &PlanningEstimate) -> Vec<String>
             range_text(estimate.unattended_hours)
         ),
     ];
+    lines.push(match policy_time_hours(estimate) {
+        Some(hours) => format!("Ranking/time-guardrail proxy: {hours:.2} h (legacy family/base scalar + delays; not measured laboratory time)"),
+        None => "Ranking/time-guardrail proxy: unknown (not recorded)".into(),
+    });
     if estimate.schema != crate::engine::PLANNING_ESTIMATE_SCHEMA {
         lines.push(format!(
             "Legacy total cost: {:.2} (currency and assumptions as recorded)",
@@ -386,6 +401,14 @@ pub(super) fn comparison_axes(
         json!({"axis":"estimated_time_hours_basis", "left":basis_key(left), "right":basis_key(right),
         "same":left.estimated_time_hours_basis == right.estimated_time_hours_basis}),
     ];
+    let (a, b) = (policy_time_hours(left), policy_time_hours(right));
+    rows.push(json!({
+        "axis":"time_policy_proxy_hours", "basis":"legacy_family_scalar",
+        "left":a.map(|hours| format!("{hours:.2} h (legacy policy proxy)")).unwrap_or_else(|| "unknown".into()),
+        "right":b.map(|hours| format!("{hours:.2} h (legacy policy proxy)")).unwrap_or_else(|| "unknown".into()),
+        "left_hours":a, "right_hours":b, "comparable":a.is_some() && b.is_some(),
+        "same":matches!((a,b), (Some(a),Some(b)) if a == b)
+    }));
     for (axis, a, b) in [
         ("hands_on_hours", left.hands_on_hours, right.hands_on_hours),
         (

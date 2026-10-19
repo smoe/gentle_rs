@@ -100,6 +100,225 @@ fn planning_wetlab_bundled_parallel_branch_is_not_summed_into_elapsed() {
 }
 
 #[test]
+fn planning_wetlab_model_presence_and_duration_do_not_change_ranking_or_guardrails() {
+    let normal = planning_wetlab_test_parse(&planning_wetlab_test_catalog()).unwrap();
+    let mut empty = planning_wetlab_test_catalog();
+    empty["routines"] = json!([]);
+    let absent = planning_wetlab_test_parse(&empty).unwrap();
+    let mut slow = planning_wetlab_test_catalog();
+    for step in slow["routines"][0]["steps"].as_array_mut().unwrap() {
+        step["hands_on_hours"] = json!({"min":10.0,"typical":20.0,"max":40.0});
+    }
+    let slow = planning_wetlab_test_parse(&slow).unwrap();
+
+    // Both sides of the new critical-path value, with and without waiting.
+    for base_hours in [2.0, 6.0] {
+        for waiting in [false, true] {
+            let mut engine = GentleEngine::from_state(ProjectState::default());
+            execute_shell_command(&mut engine, &ShellCommand::PlanningProfileSet {
+                scope: PlanningProfileScope::ProjectOverride,
+                payload_json: json!({"schema":"gentle.planning_profile.v1",
+                    "inventory":{"mix":{"available":!waiting,"unit_cost":7.0,
+                        "procurement_business_days":2.0}},
+                    "machine_availability":{"machine":{"available":true,
+                        "queue_business_days":if waiting {0.5} else {0.0},"run_cost_per_hour":5.0}}
+                }).to_string(),
+            }).unwrap();
+            let before = serde_json::to_value(engine.state()).unwrap();
+            let mut routine =
+                planning_wetlab_test_routine("restriction.digest_ligate_extract_sticky");
+            routine.base_time_hours = Some(base_hours);
+            routine.base_cost = Some(3.0);
+            routine.required_material_classes = vec!["mix".into()];
+            routine.required_machine_classes = vec!["machine".into()];
+            let delay = if waiting { 84.0 } else { 0.0 };
+            let objective = PlanningObjective {
+                weight_time: 1.25,
+                weight_cost: 0.125,
+                weight_local_fit: 2.0,
+                max_time_hours: Some(5.0 + delay),
+                ..Default::default()
+            };
+            let estimate = |catalog| {
+                estimate_routine_planning_with_bench_catalog(
+                    &engine,
+                    &objective,
+                    &routine,
+                    &RoutinePreferenceContext::default(),
+                    catalog,
+                )
+                .unwrap()
+            };
+            let legacy = estimate(&absent);
+            assert!((legacy.estimated_time_hours - (base_hours + delay)).abs() < 1e-9);
+            for catalog in [&normal, &slow] {
+                let modeled = estimate(catalog);
+                assert_ne!(modeled.estimated_time_hours, legacy.estimated_time_hours);
+                assert_eq!(
+                    modeled.composite_meta_score.to_bits(),
+                    legacy.composite_meta_score.to_bits()
+                );
+                assert_eq!(modeled.passes_guardrails, base_hours < 5.0);
+                assert_eq!(modeled.guardrail_failures, legacy.guardrail_failures);
+                assert_eq!(
+                    modeled.estimated_cost.to_bits(),
+                    legacy.estimated_cost.to_bits()
+                );
+                assert_eq!(
+                    modeled.explanation["time_policy"],
+                    legacy.explanation["time_policy"]
+                );
+                assert_eq!(
+                    modeled.explanation["time_policy"]["hours"]
+                        .as_f64()
+                        .unwrap()
+                        .to_bits(),
+                    legacy.estimated_time_hours.to_bits()
+                );
+                assert_eq!(
+                    modeled.explanation["time_policy"]["basis"],
+                    "legacy_family_scalar"
+                );
+                assert!(
+                    planning_estimate_display_lines(&modeled)
+                        .iter()
+                        .any(|line| line.starts_with("Ranking/time-guardrail proxy:"))
+                );
+            }
+            assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+        }
+    }
+}
+
+#[test]
+fn planning_wetlab_consultation_order_matches_the_no_model_counterfactual() {
+    let catalog: CloningRoutineCatalog =
+        serde_json::from_str(include_str!("../../assets/cloning_routines.json")).unwrap();
+    let mut empty = planning_wetlab_test_catalog();
+    empty["routines"] = json!([]);
+    let absent = planning_wetlab_test_parse(&empty).unwrap();
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    for waiting in [false, true] {
+        if waiting {
+            execute_shell_command(
+                &mut engine,
+                &ShellCommand::PlanningProfileSet {
+                    scope: PlanningProfileScope::ProjectOverride,
+                    payload_json: include_str!("../../docs/examples/planning/cloning_waiting.json")
+                        .into(),
+                },
+            )
+            .unwrap();
+        }
+        for preferred in [vec![], vec!["restriction".to_string()]] {
+            let objective = PlanningObjective {
+                preferred_routine_families: preferred,
+                ..Default::default()
+            };
+            let context = GentleEngine::planning_objective_routine_preference_context(&objective);
+            let mut legacy = catalog
+                .routines
+                .iter()
+                .filter(|routine| {
+                    matches!(
+                        routine.family.as_str(),
+                        "restriction"
+                            | "gibson"
+                            | "golden_gate"
+                            | "gateway"
+                            | "infusion"
+                            | "nebuilder_hifi"
+                            | "pcr"
+                            | "topo"
+                            | "ta_gc"
+                            | "crispr"
+                            | "sequence"
+                    )
+                })
+                .map(|routine| {
+                    let estimate = estimate_routine_planning_with_bench_catalog(
+                        &engine, &objective, routine, &context, &absent,
+                    )
+                    .unwrap();
+                    (
+                        routine.family.clone(),
+                        routine.routine_id.clone(),
+                        estimate.composite_meta_score,
+                    )
+                })
+                .collect::<Vec<_>>();
+            // Independent selection: sort every routine, then keep the first
+            // occurrence of each family instead of production's two-stage map.
+            legacy.sort_by(|a, b| {
+                b.2.total_cmp(&a.2)
+                    .then_with(|| a.0.cmp(&b.0))
+                    .then_with(|| a.1.cmp(&b.1))
+            });
+            let mut seen = BTreeSet::new();
+            legacy.retain(|row| seen.insert(row.0.clone()));
+            assert_eq!(legacy.len(), 11);
+            let before = serde_json::to_value(engine.state()).unwrap();
+            let report = execute_shell_command(
+                &mut engine,
+                &ShellCommand::PlanningConsultCloning {
+                    seq_id: None,
+                    objective_json: Some(serde_json::to_string(&objective).unwrap()),
+                    profile_scope: PlanningProfileScope::Effective,
+                    output_format: "json".into(),
+                },
+            )
+            .unwrap();
+            assert!(!report.state_changed);
+            let rows = report.output["strategy_candidates"].as_array().unwrap();
+            assert_eq!(rows.len(), legacy.len());
+            for (index, (actual, expected)) in rows.iter().zip(&legacy).enumerate() {
+                assert_eq!(actual["rank"], index + 1);
+                assert_eq!(actual["family"], expected.0);
+                assert_eq!(actual["routine_id"], expected.1);
+                assert_eq!(
+                    actual["estimate"]["composite_meta_score"]
+                        .as_f64()
+                        .unwrap()
+                        .to_bits(),
+                    expected.2.to_bits()
+                );
+            }
+            assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+        }
+    }
+}
+
+#[test]
+fn planning_wetlab_finite_display_time_cannot_hide_policy_time_overflow() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::PlanningProfileSet {
+            scope: PlanningProfileScope::ProjectOverride,
+            payload_json: json!({"schema":"gentle.planning_profile.v1",
+                "machine_availability":{"machine":{"available":true,"queue_business_days":1e306}}
+            })
+            .to_string(),
+        },
+    )
+    .unwrap();
+    let mut routine = planning_wetlab_test_routine("restriction.digest_ligate_extract_sticky");
+    routine.base_time_hours = Some(f64::MAX);
+    routine.required_machine_classes = vec!["machine".into()];
+    let err = estimate_routine_planning(
+        &engine,
+        &PlanningObjective::default(),
+        &routine,
+        &RoutinePreferenceContext::default(),
+    )
+    .unwrap_err();
+    assert_eq!(
+        serde_json::from_str::<Value>(&err).unwrap()["code"],
+        "planning_estimate_overflow"
+    );
+}
+
+#[test]
 fn planning_wetlab_range_scenarios_choose_independent_critical_paths() {
     // Hand-crafted graph: the longer branch changes between range scenarios.
     let mut value = planning_wetlab_test_catalog();
@@ -312,10 +531,22 @@ fn planning_wetlab_unmodeled_ranges_remain_unknown_and_legacy_scalar_unchanged()
     ] {
         legacy.as_object_mut().unwrap().remove(field);
     }
+    legacy["explanation"]
+        .as_object_mut()
+        .unwrap()
+        .remove("time_policy");
     let restored: PlanningEstimate = serde_json::from_value(legacy).unwrap();
     let lines = planning_estimate_display_lines(&restored).join("\n");
     assert!(lines.contains("Hands-on: unknown"));
     assert!(lines.contains("Cost components: unknown"));
+    assert!(lines.contains("Ranking/time-guardrail proxy: unknown"));
+    let axes = planning_wetlab::comparison_axes(&restored, &estimate);
+    let policy = axes
+        .iter()
+        .find(|row| row["axis"] == "time_policy_proxy_hours")
+        .unwrap();
+    assert!(policy["left_hours"].is_null());
+    assert_eq!(policy["comparable"], false);
 }
 
 #[test]
@@ -345,11 +576,17 @@ fn planning_wetlab_all_bundled_routines_reconcile_and_only_one_has_a_model() {
     )
     .unwrap();
     let profile = engine.planning_effective_profile();
+    let objective = PlanningObjective {
+        weight_time: 1.25,
+        weight_cost: 0.125,
+        weight_local_fit: 2.0,
+        ..Default::default()
+    };
     let mut unmodeled = 0;
     for routine in &catalog.routines {
         let estimate = estimate_routine_planning(
             &engine,
-            &PlanningObjective::default(),
+            &objective,
             routine,
             &RoutinePreferenceContext::default(),
         )
@@ -372,6 +609,20 @@ fn planning_wetlab_all_bundled_routines_reconcile_and_only_one_has_a_model() {
             legacy_elapsed += planning_business_days_to_elapsed_hours(machine.queue_business_days);
         }
         legacy_elapsed += planning_business_days_to_elapsed_hours(purchase_days);
+        assert_eq!(
+            estimate.explanation["time_policy"]["hours"]
+                .as_f64()
+                .unwrap()
+                .to_bits(),
+            legacy_elapsed.to_bits()
+        );
+        let legacy_score = (objective.weight_local_fit * estimate.local_fit_score) + 0.0
+            - (objective.weight_time * legacy_elapsed)
+            - (objective.weight_cost * legacy_cost);
+        assert_eq!(
+            estimate.composite_meta_score.to_bits(),
+            legacy_score.to_bits()
+        );
         assert_eq!(estimate.estimated_cost.to_bits(), legacy_cost.to_bits());
         assert!(
             (estimate.estimated_cost
@@ -508,6 +759,7 @@ fn planning_wetlab_shared_consultation_and_comparison_remain_read_only() {
     let text = report.output["text_report"].as_str().unwrap();
     for label in [
         "Hands-on:",
+        "Ranking/time-guardrail proxy:",
         "Elapsed:",
         "Stock-drawn material",
         "Missing-material purchase proxy",
@@ -526,6 +778,13 @@ fn planning_wetlab_shared_consultation_and_comparison_remain_read_only() {
         .find(|row| row["axis"] == "estimated_time_hours_basis")
         .unwrap();
     assert_eq!(basis["same"], false);
+    let policy = axes
+        .iter()
+        .find(|row| row["axis"] == "time_policy_proxy_hours")
+        .unwrap();
+    assert_eq!(policy["left_hours"], 6.0);
+    assert_eq!(policy["right_hours"], 5.0);
+    assert_eq!(policy["comparable"], true);
     let hands = axes
         .iter()
         .find(|row| row["axis"] == "hands_on_hours")
