@@ -4801,6 +4801,52 @@ mod tests {
     }
 
     #[test]
+    fn catalog_mcp_read_only_parity_and_import_confirmation() {
+        // Synthetic empty project; catalog inspection reuses existing local sources.
+        let temp = tempdir().unwrap();
+        let state_path = temp.path().join("catalog review.json");
+        ProjectState::default()
+            .save_to_path(&state_path.to_string_lossy())
+            .unwrap();
+        let before = fs::read(&state_path).unwrap();
+        for command in [
+            "catalog doctor",
+            "catalog search --entity product --query luciferas",
+            "catalog updates preview missing.json --scope project --output forbidden.json",
+            "catalog updates apply missing.json --approve-digest sha256:example",
+        ] {
+            let plan = json!({"schema":"gentle.agent_plan_result.v1", "assistant_message":"Synthetic catalog review", "questions":[], "candidates":[{
+                "candidate_id":"catalog", "title":"Catalog", "rationale":"Explicit scope test", "kind":"shell", "mutating":false, "requires_confirmation":false, "execution_mode":"auto", "shell_command":command
+            }]});
+            let response = run_tool(
+                DEFAULT_MCP_STATE_PATH,
+                "agent_execute_plan",
+                json!({"state_path":state_path, "candidate_id":"catalog", "plan":plan}),
+            );
+            if command.starts_with("catalog updates") {
+                assert_eq!(response["result"]["isError"], true, "{response}");
+                assert!(
+                    response.to_string().contains("explicit --confirm"),
+                    "{response}"
+                );
+            } else {
+                let mut engine = GentleEngine::from_state(ProjectState::default());
+                let expected = execute_shell_command(
+                    &mut engine,
+                    &crate::engine_shell::parse_shell_line(command).unwrap(),
+                )
+                .unwrap();
+                assert_eq!(response["result"]["isError"], false, "{response}");
+                assert_eq!(
+                    response["result"]["structuredContent"]["output"],
+                    expected.output
+                );
+            }
+            assert_eq!(fs::read(&state_path).unwrap(), before);
+        }
+    }
+
+    #[test]
     fn protein_expression_mcp_plan_executor_matches_shared_shell_without_writes() {
         // Hand-crafted synthetic product/requirements, documented in plans/README.md.
         let temp = tempdir().unwrap();

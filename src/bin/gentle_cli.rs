@@ -544,6 +544,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "macros",
     "resources",
     "services",
+    "catalog",
     "import-pool",
     "ladders",
     "proteases",

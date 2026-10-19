@@ -319,6 +319,9 @@ pub const EXTERNAL_SERVICE_PROVIDER_CATALOG_SCHEMA: &str =
 /// Overlay-discoverable provider behavior/configuration catalog.
 pub const EXTERNAL_SERVICE_PROVIDER_CONFIG_SCHEMA: &str =
     "gentle.external_service_provider_config.v1";
+/// Withdrawal-aware overlay schema. Older readers must fail rather than ignore tombstones.
+pub const EXTERNAL_SERVICE_PROVIDER_CONFIG_WITHDRAWALS_SCHEMA: &str =
+    "gentle.external_service_provider_config.v2";
 /// Doctor report for external-service provider configuration overlays.
 pub const EXTERNAL_SERVICE_PROVIDER_CONFIG_DOCTOR_SCHEMA: &str =
     "gentle.external_service_provider_config_doctor.v1";
@@ -374,6 +377,9 @@ pub struct ExternalServiceProviderRecord {
 pub struct ExternalServiceProviderConfigCatalog {
     pub schema: String,
     pub providers: Vec<ExternalServiceProviderConfigRecord>,
+    /// Explicit overlay tombstones; deletion alone would reveal a lower source.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub withdrawn_providers: Vec<String>,
     pub summary_lines: Vec<String>,
 }
 
@@ -7556,6 +7562,7 @@ fn infer_command_mutation(path: &str, operations: &[String]) -> CapabilityMutati
         || path.starts_with("load")
         || path.starts_with("import")
         || path.starts_with("export")
+        || path.starts_with("catalog updates ")
         || path.contains(" materialize")
         || path.contains(" write")
         || path.contains(" set-")

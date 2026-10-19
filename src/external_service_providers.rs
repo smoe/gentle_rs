@@ -4,10 +4,13 @@
 //! CLI, MCP, and ClawBio keep one provider-neutral request contract while
 //! operators can update vendor handoff details without recompiling GENtle.
 
+/// Guarded, local full-record updates and retained recovery evidence.
+pub mod updates;
+
 use gentle_protocol::{
     EXTERNAL_SERVICE_PROVIDER_CATALOG_SCHEMA, EXTERNAL_SERVICE_PROVIDER_CONFIG_DOCTOR_SCHEMA,
-    EXTERNAL_SERVICE_PROVIDER_CONFIG_SCHEMA, ExternalServiceCapability,
-    ExternalServiceChannelConfig, ExternalServiceProductTemplateMapping,
+    EXTERNAL_SERVICE_PROVIDER_CONFIG_SCHEMA, EXTERNAL_SERVICE_PROVIDER_CONFIG_WITHDRAWALS_SCHEMA,
+    ExternalServiceCapability, ExternalServiceChannelConfig, ExternalServiceProductTemplateMapping,
     ExternalServiceProviderCatalog, ExternalServiceProviderConfigCatalog,
     ExternalServiceProviderConfigDoctorReport, ExternalServiceProviderConfigRecord,
     ExternalServiceProviderConfigSourceReport, ExternalServiceProviderRecord,
@@ -177,15 +180,24 @@ fn validate_provider_config_catalog(
     path: &Path,
 ) -> Vec<String> {
     let mut errors = vec![];
-    if catalog.schema != EXTERNAL_SERVICE_PROVIDER_CONFIG_SCHEMA {
+    if catalog.schema != EXTERNAL_SERVICE_PROVIDER_CONFIG_WITHDRAWALS_SCHEMA
+        && (catalog.schema != EXTERNAL_SERVICE_PROVIDER_CONFIG_SCHEMA
+            || !catalog.withdrawn_providers.is_empty())
+    {
         errors.push(format!(
-            "Provider config '{}' declares schema '{}' but expected '{}'",
+            "Provider config '{}' declares schema '{}' but expected '{}' (without withdrawals) or withdrawal-aware v2",
             path.display(),
             catalog.schema,
             EXTERNAL_SERVICE_PROVIDER_CONFIG_SCHEMA
         ));
     }
     let mut seen = BTreeSet::<String>::new();
+    for id in &catalog.withdrawn_providers {
+        let normalized = normalize_service_token(id);
+        if normalized.is_empty() || !seen.insert(normalized) {
+            errors.push("Empty or duplicate provider withdrawal".to_string());
+        }
+    }
     for provider in &catalog.providers {
         let provider_id = normalize_service_token(&provider.provider);
         if provider_id.is_empty() {
@@ -528,6 +540,9 @@ fn merge_config_file(
         return Err(validation_errors.join("; "));
     }
     summary_lines.extend(catalog.summary_lines);
+    for id in catalog.withdrawn_providers {
+        provider_by_id.remove(&normalize_service_token(&id));
+    }
     for provider in catalog.providers {
         let provider_id = normalize_service_token(&provider.provider);
         if let Some(previous) = provider_by_id.get(&provider_id) {
@@ -637,6 +652,9 @@ pub fn doctor_external_service_provider_config(
                     let status = if errors.is_empty() { "ok" } else { "error" };
                     if errors.is_empty() {
                         report.parsed_source_count += 1;
+                        for id in &catalog.withdrawn_providers {
+                            provider_ids.remove(&normalize_service_token(id));
+                        }
                         for provider in &catalog.providers {
                             provider_ids.insert(normalize_service_token(&provider.provider));
                         }
@@ -648,6 +666,7 @@ pub fn doctor_external_service_provider_config(
                             path: path.display().to_string(),
                             status: status.to_string(),
                             provider_count: catalog.providers.len(),
+                            warnings: catalog.withdrawn_providers.iter().map(|id| format!("Provider '{id}' withdrawn by this overlay; not available from lower sources")).collect(),
                             sha1: source_sha1(&path),
                             errors,
                             ..Default::default()

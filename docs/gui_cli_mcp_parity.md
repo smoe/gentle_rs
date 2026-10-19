@@ -19,11 +19,11 @@ Planning estimate v2 adds hands-on, unattended and elapsed ranges, explicit lega
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 59 | 760 | 0 |
-| gentle_cli | 483 | 360 | 0 |
-| MCP | 184 | 523 | 49 |
-| JS | 78 | 584 | 69 |
-| Lua | 77 | 585 | 69 |
+| GUI | 59 | 764 | 0 |
+| gentle_cli | 487 | 360 | 0 |
+| MCP | 184 | 527 | 49 |
+| JS | 78 | 588 | 69 |
+| Lua | 77 | 589 | 69 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -253,6 +253,10 @@ Planning estimate v2 adds hands-on, unattended and elapsed ranges, explicit lega
 | services status | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>JS: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>Lua: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | services providers list | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>JS: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>Lua: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | services providers doctor | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>JS: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>Lua: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| catalog doctor | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| catalog search | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| catalog updates preview | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| catalog updates apply | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | services delivery-route | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | services route-project-source | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | services project-preflight | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>JS: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>Lua: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |

@@ -10,6 +10,16 @@ need to start with raw operation JSON.
 
 ## Start Here
 
+Catalog discovery and guarded local provider updates use the same shared shell:
+`catalog doctor`, `catalog search --entity product|provider|protocol --query TEXT`,
+`catalog updates preview BUNDLE_PATH --scope user|project --output PREVIEW_PATH`,
+and `catalog updates apply PREVIEW_PATH --approve-digest SHA256`.
+See [the contract](catalog_updates.md) and
+[tutorial 09.04](tutorial/09-04_cloning_time_cost_and_protocol_suppliers.md#61-review-a-disposable-supplier-update-without-changing-vendor-facts).
+Imports change local configuration, not project state or scientific results;
+they never contact a supplier. Product search includes helper/reference rows,
+not just commercially available products.
+
 With `gentle_cli` installed and on your `PATH`, try these discovery commands:
 
 ```sh

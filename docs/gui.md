@@ -1,5 +1,12 @@
 # GENtle GUI Manual
 
+Catalog inspection and guarded provider imports are currently GUI **Shell**
+routes, not a new catalog browser: use `catalog doctor` / `catalog search`,
+then explicitly review `catalog updates preview` before approving `apply`.
+See [the scope, approval and recovery contract](catalog_updates.md).
+External-services catalog views use the same overlays; refresh them explicitly
+after a configuration change. Local stock/prices and project undo are separate.
+
 Open a sequence, explore its annotations, or review the steps of an experiment.
 GENtle keeps sequences, derived products and analysis reports together in a
 project. You can start with a guided example; no shell commands are required.

@@ -36,6 +36,8 @@ pub mod app;
 pub mod attract_motifs;
 #[cfg(feature = "desktop-gui")]
 mod background_engine;
+/// Shared five-lane catalog inspection and guarded local provider updates.
+pub mod catalog;
 /// Small shared helpers for GENtle command-line binaries.
 pub mod cli_support;
 /// Bounded host-owned asynchronous shell execution and retained receipts.

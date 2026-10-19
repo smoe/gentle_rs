@@ -2943,6 +2943,38 @@
       {
          "aliases": [],
          "engine_operations": [],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct"],
+         "path": "catalog doctor",
+         "summary": "Inspect existing provider/helper catalogs and distinguish five evidence lanes without reading private profiles or contacting suppliers.",
+         "usage": "catalog doctor"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct"],
+         "path": "catalog search",
+         "summary": "Search existing helper/product identities, providers or linked protocol references; do not infer offers or reviewed procedures.",
+         "usage": "catalog search --entity product|provider|protocol --query TEXT [--limit N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct"],
+         "path": "catalog updates preview",
+         "summary": "Write a fresh source-bound preview of full-record provider replacements or withdrawals; catalogs remain unchanged.",
+         "usage": "catalog updates preview BUNDLE_PATH --scope user|project --output PREVIEW_PATH"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct"],
+         "path": "catalog updates apply",
+         "summary": "Revalidate an exactly approved provider preview and atomically replace its local overlay with retained prior bytes and receipt.",
+         "usage": "catalog updates apply PREVIEW_PATH --approve-digest SHA256"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
          "interfaces": [
             "cli-shell",
             "gui-shell",

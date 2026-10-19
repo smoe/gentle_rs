@@ -1,5 +1,29 @@
 # GENtle Engine Protocol (Draft v1)
 
+## Catalog Evidence And Provider Updates
+
+Shared shell `catalog doctor` / `catalog search` project existing helper and
+provider catalogs, distinguishing product identity, offers, linked documents,
+reviewed procedures and private local observations. No new planning engine or
+automatic cross-lane join is introduced. `catalog updates preview` / `apply`
+admit hash-bound complete provider replacements and explicit withdrawals in
+user/project overlays only, with exact approval, current source-set validation,
+atomic target replacement and retained prior bytes/conditional receipt.
+Catalog config v2 admits `withdrawn_providers` tombstones. V1 remains readable
+only without withdrawals; empty lists are omitted to preserve legacy output.
+Withdrawal previews emit v2 so older readers fail instead of ignoring a
+tombstone and reactivating a lower record. All resolution/eligibility routes
+consume the same merge; v2 does not silently strengthen existing v1 bytes.
+
+The schemas `gentle.catalog_doctor.v1`, `gentle.catalog_search.v1`,
+`gentle.provider_update_bundle.v1`, `gentle.provider_update_preview.v1` and
+`gentle.provider_update_receipt.v1` are shared catalog-service records, not
+biological `Operation` variants or project undo entries. See the complete
+[fields, byte/path boundaries, recovery and non-claims](catalog_updates.md).
+Both artifact-writing commands require agent confirmation independent of
+candidate flags; `state_changed=false` describes only project state. A content
+digest does not authenticate vendor facts or approve quote/submission.
+
 ## Minimal Gene-Set Storage Projection
 
 `CreateGeneSetArrangement` is a mutating shared-engine operation reached through

@@ -907,6 +907,10 @@ an agent has selected a deterministic operation.
 - `services project-preflight`
 - `services project-quote`
 - `services providers doctor`
+- `catalog doctor` - available through the shared `agent_execute_plan` shell candidate, not a dedicated tool.
+- `catalog search` - same shared executor, no automatic product/offer join.
+- `catalog updates preview` - explicit confirmation before any preview artifact write.
+- `catalog updates apply` - explicit confirmation plus the exact preview digest; no provider contact.
 - `services providers list`
 - `services route-project-source`
 - `services status`

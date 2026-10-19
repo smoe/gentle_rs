@@ -39,6 +39,7 @@ ROOT="$PWD"
 GENTLE_CLI="$(command -v gentle_cli)"
 test -n "$GENTLE_CLI"
 RUN="$(mktemp -d "${TMPDIR:-/tmp}/gentle-planning-09-04.XXXXXX")"
+RUN="$(cd "$RUN" && pwd -P)"
 STATE="$RUN/tutorial.gentle.json"
 export GENTLE_ASSET_ROOT="$ROOT"
 export GENTLE_SYSTEM_CONFIG_ROOT="$RUN/system"
@@ -272,6 +273,90 @@ source validation can report a missing sequence as well; do not invent vector
 DNA to clear that message. Listing Promega must not inherit a GeneArt turnaround
 claim. GeneArt and metabion keep their separate, existing local handoff
 contracts; none of these commands submits an order or contacts a provider.
+
+### 6.1 Review A Disposable Supplier Update Without Changing Vendor Facts
+
+Why separate five lanes? A vector's biological identity, a seller's package,
+the protocol PDF, a reviewed procedure and your lab's stock observations answer
+different questions. A protocol link is not proof of DNA identity, pricing or
+an executable recipe. The new catalog routes expose those differences:
+
+```bash
+g catalog doctor > "$RUN/catalog-health.json"
+g catalog search --entity product --query luciferas > "$RUN/product-identities.json"
+g catalog search --entity provider --query promega > "$RUN/promega-record.json"
+g catalog search --entity protocol --query luciferase --limit 20
+```
+
+Product rows are existing helper/vector/reference identities, not automatically
+orderable products. Provider rows include full config and `record_sha256`,
+distinct from the raw `source_sha256`. Protocol rows have a linked document,
+`document_sha256=null` and `procedure_review=not_evaluated`. Commercial offers
+and reviewed vendor procedures are unavailable; private profiles are not
+inspected. None of this changes the earlier time, cost, scores or guardrails.
+
+Use only the disposable roots established in section 2 for this optional
+exercise. The following complete record is hand-crafted synthetic data, not
+Promega, not a supplier offer and not a reviewed protocol:
+
+```bash
+python3 - "$RUN/provider-update.json" <<'PY'
+import json, sys
+record = dict(provider="synthetic_tutorial_supplier", display_name="Synthetic tutorial only",
+              support_status="catalog_only", website_url="https://example.invalid",
+              dashboard_url="https://example.invalid", api_documentation_url=None)
+for key in ("channels", "product_templates", "validation_rules", "default_delivery_hints",
+            "default_purification_hints", "default_qc_hints", "required_followup",
+            "account_enablement_notes", "warnings"):
+    record[key] = []
+record["capabilities"] = [dict(service_kind="synthetic_protocol", track="dna",
+    display_name="Synthetic", quote_handoff_supported=False,
+    direct_api_documented=False, direct_api_implemented=False,
+    supported_submission_modes=[], status_tracking="none", artifact_kinds=[], notes=[])]
+bundle = dict(schema="gentle.provider_update_bundle.v1", changes=[dict(
+    action="replace", provider=record["provider"], base_record_sha256=None, record=record)])
+with open(sys.argv[1], "w", encoding="utf-8", newline="\n") as handle:
+    json.dump(bundle, handle, indent=2)
+    handle.write("\n")
+PY
+g catalog updates preview "$RUN/provider-update.json" --scope project --output "$RUN/provider-preview.json"
+```
+
+Read the preview **before** approving it. Expect `add`, null previous hash,
+`protocol_document_evidence_unavailable`, and the exact project destination
+under `$GENTLE_PROJECT_ROOT/.gentle/catalogs/`. Confirm `applicable=true` and
+review source bindings and impact limitations. Preview writes only its fresh
+artifact, not the active catalog. Do not substitute a real supplier casually.
+For this synthetic, disposable example only, after review:
+
+```bash
+DIGEST="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["preview_sha256"])' "$RUN/provider-preview.json")"
+g catalog updates apply "$RUN/provider-preview.json" --approve-digest "$DIGEST" > "$RUN/provider-receipt.json"
+g catalog search --entity provider --query synthetic_tutorial_supplier
+g catalog doctor
+```
+
+The receipt identifies retained history and the active raw-byte hash. Check
+that `proposed.json` matches that hash and that no `previous.bin` exists for
+the previously absent project catalog. Existing built-in suppliers remain.
+Repeating the old approval fails: current sources changed. A new preview of
+the old null-base addition reports a conflict, not permission to overwrite.
+For a real replacement, obtain the current **full** config and semantic base
+hash from provider search, then review a new complete bundle.
+
+Withdrawal uses `action="withdraw"` with that current base hash, **without** a
+record. It installs an explicit tombstone, preventing a lower overlay from
+silently reappearing. Do not delete a catalog row to imply withdrawal. Both
+writing commands require agent confirmation, even if a model calls them
+read-only. They do not alter project undo history or contact a supplier.
+Source changes, masking by later `.d` files or tampering require a new preview.
+No-op-only previews are not applicable and do not rewrite files.
+
+See [bundle limits and interrupted-apply recovery](../catalog_updates.md):
+never auto-replay prepared history, delete receipts to make a retry pass, or
+interpret a content hash as authenticated vendor approval. Joined offers,
+retained/reviewed documents, quantities/taxes/shipping, procedure extraction
+and inbox automation remain later work, not features of this example.
 
 ## 7. Inspect The Same Facts In The GUI Or Through An Agent
 

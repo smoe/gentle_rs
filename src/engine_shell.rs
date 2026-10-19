@@ -1531,6 +1531,7 @@ pub enum ShellCommand {
     },
     ResourcesStatus,
     ServicesStatus,
+    Catalog(crate::catalog::CatalogCommand),
     ServicesProvidersList,
     ServicesProvidersDoctor {
         catalog_path: Option<String>,
@@ -9007,6 +9008,7 @@ impl ShellCommand {
                 "list external-service providers and their current GENtle capability catalog"
                     .to_string()
             }
+            Self::Catalog(command) => format!("inspect or update local catalogs: {command:?}"),
             Self::ServicesProvidersDoctor {
                 catalog_path,
                 output,
@@ -14225,6 +14227,9 @@ impl ShellCommand {
     }
 
     pub fn is_state_mutating(&self) -> bool {
+        if let Self::Catalog(command) = self {
+            return command.mutating();
+        }
         // Exempt only named read-only inspections; imports and file-writing
         // handoffs keep the conservative generic-op confirmation behavior.
         if let Self::Op { payload } = self
@@ -28556,6 +28561,39 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             vec![],
         ),
         no_project_inspection_operation_descriptor(
+            "catalog doctor",
+            "Inspect existing provider/helper catalog health and five separate evidence lanes; never fetch documents or inspect private profiles.",
+            vec![],
+        ),
+        no_project_inspection_operation_descriptor(
+            "catalog search",
+            "Search effective existing product/helper identities, providers or protocol references; matching is not identity or commercial validation.",
+            vec![
+                json!({"name":"--entity", "required":true, "subject_kind":"other", "detail":"product, provider or protocol"}),
+                json!({"name":"--query", "required":true, "subject_kind":"other", "detail":"literal case-insensitive substring"}),
+                json!({"name":"--limit", "required":false, "subject_kind":"other", "detail":"1..100; default 50"}),
+            ],
+        ),
+        external_artifact_catalog_operation_descriptor(
+            "catalog updates preview",
+            "required fresh local preview JSON path",
+            "Prepare a source-bound full-record provider update preview; writes only the explicitly requested new preview file, never catalogs.",
+            vec![
+                json!({"name":"BUNDLE_PATH", "required":true, "subject_kind":"other", "detail":"gentle.provider_update_bundle.v1 file"}),
+                json!({"name":"--scope", "required":true, "subject_kind":"other", "detail":"user or project only"}),
+                json!({"name":"--output", "required":true, "subject_kind":"other", "detail":"new preview file, outside catalog sources"}),
+            ],
+        ),
+        external_artifact_catalog_operation_descriptor(
+            "catalog updates apply",
+            "preview-bound catalog overlay and immutable recovery history",
+            "Revalidate and atomically apply an exactly approved local provider preview, with prior bytes and conditional receipt retained; no download, quote or submission.",
+            vec![
+                json!({"name":"PREVIEW_PATH", "required":true, "subject_kind":"other", "detail":"unchanged preview JSON"}),
+                json!({"name":"--approve-digest", "required":true, "subject_kind":"other", "detail":"exact preview_sha256"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
             "services providers list",
             "List configured external-service provider catalog entries without project-state preconditions.",
             vec![],
@@ -32273,6 +32311,10 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "state_summary"
         | "services providers list"
         | "services providers doctor"
+        | "catalog doctor"
+        | "catalog search"
+        | "catalog updates preview"
+        | "catalog updates apply"
         | "services delivery-route"
         | "services route-project-source"
         | "services project-preflight"
@@ -48673,6 +48715,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 )),
             }
         }
+        "catalog" => crate::catalog::parse(tokens).map(ShellCommand::Catalog),
         "services" => {
             if tokens.len() < 2 {
                 return Err(
@@ -54982,6 +55025,10 @@ fn execute_export_import_and_resource_command(
             state_changed: false,
             output: serde_json::to_value(service_readiness::external_service_provider_catalog())
                 .map_err(|e| format!("Could not serialize service provider catalog: {e}"))?,
+        }),
+        ShellCommand::Catalog(command) => Ok(ShellRunResult {
+            state_changed: false,
+            output: crate::catalog::execute(command)?,
         }),
         ShellCommand::ServicesProvidersDoctor {
             catalog_path,
@@ -68421,6 +68468,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::ResourcesStatus
             | ShellCommand::ServicesStatus
             | ShellCommand::ServicesProvidersList
+            | ShellCommand::Catalog(_)
             | ShellCommand::ServicesProvidersDoctor { .. }
             | ShellCommand::ServicesDeliveryRoute { .. }
             | ShellCommand::ServicesRouteProjectSource { .. }
@@ -69269,6 +69317,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ResourcesStatus
         | ShellCommand::ServicesStatus
         | ShellCommand::ServicesProvidersList
+        | ShellCommand::Catalog(_)
         | ShellCommand::ServicesProvidersDoctor { .. }
         | ShellCommand::ServicesDeliveryRoute { .. }
         | ShellCommand::ServicesRouteProjectSource { .. }

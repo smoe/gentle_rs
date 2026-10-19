@@ -280,6 +280,9 @@ pub fn execute_agent_plan_candidate_with_feedback(
                         .to_string(),
                 );
             }
+            if matches!(&parsed, ShellCommand::Catalog(command) if command.mutating()) && !confirm {
+                return Err("Catalog artifact writes and imports require explicit --confirm, regardless of candidate mutation flags".into());
+            }
         }
         status = AgentExecutionStatus::Failed;
         let run = execute_structured_candidate(engine, selected, confirm, options)?;

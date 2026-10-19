@@ -19,6 +19,36 @@
   regression still requires external execution; offline checks do not certify
   its Windows or integrated runtime behavior. Preserve unrelated local files.
 
+## 2026-10-19 - Separate Catalog Evidence And Guard Provider Imports
+
+- Add shared read-only `catalog doctor` / `catalog search` over existing
+  helper/provider catalogs. Keep five evidence lanes separate; product matches
+  include helper/reference identities, documents remain linked references,
+  offers/reviewed procedures remain unavailable, and private lab profiles are
+  neither read nor overwritten. No supplier refresh or new factual catalog data.
+- Add full-record, base-bound provider update bundles with explicit user/project
+  scope, fresh non-overwriting previews, source-byte/directory binding, conflict
+  and no-op decisions, and exact digest approval. Add withdrawal-aware config
+  v2 tombstones so old readers reject rather than revive lower providers;
+  legacy v1 remains readable without withdrawals. Apply revalidates under an
+  immediate writer lock, retains prior bytes and a conditional recovery receipt,
+  and atomically replaces one active catalog. No automatic replay, inbox watcher,
+  vendor authentication, multi-file atomicity or power-loss guarantee.
+- Route CLI/GUI Shell and selected MCP/script agent-plan candidates through the
+  same executor; enforce confirmation for these artifact writes regardless of
+  candidate flags. Preserve project state, planning scores/guardrails, biological
+  results and existing quote/submission eligibility meanings. No new named MCP
+  tool or GUI browser. Extend tutorial 09.04 with a disposable synthetic import.
+- Author synthetic update/withdrawal, stale sources, re-hashed tampering,
+  admission, LF/CRLF, lock, recovery, shell/path and agent-confirmation tests.
+  Rust builds/tests/checks and native Windows/macOS verification remain Glen/CI
+  work; no acceptance or release claim. Previous goal remains paused; no push.
+- Offline verification: 93 Python checks ran, 89 passed and four optional
+  binary checks skipped; the 17 source checks were rerun after final teaching
+  edits. Scoped rustfmt and whitespace pass. Session-close reports four OK,
+  two expected worktree/plan warnings and no failures. The parity projection
+  is updated; its Rust generator/freshness check remains unrun, not certified.
+
 ## 2026-10-19 - Add A Preliminary Read-Only Protocol Overview
 
 - Extend the shared `routines explain` report with a source-bound dependency

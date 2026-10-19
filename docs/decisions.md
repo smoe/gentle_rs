@@ -1695,6 +1695,28 @@ protocols. The named company's country is not inferred shipping coverage or
 ultimate ownership. Unknown metadata remains absent. Promega's worked-example
 status is an owner preference, never a ranking or automatic routing rule.
 
+## Catalog Evidence Lanes And Local Update Authority
+
+Status: active
+
+Extend existing catalogs, not a second planning system. Biological product
+identity, commercial offers, immutable protocol documents, reviewed normalized
+procedures and private local observations are separate evidence lanes. Names,
+aliases and readable protocol links never establish cross-lane applicability,
+source authority, orderability or review. Machine-extracted procedures remain
+drafts until explicit review against exact retained document passages.
+
+The first guarded import supports existing provider configs only. Preview
+binds the exact source set/bytes and scope/destination; apply requires explicit
+approval and fresh validation under a nonblocking writer lock. Full-record
+replacement or explicit withdrawal tombstones prevent ambiguous merges and
+accidental fallback to lower overlays. Prior bytes and conditional recovery
+receipts precede a single atomic catalog replacement; never claim multi-file
+atomicity or replay an inbox automatically. Hashes bind content, not vendor
+authenticity or signatures. Local stock/prices/equipment and saved biological
+reports are not overwritten, and catalog imports do not alter planning ranking,
+readiness or commercial authorization. See [the contract](catalog_updates.md).
+
 ## Labware Reference And Resource Boundaries
 
 Status: active

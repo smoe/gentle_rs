@@ -94,6 +94,49 @@ def fixture_abif_tag(tag, number=2):
 
 
 class SpecialistSourceTests(unittest.TestCase):
+    def test_guarded_provider_import_guide_and_catalog_surface(self):
+        guide = (TUTORIALS / "09-04_cloning_time_cost_and_protocol_suppliers.md").read_text(encoding="utf-8")
+        contract = (ROOT / "docs/catalog_updates.md").read_text(encoding="utf-8")
+        glossary = read_json(ROOT / "docs/glossary.json")
+        commands = {row["path"]: row for row in glossary["commands"]}
+        overrides = read_json(ROOT / "docs/parity_matrix_overrides.json")["overrides"]
+        matrix = (ROOT / "docs/gui_cli_mcp_parity.md").read_text(encoding="utf-8")
+        for path in ("catalog doctor", "catalog search", "catalog updates preview", "catalog updates apply"):
+            self.assertIn(path, guide)
+            self.assertIn(path, contract)
+            self.assertIn(path, commands)
+            self.assertIn(f"| {path} | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a |", matrix)
+            for adapter in ("mcp", "js", "lua"):
+                row = next(item for item in overrides if item["name"] == path and item["adapter"] == adapter)
+                self.assertEqual(row["surfacing"], "shell_passthrough")
+        for term in ("withdrawn_providers", "previous.bin", "freshness", "not signatures", "private", "atomic", "Glen/CI"):
+            self.assertIn(term, contract)
+        # Parse/execute only the tutorial's Python data construction, never its CLI.
+        match = re.search(r'python3 - "\$RUN/provider-update.json" <<\'PY\'\n(.*?)\nPY', guide, re.S)
+        self.assertIsNotNone(match)
+        with tempfile.TemporaryDirectory() as temp:
+            bundle_path = Path(temp) / "bundle with spaces.json"
+            subprocess.run(["python3", "-", str(bundle_path)], input=match.group(1), text=True, check=True)
+            bundle = read_json(bundle_path)
+            self.assertEqual(bundle["schema"], "gentle.provider_update_bundle.v1")
+            self.assertIsNone(bundle["changes"][0]["base_record_sha256"])
+            record = bundle["changes"][0]["record"]
+            self.assertEqual(record["provider"], "synthetic_tutorial_supplier")
+            self.assertEqual(record["support_status"], "catalog_only")
+            self.assertFalse(record["capabilities"][0]["quote_handoff_supported"])
+            self.assertEqual(record["website_url"], "https://example.invalid")
+            protocol = (ROOT / "crates/gentle-protocol/src/lib.rs").read_text(encoding="utf-8")
+            row_type = protocol.split("pub struct ExternalServiceProviderConfigRecord {", 1)[1].split("\n}", 1)[0]
+            fields = set(re.findall(r"pub (\w+):", row_type))
+            self.assertEqual(set(record), fields - {"country_code", "country_source_url", "protocols"})
+            capability_type = protocol.split("pub struct ExternalServiceCapability {", 1)[1].split("\n}", 1)[0]
+            self.assertEqual(set(record["capabilities"][0]), set(re.findall(r"pub (\w+):", capability_type)))
+        shared = (ROOT / "src/external_service_providers/updates.rs").read_text(encoding="utf-8")
+        self.assertIn("try_lock()", shared)
+        self.assertIn("stale_or_tampered_preview", shared)
+        self.assertIn("persist(&context.target)", shared)
+        self.assertNotIn("reqwest::", shared)
+
     def test_protocol_overview_guide_distinguishes_planned_dependencies_from_execution(self):
         guide = (TUTORIALS / "09-04_cloning_time_cost_and_protocol_suppliers.md").read_text(encoding="utf-8")
         for term in ("Protocol Overview", "seven synthetic bench steps", "not an elapsed-time axis",
