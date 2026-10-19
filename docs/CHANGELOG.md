@@ -1,5 +1,32 @@
 # GENtle Changelog
 
+## 2026-10-19 - Teach Advisory Cloning Planning And Protocol Supplier Discovery
+
+- Add tutorial 09.04 with two provenance-documented synthetic profiles:
+  distinguish bench attention, unattended work, dependency critical paths,
+  queue/procurement delays, unknown legacy breakdowns and four cost components.
+  Use Promega pGL4.10[luc2] as the owner's worked context without treating
+  synthetic times/prices as supplier evidence or downloading its sequence.
+- Following the owner's revised scope, add an initial non-exhaustive global
+  directory of twelve suppliers publishing readable HTML or text-PDF protocols,
+  rather than a Europe-only company list. Shared catalog records retain dated
+  protocol references, country codes and official country sources for filtering.
+  Readable documents are not executable workflows or byte-pinned protocol copies.
+- Keep new rows discovery-only. Shared preflight/quote/readiness cannot grant
+  eligibility from `catalog_only`, and no unrelated provider inherits GeneArt's
+  fallback turnaround text. Existing GeneArt/metabion adapters and automatic
+  routing remain separate; no submission, order, provider preference, laboratory
+  success or native GUI acceptance is established. Record review/CLI regression
+  and LF/CRLF catalog-registration coverage; human scientific acceptance remains open.
+- Verification: three new Rust unit tests passed before the fast-forward onto
+  main `4283b440`; the merged CLI/docs-helper build, `cargo check -q --locked`
+  (also with `--tests`),
+  two real-CLI regressions (including four existing handoffs), 87 source/checkout
+  tests and canonical tutorial-catalog freshness pass. A contradictory synthetic
+  overlay also cannot enable a catalog-only adapter. The macOS linker retains
+  its non-blocking large `__eh_frame` warning. Full Rust/native GUI/scientific
+  acceptance is not inferred. Preserve unrelated `outputs/`; no push.
+
 ## 2026-10-19 - Integrate The Second Worktree's Gel Workbench
 
 - Merge `gentle_rs_2_main` at `3a4e458b` into main, interpreting the owner's

@@ -93,6 +93,44 @@ def fixture_abif_tag(tag, number=2):
 
 
 class SpecialistSourceTests(unittest.TestCase):
+    def test_cloning_planning_guide_and_protocol_supplier_scope(self):
+        stem = "09-04_cloning_time_cost_and_protocol_suppliers"
+        source = read_json(TUTORIALS / "sources" / f"{stem}.json")
+        self.assertEqual(source["catalog"]["group_position"], 4)
+        self.assertEqual(source["catalog"]["status"], "manual/hybrid")
+        self.assertNotIn("generated_chapter", source)
+        guide_path = TUTORIALS / f"{stem}.md"
+        guide = guide_path.read_text(encoding="utf-8")
+        for newline in ("\n", "\r\n"):
+            text = guide.replace("\n", newline)
+            for term in ("0.8 h", "2.6 h", "3.2 h", "87.2 h", "39 EUR",
+                         "country_code", "text_pdf", "catalog_only",
+                         "non-exhaustive", "No screenshots are fabricated",
+                         "not Promega prices", "legacy_family_scalar"):
+                self.assertIn(term, text)
+            for target in re.findall(r"\]\(([^)]+)\)", text):
+                if not urlsplit(target).scheme:
+                    self.assertTrue((guide_path.parent / target.split("#")[0]).is_file(), target)
+        catalog = read_json(ROOT / "assets/external_service_providers.d/protocol_suppliers.json")
+        self.assertEqual(len(catalog["providers"]), 12)
+        for provider in catalog["providers"]:
+            self.assertRegex(provider["country_code"], r"^[A-Z]{2}$")
+            self.assertTrue(provider["country_source_url"].startswith("https://"))
+            self.assertEqual(provider["support_status"], "catalog_only")
+            self.assertTrue(provider["protocols"])
+            for protocol in provider["protocols"]:
+                self.assertIn(protocol["format"], ("html", "text_pdf"))
+                date.fromisoformat(protocol["checked_on"])
+                self.assertTrue(protocol["url"].startswith("https://"))
+            for capability in provider["capabilities"]:
+                self.assertFalse(capability["quote_handoff_supported"])
+                self.assertFalse(capability["direct_api_implemented"])
+                self.assertEqual(capability["supported_submission_modes"], [])
+        for name in ("cloning_in_stock", "cloning_waiting"):
+            profile = read_json(ROOT / f"docs/examples/planning/{name}.json")
+            self.assertTrue(profile["profile_id"].startswith("DEMO_DO_NOT_ORDER"))
+            self.assertIn("Synthetic", profile["inventory"]["ligase"]["note"])
+
     def test_expression_four_interface_routes_and_discovery_are_explicit(self):
         transport = (ROOT / "src/mcp_server/protein_expression.rs").read_text(encoding="utf-8")
         dispatcher = (ROOT / "src/mcp_server.rs").read_text(encoding="utf-8")
@@ -510,6 +548,75 @@ class SpecialistBinaryTests(unittest.TestCase):
 
     def shell(self, *tokens, **kwargs):
         return self.invoke("shell", shlex.join(str(token) for token in tokens), **kwargs)
+
+    def test_cloning_planning_profiles_and_protocol_supplier_boundary(self):
+        estimates = []
+        for name in ("cloning_in_stock", "cloning_waiting"):
+            profile = ROOT / f"docs/examples/planning/{name}.json"
+            self.invoke("planning", "profile", "set", f"@{profile}", "--scope", "project_override")
+            report = self.invoke("routines", "explain", "restriction.digest_ligate_extract_sticky")
+            estimate = report["planning"]["estimate"]
+            estimates.append(estimate)
+            self.assertEqual(estimate["schema"], "gentle.planning_estimate.v2")
+            self.assertAlmostEqual(estimate["hands_on_hours"]["typical"], 0.8)
+            self.assertAlmostEqual(estimate["unattended_hours"]["typical"], 2.6)
+            self.assertAlmostEqual(estimate["estimated_cost"], 39.0)
+            self.assertAlmostEqual(estimate["machine_run_cost"], 30.0)
+            self.assertAlmostEqual(estimate["estimated_cost"], sum(estimate[field] for field in (
+                "routine_base_cost", "stock_drawn_material_cost",
+                "missing_material_purchase_proxy_cost", "machine_run_cost")))
+        self.assertAlmostEqual(estimates[0]["elapsed_hours"]["typical"], 3.2)
+        self.assertAlmostEqual(estimates[1]["elapsed_hours"]["typical"], 87.2)
+        self.assertAlmostEqual(estimates[0]["stock_drawn_material_cost"], 9.0)
+        self.assertAlmostEqual(estimates[1]["stock_drawn_material_cost"], 2.0)
+        self.assertAlmostEqual(estimates[1]["missing_material_purchase_proxy_cost"], 7.0)
+        legacy = self.invoke("routines", "explain", "gibson.two_fragment_overlap_preview")["planning"]["estimate"]
+        self.assertEqual(legacy["step_model"], "absent")
+        self.assertEqual(legacy["estimated_time_hours_basis"], "legacy_family_scalar")
+        for field in ("hands_on_hours", "unattended_hours", "elapsed_hours"):
+            self.assertIsNone(legacy[field])
+        before = self.state.read_bytes()
+        helper_id = "Reporter Promega Luciferase AY738222 (online)"
+        consult = self.invoke("planning", "consult", "cloning", "--objective", json.dumps({
+            "schema": "gentle.planning_objective.v1", "helper_profile_id": helper_id}), "--format", "json")
+        self.assertEqual(consult["objective_summary"]["objective"]["helper_profile_id"], helper_id)
+        self.assertTrue(any(row["helper_id"] == helper_id for row in consult["vector_candidates"]))
+        catalog = self.invoke("services", "providers", "list")
+        promega = next(row for row in catalog["providers"] if row["provider"] == "promega")
+        self.assertEqual(promega["country_code"], "US")
+        self.assertEqual(promega["protocols"][0]["format"], "text_pdf")
+        german = [row for row in catalog["providers"] if row.get("country_code") == "DE" and row.get("protocols")]
+        self.assertIn("iba_lifesciences", [row["provider"] for row in german])
+        request = {"schema": "gentle.external_service_request.v1", "provider": "promega",
+                   "service_kind": "vector_supply", "source_target": {"kind": "catalog_vector", "catalog_number": "E6651"}}
+        preflight = self.invoke("services", "project-preflight", json.dumps(request))
+        self.assertEqual(preflight["capability_status"], "catalog_only")
+        self.assertFalse(preflight["eligible"])
+        self.assertFalse(preflight["quote_handoff_available"])
+        self.assertFalse(preflight["direct_submission_available"])
+        self.assertIsNone(preflight["estimated_turnaround"])
+        self.assertIsNone(preflight["estimated_cost_hint"])
+        # Deliberately contradictory synthetic overlay: metadata must not
+        # promote a catalog-only listing to an implemented adapter.
+        override = copy.deepcopy(promega)
+        override["default_delivery_hints"] = ["SYNTHETIC_UNVERIFIED_TURNAROUND"]
+        capability = override["capabilities"][0]
+        capability.update(quote_handoff_supported=True, direct_api_documented=True,
+                          direct_api_implemented=True)
+        overlay = self.run_dir / "project/.gentle/catalogs/external_service_providers.json"
+        overlay.parent.mkdir(parents=True)
+        overlay.write_text(json.dumps({"schema": "gentle.external_service_provider_config.v1",
+                                       "providers": [override]}), encoding="utf-8")
+        request["source_target"] = {"kind": "inline_dna", "sequence": "ATGGCTTAA"}
+        preflight = self.invoke("services", "project-preflight", json.dumps(request))
+        self.assertEqual(preflight["capability_status"], "catalog_only")
+        self.assertFalse(preflight["eligible"])
+        self.assertFalse(preflight["quote_handoff_available"])
+        self.assertFalse(preflight["direct_submission_available"])
+        self.assertIsNone(preflight["estimated_turnaround"])
+        quote = self.invoke("services", "project-quote", json.dumps(request))
+        self.assertEqual(quote["quote_status"], "blocked")
+        self.assertEqual(self.state.read_bytes(), before)
 
     def test_vendor_preflight_and_export_all_four_requests(self):
         doctor = self.invoke("services", "providers", "doctor")

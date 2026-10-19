@@ -37558,9 +37558,12 @@ fn execute_services_status_reports_combined_readiness() {
         out.output["resources"]["rnapkin"]["display_name"].as_str(),
         Some("rnapkin RNA structure renderer")
     );
-    assert_eq!(
-        out.output["external_providers"]["providers"][0]["provider"].as_str(),
-        Some("geneart")
+    assert!(
+        out.output["external_providers"]["providers"]
+            .as_array()
+            .expect("provider rows")
+            .iter()
+            .any(|provider| provider["provider"] == "geneart")
     );
     assert!(
         out.output["summary_lines"]
@@ -37580,10 +37583,12 @@ fn execute_services_external_provider_catalog_and_geneart_preflight() {
         catalog.output["schema"].as_str(),
         Some("gentle.external_service_provider_catalog.v1")
     );
-    assert_eq!(
-        catalog.output["providers"][0]["provider"].as_str(),
-        Some("geneart")
-    );
+    let geneart = catalog.output["providers"]
+        .as_array()
+        .expect("providers")
+        .iter()
+        .find(|provider| provider["provider"] == "geneart")
+        .expect("GeneArt remains discoverable alongside catalog-only suppliers");
     assert!(
         catalog.output["providers"]
             .as_array()
@@ -37592,7 +37597,7 @@ fn execute_services_external_provider_catalog_and_geneart_preflight() {
             .any(|provider| provider["provider"].as_str() == Some("metabion"))
     );
     assert!(
-        catalog.output["providers"][0]["capabilities"]
+        geneart["capabilities"]
             .as_array()
             .expect("provider capabilities")
             .iter()

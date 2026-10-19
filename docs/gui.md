@@ -191,6 +191,11 @@ this as a confidence map for the current GUI surface.
   Services...`, using the same provider catalog, preflight, and quote payload
   contracts as CLI/agent/ClawBio routes. Metabion and GeneArt appear only via
   the shared provider catalog; the GUI does not duplicate vendor logic.
+  Discovery-only suppliers, including Promega, remain `catalog_only` and cannot
+  earn quote/submission eligibility. The shared catalog JSON exposes country
+  and dated HTML/text-PDF protocol references for filtering; no new graphical
+  country filter or protocol executor is implied. [Tutorial 09.04](tutorial/09-04_cloning_time_cost_and_protocol_suppliers.md)
+  explains these boundaries alongside advisory cloning time and cost.
 - TP73 evidence-viewer material preparation through the command palette action
   `Evidence Preparation`, which guides local repeat, array, BED, TFBS, and
   proof-export steps while showing copyable CLI/R handoff commands for

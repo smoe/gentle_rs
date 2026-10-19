@@ -2682,6 +2682,28 @@
           "illustrates_step": 1
         }
       ]
+    },
+    {
+      "id": "cloning_time_cost_and_protocol_suppliers",
+      "title": "Plan Cloning Work, Waiting And Cost With Protocol-Publishing Suppliers",
+      "path": "docs/tutorial/09-04_cloning_time_cost_and_protocol_suppliers.md",
+      "group": "09",
+      "group_label": "External Services & Handoffs",
+      "group_order": 9,
+      "group_position": 4,
+      "decimal_id": "09.04",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "wet_lab_biologists",
+        "cli_first",
+        "agent_users",
+        "cloning_planning"
+      ],
+      "notes": "Offline synthetic profiles teach hands-on versus unattended versus critical-path time, unknown legacy breakdowns, four cost components and procurement/queue delays. Promega pGL4.10 is the worked context; a non-exhaustive global protocol-supplier catalog exposes country and HTML/text-PDF metadata without quote eligibility or vendor contact. Native GUI and human laboratory acceptance remain pending.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-19"
     }
   ]
 }

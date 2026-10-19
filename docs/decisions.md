@@ -1663,6 +1663,16 @@ accounting or quotes. Unknown/unpriced classes remain visible and never
 establish zero cost. All surfaces consume the same estimate and explanation;
 ranking and guardrails remain advisory, not execution or purchase approval.
 
+Supplier discovery is independent of both these synthetic estimates and
+implemented service adapters. A country-coded readable HTML/PDF protocol is a
+dated document reference, not structured executable instructions, commercial
+eligibility, sequence identity or validated laboratory performance. Global
+`catalog_only` supplier rows remain ineligible for quote/submission even if
+capability flags are supplied; listing does not contact suppliers or download
+protocols. The named company's country is not inferred shipping coverage or
+ultimate ownership. Unknown metadata remains absent. Promega's worked-example
+status is an owner preference, never a ranking or automatic routing rule.
+
 ## Labware Reference And Resource Boundaries
 
 Status: active

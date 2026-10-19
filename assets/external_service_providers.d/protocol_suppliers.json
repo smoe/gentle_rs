@@ -1,0 +1,653 @@
+{
+  "schema": "gentle.external_service_provider_config.v1",
+  "summary_lines": [
+    "Source-backed, non-exhaustive global directory of suppliers publishing readable protocols; reviewed 2026-10-19. Filter by country_code and protocols[].format, not inferred geographic eligibility.",
+    "HTML and text PDFs are document references, not structured executable workflows. Catalog presence does not implement a GENtle adapter, establish availability or qualify a construct."
+  ],
+  "providers": [
+    {
+      "provider": "addgene",
+      "display_name": "Addgene",
+      "support_status": "catalog_only",
+      "website_url": "https://www.addgene.org/",
+      "dashboard_url": "https://www.addgene.org/",
+      "country_code": "US",
+      "country_source_url": "https://www.addgene.org/about/",
+      "protocols": [
+        {
+          "title": "Plasmid cloning by restriction enzyme digest",
+          "url": "https://www.addgene.org/protocols/subcloning/",
+          "format": "html",
+          "checked_on": "2026-10-19",
+          "notes": [
+            "Readable published document only; not parsed, imported, executable or validated as a GENtle workflow.",
+            "Distributed plasmids and public cloning protocols."
+          ]
+        }
+      ],
+      "capabilities": [
+        {
+          "service_kind": "vector_supply",
+          "track": "dna",
+          "display_name": "Catalog vectors and genetic constructs",
+          "quote_handoff_supported": false,
+          "direct_api_documented": false,
+          "direct_api_implemented": false,
+          "supported_submission_modes": [],
+          "status_tracking": "not_implemented",
+          "artifact_kinds": [],
+          "notes": [
+            "Distributed plasmids and public cloning protocols.",
+            "Official product/service reference (reviewed 2026-10-19): https://www.addgene.org/",
+            "No supplier API contract was audited; false direct_api_documented is not evidence that the supplier has no API."
+          ]
+        }
+      ],
+      "account_enablement_notes": [
+        "Nonprofit plasmid repository, not a commercial manufacturer",
+        "country_code identifies the named company/operation, not ownership, manufacturing, shipping coverage, sanctions screening or procurement eligibility."
+      ],
+      "warnings": [
+        "Catalog only: no GENtle quote handoff, submission, status tracking or automatic supplier selection.",
+        "Verify current product, sequence, protocol revision, license and commercial terms before human procurement. Published documents may outlive discontinued products."
+      ],
+      "required_followup": [
+        "Human review of the exact product, source sequence/hash, protocol and local safety requirements is required.",
+        "No credentials, private sequence upload, contact, quote, order or protocol execution is authorized by this listing."
+      ]
+    },
+    {
+      "provider": "agilent",
+      "display_name": "Agilent Technologies",
+      "support_status": "catalog_only",
+      "website_url": "https://www.agilent.com/en/product/mutagenesis-cloning/cloning-vectors-kits",
+      "dashboard_url": "https://www.agilent.com/en/product/mutagenesis-cloning/cloning-vectors-kits",
+      "country_code": "US",
+      "country_source_url": "https://www.agilent.com/en/contact-us/page",
+      "protocols": [
+        {
+          "title": "pBluescript II XR predigested vector manual",
+          "url": "https://www.agilent.com/Library/usermanuals/Public/212240-12_pBluescriptIIXR_Manual.pdf",
+          "format": "text_pdf",
+          "checked_on": "2026-10-19",
+          "notes": [
+            "Readable published document only; not parsed, imported, executable or validated as a GENtle workflow.",
+            "A published older manual is not proof of current product availability."
+          ]
+        }
+      ],
+      "capabilities": [
+        {
+          "service_kind": "vector_supply",
+          "track": "dna",
+          "display_name": "Catalog vectors and genetic constructs",
+          "quote_handoff_supported": false,
+          "direct_api_documented": false,
+          "direct_api_implemented": false,
+          "supported_submission_modes": [],
+          "status_tracking": "not_implemented",
+          "artifact_kinds": [],
+          "notes": [
+            "A published older manual is not proof of current product availability.",
+            "Official product/service reference (reviewed 2026-10-19): https://www.agilent.com/en/product/mutagenesis-cloning/cloning-vectors-kits",
+            "No supplier API contract was audited; false direct_api_documented is not evidence that the supplier has no API."
+          ]
+        }
+      ],
+      "account_enablement_notes": [
+        "Manufacturer and product brands",
+        "country_code identifies the named company/operation, not ownership, manufacturing, shipping coverage, sanctions screening or procurement eligibility."
+      ],
+      "warnings": [
+        "Catalog only: no GENtle quote handoff, submission, status tracking or automatic supplier selection.",
+        "Verify current product, sequence, protocol revision, license and commercial terms before human procurement. Published documents may outlive discontinued products."
+      ],
+      "required_followup": [
+        "Human review of the exact product, source sequence/hash, protocol and local safety requirements is required.",
+        "No credentials, private sequence upload, contact, quote, order or protocol execution is authorized by this listing."
+      ]
+    },
+    {
+      "provider": "applied_biological_materials",
+      "display_name": "Applied Biological Materials (abm)",
+      "support_status": "catalog_only",
+      "website_url": "https://www.abmgood.com/pshuttle-vector-a003.html",
+      "dashboard_url": "https://www.abmgood.com/pshuttle-vector-a003.html",
+      "country_code": "CA",
+      "country_source_url": "https://www.abmgood.com/contact",
+      "protocols": [
+        {
+          "title": "Pro Ligation-Free Cloning Kit quick-start protocol",
+          "url": "https://www.abmgood.com/document/p/r/pro_ligation-free_cloning_kit_manual_-_20210326.pdf",
+          "format": "text_pdf",
+          "checked_on": "2026-10-19",
+          "notes": [
+            "Readable published document only; not parsed, imported, executable or validated as a GENtle workflow.",
+            "Vector products and cloning-kit protocol; no viral workflow is imported."
+          ]
+        }
+      ],
+      "capabilities": [
+        {
+          "service_kind": "vector_supply",
+          "track": "dna",
+          "display_name": "Catalog vectors and genetic constructs",
+          "quote_handoff_supported": false,
+          "direct_api_documented": false,
+          "direct_api_implemented": false,
+          "supported_submission_modes": [],
+          "status_tracking": "not_implemented",
+          "artifact_kinds": [],
+          "notes": [
+            "Vector products and cloning-kit protocol; no viral workflow is imported.",
+            "Official product/service reference (reviewed 2026-10-19): https://www.abmgood.com/pshuttle-vector-a003.html",
+            "No supplier API contract was audited; false direct_api_documented is not evidence that the supplier has no API."
+          ]
+        }
+      ],
+      "account_enablement_notes": [
+        "Manufacturer and construct-service supplier",
+        "country_code identifies the named company/operation, not ownership, manufacturing, shipping coverage, sanctions screening or procurement eligibility."
+      ],
+      "warnings": [
+        "Catalog only: no GENtle quote handoff, submission, status tracking or automatic supplier selection.",
+        "Verify current product, sequence, protocol revision, license and commercial terms before human procurement. Published documents may outlive discontinued products."
+      ],
+      "required_followup": [
+        "Human review of the exact product, source sequence/hash, protocol and local safety requirements is required.",
+        "No credentials, private sequence upload, contact, quote, order or protocol execution is authorized by this listing."
+      ]
+    },
+    {
+      "provider": "genscript",
+      "display_name": "GenScript",
+      "support_status": "catalog_only",
+      "website_url": "https://www.genscript.com/gene_synthesis.html",
+      "dashboard_url": "https://www.genscript.com/gene_synthesis.html",
+      "country_code": "US",
+      "country_source_url": "https://www.genscript.com/contact.html?src=footer",
+      "protocols": [
+        {
+          "title": "GenBuilder cloning kit protocol",
+          "url": "https://www.genscript.com/gsfiles/techfiles/cloning_kit_protocol_GenBuilder.pdf",
+          "format": "text_pdf",
+          "checked_on": "2026-10-19",
+          "notes": [
+            "Readable published document only; not parsed, imported, executable or validated as a GENtle workflow.",
+            "An older published kit protocol does not establish current kit stock or delivery terms."
+          ]
+        }
+      ],
+      "capabilities": [
+        {
+          "service_kind": "cloned_gene",
+          "track": "dna",
+          "display_name": "Custom cloned genes / plasmid construction",
+          "quote_handoff_supported": false,
+          "direct_api_documented": false,
+          "direct_api_implemented": false,
+          "supported_submission_modes": [],
+          "status_tracking": "not_implemented",
+          "artifact_kinds": [],
+          "notes": [
+            "An older published kit protocol does not establish current kit stock or delivery terms.",
+            "Official product/service reference (reviewed 2026-10-19): https://www.genscript.com/gene_synthesis.html",
+            "No supplier API contract was audited; false direct_api_documented is not evidence that the supplier has no API."
+          ]
+        }
+      ],
+      "account_enablement_notes": [
+        "International custom synthesis and cloning supplier; named US operation",
+        "country_code identifies the named company/operation, not ownership, manufacturing, shipping coverage, sanctions screening or procurement eligibility."
+      ],
+      "warnings": [
+        "Catalog only: no GENtle quote handoff, submission, status tracking or automatic supplier selection.",
+        "Verify current product, sequence, protocol revision, license and commercial terms before human procurement. Published documents may outlive discontinued products."
+      ],
+      "required_followup": [
+        "Human review of the exact product, source sequence/hash, protocol and local safety requirements is required.",
+        "No credentials, private sequence upload, contact, quote, order or protocol execution is authorized by this listing."
+      ]
+    },
+    {
+      "provider": "iba_lifesciences",
+      "display_name": "IBA Lifesciences",
+      "support_status": "catalog_only",
+      "website_url": "https://www.iba-lifesciences.com/applications/cloning/cloning/",
+      "dashboard_url": "https://www.iba-lifesciences.com/applications/cloning/cloning/",
+      "country_code": "DE",
+      "country_source_url": "https://www.iba-lifesciences.com/downloadcenter/",
+      "protocols": [
+        {
+          "title": "StarGate direct transfer cloning protocol",
+          "url": "https://www.iba-lifesciences.com/media/84/b0/92/1723034008/Protocol_StarGate-Direct-Transfer-Cloning.pdf?ts=1733731878",
+          "format": "text_pdf",
+          "checked_on": "2026-10-19",
+          "notes": [
+            "Readable published document only; not parsed, imported, executable or validated as a GENtle workflow.",
+            "StarGate vector systems; verify individual discontinuation notices before procurement."
+          ]
+        }
+      ],
+      "capabilities": [
+        {
+          "service_kind": "vector_supply",
+          "track": "dna",
+          "display_name": "Catalog vectors and genetic constructs",
+          "quote_handoff_supported": false,
+          "direct_api_documented": false,
+          "direct_api_implemented": false,
+          "supported_submission_modes": [],
+          "status_tracking": "not_implemented",
+          "artifact_kinds": [],
+          "notes": [
+            "StarGate vector systems; verify individual discontinuation notices before procurement.",
+            "Official product/service reference (reviewed 2026-10-19): https://www.iba-lifesciences.com/applications/cloning/cloning/",
+            "No supplier API contract was audited; false direct_api_documented is not evidence that the supplier has no API."
+          ]
+        }
+      ],
+      "account_enablement_notes": [
+        "Manufacturer",
+        "country_code identifies the named company/operation, not ownership, manufacturing, shipping coverage, sanctions screening or procurement eligibility."
+      ],
+      "warnings": [
+        "Catalog only: no GENtle quote handoff, submission, status tracking or automatic supplier selection.",
+        "Verify current product, sequence, protocol revision, license and commercial terms before human procurement. Published documents may outlive discontinued products."
+      ],
+      "required_followup": [
+        "Human review of the exact product, source sequence/hash, protocol and local safety requirements is required.",
+        "No credentials, private sequence upload, contact, quote, order or protocol execution is authorized by this listing."
+      ]
+    },
+    {
+      "provider": "idt",
+      "display_name": "Integrated DNA Technologies",
+      "support_status": "catalog_only",
+      "website_url": "https://www.idtdna.com/pages/products/genes-and-gene-fragments/custom-gene-synthesis",
+      "dashboard_url": "https://www.idtdna.com/pages/products/genes-and-gene-fragments/custom-gene-synthesis",
+      "country_code": "US",
+      "country_source_url": "https://www.eu.idtdna.com/page/contact-us",
+      "protocols": [
+        {
+          "title": "Blunt-end cloning protocol and strategies",
+          "url": "https://www.eu.idtdna.com/page/support-and-education/decoded-plus/cloning-strategies-part-3-blunt-end-cloning/",
+          "format": "html",
+          "checked_on": "2026-10-19",
+          "notes": [
+            "Readable published document only; not parsed, imported, executable or validated as a GENtle workflow.",
+            "Gene fragments and cloned-gene services; regional website locale does not change company country."
+          ]
+        }
+      ],
+      "capabilities": [
+        {
+          "service_kind": "cloned_gene",
+          "track": "dna",
+          "display_name": "Custom cloned genes / plasmid construction",
+          "quote_handoff_supported": false,
+          "direct_api_documented": false,
+          "direct_api_implemented": false,
+          "supported_submission_modes": [],
+          "status_tracking": "not_implemented",
+          "artifact_kinds": [],
+          "notes": [
+            "Gene fragments and cloned-gene services; regional website locale does not change company country.",
+            "Official product/service reference (reviewed 2026-10-19): https://www.idtdna.com/pages/products/genes-and-gene-fragments/custom-gene-synthesis",
+            "No supplier API contract was audited; false direct_api_documented is not evidence that the supplier has no API."
+          ]
+        },
+        {
+          "service_kind": "dna_fragment",
+          "track": "dna",
+          "display_name": "Synthetic DNA fragments",
+          "quote_handoff_supported": false,
+          "direct_api_documented": false,
+          "direct_api_implemented": false,
+          "supported_submission_modes": [],
+          "status_tracking": "not_implemented",
+          "artifact_kinds": [],
+          "notes": [
+            "Gene fragments and cloned-gene services; regional website locale does not change company country.",
+            "Official product/service reference (reviewed 2026-10-19): https://www.idtdna.com/pages/products/genes-and-gene-fragments/custom-gene-synthesis",
+            "No supplier API contract was audited; false direct_api_documented is not evidence that the supplier has no API."
+          ]
+        }
+      ],
+      "account_enablement_notes": [
+        "International synthesis supplier; named US operation",
+        "country_code identifies the named company/operation, not ownership, manufacturing, shipping coverage, sanctions screening or procurement eligibility."
+      ],
+      "warnings": [
+        "Catalog only: no GENtle quote handoff, submission, status tracking or automatic supplier selection.",
+        "Verify current product, sequence, protocol revision, license and commercial terms before human procurement. Published documents may outlive discontinued products."
+      ],
+      "required_followup": [
+        "Human review of the exact product, source sequence/hash, protocol and local safety requirements is required.",
+        "No credentials, private sequence upload, contact, quote, order or protocol execution is authorized by this listing."
+      ]
+    },
+    {
+      "provider": "merck_novagen",
+      "display_name": "Merck / Sigma-Aldrich / Novagen",
+      "support_status": "catalog_only",
+      "website_url": "https://www.sigmaaldrich.com/US/en/product/mm/70777?emdredirect=1",
+      "dashboard_url": "https://www.sigmaaldrich.com/US/en/product/mm/70777?emdredirect=1",
+      "country_code": "DE",
+      "country_source_url": "https://digitalhub.merckgroup.com/legal/imprint",
+      "protocols": [
+        {
+          "title": "pET system manual TB055",
+          "url": "https://www.sigmaaldrich.com/deepweb/assets/sigmaaldrich/product/documents/147/299/tb055.pdf",
+          "format": "text_pdf",
+          "checked_on": "2026-10-19",
+          "notes": [
+            "Readable published document only; not parsed, imported, executable or validated as a GENtle workflow.",
+            "pET expression-vector systems; check current product and licensing separately."
+          ]
+        }
+      ],
+      "capabilities": [
+        {
+          "service_kind": "vector_supply",
+          "track": "dna",
+          "display_name": "Catalog vectors and genetic constructs",
+          "quote_handoff_supported": false,
+          "direct_api_documented": false,
+          "direct_api_implemented": false,
+          "supported_submission_modes": [],
+          "status_tracking": "not_implemented",
+          "artifact_kinds": [],
+          "notes": [
+            "pET expression-vector systems; check current product and licensing separately.",
+            "Official product/service reference (reviewed 2026-10-19): https://www.sigmaaldrich.com/US/en/product/mm/70777?emdredirect=1",
+            "No supplier API contract was audited; false direct_api_documented is not evidence that the supplier has no API."
+          ]
+        }
+      ],
+      "account_enablement_notes": [
+        "Manufacturer and product brands",
+        "country_code identifies the named company/operation, not ownership, manufacturing, shipping coverage, sanctions screening or procurement eligibility."
+      ],
+      "warnings": [
+        "Catalog only: no GENtle quote handoff, submission, status tracking or automatic supplier selection.",
+        "Verify current product, sequence, protocol revision, license and commercial terms before human procurement. Published documents may outlive discontinued products."
+      ],
+      "required_followup": [
+        "Human review of the exact product, source sequence/hash, protocol and local safety requirements is required.",
+        "No credentials, private sequence upload, contact, quote, order or protocol execution is authorized by this listing."
+      ]
+    },
+    {
+      "provider": "neb",
+      "display_name": "New England Biolabs",
+      "support_status": "catalog_only",
+      "website_url": "https://www.neb.com/products/n3041-puc19-vector",
+      "dashboard_url": "https://www.neb.com/products/n3041-puc19-vector",
+      "country_code": "US",
+      "country_source_url": "https://www.neb.com/en-us/about-neb",
+      "protocols": [
+        {
+          "title": "Restriction endonuclease reaction protocol",
+          "url": "https://www.neb.com/en-nz/protocols/2012/12/07/optimizing-restriction-endonuclease-reactions",
+          "format": "html",
+          "checked_on": "2026-10-19",
+          "notes": [
+            "Readable published document only; not parsed, imported, executable or validated as a GENtle workflow.",
+            "Cloning vectors and reagents; the selected protocol is a readable reference, not a GENtle timing model."
+          ]
+        }
+      ],
+      "capabilities": [
+        {
+          "service_kind": "vector_supply",
+          "track": "dna",
+          "display_name": "Catalog vectors and genetic constructs",
+          "quote_handoff_supported": false,
+          "direct_api_documented": false,
+          "direct_api_implemented": false,
+          "supported_submission_modes": [],
+          "status_tracking": "not_implemented",
+          "artifact_kinds": [],
+          "notes": [
+            "Cloning vectors and reagents; the selected protocol is a readable reference, not a GENtle timing model.",
+            "Official product/service reference (reviewed 2026-10-19): https://www.neb.com/products/n3041-puc19-vector",
+            "No supplier API contract was audited; false direct_api_documented is not evidence that the supplier has no API."
+          ]
+        }
+      ],
+      "account_enablement_notes": [
+        "Manufacturer",
+        "country_code identifies the named company/operation, not ownership, manufacturing, shipping coverage, sanctions screening or procurement eligibility."
+      ],
+      "warnings": [
+        "Catalog only: no GENtle quote handoff, submission, status tracking or automatic supplier selection.",
+        "Verify current product, sequence, protocol revision, license and commercial terms before human procurement. Published documents may outlive discontinued products."
+      ],
+      "required_followup": [
+        "Human review of the exact product, source sequence/hash, protocol and local safety requirements is required.",
+        "No credentials, private sequence upload, contact, quote, order or protocol execution is authorized by this listing."
+      ]
+    },
+    {
+      "provider": "nzytech",
+      "display_name": "NZYtech",
+      "support_status": "catalog_only",
+      "website_url": "https://www.nzytech.com/media/dds/brochurescertificates/mb282_mb319-mb330_ifu_en_v2401.pdf",
+      "dashboard_url": "https://www.nzytech.com/media/dds/brochurescertificates/mb282_mb319-mb330_ifu_en_v2401.pdf",
+      "country_code": "PT",
+      "country_source_url": "https://www.nzytech.com/media/dds/brochurescertificates/mb053_ifu_en_v2301.pdf",
+      "protocols": [
+        {
+          "title": "NZY-A PCR cloning instructions for use",
+          "url": "https://www.nzytech.com/media/dds/brochurescertificates/mb053_ifu_en_v2301.pdf",
+          "format": "text_pdf",
+          "checked_on": "2026-10-19",
+          "notes": [
+            "Readable published document only; not parsed, imported, executable or validated as a GENtle workflow.",
+            "Cloning kits and pHTP expression-vector systems; company address is printed in the official instructions."
+          ]
+        }
+      ],
+      "capabilities": [
+        {
+          "service_kind": "vector_supply",
+          "track": "dna",
+          "display_name": "Catalog vectors and genetic constructs",
+          "quote_handoff_supported": false,
+          "direct_api_documented": false,
+          "direct_api_implemented": false,
+          "supported_submission_modes": [],
+          "status_tracking": "not_implemented",
+          "artifact_kinds": [],
+          "notes": [
+            "Cloning kits and pHTP expression-vector systems; company address is printed in the official instructions.",
+            "Official product/service reference (reviewed 2026-10-19): https://www.nzytech.com/media/dds/brochurescertificates/mb282_mb319-mb330_ifu_en_v2401.pdf",
+            "No supplier API contract was audited; false direct_api_documented is not evidence that the supplier has no API."
+          ]
+        }
+      ],
+      "account_enablement_notes": [
+        "Manufacturer",
+        "country_code identifies the named company/operation, not ownership, manufacturing, shipping coverage, sanctions screening or procurement eligibility."
+      ],
+      "warnings": [
+        "Catalog only: no GENtle quote handoff, submission, status tracking or automatic supplier selection.",
+        "Verify current product, sequence, protocol revision, license and commercial terms before human procurement. Published documents may outlive discontinued products."
+      ],
+      "required_followup": [
+        "Human review of the exact product, source sequence/hash, protocol and local safety requirements is required.",
+        "No credentials, private sequence upload, contact, quote, order or protocol execution is authorized by this listing."
+      ]
+    },
+    {
+      "provider": "origene",
+      "display_name": "OriGene Technologies",
+      "support_status": "catalog_only",
+      "website_url": "https://www.origene.com/products/vectors/",
+      "dashboard_url": "https://www.origene.com/products/vectors/",
+      "country_code": "US",
+      "country_source_url": "https://www.origene.com/about-us/contact-us",
+      "protocols": [
+        {
+          "title": "Entry vector cloning protocol",
+          "url": "https://www.origene.com/support/learning-resources/protocols/entry-vector-cloning-protocol",
+          "format": "html",
+          "checked_on": "2026-10-19",
+          "notes": [
+            "Readable published document only; not parsed, imported, executable or validated as a GENtle workflow.",
+            "Cloning/expression vectors and ORF constructs."
+          ]
+        }
+      ],
+      "capabilities": [
+        {
+          "service_kind": "vector_supply",
+          "track": "dna",
+          "display_name": "Catalog vectors and genetic constructs",
+          "quote_handoff_supported": false,
+          "direct_api_documented": false,
+          "direct_api_implemented": false,
+          "supported_submission_modes": [],
+          "status_tracking": "not_implemented",
+          "artifact_kinds": [],
+          "notes": [
+            "Cloning/expression vectors and ORF constructs.",
+            "Official product/service reference (reviewed 2026-10-19): https://www.origene.com/products/vectors/",
+            "No supplier API contract was audited; false direct_api_documented is not evidence that the supplier has no API."
+          ]
+        }
+      ],
+      "account_enablement_notes": [
+        "Manufacturer",
+        "country_code identifies the named company/operation, not ownership, manufacturing, shipping coverage, sanctions screening or procurement eligibility."
+      ],
+      "warnings": [
+        "Catalog only: no GENtle quote handoff, submission, status tracking or automatic supplier selection.",
+        "Verify current product, sequence, protocol revision, license and commercial terms before human procurement. Published documents may outlive discontinued products."
+      ],
+      "required_followup": [
+        "Human review of the exact product, source sequence/hash, protocol and local safety requirements is required.",
+        "No credentials, private sequence upload, contact, quote, order or protocol execution is authorized by this listing."
+      ]
+    },
+    {
+      "provider": "promega",
+      "display_name": "Promega",
+      "support_status": "catalog_only",
+      "website_url": "https://www.promega.com/products/luciferase-assays/genetic-reporter-vectors-and-cell-lines/promoterless-firefly-luciferase-basic-vectors/?catNum=E6651",
+      "dashboard_url": "https://www.promega.com/products/luciferase-assays/genetic-reporter-vectors-and-cell-lines/promoterless-firefly-luciferase-basic-vectors/?catNum=E6651",
+      "country_code": "US",
+      "country_source_url": "https://www.promega.com/support/contact-promega/",
+      "protocols": [
+        {
+          "title": "pGL4 luciferase reporter vectors technical manual TM259",
+          "url": "https://worldwide.promega.com/-/media/files/resources/protocols/technical-manuals/0/pgl4-luciferase-reporter-vectors-protocol.pdf?rev=395cb76a0eed4807ae0bbd6f67b7bb77&sc_lang=en",
+          "format": "text_pdf",
+          "checked_on": "2026-10-19",
+          "notes": [
+            "Readable published document only; not parsed, imported, executable or validated as a GENtle workflow.",
+            "pGL4.10[luc2], E6651, is the tutorial example, not an automatically preferred supplier."
+          ]
+        }
+      ],
+      "capabilities": [
+        {
+          "service_kind": "vector_supply",
+          "track": "dna",
+          "display_name": "Catalog vectors and genetic constructs",
+          "quote_handoff_supported": false,
+          "direct_api_documented": false,
+          "direct_api_implemented": false,
+          "supported_submission_modes": [],
+          "status_tracking": "not_implemented",
+          "artifact_kinds": [],
+          "notes": [
+            "pGL4.10[luc2], E6651, is the tutorial example, not an automatically preferred supplier.",
+            "Official product/service reference (reviewed 2026-10-19): https://www.promega.com/products/luciferase-assays/genetic-reporter-vectors-and-cell-lines/promoterless-firefly-luciferase-basic-vectors/?catNum=E6651",
+            "No supplier API contract was audited; false direct_api_documented is not evidence that the supplier has no API."
+          ]
+        }
+      ],
+      "account_enablement_notes": [
+        "Manufacturer; requested worked example",
+        "country_code identifies the named company/operation, not ownership, manufacturing, shipping coverage, sanctions screening or procurement eligibility."
+      ],
+      "warnings": [
+        "Catalog only: no GENtle quote handoff, submission, status tracking or automatic supplier selection.",
+        "Verify current product, sequence, protocol revision, license and commercial terms before human procurement. Published documents may outlive discontinued products."
+      ],
+      "required_followup": [
+        "Human review of the exact product, source sequence/hash, protocol and local safety requirements is required.",
+        "No credentials, private sequence upload, contact, quote, order or protocol execution is authorized by this listing."
+      ]
+    },
+    {
+      "provider": "twist_bioscience",
+      "display_name": "Twist Bioscience",
+      "support_status": "catalog_only",
+      "website_url": "https://www.twistbioscience.com/products/genes/resources",
+      "dashboard_url": "https://www.twistbioscience.com/products/genes/resources",
+      "country_code": "US",
+      "country_source_url": "https://www.twistbioscience.com/company/contact-us",
+      "protocols": [
+        {
+          "title": "Gene fragment cloning guidelines",
+          "url": "https://www.twistbioscience.com/content/dam/twistbioscience/resources/2024-07/FRM-001257_CloningGuidelines_REV4%20singles.pdf",
+          "format": "text_pdf",
+          "checked_on": "2026-10-19",
+          "notes": [
+            "Readable published document only; not parsed, imported, executable or validated as a GENtle workflow.",
+            "Gene synthesis and fragments; no advertising performance claim is imported."
+          ]
+        }
+      ],
+      "capabilities": [
+        {
+          "service_kind": "cloned_gene",
+          "track": "dna",
+          "display_name": "Custom cloned genes / plasmid construction",
+          "quote_handoff_supported": false,
+          "direct_api_documented": false,
+          "direct_api_implemented": false,
+          "supported_submission_modes": [],
+          "status_tracking": "not_implemented",
+          "artifact_kinds": [],
+          "notes": [
+            "Gene synthesis and fragments; no advertising performance claim is imported.",
+            "Official product/service reference (reviewed 2026-10-19): https://www.twistbioscience.com/products/genes/resources",
+            "No supplier API contract was audited; false direct_api_documented is not evidence that the supplier has no API."
+          ]
+        },
+        {
+          "service_kind": "dna_fragment",
+          "track": "dna",
+          "display_name": "Synthetic DNA fragments",
+          "quote_handoff_supported": false,
+          "direct_api_documented": false,
+          "direct_api_implemented": false,
+          "supported_submission_modes": [],
+          "status_tracking": "not_implemented",
+          "artifact_kinds": [],
+          "notes": [
+            "Gene synthesis and fragments; no advertising performance claim is imported.",
+            "Official product/service reference (reviewed 2026-10-19): https://www.twistbioscience.com/products/genes/resources",
+            "No supplier API contract was audited; false direct_api_documented is not evidence that the supplier has no API."
+          ]
+        }
+      ],
+      "account_enablement_notes": [
+        "Custom DNA synthesis supplier",
+        "country_code identifies the named company/operation, not ownership, manufacturing, shipping coverage, sanctions screening or procurement eligibility."
+      ],
+      "warnings": [
+        "Catalog only: no GENtle quote handoff, submission, status tracking or automatic supplier selection.",
+        "Verify current product, sequence, protocol revision, license and commercial terms before human procurement. Published documents may outlive discontinued products."
+      ],
+      "required_followup": [
+        "Human review of the exact product, source sequence/hash, protocol and local safety requirements is required.",
+        "No credentials, private sequence upload, contact, quote, order or protocol execution is authorized by this listing."
+      ]
+    }
+  ]
+}

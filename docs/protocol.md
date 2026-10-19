@@ -2493,6 +2493,19 @@ than GeneArt-, metabion-, or portal-specific fields.
     `quote_handoff_supported`, `direct_api_documented`,
     `direct_api_implemented`, `supported_submission_modes[]`,
     `status_tracking`, `artifact_kinds[]`, and `notes[]`
+  - optional `country_code` and `country_source_url` identify the named
+    company/operation using an ISO alpha-2 country, not shipping eligibility,
+    ownership or manufacturing origin. Legacy metadata stays absent/unknown.
+    `protocols[]` references have `title`, HTTPS `url`, `format` (`html` or
+    `text_pdf`), `checked_on` and `notes`. These are readable publications,
+    not executable workflows or byte-pinned protocol copies; listing is offline.
+  - the non-exhaustive global [protocol-supplier directory](../assets/external_service_providers.d/README.md)
+    uses `support_status=catalog_only`. Such rows cannot earn preflight/quote
+    eligibility or direct submission, including when an overlay sets capability
+    flags. Their readiness rows are `prepared=false`, `lifecycle_status=catalog_only`;
+    this is discovery metadata, not a missing resource that ordinary use must
+    download. Turnaround and cost hints remain null. Existing GeneArt/metabion
+    handoff contracts are separate and unchanged.
 - `gentle.external_service_provider_config.v1`
   - loaded by the shared services layer to build provider catalog/preflight/
     quote behavior

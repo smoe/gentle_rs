@@ -325,7 +325,8 @@ class TutorialCheckoutTests(unittest.TestCase):
     def test_manual_tutorial_review_identity_survives_lf_and_crlf_checkouts(self):
         sources = ("07-04_microarray_evidence_gui_cli.json",
                    "10-03_measured_gel_sizing_gui_cli.json",
-                   "08-18_repeat_environment_cohorts.json")
+                   "08-18_repeat_environment_cohorts.json",
+                   "09-04_cloning_time_cost_and_protocol_suppliers.json")
         paths = [Path("docs/tutorial/review_manifest.json"), Path("docs/tutorial/catalog.json")]
         paths.extend(Path("docs/tutorial/sources") / name for name in sources)
         payloads = {path: (checker.ROOT / path).read_bytes() for path in paths}

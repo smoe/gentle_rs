@@ -139,14 +139,14 @@ concrete through `services providers list`, `services providers doctor`,
 `services delivery-route`, `services project-preflight`, and
 `services project-quote`. Built-in provider configuration covers GeneArt quote
 handoff for DNA fragments/cloned genes/reorders/mutagenesis/protein expression
-and Metabion handoff routes for single-tube DNA oligos and m-block fragments.
+and Metabion handoff routes for single-tube DNA oligos and m-block fragments. The global protocol-supplier directory is discovery-only; validate tutorial 09.04's synthetic planning arithmetic and native presentation separately from procurement or laboratory acceptance.
 Generic "deliver this sequence" wording should go through delivery-route
 classification first so sequence kind, length, and construct/protein context
 choose the provider/service route before any quote packet is prepared. Agent
 work should stay focused on ClawBio intent/example parity and clear "handoff,
 not submission" wording; direct GeneArt API use, WOP/OCI automation,
 credential handling, and commercial order state remain later explicitly
-confirmed integration phases.
+confirmed integration phases; readable protocol references do not enable them.
 
 Near-term consult rule: keep `planning consult cloning` narrow and
 deterministic until richer construct reasoning lands. The preferred v1 surface

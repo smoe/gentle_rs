@@ -21,6 +21,8 @@ You do not need to understand the tutorial machinery before beginning.
   or [Annotation Curation](./02-05_feature_editor_gui_cli.md).
 - **Plan cloning or assembly:** use the
   [Gibson specialist walkthrough](./03-05_gibson_specialist_testing_gui.md).
+  For work, waiting, cost and protocol-supplier discovery, use
+  [Cloning planning with Promega as the worked context](./09-04_cloning_time_cost_and_protocol_suppliers.md).
 - **Follow a synthetic-biology design-build-verify route:** use
   [Synthetic Biology in GENtle](./03-09_synthetic_biology_design_build_verify.md),
   which links sequence design, assembly, lineage, physical planning and
@@ -238,6 +240,7 @@ Context** when reporting confusion or an execution failure.
 - `09.01` [Prepare a Metabion Handoff from Shared External-Service Contracts](./09-01_metabion_external_service_handoff_gui_cli.md) - guided GUI/CLI; status `manual/hybrid` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Safe handoff rehearsal for Metabion oligo and m-block requests through the shared provider catalog, preflight, and quote bundle contracts; no vendor submission.
 - `09.02` [Prepare a GeneArt Handoff from Shared External-Service Contracts](./09-02_geneart_external_service_handoff_gui_cli.md) - guided GUI/CLI; status `manual/hybrid` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Safe GeneArt cloned-gene and protein-expression quote-handoff rehearsal through the shared provider catalog, preflight, quote bundle, and return_spec contracts; no vendor submission.
 - `09.03` [Plan a High-Yield Protein-Expression Handoff](./09-03_protein_expression_handoff_cli.md) - guided GUI/CLI/MCP/agent; status `manual/hybrid` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: You want to compare the shared protein-expression report across interfaces, retaining explicit selection and withholding without provider contact. Four real macOS teaching captures are retained; integrated Rust/native parity acceptance remains pending.
+- `09.04` [Plan Cloning Work, Waiting And Cost With Protocol-Publishing Suppliers](./09-04_cloning_time_cost_and_protocol_suppliers.md) - guided GUI/CLI; status `manual/hybrid` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: You need to explain bench attention, critical-path waiting, purchasing proxies and unknown costs, then filter source-backed global suppliers by country and readable protocol format without contacting them. Promega is the worked example; timing and cost inputs are synthetic.
 
 ### Sequencing Confirmation & QC
 

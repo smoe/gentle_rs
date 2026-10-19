@@ -355,6 +355,14 @@ pub struct ExternalServiceProviderRecord {
     pub website_url: String,
     pub dashboard_url: String,
     pub api_documentation_url: Option<String>,
+    /// ISO 3166-1 alpha-2 country of the named company/operation, not delivery coverage.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub country_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub country_source_url: Option<String>,
+    /// Published readable documents, not imported or executable GENtle workflows.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub protocols: Vec<ExternalServiceProtocolReference>,
     pub capabilities: Vec<ExternalServiceCapability>,
     pub account_enablement_notes: Vec<String>,
     pub warnings: Vec<String>,
@@ -379,6 +387,12 @@ pub struct ExternalServiceProviderConfigRecord {
     pub website_url: String,
     pub dashboard_url: String,
     pub api_documentation_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub country_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub country_source_url: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub protocols: Vec<ExternalServiceProtocolReference>,
     pub capabilities: Vec<ExternalServiceCapability>,
     pub channels: Vec<ExternalServiceChannelConfig>,
     pub product_templates: Vec<ExternalServiceProductTemplateMapping>,
@@ -389,6 +403,25 @@ pub struct ExternalServiceProviderConfigRecord {
     pub required_followup: Vec<String>,
     pub account_enablement_notes: Vec<String>,
     pub warnings: Vec<String>,
+}
+
+/// Text-readable publication format; neither variant implies executable instructions.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExternalServiceProtocolFormat {
+    Html,
+    TextPdf,
+}
+
+/// Dated official protocol reference. Documents are linked, never fetched implicitly.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExternalServiceProtocolReference {
+    pub title: String,
+    pub url: String,
+    pub format: ExternalServiceProtocolFormat,
+    pub checked_on: String,
+    pub notes: Vec<String>,
 }
 
 /// Vendor contact or handoff channel such as WOP or email+Excel.

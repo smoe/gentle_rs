@@ -1,0 +1,32 @@
+{
+  "schema": "gentle.planning_profile.v1",
+  "profile_id": "DEMO_DO_NOT_ORDER_cloning_waiting",
+  "currency": "EUR",
+  "procurement_business_days_default": 2,
+  "capabilities": [
+    "thermocycler"
+  ],
+  "inventory": {
+    "restriction_enzymes": {
+      "available": true,
+      "unit_cost": 2,
+      "procurement_business_days": 0,
+      "note": "Synthetic per-class allowance, not a vendor price or package."
+    },
+    "ligase": {
+      "available": false,
+      "unit_cost": 7,
+      "procurement_business_days": 2,
+      "note": "Synthetic per-class allowance; no quantity-aware consumption."
+    }
+  },
+  "machine_availability": {
+    "thermocycler": {
+      "available": true,
+      "queue_business_days": 0.5,
+      "run_cost_per_hour": 5,
+      "note": "Synthetic rate; machine occupancy uses the legacy six-hour basis."
+    }
+  },
+  "notes": "Hand-crafted tutorial arithmetic only. No real stock, vendor quote or laboratory performance."
+}

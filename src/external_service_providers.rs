@@ -230,6 +230,43 @@ fn validate_provider_config_catalog(
                 path.display()
             ));
         }
+        if let Some(code) = &provider.country_code {
+            if code.len() != 2 || !code.bytes().all(|byte| byte.is_ascii_uppercase()) {
+                errors.push(format!(
+                    "Provider '{}' requires an uppercase alpha-2 country_code",
+                    provider.provider
+                ));
+            }
+            if !provider
+                .country_source_url
+                .as_deref()
+                .is_some_and(is_https_reference_url)
+            {
+                errors.push(format!(
+                    "Provider '{}' requires an HTTPS country_source_url",
+                    provider.provider
+                ));
+            }
+        } else if provider.country_source_url.is_some() {
+            errors.push(format!(
+                "Provider '{}' has a country source without a country_code",
+                provider.provider
+            ));
+        }
+        for protocol in &provider.protocols {
+            if protocol.title.trim().is_empty() || !is_https_reference_url(&protocol.url) {
+                errors.push(format!(
+                    "Provider '{}' requires a protocol title and HTTPS URL",
+                    provider.provider
+                ));
+            }
+            if !is_protocol_review_date(&protocol.checked_on) {
+                errors.push(format!(
+                    "Provider '{}' requires a protocol checked_on date (YYYY-MM-DD)",
+                    provider.provider
+                ));
+            }
+        }
         for capability in &provider.capabilities {
             if capability.service_kind.trim().is_empty() {
                 errors.push(format!(
@@ -243,6 +280,48 @@ fn validate_provider_config_catalog(
     errors
 }
 
+fn is_https_reference_url(value: &str) -> bool {
+    reqwest::Url::parse(value).is_ok_and(|url| {
+        url.scheme() == "https"
+            && url.host_str().is_some()
+            && url.username().is_empty()
+            && url.password().is_none()
+    })
+}
+
+fn is_protocol_review_date(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if bytes.len() != 10
+        || bytes[4] != b'-'
+        || bytes[7] != b'-'
+        || !bytes
+            .iter()
+            .enumerate()
+            .all(|(index, byte)| index == 4 || index == 7 || byte.is_ascii_digit())
+    {
+        return false;
+    }
+    let year = value[..4].parse::<u16>().unwrap();
+    let month = value[5..7].parse::<usize>().unwrap();
+    let day = value[8..].parse::<u8>().unwrap();
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let days = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
+    year > 0 && (1..=12).contains(&month) && day > 0 && day <= days[month - 1]
+}
+
 impl LoadedExternalServiceProviderConfig {
     pub fn provider_record(&self) -> ExternalServiceProviderRecord {
         ExternalServiceProviderRecord {
@@ -252,6 +331,9 @@ impl LoadedExternalServiceProviderConfig {
             website_url: self.record.website_url.clone(),
             dashboard_url: self.record.dashboard_url.clone(),
             api_documentation_url: self.record.api_documentation_url.clone(),
+            country_code: self.record.country_code.clone(),
+            country_source_url: self.record.country_source_url.clone(),
+            protocols: self.record.protocols.clone(),
             capabilities: self.record.capabilities.clone(),
             account_enablement_notes: self.record.account_enablement_notes.clone(),
             warnings: self.record.warnings.clone(),
@@ -607,6 +689,106 @@ pub fn doctor_external_service_provider_config(
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn protocol_supplier_catalog_preserves_filterable_country_and_document_format() {
+        let index = ExternalServiceProviderConfigIndex::from_explicit_path(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/assets/external_service_providers.d/protocol_suppliers.json"
+        ))
+        .unwrap();
+        let catalog = index.to_provider_catalog(0);
+        assert_eq!(catalog.providers.len(), 12);
+        for provider in &catalog.providers {
+            assert_eq!(provider.support_status, "catalog_only");
+            assert!(provider.country_code.is_some());
+            assert!(provider.country_source_url.is_some());
+            assert!(!provider.protocols.is_empty());
+            for capability in &provider.capabilities {
+                assert!(!capability.quote_handoff_supported);
+                assert!(!capability.direct_api_documented);
+                assert!(!capability.direct_api_implemented);
+                assert!(capability.supported_submission_modes.is_empty());
+            }
+        }
+        let promega = catalog
+            .providers
+            .iter()
+            .find(|row| row.provider == "promega")
+            .unwrap();
+        assert_eq!(promega.country_code.as_deref(), Some("US"));
+        let value = serde_json::to_value(promega).unwrap();
+        assert_eq!(value["protocols"][0]["format"], "text_pdf");
+        assert_eq!(value["protocols"][0]["checked_on"], "2026-10-19");
+        let round_trip: ExternalServiceProviderRecord =
+            serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(round_trip).unwrap(), value);
+        assert!(
+            catalog
+                .providers
+                .iter()
+                .any(|row| row.country_code.as_deref() == Some("DE"))
+        );
+        assert!(
+            !index
+                .provider_ids()
+                .iter()
+                .any(|id| id == "geneart" || id == "metabion")
+        );
+    }
+
+    #[test]
+    fn protocol_supplier_metadata_rejects_malformed_references_and_keeps_legacy_unknown() {
+        // Hand-crafted metadata only: not a real supplier or experimental protocol.
+        let legacy = serde_json::json!({"provider":"synthetic","display_name":"Synthetic",
+            "website_url":"https://example.invalid", "dashboard_url":"https://example.invalid",
+            "capabilities":[{"service_kind":"vector_supply"}]});
+        let record: ExternalServiceProviderRecord = serde_json::from_value(legacy.clone()).unwrap();
+        assert!(record.country_code.is_none());
+        assert!(record.protocols.is_empty());
+        let output = serde_json::to_value(record).unwrap();
+        assert!(output.get("country_code").is_none());
+        assert!(output.get("protocols").is_none());
+        let path = Path::new("synthetic.json");
+        let mut config: ExternalServiceProviderConfigRecord =
+            serde_json::from_value(legacy).unwrap();
+        config.country_code = Some("Germany".into());
+        config.country_source_url = Some("http://example.invalid".into());
+        let catalog = ExternalServiceProviderConfigCatalog {
+            schema: EXTERNAL_SERVICE_PROVIDER_CONFIG_SCHEMA.into(),
+            providers: vec![config],
+            ..Default::default()
+        };
+        let errors = validate_provider_config_catalog(&catalog, path).join("\n");
+        assert!(errors.contains("alpha-2"));
+        assert!(errors.contains("HTTPS country_source_url"));
+        for date in [
+            "2026-02-29",
+            "2026-13-01",
+            "2026-01-00",
+            "0000-01-01",
+            "2026-1-01",
+            "2026-10-19extra",
+            "2026-\u{00e4}\u{00f6}-19",
+        ] {
+            assert!(!is_protocol_review_date(date), "{date}");
+        }
+        assert!(is_protocol_review_date("2024-02-29"));
+        assert!(is_protocol_review_date("2026-10-19"));
+        for url in [
+            "http://example.invalid",
+            "file:///tmp/protocol",
+            "https://user:secret@example.invalid/",
+        ] {
+            assert!(!is_https_reference_url(url));
+        }
+        let protocol = serde_json::json!({"title":"Synthetic", "url":"https://example.invalid/",
+            "format":"executable_pdf","checked_on":"2026-10-19","notes":[]});
+        assert!(
+            serde_json::from_value::<gentle_protocol::ExternalServiceProtocolReference>(protocol)
+                .is_err()
+        );
+    }
 
     fn write_config(path: &Path, provider: &str, display_name: &str) {
         let text = format!(

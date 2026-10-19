@@ -6325,6 +6325,13 @@ Service and resource commands:
   - Metabion rows initially include DNA single-tube oligos and m-block DNA
     fragments/libraries as WOP/email+Excel handoff routes.
   - Direct API/order/portal submission is not enabled by this command.
+  - Source-backed discovery-only suppliers additionally expose `country_code`,
+    `country_source_url` and dated `protocols[]` with `html`/`text_pdf` formats.
+    Filter the returned JSON, not website language or guessed delivery coverage.
+    Country describes the named company/operation; unknown legacy metadata is
+    absent. The global directory is non-exhaustive and does not enable quotes,
+    protocol execution, downloads or automatic supplier selection. See
+    [tutorial 09.04](tutorial/09-04_cloning_time_cost_and_protocol_suppliers.md).
 - `services providers doctor [--catalog PATH] [--output PATH]`
   - Returns `gentle.external_service_provider_config_doctor.v1`.
   - Validates the external-service provider config catalog discovery chain, or
@@ -6332,6 +6339,10 @@ Service and resource commands:
   - Reports source scope/path, provider counts, SHA1 checksums, and
     deterministic schema/required-field errors.
   - With `--output`, also writes the JSON doctor report to disk.
+  - Protocol metadata checks require uppercase two-letter country codes with
+    HTTPS source URLs, readable-format enums, HTTPS protocol references and
+    valid calendar review dates; this is local validation, not a live URL,
+    corporate domicile or protocol-content audit.
 - `services delivery-route REQUEST_JSON_OR_@FILE`
   - Parses `gentle.external_service_delivery_route_request.v1` and returns
     `gentle.external_service_delivery_route.v1`.

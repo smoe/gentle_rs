@@ -1090,6 +1090,13 @@ fn external_service_project_preflight_for_request(
             ..Default::default()
         };
     };
+    let catalog_only = provider_config.record.support_status == "catalog_only";
+    if catalog_only || (!capability.quote_handoff_supported && !capability.direct_api_implemented) {
+        blocking_issues.push(format!(
+            "{} is listed for discovery only for '{}'; GENtle has no implemented quote handoff or submission adapter for this capability.",
+            provider_config.record.display_name, service_kind
+        ));
+    }
     let source_issue = if provider_config.validation_rule_for(&service_kind).is_some() {
         configured_service_source_issue(provider_config, &service_kind, &request.source_target)
     } else {
@@ -1115,7 +1122,9 @@ fn external_service_project_preflight_for_request(
     }
     warnings.extend(provider_config.record.warnings.clone());
     let eligible = blocking_issues.is_empty();
-    let capability_status = if !eligible {
+    let capability_status = if catalog_only {
+        "catalog_only"
+    } else if !eligible {
         "blocked"
     } else if capability.quote_handoff_supported && capability.direct_api_documented {
         "quote_handoff_ready_direct_api_planned"
@@ -1125,9 +1134,11 @@ fn external_service_project_preflight_for_request(
         "unsupported"
     }
     .to_string();
-    let estimated_turnaround = if !provider_config.record.default_delivery_hints.is_empty() {
+    let estimated_turnaround = if !eligible {
+        None
+    } else if !provider_config.record.default_delivery_hints.is_empty() {
         Some(provider_config.record.default_delivery_hints.join(" "))
-    } else {
+    } else if provider == "geneart" {
         match service_kind.as_str() {
         "protein_expression" => {
             Some("quote follow-up documented; production advertised as as little as 3 weeks depending on project scope".to_string())
@@ -1135,6 +1146,8 @@ fn external_service_project_preflight_for_request(
         "mutagenesis" => Some("quote/form follow-up required; provider page lists service-specific processing times".to_string()),
         _ => Some("provider validation/quote may return project-specific price and turnaround when submitted through GeneArt".to_string()),
         }
+    } else {
+        None
     };
     let mut required_followup = provider_config.record.required_followup.clone();
     if required_followup.is_empty() {
@@ -1168,7 +1181,7 @@ fn external_service_project_preflight_for_request(
         blocking_issues,
         warnings,
         estimated_turnaround,
-        estimated_cost_hint: Some(format!(
+        estimated_cost_hint: eligible.then(|| format!(
             "GENtle has no live price API enabled; use {} quote output as the authoritative commercial record.",
             provider_config.record.display_name
         )),
@@ -2159,6 +2172,13 @@ fn build_summary_lines(
         );
     }
     for provider in &external_providers.providers {
+        if provider.support_status == "catalog_only" {
+            lines.push(format!(
+                "External provider '{}' is listed for discovery only; no GENtle quote handoff, submission adapter, live availability or commercial terms are established.",
+                provider.display_name
+            ));
+            continue;
+        }
         let quote_ready = provider
             .capabilities
             .iter()
@@ -2472,6 +2492,7 @@ fn external_provider_readiness_rows(
         .providers
         .iter()
         .map(|provider| {
+            let catalog_only = provider.support_status == "catalog_only";
             let quote_ready = provider
                 .capabilities
                 .iter()
@@ -2488,12 +2509,15 @@ fn external_provider_readiness_rows(
                 resource_key: format!("external_provider:{}", provider.provider),
                 display_name: provider.display_name.clone(),
                 resource_kind: "external_provider".to_string(),
-                prepared: quote_ready > 0,
-                lifecycle_status: if quote_ready > 0 { "ready" } else { "missing" }.to_string(),
-                status_summary: format!(
+                prepared: !catalog_only && quote_ready > 0,
+                lifecycle_status: if catalog_only { "catalog_only" } else if quote_ready > 0 { "ready" } else { "missing" }.to_string(),
+                status_summary: if catalog_only || quote_ready == 0 { format!(
+                    "{} is listed for discovery only; no GENtle quote/handoff adapter is available.",
+                    provider.display_name
+                ) } else { format!(
                     "{} is available for quote/handoff preflight ({} service kind(s)); {} documented direct API route(s) are planned but not live-submittable from GENtle.",
                     provider.display_name, quote_ready, direct_planned
-                ),
+                ) },
                 cache_dir: None,
                 runtime_path: None,
                 source: Some(provider.website_url.clone()),
@@ -3452,6 +3476,52 @@ pub fn service_readiness_status() -> Result<ServiceReadinessReport, String> {
 mod tests {
     use super::*;
     use crate::resource_status::resource_catalog_status;
+
+    #[test]
+    fn protocol_suppliers_are_discoverable_but_never_quote_or_submission_ready() {
+        let index = ExternalServiceProviderConfigIndex::from_explicit_path(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/assets/external_service_providers.d/protocol_suppliers.json"
+        ))
+        .unwrap();
+        for provider in index.to_provider_catalog(0).providers {
+            for capability in &provider.capabilities {
+                // Synthetic DNA only; the catalog reference is not an acquired vector.
+                let request = json!({"schema":EXTERNAL_SERVICE_REQUEST_SCHEMA,
+                    "provider":provider.provider,"service_kind":capability.service_kind,
+                    "source_target":{"kind":"inline_dna","sequence":"ATGGCTTAA"}})
+                .to_string();
+                let report = external_service_project_preflight(&request).unwrap();
+                assert_eq!(
+                    report.capability_status, "catalog_only",
+                    "{}",
+                    provider.provider
+                );
+                assert!(!report.eligible);
+                assert!(!report.quote_handoff_available);
+                assert!(!report.direct_submission_available);
+                assert!(report.estimated_turnaround.is_none());
+                assert!(report.estimated_cost_hint.is_none());
+                assert!(
+                    report
+                        .blocking_issues
+                        .iter()
+                        .any(|issue| issue.contains("discovery only"))
+                );
+                let quote = external_service_project_quote(&request).unwrap();
+                assert_eq!(quote.quote_status, "blocked");
+            }
+        }
+        for row in external_provider_readiness_rows(&index.to_provider_catalog(0)) {
+            assert!(!row.prepared);
+            assert_eq!(row.lifecycle_status, "catalog_only");
+            assert!(
+                row.status_summary
+                    .contains("no GENtle quote/handoff adapter")
+            );
+            assert!(!row.status_summary.contains("is available for quote"));
+        }
+    }
 
     #[test]
     fn protein_expression_handoff_catalog_projection_preserves_neutral_fields() {
