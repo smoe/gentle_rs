@@ -3,13 +3,97 @@
 from contextlib import redirect_stdout
 import io
 import json
+import os
 from pathlib import Path
+import re
+import shutil
 import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
 
 from scripts.ci_vkorc1_gui_audit import pair_evidence, run_logged, write_generation_ledger
+
+
+class PreparedOwnerCommandTests(unittest.TestCase):
+    def active_section(self):
+        path = Path(__file__).resolve().parents[1] / "docs/glen_audit_followups_20261008.md"
+        return path.read_text(encoding="utf-8").split("## Prepared VKORC1 Next Actions", 1)[1].split(
+            "## Owner-Requested Main Integration", 1)[0]
+
+    def test_active_guidance_records_platform_passes_without_selecting_a_candidate(self):
+        section = self.active_section()
+        command = re.search(r"```bash\n(.*?)```", section, re.S).group(1)
+        self.assertNotRegex(command, r"(?m)^AUDIT_SHA=")
+        self.assertIn('${AUDIT_SHA:?', command)
+        self.assertIn('${NORMAL_RUN_ID:?', command)
+        self.assertIn('^[0-9a-f]{40}$', command)
+        self.assertIn("38774813595", section)
+        self.assertIn("116559658104", section)
+        self.assertIn("116559599111", section)
+        self.assertIn("39066178748", section)
+        self.assertIn("two `gene_set_arrangement` tests on macOS, one on Windows", section)
+        self.assertIn("Neither failed run in the table qualifies", section)
+        self.assertIn("not an atomic SHA", section)
+        self.assertNotIn("Windows and the other four filters remain open", section)
+        self.assertIn("single next-check handoff", section)
+
+    @unittest.skipUnless(os.name != "nt" and shutil.which("bash"),
+                         "Executes a Unix Bash documentation contract, not native Windows acceptance")
+    def test_prepared_bash_guards_fail_closed_without_network_or_actual_dispatch(self):
+        command = re.search(r"```bash\n(.*?)```", self.active_section(), re.S).group(1)
+        # All gh calls are a shell function. An empty PATH also prevents a real
+        # network executable from being used if the documented command drifts.
+        stub = r'''
+gh() {
+  printf '%s\n' "$*" >> "$CALLS_FILE"
+  case "$1:$2" in
+    api:repos/*/git/ref/heads/main) printf '%s\n' "$FAKE_REMOTE_SHA" ;;
+    api:repos/*/actions/runs/*)
+      printf '%s\t%s\t%s\t%s\t%s\n' "$FAKE_CI_PATH" "$FAKE_CI_SHA" "$FAKE_CI_STATUS" "$FAKE_CI_CONCLUSION" "$FAKE_CI_EVENT" ;;
+    workflow:run) printf '%s\n' 'simulated, not dispatched' > "$DISPATCH_FILE" ;;
+    *) return 97 ;;
+  esac
+}
+'''
+        sha = "a" * 40
+        cases = (
+            ("matching successful source", {}, True),
+            ("missing SHA", {"AUDIT_SHA": None}, False),
+            ("abbreviated SHA", {"AUDIT_SHA": "6112095d"}, False),
+            ("invalid SHA", {"AUDIT_SHA": "x" * 40}, False),
+            ("missing normal run", {"NORMAL_RUN_ID": None}, False),
+            ("invalid normal run", {"NORMAL_RUN_ID": "42;exit 0"}, False),
+            ("published ref moved", {"FAKE_REMOTE_SHA": "b" * 40}, False),
+            ("different CI source", {"FAKE_CI_SHA": "b" * 40}, False),
+            ("failed normal CI", {"FAKE_CI_CONCLUSION": "failure"}, False),
+            ("incomplete normal CI", {"FAKE_CI_STATUS": "in_progress"}, False),
+            ("wrong workflow", {"FAKE_CI_PATH": ".github/workflows/release.yml"}, False),
+            ("not push CI", {"FAKE_CI_EVENT": "workflow_dispatch"}, False),
+        )
+        for name, overrides, allowed in cases:
+            with self.subTest(case=name), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                calls, dispatched = root / "calls", root / "simulated-dispatch"
+                env = {"PATH": str(root / "empty-path"), "CALLS_FILE": str(calls),
+                       "DISPATCH_FILE": str(dispatched), "AUDIT_SHA": sha, "NORMAL_RUN_ID": "42",
+                       "FAKE_REMOTE_SHA": sha, "FAKE_CI_SHA": sha,
+                       "FAKE_CI_PATH": ".github/workflows/ci.yml", "FAKE_CI_STATUS": "completed",
+                       "FAKE_CI_CONCLUSION": "success", "FAKE_CI_EVENT": "push"}
+                env.update({key: value for key, value in overrides.items() if value is not None})
+                for key, value in overrides.items():
+                    if value is None:
+                        env.pop(key, None)
+                result = subprocess.run([shutil.which("bash"), "--noprofile", "--norc", "-c", stub + command],
+                                        env=env, text=True, capture_output=True, timeout=10)
+                self.assertEqual(result.returncode == 0, allowed, result.stderr)
+                self.assertEqual(dispatched.exists(), allowed)
+                invoked = calls.read_text() if calls.exists() else ""
+                self.assertEqual("workflow run" in invoked, allowed)
+                if allowed:
+                    self.assertIn("--ref main -f platform=linux -f audit_followups=true -f audit_public_vkorc1=true", invoked)
+                if name in ("missing SHA", "abbreviated SHA", "invalid SHA", "missing normal run", "invalid normal run"):
+                    self.assertEqual(invoked, "", "Invalid input must stop before any GitHub API access")
 
 
 class FailureRetentionTests(unittest.TestCase):

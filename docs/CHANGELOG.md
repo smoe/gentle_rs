@@ -1,5 +1,31 @@
 # GENtle Changelog
 
+## 2026-10-18 - Reconcile VKORC1 Platform Evidence And Audit Preparation
+
+- Recheck run `38774813595` at `b2b6b30a` through the GitHub run/jobs API and
+  decoded macOS/Windows logs: both execute all five stripped-child families
+  with 12/2/7/2/2 passes and null child stack overrides. Preserve the overall
+  failed run: macOS has two later storage-test failures, Windows one; full
+  Linux skips. Link the already-recorded newer Linux/Windows `1c5be317` passes
+  without converting that README-metadata failure into a green complete run.
+- Correct the active next-action section rather than rewriting old receipts.
+  Retain `6112095d` as implementation provenance, not an executable default;
+  require an explicitly approved full published SHA and successful same-source
+  normal push-CI run. Preserve ref/source/workflow/event/outcome guards and the
+  non-atomic-dispatch warning. No source is selected and no command dispatched.
+- Add an offline test of the actual documented Bash block using only a fake
+  `gh` function and empty PATH: missing/malformed inputs, moved refs and
+  mismatched/failed/incomplete/wrong-event CI cannot reach even a simulated
+  dispatch. Keep real-data, physical-host and package acceptance open and use
+  the single Glen handoff; the owner's existing `.13` aim is unchanged.
+- Complete the requested rebase onto main `8f37453b`, preserving canonical
+  parity/inspector and TapeStation follow-ups in the one 400-line roadmap.
+  No local Rust, Claude, push, live dbSNP/reference fetch or publication.
+- All 54 focused Python tests pass, including twelve offline command-guard
+  scenarios and unchanged frozen-evidence checks. Documentation status and
+  whitespace pass; real dispatch, new-source Rust and native/scientific
+  acceptance remain unrun.
+
 ## 2026-10-18 - Repair Tube Parity Documentation And Record Glen's Return
 
 - Apply the two missing tube-operation rows and five shell-only count changes
