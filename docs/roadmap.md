@@ -175,10 +175,10 @@ Keep the next synthetic-biology bridge slices in this order:
    typed withholding, stale-result rejection and unchanged project/history.
    Glen/CI must execute authored Rust/CLI checks and native window review;
    offline source checks do not establish runtime or native acceptance.
-   Include all seven `protein_expression_inspector_` adapter regressions.
-   Preserve absent product/requirements as unanswered, not inferred defaults.
-   Keep actions copy-only; edits and close must discard stale worker results.
-   Check shared UI-intent registration and canonical tutorial/parity freshness.
+   Include the inspector, named MCP and inner-agent command parity regressions;
+   keep unanswered inputs, copy-only actions and stale/closed-worker rejection.
+   Review the four retained macOS 09.03 captures at `9f01098b`; retain integrated typed/snapshot evidence separately.
+   Check shared UI intents, semantic locators and canonical tutorial/parity freshness.
    Reporter sibling views and ranking remain separate follow-ups.
 2. Rank chassis, vector/tag
    routes, and provider candidates from structured biology, provider

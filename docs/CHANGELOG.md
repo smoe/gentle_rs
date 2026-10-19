@@ -22,6 +22,35 @@
   links, documentation status and whitespace pass. Release-gate is four OK;
   session-close has four OK, two expected scope/worktree warnings, no failures.
 
+## 2026-10-18 - Protein Expression Interface Parity And Tutorial Screenshots
+
+- Expose named, read-only MCP `protein_expression_handoff` through the existing
+  shared command, with strict optional arguments and inline object payloads.
+  Register discovery/parity surfaces and remove its stale MCP exclusion; no
+  new biology, readiness rule, provider default or submission route is added.
+- Add an inner-agent control-card rule for the same report/inspector, explicit
+  product/provider choices, typed withholding and reviewed-result feedback.
+  Author MCP/shared-shell/GUI and deterministic inner-agent command comparisons;
+  source checks do not establish live-model behavior or native acceptance.
+- Add read-only semantic window/control/status locators for capture, preserving
+  copy-only actions and project state. Extend 09.03 with four-interface examples
+  and the required four synthetic screenshots, captions and provenance. Repair
+  stale tutorial text claiming the MCP tool/GUI inspector did not exist.
+- Retain four real window-only macOS captures from the owner-rebuilt GUI at
+  `9f01098b`, with exact binary/input/image hashes and an unchanged synthetic
+  project. Add image references/graphics metadata and a manual receipt with
+  explicit missing typed-report/snapshot evidence; no automated acceptance is
+  fabricated. The parity follow-up is not compiled into this binary.
+  No local Rust build/test/check, model/provider call, push or paused-goal
+  change is performed here.
+- Offline verification: 19 focused source/tutorial/publication tests and 71
+  checkout tests pass, including the real PNG/project bindings under LF/CRLF.
+  The visual archive checker passes for 67 tutorials. Whitespace is clean;
+  session-close has four OK, two expected worktree/scope warnings, no failure.
+  Canonical Rust generator/parity checks and the authored adapter tests remain
+  unexecuted locally; the captures establish neither integrated adapter parity
+  nor release/native scientific acceptance.
+
 ## 2026-10-18 - Give The GUI Manual A Guided Entry Point
 
 - Put a short menu-first session and task-based navigation before the advanced

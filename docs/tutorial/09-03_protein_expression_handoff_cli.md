@@ -2,6 +2,7 @@
 
 > Type: `GUI / CLI / agent walkthrough`
 > Status: `manual/hybrid`
+> Images: four real macOS inspector captures at `9f01098b`; integrated acceptance remains pending.
 > Drift note: this page is hand-written, but every operational step routes
 > through the shared `planning ...` and `services ...` shell/CLI contracts.
 
@@ -388,6 +389,152 @@ vertically so requirements and actions remain reachable. No screenshot capture
 or native acceptance is implied by this walkthrough. Rust/runtime/native checks
 remain for Glen/CI; this chapter stays `manual/hybrid`, not an automated GUI pass.
 
+## Interface Parity
+
+The four entry points inspect the same report, not four expression-design
+implementations:
+
+| Interface | Entry point | State boundary |
+| --- | --- | --- |
+| CLI / GUI Shell | `planning protein-expression-handoff` with the reviewed operands above | CLI saved state, or current GUI state in the GUI Shell |
+| GUI | `Services > Protein Expression Handoff...`, then **Inspect** | Current project snapshot; inputs remain local to the inspector |
+| MCP / outer agent | Named `protein_expression_handoff` tool | Saved `state_path`; unsaved GUI edits are not visible |
+| Inner agent | A reviewed suggestion of the same `planning` command, or `ui open protein-expression-handoff` | The GUI's shared command executor, without another biology layer |
+
+For example, an external MCP caller can send this `tools/call` parameter object
+after Step 3 has saved the synthetic starter:
+
+```json
+{
+  "name": "protein_expression_handoff",
+  "arguments": {
+    "state_path": "expression-review.gentle.json",
+    "seq_id": "expression_review_product",
+    "format": "text"
+  }
+}
+```
+
+The report appears in `structuredContent`. No provider or reviewed requirements
+were supplied, so neither may be inferred. MCP `requirements` and `objective`
+accept inline JSON **objects**, not paths or `@FILE` strings. For instance,
+adding the following fields rehearses an explicit in-house refusal while
+keeping every other biological question unanswered:
+
+```json
+{
+  "provider": "geneart",
+  "requirements": {
+    "schema": "gentle.protein_expression_requirements.v1",
+    "outsourcing": {"allowed": false, "approved_providers": []}
+  }
+}
+```
+
+This must yield `withheld` / `outsourcing_disallowed`, not a fallback provider.
+Do not add `confirm`: this tool is read-only, accepts no mutation approval and
+never executes its suggested actions. Omit `format` for JSON without the text
+presentation; choose `text` to compare the inspector's text-bearing report.
+Use identical saved product, objective/profile, requirements, provider and
+format when comparing all fields, excluding only `generated_at_unix_ms`.
+Fresh source tests are not a substitute for executing those adapters.
+
+An inner-agent practice prompt is:
+
+```text
+Review protein expression for the loaded synthetic expression_review_product.
+Propose the read-only planning protein-expression-handoff command for review.
+Keep unknown requirements unanswered and choose no provider. Show the shared
+Protein Expression Handoff inspector as an alternative. Do not execute any
+suggested preflight, quote, synthesis or ordering action.
+```
+
+The deterministic acceptance boundary is `AgentResponse` -> shared parser ->
+shared report and the GUI result viewer. Model prose quality and biological
+recommendation quality are separate; no live model test is claimed here.
+After running a suggestion, the model has an execution receipt, not the report
+rows. Review the JSON in the Agent Assistant's result panel and choose
+**Use reviewed result in next prompt**, then review/send that draft explicitly
+if you want the model to discuss the actual evidence. This shares data, not
+permission to run a provider action. The inspector's copy buttons do not send
+anything to an agent.
+
+## Required Tutorial Screenshots
+
+Four real inspector screenshots were captured on macOS from the owner-rebuilt
+binary reporting `9f01098b749c79fb5c9eccfcfb184bb085c63357` on 2026-10-18.
+These are manual teaching captures, not automated GUI acceptance or proof that
+the newer MCP/inner-agent changes run correctly. The
+[capture receipt and limits](../screenshots/tutorial_gui_acceptance/protein_expression_handoff_cli/README.md)
+bind the binary, starter/project hashes, requests and raw PNG hashes. No
+model/provider was contacted; no suggested service command was executed.
+
+Use the Step 3 synthetic project in a fresh profile and a verified GUI binary
+containing this inspector. The owner's tutorial-image request authorizes these
+four window-bound synthetic captures only, not background/desktop capture,
+private projects, provider contact or model calls. Capture the actual inspector
+window after **Inspect** finishes, not the project overview or a still-running
+spinner. Close unrelated windows and exclude account names/private paths.
+
+| Retained checkpoint / filename | Visible content |
+| --- | --- |
+| `missing_product.raw.png` | GUI step 1: blank product/provider, `needs_product_definition` and unanswered product-boundary questions. Caption: "A loaded project does not silently choose the product to express." |
+| `neutral_product.raw.png` | GUI steps 2-3: explicit synthetic product, expanded CDS fallback evidence, human-review gate and `not_selected` binding. |
+| `provider_withheld.raw.png` | GUI step 4: explicit `geneart`, in-house requirements, `withheld` and expanded `outsourcing_disallowed`. Caption: "Naming a provider cannot override the reviewed in-house restriction." |
+| `provider_projected.raw.png` | GUI step 5: synthetic review-only requirements, `projected` with expanded binding details, and report-copy controls. The full projection and suggested commands are collapsed in this image. |
+
+### Missing Product
+
+![A loaded project does not silently choose the product to express.](../screenshots/tutorial_gui_acceptance/protein_expression_handoff_cli/missing_product.raw.png)
+
+The loaded project contains a product, but the blank selector leaves its
+boundaries unanswered. Opening the inspector is not product selection.
+
+### Neutral Product Review
+
+![Sequence evidence and reviewed requirements produce a neutral draft, not an expression-success prediction.](../screenshots/tutorial_gui_acceptance/protein_expression_handoff_cli/neutral_product.raw.png)
+
+The 27-nt whole-sequence CDS is explicitly a fallback, not an annotation.
+`Translation possible: true` does not remove the human boundary-review gate.
+
+### Withheld Provider
+
+![Naming a provider cannot override the reviewed in-house restriction.](../screenshots/tutorial_gui_acceptance/protein_expression_handoff_cli/provider_withheld.raw.png)
+
+The exact `outsourcing_disallowed` reason explains why selecting GeneArt does
+not authorize a provider draft under these in-house requirements.
+
+### Local Provider Projection
+
+![Local provider projection preserves the reviewed draft; the inspector does not submit or run the command.](../screenshots/tutorial_gui_acceptance/protein_expression_handoff_cli/provider_projected.raw.png)
+
+The separate review-only fixture allows this local projection. `projected` is
+not a quote, submission, order approval or promise of expression. Copying a
+report is separate from executing any proposed next step.
+
+With `gui-test-support`, the window is
+`window.protein_expression_handoff`; controls are
+`protein_expression.product`, `.provider`, `.requirements`, `.inspect`,
+`.copy_json` and `.copy_text`. The `.status` and `.provider_binding` items retain
+the actual report status in `outcome_role`. These are post-layout locators and
+observations only, not an input-injection API and not a scientific oracle. Expand
+the named sections and scroll until the relevant content is actually visible
+before capturing; a rectangle existing in a snapshot is not screenshot proof.
+
+For a full acceptance replay, retain each raw PNG, source revision and binary SHA-256,
+starter/project hashes, matching shared JSON report, semantic snapshot,
+window/geometry/scale, capture tool and time, and hashes/transforms of any
+crop/annotation. Keep raw captures as the visual evidence. Stage the four
+selected images and provenance under
+`docs/screenshots/tutorial_gui_acceptance/protein_expression_handoff_cli/`,
+review readability, and update real image references and source `graphics`
+metadata with actual capture dates. This manual archive has no retained
+semantic snapshot or typed GUI report JSON; those remain acceptance work,
+not fabricated green receipts. The visual checkout checker validates the
+manual image bindings. The X11 screenshot publisher requires its own complete
+runner evidence; 09.03 remains manual/hybrid and has no full generic-runner
+GUI acceptance contract yet. A screenshot is not a scientific oracle.
+
 ## Step 7: Ask For Cloning Strategy Only After Expression Constraints
 
 Once the product metric, host, folding/PTM needs, toxicity policy, and endpoint
@@ -405,17 +552,19 @@ handoff; it should follow it.
 
 ## ClawBio Use
 
-MCP clients can use the existing `agent_execute_plan` tool with a supplied,
-reviewed `kind: shell` candidate containing the same command. This deterministic
-executor does not call a model; there is no dedicated expression tool or GUI
-inspector yet. The direct CLI, shared shell and MCP executor parity regressions
-must run in Glen/CI before release acceptance.
+MCP clients should use the named `protein_expression_handoff` tool described
+above. The existing `agent_execute_plan` tool remains an alternative when an
+outer orchestrator already has a reviewed `kind: shell` candidate containing
+the same command; neither path calls a model to compute this report. Direct
+CLI, shared shell, GUI inspector, MCP and inner-agent command-path regressions
+must run in Glen/CI before runtime acceptance.
 
 This chapter stays manual/hybrid: the generated project-chapter runner executes
 engine operations, while the planning handoff is a shared-shell report, not a
 workflow operation. The starter is an executable offline workflow; the full
 review tutorial is not falsely labelled a generated/checked chapter. Ranking,
-native inspector and wet-lab usefulness remain outside this minimal path.
+native inspector acceptance and wet-lab usefulness remain separate from this
+source/command contract.
 
 For ClawBio or another agent, the safe instruction is:
 
@@ -431,10 +580,11 @@ For ClawBio or another agent, the safe instruction is:
 - do not invent a final expression host, promoter, vector, tag, or vendor
   submission from chat context alone
 
-GUI note: the current slice is CLI/shared-shell first. A dedicated Synthetic
-Biology or protein-expression handoff inspector for existing
-`gentle.protein_expression_handoff.v2` reports is the natural next GUI slice,
-not something this tutorial assumes exists today.
+GUI note: the read-only inspector is available through the Services menu and
+shared UI intent in this chapter. It renders the same v2 report; provider
+selection is explicit and suggestions are copy-only. The four macOS captures
+above illustrate the inspector; integrated runtime/native acceptance remains
+pending, including execution of the new MCP/inner-agent parity checks.
 
 For an offline replay with an already-built candidate CLI, run:
 

@@ -1673,7 +1673,8 @@ class TutorialVisualContractTests(unittest.TestCase):
         # Real current assets, source declarations and captions supplement the
         # unrelated synthetic families; no screenshot is manufactured here.
         for identifier, source_name in (("gibson_arrangements_gui", "03-07_gibson_arrangements_gui"),
-                                        ("load_and_digest_pgex", "03-01_load_and_digest_pgex")):
+                                        ("load_and_digest_pgex", "03-01_load_and_digest_pgex"),
+                                        ("protein_expression_handoff_cli", "09-03_protein_expression_handoff_cli")):
             source = json.loads((checker.ROOT / f"docs/tutorial/sources/{source_name}.json").read_bytes())
             self.sources.append(source)
             guide = source["catalog"]["path"]
@@ -1698,6 +1699,10 @@ class TutorialVisualContractTests(unittest.TestCase):
                 target = Path(self.tmp.name) / mode[0]
                 checker.prepare_checkout(self.root, target, mode)
                 self.assertEqual(checker.check_tutorial_visuals(target), expected)
+                expression = target / "docs/screenshots/tutorial_gui_acceptance/protein_expression_handoff_cli"
+                receipt = json.loads((expression / "evidence.json").read_bytes())
+                self.assertEqual(checker.visual_sha256(expression / receipt["project"]["path"]),
+                                 receipt["project"]["before_sha256"])
                 if mode[0] == "crlf":
                     self.assertIn(b"\r\n", (target / "docs/tutorial/manual.md").read_bytes())
         attributes = (self.root / ".gitattributes").read_bytes()
