@@ -102,6 +102,13 @@ neither is implemented by this fixture or its Python sizing replay.
 - `src/gel_image/tests.rs::tapestation_real_images_preserve_sources_and_match_vendor_peak_sizes`
   exercises real PNG import, engine analysis, persisted-project reopen, shared
   Shell inspection and SVG export. It is an ordinary root-library test.
+- `src/gel_workbench/import.rs::tests::real_tapestation_pdfs_match_retained_png_rgb_pixels_without_reencoding_assumptions`
+  exercises direct PDF object-5 extraction and compares decoded RGB pixels with
+  the retained PNGs, preserving supported alpha and original PDF bytes. This is
+  not an electropherogram digitizer, a raw D5000 decoder or a band-accuracy verdict.
+- `src/gel_workbench/tests.rs::pdf_comparison_only_export_rejects_corrupted_raster_and_replaced_document`
+  uses the same public originals to reject changed image bytes or a substituted
+  source PDF before export. It adds no new experimental measurements.
 - `scripts.test_gel_tapestation.TapeStationFixtureTests` checks source identity,
   input/result separation, missing-data semantics and comparison failures without
   invoking a binary. `scripts.test_tutorial_checkouts` additionally exercises real
@@ -126,6 +133,25 @@ receipt. Existing output directories are refused. It checks the binary digest
 before/after, requires its full source identity and verifies that the four gel
 implementation files match that source. It never compiles, runs an inner agent,
 downloads a resource, submits data or modifies an existing project.
+
+## Workbench PDF Regression
+
+`gel_workbench::tests::saved_before_after_pdf_contains_ordered_overview_details_and_qq_without_mutation`
+imports object 5 from both original PDFs, reuses the manual assignments above,
+and extracts before B1 / after C1 as explicitly image-display-weighted profiles.
+It reopens the saved project and checks a five-page vector PDF (ordered overview,
+source provenance, two sizing details and QQ/comparison), selectable text,
+source/result integrity, unchanged state and no-clobber behavior. It is not an
+independent detector, fluorescence comparison or cleanup-yield validation.
+
+An opt-in ignored writer retains the same tested report for visual inspection:
+
+```sh
+GENTLE_GEL_WORKBENCH_TEST_REPORT=/absolute/new/report.pdf cargo test --locked --lib write_tapestation_workbench_pdf_for_visual_review -- --ignored --test-threads=1
+```
+
+The output path must not exist. Original fixtures/hashes remain unchanged; do not
+commit the generated PDF as a replacement for the source reports.
 
 ## Observed first replay, 2026-10-18
 

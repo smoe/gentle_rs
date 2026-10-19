@@ -166,6 +166,8 @@ egui_commonmark = { version = "0.22.0", default-features = false, features = ["p
 image = { workspace = true, features = ["jpeg", "png"] }
 resvg = "*"
 pdf-writer = "0.12.1"
+lopdf = { version = "0.45.0", default-features = false }
+zip = { version = "6.0.0", default-features = false, features = ["deflate"] }
 svg2pdf = "0.13.0"
 rfd = { workspace = true, optional = true }
 reqwest = { workspace = true, features = ["blocking", "form", "json"] }

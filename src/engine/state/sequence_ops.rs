@@ -2912,6 +2912,13 @@ impl GentleEngine {
         let mut paths: Vec<String> = vec![];
         let mut push = |path: &str| Self::push_unique_token(&mut paths, path);
         match op {
+            Operation::GelWorkbench { request } => {
+                if let gentle_protocol::gel_workbench::GelWorkbenchRequest::Export(request) =
+                    request.as_ref()
+                {
+                    push(&request.path);
+                }
+            }
             Operation::ExportGelImageAnalysis { request } => push(&request.path),
             Operation::ComputeTssTfbsProfiles {
                 export: Some(request),

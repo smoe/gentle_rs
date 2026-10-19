@@ -1421,6 +1421,7 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
             "primers design-transcript-capture-pool",
             "gene-locus prepare",
             "gel-image import",
+            "gel-image workbench",
             "gel-image save-draft",
             "gel-image analyze",
             "gel-image inspect",

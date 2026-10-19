@@ -5523,6 +5523,8 @@ pub struct OpResult {
     pub gel_image: Option<gentle_protocol::gel_image::GelImageDescriptor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gel_image_analysis: Option<Box<gentle_protocol::gel_image::GelImageAnalysisReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gel_workbench: Option<Box<gentle_protocol::gel_workbench::GelWorkbenchResult>>,
     pub op_id: OpId,
     pub created_seq_ids: Vec<SeqId>,
     pub changed_seq_ids: Vec<SeqId>,

@@ -1,9 +1,13 @@
 # Measured-Gel Profiles And Lane Comparisons
 
-Status: proposed follow-up, not implemented or scientifically accepted. The
+Status: initial implementation added and locally Rust/PDF-verified on 2026-10-19;
+native and scientific acceptance remain open. The [workbench contract](gel_workbench.md) records the
+delivered subset and remaining native numerical-decoding/vendor-integration
+limits. The numbered sequence below retains the scientific design rationale. The
 owner requested a cleanup-distribution comparison and lane algebra on
 2026-10-18. An optional read-only Claude review was offered; this plan has not
-been Claude-reviewed. Do not make this an additional `.13` release blocker.
+been Claude-reviewed; the owner authorized proceeding without another review
+on 2026-10-19. Do not make this an additional `.13` release blocker.
 
 ## Questions And Available Evidence
 
@@ -28,7 +32,8 @@ The owner also supplied the original before-cleanup `.D5000` file. On
 `fd2150e15daf0fb32ad11028bc8ad4355ecaf4b64237ef980aaf8a1de66ac51d`
 (1,367,616 bytes). ZIP-directory inspection found encrypted `ModelData.xml` and
 `RunData.xml`; only `Thumbnail.png` and `Logs.zip` are unencrypted. No numerical
-curves were decoded. GENtle has no native reader for this format. Do not brute
+curves were decoded. The new native-source importer can retain an explicitly
+opted-in thumbnail, but cannot decode those numerical members. Do not brute
 force, treat the thumbnail as raw detector data, or publish embedded operational
 logs as a scientific fixture. The second file/export is pending; development
 need not wait for it.
@@ -121,7 +126,7 @@ G1 approximately alpha1 * E1 + beta1 * C1
 H1 approximately alpha2 * F1 + beta2 * D1
 ```
 
-These are proposed mathematics, not existing GENtle commands or a validated
+These are mathematical shorthand, not GENtle command syntax or a validated
 additive chemistry model. Choose coefficients by an explicit reviewed loading
 or normalization policy. A later fitted decomposition must disclose its fit
 region, constraints, uncertainty and lack of identifiability, and must not be

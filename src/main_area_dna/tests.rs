@@ -1368,6 +1368,7 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
         tss_tfbs_profile_receipt: None,
         gel_image: None,
         gel_image_analysis: None,
+        gel_workbench: None,
     });
 
     assert_eq!(area.sequencing_confirmation_ui.selected_trace_id, "trace_b");
@@ -5515,6 +5516,7 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
             tss_tfbs_profile_receipt: None,
             gel_image: None,
             gel_image_analysis: None,
+            gel_workbench: None,
         },
         Instant::now(),
     );

@@ -205,6 +205,11 @@ pub enum GelImageExportFormat {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GelImageStore {
+    #[serde(
+        default,
+        skip_serializing_if = "super::gel_workbench::GelWorkbenchStore::is_empty"
+    )]
+    pub workbench: super::gel_workbench::GelWorkbenchStore,
     #[serde(default)]
     pub images: BTreeMap<String, Arc<GelImageRecord>>,
     #[serde(default)]
@@ -216,6 +221,9 @@ pub struct GelImageStore {
 
 impl GelImageStore {
     pub fn is_empty(&self) -> bool {
-        self.images.is_empty() && self.analyses.is_empty() && self.drafts.is_empty()
+        self.images.is_empty()
+            && self.analyses.is_empty()
+            && self.drafts.is_empty()
+            && self.workbench.is_empty()
     }
 }

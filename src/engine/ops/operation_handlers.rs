@@ -40654,6 +40654,7 @@ impl GentleEngine {
             feature_record_curation_report: None,
             gel_image: None,
             gel_image_analysis: None,
+            gel_workbench: None,
             tss_inventory: None,
             tss_collection: None,
             tss_collection_list: None,
@@ -40664,7 +40665,8 @@ impl GentleEngine {
 
         if matches!(
             &op,
-            Operation::ImportGelImage { .. }
+            Operation::GelWorkbench { .. }
+                | Operation::ImportGelImage { .. }
                 | Operation::SaveGelImageDraft { .. }
                 | Operation::AnalyzeGelImage { .. }
                 | Operation::InspectGelImageAnalysis { .. }
@@ -40776,7 +40778,8 @@ impl GentleEngine {
                     ));
                     result.tss_tfbs_profile_receipt = Some(Box::new(receipt));
                 }
-                Operation::ImportGelImage { .. }
+                Operation::GelWorkbench { .. }
+                | Operation::ImportGelImage { .. }
                 | Operation::SaveGelImageDraft { .. }
                 | Operation::AnalyzeGelImage { .. }
                 | Operation::InspectGelImageAnalysis { .. }

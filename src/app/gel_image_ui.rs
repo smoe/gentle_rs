@@ -1,11 +1,16 @@
-//! Manual measured-gel workspace. Screen geometry is display-only; the shared
+//! Measured-gel workspace. Screen geometry is display-only; the shared
 //! engine owns persistent drafts, calibration, immutable reports and exports.
 
 use super::*;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use egui::Color32;
 use gentle_protocol::gel_image::*;
+use gentle_protocol::gel_workbench::*;
 use std::sync::{Weak, mpsc};
+
+#[path = "gel_image_ui/workbench.rs"]
+mod workbench;
+use workbench::{DetectionIdentity, PendingSuggestions, WorkbenchUi};
 
 const REFERENCE_COLOR: Color32 = Color32::from_rgb(210, 125, 20);
 const SAMPLE_COLOR: Color32 = Color32::from_rgb(0, 130, 145);
@@ -92,6 +97,9 @@ struct GelJobResult {
     detached: Option<crate::engine::DetachedEngineExecution>,
     preview: Option<(Arc<GelImageRecord>, egui::ColorImage)>,
     report: Option<Arc<GelImageAnalysisReport>>,
+    source: Option<Arc<GelSourceSummary>>,
+    suggestions: Option<PendingSuggestions>,
+    workbench: Option<Box<GelWorkbenchResult>>,
     message: String,
 }
 
@@ -104,6 +112,20 @@ enum GelJob {
     Preview(Arc<GelImageRecord>),
     Analyze(GelImageAnalysisRequest),
     Export(GelImageExportRequest),
+    Workbench(GelWorkbenchRequest),
+    Detect {
+        request: GelDetectRequest,
+        draft: Box<GelImageAnalysisRequest>,
+    },
+}
+
+impl GelJob {
+    fn is_external_export(&self) -> bool {
+        matches!(
+            self,
+            Self::Export(_) | Self::Workbench(GelWorkbenchRequest::Export(_))
+        )
+    }
 }
 
 /// Decode only in workers, never during an idle frame. Saved previews are not
@@ -129,6 +151,9 @@ fn execute_job(shared: &Arc<RwLock<GentleEngine>>, job: GelJob) -> Result<GelJob
             detached: None,
             preview: Some(prepare_preview(record)?),
             report: None,
+            source: None,
+            suggestions: None,
+            workbench: None,
             message: "Image ready. Marks use original pixel coordinates.".into(),
         });
     }
@@ -136,7 +161,9 @@ fn execute_job(shared: &Arc<RwLock<GentleEngine>>, job: GelJob) -> Result<GelJob
         .read()
         .map_err(|_| "Engine lock unavailable")?
         .fork_detached_execution();
-    let (op, import_id, export) = match job {
+    let revision = detached.engine().mutation_revision();
+    let mut detection = None;
+    let (op, import_id, mutates) = match job {
         GelJob::Import {
             path,
             image_id,
@@ -162,7 +189,7 @@ fn execute_job(shared: &Arc<RwLock<GentleEngine>>, job: GelJob) -> Result<GelJob
                     },
                 },
                 Some(image_id),
-                false,
+                true,
             )
         }
         GelJob::Analyze(request) => (
@@ -170,7 +197,7 @@ fn execute_job(shared: &Arc<RwLock<GentleEngine>>, job: GelJob) -> Result<GelJob
                 request: Box::new(request),
             },
             None,
-            false,
+            true,
         ),
         GelJob::Export(mut request) => {
             if request.path.trim().is_empty() {
@@ -188,25 +215,81 @@ fn execute_job(shared: &Arc<RwLock<GentleEngine>>, job: GelJob) -> Result<GelJob
                     .display()
                     .to_string();
             }
-            (Operation::ExportGelImageAnalysis { request }, None, true)
+            (Operation::ExportGelImageAnalysis { request }, None, false)
+        }
+        GelJob::Workbench(mut request) => {
+            workbench::prepare_file_request(&mut request)?;
+            let import_id = match &request {
+                GelWorkbenchRequest::ImportSource(source) => Some(source.image_id.clone()),
+                _ => None,
+            };
+            let mutates = request.mutates();
+            (
+                Operation::GelWorkbench {
+                    request: Box::new(request),
+                },
+                import_id,
+                mutates,
+            )
+        }
+        GelJob::Detect { request, draft } => {
+            detection = Some(DetectionIdentity {
+                draft: *draft,
+                request: request.clone(),
+                revision,
+            });
+            (
+                Operation::GelWorkbench {
+                    request: Box::new(GelWorkbenchRequest::DetectBands(request)),
+                },
+                None,
+                false,
+            )
         }
         GelJob::Preview(_) => unreachable!(),
     };
-    let result = detached.engine_mut().apply(op).map_err(|e| e.message)?;
+    let mut result = detached.engine_mut().apply(op).map_err(|e| e.message)?;
     let preview = import_id
         .map(|id| prepare_preview(detached.engine().state().gel_images.images[&id].clone()))
         .transpose()?;
+    let source = result
+        .gel_workbench
+        .as_ref()
+        .and_then(|r| r.source.clone())
+        .map(Arc::new);
+    let suggestions = detection
+        .zip(
+            result
+                .gel_workbench
+                .as_mut()
+                .and_then(|r| r.suggestions.take()),
+        )
+        .map(|(identity, suggestions)| PendingSuggestions {
+            identity,
+            suggestions,
+        });
+    let message = result
+        .messages
+        .iter()
+        .chain(&result.warnings)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n");
     Ok(GelJobResult {
-        detached: (!export).then_some(detached),
+        detached: mutates.then_some(detached),
         preview,
         report: result.gel_image_analysis.map(|r| Arc::from(*r)),
-        message: result.messages.join("\n"),
+        source,
+        suggestions,
+        workbench: result.gel_workbench,
+        message,
     })
 }
 
 pub(super) struct GelImageEditor {
     pub(super) open: bool,
     bound_engine: Option<Weak<RwLock<GentleEngine>>>,
+    bound_instance_id: Option<u64>,
     job: Option<mpsc::Receiver<Result<GelJobResult, String>>>,
     export_running: bool,
     canceled: bool,
@@ -228,6 +311,7 @@ pub(super) struct GelImageEditor {
     drag_start: Option<Pos2>,
     status: String,
     help: bool,
+    workbench: WorkbenchUi,
 }
 
 impl Default for GelImageEditor {
@@ -235,6 +319,7 @@ impl Default for GelImageEditor {
         Self {
             open: false,
             bound_engine: None,
+            bound_instance_id: None,
             job: None,
             export_running: false,
             canceled: false,
@@ -256,6 +341,7 @@ impl Default for GelImageEditor {
             drag_start: None,
             status: "Import a gel, draw the ladder lane, then mark its known bands.".into(),
             help: true,
+            workbench: WorkbenchUi::default(),
         }
     }
 }
@@ -265,32 +351,49 @@ impl GelImageEditor {
         if self.job.is_some() {
             return;
         }
-        self.export_running = matches!(job, GelJob::Export(_));
+        self.export_running = job.is_external_export();
         self.canceled = false;
         self.status = match &job {
             GelJob::Import { .. } => "Loading and preserving original image...",
             GelJob::Preview(_) => "Verifying original and preparing preview...",
             GelJob::Analyze(_) => "Validating assignments and calibrating band sizes...",
             GelJob::Export(_) => "Validating and writing export (no overwrite)...",
+            GelJob::Workbench(GelWorkbenchRequest::Export(_)) => {
+                "Writing saved workbench report (external file; no overwrite)..."
+            }
+            GelJob::Workbench(_) => "Running measured-gel workbench request...",
+            GelJob::Detect { .. } => {
+                "Finding unconfirmed peaks in selected sample lane rectangles..."
+            }
         }
         .into();
         let (tx, rx) = mpsc::channel();
         self.job = Some(rx);
         let shared = shared.clone();
         let ctx = ctx.clone();
-        std::thread::spawn(move || {
-            let result = execute_job(&shared, job);
-            let _ = tx.send(result);
-            ctx.request_repaint();
-            ctx.request_repaint_of(ViewportId::ROOT);
-        });
+        let worker = std::thread::Builder::new()
+            .name("gel-image-workbench".into())
+            .stack_size(16 * 1024 * 1024)
+            .spawn(move || {
+                let result = execute_job(&shared, job);
+                let _ = tx.send(result);
+                ctx.request_repaint();
+                ctx.request_repaint_of(ViewportId::ROOT);
+            });
+        if let Err(error) = worker {
+            self.job = None;
+            self.export_running = false;
+            self.status = format!("Could not start gel worker: {error}");
+        }
     }
 
     fn bind_project(&mut self, shared: &Arc<RwLock<GentleEngine>>) {
+        let instance_id = shared.read().unwrap().instance_id();
         if self
             .bound_engine
             .as_ref()
             .is_some_and(|old| !old.ptr_eq(&Arc::downgrade(shared)))
+            || self.bound_instance_id.is_some_and(|old| old != instance_id)
         {
             // Dropping the receiver prevents a late result committing into a new project.
             if let Some(pending) = self.job.take() {
@@ -299,10 +402,23 @@ impl GelImageEditor {
             *self = Self::default();
         }
         self.bound_engine = Some(Arc::downgrade(shared));
+        self.bound_instance_id = Some(instance_id);
     }
 
     fn poll(&mut self, shared: &Arc<RwLock<GentleEngine>>, ctx: &egui::Context) {
         self.bind_project(shared);
+        self.sync_draft(shared);
+        let revision = shared.read().unwrap().mutation_revision();
+        if self
+            .workbench
+            .pending
+            .as_ref()
+            .is_some_and(|pending| !self.suggestions_match(pending, revision))
+        {
+            self.workbench.clear_suggestions();
+            self.status =
+                "Project, draft or detector settings changed; old proposals discarded.".into();
+        }
         let outcome = match self.job.as_ref().map(|rx| rx.try_recv()) {
             Some(Ok(result)) => result,
             Some(Err(mpsc::TryRecvError::Disconnected)) => {
@@ -338,6 +454,20 @@ impl GelImageEditor {
                         }
                     }
                 }
+                if result.preview.as_ref().is_some_and(|(record, _)| {
+                    !shared
+                        .read()
+                        .unwrap()
+                        .state()
+                        .gel_images
+                        .images
+                        .get(&record.descriptor.image_id)
+                        .is_some_and(|current| Arc::ptr_eq(current, record))
+                }) {
+                    self.status = "Image changed or was removed; stale preview discarded.".into();
+                    std::thread::spawn(move || drop(result));
+                    return;
+                }
                 if let Some((record, pixels)) = result.preview {
                     self.image_id = record.descriptor.image_id.clone();
                     self.texture = Some(ctx.load_texture(
@@ -352,11 +482,43 @@ impl GelImageEditor {
                     self.selected_lane.clear();
                     self.report = None;
                     self.zoom = 1.0;
+                    self.workbench.clear_suggestions();
+                    self.workbench.detection_lanes.clear();
                 }
                 if let Some(report) = result.report {
                     self.report = Some(report);
                 }
                 self.status = result.message;
+                if let Some(source) = result.source {
+                    self.status
+                        .push_str(&format!("\nSource extraction: {}", source.extraction));
+                }
+                if let Some(output) = result.workbench {
+                    if let Some(profile) = output.profile {
+                        self.status.push_str(&format!(
+                            "\nSaved profile: {} (run {}, lane {}, {:?})",
+                            profile.id, profile.run_id, profile.lane_id, profile.evidence_kind
+                        ));
+                    }
+                    if let Some(comparison) = output.comparison {
+                        self.workbench.saved_comparison = comparison.request.comparison_id;
+                    }
+                    if let Some(hash) = output.exported_sha256 {
+                        self.status =
+                            format!("External report written (no project commit). SHA-256: {hash}");
+                    }
+                }
+                if let Some(pending) = result.suggestions {
+                    let revision = shared.read().unwrap().mutation_revision();
+                    if self.suggestions_match(&pending, revision) {
+                        self.workbench.selected_suggestions.clear();
+                        self.workbench.pending = Some(pending);
+                        self.status = "Unconfirmed proposals ready. Select and explicitly accept sample marks; no ladder assignments were made.".into();
+                    } else {
+                        self.workbench.clear_suggestions();
+                        self.status = "Draft, image, project or detection request changed; stale proposals discarded.".into();
+                    }
+                }
             }
         }
     }
@@ -396,6 +558,8 @@ impl GelImageEditor {
                 self.draft = None;
                 self.stored_draft = None;
                 self.report = None;
+                self.workbench.clear_suggestions();
+                self.workbench.detection_lanes.clear();
                 self.status =
                     "The selected image changed or was removed. Select an image to reload it."
                         .into();
@@ -416,6 +580,7 @@ impl GelImageEditor {
                 self.stored_draft = current.cloned();
                 self.selected = None;
                 self.drag_start = None;
+                self.workbench.clear_suggestions();
             }
         }
         if self
@@ -450,7 +615,7 @@ impl GelImageEditor {
             if ui.button("Help").clicked() {
                 self.help = !self.help;
             }
-            ui.label("Measured Gel Image Analysis (.11 development)");
+            ui.label("Measured Gel Workbench");
         });
         if self.help {
             ui.group(|ui| {
@@ -458,13 +623,17 @@ impl GelImageEditor {
                 ui.label("2. Draw lane rectangles. The first lane is the ladder. Select a different ladder only before marking references.");
                 ui.label("3. Enter the ladder source and each known size, then click its band center. Mark sample bands in sample lanes.");
                 ui.label("4. Analyze to validate and save a sizing report. Review out-of-range results and warnings, then export.");
-                ui.small("Assignments are project drafts, not measurements. Save Project retains images, drafts and reports. Zoom/scroll do not change coordinates. DNA: linear fragments only; protein: apparent SDS mass. No abundance measurement, automatic detection or smile correction.");
+                ui.label("5. Select sample rectangles for peak proposals; review and accept explicitly. Extract a profile from a saved calibration, compare saved profiles across runs, then export selected saved evidence.");
+                ui.small("Save Project retains images, drafts, profiles and comparisons. Zoom/scroll do not change coordinates. DNA: linear fragments only; protein: apparent SDS mass. Display intensity is not concentration, molecule count or yield. No smile correction or inferred ladder identities.");
             });
         }
         ui.horizontal(|ui| {
             ui.label(&self.status);
             if self.job.is_some() {
                 ui.spinner();
+                if self.export_running {
+                    ui.small("External export continues even if this window closes or the project changes; it cannot be canceled or undone.");
+                }
                 if !self.export_running && !self.canceled && ui.button("Cancel pending result").clicked() {
                     self.canceled = true;
                     self.status = "Discarding result; waiting for background work to finish. No project change will be applied.".into();
@@ -483,7 +652,8 @@ impl GelImageEditor {
                 }
             });
             self.source_controls(ui, shared);
-            if self.texture.is_none() { return; }
+            self.native_source_controls(ui, shared);
+            if self.texture.is_some() {
             let before = self.draft.clone();
             ui.separator();
             self.assignment_controls(ui);
@@ -499,6 +669,8 @@ impl GelImageEditor {
             self.band_editor(ui);
             if before != self.draft { self.save_draft(shared); }
             self.analysis_controls(ui, shared);
+            }
+            self.workbench_controls(ui, shared);
         });
     }
 
@@ -772,6 +944,26 @@ impl GelImageEditor {
                         egui::FontId::proportional(12.0),
                         *color,
                     );
+                }
+                if let Some(pending) = &self.workbench.pending
+                    && self.suggestions_match(pending, pending.identity.revision)
+                {
+                    for band in &pending.suggestions.bands {
+                        let p = transform.to_screen(band.center);
+                        let selected = self.workbench.selected_suggestions.contains(&band.id);
+                        painter.circle_stroke(
+                            p,
+                            if selected { 9.0 } else { 6.0 },
+                            egui::Stroke::new(2.0, Color32::YELLOW),
+                        );
+                        painter.text(
+                            p + egui::vec2(9.0, -9.0),
+                            egui::Align2::LEFT_BOTTOM,
+                            format!("? {}", band.id),
+                            egui::FontId::proportional(11.0),
+                            Color32::YELLOW,
+                        );
+                    }
                 }
                 if let Some(p) = response.hover_pos().and_then(|p| transform.to_original(p)) {
                     response

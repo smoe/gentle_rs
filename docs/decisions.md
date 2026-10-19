@@ -1621,6 +1621,22 @@ unrelated DNA state; these edits advance mutation but not structural revision.
 Draft request allocations are shared across journal copies as well as project
 snapshots; the serialized contract remains ordinary self-contained JSON.
 
+Measured profiles retain an explicit evidence kind, integration measure, units,
+coverage and source digest. Image display intensity is not calibrated detector
+fluorescence, mass or molecule count. Record fixed stored-channel luminance and
+native-alpha compositing explicitly,
+without silent color-space/transfer conversion or clipping invalid channels.
+Rebin integrated weights conservatively; null intervals/markers never become
+zero or interpolation bridges. Shape
+comparisons normalize independently on explicitly shared valid support and
+record that conditioning. Weighted QQ/KS-distance/Wasserstein summaries do not
+justify significance p-values from correlated pixels/bins. Inferential tests
+require a separate sampling/replicate contract. Linear algebra keeps explicit
+coefficients, missing operands and signed residuals; it establishes neither
+gene identity nor additive reaction chemistry. Native encrypted measurement
+members remain unsupported, even when a thumbnail is explicitly admitted.
+Exports project frozen results; they never silently rescore or re-extract data.
+
 ## Advisory Cloning Time And Cost Boundaries
 
 Status: active

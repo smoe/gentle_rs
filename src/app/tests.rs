@@ -14735,6 +14735,7 @@ fn poll_prepare_success_after_cancel_request_reports_completion_prefix() {
             tss_tfbs_profile_receipt: None,
             gel_image: None,
             gel_image_analysis: None,
+            gel_workbench: None,
         }),
     })
     .expect("send prepare done");
@@ -15026,6 +15027,7 @@ fn poll_track_import_refreshes_only_changed_sequence_windows() {
             tss_tfbs_profile_receipt: None,
             gel_image: None,
             gel_image_analysis: None,
+            gel_workbench: None,
         })),
     })
     .expect("send track import done");
@@ -15201,6 +15203,7 @@ fn poll_track_import_refreshes_all_open_windows_when_changed_ids_missing() {
             tss_tfbs_profile_receipt: None,
             gel_image: None,
             gel_image_analysis: None,
+            gel_workbench: None,
         })),
     })
     .expect("send track import done");
@@ -15613,6 +15616,7 @@ fn format_extract_region_status_includes_annotation_fallback_reason() {
         tss_tfbs_profile_receipt: None,
         gel_image: None,
         gel_image_analysis: None,
+        gel_workbench: None,
     });
     assert!(status.contains("annotation: requested=full effective=core"));
     assert!(status.contains("annotation kinds: genes=12 transcripts=26 exons=420 cds=22"));

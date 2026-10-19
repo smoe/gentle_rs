@@ -188,7 +188,7 @@ class TapeStationFixtureTests(unittest.TestCase):
                 self.assertIn("| " + " | ".join(cells) + " |", prose)
         for wording in ("Real TapeStation Companion", "not matched-window effect estimates",
                         "agreement_pass: null", "does **not** compare full measured lane distributions",
-                        "There is no GENtle command for that algebra yet", "encrypted measurement/model"):
+                        "explicitly reviewed compatible profile inputs", "encrypted measurement/model"):
             self.assertIn(wording, prose)
 
 

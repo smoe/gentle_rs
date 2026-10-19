@@ -1292,6 +1292,7 @@ fn smoke_command_override(path: &str) -> Option<&'static str> {
             "'",
         )),
         // Hand-crafted parser fixtures only; execution still validates image and calibration.
+        "gel-image workbench" => Some(r#"gel-image workbench '{"action":"inspect"}'"#),
         "gel-image import" => {
             Some(r#"gel-image import '{"image_id":"demo","path":"synthetic.png"}'"#)
         }

@@ -12589,6 +12589,7 @@ Error: `{err}`"
                 tss_tfbs_profile_receipt: None,
                 gel_image: None,
                 gel_image_analysis: None,
+                gel_workbench: None,
             });
             let _ = tx.send(GenomePrepareTaskMessage::Done {
                 job_id,

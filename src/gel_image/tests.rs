@@ -9,7 +9,7 @@ use crate::engine::{Engine, GentleEngine, Operation, ProjectState};
 use crate::engine_shell::{execute_shell_command, parse_shell_tokens};
 use std::sync::Arc;
 
-fn tapestation_request(
+pub(crate) fn tapestation_request(
     manifest: &serde_json::Value,
     case: &serde_json::Value,
 ) -> GelImageAnalysisRequest {

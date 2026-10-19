@@ -1,5 +1,27 @@
 # GENtle Changelog
 
+## 2026-10-19 - Integrate The Second Worktree's Gel Workbench
+
+- Merge `gentle_rs_2_main` at `3a4e458b` into main, interpreting the owner's
+  `gentle_rs_2` shorthand as the existing second worktree branch. Preserve
+  the newer planning time/cost slice and both expression repairs.
+- Resolve the sole conflict in `decisions.md` by retaining gel-profile
+  boundaries under measured gels and the independent advisory planning
+  section unchanged. Keep shared engine/protocol/rendering, GUI/Shell/MCP
+  routes, parser dependency pins, authored regressions and incoming provenance.
+- The incoming verification record identifies a base plus uncommitted working
+  changes, not this integrated SHA. Retain it at that boundary; do not claim
+  integrated Rust/native/full-suite or scientific acceptance from it. This
+  merge runs no local Rust, invokes no providers and performs no capture.
+- Preserve `paper`, `output/`, the untracked planning prompt, other worktrees
+  and historical evidence; no push, dispatch, tag or publication.
+- Integration verification: 24 focused fixture/source tests and 118
+  tutorial-checkout/release-policy tests pass, including LF/CRLF. Matrix
+  totals, required gel/expression rows, preserved planning decision/module,
+  documentation status and whitespace pass. Roadmap stays 400 lines;
+  release-gate is four OK, session-close four OK/two expected scope/worktree
+  warnings/no failures. Integrated Rust/native acceptance remains pending.
+
 ## 2026-10-19 - Annotate The Expression MCP Introspection Contract
 
 - The completed Windows job at `33e67234` exposes two additional primary
@@ -82,6 +104,68 @@
   totals, tube/MCP rows, handoff shell syntax/links, documentation status and
   whitespace pass; roadmap remains 400 lines. Release-gate is four OK;
   session-close has four OK, two expected worktree/scope warnings, no failures.
+
+## 2026-10-19 - Develop A Shared Measured-Gel Comparison Workbench
+
+- Add one `GelWorkbench` operation/shared `gel-image workbench` route and a
+  backward-compatible default-empty store for original sources, integrated-bin
+  profiles and frozen comparisons. GUI, CLI, MCP and scripting reuse it;
+  detection/inspection are read-only, imports/results are undoable and report
+  export is an explicit no-clobber external write. Update capability/glossary
+  and parity projections without a second adapter calculation.
+- Add bounded PDF embedded-raster import with original/document and derived
+  image hashes, explicit ambiguous-object selection, preserved supported soft
+  masks and refusal of unsupported/encrypted structures. Add only opt-in
+  native D5000 thumbnail ingestion: encrypted numerical members remain
+  unsupported, private payloads/logs are never interpreted, and original archive
+  bytes stay in local storage rather than operation/agent feedback. Pin the
+  `lopdf`/`zip` parser dependencies; no Python/runtime ABI is introduced.
+- Propose image peaks from explicitly drawn lanes, with polarity, smoothing,
+  prominence, spacing and scan budgets; require separate acceptance of sample
+  marks and retain confirmed ladder assignments. Derive calibrated display
+  profiles with explicit background, white-alpha policy and optional missing
+  marker intervals. Import declared numeric bin areas separately, retaining
+  exact CSV bytes including LF/CRLF and distinguishing absent data from zero.
+- Compare arbitrary compatible stored lanes across images/runs on explicit
+  common valid size support: conserve integrated weights, disclose within-bin
+  uniformity, record exclusions, unit-area shape normalization, quantiles,
+  threshold fractions, weighted QQ points, KS distance and Wasserstein-1.
+  No pixel/bin-based significance p-value, concentration, yield or gene-identity
+  claim is made. Explicit linear combinations preserve signed residuals and
+  missing operands instead of fitting/clipping a custom-primer contribution.
+- Extend the existing background-worker editor with source controls, reviewed
+  proposals, cross-run selectors, saved summaries/QQ, explicit coefficients
+  and ordered before/after PDF/JSON export. Render a paired overview, source
+  provenance and frozen detail/curve pages through the existing vector-PDF
+  backend. Retain full hover labels in SVG; PDF is static. Update tutorial
+  10.03's former global absence claims while keeping its real-data exercise
+  size-only, and document the statistical interpretation in `gel_workbench.md`.
+- Verify locally after the owner authorizes targeted Rust execution: 90 protocol,
+  15 renderer, 48 workbench and 41 gel-sizing filter tests pass, with overlapping
+  coverage counted separately. The optional visual writer passes explicitly;
+  the five-page real-PDF report is rendered and inspected. Shared glossary parse,
+  CLI-doc coverage, canonical parity freshness and locked Cargo check pass.
+  Python fixture/LF-CRLF checks pass (79 tests, one explicit CLI-binary skip).
+- Repair bugs exposed by those runs: use versioned stored-channel RGB luminance
+  rather than implicit transfer conversion, reject invalid float channels,
+  composite transparent previews over white while preserving opaque bytes and
+  warnings, and enforce unknown-field rejection on the empty `inspect` action
+  without changing its JSON. Correct headless texture-delta handling and the
+  synthetic PDF writer's default xref mode; keep production PDF guards strict.
+  Reuse reviewed real calibration assignments, follow invoked PDF text forms,
+  and retain the unchanged sizing/math/source hashes. Tests run serially with
+  debug symbols disabled; release profiles remain unchanged. Resolve the existing
+  Swift bridge's outer-sandbox build restriction without a source workaround.
+- Record exact local commands, source base plus uncommitted patch, toolchain,
+  scopes and limitations in `gel_workbench.md`. Native GUI/Windows/Linux, full
+  workspace, raw numerical inputs and human scientific acceptance remain open;
+  old sizing evidence does not establish distribution accuracy. No Claude call,
+  push, workflow dispatch, release or new Glen freeze/request performed.
+- Actual vendor point-trace integration/unencrypted numeric format evidence,
+  encrypted D5000 numerical decoding, standalone residual PDF pages, ratios/fitted mixture models and
+  replicate-based inference remain open. Owner authorized direct development
+  without another Claude consultation; this does not add a `.13` release gate
+  or a new branch-specific Glen freeze/request.
 
 ## 2026-10-18 - Reconcile VKORC1 Platform Evidence And Audit Preparation
 

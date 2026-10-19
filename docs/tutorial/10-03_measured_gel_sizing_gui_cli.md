@@ -232,21 +232,25 @@ GENtle replay, selected short custom-only marks are near 697/700 bp, whereas
 combined marks are near 644/635 bp. Do not automatically label those as the same
 band. These are selected annotation-assisted marks, not all peaks in a smear.
 
-GENtle currently does **not** compare full measured lane distributions or
-subtract lane intensities. Do not subtract PDF brightness or construct a smear
+This size-only exercise does **not** compare full measured lane distributions or
+subtract lane intensities. The separate [development workbench](../gel_workbench.md)
+now provides explicit stored profiles, weighted QQ/shape comparisons and signed
+linear combinations, with new-source/native acceptance still pending. Image
+display profiles are not calibrated detector traces. Do not subtract PDF brightness or construct a smear
 by adding peak-table heights. For a useful comparison request numerical
 electropherograms with axis/signal units, calibration, marker handling,
 normalization and dilution/loading information for both runs. The supplied
-before-cleanup `.D5000` archive has encrypted measurement/model members and is
-not currently importable; its thumbnail is not raw detector data. A tabular
+before-cleanup `.D5000` archive has encrypted measurement/model members whose
+numerical data are not currently importable; its opt-in thumbnail is not raw detector data. A tabular
 export must contain curve samples, not merely another summary table.
 
-The [proposed profile-comparison plan](../gel_lane_profile_comparison_plan.md)
+The [profile-comparison plan](../gel_lane_profile_comparison_plan.md)
 starts with source-bound overlays, then common-support distributions, then
 explicit signed lane algebra. An exploratory expression such as combined minus
 scaled manufacturer could reveal a residual compatible with custom structure;
 it would not establish an additive reaction model or gene-specific enrichment.
-There is no GENtle command for that algebra yet. Preserve negative residuals,
+Use the workbench only with explicitly reviewed compatible profile inputs and
+coefficients; this lesson's region summaries do not supply those inputs. Preserve negative residuals,
 unknown scale factors and unavailable values rather than forcing a positive
 "custom contribution".
 

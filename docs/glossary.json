@@ -2,6 +2,14 @@
    "commands": [
       {
          "aliases": [],
+         "engine_operations": ["GelWorkbench"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "gel-image workbench",
+         "summary": "Import gel sources, propose bands, retain measured profiles, compare shared-support distributions with QQ plots, preserve signed lane algebra and export saved PDF reports.",
+         "usage": "gel-image workbench REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
          "engine_operations": ["ComputeTssTfbsProfiles"],
          "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
          "path": "features tss-tfbs-profiles",

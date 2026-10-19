@@ -14655,6 +14655,7 @@ impl GentleEngine {
             tss_view_svg_export: None,
             gel_image: None,
             gel_image_analysis: None,
+            gel_workbench: None,
         };
         report.op_id = Some(result.op_id.clone());
         report.run_id = Some(run_id.clone());
@@ -14831,6 +14832,7 @@ impl GentleEngine {
             tss_view_svg_export: None,
             gel_image: None,
             gel_image_analysis: None,
+            gel_workbench: None,
         };
         report.op_id = Some(result.op_id.clone());
         report.run_id = Some(run_id.clone());
