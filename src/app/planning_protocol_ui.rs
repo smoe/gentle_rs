@@ -1,5 +1,6 @@
 //! Thin, read-only protocol graph over the shared routines-explain report.
 
+use super::*;
 use crate::planning_protocol::{
     ProtocolOverview, ProtocolOverviewStatus, from_explanation, legend, node_details,
 };
