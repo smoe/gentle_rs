@@ -5,17 +5,26 @@ attention, waiting and purchasing a cloning idea might require. Promega's
 pGL4.10[luc2] is the worked product example because the owner prefers it, not
 because GENtle has ranked it above other suppliers.
 
-**Outcome:** inspect an advisory cloning estimate, explain its four cost
-components, distinguish missing data from zero, and find suppliers with readable
-protocols using explicit country and document-format metadata. No construct is
-made, supplier contacted, sequence downloaded or order prepared.
+**Question:** "I have a candidate regulatory insert. Which vector and protocol
+can I justify reviewing, and what resources would the cloning work require?"
+
+**Outcome:** validate an explicitly synthetic vector with the existing 08.09
+workflow, inspect its proposed insert/products, compare advisory time/cost,
+find protocol-publishing suppliers and retain a decision sheet. No proposed
+construct is materialized, supplier contacted, sequence downloaded or order
+prepared. Loading the two teaching inputs is an explicit project mutation.
+
+**Route:** vector identity -> sequence/MCS review -> protocol applicability ->
+resource estimate -> supplier evidence -> human decision. Catalog administration
+is an optional [advanced exercise](../examples/planning/supplier_catalog_update_exercise.md),
+not a prerequisite for choosing a vector.
 
 ## 1. Keep Four Kinds Of Evidence Apart
 
 | Question | Evidence to inspect | What it does not establish |
 | --- | --- | --- |
 | Which product? | Promega pGL4.10[luc2], E6651; official product page and TM259 manual | That another pGL4 vector is interchangeable |
-| Which actual DNA? | Existing helper identity AY738222.1, 4,242 bp, circular; later verify the acquired sequence/hash and annotations | That a product name proves local sequence identity |
+| Which actual DNA? | For Promega: AY738222.1, 4,242 bp, circular, still requiring acquired-sequence validation. In this offline exercise: the separately identified 240 bp synthetic vector | That the synthetic fixture is pGL4.10 or a product name proves DNA identity |
 | Which laboratory procedure? | Current supplier protocol, exact enzymes/insert/vector, and local review | That a readable PDF is an executable GENtle workflow |
 | How much effort and cost? | Shared planning estimate and the declared local profile below | That synthetic defaults are measured Promega protocol durations or a quotation |
 
@@ -54,6 +63,97 @@ The profile-setting step is an explicit project mutation. Use this disposable
 state, not your study. Read the [synthetic input provenance](../examples/planning/README.md).
 Its EUR amounts and availability are teaching values, not Promega prices,
 physical stock checks or an assertion about what your laboratory owns.
+
+### 2.1 Validate A Vector Before Borrowing Its Name
+
+Reuse [08.09's existing vector-validation workflow](generated/chapters/08-09_promoter_reporter_panel_planning_offline.md).
+Its 240 bp circular vector has a synthetic MCS at `1..70` and an artificial
+`luc2_demo` marker at `100..180` (1-based inclusive); the insert is 151 bp.
+It contains neither a functional luciferase reporter nor a demonstrated origin
+or selection system. Do not invent an antibiotic marker or bacterial host.
+Promega's manual is **not applicable to this fixture**.
+
+This Python block only copies the canonical workflow and binds its existing
+input/output paths. It does not implement vector validation or select enzymes.
+Run from the same repository root; use a fresh `$RUN` for a repeat exercise.
+
+```bash
+python3 - "$ROOT" "$RUN" <<'PY'
+import copy, json, pathlib, sys
+root, run = (pathlib.Path(p).resolve() for p in sys.argv[1:])
+source = root / "docs/examples/workflows/promoter_reporter_panel_planning_offline.json"
+example = json.loads(source.read_bytes())
+for index, operation in enumerate(example["workflow"]["ops"]):
+    if "LoadFile" in operation:
+        operation["LoadFile"]["path"] = str(root / operation["LoadFile"]["path"])
+    elif "RenderSequenceSvg" in operation:
+        operation["RenderSequenceSvg"]["path"] = str(run / pathlib.Path(operation["RenderSequenceSvg"]["path"]).name)
+    elif "PlanPromoterReporterPanel" in operation:
+        request = operation["PlanPromoterReporterPanel"]["request"]
+        request["helper_catalog_path"] = str(root / request["helper_catalog_path"])
+        for member in request["members"]:
+            member["candidate_set_path"] = str(root / member["candidate_set_path"])
+        request["output_dir"] = str(run / "planned-products")
+    else:
+        raise SystemExit(f"Review changed canonical workflow operation {index}")
+example["required_files"] = [str(root / p) for p in example["required_files"]]
+request = copy.deepcopy(next(op["PlanPromoterReporterPanel"]["request"]
+                            for op in example["workflow"]["ops"] if "PlanPromoterReporterPanel" in op))
+for name, value in (("vector-workflow.json", example), ("vector-request.json", request)):
+    with (run / name).open("x", encoding="utf-8", newline="\n") as handle:
+        json.dump(value, handle, indent=2)
+        handle.write("\n")
+PY
+g workflow @"$RUN/vector-workflow.json" > "$RUN/vector-workflow-report.json"
+g promoters panel-plan @"$RUN/vector-request.json" --path "$RUN/vector-proposal.json" > "$RUN/vector-plan-report.json"
+```
+
+The workflow loads only `synthetic_panel_vector` and `synthetic_panel_source`,
+exports their maps and plans the panel. The second command retains a proposal
+file for inspection; it does not materialize products. Review:
+
+| In `vector-proposal.json` | What to inspect |
+| --- | --- |
+| `vector_validation` | `verified` **against Synthetic panel vector only**; expected/observed accession, 240 bp, circular topology and each required-feature check |
+| `vector_sequence_sha256`, `helper_catalog` | Exact sequence and catalog bindings; not a signature or proof of physical tube contents |
+| `mcs_start_0based`, `mcs_end_0based_exclusive` | `0..70`, the same interval as the map's `1..70` |
+| `cloning_strategy` | Selected directional sites or explicit fallback, per-insert site audits, blockers and warnings; never select an enzyme merely because the MCS lists it |
+| `products`, `workflow` | Predicted circular wild-type/motif-mutant products, insert orientation and retained marker; not products present in project state |
+| `approval_required`, `nonclaims` | Approval is still required. A motif change is not proof of weaker luciferase activity |
+
+These existing 08.09 figures show the **teaching inputs**, not a pGL4.10 map or
+native GUI screenshots. The two newly exported maps in `$RUN` should describe
+the same input geometry; source/profile differences can change presentation.
+
+![Existing synthetic vector map; not pGL4.10](generated/artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.synthetic_vector.svg)
+
+![Existing 151 bp synthetic insert map; not experimental promoter evidence](generated/artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.source.svg)
+
+**Molecular reading:** the insert is proposed at the validated MCS while the
+marker remains in the backbone. Inspect the proposal's actual workflow/product
+fields for enzyme choice and orientation; the pictures alone do not establish
+those facts. Keep this separate from section 3's dependency-only bench graph.
+Stop before 08.09's materialization step. No `panel-materialize` command is
+required here, and changing the catalog label to Promega must not validate the
+synthetic DNA as pGL4.10.
+
+### 2.2 Decide Whether A Protocol Actually Applies
+
+For a real vector, review the acquired sequence and the **exact** product manual
+before choosing a cloning method. For Promega, TM259 covers multiple pGL4
+vectors; its title alone cannot establish applicability to E6651.
+
+| Review question | Evidence to retain / stop condition |
+| --- | --- |
+| Is this the exact vector? | Product/catalog ID, accession/version, sequence hash, topology, annotated MCS, reporter orientation, host and selection system; stop at a mismatch or an unknown essential property |
+| Which instructions apply? | Document URL/local origin, title, revision/date, retained raw-file SHA-256 and relevant page/section; a catalog's `checked_on` is not a document hash |
+| Are the inputs compatible? | Vector and insert geometry, enzyme/site audits or overlap design, required materials/equipment and the protocol's stated input constraints; a supplier match is not an applicability verdict |
+| What does successful review require? | Appropriate empty-vector/positive controls, sequence/junction confirmation and the intended assay readout; controls and acceptance remain human-reviewed |
+| What is still unknown? | Missing document bytes, unreviewed instructions, quantities, costs, stock or timing; do not replace them with synthetic estimates |
+
+Offline answer for this chapter: **real Promega sequence/protocol applicability
+is not evaluated**. Keep the checklist open in the decision sheet. GENtle has
+not retained or normalized TM259, and no vendor procedure has been approved.
 
 ## 3. Separate Bench Attention From Waiting
 
@@ -240,8 +340,24 @@ purchase without adding human bench work. It does not trigger procurement.
 ```bash
 g services providers doctor
 g services providers list > "$RUN/suppliers.json"
+python3 - "$RUN/suppliers.json" "$RUN/supplier-comparison.tsv" <<'PY'
+import csv, json, sys
+catalog = json.load(open(sys.argv[1], encoding="utf-8"))
+with open(sys.argv[2], "x", encoding="utf-8", newline="") as handle:
+    writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
+    writer.writerow(["provider", "country", "support", "formats", "protocols"])
+    for row in sorted(catalog["providers"], key=lambda p: p["provider"]):
+        protocols = row.get("protocols") or []
+        writer.writerow([row["provider"], row.get("country_code") or "unknown",
+                         row["support_status"], ",".join(sorted({p["format"] for p in protocols})) or "unassessed",
+                         "; ".join(p["title"] for p in protocols) or "unassessed"])
+print(open(sys.argv[2], encoding="utf-8").read(), end="")
+PY
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); print(json.dumps([p for p in c["providers"] if p.get("country_code")=="DE" and p.get("protocols")],indent=2))' "$RUN/suppliers.json"
-python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); print(json.dumps([p for p in c["providers"] if p["provider"]=="promega"],indent=2))' "$RUN/suppliers.json"
+g catalog doctor > "$RUN/catalog-health.json"
+g catalog search --entity product --query luciferas > "$RUN/product-identities.json"
+g catalog search --entity provider --query promega > "$RUN/promega-record.json"
+g catalog search --entity protocol --query luciferase --limit 20 > "$RUN/protocol-references.json"
 ```
 
 Replace `DE` with another ISO alpha-2 country code. The new directory is global,
@@ -263,7 +379,7 @@ remains a human responsibility; no live stock or commercial status is queried.
 Try the deliberate no-adapter boundary:
 
 ```bash
-g services project-preflight '{"schema":"gentle.external_service_request.v1","provider":"promega","service_kind":"vector_supply","source_target":{"kind":"catalog_vector","catalog_number":"E6651"}}'
+g services project-preflight '{"schema":"gentle.external_service_request.v1","provider":"promega","service_kind":"vector_supply","source_target":{"kind":"catalog_vector","catalog_number":"E6651"}}' > "$RUN/promega-preflight.json"
 ```
 
 Expected: `capability_status=catalog_only`, `eligible=false`, both availability
@@ -276,18 +392,6 @@ contracts; none of these commands submits an order or contacts a provider.
 
 ### 6.1 Review A Disposable Supplier Update Without Changing Vendor Facts
 
-Why separate five lanes? A vector's biological identity, a seller's package,
-the protocol PDF, a reviewed procedure and your lab's stock observations answer
-different questions. A protocol link is not proof of DNA identity, pricing or
-an executable recipe. The new catalog routes expose those differences:
-
-```bash
-g catalog doctor > "$RUN/catalog-health.json"
-g catalog search --entity product --query luciferas > "$RUN/product-identities.json"
-g catalog search --entity provider --query promega > "$RUN/promega-record.json"
-g catalog search --entity protocol --query luciferase --limit 20
-```
-
 Product rows are existing helper/vector/reference identities, not automatically
 orderable products. Provider rows include full config and `record_sha256`,
 distinct from the raw `source_sha256`. Protocol rows have a linked document,
@@ -295,68 +399,78 @@ distinct from the raw `source_sha256`. Protocol rows have a linked document,
 and reviewed vendor procedures are unavailable; private profiles are not
 inspected. None of this changes the earlier time, cost, scores or guardrails.
 
-Use only the disposable roots established in section 2 for this optional
-exercise. The following complete record is hand-crafted synthetic data, not
-Promega, not a supplier offer and not a reviewed protocol:
+The optional [advanced supplier-catalog exercise](../examples/planning/supplier_catalog_update_exercise.md)
+uses the same disposable roots to preview/apply one synthetic supplier, verify
+retained history, reject stale approval and explicitly withdraw it. It is
+configuration maintenance, not vector selection. Complete the decision sheet
+first; this exercise is not needed for the scientific review.
+
+### 6.2 Retain A Human-Review Decision Sheet
+
+This writes a **tutorial worksheet**, not a new engine report, supplier join,
+approval or procurement record. Values are copied from the retained reports;
+unknown protocol/stock facts remain questions for the human. Raw report hashes
+let a colleague identify the exact inputs without certifying their contents.
 
 ```bash
-python3 - "$RUN/provider-update.json" <<'PY'
-import json, sys
-record = dict(provider="synthetic_tutorial_supplier", display_name="Synthetic tutorial only",
-              support_status="catalog_only", website_url="https://example.invalid",
-              dashboard_url="https://example.invalid", api_documentation_url=None)
-for key in ("channels", "product_templates", "validation_rules", "default_delivery_hints",
-            "default_purification_hints", "default_qc_hints", "required_followup",
-            "account_enablement_notes", "warnings"):
-    record[key] = []
-record["capabilities"] = [dict(service_kind="synthetic_protocol", track="dna",
-    display_name="Synthetic", quote_handoff_supported=False,
-    direct_api_documented=False, direct_api_implemented=False,
-    supported_submission_modes=[], status_tracking="none", artifact_kinds=[], notes=[])]
-bundle = dict(schema="gentle.provider_update_bundle.v1", changes=[dict(
-    action="replace", provider=record["provider"], base_record_sha256=None, record=record)])
-with open(sys.argv[1], "w", encoding="utf-8", newline="\n") as handle:
-    json.dump(bundle, handle, indent=2)
-    handle.write("\n")
+python3 - "$RUN" <<'PY'
+import hashlib, json, pathlib, sys
+run = pathlib.Path(sys.argv[1])
+names = ("vector-proposal.json", "in-stock.json", "waiting.json",
+         "promega-context.json", "promega-preflight.json", "suppliers.json")
+raw = {name: (run / name).read_bytes() for name in names}
+reports = {name: json.loads(data) for name, data in raw.items()}
+proposal = reports["vector-proposal.json"]
+validation = proposal["vector_validation"]
+preflight = reports["promega-preflight.json"]
+strategy = proposal["cloning_strategy"]
+molecular = {"strategy": strategy["strategy"], "selected_pair": strategy.get("selected_pair"),
+             "fallback_reason": strategy.get("fallback_reason"),
+             "products": [{key: product[key] for key in ("product_seq_id", "allele", "length_bp",
+                          "circular", "assembly_model", "sequence_sha256")} for product in proposal["products"]]}
+lines = ["# Cloning review: teaching data only", "", "Status: HUMAN REVIEW REQUIRED; no approval or order.",
+         "", "## Keep the two identities separate",
+         "Commercial context: " + reports["promega-context.json"]["objective_summary"]["objective"]["helper_profile_id"],
+         "Offline vector: " + validation["helper_catalog_id"],
+         "Exact-vector status (synthetic identity only): " + validation["status"],
+         "Sequence binding: " + proposal["vector_sequence_sha256"],
+         "Proposal binding: " + proposal["proposal_digest"],
+         "", "## Proposed molecular work (not materialized)", "```json",
+         json.dumps(molecular, indent=2), "```",
+         "Read vector-proposal.json for all site audits, workflow/orientation details, warnings and nonclaims.",
+         "", "## Advisory resource estimates"]
+for name in ("in-stock.json", "waiting.json"):
+    estimate = reports[name]["planning"]["estimate"]
+    fields = {key: estimate[key] for key in ("hands_on_hours", "unattended_hours", "elapsed_hours",
+              "estimated_cost", "routine_base_cost", "stock_drawn_material_cost",
+              "missing_material_purchase_proxy_cost", "machine_run_cost")}
+    explanation = estimate.get("explanation") or {}
+    fields["evidence_limits"] = {key: explanation.get(key) for key in ("time_policy",
+        "machine_run_cost_basis_hours", "unknown_material_classes", "unpriced_material_classes",
+        "unpriced_machine_classes", "cost_coverage", "currency")}
+    fields["cost_assumptions"] = estimate.get("cost_assumptions")
+    lines.extend([name + " (synthetic allowances, not a quote)", "```json", json.dumps(fields, indent=2), "```"])
+lines.extend(["", "## Supplier boundary", "```json", json.dumps({key: preflight[key] for key in
+              ("capability_status", "eligible", "quote_handoff_available", "direct_submission_available")}, indent=2), "```",
+              "See supplier-comparison.tsv and the full suppliers.json; no preferred seller is inferred.",
+              "", "## Open human-review checklist",
+              "- [ ] Real vector sequence/topology/MCS, host and selection verified; fixture is NOT pGL4.10.",
+              "- [ ] Exact protocol revision, retained document SHA-256 and applicable pages reviewed (currently not_evaluated).",
+              "- [ ] Insert compatibility, controls and sequence/junction confirmation defined.",
+              "- [ ] Actual stock, quantities, equipment access, prices and unpriced/unknown classes reviewed.",
+              "- [ ] Decide: stop / obtain evidence / review a fresh exact proposal. This sheet grants no approval.",
+              "", "## Retained input bytes"])
+lines.extend(f"- {name}: sha256:{hashlib.sha256(raw[name]).hexdigest()}" for name in names)
+with (run / "cloning-decision.md").open("x", encoding="utf-8", newline="\n") as handle:
+    handle.write("\n".join(lines) + "\n")
 PY
-g catalog updates preview "$RUN/provider-update.json" --scope project --output "$RUN/provider-preview.json"
 ```
 
-Read the preview **before** approving it. Expect `add`, null previous hash,
-`protocol_document_evidence_unavailable`, and the exact project destination
-under `$GENTLE_PROJECT_ROOT/.gentle/catalogs/`. Confirm `applicable=true` and
-review source bindings and impact limitations. Preview writes only its fresh
-artifact, not the active catalog. Do not substitute a real supplier casually.
-For this synthetic, disposable example only, after review:
-
-```bash
-DIGEST="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["preview_sha256"])' "$RUN/provider-preview.json")"
-g catalog updates apply "$RUN/provider-preview.json" --approve-digest "$DIGEST" > "$RUN/provider-receipt.json"
-g catalog search --entity provider --query synthetic_tutorial_supplier
-g catalog doctor
-```
-
-The receipt identifies retained history and the active raw-byte hash. Check
-that `proposed.json` matches that hash and that no `previous.bin` exists for
-the previously absent project catalog. Existing built-in suppliers remain.
-Repeating the old approval fails: current sources changed. A new preview of
-the old null-base addition reports a conflict, not permission to overwrite.
-For a real replacement, obtain the current **full** config and semantic base
-hash from provider search, then review a new complete bundle.
-
-Withdrawal uses `action="withdraw"` with that current base hash, **without** a
-record. It installs an explicit tombstone, preventing a lower overlay from
-silently reappearing. Do not delete a catalog row to imply withdrawal. Both
-writing commands require agent confirmation, even if a model calls them
-read-only. They do not alter project undo history or contact a supplier.
-Source changes, masking by later `.d` files or tampering require a new preview.
-No-op-only previews are not applicable and do not rewrite files.
-
-See [bundle limits and interrupted-apply recovery](../catalog_updates.md):
-never auto-replay prepared history, delete receipts to make a retry pass, or
-interpret a content hash as authenticated vendor approval. Joined offers,
-retained/reviewed documents, quantities/taxes/shipping, procedure extraction
-and inbox automation remain later work, not features of this example.
+Keep `cloning-decision.md`, the full JSON inputs, `supplier-comparison.tsv` and
+both sequence maps together. Read the full estimates' unknown/unpriced classes
+and source assumptions, not just the subtotals. Do not infer a ranked supplier,
+real delivery date or laboratory success from the worksheet. Revising an input
+means retaining a new review rather than silently reusing the old sheet.
 
 ## 7. Inspect The Same Facts In The GUI Or Through An Agent
 
@@ -365,13 +479,21 @@ and inbox automation remain later work, not features of this example.
    estimate, labels and comparison with the unmodelled Gibson alternative.
 3. In the GUI Shell, inspect/set the synthetic project profile only after
    explicit approval; do not assume the GUI and a separate CLI process share
-   unsaved state. Compare the same effective profile before comparing numbers.
+   unsaved state. Use the in-stock profile for the 3.2-hour overview checkpoint;
+   compare the same effective profile before comparing numbers. Substitute
+   actual absolute paths: the GUI Shell does not expand `$RUN` or shell functions.
 4. Open `Services -> External Services...`, refresh the catalog and inspect
    Promega's discovery-only status and raw shared catalog metadata. The
    country/format filtering above operates on JSON; this chapter does not
    claim a new graphical country-filter control.
 5. Use local preflight to see the blocked discovery-only result. Do not use
    submission, external browsing or account credentials for this exercise.
+6. For the vector review, run the saved `vector-workflow.json` through the GUI
+   Shell's `workflow @ABSOLUTE_PATH` route, quoting the `@...json` argument if
+   it contains spaces. This supplies the exact two expected sequence IDs.
+   Use 08.09's **Promoter design -> Promoter-reporter panel -> Plan panel**
+   route, pasting the contents of `vector-request.json`. Inspect the validation and proposed products,
+   but do not materialize them. There is no new supplier/material-flow GUI.
 
 The inner agent and an outer CLI/MCP agent should request these shared shell
 commands and explain the returned fields, not invent another estimate or
@@ -379,11 +501,30 @@ promote a supplier listing to validated ordering. Profile edits retain mutation
 approval. These are existing shared-shell routes; the chapter does not claim
 a new named MCP tool or a live inner-model/native-GUI acceptance run.
 
+### Native Screenshot Checkpoints For Glen
+
+| Checkpoint | Visible evidence to retain | Shared evidence to compare |
+| --- | --- | --- |
+| V1: synthetic vector | Circular MCS/marker map, loaded sequence ID and synthetic label | Vector fixture and `vector-proposal.json`; no pGL4.10 identity claim |
+| V2: proposed panel | Exact-vector validation, selected cloning strategy and unmaterialized products | Proposal digest, workflow and product fields; inputs only in project |
+| P1: dependency overview | All seven steps, critical-path legend and separate timing proxy | `in-stock.json` and copied SVG/JSON |
+| P2: unavailable model | Gibson overview explicitly unavailable | Shared explanation with absent bench model |
+| S1: supplier review | Promega selected, catalog-only/blocked preflight | `suppliers.json` and local preflight, no account or network action |
+
+These are pending capture instructions, **not screenshot placeholders or proof**.
+Use a matching verified build and disposable project, retain the full source
+SHA/binary hash, selected IDs, raw PNGs and report hashes, and record before/after
+state. Where a control is not semantically addressable, report a harness gap
+rather than guessing. Static teaching SVGs above do not close native acceptance.
+
 ## Acceptance And Limits
 
 - The optional real-CLI companion in `scripts/test_specialist_tutorials.py`
   exercises both synthetic profiles, cost reconciliation, unknown legacy
-  breakdowns, filterable supplier metadata and blocked Promega preflight.
+  breakdowns, filterable supplier metadata and blocked Promega preflight. Its
+  additional literal-chapter replay covers the reused 08.09 workflow, maps,
+  proposal/worksheet and advanced add/preview/apply/stale/withdraw exercise.
+  These runtime checks are authored for Glen/CI, not executed here.
 - Source checks cover catalog registration, local links and fixture intent;
   the existing LF/CRLF tutorial-checkout gate covers the generated catalog.
 - No screenshots are fabricated. Native GUI review/capture and human
@@ -391,3 +532,9 @@ a new named MCP tool or a live inner-model/native-GUI acceptance run.
   `manual/hybrid` guide, not another completed executable workflow replay.
 - No preferred supplier, fastest method, real completion date, quote,
   experimental success or reporter-function claim follows from this exercise.
+
+Glen/CI, using an already built source-matched CLI (no build in this command):
+
+```sh
+GENTLE_TUTORIAL_BIN_DIR=/absolute/bin/dir python3 -m unittest scripts.test_specialist_tutorials.SpecialistBinaryTests.test_09_04_literal_walkthrough_and_catalog_update -v
+```

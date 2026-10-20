@@ -30,6 +30,7 @@ import shlex
 import shutil
 import struct
 import subprocess
+import sys
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
@@ -40,6 +41,8 @@ ROOT = Path(__file__).resolve().parents[1]
 TUTORIALS = ROOT / "docs/tutorial"
 FIXTURES = ROOT / "test_files/fixtures/sequencing_confirmation"
 BIN_DIR = os.environ.get("GENTLE_TUTORIAL_BIN_DIR")
+PLANNING_GUIDE = TUTORIALS / "09-04_cloning_time_cost_and_protocol_suppliers.md"
+CATALOG_EXERCISE = ROOT / "docs/examples/planning/supplier_catalog_update_exercise.md"
 STEMS = (
     "09-01_metabion_external_service_handoff_gui_cli",
     "09-02_geneart_external_service_handoff_gui_cli",
@@ -56,6 +59,23 @@ REQUESTS = (
 
 def read_json(path):
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def tutorial_python(text, invocation):
+    """Extract one literal teaching snippet; never execute its shell commands."""
+    match = re.search(re.escape(invocation) + r" <<'PY'\n(.*?)\nPY", text.replace("\r\n", "\n"), re.S)
+    if match is None:
+        raise ValueError(f"Missing tutorial Python block: {invocation}")
+    return match.group(1)
+
+
+def run_tutorial_python(text, invocation, *args):
+    result = subprocess.run([sys.executable, "-", *(str(arg) for arg in args)],
+                            input=tutorial_python(text, invocation), text=True,
+                            capture_output=True, timeout=15, cwd=ROOT)
+    if result.returncode:
+        raise AssertionError(result.stdout + result.stderr)
+    return result.stdout
 
 
 def fasta_bases(name):
@@ -105,7 +125,7 @@ class SpecialistSourceTests(unittest.TestCase):
             self.assertTrue(row["reason"].strip())
 
     def test_guarded_provider_import_guide_and_catalog_surface(self):
-        guide = (TUTORIALS / "09-04_cloning_time_cost_and_protocol_suppliers.md").read_text(encoding="utf-8")
+        guide = PLANNING_GUIDE.read_text(encoding="utf-8") + CATALOG_EXERCISE.read_text(encoding="utf-8")
         contract = (ROOT / "docs/catalog_updates.md").read_text(encoding="utf-8")
         glossary = read_json(ROOT / "docs/glossary.json")
         commands = {row["path"]: row for row in glossary["commands"]}
@@ -168,6 +188,12 @@ class SpecialistSourceTests(unittest.TestCase):
         self.assertEqual(source["catalog"]["group_position"], 4)
         self.assertEqual(source["catalog"]["status"], "manual/hybrid")
         self.assertNotIn("generated_chapter", source)
+        projection = next(row for row in read_json(TUTORIALS / "catalog.json")["entries"]
+                          if row["id"] == source["id"])
+        self.assertEqual(projection["notes"], source["catalog"]["notes"])
+        review = next(row for row in read_json(TUTORIALS / "review_manifest.json")["entries"]
+                      if row["tutorial_id"] == source["id"])
+        self.assertEqual(projection["codex_reviewed_at"], review["codex_reviewed_at"])
         guide_path = TUTORIALS / f"{stem}.md"
         guide = guide_path.read_text(encoding="utf-8")
         for newline in ("\n", "\r\n"):
@@ -199,6 +225,103 @@ class SpecialistSourceTests(unittest.TestCase):
             profile = read_json(ROOT / f"docs/examples/planning/{name}.json")
             self.assertTrue(profile["profile_id"].startswith("DEMO_DO_NOT_ORDER"))
             self.assertIn("Synthetic", profile["inventory"]["ligase"]["note"])
+
+    def test_09_04_reuses_the_canonical_vector_workflow_without_new_operations(self):
+        guide = PLANNING_GUIDE.read_text(encoding="utf-8")
+        canonical = read_json(ROOT / "docs/examples/workflows/promoter_reporter_panel_planning_offline.json")
+        for newline in ("\n", "\r\n"):
+            with self.subTest(newline=repr(newline)), tempfile.TemporaryDirectory(prefix="09.04 O'Brien ") as temp:
+                run = Path(temp).resolve()
+                run_tutorial_python(guide.replace("\n", newline), 'python3 - "$ROOT" "$RUN"', ROOT, run)
+                actual = read_json(run / "vector-workflow.json")
+                expected = copy.deepcopy(canonical)
+                expected["required_files"] = [str(ROOT / p) for p in expected["required_files"]]
+                for op in expected["workflow"]["ops"]:
+                    kind, data = next(iter(op.items()))
+                    if kind == "LoadFile":
+                        data["path"] = str(ROOT / data["path"])
+                    elif kind == "RenderSequenceSvg":
+                        data["path"] = str(run / Path(data["path"]).name)
+                    else:
+                        self.assertEqual(kind, "PlanPromoterReporterPanel")
+                        request = data["request"]
+                        request["helper_catalog_path"] = str(ROOT / request["helper_catalog_path"])
+                        for member in request["members"]:
+                            member["candidate_set_path"] = str(ROOT / member["candidate_set_path"])
+                        request["output_dir"] = str(run / "planned-products")
+                self.assertEqual(actual, expected)
+                self.assertEqual(read_json(run / "vector-request.json"), expected["workflow"]["ops"][-1]["PlanPromoterReporterPanel"]["request"])
+                self.assertFalse((run / "planned-products").exists())
+                self.assertEqual(sorted(p.name for p in run.iterdir()), ["vector-request.json", "vector-workflow.json"])
+
+    def test_09_04_supplier_table_preserves_unknown_country_and_protocols(self):
+        # Hand-crafted presentation inputs, not supplier facts or eligibility evidence.
+        guide = PLANNING_GUIDE.read_text(encoding="utf-8")
+        with tempfile.TemporaryDirectory() as temp:
+            source, output = Path(temp) / "suppliers.json", Path(temp) / "comparison.tsv"
+            source.write_text(json.dumps({"providers": [
+                {"provider": "unknown", "support_status": "catalog_only"},
+                {"provider": "synthetic", "country_code": "DE", "support_status": "catalog_only",
+                 "protocols": [{"format": "text_pdf", "title": "Synthetic PDF"}, {"format": "html", "title": "Synthetic HTML"}]},
+            ]}), encoding="utf-8")
+            run_tutorial_python(guide, 'python3 - "$RUN/suppliers.json" "$RUN/supplier-comparison.tsv"', source, output)
+            with output.open(encoding="utf-8", newline="") as handle:
+                rows = list(csv.DictReader(handle, delimiter="\t"))
+            self.assertEqual([r["provider"] for r in rows], ["synthetic", "unknown"])
+            self.assertEqual(rows[0]["formats"], "html,text_pdf")
+            self.assertEqual(rows[1]["country"], "unknown")
+            self.assertEqual(rows[1]["protocols"], "unassessed")
+
+    def test_09_04_decision_sheet_copies_report_status_and_raw_bindings(self):
+        # Minimal synthetic report projections: test presentation, never certify biology.
+        guide = PLANNING_GUIDE.read_text(encoding="utf-8")
+        estimate = dict(hands_on_hours=None, unattended_hours=None, elapsed_hours=None,
+                        estimated_cost=0, routine_base_cost=0, stock_drawn_material_cost=0,
+                        missing_material_purchase_proxy_cost=0, machine_run_cost=0)
+        for status in ("verified", "rejected", "unavailable"):
+            for newline in ("\n", "\r\n"):
+                with self.subTest(status=status, newline=repr(newline)), tempfile.TemporaryDirectory() as temp:
+                    run = Path(temp)
+                    reports = {
+                        "vector-proposal.json": dict(vector_validation=dict(helper_catalog_id="Synthetic only", status=status),
+                            vector_sequence_sha256="sha256:synthetic-sequence", proposal_digest="sha256:synthetic-proposal",
+                            cloning_strategy=dict(strategy="gibson"), products=[]),
+                        "in-stock.json": {"planning": {"estimate": estimate}},
+                        "waiting.json": {"planning": {"estimate": estimate}},
+                        "promega-context.json": {"objective_summary": {"objective": {"helper_profile_id": "Synthetic commercial context"}}},
+                        "promega-preflight.json": dict(capability_status="catalog_only", eligible=False,
+                            quote_handoff_available=False, direct_submission_available=False),
+                        "suppliers.json": {"providers": []},
+                    }
+                    for name, value in reports.items():
+                        (run / name).write_bytes((json.dumps(value, indent=2) + "\n").replace("\n", newline).encode())
+                    run_tutorial_python(guide.replace("\n", newline), 'python3 - "$RUN"', run)
+                    sheet = (run / "cloning-decision.md").read_text(encoding="utf-8")
+                    self.assertIn("HUMAN REVIEW REQUIRED", sheet)
+                    self.assertIn("Exact-vector status (synthetic identity only): " + status, sheet)
+                    self.assertIn('"hands_on_hours": null', sheet)
+                    self.assertIn('"estimated_cost": 0', sheet)
+                    self.assertIn('"eligible": false', sheet)
+                    self.assertIn('"unpriced_material_classes": null', sheet)
+                    self.assertIn("currently not_evaluated", sheet)
+                    for name in reports:
+                        self.assertIn(f"{name}: sha256:{hashlib.sha256((run / name).read_bytes()).hexdigest()}", sheet)
+
+    def test_09_04_main_and_advanced_examples_have_valid_shell_and_visual_boundaries(self):
+        for path in (PLANNING_GUIDE, CATALOG_EXERCISE):
+            text = path.read_text(encoding="utf-8")
+            blocks = re.findall(r"```bash\n(.*?)```", text, re.S)
+            result = subprocess.run(["bash", "-n"], input="\n".join(blocks), text=True,
+                                    capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            for target in re.findall(r"\]\(([^)]+)\)", text):
+                if not urlsplit(target).scheme:
+                    self.assertTrue((path.parent / target.split("#")[0]).is_file(), target)
+        guide = PLANNING_GUIDE.read_text(encoding="utf-8")
+        self.assertIn("not a pGL4.10 map", guide)
+        self.assertIn("not screenshot placeholders or proof", guide)
+        self.assertIn("no vendor procedure has been approved", guide)
+        self.assertNotIn("g promoters panel-materialize", guide)
 
     def test_expression_four_interface_routes_and_discovery_are_explicit(self):
         transport = (ROOT / "src/mcp_server/protein_expression.rs").read_text(encoding="utf-8")
@@ -617,6 +740,73 @@ class SpecialistBinaryTests(unittest.TestCase):
 
     def shell(self, *tokens, **kwargs):
         return self.invoke("shell", shlex.join(str(token) for token in tokens), **kwargs)
+
+    def test_09_04_literal_walkthrough_and_catalog_update(self):
+        """Opt-in exact prose examples with a prebuilt CLI; no build/network/model."""
+        bash = shutil.which("bash")
+        self.assertIsNotNone(bash, "Bash is required to replay this POSIX-shell chapter")
+        env = dict(self.env, PATH=str(self.cli.parent) + os.pathsep + os.environ.get("PATH", ""),
+                   TMPDIR=str(self.run_dir))
+
+        def replay(path, prefix=""):
+            text = path.read_text(encoding="utf-8")
+            script = prefix + "\n".join(re.findall(r"```bash\n(.*?)```", text, re.S))
+            result = subprocess.run([bash, "-eu"], input=script, cwd=ROOT, env=env,
+                                    text=True, capture_output=True, timeout=240)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        replay(PLANNING_GUIDE)
+        run, = self.run_dir.glob("gentle-planning-09-04.*")
+        self.state = run / "tutorial.gentle.json"
+        self.env.update(GENTLE_SYSTEM_CONFIG_ROOT=str(run / "system"),
+                        XDG_CONFIG_HOME=str(run / "user"), GENTLE_PROJECT_ROOT=str(run / "project"))
+        state_before = read_json(self.state)
+        self.assertEqual(set(state_before["sequences"]), {"synthetic_panel_vector", "synthetic_panel_source"})
+        proposal = read_json(run / "vector-proposal.json")
+        self.assertEqual(proposal["vector_validation"]["status"], "verified")
+        self.assertEqual(proposal["vector_validation"]["helper_catalog_id"], "Synthetic panel vector")
+        self.assertEqual(proposal["vector_validation"]["observed_length_bp"], 240)
+        self.assertTrue(proposal["approval_required"])
+        self.assertEqual({p["allele"] for p in proposal["products"]}, {"wild_type", "mutant"})
+        self.assertFalse((run / "planned-products").exists())
+        for name in ("promoter_reporter_panel_demo.synthetic_vector.svg", "promoter_reporter_panel_demo.source.svg"):
+            self.assertEqual(ET.fromstring((run / name).read_bytes()).tag, "{http://www.w3.org/2000/svg}svg")
+        sheet = (run / "cloning-decision.md").read_text(encoding="utf-8")
+        self.assertIn("HUMAN REVIEW REQUIRED", sheet)
+        self.assertIn(proposal["vector_sequence_sha256"], sheet)
+        original_ids = {p["provider"] for p in read_json(run / "suppliers.json")["providers"]}
+
+        # Restore the documented shell function, not a different test-side dispatcher.
+        setup = re.search(r'^g\(\) \{.*$', PLANNING_GUIDE.read_text(encoding="utf-8"), re.M).group(0)
+        env.update(RUN=str(run), STATE=str(self.state), GENTLE_CLI=str(self.cli),
+                   GENTLE_PROJECT_ROOT=str(run / "project"),
+                   GENTLE_SYSTEM_CONFIG_ROOT=str(run / "system"), XDG_CONFIG_HOME=str(run / "user"))
+        replay(CATALOG_EXERCISE, setup + "\n")
+        added = read_json(run / "provider-preview.json")
+        self.assertTrue(added["applicable"])
+        self.assertEqual(added["decisions"][0]["action"], "add")
+        self.assertIn("stale_or_tampered_preview", (run / "stale-error.txt").read_text())
+        conflict = read_json(run / "conflict-preview.json")
+        self.assertFalse(conflict["applicable"])
+        self.assertEqual(conflict["decisions"][0]["action"], "conflict")
+        self.assertEqual(read_json(run / "withdraw-preview.json")["decisions"][0]["action"], "withdraw")
+        self.assertEqual(read_json(run / "withdrawn-provider.json")["rows"], [])
+        self.assertEqual({p["provider"] for p in read_json(run / "suppliers-after-update.json")["providers"]}, original_ids)
+        receipt = read_json(run / "provider-receipt.json")
+        history = Path(receipt["history_directory"])
+        self.assertFalse((history / "previous.bin").exists())
+        added_bytes = (history / "proposed.json").read_bytes()
+        self.assertEqual("sha256:" + hashlib.sha256(added_bytes).hexdigest(), receipt["applied_target_sha256"])
+        withdrawn = read_json(run / "withdraw-receipt.json")
+        self.assertEqual((Path(withdrawn["history_directory"]) / "previous.bin").read_bytes(), added_bytes)
+        target = Path(withdrawn["target_path"])
+        self.assertEqual("sha256:" + hashlib.sha256(target.read_bytes()).hexdigest(), withdrawn["applied_target_sha256"])
+        self.assertIn("synthetic_tutorial_supplier", read_json(target)["withdrawn_providers"])
+        # Retain exact project values; only existing unordered restriction-cache rows are normalized.
+        state_after = read_json(self.state)
+        for state in (state_before, state_after):
+            state["sequences"] = comparable_sequences(state["sequences"])
+        self.assertEqual(state_after, state_before)
 
     def test_cloning_planning_profiles_and_protocol_supplier_boundary(self):
         estimates = []

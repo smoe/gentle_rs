@@ -27,6 +27,31 @@
   400 lines; session-close has four OK, two expected worktree/scope warnings,
   no failures. These checks do not certify the authored Rust repair.
 
+## 2026-10-20 - Make Tutorial 09.04 A Vector-To-Protocol Review
+
+- Reuse the unchanged 08.09 synthetic vector-validation workflow with isolated
+  paths, its existing vector/insert maps and the shared proposal. Teach exact
+  identity, MCS/site/orientation review and synthetic-versus-Promega separation
+  before time/cost. No new vector biology, commercial facts or engine behavior.
+- Add protocol-applicability questions, a readable supplier table and a
+  report-derived human-review worksheet with retained raw-byte bindings.
+  Keep unknowns, warnings, source evidence and approvals distinct. Move catalog
+  administration to an optional advanced example, retaining the old main anchor.
+- Author a prebuilt-CLI replay of the literal chapter/advanced commands,
+  including maps, non-materialization, retained update history, stale approval,
+  conflict and explicit withdrawal. Extend offline snippet/path/unknown/hash
+  checks and existing LF/CRLF metadata coverage. Native screenshots are explicit
+  pending checkpoints; static SVGs are not substituted for native evidence.
+- Refresh only 09.04 catalog notes and Codex readability review date; human
+  scientific approval, canonical Rust freshness, CLI replay and native checks
+  remain Glen/CI work. Preserve unrelated outputs, keep the previous goal paused
+  and do not push. No local Rust, provider contact or acceptance claim.
+- Offline verification: 21 specialist source/snippet checks and two real
+  LF/CRLF catalog/review checkout checks pass; capability-catalog freshness
+  and whitespace pass. Session-close reports four OK, two expected
+  worktree/plan warnings and no failures. No production code, vector workflow,
+  fixtures, vendor catalog or existing SVG bytes changed.
+
 ## 2026-10-20 - Restore The Carrier GUI Test Type Import
 
 - Add the missing `RackPhysicalTemplateKind` import to the explicit
