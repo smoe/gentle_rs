@@ -1,5 +1,15 @@
 # GENtle Changelog
 
+## 2026-10-20 - Restore The Carrier GUI Test Type Import
+
+- Add the missing `RackPhysicalTemplateKind` import to the explicit
+  `crate::engine` list in `src/app/tests.rs`, used by the three carrier-label
+  assertions. Preserve production behavior and the existing regression.
+- Include a default-feature `cargo check --tests` and ranking-guard rerun in
+  the carrier handoff. Library-only checks do not compile the GUI test module;
+  Claude's temporary-fix 20/20 result does not certify the reverted source.
+  Rust verification remains with Glen/CI; no local Rust or new pass is claimed.
+
 ## 2026-10-20 - Bind PCR96 Carrier To The Official Tube Drawing
 
 - Meet the conditional source gate using Eppendorf's Technical Drawings tab:
