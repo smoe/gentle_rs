@@ -292,8 +292,11 @@ freshness contract also need scoped checkout policy plus LF/CRLF coverage.
 ## Inactive Learner Challenge
 
 Working title: **Can this exact allele be proposed, built and observed?**
-This draft lives here, outside tutorial source/catalog/manifest registries.
-No command sequence, screenshot or published protocol is promised yet.
+The [standalone learner draft](tutorial_drafts/base_prime_editing.md) expands
+these checkpoints with hand-written answers and tested synthetic teaching data.
+It stays outside the active tutorial tree/source/catalog/manifest registries;
+Help's missing-catalog fallback recursively scans that tree. No editing command
+sequence, screenshot or published protocol is promised yet.
 
 1. Compare the synthetic reference/desired strings above. Explain half-open
    bases versus insertion boundaries; intentionally reject a stale reference.

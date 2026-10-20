@@ -67,6 +67,29 @@
   The separate TapeStation source suite ran eight tests with one documented
   existing-CLI skip; these are not Rust or native acceptance results.
 
+## 2026-10-20 - Draft A Synthetic Base And Prime Editing Lesson
+
+- Expand the preparation brief into a learner-oriented, inactive tutorial with
+  exact substitution/insertion/deletion answers, a nonzero-anchor reverse view,
+  explicitly synthetic bystander counting, component-order review and separate
+  callable/retained/input read denominators. No fake editing commands or guides.
+- Put it outside `docs/tutorial`: Help's missing-catalog fallback scans that
+  Markdown tree, so merely omitting a catalog entry would not prevent fallback
+  discovery. Preserve runtime behavior and all active sources/catalog/manifest
+  and review records; do not activate a missing editing pipeline.
+- Add fast independent teaching-data arithmetic, strand, count, LF/CRLF semantic,
+  inactive-discovery and link checks to the existing tutorial-gap Python suite.
+  These check teaching examples, not engine, native GUI, experimental validity
+  or human scientific acceptance. Keep actual profiles and implementation
+  approval separate; no Rust build, model call, upload, order or release gate.
+- Verification before rebase: all 18 tutorial-gap tests pass; the 100-test
+  checkout/specialist suite has no failures and five declared skips. Whitespace
+  passes; roadmap remains 400 lines. Maintenance reports four OK, two expected
+  working-tree/manual-plan warnings and no failures.
+- Reconcile onto main `17f846eb`, retaining its gel-overlay arithmetic test and
+  labware history. All 19 combined tutorial-gap tests pass; the 100-test
+  checkout/specialist rerun again has no failures and five opt-in CLI skips.
+
 ## 2026-10-20 - Prepare Reference-Bound Base And Prime Editing Slices
 
 - Inspect local main `050c1030` after integrating the gel density commit and

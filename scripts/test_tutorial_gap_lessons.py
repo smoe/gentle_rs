@@ -74,6 +74,87 @@ class TutorialGapLessonTests(unittest.TestCase):
             self.assertIn("does **not** recover the missing residual", text)
             self.assertIn("same weighted curves appear in the PDF", text)
 
+    @staticmethod
+    def editing_teaching_data(prose):
+        block = prose.split("<!-- editing-teaching-data:start -->")[1].split(
+            "<!-- editing-teaching-data:end -->"
+        )[0]
+        return json.loads(block.split("```json", 1)[1].split("```", 1)[0])
+
+    def test_editing_draft_keeps_literal_edit_and_reverse_coordinate_expectations(self):
+        prose = (ROOT / "docs/tutorial_drafts/base_prime_editing.md").read_text(encoding="utf-8")
+        data = self.editing_teaching_data(prose)
+        reference = data["reference"]
+        self.assertEqual(reference, "ACGTAC")
+        self.assertEqual([edit["expected"] for edit in data["edits"]],
+                         ["ATGTAC", "ACGGGTAC", "ACAC"])
+        for edit in data["edits"]:
+            self.assertEqual(reference[edit["start"]:edit["end"]], edit["deleted"])
+            self.assertEqual(reference[:edit["start"]] + edit["inserted"] + reference[edit["end"]:],
+                             edit["expected"])
+        complement = str.maketrans("ACGT", "TGCA")
+        self.assertEqual(reference.translate(complement)[::-1], data["reverse_display"])
+        substitution = data["edits"][0]
+        self.assertEqual(substitution["expected"].translate(complement)[::-1],
+                         data["reverse_edited_display"])
+        local_start, local_end = data["reverse_target_interval"]
+        self.assertEqual([len(reference) - substitution["end"], len(reference) - substitution["start"]],
+                         [local_start, local_end])
+        self.assertEqual(data["reverse_display"][local_start:local_end], "G")
+        self.assertEqual(data["reverse_edited_display"][local_start:local_end], "A")
+        self.assertEqual(data["genomic_start_0based"] + substitution["start"], 1001)
+        self.assertEqual(data["genomic_start_0based"] + substitution["end"], 1002)
+        for boundary in (0, 3, len(reference)):
+            self.assertEqual(len(reference) - (len(reference) - boundary), boundary)
+
+    def test_editing_draft_counts_bystanders_without_claiming_outcome_probabilities(self):
+        prose = (ROOT / "docs/tutorial_drafts/base_prime_editing.md").read_text(encoding="utf-8")
+        toy = self.editing_teaching_data(prose)["toy_bystanders"]
+        self.assertEqual(toy["sequence"], "ACCCGTAA")
+        self.assertEqual([toy["sequence"][i] for i in toy["editable_positions"]], ["C", "C", "C"])
+        self.assertIn(toy["intended_position"], toy["editable_positions"])
+        self.assertEqual([i for i in toy["editable_positions"] if i != toy["intended_position"]],
+                         toy["expected_bystanders"])
+        self.assertEqual(toy["expected_bystanders"], [1, 3])
+        self.assertIn("no validated spacer, PAM or", prose)
+        self.assertIn("Possible edits are not measured", prose)
+
+    def test_editing_draft_preserves_denominators_and_lf_crlf_semantics(self):
+        prose = (ROOT / "docs/tutorial_drafts/base_prime_editing.md").read_text(encoding="utf-8")
+        data = self.editing_teaching_data(prose)
+        self.assertEqual(self.editing_teaching_data(prose.replace("\n", "\r\n")), data)
+        counts = data["counts"]
+        categories = counts["categories"]
+        self.assertEqual(set(categories), {"intended_only", "intended_plus_bystander", "other_substitutions",
+                                           "unexpected_indels", "unedited", "unclassified"})
+        self.assertTrue(all(type(value) is int and value >= 0 for value in categories.values()))
+        self.assertEqual(sum(categories.values()), counts["retained"])
+        self.assertEqual(counts["input"] - counts["quality_excluded"], counts["retained"])
+        self.assertEqual(counts["retained"] - categories["unclassified"], counts["callable"])
+        self.assertAlmostEqual(100 * categories["intended_only"] / counts["callable"], 23.5294117647)
+        self.assertAlmostEqual(100 * categories["intended_only"] / counts["retained"], 22.2222222222)
+        self.assertEqual(100 * categories["intended_only"] / counts["input"], 20)
+        for disclosure in ("23.53%", "22.22%", "20%", "unavailable, not 0%", "No untreated control",
+                           "total intended-edit presence cannot be calculated"):
+            self.assertIn(disclosure, prose)
+
+    def test_editing_draft_stays_outside_active_discovery_and_resolves_local_links(self):
+        draft = ROOT / "docs/tutorial_drafts/base_prime_editing.md"
+        prose = draft.read_text(encoding="utf-8")
+        self.assertFalse(draft.is_relative_to(ROOT / "docs/tutorial"), "Help fallback scans that tree")
+        for registry in ("catalog.json", "manifest.json", "review_manifest.json"):
+            self.assertNotIn(str(draft.relative_to(ROOT)),
+                             (ROOT / "docs/tutorial" / registry).read_text(encoding="utf-8"))
+        self.assertFalse((ROOT / "docs/tutorial/sources/base_prime_editing.json").exists())
+        for link in re.findall(r"\]\(([^)]+)\)", prose):
+            if not link.startswith(("https://", "http://", "#")):
+                self.assertTrue((draft.parent / link.split("#")[0]).is_file(), link)
+        for disclosure in ("Inactive teaching draft", "teaching data, not a GENtle request",
+                           "same engine report", "not a GENtle", "RNA 5' -> spacer | scaffold | RTT | PBS",
+                           "are **pending**", "No external tool is installed"):
+            self.assertIn(disclosure, prose)
+        self.assertNotRegex(prose, r"(?m)^(?:gentle_cli |cargo run |editing (?:intent|base-feasibility|prime-feasibility))")
+
     def test_png_is_original_eight_bit_grayscale_with_six_drawn_bands(self):
         payload = (GEL / "gel_sizing_synthetic.png").read_bytes()
         self.assertEqual(payload, generator.png_bytes())
