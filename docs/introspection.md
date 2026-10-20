@@ -675,6 +675,15 @@ host/session projections.
 
 ## 6. Reachability and parity
 
+`introspect capabilities` also returns additive `capability_maturity` metadata:
+the compiled protocol-owned catalog and explicit missing/ambiguous registry
+binding diagnostics. `introspect all` contains the identical projection under
+`capabilities`. This does not change capability readiness or filter by maturity.
+The catalog is unbound discovery, not a pass for the current runtime; scoped
+evidence, availability and approval are separate. See
+[Capability Maturity](capability_maturity.md). No new command, tool or operation
+is required; GUI Shell, CLI, MCP and scripting retain the shared route.
+
 Success criterion for the words-only model is twofold:
 
 1. **No control without a word path.** Every state-mutating control and every

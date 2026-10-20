@@ -7944,6 +7944,19 @@ Failure-handling policy for external adapters:
 
 ClawBio/OpenClaw integration scaffold schemas:
 
+- `gentle.clawbio_capability_maturity.v1`: generated discovery shared with
+  `introspect capabilities`/`introspect all`, plus per-skill
+  `CAPABILITY_MATURITY.json` projections. Each route has a stable
+  `capability_id` and ordered `capability_steps` referencing existing
+  `(source, name)` registry identities. Exact definition/request/workflow hashes
+  and explicit scoped evidence are separate from readiness and approval.
+  Discovery is always `unassessed`, with runtime binding and availability
+  `not_checked`. `skill-info`/`intents` add an optional `capability_maturity`
+  reference/status/hash without probing GENtle; old readers may ignore it.
+  The existing `capabilities` request mode, schemas, delegation and digest
+  algorithms are unchanged. Updated descriptors naturally change bound bytes
+  and require co-deployment/fresh approval where applicable. See
+  [scope, validation and non-claims](capability_maturity.md).
 - integration path:
   `integrations/clawbio/skills/gentle-cloning/`
 - included helper launchers:

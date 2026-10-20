@@ -27,6 +27,20 @@
           "skill": "gentle-cloning",
           "input": "examples/request_primer_preflight.json"
         }
+      ],
+      "capability_id": "gentle-pcr-primer-design/primer_design_preflight",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers preflight"
+            }
+          ]
+        }
       ]
     },
     {
@@ -87,6 +101,20 @@
             "reason": "Primer design persists a report and requires review of the stated biological ROI and constraints."
           }
         }
+      ],
+      "capability_id": "gentle-pcr-primer-design/conventional_pcr_design",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers design"
+            }
+          ]
+        }
       ]
     },
     {
@@ -127,6 +155,20 @@
             "required": true,
             "reason": "The operation resolves transcript geometry, selects an orderable oligo pool, persists its report, and may execute exhaustive local genomic BLAST searches against an explicitly named content-bound reference."
           }
+        }
+      ],
+      "capability_id": "gentle-pcr-primer-design/terminal_exon_sequence_specific_rt_primer_pool",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers design-terminal-exon-rt-pool"
+            }
+          ]
         }
       ]
     },
@@ -180,6 +222,20 @@
             "required": true,
             "reason": "qPCR design persists a report and requires review of primer, probe, target, and measurement assumptions."
           }
+        }
+      ],
+      "capability_id": "gentle-pcr-primer-design/qpcr_taqman_design",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers design-qpcr"
+            }
+          ]
         }
       ]
     },
@@ -297,6 +353,20 @@
             "reason": "Transcript-panel design persists assays and requires review of transcript scope, cDNA synthesis, junction evidence, and product-size policy."
           }
         }
+      ],
+      "capability_id": "gentle-pcr-primer-design/transcript_assay_panel_design",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers design-transcript-assay-panel"
+            }
+          ]
+        }
       ]
     },
     {
@@ -331,6 +401,20 @@
               "ignore_case": true
             }
           }
+        }
+      ],
+      "capability_id": "gentle-pcr-primer-design/normalize_isoform_study_request",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers plan-gene-isoform-study"
+            }
+          ]
         }
       ]
     },
@@ -382,6 +466,20 @@
             "required": true,
             "reason": "Approval authorizes GENtle to apply the reviewed normalized planning request and emit one exact operation batch; it does not validate the biology."
           }
+        }
+      ],
+      "capability_id": "gentle-pcr-primer-design/approved_isoform_study_plan",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers plan-gene-isoform-study"
+            }
+          ]
         }
       ]
     },
@@ -436,6 +534,20 @@
             "reason": "The complete ordered operation set is independently approval-bound and must match the approved plan byte-for-byte before any assay operation executes."
           }
         }
+      ],
+      "capability_id": "gentle-pcr-primer-design/approved_isoform_operation_batch",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers execute-gene-isoform-study-workflow"
+            }
+          ]
+        }
       ]
     },
     {
@@ -470,6 +582,20 @@
               "ignore_case": true
             }
           }
+        }
+      ],
+      "capability_id": "gentle-pcr-primer-design/compose_isoform_study_workflow_batch",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers compose-gene-isoform-study-workflow-batch"
+            }
+          ]
         }
       ]
     },
@@ -519,6 +645,20 @@
               "default": ".gentle/isoform-study-reuse-proposal.json"
             }
           }
+        }
+      ],
+      "capability_id": "gentle-pcr-primer-design/inspect_isoform_study_checkpoint_reuse",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers inspect-gene-isoform-study-reuse"
+            }
+          ]
         }
       ]
     },
@@ -580,6 +720,20 @@
             "required": true,
             "reason": "The approval binds every ordered plan/workflow file hash and operation digest; GENtle prevalidates the complete set before the first operation and executes it through one state-bound command."
           }
+        }
+      ],
+      "capability_id": "gentle-pcr-primer-design/approved_isoform_study_workflow_batch",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers execute-gene-isoform-study-workflow-batch"
+            }
+          ]
         }
       ]
     },
@@ -646,6 +800,20 @@
             "required": true,
             "reason": "The approval binds one exact checkpoint-transfer proposal. GENtle revalidates the baseline, executable, manifest, snapshot, and operation prefix before importing into detached execution."
           }
+        }
+      ],
+      "capability_id": "gentle-pcr-primer-design/approved_isoform_study_checkpoint_reuse",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers execute-gene-isoform-study-workflow-batch"
+            }
+          ]
         }
       ]
     },
@@ -732,6 +900,20 @@
             "reason": "Import persists a provenance-bearing assessment; supplied validation claims remain untrusted annotations."
           }
         }
+      ],
+      "capability_id": "gentle-pcr-primer-design/imported_primer_review",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers import-external-pairs"
+            }
+          ]
+        }
       ]
     },
     {
@@ -791,6 +973,20 @@
             "reason": "Specificity planning selects one primer pair and writes a handoff for an explicitly named genomic reference space."
           }
         }
+      ],
+      "capability_id": "gentle-pcr-primer-design/genomic_specificity_plan",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers specificity-plan"
+            }
+          ]
+        }
       ]
     },
     {
@@ -849,6 +1045,20 @@
             "required": true,
             "reason": "Specificity planning selects one primer pair and writes a handoff for an explicitly named transcriptome reference space."
           }
+        }
+      ],
+      "capability_id": "gentle-pcr-primer-design/transcriptome_specificity_plan",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers specificity-plan"
+            }
+          ]
         }
       ]
     },
@@ -959,6 +1169,31 @@
             "reason": "Dual-space specificity planning selects a primer pair and writes the transcriptome/cDNA handoff."
           }
         }
+      ],
+      "capability_id": "gentle-pcr-primer-design/dual_space_specificity_plan",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers specificity-plan"
+            }
+          ]
+        },
+        {
+          "step_index": 1,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers specificity-plan"
+            }
+          ]
+        }
       ]
     },
     {
@@ -1019,6 +1254,20 @@
             "reason": "Collection specificity may launch many local searches; confirm the member set and prepared target space first."
           }
         }
+      ],
+      "capability_id": "gentle-pcr-primer-design/collection_primer_specificity",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "collections run primer-specificity"
+            }
+          ]
+        }
       ]
     },
     {
@@ -1066,6 +1315,20 @@
             "required": true,
             "reason": "Routine composition writes a digest-bound report from explicitly selected assay evidence."
           }
+        }
+      ],
+      "capability_id": "gentle-pcr-primer-design/compose_assay_routine",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers compose-gene-assay-routine"
+            }
+          ]
         }
       ]
     },
@@ -1122,6 +1385,20 @@
             "reason": "Experimental handoff selects a persisted panel and writes report, order-table, and gel artifacts."
           }
         }
+      ],
+      "capability_id": "gentle-pcr-primer-design/experimental_assay_report",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers experimental-handoff"
+            }
+          ]
+        }
       ]
     },
     {
@@ -1149,6 +1426,20 @@
             "shell_line": "primers list-reports",
             "timeout_secs": 180
           }
+        }
+      ],
+      "capability_id": "gentle-pcr-primer-design/primer_report_list",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers list-reports"
+            }
+          ]
         }
       ]
     },
@@ -1184,6 +1475,20 @@
               "ignore_case": true
             }
           }
+        }
+      ],
+      "capability_id": "gentle-pcr-primer-design/primer_report_show",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers show-report"
+            }
+          ]
         }
       ]
     },
@@ -1232,6 +1537,20 @@
             "reason": "Primer-report export writes or replaces an external JSON artifact."
           }
         }
+      ],
+      "capability_id": "gentle-pcr-primer-design/primer_report_export",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers export-report"
+            }
+          ]
+        }
       ]
     },
     {
@@ -1260,6 +1579,20 @@
             "shell_line": "primers list-qpcr-reports",
             "timeout_secs": 180
           }
+        }
+      ],
+      "capability_id": "gentle-pcr-primer-design/qpcr_report_list",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers list-qpcr-reports"
+            }
+          ]
         }
       ]
     },
@@ -1295,6 +1628,20 @@
               "ignore_case": true
             }
           }
+        }
+      ],
+      "capability_id": "gentle-pcr-primer-design/qpcr_report_show",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers show-qpcr-report"
+            }
+          ]
         }
       ]
     },
@@ -1343,6 +1690,20 @@
             "reason": "qPCR-report export writes or replaces an external JSON artifact."
           }
         }
+      ],
+      "capability_id": "gentle-pcr-primer-design/qpcr_report_export",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers export-qpcr-report"
+            }
+          ]
+        }
       ]
     },
     {
@@ -1390,6 +1751,20 @@
             "required": true,
             "reason": "Protocol rendering selects a protocol and writes or replaces an SVG artifact."
           }
+        }
+      ],
+      "capability_id": "gentle-pcr-primer-design/pcr_protocol_cartoon",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "protocol-cartoon render-svg"
+            }
+          ]
         }
       ]
     },
@@ -1440,6 +1815,15 @@
             "reason": "The selected workflow may persist or materialize PCR products; review its operations before execution."
           }
         }
+      ],
+      "capability_id": "gentle-pcr-primer-design/cdna_product_gel_workflow",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "workflow",
+          "scope": "runtime_unregistered",
+          "registry_refs": []
+        }
       ]
     },
     {
@@ -1461,6 +1845,40 @@
             "required": true,
             "reason": "The demo executes a committed primer-design workflow and writes project/report artifacts."
           }
+        }
+      ],
+      "capability_id": "gentle-pcr-primer-design/offline_conventional_pcr_demo",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "workflow",
+          "scope": "workflow",
+          "registry_refs": [
+            {
+              "source": "engine_operation",
+              "name": "LoadFile"
+            },
+            {
+              "source": "engine_operation",
+              "name": "SetParameter"
+            },
+            {
+              "source": "engine_operation",
+              "name": "ExtractRegion"
+            },
+            {
+              "source": "engine_operation",
+              "name": "DesignPrimerPairs"
+            },
+            {
+              "source": "engine_operation",
+              "name": "ExportPrimerDesignReport"
+            },
+            {
+              "source": "engine_operation",
+              "name": "RenderProtocolCartoonSvg"
+            }
+          ]
         }
       ]
     },
@@ -1484,6 +1902,32 @@
             "reason": "The demo executes a committed transcript-panel workflow and writes project/report artifacts."
           }
         }
+      ],
+      "capability_id": "gentle-pcr-primer-design/offline_patz1_transcript_panel_demo",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "workflow",
+          "scope": "workflow",
+          "registry_refs": [
+            {
+              "source": "engine_operation",
+              "name": "LoadFile"
+            },
+            {
+              "source": "engine_operation",
+              "name": "SetParameter"
+            },
+            {
+              "source": "engine_operation",
+              "name": "DesignTranscriptAssayPanel"
+            },
+            {
+              "source": "engine_operation",
+              "name": "ComposeGeneTranscriptAssayRoutine"
+            }
+          ]
+        }
       ]
     },
     {
@@ -1505,6 +1949,24 @@
             "required": true,
             "reason": "The demo imports synthetic pairs and writes a provenance-bearing project report."
           }
+        }
+      ],
+      "capability_id": "gentle-pcr-primer-design/offline_imported_primer_demo",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "workflow",
+          "scope": "workflow",
+          "registry_refs": [
+            {
+              "source": "engine_operation",
+              "name": "LoadFile"
+            },
+            {
+              "source": "engine_operation",
+              "name": "ImportExternalPrimerPairs"
+            }
+          ]
         }
       ]
     },
@@ -1528,6 +1990,20 @@
             "reason": "The demo selects a primer pair and writes a specificity handoff artifact."
           }
         }
+      ],
+      "capability_id": "gentle-pcr-primer-design/specificity_plan_only_demo",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers specificity-plan"
+            }
+          ]
+        }
       ]
     },
     {
@@ -1544,6 +2020,20 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_missing_primer3_preflight.json"
+        }
+      ],
+      "capability_id": "gentle-pcr-primer-design/missing_primer3_preflight_demo",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "primers preflight"
+            }
+          ]
         }
       ]
     }

@@ -4,6 +4,10 @@
   "description": "Focused OpenClaw/ClawBio primer-design orchestration that delegates deterministic PCR, RT-PCR, SYBR, TaqMan, imported-primer review, specificity, multi-study approval batching, and assay-composition work to GENtle through the existing gentle-cloning runtime.",
   "version": "0.7.0",
   "status": "mvp",
+  "capability_maturity": {
+    "schema": "gentle.clawbio_capability_maturity.v1",
+    "path": "CAPABILITY_MATURITY.json"
+  },
   "has_script": false,
   "has_tests": true,
   "has_demo": false,

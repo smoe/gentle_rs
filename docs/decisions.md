@@ -511,6 +511,24 @@ discussion ledger, permission record, participant claim, freshness model, or
 scientific interpretation. External systems may retain the receipt, but own
 their own request identity, policy, and interpretation records.
 
+Capability-maturity discovery is a generated projection of explicit intent and
+plan-step bindings plus a separate public evidence archive. Stable IDs refer to
+existing registry identities; missing or ambiguous identities remain unassessed.
+Parity/reachability, tutorial review and release prose never become execution,
+native, performance or biological passes automatically. Discovery does not
+probe a runtime and always remains unassessed. Scoped assessment requires the
+exact capability definition, tested source/binary, platform/architecture,
+profile/features, input class and resource hashes for one evidence kind.
+Historical mismatched evidence remains inspectable, not applicable; conflicting
+fail/incomplete/withdrawn evidence cannot be overridden by a passing record.
+Content hashes bind evidence but do not authenticate its author or correctness.
+Availability, maturity, execution outcome and existing approvals remain separate.
+No maturity field grants mutation, network, order or release permission, and no
+feedback collection/sharing or telemetry is introduced. Optional metadata must
+not disable ordinary discovery/execution when missing or malformed. Existing
+descriptor/request digest algorithms stay unchanged; an updated descriptor must
+be co-deployed and approved afresh where its bytes participate in approval.
+
 When a caller needs a policy-aware analysis-run record, the provider receipt
 and caller-owned run remain two records joined by content hashes rather than
 one shared mutable object. A post-run skill adapter may prepare a typed intake

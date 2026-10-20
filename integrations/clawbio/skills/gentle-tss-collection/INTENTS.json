@@ -46,6 +46,20 @@
             }
           }
         }
+      ],
+      "capability_id": "gentle-tss-collection/preview_annotated_starts",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "promoters tss-inventory"
+            }
+          ]
+        }
       ]
     },
     {
@@ -92,6 +106,20 @@
             "reason": "Materialization derives project sequences and persists a named collection from explicit preview-bound TSS identities."
           }
         }
+      ],
+      "capability_id": "gentle-tss-collection/materialize_reviewed_starts",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "promoters tss-materialize"
+            }
+          ]
+        }
       ]
     },
     {
@@ -123,6 +151,20 @@
             "shell_line": "promoters tss-list",
             "timeout_secs": 180
           }
+        }
+      ],
+      "capability_id": "gentle-tss-collection/list_stored_collections",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "promoters tss-list"
+            }
+          ]
         }
       ]
     },
@@ -164,6 +206,20 @@
             }
           }
         }
+      ],
+      "capability_id": "gentle-tss-collection/validate_stored_collection",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "promoters tss-collection"
+            }
+          ]
+        }
       ]
     },
     {
@@ -203,6 +259,20 @@
               "ignore_case": true
             }
           }
+        }
+      ],
+      "capability_id": "gentle-tss-collection/open_collection_windows",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "ui open"
+            }
+          ]
         }
       ]
     },
@@ -248,6 +318,20 @@
             "required": true,
             "reason": "Forgetting mutates the project registry even though member sequences and lineage are retained."
           }
+        }
+      ],
+      "capability_id": "gentle-tss-collection/forget_collection_registry_entry",
+      "capability_steps": [
+        {
+          "step_index": 0,
+          "request_mode": "shell",
+          "scope": "runtime_command",
+          "registry_refs": [
+            {
+              "source": "glossary_command",
+              "name": "promoters tss-forget"
+            }
+          ]
         }
       ]
     }

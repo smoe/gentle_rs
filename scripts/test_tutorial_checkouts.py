@@ -22,6 +22,8 @@ import zlib
 
 from scripts import check_tutorial_checkouts as checker
 from scripts import check_documentation_status as doc_status
+from scripts import generate_capability_maturity as maturity_generator
+from scripts.test_capability_maturity import populate as populate_maturity_fixture
 
 
 class DocumentationStatusTests(unittest.TestCase):
@@ -262,6 +264,33 @@ class TutorialCheckoutTests(unittest.TestCase):
                 self.assertEqual(checker.git(target, "log", "-1", "--format=%H", "--", "evidence.json")
                                  .decode().strip(), revision)
         self.assertEqual(checker.git(self.root, "status", "--porcelain"), before)
+
+    def test_capability_maturity_survives_real_checkouts_and_detects_missing_rules(self):
+        populate_maturity_fixture(self.root)
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "public maturity inputs")
+        for mode in checker.MODES:
+            with self.subTest(mode=mode[0]):
+                target = Path(self.tmp.name) / f"maturity-{mode[0]}"
+                checker.prepare_checkout(self.root, target, mode)
+                for relative, expected in maturity_generator.generate(target).items():
+                    self.assertEqual((target / relative).read_bytes(), expected, relative)
+                info = maturity_generator.contract.skill_info(target / maturity_generator.SKILL_DIR / "gentle-cloning")
+                self.assertEqual(info["status"], "available")
+                self.assertEqual(info["runtime_binding"], "not_checked")
+        for index, relative in enumerate((maturity_generator.OUTPUT_PATH,
+                "integrations/clawbio/skills/gentle-cloning/gentle_cloning.py")):
+            unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                       if not line.startswith(relative.encode() + b" "))
+            self.assertNotEqual(unprotected, attributes)
+            target = Path(self.tmp.name) / f"maturity-unprotected-{index}"
+            checker.prepare_checkout(self.root, target, checker.MODES[1], unprotected)
+            self.assertIn(b"\r\n", (target / relative).read_bytes())
+            outputs = maturity_generator.generate(target)
+            self.assertTrue(any((target / path).read_bytes() != expected
+                                for path, expected in outputs.items()))
 
     def test_missing_lf_rule_changes_digest_and_explicit_overlay_restores_it(self):
         (self.root / ".gitattributes").write_bytes(b"# No protection\n")

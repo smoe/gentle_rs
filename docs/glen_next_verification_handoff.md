@@ -9,13 +9,21 @@ and artifact locations. No new interim freeze, publication or scientific approva
 Use a clean checkout and explicit run-owned `CARGO_TARGET_DIR`.
 
 ```sh
+cargo check -q --locked --tests
 cargo test --locked -p gentle-protocol labware
 cargo test --locked -p gentle-render labware
 cargo test --locked --lib labware_ -- --test-threads=1
+cargo test --locked --lib planning_wetlab_ -- --test-threads=1
 cargo test --locked --lib rack_openscad_all_templates_preserve_bottom_floor_and_open_top -- --test-threads=1
 cargo check -q --locked
 python3 -m unittest scripts.test_labware_models -v
 ```
+
+Keep default GUI features enabled for the test-target check: library-only
+`cargo check` does not compile `src/app/tests.rs`. The missing carrier-template
+import there is repaired, but the new source still needs external Rust checks.
+Claude's reported 20/20 ranking run used a temporary import fix; it is not a
+pass for the unpatched `28d964e6` or an acceptance claim for this branch.
 
 Check both Safe-Lock support modes, exact 4x9 dimensions/A1/D9, refusal reasons,
 generic-op/shared-shell/GUI labels, unverified disclosures and unchanged project

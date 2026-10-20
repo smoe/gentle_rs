@@ -277,6 +277,7 @@ jobs:
       - run: python3 -m unittest scripts.test_gui_startup_summary -v
       - run: python3 -m unittest scripts.test_container -v
       - run: python3 -m unittest scripts.test_tutorial_checkouts -v
+      - run: python3 -m unittest scripts.test_capability_maturity -v
       - run: python3 -m unittest scripts.test_gel_tapestation.TapeStationFixtureTests -v
       - run: python3 -m unittest scripts.test_primer_specificity_multi_tutorial -v
       - run: python3 -m unittest scripts.test_synthetic_biology_tutorial -v
@@ -446,6 +447,7 @@ jobs:
       - name: ClawBio skill parity checks
         run: |
           python3 scripts/generate_clawbio_trigger_keywords.py --check
+          python3 scripts/generate_capability_maturity.py --check
           pytest integrations/clawbio/skills/gentle-cloning/tests/ -q
 
       - name: Workflow example runtime tests
@@ -645,6 +647,7 @@ jobs:
       - name: ClawBio skill parity checks
         run: |
           python3 scripts/generate_clawbio_trigger_keywords.py --check
+          python3 scripts/generate_capability_maturity.py --check
           pytest integrations/clawbio/skills/gentle-cloning/tests/ -q
 
       - name: Workflow example runtime tests
@@ -838,6 +841,8 @@ jobs:
       - name: ClawBio skill parity checks
         run: |
           python scripts/generate_clawbio_trigger_keywords.py --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/generate_capability_maturity.py --check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pytest integrations/clawbio/skills/gentle-cloning/tests/ -q
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

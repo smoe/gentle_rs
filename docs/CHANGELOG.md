@@ -1,5 +1,15 @@
 # GENtle Changelog
 
+## 2026-10-20 - Restore The Carrier GUI Test Type Import
+
+- Add the missing `RackPhysicalTemplateKind` import to the explicit
+  `crate::engine` list in `src/app/tests.rs`, used by the three carrier-label
+  assertions. Preserve production behavior and the existing regression.
+- Include a default-feature `cargo check --tests` and ranking-guard rerun in
+  the carrier handoff. Library-only checks do not compile the GUI test module;
+  Claude's temporary-fix 20/20 result does not certify the reverted source.
+  Rust verification remains with Glen/CI; no local Rust or new pass is claimed.
+
 ## 2026-10-20 - Bind PCR96 Carrier To The Official Tube Drawing
 
 - Meet the conditional source gate using Eppendorf's Technical Drawings tab:
@@ -82,6 +92,44 @@
 - Required integration prerequisite: add the missing existing `eframe::egui`
   import in main's planning-protocol UI, which otherwise prevents all desktop
   root checks/tests from compiling. No planning behavior or dependency changes.
+
+## 2026-10-20 - Separate Portable Skill Discovery From Scoped Capability Evidence
+
+- Shorten generic ClawBio discovery to one bounded paragraph and retain the
+  workflow inventory in a linked skill reference. Preserve generated triggers,
+  legacy route IDs/plans, modes, approvals and delegation/digest algorithms.
+  Keep the inner agent's system prompt, documentation bundle and bounded
+  project-fact context unchanged; add a source-level regression for their
+  separation from external skill metadata, without claiming live-model proof.
+- Add stable IDs and ordered step bindings for all 97 routes across the three
+  skills. Project explicit catalog/request/workflow/fixture bytes and a separate
+  public evidence archive into a protocol-owned typed catalog and optional
+  per-skill sidecars. `skill-info`/`intents` expose additive references without
+  probing GENtle; shared introspection returns the same catalog with honest
+  missing/ambiguous registry diagnostics. Ordinary use survives absent/bad
+  metadata. Updated descriptor bytes require co-deployment and fresh approval
+  where already bound; no old approval is silently transferred.
+- Keep maturity, availability, execution outcome and permissions separate.
+  Initial evidence is empty, not mined from parity/tutorial/release prose;
+  every route remains unassessed. Scoped assessment distinguishes evidence
+  kinds and exact runtime/input/resource identities, retains historical scope
+  and gives failures/incomplete/withdrawn records precedence over a pass.
+  No runtime probes, new execution policy, telemetry or private-output changes.
+- Add offline metadata/compatibility/tamper checks, scoped raw-byte checkout
+  rules, real LF/CRLF freshness and missing-rule negative controls in the fast
+  CI gate. Author Rust protocol and read-only shared-shell regressions; their
+  execution/build/check and native acceptance remain with Glen/CI. An initial
+  broad Python run inadvertently reached an existing Cargo-backed graphics
+  case and was interrupted; exclude those two cases from the offline rerun.
+  No Rust verification is claimed. No push or release/biological claim;
+  previous goal stays paused.
+- Offline checks: 85 metadata/checkout tests, 112 wrapper tests (two Cargo-backed
+  graphics cases excluded), and 24 focused descriptor tests pass. The initial
+  broad run had one descendant-startup timing assertion fail; the unchanged
+  test passes in the offline rerun. Local ClawBio `4929f33` accepts all 97
+  updated routes in a metadata-only validator check. Both generators, scoped
+  formatting and whitespace pass; session-close reports four OK, two expected
+  worktree/plan warnings and no failures. Unrelated `outputs/` stays untouched.
 
 ## 2026-10-19 - Guard Absolute Cloning Ranking Policy Against Drift
 

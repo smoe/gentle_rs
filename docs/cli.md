@@ -689,6 +689,13 @@ Catalog path note:
 
 ## ClawBio/OpenClaw skill scaffold
 
+Short skill descriptions select workflows; they do not certify them. Shared
+`introspect capabilities` includes optional capability-maturity discovery, and
+ClawBio `skill-info`/`intents` advertise the generated sidecar without launching
+GENtle. `capabilities` keeps its existing meaning. Missing or stale metadata
+remains unassessed and does not disable normal use. See the
+[evidence and compatibility contract](capability_maturity.md).
+
 GENtle ships a copy-ready ClawBio skill scaffold at:
 
 - `integrations/clawbio/skills/gentle-cloning/`

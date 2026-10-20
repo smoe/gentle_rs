@@ -58,6 +58,34 @@ fn labware_carrier_templates_round_trip_shell_and_generic_operations() {
 }
 
 #[test]
+fn capability_maturity_introspection_is_shared_read_only_and_not_ui_discovery() {
+    let mut engine = GentleEngine::default();
+    let before = serde_json::to_value(engine.snapshot()).unwrap();
+    let journal_before = engine.journal_len();
+    let result = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect capabilities").unwrap(),
+    )
+    .unwrap();
+    assert!(!result.state_changed);
+    let report = &result.output["capability_maturity"];
+    assert_eq!(report["status"], "available");
+    let catalog: gentle_protocol::capability_maturity::CapabilityMaturityCatalog =
+        serde_json::from_value(report["catalog"].clone()).unwrap();
+    catalog.validate().unwrap();
+    assert_eq!(catalog.capabilities.len(), 97);
+    assert_eq!(catalog.runtime_binding, "not_checked");
+    assert_eq!(catalog.availability, "not_checked");
+    let all =
+        execute_shell_command(&mut engine, &parse_shell_line("introspect all").unwrap()).unwrap();
+    assert_eq!(all.output["capabilities"]["capability_maturity"], *report);
+    let ui = execute_shell_command(&mut engine, &parse_shell_line("ui intents").unwrap()).unwrap();
+    assert!(ui.output.get("capability_maturity").is_none());
+    assert_eq!(serde_json::to_value(engine.snapshot()).unwrap(), before);
+    assert_eq!(engine.journal_len(), journal_before);
+}
+
+#[test]
 fn labware_generic_op_route_preserves_profiles_models_and_project_state() {
     let mut engine = GentleEngine::from_state(ProjectState::default());
     let before = serde_json::to_value(engine.state()).unwrap();

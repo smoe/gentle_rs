@@ -1474,6 +1474,12 @@ ClawBio/OpenClaw compatibility direction:
   (`commands.sh`, `environment.yml`, checksums).
 - Keep command contracts explicit in request payloads so orchestration layers
   can route high-level asks while execution remains replayable.
+- Keep short portable skill discovery separate from generated, protocol-owned
+  capability-maturity records. `introspect capabilities` exposes the same
+  compiled catalog used to generate optional ClawBio sidecars. Registry
+  coverage is not scientific validation; evidence is scoped to exact tested
+  runtime/input/resource identities and never changes readiness or permissions.
+  See [the contract](capability_maturity.md) and DEC-015.
 - The wrapper is also the process-supervision boundary. Status-only `SIGUSR1`
   targets the exact active GENtle child, never its process group; GENtle owns
   any downstream Primer3 status request. `SIGINT`/`SIGTERM` terminate the
