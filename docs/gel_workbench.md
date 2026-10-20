@@ -237,10 +237,41 @@ remain readable and can verify without migration. New `import_profile` requests
 cannot claim `signed_residual`; use the algebra operation. Legacy/unverifiable
 records remain inspectable, but **report export refuses them**.
 
-Reference overlays, fitted/manual display factors and changes to the existing
-comparison-page bin-total plot are deferred. The latter is labelled NOT a density;
-its bin-width-sensitive appearance is a separate display follow-up, not changed
-scientific weights or a silent revision of existing report pages.
+Reference overlays and fitted/manual display factors remain deferred. Ordinary
+comparisons now offer the separate, explicit display mode below; the signed
+algebra v1 replay and its probability-summary prohibition are unchanged.
+
+### Comparison Density Display
+
+**Verify and display saved comparison** replays the saved report in the worker
+before drawing the profile panel and native summary/QQ. Failure shows a reason,
+not a trusted curve. Plain CLI `inspect_comparison` remains raw, unverified
+inspection for diagnosing legacy/edited records. PDF/JSON export verifies again;
+no GUI cache authorizes it. Replay compares the complete v1 report, including
+warnings. Future changes to comparison algorithms or warning prose need an
+explicit compatibility policy; this slice does not change those frozen results.
+
+The session-only GUI selector defaults to **Signal per size width**. It divides
+each frozen common-bin integral by its width and labels units per bp/kDa. This
+conserves area and avoids unequal-bin height artifacts; it is not unit-area
+normalization or calibrated mass/molar density. The panel uses one common
+numeric axis, never independent per-curve maximum scaling. Equal units do not
+establish matched exposure, contrast, loading or calibration. Different source
+hashes establish different retained identities, not different exposure settings.
+CDF/QQ remain shape comparisons on the recorded valid support. Missing/excluded
+intervals are hatched, zero remains zero, and the all-zero axis fallback is
+disclosed. Invalid/overflowing density geometry is refused, not clipped.
+
+Choose **Legacy bin integrals** to retain the old display, then explicitly
+prepare the selected view again. Revision, comparison or mode changes discard
+the old cache immediately; late/canceled/closed/project-replaced results never
+install. A busy worker is not silently switched: wait, then prepare the selected
+mode. Only the shared profile panel is rasterized, not a second page of QQ/cards.
+The same selector beside PDF export controls comparison pages; it creates no
+project edit or undo checkpoint. Shared-Shell exports still retain their normal
+external-operation journal receipt. CLI/MCP/agents use the same export request.
+
+See [the hand-calculable unequal-bin lesson](tutorial/10-03_measured_gel_sizing_gui_cli.md#optional-compare-signal-density-rather-than-bin-totals).
 
 ## Export The Saved Before/After Report
 
@@ -259,6 +290,7 @@ SVG hover remains available in existing per-analysis SVG exports; PDF is static.
 ```sh
 gentle_cli --state gels.json gel-image workbench '{"action":"export","path":"gel-comparison.pdf","title":"Before and after cleanup","analysis_ids":["before_A1","after_L1"],"comparison_ids":["cleanup-cell1"]}'
 gentle_cli --state gels.json gel-image workbench '{"action":"export","path":"gel-algebra.pdf","title":"Exploratory signed residual","analysis_ids":[],"algebra_ids":["cell1-residual"]}'
+gentle_cli --state gels.json gel-image workbench '{"action":"export","path":"gel-density.pdf","title":"Before and after cleanup","analysis_ids":["before_A1","after_L1"],"comparison_ids":["cleanup-cell1"],"comparison_display":"signal_density_per_size"}'
 ```
 
 Use `.json` instead for complete portable machine-readable results. Exports
@@ -266,6 +298,11 @@ never overwrite existing files and are external writes, not undoable project
 edits. The new report does not append the manufacturer's complete PDFs or copy
 its Region Tables automatically; originals remain retained in the project.
 An unavailable encrypted raw trace stays unavailable in every presentation.
+`comparison_display` is optional: omission and explicit `bin_integral` produce
+the byte-identical legacy comparison SVG. `signal_density_per_size` changes only
+the profile display. The field is refused with JSON or an empty comparison
+selection. JSON always retains frozen integrals and unchanged statistics. No
+scientific report schema or state migration is introduced.
 `algebra_ids` is optional and ordered (at most eight, like each other record
 kind). Selected results must verify again; no stale GUI cache authorizes export.
 Residual pages and complete wrapped operand/warning appendices follow the
@@ -480,3 +517,84 @@ External protocol/parity/matrix/introspection checks and the remaining three
 native paths are still required; follow the
 [bounded next-check handoff](glen_next_verification_handoff.md#catalog-parity-repair-and-gel-return-2026-10-20).
 Live-model, package, physical-host and scientific acceptance remain separate.
+
+### Comparison-Density Verification (2026-10-20)
+
+Base `bb1686bd3a9283f1b9e99d9c5c55ddee3e9d7410` plus the uncommitted density
+slice, Darwin 27 arm64, Rust/Cargo `1.100.0-beta.5`; lockfile SHA-256
+`9c6515feac98ed71a71b68a0e756560e5a8703ee91429dd49c35df8af04a7b95`.
+Use the serial test/debug-symbol and Swift-cache environment above; Cargo
+profiles, dependencies and scientific fixtures are unchanged.
+
+- Renderer: 26 pass, including the pre-refactor legacy SVG checksum, explicit
+  integral equivalence, unequal/split bins, preserved area, common numeric axes,
+  bp/kDa, missing/zero and unsafe density refusal.
+- Root `gel_workbench`: 68 pass, three opt-in writers ignored; the new density
+  writer also passes its explicit invocation. Existing real before/after and
+  signed-algebra regressions pass in this filter. Overlapping filter counts
+  must not be added as independent coverage.
+- GUI-adapter filter: 30 pass, including off-frame rasterization, shared panel
+  identity, immutable state/cache reuse and stale/mode/project/cancel/close/reopen
+  rejection. These are headless egui checks, not native acceptance.
+- Protocol at that base: five request/store tests pass; the sixth
+  canonical-parity gate fails on the unchanged `catalog doctor` MCP `ShellPassthrough` override
+  requiring `NotApplicable`. It is not a display-mode failure or a green parity
+  verdict. No registry repair or weakened check is included in this slice.
+- Catalog and manifest freshness checks pass without regenerating either file.
+  The library `tutorial_check_passes_on_committed_tree` generation/drift check
+  passes with its existing fixture-backed BLAST helper, not a real CLI/native
+  or biological acceptance run.
+  The Python checkout/lesson suite passes its 86 existing tests plus the new
+  independent density arithmetic test; the current 14 lesson tests were also
+  rerun. The 10.03 chapter is hand-written, not generated from its source metadata.
+- `cargo check -q --locked --offline`, formatting and whitespace checks pass.
+  Session-close reports four OK, two expected warnings (working patch and manual
+  plan-fidelity confirmation), no failures; roadmap remains 400 lines.
+
+The six density commands replay through the shared Shell, with exact common-bin
+weights `[25,75,200]`, total 300, identity QQ and zero descriptive distances.
+JSON retains frozen integrals; mode changes/export create no project edit or
+undo checkpoint. Shell external-operation journal receipts remain intentional.
+An initial test incorrectly equated that journal with undo history; its corrected
+assertion checks state, mutation revision and undo/redo depth instead. No production
+journaling behavior was changed. The first compile also caught a missing GUI
+job-status match arm, repaired before execution. Linking retains the existing
+16-MiB unwind-table warning.
+
+The explicit writer produces two two-page vector PDFs from those saved results,
+with selectable text and no image XObjects. All four pages were rendered with
+Poppler and inspected: the density overlay is flat at 1, while legacy integrals
+show heights 25/75/200; CDF, QQ and summaries remain identical. The empty overview
+is explicitly disclosed because the synthetic lesson supplies no image analyses;
+selected real before/after overviews retain their existing path. Local receipt
+hashes, **not portable goldens**: density
+`b057fe7b99d452d2a979c888aa88dc196e152a1c34fcd9cba3508be9edb7e102`;
+integrals `821408683bb0178cc4d4977920cc646b9118f7759a2bbb638ed9cc42211ba914`.
+
+```bash
+cargo test --locked --offline -p gentle-protocol gel_workbench -- --test-threads=1
+cargo test --locked --offline -p gentle-render gel_workbench -- --test-threads=1
+cargo test --locked --offline --lib gel_workbench -- --test-threads=1
+cargo test --locked --offline --lib gel_image_ui -- --test-threads=1
+cargo test --locked --offline --lib tutorial_catalog_check_passes_on_committed_tree -- --test-threads=1
+cargo test --locked --offline --lib tutorial_manifest_check_passes_on_committed_tree -- --test-threads=1
+cargo test --locked --offline --lib tutorial_check_passes_on_committed_tree -- --test-threads=1
+# Empty, existing directory; emits density.pdf, integrals.pdf, comparison.json.
+GENTLE_GEL_DENSITY_REVIEW_DIR=/absolute/empty/review-dir cargo test --locked --offline --lib comparison_density_write_review_pdfs -- --ignored --test-threads=1
+python3 -m unittest scripts.test_tutorial_checkouts scripts.test_tutorial_gap_lessons -q
+```
+
+The GUI/freshness filters and manual writer were invoked from Cargo's compiled
+test executable with `RUST_MIN_STACK=16777216`; equivalent Cargo commands are
+shown for reproducibility. Windows/Linux, native input/responsiveness, live-agent,
+full-workspace, scientific and release acceptance remain unclaimed. No push,
+new dependency, statistical inference, fitted scale or release gate is added.
+
+Rebase reconciliation onto local main `09639034f83de6f985c761c5871b8b886639da84`
+preserves the Linux return above and upstream catalog repair `91070ae4`.
+On that tree plus this density slice, the protocol `gel_workbench` filter now
+passes all six tests, including canonical parity; 14 Python lesson tests,
+`cargo check -q --locked --offline`, `cargo fmt --check` and whitespace pass.
+The earlier 68/26/30 Rust results remain scoped to their original base; they
+were not rerun merely to relabel the SHA. Full unfiltered protocol, external
+parity/matrix/introspection and native acceptance remain separate pending gates.

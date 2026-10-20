@@ -405,6 +405,12 @@ density presentation; `export` accepts optional ordered `algebra_ids`. Mismatchi
 or unverifiable residuals cannot be report-exported. See
 [the contract and limits](gel_workbench.md#verify-and-display-a-saved-residual).
 
+PDF `export` accepts optional `comparison_display`: `signal_density_per_size`
+plots saved common-bin weight / size width; `bin_integral` or omission retains
+the byte-identical legacy comparison SVG. This field requires at least one
+`comparison_ids` entry and is refused for JSON. It changes no stored integrals,
+statistics or confirmation requirements. See [density display](gel_workbench.md#comparison-density-display).
+
 
 TATA-box evidence is available through
 `promoters tata-screen REQUEST_JSON_OR_@FILE [--output REPORT.json]` and the

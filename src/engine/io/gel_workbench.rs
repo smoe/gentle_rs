@@ -433,6 +433,13 @@ impl GentleEngine {
                 "Workbench export requires a new .pdf or .json file; per-analysis SVG remains available through gel-image export",
             ));
         }
+        if request.comparison_display.is_some()
+            && (extension != "pdf" || request.comparison_ids.is_empty())
+        {
+            return Err(EngineError::invalid_input(
+                "comparison_display requires PDF export with at least one saved comparison; JSON retains frozen integrals",
+            ));
+        }
         crate::gel_image::validate_label(&request.title, "report title")?;
         if request.analysis_ids.len() > 8
             || request.comparison_ids.len() > 8
@@ -535,11 +542,7 @@ impl GentleEngine {
                 .comparisons
                 .get(id)
                 .ok_or_else(|| EngineError::new(ErrorCode::NotFound, "Saved comparison missing"))?;
-            if crate::gel_workbench::compare(&r.left, &r.right, &r.request)? != **r {
-                return Err(EngineError::invalid_input(
-                    "Stored comparison is inconsistent with its frozen profiles",
-                ));
-            }
+            crate::gel_workbench::verify_comparison(r)?;
             for profile in [&r.left, &r.right] {
                 for image in self
                     .state
@@ -617,7 +620,15 @@ impl GentleEngine {
             ));
         }
         for r in comparisons {
-            pages.push(gentle_render::gel_workbench::render_comparison_svg(r));
+            pages.push(
+                gentle_render::gel_workbench::render_comparison_svg_with(
+                    r,
+                    request
+                        .comparison_display
+                        .unwrap_or(GelComparisonDisplay::BinIntegral),
+                )
+                .map_err(EngineError::invalid_input)?,
+            );
         }
         algebra_sources.retain(|s| !sources.contains(s));
         algebra_numeric_sources.retain(|s| !numeric_sources.contains(s));

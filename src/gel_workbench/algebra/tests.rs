@@ -70,6 +70,7 @@ fn export(
             analysis_ids: vec![],
             comparison_ids: vec![],
             algebra_ids: ids,
+            comparison_display: None,
             title: "Synthetic signed algebra; not experimental enrichment".into(),
         })),
     })

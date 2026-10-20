@@ -6,8 +6,8 @@
 
 use gentle_protocol::gel_image::{GelBandSizingStatus, GelImageAnalysisReport};
 use gentle_protocol::gel_workbench::{
-    GelComparisonReport, GelDistributionSummary, GelEvidenceKind, GelNumericSourceSummary,
-    GelProfile, GelSourceSummary,
+    GelComparisonDisplay, GelComparisonReport, GelDistributionSummary, GelEvidenceKind,
+    GelNumericSourceSummary, GelProfile, GelSourceSummary,
 };
 use std::fmt::Write;
 
@@ -27,7 +27,9 @@ const LEFT: &str = "#076d7b";
 const RIGHT: &str = "#ad4c13";
 
 mod algebra;
+mod comparison_display;
 pub use algebra::{render_algebra_provenance_svgs, render_algebra_svg};
+pub use comparison_display::{render_comparison_profile_svg, render_comparison_svg_with};
 
 fn xml(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
@@ -535,6 +537,10 @@ fn warning_rows<'a>(
 /// Plot budgets fail visibly instead of decimating or inventing measurements.
 /// Visible labels are shortened with full XML-safe values in hover titles.
 pub fn render_comparison_svg(report: &GelComparisonReport) -> String {
+    render_comparison_page(report, GelComparisonDisplay::BinIntegral)
+}
+
+fn render_comparison_page(report: &GelComparisonReport, mode: GelComparisonDisplay) -> String {
     let mut svg = Svg::new(COMPARISON_HEIGHT, "GENtle measured-gel comparison");
     let unit = report.left.size_kind.unit();
     svg.text(32.0, 34.0, "GENtle | Measured gel comparison", 23, 75);
@@ -577,13 +583,7 @@ pub fn render_comparison_svg(report: &GelComparisonReport) -> String {
     );
     svg.text(32.0, 337.0, "p-value: not computed. Bins/pixels are correlated, not independent sampled fragments or biological replicates.", 13, 140);
     svg.text(32.0, 358.0, "Shape descriptors only: not a claim of yield, concentration, molecular identity or statistical significance.", 12, 140);
-    svg.text(
-        32.0,
-        392.0,
-        "Raw profile overlay | integrated weight per common bin",
-        17,
-        105,
-    );
+    svg.text(32.0, 392.0, comparison_display::heading(mode), 17, 105);
     svg.text(32.0, 700.0, "Normalized cumulative weight", 17, 60);
     svg.text(
         32.0,
@@ -619,14 +619,6 @@ pub fn render_comparison_svg(report: &GelComparisonReport) -> String {
         );
     } else if let Ok(bins) = &bins {
         let [lo, hi] = report.request.range;
-        let raw = Plot {
-            x: 96.0,
-            y: 438.0,
-            w: 908.0,
-            h: 180.0,
-            lo,
-            hi,
-        };
         let cdf = Plot {
             x: 96.0,
             y: 750.0,
@@ -635,55 +627,10 @@ pub fn render_comparison_svg(report: &GelComparisonReport) -> String {
             lo,
             hi,
         };
-        let compatible = report.left.signal_units == report.right.signal_units
-            && report.left.measure == report.right.measure
-            && report.left.evidence_kind == report.right.evidence_kind;
-        let ranges = [weight_range(bins, 0), weight_range(bins, 1)];
-        if let [Some(l), Some(r)] = ranges {
-            let shared = [l[0].min(r[0]), l[1].max(r[1])];
-            let ranges = if compatible { [shared, shared] } else { [l, r] };
-            if ranges.iter().all(|range| (range[1] - range[0]).is_finite()) {
-                let policy = if compatible {
-                    "Shared y scale"
-                } else {
-                    "Independent L/R y scales; raw heights are NOT comparable"
-                };
-                svg.text(
-                    32.0,
-                    416.0,
-                    &format!(
-                        "{policy} | L: {} | R: {} | NOT a density per {unit}",
-                        report.left.signal_units, report.right.signal_units
-                    ),
-                    12,
-                    135,
-                );
-                shade_gaps(&mut svg, bins, raw);
-                raw.axes(&mut svg, ranges[0], &format!("Size ({unit})"));
-                for i in 0..=4 {
-                    let f = f64::from(i) / 4.0;
-                    svg.label(
-                        raw.x + raw.w + 10.0,
-                        raw.y + (1.0 - f) * raw.h + 4.0,
-                        &number(ranges[1][0] + f * (ranges[1][1] - ranges[1][0])),
-                        11,
-                        10,
-                        RIGHT,
-                    );
-                }
-                svg.path("raw-left", &raw_path(bins, 0, raw, ranges[0]), LEFT, false);
-                svg.path("raw-right", &raw_path(bins, 1, raw, ranges[1]), RIGHT, true);
-            } else {
-                notices.push((
-                    "Renderer",
-                    "Raw weight range exceeds finite display geometry; overlay omitted.",
-                ));
-            }
-        } else {
-            notices.push((
-                "Renderer",
-                "Raw weight range exceeds finite display geometry; overlay omitted.",
-            ));
+        if let Err(message) =
+            comparison_display::draw_profile_panel(&mut svg, report, bins, mode, 392.0)
+        {
+            notices.push(("Renderer", message));
         }
         shade_gaps(&mut svg, bins, cdf);
         cdf.axes(&mut svg, [0.0, 1.0], &format!("Size ({unit})"));
@@ -1320,7 +1267,7 @@ mod tests {
         }
     }
 
-    fn comparison() -> GelComparisonReport {
+    pub(super) fn comparison() -> GelComparisonReport {
         let summary = GelDistributionSummary {
             total_weight: 20.0,
             q10: 110.0,
@@ -1408,7 +1355,7 @@ mod tests {
         }
     }
 
-    fn assert_xml(document: &str) {
+    pub(super) fn assert_xml(document: &str) {
         let mut stack = Vec::new();
         for event in svg::read(document).expect("read SVG") {
             match event {
@@ -1422,7 +1369,7 @@ mod tests {
         assert!(!document.contains('\0'));
     }
 
-    fn path<'a>(document: &'a str, id: &str) -> &'a str {
+    pub(super) fn path<'a>(document: &'a str, id: &str) -> &'a str {
         document
             .split_once(&format!("<path id=\"{id}\" d=\""))
             .expect("path exists")
@@ -1430,6 +1377,17 @@ mod tests {
             .split_once('"')
             .unwrap()
             .0
+    }
+
+    #[test]
+    fn legacy_comparison_svg_bytes() {
+        // FNV-1a is a portable byte-regression checksum, not an evidence digest.
+        let checksum = render_comparison_svg(&comparison())
+            .bytes()
+            .fold(0xcbf29ce484222325_u64, |hash, byte| {
+                (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3)
+            });
+        assert_eq!(checksum, 9_151_467_362_457_725_946);
     }
 
     #[test]

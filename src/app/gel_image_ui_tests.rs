@@ -294,6 +294,7 @@ fn gel_image_editor_draft_history_interleaves_with_dna_edits() {
 
 fn pending_result(editor: &mut GelImageEditor, result: GelJobResult) {
     let (tx, rx) = mpsc::channel();
+    editor.comparison_plot_running = result.comparison_inspection.is_some();
     assert!(tx.send(Ok(result)).is_ok());
     editor.job = Some(rx);
 }
@@ -1013,6 +1014,212 @@ fn gel_workbench_algebra_inspection_rejects_stale_canceled_closed_and_changed_se
     }
 }
 
+fn comparison_editor() -> (Arc<RwLock<GentleEngine>>, GelImageEditor, egui::Context) {
+    let shared = Arc::new(RwLock::new(GentleEngine::new()));
+    let ctx = egui::Context::default();
+    let mut editor = GelImageEditor {
+        open: true,
+        help: false,
+        ..Default::default()
+    };
+    import_numeric_pair(&shared, &mut editor, &ctx);
+    let inventory = workbench::Inventory {
+        store: shared.read().unwrap().state().gel_images.workbench.clone(),
+        ..Default::default()
+    };
+    let result = execute_job(
+        &shared,
+        GelJob::Workbench(editor.workbench.compare_request(&inventory).unwrap()),
+    )
+    .unwrap();
+    pending_result(&mut editor, result);
+    editor.poll(&shared, &ctx);
+    assert_eq!(editor.workbench.saved_comparison, "comparison_1");
+    (shared, editor, ctx)
+}
+
+#[test]
+fn gel_workbench_comparison_plot_verifies_off_frame_and_caches_only_shared_panel() {
+    let (shared, mut editor, ctx) = comparison_editor();
+    assert_eq!(
+        editor.workbench.comparison_display,
+        GelComparisonDisplay::SignalDensityPerSize
+    );
+    let before = serde_json::to_value(shared.read().unwrap().state()).unwrap();
+    let history = shared.read().unwrap().operation_log().len();
+    let result = execute_job(
+        &shared,
+        GelJob::ComparisonPlot {
+            comparison_id: "comparison_1".into(),
+            mode: editor.workbench.comparison_display,
+        },
+    )
+    .unwrap();
+    assert!(result.detached.is_none());
+    let prepared = result.comparison_inspection.as_ref().unwrap();
+    assert!(prepared.pixels.is_some());
+    assert!(prepared.texture.is_none());
+    let svg = prepared.svg.clone();
+    assert_eq!(
+        &*svg,
+        gentle_render::gel_workbench::render_comparison_profile_svg(
+            &shared
+                .read()
+                .unwrap()
+                .state()
+                .gel_images
+                .workbench
+                .comparisons["comparison_1"],
+            editor.workbench.comparison_display
+        )
+        .unwrap()
+        .as_bytes()
+    );
+    pending_result(&mut editor, result);
+    editor.poll(&shared, &ctx);
+    for _ in 0..3 {
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    Pos2::ZERO,
+                    egui::vec2(1200.0, 1400.0),
+                )),
+                ..Default::default()
+            },
+            |ui| editor.contents(ui, &shared),
+        );
+        output.textures_delta.clear();
+        assert!(editor.job.is_none());
+        let cached = editor.workbench.comparison_inspection.as_ref().unwrap();
+        assert!(cached.pixels.is_none());
+        assert!(cached.texture.is_some());
+        assert!(Arc::ptr_eq(&svg, &cached.svg));
+    }
+    let inventory = workbench::Inventory {
+        store: shared.read().unwrap().state().gel_images.workbench.clone(),
+        ..Default::default()
+    };
+    editor.workbench.export_comparisons = vec!["comparison_1".into()];
+    let GelWorkbenchRequest::Export(request) = editor.workbench.export_request(&inventory).unwrap()
+    else {
+        panic!("export")
+    };
+    assert_eq!(
+        request.comparison_display,
+        Some(editor.workbench.comparison_display)
+    );
+    editor.workbench.comparison_display = GelComparisonDisplay::BinIntegral;
+    editor.poll(&shared, &ctx);
+    assert!(editor.workbench.comparison_inspection.is_none());
+    let GelWorkbenchRequest::Export(request) = editor.workbench.export_request(&inventory).unwrap()
+    else {
+        panic!("export")
+    };
+    assert_eq!(
+        request.comparison_display,
+        Some(GelComparisonDisplay::BinIntegral)
+    );
+    assert_eq!(
+        before,
+        serde_json::to_value(shared.read().unwrap().state()).unwrap()
+    );
+    assert_eq!(history, shared.read().unwrap().operation_log().len());
+}
+
+#[test]
+fn gel_workbench_comparison_plot_discards_stale_canceled_closed_mode_and_project_results() {
+    for change in 0..7 {
+        let (shared, mut editor, ctx) = comparison_editor();
+        let result = execute_job(
+            &shared,
+            GelJob::ComparisonPlot {
+                comparison_id: "comparison_1".into(),
+                mode: editor.workbench.comparison_display,
+            },
+        )
+        .unwrap();
+        pending_result(&mut editor, result);
+        match change {
+            0 => editor.canceled = true,
+            1 => editor.open = false,
+            2 => editor.workbench.saved_comparison = "other".into(),
+            3 => editor.workbench.comparison_display = GelComparisonDisplay::BinIntegral,
+            4 => {
+                shared
+                    .write()
+                    .unwrap()
+                    .apply(Operation::CreateSequenceFromText {
+                        sequence_text: "ACGT".into(),
+                        output_id: Some("edit".into()),
+                        name: None,
+                        circular: false,
+                    })
+                    .unwrap();
+            }
+            5 => {
+                editor.poll(&Arc::new(RwLock::new(GentleEngine::new())), &ctx);
+                assert!(editor.workbench.comparison_inspection.is_none());
+                continue;
+            }
+            _ => {
+                *shared.write().unwrap() = GentleEngine::new();
+            }
+        }
+        editor.poll(&shared, &ctx);
+        assert!(editor.workbench.comparison_inspection.is_none());
+    }
+}
+
+#[test]
+fn gel_workbench_comparison_plot_refuses_tampered_saved_report() {
+    let (shared, _, _) = comparison_editor();
+    let mut state = shared.read().unwrap().state().clone();
+    Arc::make_mut(
+        state
+            .gel_images
+            .workbench
+            .comparisons
+            .get_mut("comparison_1")
+            .unwrap(),
+    )
+    .left_summary
+    .median += 1.0;
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let error = execute_job(
+        &engine,
+        GelJob::ComparisonPlot {
+            comparison_id: "comparison_1".into(),
+            mode: GelComparisonDisplay::SignalDensityPerSize,
+        },
+    )
+    .err()
+    .expect("refused before rasterization");
+    assert!(error.contains("inconsistent"));
+}
+
+#[test]
+fn gel_workbench_comparison_close_then_reopen_does_not_revive_pending_plot() {
+    let (shared, mut editor, ctx) = comparison_editor();
+    let result = execute_job(
+        &shared,
+        GelJob::ComparisonPlot {
+            comparison_id: "comparison_1".into(),
+            mode: editor.workbench.comparison_display,
+        },
+    )
+    .unwrap();
+    let (_tx, rx) = mpsc::channel();
+    editor.job = Some(rx);
+    editor.comparison_plot_running = true;
+    editor.open = false;
+    editor.poll(&shared, &ctx);
+    assert!(editor.canceled);
+    editor.open = true;
+    pending_result(&mut editor, result);
+    editor.poll(&shared, &ctx);
+    assert!(editor.workbench.comparison_inspection.is_none());
+}
+
 #[test]
 fn gel_workbench_extraction_binds_saved_calibration_lane_run_and_background() {
     let (shared, mut editor) = fixture();
@@ -1171,6 +1378,7 @@ fn gel_workbench_export_job_tracking_cannot_offer_cancellation_or_commit() {
             comparison_ids: vec![],
             title: "Synthetic export".into(),
             algebra_ids: vec![],
+            comparison_display: None,
         })),
     );
     assert!(editor.export_running);
@@ -1190,6 +1398,7 @@ fn gel_workbench_export_job_tracking_cannot_offer_cancellation_or_commit() {
                 ..Default::default()
             })),
             algebra_inspection: None,
+            comparison_inspection: None,
             message: "Synthetic external-export receipt; no file produced".into(),
         },
     );

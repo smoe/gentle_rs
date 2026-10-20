@@ -661,6 +661,18 @@ pub fn compare(
     })
 }
 
+/// Replay the frozen comparison before presentation/export. This proves internal
+/// consistency, not source authenticity. Equality intentionally includes warnings;
+/// future comparison changes therefore need an explicit compatibility policy.
+pub fn verify_comparison(report: &GelComparisonReport) -> Result<(), EngineError> {
+    if compare(&report.left, &report.right, &report.request)? != *report {
+        return Err(EngineError::invalid_input(
+            "Stored comparison is inconsistent with its frozen profiles",
+        ));
+    }
+    Ok(())
+}
+
 pub fn algebra(
     profiles: &[&GelProfile],
     request: &GelAlgebraRequest,

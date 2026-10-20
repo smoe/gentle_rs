@@ -180,8 +180,15 @@ retains negative values, a zero line and missing intervals with units per
 bp/kDa; complete operand processing/calibration and warnings remain accessible.
 Ordered algebra export appends verified result/provenance pages. Legacy or
 mismatching results stay diagnosable but cannot be report-exported. Existing
-comparison pages and their bin-total display are unchanged; no automatic scale,
-reference overlay, statistical significance or gene-specific enrichment is inferred.
+comparison pages retain their legacy bin-total display when export mode is omitted.
+**Verify and display saved comparison** prepares a verified profile-only panel
+in the worker, retaining native summaries and QQ without duplication. Its
+session-only selector defaults to **Signal per size width** and also controls
+PDF comparison export; **Legacy bin integrals** is available explicitly. Mode,
+selection or revision changes invalidate the picture; canceled/closed/project
+changes reject late results. If busy, wait and prepare the selected mode again.
+Equal units/common axes do not prove acquisition comparability. No automatic
+scale, reference overlay, statistical significance or enrichment is inferred.
 
 
 ## What To Trust Today

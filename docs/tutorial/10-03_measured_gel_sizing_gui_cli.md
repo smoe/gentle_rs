@@ -309,7 +309,74 @@ differences visible and review registration before interpreting any residual.
 This lesson supplies no biological coefficients, new raw curves or scientific
 acceptance. Reference overlays and automatic display factors remain deferred.
 
+## Optional: Compare Signal Density Rather Than Bin Totals
+
+Allow another ten minutes. This is a **synthetic** display exercise, not a
+comparison of the cell lines. Create `/tmp/gentle-density-lesson` and start a
+fresh project. A bin stores its integrated signal, not its height. Wide bins
+can therefore look taller even when signal per bp is constant:
+
+| Profile | Size edges (bp) | Integrated weights | Density in each bin |
+| --- | --- | --- | --- |
+| A | 100, 200, 400 | 100, 200 | 1, 1 |
+| C | 100, 125, 400 | 25, 275 | 1, 1 |
+
+The common grid is **100, 125, 200, 400**: three bins, with widths **25, 75,
+200 bp**. Both profiles have common-bin weights **25, 75, 200**, total 300,
+and constant density **1 synthetic_area per bp**. No interval is excluded.
+Plotting those integrals as heights makes a staircase; dividing each saved
+integral by its bin width makes both profiles flat. This display calculation
+neither changes the stored weights nor normalizes them to unit area.
+
+The declared source hash is SHA-256 of `GENtle synthetic gel density v1`, UTF-8
+with no newline. Recreate it with
+`printf %s 'GENtle synthetic gel density v1' | shasum -a 256`.
+
+<!-- gel-density-lesson:start -->
+```sh
+gentle_cli --state /tmp/gentle-density-lesson/state.json gel-image workbench '{"action":"import_profile","profile":{"id":"density_a","label":"Synthetic A","run_id":"synthetic_recipe","lane_id":"A","source_sha256":"c37de03e7ae7fcbc52d82aeb78a1949118b0426a93432596e5623b65324aa6ff","evidence_kind":"synthetic","size_kind":"linear_dna_bp","signal_units":"synthetic_area","edges":[100,200,400],"weights":[100,200],"measure":"synthetic_bin_integral","processing":["Invented constant-density teaching recipe"]}}'
+gentle_cli --state /tmp/gentle-density-lesson/state.json gel-image workbench '{"action":"import_profile","profile":{"id":"density_c","label":"Synthetic C","run_id":"synthetic_recipe","lane_id":"C","source_sha256":"c37de03e7ae7fcbc52d82aeb78a1949118b0426a93432596e5623b65324aa6ff","evidence_kind":"synthetic","size_kind":"linear_dna_bp","signal_units":"synthetic_area","edges":[100,125,400],"weights":[25,275],"measure":"synthetic_bin_integral","processing":["Invented constant-density teaching recipe"]}}'
+gentle_cli --state /tmp/gentle-density-lesson/state.json gel-image workbench '{"action":"compare","comparison_id":"flat_density","left_profile":"density_a","right_profile":"density_c","range":[100,400]}'
+gentle_cli --state /tmp/gentle-density-lesson/state.json gel-image workbench '{"action":"export","path":"/tmp/gentle-density-lesson/density.pdf","title":"Synthetic constant-density comparison","analysis_ids":[],"comparison_ids":["flat_density"],"comparison_display":"signal_density_per_size"}'
+gentle_cli --state /tmp/gentle-density-lesson/state.json gel-image workbench '{"action":"export","path":"/tmp/gentle-density-lesson/integrals.pdf","title":"Synthetic constant-density comparison","analysis_ids":[],"comparison_ids":["flat_density"],"comparison_display":"bin_integral"}'
+gentle_cli --state /tmp/gentle-density-lesson/state.json gel-image workbench '{"action":"export","path":"/tmp/gentle-density-lesson/comparison.json","title":"Synthetic constant-density comparison","analysis_ids":[],"comparison_ids":["flat_density"]}'
+```
+<!-- gel-density-lesson:end -->
+
+Compare the profile panels in the two PDFs. Both retain the same CDF and QQ:
+identical shapes give descriptive D = 0, Wasserstein distance = 0 and QQ points
+on the diagonal. These are not significance tests. The JSON keeps the original
+integrals; a `comparison_display` field is **refused** for JSON, rather than
+silently ignored. Omission on a PDF retains the old bin-integral display.
+
+**GUI:** open the saved project, choose **Patterns -> Gel Image Analysis...**,
+select `flat_density`, choose **Signal per size width** and click **Verify and
+display saved comparison**. The worker verifies the frozen report before drawing
+the profile panel; native summary and QQ remain below it. Switch to **Legacy
+bin integrals** and prepare again. A changed mode never displays an old-mode
+plot. The selector is session-only, defaults to density, and also controls the
+PDF comparison pages beside the export controls. It does not edit the project.
+
+The two colors share one numeric axis in declared units; neither is fitted to
+its own maximum. **Equal units do not establish matched exposure, loading,
+contrast or calibration.** Different source hashes identify different retained
+inputs, not proof of different exposure settings. In real before/after data,
+read the CDF/QQ for shape and retain those acquisition limitations. Hatched gaps
+are unavailable; scored zero is zero. There is no mass/molar density, recovery,
+gene-specific enrichment or approved subtraction coefficient in this exercise.
+
+**Ask the inner agent:** "Explain why density_a and density_c have the same
+shape despite unequal bin totals. Draft a saved PDF export with an explicit
+comparison_display; keep JSON integrals unchanged. Do not infer concentration
+or fit a scale."
+
 ## Verification and Acceptance
+
+**Review scope (2026-10-20):** the optional density lesson was reconciled with
+the supplied read-only Claude reviews against `bb1686bd` plus this working
+change. Its source metadata identifies this as hand-written Markdown, not a
+generated chapter. No human/scientific or native-GUI review date is granted;
+the existing unreviewed manifest status is retained.
 
 Fixture recreation, source checks and independent arithmetic are covered by
 `scripts.test_tutorial_gap_lessons`; binary/LF preservation by
@@ -325,3 +392,6 @@ enrichment acceptance. The optional synthetic algebra commands are exercised by
 the shared Rust parser/engine regression; its PDF is generated from saved
 results. A separate regression verifies replay after serialization/reopening.
 Neither is a native GUI or real-data acceptance run.
+The separate density markers are replayed through the shared parser/engine,
+including PDF/JSON export and independently calculated common-bin weights.
+They do not change the six-command signed-algebra exercise above.

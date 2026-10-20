@@ -260,6 +260,14 @@ pub struct GelAlgebraPresentation {
     pub warnings: Vec<String>,
 }
 
+/// Presentation only: neither mode changes frozen integrals or statistics.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GelComparisonDisplay {
+    BinIntegral,
+    SignalDensityPerSize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct GelWorkbenchExportRequest {
@@ -271,6 +279,9 @@ pub struct GelWorkbenchExportRequest {
     pub comparison_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub algebra_ids: Vec<String>,
+    /// PDF comparisons only. Omission preserves the legacy integral display.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub comparison_display: Option<GelComparisonDisplay>,
     pub title: String,
 }
 
@@ -470,5 +481,25 @@ mod tests {
                 .get("algebra")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn comparison_display_is_explicit_optional_and_strict() {
+        let legacy = json!({"action":"export","path":"saved.pdf","title":"Saved","analysis_ids":[],"comparison_ids":["c"]});
+        let request: GelWorkbenchRequest = serde_json::from_value(legacy.clone()).unwrap();
+        assert_eq!(serde_json::to_value(request).unwrap(), legacy);
+        for mode in ["bin_integral", "signal_density_per_size"] {
+            let mut explicit = legacy.clone();
+            explicit["comparison_display"] = mode.into();
+            let request: GelWorkbenchRequest = serde_json::from_value(explicit.clone()).unwrap();
+            assert!(!request.mutates());
+            assert_eq!(serde_json::to_value(request).unwrap(), explicit);
+        }
+        let mut bad = legacy.clone();
+        bad["comparison_display"] = "normalize_each_maximum".into();
+        assert!(serde_json::from_value::<GelWorkbenchRequest>(bad).is_err());
+        let mut bad = legacy;
+        bad["display"] = "bin_integral".into();
+        assert!(serde_json::from_value::<GelWorkbenchRequest>(bad).is_err());
     }
 }

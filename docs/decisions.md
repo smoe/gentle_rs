@@ -1670,8 +1670,18 @@ labels the resulting units per bp/kDa and preserves its signed area and gaps.
 It does not change the integration measure or establish fluorescence, mass or
 molar density. No implicit normalization, fitted/reference scaling, clipping
 negative values, residual probability summaries or biological mixture claim is
-permitted. Renderers consume one engine-prepared record; GUI replay occurs only
-in a background inspection bound to project revision and selected result.
+permitted. Algebra renderers consume the engine-prepared presentation. Ordinary
+comparison renderers consume the replay-verified frozen `GelComparisonReport`;
+density (integral / bin width), like the CDF, is a pure display projection, not a
+new result model. GUI replay/rasterization occurs only in a background inspection
+bound to project revision, selected result and display mode. Omitted export mode
+keeps legacy bin-integral pages; the new GUI session default is density. A common
+numeric axis does not establish matched loading/exposure/calibration; no curve
+is silently fitted to its own maximum. Display mode is PDF-only and requires a
+selected comparison; it is rejected on JSON rather than ignored. Comparison
+replay currently compares the entire v1 report, including warning prose; changing
+that algorithm/prose requires an explicit compatibility policy, not silent
+acceptance of older results under changed semantics.
 
 ## Advisory Cloning Time And Cost Boundaries
 

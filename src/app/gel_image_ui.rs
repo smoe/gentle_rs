@@ -101,6 +101,7 @@ struct GelJobResult {
     suggestions: Option<PendingSuggestions>,
     workbench: Option<Box<GelWorkbenchResult>>,
     algebra_inspection: Option<workbench::AlgebraInspection>,
+    comparison_inspection: Option<workbench::ComparisonInspection>,
     message: String,
 }
 
@@ -114,6 +115,10 @@ enum GelJob {
     Analyze(GelImageAnalysisRequest),
     Export(GelImageExportRequest),
     Workbench(GelWorkbenchRequest),
+    ComparisonPlot {
+        comparison_id: String,
+        mode: GelComparisonDisplay,
+    },
     Detect {
         request: GelDetectRequest,
         draft: Box<GelImageAnalysisRequest>,
@@ -156,6 +161,7 @@ fn execute_job(shared: &Arc<RwLock<GentleEngine>>, job: GelJob) -> Result<GelJob
             suggestions: None,
             workbench: None,
             algebra_inspection: None,
+            comparison_inspection: None,
             message: "Image ready. Marks use original pixel coordinates.".into(),
         });
     }
@@ -164,6 +170,33 @@ fn execute_job(shared: &Arc<RwLock<GentleEngine>>, job: GelJob) -> Result<GelJob
         .map_err(|_| "Engine lock unavailable")?
         .fork_detached_execution();
     let revision = detached.engine().mutation_revision();
+    if let GelJob::ComparisonPlot {
+        comparison_id,
+        mode,
+    } = job
+    {
+        let report = detached
+            .engine()
+            .state()
+            .gel_images
+            .workbench
+            .comparisons
+            .get(&comparison_id)
+            .cloned()
+            .ok_or("Saved comparison missing")?;
+        let inspection = workbench::ComparisonInspection::new(revision, report, mode)?;
+        return Ok(GelJobResult {
+            detached: None,
+            preview: None,
+            report: None,
+            source: None,
+            suggestions: None,
+            workbench: None,
+            algebra_inspection: None,
+            comparison_inspection: Some(inspection),
+            message: "Saved comparison verified and displayed; no project change.".into(),
+        });
+    }
     let mut detection = None;
     let (op, import_id, mutates) = match job {
         GelJob::Import {
@@ -248,7 +281,7 @@ fn execute_job(shared: &Arc<RwLock<GentleEngine>>, job: GelJob) -> Result<GelJob
                 false,
             )
         }
-        GelJob::Preview(_) => unreachable!(),
+        GelJob::Preview(_) | GelJob::ComparisonPlot { .. } => unreachable!(),
     };
     let mut result = detached.engine_mut().apply(op).map_err(|e| e.message)?;
     let preview = import_id
@@ -291,6 +324,7 @@ fn execute_job(shared: &Arc<RwLock<GentleEngine>>, job: GelJob) -> Result<GelJob
         suggestions,
         workbench: result.gel_workbench,
         algebra_inspection,
+        comparison_inspection: None,
         message,
     })
 }
@@ -301,6 +335,7 @@ pub(super) struct GelImageEditor {
     bound_instance_id: Option<u64>,
     job: Option<mpsc::Receiver<Result<GelJobResult, String>>>,
     export_running: bool,
+    comparison_plot_running: bool,
     canceled: bool,
     image_id: String,
     image: Option<Arc<GelImageRecord>>,
@@ -331,6 +366,7 @@ impl Default for GelImageEditor {
             bound_instance_id: None,
             job: None,
             export_running: false,
+            comparison_plot_running: false,
             canceled: false,
             image_id: String::new(),
             image: None,
@@ -361,6 +397,7 @@ impl GelImageEditor {
             return;
         }
         self.export_running = job.is_external_export();
+        self.comparison_plot_running = matches!(job, GelJob::ComparisonPlot { .. });
         self.canceled = false;
         self.status = match &job {
             GelJob::Import { .. } => "Loading and preserving original image...",
@@ -371,6 +408,9 @@ impl GelImageEditor {
                 "Writing saved workbench report (external file; no overwrite)..."
             }
             GelJob::Workbench(_) => "Running measured-gel workbench request...",
+            GelJob::ComparisonPlot { .. } => {
+                "Verifying saved comparison and preparing selected display..."
+            }
             GelJob::Detect { .. } => {
                 "Finding unconfirmed peaks in selected sample lane rectangles..."
             }
@@ -392,6 +432,7 @@ impl GelImageEditor {
         if let Err(error) = worker {
             self.job = None;
             self.export_running = false;
+            self.comparison_plot_running = false;
             self.status = format!("Could not start gel worker: {error}");
         }
     }
@@ -419,8 +460,14 @@ impl GelImageEditor {
         self.sync_draft(shared);
         let revision = shared.read().unwrap().mutation_revision();
         self.workbench.invalidate_algebra(revision);
+        self.workbench.invalidate_comparison(revision);
         if !self.open {
             self.workbench.algebra_inspection = None;
+            self.workbench.comparison_inspection = None;
+            // Closing ends this inspection, even if reopened before it finishes.
+            if self.comparison_plot_running {
+                self.canceled = true;
+            }
         }
         if self
             .workbench
@@ -441,6 +488,7 @@ impl GelImageEditor {
         };
         self.job = None;
         self.export_running = false;
+        self.comparison_plot_running = false;
         if self.canceled {
             self.canceled = false;
             self.status = "Pending result discarded. No project change was applied.".into();
@@ -450,6 +498,21 @@ impl GelImageEditor {
         match outcome {
             Err(error) => self.status = error,
             Ok(mut result) => {
+                if let Some(mut inspection) = result.comparison_inspection.take() {
+                    if self.open
+                        && self.workbench.comparison_matches(
+                            &inspection,
+                            shared.read().unwrap().mutation_revision(),
+                        )
+                    {
+                        inspection.install_texture(ctx);
+                        self.workbench.comparison_inspection = Some(inspection);
+                        self.status = result.message;
+                    } else {
+                        self.status = "Project, comparison or display mode changed; stale inspection discarded.".into();
+                    }
+                    return;
+                }
                 if let Some(mut inspection) = result.algebra_inspection.take() {
                     let engine = shared.read().unwrap();
                     if self.open
@@ -473,6 +536,7 @@ impl GelImageEditor {
                     match commit {
                         Ok(old) => {
                             self.workbench.algebra_inspection = None;
+                            self.workbench.comparison_inspection = None;
                             std::thread::spawn(move || drop(old));
                         }
                         Err(error) => {

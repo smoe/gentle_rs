@@ -76,6 +76,35 @@
   worktree/plan warnings and no failures. No production code, vector workflow,
   fixtures, vendor catalog or existing SVG bytes changed.
 
+## 2026-10-20 - Verified Density Views For Saved Gel Comparisons
+
+- Reconcile both supplied Claude reviews against `bb1686bd`: retain the landed
+  signed-algebra v1 work, and add the remaining ordinary-comparison density
+  view without reopening deferred reference overlays, scaling or statistics.
+- Share complete comparison replay between export and the GUI worker. A changed
+  report gets no trusted plot/export; raw inspection remains diagnostic. Record
+  the pre-existing warning-prose compatibility risk without changing v1 replay.
+- Add optional PDF-only `comparison_display`; omission and explicit bin
+  integrals retain legacy SVG bytes, pinned by a pre-refactor checksum. Density
+  projects saved integral / bin width with one numeric axis, explicit declared
+  units/acquisition caveats, zero/gaps and unsafe-geometry refusal. No stored
+  result, digest, probability summary, profile, dependency or release changes.
+- Cache only the shared profile panel, rasterized off-frame; retain native
+  summary/QQ. The session selector defaults to density, also controls PDF
+  export, and invalidates by revision/result/mode under existing project binding.
+  Reject canceled, closed, stale and replaced-project results. JSON or empty
+  comparison selections with a display mode fail rather than silently ignoring it.
+- Extend hand-written tutorial 10.03 under separate density markers. Correct
+  A/C's common grid to three bins `[100,125,200,400]` with integrals
+  `[25,75,200]`; preserve the six algebra commands and unreviewed human/native
+  metadata. No unrelated source/catalog regeneration or invented cell-line data.
+- Targeted verification and remaining platform/native/scientific limits are
+  recorded in the workbench contract; no push, dispatch, capture or release pass.
+- Rebase onto local main `09639034`, preserving its audit notes and catalog
+  repair; the six gel protocol tests now pass, along with the 14 Python lesson
+  tests, Cargo check, formatting and whitespace. Earlier broader gel results
+  retain their original source binding; no full-suite/native claim follows.
+
 ## 2026-10-20 - Restore The Carrier GUI Test Type Import
 
 - Add the missing `RackPhysicalTemplateKind` import to the explicit

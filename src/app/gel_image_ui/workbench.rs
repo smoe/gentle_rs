@@ -14,6 +14,62 @@ pub(super) struct PendingSuggestions {
     pub(super) suggestions: GelBandSuggestions,
 }
 
+pub(super) struct ComparisonInspection {
+    revision: u64,
+    mode: GelComparisonDisplay,
+    report: Arc<GelComparisonReport>,
+    #[cfg(test)]
+    pub(super) svg: Arc<[u8]>,
+    pub(super) pixels: Option<egui::ColorImage>,
+    pub(super) texture: Option<egui::TextureHandle>,
+    image_uri: String,
+}
+
+impl ComparisonInspection {
+    /// Worker only: replay, project, rasterize and decode before GUI adoption.
+    pub(super) fn new(
+        revision: u64,
+        report: Arc<GelComparisonReport>,
+        mode: GelComparisonDisplay,
+    ) -> Result<Self, String> {
+        crate::gel_workbench::verify_comparison(&report).map_err(|e| e.message)?;
+        let svg = gentle_render::gel_workbench::render_comparison_profile_svg(&report, mode)?;
+        let pixels = Some(plot_pixels(&svg)?);
+        let image_uri = format!(
+            "gel-comparison-{}",
+            crate::digest_utils::sha256_hex_bytes(svg.as_bytes())
+        );
+        Ok(Self {
+            revision,
+            mode,
+            report,
+            #[cfg(test)]
+            svg: svg.into_bytes().into(),
+            pixels,
+            texture: None,
+            image_uri,
+        })
+    }
+
+    pub(super) fn install_texture(&mut self, ctx: &egui::Context) {
+        if let Some(pixels) = self.pixels.take() {
+            self.texture =
+                Some(ctx.load_texture(&self.image_uri, pixels, egui::TextureOptions::LINEAR));
+        }
+    }
+}
+
+fn plot_pixels(svg: &str) -> Result<egui::ColorImage, String> {
+    let rendered = crate::svg_png::render_svg_to_png_bytes(svg, Default::default())?;
+    let rgba = image::load_from_memory_with_format(&rendered.bytes, image::ImageFormat::Png)
+        .map_err(|e| e.to_string())?
+        .into_rgba8();
+    Ok(egui::ColorImage::from_rgba_unmultiplied(
+        [rgba.width() as usize, rgba.height() as usize],
+        rgba.as_raw(),
+    ))
+}
+
 pub(super) struct AlgebraInspection {
     revision: u64,
     pub(super) presentation: GelAlgebraPresentation,
@@ -28,15 +84,7 @@ impl AlgebraInspection {
     pub(super) fn new(revision: u64, presentation: GelAlgebraPresentation) -> Result<Self, String> {
         let svg = gentle_render::gel_workbench::render_algebra_svg(&presentation);
         let pixels = if presentation.verification == GelAlgebraVerification::Verified {
-            let rendered = crate::svg_png::render_svg_to_png_bytes(&svg, Default::default())?;
-            let rgba =
-                image::load_from_memory_with_format(&rendered.bytes, image::ImageFormat::Png)
-                    .map_err(|e| e.to_string())?
-                    .into_rgba8();
-            Some(egui::ColorImage::from_rgba_unmultiplied(
-                [rgba.width() as usize, rgba.height() as usize],
-                rgba.as_raw(),
-            ))
+            Some(plot_pixels(&svg)?)
         } else {
             None
         };
@@ -89,6 +137,8 @@ pub(super) struct WorkbenchUi {
     pub(super) coefficients: [f64; 2],
     pub(super) algebra_id: String,
     pub(super) saved_comparison: String,
+    pub(super) comparison_display: GelComparisonDisplay,
+    pub(super) comparison_inspection: Option<ComparisonInspection>,
     pub(super) selected_algebra: String,
     pub(super) algebra_inspection: Option<AlgebraInspection>,
     pub(super) export_analyses: Vec<String>,
@@ -127,6 +177,8 @@ impl Default for WorkbenchUi {
             coefficients: [1.0, -1.0],
             algebra_id: "residual_1".into(),
             saved_comparison: String::new(),
+            comparison_display: GelComparisonDisplay::SignalDensityPerSize,
+            comparison_inspection: None,
             selected_algebra: String::new(),
             algebra_inspection: None,
             export_analyses: Vec::new(),
@@ -168,6 +220,49 @@ fn compatible(left: &GelProfile, right: &GelProfile) -> bool {
 }
 
 impl WorkbenchUi {
+    pub(super) fn comparison_matches(
+        &self,
+        inspection: &ComparisonInspection,
+        revision: u64,
+    ) -> bool {
+        inspection.revision == revision
+            && inspection.report.request.comparison_id == self.saved_comparison
+            && inspection.mode == self.comparison_display
+    }
+
+    pub(super) fn invalidate_comparison(&mut self, revision: u64) {
+        if self
+            .comparison_inspection
+            .as_ref()
+            .is_some_and(|p| !self.comparison_matches(p, revision))
+        {
+            self.comparison_inspection = None;
+        }
+    }
+
+    fn comparison_display_controls(&mut self, ui: &mut Ui) {
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Comparison view / PDF (session only)");
+            ui.radio_value(
+                &mut self.comparison_display,
+                GelComparisonDisplay::SignalDensityPerSize,
+                "Signal per size width",
+            );
+            ui.radio_value(
+                &mut self.comparison_display,
+                GelComparisonDisplay::BinIntegral,
+                "Legacy bin integrals",
+            );
+        });
+        if self
+            .comparison_inspection
+            .as_ref()
+            .is_some_and(|p| p.mode != self.comparison_display)
+        {
+            self.comparison_inspection = None;
+        }
+    }
+
     pub(super) fn algebra_matches(&self, inspection: &AlgebraInspection, revision: u64) -> bool {
         inspection.revision == revision
             && inspection.presentation.profile_id == self.selected_algebra
@@ -309,6 +404,8 @@ impl WorkbenchUi {
             analysis_ids: self.export_analyses.clone(),
             comparison_ids: self.export_comparisons.clone(),
             algebra_ids: self.export_algebra.clone(),
+            comparison_display: (!self.export_comparisons.is_empty())
+                .then_some(self.comparison_display),
             title: self.export_title.clone(),
         }))
     }
@@ -536,7 +633,7 @@ impl GelImageEditor {
         self.detection_controls(ui, shared);
         self.extraction_controls(ui, shared, &inventory);
         self.comparison_controls(ui, shared, &inventory);
-        self.saved_comparison_controls(ui, &inventory);
+        self.saved_comparison_controls(ui, shared, &inventory);
         self.algebra_inspection_controls(ui, shared, &inventory);
         self.workbench_export_controls(ui, shared, &inventory);
         self.advanced_workbench_controls(ui, shared);
@@ -669,7 +766,12 @@ impl GelImageEditor {
         });
     }
 
-    fn saved_comparison_controls(&mut self, ui: &mut Ui, inventory: &Inventory) {
+    fn saved_comparison_controls(
+        &mut self,
+        ui: &mut Ui,
+        shared: &Arc<RwLock<GentleEngine>>,
+        inventory: &Inventory,
+    ) {
         select_id(
             ui,
             "gel_saved_comparison",
@@ -681,12 +783,42 @@ impl GelImageEditor {
                 .keys()
                 .map(|id| (id.clone(), id.clone())),
         );
-        if let Some(report) = inventory
-            .store
-            .comparisons
-            .get(&self.workbench.saved_comparison)
+        self.workbench.comparison_display_controls(ui);
+        self.workbench
+            .invalidate_comparison(shared.read().unwrap().mutation_revision());
+        if ui
+            .add_enabled(
+                self.job.is_none()
+                    && inventory
+                        .store
+                        .comparisons
+                        .contains_key(&self.workbench.saved_comparison),
+                egui::Button::new("Verify and display saved comparison"),
+            )
+            .clicked()
         {
-            comparison_summary(ui, report);
+            self.workbench.comparison_inspection = None;
+            self.start(
+                shared,
+                ui.ctx(),
+                GelJob::ComparisonPlot {
+                    comparison_id: self.workbench.saved_comparison.clone(),
+                    mode: self.workbench.comparison_display,
+                },
+            );
+        }
+        if let Some(cached) = &self.workbench.comparison_inspection {
+            ui.small("Replay verified: internal consistency, not scientific acceptance. No new extraction or statistics.");
+            if let Some(texture) = &cached.texture {
+                ui.add(
+                    egui::Image::new(texture)
+                        .max_width(ui.available_width())
+                        .shrink_to_fit(),
+                );
+            }
+            comparison_summary(ui, &cached.report);
+        } else if !self.workbench.saved_comparison.is_empty() {
+            ui.small("Comparison not prepared for the selected mode. Verify to show curves, summaries and QQ; any earlier-mode result is discarded.");
         }
         ui.collapsing("Saved profile provenance / signed outputs", |ui| {
             for profile in inventory.store.profiles.values() {
@@ -809,6 +941,7 @@ impl GelImageEditor {
             ui.label("Saved comparison IDs (export order)");
             ordered_selection(ui, "gel_pdf_comparisons", &mut self.workbench.export_comparisons,
                 inventory.store.comparisons.keys().cloned().collect(), false);
+            self.workbench.comparison_display_controls(ui);
             ui.label("Saved algebra IDs (append after existing pages; verification required)");
             ordered_selection(ui, "gel_pdf_algebra", &mut self.workbench.export_algebra,
                 inventory.store.profiles.values().filter(|p| p.evidence_kind == GelEvidenceKind::SignedResidual).map(|p| p.id.clone()).collect(), false);

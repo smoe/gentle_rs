@@ -130,6 +130,36 @@ class TutorialGapLessonTests(unittest.TestCase):
             self.assertNotIn("gui_acceptance", source)
             self.assertNotIn(source["id"], [chapter["id"] for chapter in manifest["chapters"]])
 
+    def test_gel_density_lesson_has_independent_unequal_bin_arithmetic(self):
+        prose = (ROOT / "docs/tutorial/10-03_measured_gel_sizing_gui_cli.md").read_text(encoding="utf-8")
+        lesson = prose.split("<!-- gel-density-lesson:start -->")[1].split("<!-- gel-density-lesson:end -->")[0]
+        requests = [json.loads(line.split(" workbench '", 1)[1][:-1])
+                    for line in lesson.splitlines() if line.startswith("gentle_cli ")]
+        self.assertEqual(len(requests), 6)
+        profiles = [r["profile"] for r in requests if r["action"] == "import_profile"]
+        self.assertEqual(len(profiles), 2)
+        edges = sorted({x for profile in profiles for x in profile["edges"]})
+        self.assertEqual(edges, [100, 125, 200, 400])
+        widths = [b - a for a, b in zip(edges, edges[1:])]
+        self.assertEqual(widths, [25, 75, 200])
+        for profile in profiles:
+            self.assertEqual(profile["evidence_kind"], "synthetic")
+            self.assertEqual(profile["source_sha256"], hashlib.sha256(b"GENtle synthetic gel density v1").hexdigest())
+            rebinned = []
+            for a, b in zip(edges, edges[1:]):
+                matches = [(i, hi - lo) for i, (lo, hi) in
+                           enumerate(zip(profile["edges"], profile["edges"][1:])) if lo <= a and b <= hi]
+                (i, width), = matches
+                rebinned.append(profile["weights"][i] * (b - a) / width)
+            self.assertEqual(rebinned, [25, 75, 200])
+            self.assertEqual([w / width for w, width in zip(rebinned, widths)], [1, 1, 1])
+            self.assertEqual(sum(rebinned), 300)
+        exports = [r for r in requests if r["action"] == "export"]
+        self.assertEqual([r.get("comparison_display") for r in exports],
+                         ["signal_density_per_size", "bin_integral", None])
+        self.assertIn("Equal units do not establish matched exposure", prose)
+        self.assertIn("unreviewed manifest status is retained", prose)
+
     def test_tss_codex_review_is_scoped_to_current_prose(self):
         reviews = json.loads((ROOT / "docs/tutorial/review_manifest.json").read_bytes())
         review, = [row for row in reviews["entries"] if row["tutorial_id"] == "tss_regulatory_view_gui"]

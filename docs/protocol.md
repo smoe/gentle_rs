@@ -508,6 +508,13 @@ cyclic, changed, unsupported or over-budget provenance cannot become an accepted
 plot/export. Raw legacy profiles remain inspectable. Algebra v1 remains frozen;
 `import_profile` now refuses `signed_residual` declarations.
 
+Export optionally accepts `comparison_display: bin_integral|signal_density_per_size`.
+Omission is serialized as absence and preserves legacy comparison pages; explicit
+integrals produce the same SVG bytes. Density is a pure renderer projection of
+the replay-verified report, not a persisted scientific field. The mode requires
+PDF with selected comparisons and is rejected for JSON or an empty selection.
+No new public inspection route or confirmation exemption is introduced.
+
 
 ## TATA-Box Evidence
 

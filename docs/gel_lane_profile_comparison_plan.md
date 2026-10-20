@@ -7,7 +7,9 @@ limits. The numbered sequence below retains the scientific design rationale. The
 owner requested a cleanup-distribution comparison and lane algebra on
 2026-10-18. An optional read-only Claude review was offered; this plan has not
 been Claude-reviewed; the owner authorized proceeding without another review
-on 2026-10-19. Do not make this an additional `.13` release blocker.
+on 2026-10-19. Supplied Claude follow-up reviews were reconciled against
+`bb1686bd` on 2026-10-20 as described below; that is separate from the original
+unreviewed implementation plan. Do not make this an additional `.13` release blocker.
 
 ## Questions And Available Evidence
 
@@ -154,6 +156,38 @@ keeping legacy inspection. Leave existing comparison pages and reference
 overlays unchanged; use `1/-1` only in a synthetic lesson, not as an approved
 public biological subtraction. Scope/verification are recorded in
 [the workbench contract](gel_workbench.md#verify-and-display-a-saved-residual).
+
+### Comparison Display Follow-Up (2026-10-20)
+
+The older algebra review is already implemented; do not reopen frozen algebra
+v1 or add deferred reference/fitted overlays. The new ordinary comparison view
+uses the replay-verified `GelComparisonReport`, not a parallel engine-prepared
+result. Density is a pure renderer projection alongside CDF geometry. Extract
+the existing full-report verification for export and a GUI worker; raw plain
+inspection remains available. This existing equality includes warning prose:
+algorithm/warning changes need a future compatibility policy, not a hidden fix.
+
+Add optional PDF `comparison_display`, omitted/explicit legacy integrals or
+explicit signal per size width. Keep old request/report schemas and omitted-mode
+SVG bytes unchanged. Reject a mode for JSON or no selected comparison. Use one
+common numeric density axis with acquisition/calibration disclosures; different
+source hashes do not prove different exposure settings. Preserve zeros/gaps and
+refuse unsafe numeric geometry. No normalization/fitting or new statistics.
+
+The GUI defaults to density per session, verifies/rasterizes only the shared
+profile panel in the worker, and retains its native summary/QQ. Cache by revision,
+comparison and mode, under the existing project-instance binding. Discard stale,
+canceled, closed and replaced-project results. Mode changes invalidate immediately;
+prepare explicitly when the worker is free, rather than dropping a mode request.
+Use the same session selector for PDF export and no persisted display field.
+
+Extend the **hand-written** 10.03 Markdown with its own density markers, leaving
+the six algebra commands alone. Source metadata declares `hand_written_markdown`;
+it is not a generated chapter. Correct the supplied example: A/C's union is
+`[100,125,200,400]`, weights `[25,75,200]`, not four bins. Independent tests check
+flat density, preserved area, legacy bytes, strict requests, failure/no-write,
+read-only state, stale GUI guards and vector PDF output. Native/platform/real-data
+acceptance remains open; no new Glen request, release gate or performance claim.
 
 ### Existing Acceptance Boundary
 

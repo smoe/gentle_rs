@@ -77,6 +77,230 @@ fn rebin_preserves_integrals_and_excludes_missing_support_for_both_profiles() {
 }
 
 #[test]
+fn comparison_replay_detects_changed_arrays_statistics_snapshots_and_warnings() {
+    let a = profile("a", &[100.0, 200.0, 300.0], &[Some(1.0), Some(2.0)]);
+    let mut b = a.clone();
+    b.id = "b".into();
+    let report = compare(&a, &b, &request()).unwrap();
+    verify_comparison(&report).unwrap();
+    for change in 0..5 {
+        let mut changed = report.clone();
+        match change {
+            0 => changed.left_weights[0] = Some(0.0),
+            1 => changed.left_summary.median += 1.0,
+            2 => changed.left.weights[0] = Some(0.0),
+            3 => changed.warnings.push("changed warning".into()),
+            _ => changed.qq[0].right += 1.0,
+        }
+        assert!(verify_comparison(&changed).is_err());
+    }
+}
+
+#[test]
+fn comparison_export_mode_rejects_json_empty_selection_and_tampering_without_files() {
+    use crate::engine::{Engine, GentleEngine, Operation};
+    let a = profile("a", &[100.0, 200.0, 300.0], &[Some(1.0), Some(2.0)]);
+    let mut b = a.clone();
+    b.id = "b".into();
+    let mut state = GentleEngine::new().state().clone();
+    let mut report = compare(&a, &b, &request()).unwrap();
+    report.left_weights[0] = Some(0.0);
+    state
+        .gel_images
+        .workbench
+        .comparisons
+        .insert("compare".into(), std::sync::Arc::new(report));
+    let mut engine = GentleEngine::from_state(state);
+    let before = serde_json::to_value(engine.state()).unwrap();
+    // Preserve raw, unverified inspection for diagnosing old or edited records.
+    assert!(
+        engine
+            .apply(Operation::GelWorkbench {
+                request: Box::new(GelWorkbenchRequest::InspectComparison {
+                    comparison_id: "compare".into()
+                })
+            })
+            .unwrap()
+            .gel_workbench
+            .unwrap()
+            .comparison
+            .is_some()
+    );
+    let dir = tempfile::tempdir().unwrap();
+    for (name, ids, mode, message) in [
+        (
+            "mode.json",
+            vec!["compare".into()],
+            Some(GelComparisonDisplay::SignalDensityPerSize),
+            "comparison_display",
+        ),
+        (
+            "empty.pdf",
+            vec![],
+            Some(GelComparisonDisplay::BinIntegral),
+            "comparison_display",
+        ),
+        (
+            "tampered.pdf",
+            vec!["compare".into()],
+            Some(GelComparisonDisplay::SignalDensityPerSize),
+            "inconsistent",
+        ),
+        ("legacy.json", vec!["compare".into()], None, "inconsistent"),
+    ] {
+        let path = dir.path().join(name);
+        let error = engine
+            .apply(Operation::GelWorkbench {
+                request: Box::new(GelWorkbenchRequest::Export(GelWorkbenchExportRequest {
+                    path: path.display().to_string(),
+                    analysis_ids: vec![],
+                    comparison_ids: ids,
+                    algebra_ids: vec![],
+                    comparison_display: mode,
+                    title: "Synthetic".into(),
+                })),
+            })
+            .unwrap_err();
+        assert!(error.message.contains(message), "{}", error.message);
+        assert!(!path.exists());
+        assert_eq!(before, serde_json::to_value(engine.state()).unwrap());
+    }
+}
+
+fn density_tutorial_replay(directory: &std::path::Path) {
+    use crate::engine::{Engine, GentleEngine};
+    let prose = include_str!("../../docs/tutorial/10-03_measured_gel_sizing_gui_cli.md");
+    let lesson = prose
+        .split("<!-- gel-density-lesson:start -->")
+        .nth(1)
+        .unwrap()
+        .split("<!-- gel-density-lesson:end -->")
+        .next()
+        .unwrap();
+    let mut engine = GentleEngine::new();
+    let mut commands = 0;
+    for line in lesson
+        .lines()
+        .filter(|line| line.starts_with("gentle_cli "))
+    {
+        let json = line
+            .strip_prefix(
+                "gentle_cli --state /tmp/gentle-density-lesson/state.json gel-image workbench '",
+            )
+            .unwrap()
+            .strip_suffix('\'')
+            .unwrap();
+        let mut request: GelWorkbenchRequest = serde_json::from_str(json).unwrap();
+        if let GelWorkbenchRequest::ImportProfile { profile } = &request {
+            assert_eq!(profile.evidence_kind, GelEvidenceKind::Synthetic);
+            assert_eq!(
+                profile.source_sha256,
+                sha256_hex_bytes(b"GENtle synthetic gel density v1")
+            );
+        }
+        let exporting = matches!(request, GelWorkbenchRequest::Export(_));
+        if let GelWorkbenchRequest::Export(request) = &mut request {
+            request.path = directory
+                .join(std::path::Path::new(&request.path).file_name().unwrap())
+                .display()
+                .to_string();
+        }
+        let state = serde_json::to_value(engine.state()).unwrap();
+        // The shared Shell records external-operation receipts in its journal;
+        // those are not project edits or undo checkpoints.
+        let history = (
+            engine.mutation_revision(),
+            engine.undo_available(),
+            engine.redo_available(),
+        );
+        let line = format!(
+            "gel-image workbench {}",
+            crate::engine_shell::quote_shell_arg(&serde_json::to_string(&request).unwrap())
+        );
+        let command = crate::engine_shell::parse_shell_line(&line).unwrap();
+        crate::engine_shell::execute_shell_command(&mut engine, &command).unwrap();
+        if exporting {
+            assert_eq!(state, serde_json::to_value(engine.state()).unwrap());
+            assert_eq!(
+                history,
+                (
+                    engine.mutation_revision(),
+                    engine.undo_available(),
+                    engine.redo_available()
+                )
+            );
+            assert!(
+                engine
+                    .apply(crate::engine::Operation::GelWorkbench {
+                        request: Box::new(request)
+                    })
+                    .is_err(),
+                "no-clobber preserved"
+            );
+        }
+        commands += 1;
+    }
+    assert_eq!(commands, 6);
+    let state = serde_json::to_value(engine.state()).unwrap();
+    let reopened = GentleEngine::from_state(serde_json::from_value(state).unwrap());
+    let report = &reopened.state().gel_images.workbench.comparisons["flat_density"];
+    verify_comparison(report).unwrap();
+    assert_eq!(report.common_edges, vec![100.0, 125.0, 200.0, 400.0]);
+    assert_eq!(
+        report.left_weights,
+        vec![Some(25.0), Some(75.0), Some(200.0)]
+    );
+    assert_eq!(report.left_weights, report.right_weights);
+    assert_eq!(report.left_summary.total_weight, 300.0);
+    assert_eq!(report.right_summary.total_weight, 300.0);
+    assert_eq!(report.ks_distance, 0.0);
+    assert_eq!(report.wasserstein_distance, 0.0);
+    assert!(report.qq.iter().all(|point| point.left == point.right));
+    let exported: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(directory.join("comparison.json")).unwrap()).unwrap();
+    assert_eq!(
+        exported["comparisons"][0],
+        serde_json::to_value(report).unwrap()
+    );
+    assert!(exported.get("comparison_display").is_none());
+    for file in ["density.pdf", "integrals.pdf"] {
+        let document = lopdf::Document::load(directory.join(file)).unwrap();
+        assert_eq!(document.get_pages().len(), 2);
+        for id in document.get_pages().values() {
+            let resources = document
+                .get_dictionary(*id)
+                .unwrap()
+                .get_deref(b"Resources", &document)
+                .unwrap()
+                .as_dict()
+                .unwrap();
+            assert!(
+                selectable_text_operations(
+                    &document,
+                    &document.get_page_content(*id),
+                    resources,
+                    0
+                ) > 0
+            );
+        }
+    }
+}
+
+#[test]
+fn comparison_density_tutorial_replays_saved_pdf_json_and_exact_arithmetic() {
+    let dir = tempfile::tempdir().unwrap();
+    density_tutorial_replay(dir.path());
+}
+
+#[test]
+#[ignore = "manual writer: set GENTLE_GEL_DENSITY_REVIEW_DIR to an empty existing output directory"]
+fn comparison_density_write_review_pdfs() {
+    let directory = std::env::var_os("GENTLE_GEL_DENSITY_REVIEW_DIR")
+        .expect("explicit review output directory");
+    density_tutorial_replay(std::path::Path::new(&directory));
+}
+
+#[test]
 fn signed_algebra_retains_negatives_gaps_and_explicit_coefficients() {
     let a = profile("a", &[100.0, 200.0, 300.0], &[Some(1.0), Some(3.0)]);
     let b = profile("b", &[100.0, 200.0, 300.0], &[Some(2.0), None]);
@@ -265,6 +489,7 @@ fn saved_comparison_json_export_is_read_only_no_clobber_and_tamper_checked() {
         analysis_ids: vec![],
         comparison_ids: vec!["compare".into()],
         algebra_ids: vec![],
+        comparison_display: None,
     };
     let op = Operation::GelWorkbench {
         request: Box::new(GelWorkbenchRequest::Export(request.clone())),
@@ -490,6 +715,7 @@ fn csv_backed_export_checks_original_bytes_and_retains_safe_source_summary() {
         comparison_ids: vec!["compare".into()],
         title: "CSV original".into(),
         algebra_ids: vec![],
+        comparison_display: None,
     };
     engine
         .apply(Operation::GelWorkbench {
@@ -582,6 +808,7 @@ fn pdf_comparison_only_export_rejects_corrupted_raster_and_replaced_document() {
                         analysis_ids: vec![],
                         comparison_ids: vec!["compare".into()],
                         algebra_ids: vec![],
+                        comparison_display: None,
                     }))
                 })
                 .is_err()
@@ -734,6 +961,7 @@ fn saved_tapestation_pdf() -> Vec<u8> {
         analysis_ids: vec!["before_A1".into(), "after_L1".into()],
         comparison_ids: vec!["compare".into()],
         algebra_ids: vec![],
+        comparison_display: None,
     };
     let result = reopened
         .apply(Operation::GelWorkbench {
