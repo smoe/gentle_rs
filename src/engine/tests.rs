@@ -35044,7 +35044,7 @@ fn labware_oversized_saved_racks_reopen_but_exports_refuse_without_truncation() 
 
 #[test]
 fn labware_carriers_preserve_legacy_json_and_export_both_support_modes() {
-    // Hand-crafted empty 4x9 grid; geometry, not physical or scientific evidence.
+    // One synthetic unoccupied guard placement gives carrier labels scope.
     let mut state = ProjectState::default();
     state.container_state.racks.insert(
         "carrier".into(),
@@ -35052,7 +35052,13 @@ fn labware_carriers_preserve_legacy_json_and_export_both_support_modes() {
             rack_id: "carrier".into(),
             name: "Synthetic carrier".into(),
             profile: RackProfileSnapshot::custom(4, 9),
-            placements: vec![],
+            placements: vec![RackPlacementEntry {
+                coordinate: "A1".into(),
+                occupant: None,
+                arrangement_id: "guard".into(),
+                order_index: 0,
+                role_label: "synthetic guard".into(),
+            }],
             created_by_op: None,
             created_at_unix_ms: 0,
         },
@@ -35192,7 +35198,7 @@ fn labware_carriers_preserve_legacy_json_and_export_both_support_modes() {
 
 #[test]
 fn labware_legacy_carrier_exports_omit_drawing_disclosures() {
-    // Hand-crafted empty 4x9 rack; no physical carrier or sample data.
+    // One synthetic unoccupied guard placement gives carrier labels scope.
     let mut state = ProjectState::default();
     state.container_state.racks.insert(
         "legacy".into(),
@@ -35200,7 +35206,13 @@ fn labware_legacy_carrier_exports_omit_drawing_disclosures() {
             rack_id: "legacy".into(),
             name: "Synthetic legacy export guard".into(),
             profile: RackProfileSnapshot::custom(4, 9),
-            placements: vec![],
+            placements: vec![RackPlacementEntry {
+                coordinate: "A1".into(),
+                occupant: None,
+                arrangement_id: "guard".into(),
+                order_index: 0,
+                role_label: "synthetic guard".into(),
+            }],
             created_by_op: None,
             created_at_unix_ms: 0,
         },
@@ -35366,7 +35378,7 @@ fn labware_pcr96_carrier_has_bound_footprint_centers_and_refuses_other_grids() {
 
 #[test]
 fn labware_pcr96_carrier_exports_preserve_floor_and_disclose_nonclaims() {
-    // Synthetic empty 8x12 grid, not physical fit or temperature evidence.
+    // One synthetic unoccupied guard placement gives carrier labels scope.
     let mut state = ProjectState::default();
     state.container_state.racks.insert(
         "pcr96".into(),
@@ -35374,7 +35386,13 @@ fn labware_pcr96_carrier_exports_preserve_floor_and_disclose_nonclaims() {
             rack_id: "pcr96".into(),
             name: "Synthetic PCR96 export guard".into(),
             profile: RackProfileSnapshot::custom(8, 12),
-            placements: vec![],
+            placements: vec![RackPlacementEntry {
+                coordinate: "A1".into(),
+                occupant: None,
+                arrangement_id: "guard".into(),
+                order_index: 0,
+                role_label: "synthetic guard".into(),
+            }],
             created_by_op: None,
             created_at_unix_ms: 0,
         },

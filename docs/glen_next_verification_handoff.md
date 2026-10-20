@@ -72,6 +72,14 @@ control acceptance separately; authored GUI tests are not live acceptance.
 
 The `labware_` filter also covers these new, unrun export regressions:
 
+Claude reports three root `labware_` failures at `09639034`: the two tests
+below and `labware_carriers_preserve_legacy_json_and_export_both_support_modes`
+used no placements, but carrier labels require placement scope. Each fixture
+now has one unoccupied A1 guard placement. Claude's temporary macOS probe passed
+12/12 after this change and was reverted; this committed repair has not been
+run here. Keep the engine's empty-scope refusal intact and rerun the root
+`labware_` filter at the integrated SHA; no new acceptance is claimed.
+
 - `labware_pcr96_carrier_exports_preserve_floor_and_disclose_nonclaims`: exactly
   96 floor-preserving/open-top cuts, fixed height/opening/floor and SCAD
   assumptions/nonclaims; each of the four SVG kinds has exactly one description

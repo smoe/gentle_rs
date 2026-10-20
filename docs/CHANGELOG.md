@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+## 2026-10-20 - Give Carrier Label Regression Fixtures Placement Scope
+
+- Correct three synthetic `labware_` fixtures to include one unoccupied A1
+  guard placement. Carrier-label export deliberately refuses a rack without
+  placements; preserve that product boundary rather than weakening it for tests.
+- Claude reports 9/12 root labware passes at `09639034` and 12/12 with this
+  temporary fixture repair on macOS. Those are reported probes, not execution
+  of this committed source. Protocol/render reports remain separately scoped.
+  Rust/native verification stays with Glen/CI; no geometry or product change.
+- Scoped rustfmt and whitespace checks pass. Preserve unrelated outputs.
+
 ## 2026-10-20 - Show Coefficient-Weighted Signed Gel Operands
 
 - Extend the engine-prepared algebra presentation with ordered nonzero-term
