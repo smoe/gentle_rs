@@ -1,5 +1,32 @@
 # GENtle Changelog
 
+## 2026-10-20 - Repair Catalog Reachability Without Weakening Parity Overrides
+
+- Trace both normal-CI primer-matrix failures at `bb1686bd` to the same invalid
+  `catalog doctor` override seen by Glen's protocol and gel-image filters.
+  Decoded Linux/Windows job logs were accessible through the GitHub connector;
+  no independent primer-matrix defect or green integration is inferred.
+- Declare the four existing catalog agent-plan routes in canonical MCP/JS/Lua
+  shell reachability without inventing engine operations. Remove their twelve
+  invalid positive overrides; keep the n/a-only loader and reachable-demotion
+  guard unchanged. Preserve matrix row meanings, runtime/provider confirmation,
+  all gel calculation/render/export code and historical evidence.
+- Author protocol registry/projection and exact-path/adapter-boundary tests.
+  The new offline override guard fails on the original twelve entries and then
+  passes with all 18 specialist source tests after repair. Rust execution and
+  canonical generator freshness remain with Glen/CI, not claimed locally.
+- Record Glen's scoped Linux gel/10.03/JSON/PDF passes, five-page legacy raster
+  comparison and partial X11/Xvfb result. Keep project/selection/Cancel native
+  checks, unfiltered external integration and all six original audit gates open.
+  No supplied raw evidence archive is manifest-verified by this message alone.
+  Reconcile the next-check handoff and roadmap without a new release freeze.
+  No local Rust build/test/check, push, dispatch or publication.
+- Verification: 18 specialist source, 19 capability/gel-fixture and 73 checkout
+  tests pass (110 distinct offline tests, no skips). Capability metadata stays
+  fresh; scoped rustfmt, documentation status and whitespace pass. Roadmap is
+  400 lines; session-close has four OK, two expected worktree/scope warnings,
+  no failures. These checks do not certify the authored Rust repair.
+
 ## 2026-10-20 - Restore The Carrier GUI Test Type Import
 
 - Add the missing `RackPhysicalTemplateKind` import to the explicit

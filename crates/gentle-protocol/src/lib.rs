@@ -7373,7 +7373,7 @@ fn glossary_command_surfacing(
         cli: if interfaces.contains("cli-direct") {
             AdapterSurfacing::Prominent
         } else if interfaces.contains("cli-shell")
-            || command_is_reachable_via_generic_operation_route(command, CapabilityAdapter::Cli)
+            || command_is_reachable_via_shared_shell_route(command, CapabilityAdapter::Cli)
         {
             AdapterSurfacing::ShellPassthrough
         } else {
@@ -7384,23 +7384,21 @@ fn glossary_command_surfacing(
             || is_mcp_prominent_glossary_command(&command.path)
         {
             AdapterSurfacing::Prominent
-        } else if command_is_reachable_via_generic_operation_route(command, CapabilityAdapter::Mcp)
-        {
+        } else if command_is_reachable_via_shared_shell_route(command, CapabilityAdapter::Mcp) {
             AdapterSurfacing::ShellPassthrough
         } else {
             AdapterSurfacing::Gap
         },
         js: if interfaces.contains("js") {
             AdapterSurfacing::Prominent
-        } else if command_is_reachable_via_generic_operation_route(command, CapabilityAdapter::Js) {
+        } else if command_is_reachable_via_shared_shell_route(command, CapabilityAdapter::Js) {
             AdapterSurfacing::ShellPassthrough
         } else {
             AdapterSurfacing::Gap
         },
         lua: if interfaces.contains("lua") {
             AdapterSurfacing::Prominent
-        } else if command_is_reachable_via_generic_operation_route(command, CapabilityAdapter::Lua)
-        {
+        } else if command_is_reachable_via_shared_shell_route(command, CapabilityAdapter::Lua) {
             AdapterSurfacing::ShellPassthrough
         } else {
             AdapterSurfacing::Gap
@@ -7415,18 +7413,146 @@ fn glossary_command_surfacing(
     surfacing
 }
 
-fn command_is_reachable_via_generic_operation_route(
+fn command_is_reachable_via_shared_shell_route(
     command: &GlossaryRegistryCommand,
     adapter: CapabilityAdapter,
 ) -> bool {
+    if !matches!(
+        adapter,
+        CapabilityAdapter::Cli
+            | CapabilityAdapter::Mcp
+            | CapabilityAdapter::Js
+            | CapabilityAdapter::Lua
+    ) {
+        return false;
+    }
+    // Catalog utilities have no engine operation; these adapters already execute
+    // their explicit shell candidates through the shared agent-plan executor.
     !command.engine_operations.is_empty()
-        && matches!(
+        || (matches!(
             adapter,
-            CapabilityAdapter::Cli
-                | CapabilityAdapter::Mcp
-                | CapabilityAdapter::Js
-                | CapabilityAdapter::Lua
-        )
+            CapabilityAdapter::Mcp | CapabilityAdapter::Js | CapabilityAdapter::Lua
+        ) && matches!(
+            command.path.as_str(),
+            "catalog doctor"
+                | "catalog search"
+                | "catalog updates preview"
+                | "catalog updates apply"
+        ))
+}
+
+#[cfg(test)]
+mod catalog_surfacing_tests {
+    use super::*;
+
+    #[test]
+    fn catalog_commands_keep_canonical_shell_reachability_without_overrides() {
+        let matrix = render_gui_cli_mcp_parity_matrix_markdown();
+        for path in [
+            "catalog doctor",
+            "catalog search",
+            "catalog updates preview",
+            "catalog updates apply",
+        ] {
+            let row = capability_descriptor(CapabilitySource::GlossaryCommand, path).unwrap();
+            assert!(row.engine_operations.is_empty(), "{path}");
+            assert_eq!(row.gui, AdapterSurfacing::ShellPassthrough, "{path}");
+            assert_eq!(row.cli, AdapterSurfacing::Prominent, "{path}");
+            for adapter in [
+                CapabilityAdapter::Mcp,
+                CapabilityAdapter::Js,
+                CapabilityAdapter::Lua,
+            ] {
+                assert_eq!(
+                    row.surfacing_for_adapter(adapter),
+                    AdapterSurfacing::ShellPassthrough,
+                    "{path}: {adapter:?}"
+                );
+                assert!(
+                    not_applicable_override_reason(
+                        CapabilitySource::GlossaryCommand,
+                        path,
+                        adapter
+                    )
+                    .is_none()
+                );
+            }
+            assert_eq!(row.clawbio, AdapterSurfacing::NotApplicable, "{path}");
+            let prefix = format!(
+                "| {path} | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a |"
+            );
+            assert!(
+                matrix.lines().any(|line| line.starts_with(&prefix)),
+                "{path}"
+            );
+            assert!(
+                include_str!("../../../docs/gui_cli_mcp_parity.md")
+                    .lines()
+                    .any(|line| line.starts_with(&prefix)),
+                "{path}"
+            );
+        }
+    }
+
+    #[test]
+    fn catalog_shell_reachability_is_exact_and_adapter_scoped() {
+        // Hand-crafted command records test metadata admission, not execution.
+        let mut command = GlossaryRegistryCommand {
+            path: "catalog doctor".into(),
+            summary: String::new(),
+            interfaces: vec![],
+            aliases: vec![],
+            engine_operations: vec![],
+            usage: String::new(),
+        };
+        for adapter in [
+            CapabilityAdapter::Mcp,
+            CapabilityAdapter::Js,
+            CapabilityAdapter::Lua,
+        ] {
+            assert!(command_is_reachable_via_shared_shell_route(
+                &command, adapter
+            ));
+            for path in [
+                "catalog",
+                "catalog doctor-extra",
+                "catalog doctor --extra",
+                "cache inspect",
+            ] {
+                command.path = path.into();
+                assert!(!command_is_reachable_via_shared_shell_route(
+                    &command, adapter
+                ));
+            }
+            command.path = "catalog doctor".into();
+        }
+        for adapter in [
+            CapabilityAdapter::Gui,
+            CapabilityAdapter::Cli,
+            CapabilityAdapter::Clawbio,
+        ] {
+            assert!(!command_is_reachable_via_shared_shell_route(
+                &command, adapter
+            ));
+        }
+        command.path = "synthetic operation route".into();
+        command.engine_operations = vec!["ReverseComplement".into()];
+        for adapter in [
+            CapabilityAdapter::Cli,
+            CapabilityAdapter::Mcp,
+            CapabilityAdapter::Js,
+            CapabilityAdapter::Lua,
+        ] {
+            assert!(command_is_reachable_via_shared_shell_route(
+                &command, adapter
+            ));
+        }
+        for adapter in [CapabilityAdapter::Gui, CapabilityAdapter::Clawbio] {
+            assert!(!command_is_reachable_via_shared_shell_route(
+                &command, adapter
+            ));
+        }
+    }
 }
 
 fn engine_operation_surfacing(op_name: &str) -> CapabilitySurfacingSet {

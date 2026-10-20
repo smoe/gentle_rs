@@ -1,5 +1,44 @@
 # Glen: Next Verification And Return
 
+## Catalog-Parity Repair And Gel Return, 2026-10-20
+
+Preserve Glen's [scoped gel pass and partial native return at bb1686bd](gel_workbench.md#integrated-linux-return-at-bb1686bd-2026-10-20).
+The integration and normal [CI 39346038531](https://github.com/smoe/gentle_rs/actions/runs/39346038531)
+remain failed. Both Linux/Windows primer-matrix logs show the same invalid
+`catalog doctor` override assertion; do not invent a second primer defect.
+
+After an ordinary owner-approved push, use a clean checkout and run-owned target
+to verify the narrow canonical-reachability repair. Keep default GUI features
+for the root test check, record the actual SHA/toolchain/platform/profile/stack
+and retain complete unfiltered results:
+
+```sh
+cargo check -q --locked --tests
+cargo test --locked -p gentle-protocol -j1 -- --test-threads=1
+cargo test --locked --lib -j1 specificity_matrix_ -- --test-threads=1
+cargo test --locked --lib -j1 introspection_distinguishes_drafts_from_validated_reports -- --test-threads=1
+cargo test --locked --lib -j1 catalog_mcp_read_only_parity_and_import_confirmation -- --test-threads=1
+cargo test --locked -j1 --test parity_matrix_freshness
+```
+
+Require normal Linux/Windows CI beyond the formerly failing matrix step;
+later skips and a suite with the six poisoned-registry tests filtered are not
+acceptance. No new interim source freeze or workflow dispatch is requested.
+The repaired registry keeps all four catalog commands shell-reachable on
+MCP/JS/Lua without fake engine operations or n/a exceptions; provider update
+confirmation remains unchanged. Do not re-pin matrix counts merely to pass.
+
+For gel native follow-up, only actual project replacement, explicit selection
+switch and separate Cancel-button behavior remain from this return. Retain
+honest platform/X11/Xvfb versus physical-host scope and original captures;
+green automated guards do not close these paths. Do not repeat completed gel
+arithmetic, six-command 10.03, JSON/PDF or five-page legacy comparisons just
+to relabel them; recheck affected paths if their source changes. Any native
+capture requires the existing owner-approved scope, not private desktop data.
+Return pass/fail/not-run, command logs, source/binary/input/artifact hashes and
+locations through Steffen. No live model, provider contact, package or scientific
+approval is requested. The carrier checks below remain separately outstanding.
+
 ## Carrier Follow-Up, 2026-10-20
 
 After the next ordinary owner push, verify the new carrier changes without

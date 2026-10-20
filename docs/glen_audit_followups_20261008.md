@@ -37,6 +37,19 @@ availability question is needed now. Ordinary checks still record what they
 tested, and observed defects remain actionable. This does not authorize a push,
 local Rust, model call, package build or publication.
 
+## Gel Integration Return (2026-10-20)
+
+The owner relays Glen's [bb1686bd gel return](gel_workbench.md#integrated-linux-return-at-bb1686bd-2026-10-20):
+focused arithmetic/rendering, six tutorial commands and JSON/PDF checks pass;
+native Linux X11/Xvfb is partial, with project/selection switching and the
+separate Cancel path unrun. No physical-host or live-agent evidence is added.
+Full integration remains failed. Decoded normal-CI Linux/Windows logs confirm
+their primer-matrix failure is the same catalog-parity assertion, not an
+independent primer defect. The [next-check handoff](glen_next_verification_handoff.md#catalog-parity-repair-and-gel-return-2026-10-20)
+records the narrow repair and pending unfiltered external checks. Raw evidence
+files/hashes were not supplied with this message; no manifest verification or
+closure of any of the six original gates is claimed.
+
 ## Prepared VKORC1 Next Actions (2026-10-15)
 
 **Preparation only, not dispatch approval or a development freeze.** Apply

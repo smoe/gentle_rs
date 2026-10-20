@@ -94,6 +94,16 @@ def fixture_abif_tag(tag, number=2):
 
 
 class SpecialistSourceTests(unittest.TestCase):
+    def test_parity_overrides_only_exclude_unreachable_surfaces(self):
+        overrides = read_json(ROOT / "docs/parity_matrix_overrides.json")["overrides"]
+        reachable = [
+            f"{row['source']} {row['name']} / {row['adapter']}: {row['surfacing']}"
+            for row in overrides if row["surfacing"] != "not_applicable"
+        ]
+        self.assertEqual([], reachable, "Reachability belongs in the canonical registry, not n/a overrides")
+        for row in overrides:
+            self.assertTrue(row["reason"].strip())
+
     def test_guarded_provider_import_guide_and_catalog_surface(self):
         guide = (TUTORIALS / "09-04_cloning_time_cost_and_protocol_suppliers.md").read_text(encoding="utf-8")
         contract = (ROOT / "docs/catalog_updates.md").read_text(encoding="utf-8")
@@ -107,8 +117,8 @@ class SpecialistSourceTests(unittest.TestCase):
             self.assertIn(path, commands)
             self.assertIn(f"| {path} | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a |", matrix)
             for adapter in ("mcp", "js", "lua"):
-                row = next(item for item in overrides if item["name"] == path and item["adapter"] == adapter)
-                self.assertEqual(row["surfacing"], "shell_passthrough")
+                self.assertFalse(any(item["name"] == path and item["adapter"] == adapter
+                                     for item in overrides))
         for term in ("withdrawn_providers", "previous.bin", "freshness", "not signatures", "private", "atomic", "Glen/CI"):
             self.assertIn(term, contract)
         # Parse/execute only the tutorial's Python data construction, never its CLI.

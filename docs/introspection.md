@@ -684,6 +684,15 @@ evidence, availability and approval are separate. See
 [Capability Maturity](capability_maturity.md). No new command, tool or operation
 is required; GUI Shell, CLI, MCP and scripting retain the shared route.
 
+The four routes `catalog doctor`, `catalog search`, `catalog updates preview`
+and `catalog updates apply` have no engine operation, but their explicit shell
+candidates are reachable through
+the existing MCP/JS/Lua agent-plan executor. The canonical registry records
+that bounded `shell-only` reachability; `parity_matrix_overrides.json` remains
+strictly for justified `not_applicable` exclusions. It must not encode positive
+reachability or demote a working route. This metadata grants no execution or
+provider-update confirmation authority.
+
 Success criterion for the words-only model is twofold:
 
 1. **No control without a word path.** Every state-mutating control and every

@@ -441,3 +441,42 @@ profile was changed. Linking retains the existing 16-MiB unwind-table warning.
 
 No full workspace, native GUI input/performance, Windows/Linux, live-agent,
 release or scientific acceptance is implied by these scoped local checks.
+
+### Integrated Linux Return At bb1686bd (2026-10-20)
+
+Glen reports testing published `bb1686bd3a9283f1b9e99d9c5c55ddee3e9d7410`,
+including `56ca54ad`, on Debian forky x86_64 with Rust/Cargo 1.97.1,
+default `desktop-gui,screenshot-capture`, one build job and
+`RUST_MIN_STACK=16777216`. This is not default-stack or physical-host evidence.
+The report was relayed by the owner; no raw evidence archive or artifact hashes
+were supplied with this return, so those files have not been independently
+manifest-verified here. Preserve these scoped results, not a green integration:
+
+| Scope | Returned result |
+| --- | --- |
+| Renderer / root workbench | 20/20 and 61 passed; two opt-in writers ignored by the root filter. Separate report exports below did execute. |
+| Tutorial freshness / Python | Both freshness tests passed; 81 Python tests with one documented skip and no failure. |
+| Tutorial 10.03 | All six algebra commands passed; weights `[-1,null,3]`, densities `[-0.02,null,0.03]`; inspection/export preserved project state/history. |
+| JSON/PDF | Algebra-only and combined exports passed order/hash/warning/provenance checks. Five legacy PDF pages were raster-byteidentical. Mismatch and existing-output refusals passed; unverifiable refusal is covered by the workbench regression. |
+| Native X11/Xvfb | Partial: menu opening, saved residual, signed/zero/gap display, operand provenance, save/process-restart and close-during-verification passed without stale adoption. |
+| Native paths not run | Actual project replacement, explicit selection switch and separate Cancel-button path; the virtual file dialog was unreliable. Automated guards do not replace these native checks. |
+| Full protocol / gel-image | 98 pass/6 fail in protocol: one invalid `catalog doctor` MCP override plus five poisoned-LazyLock cascades. Gel-image 42 pass/1 fail is the same registry cascade. Filtering the six protocol failures yields 98 passes, not a green gate. |
+
+Normal [CI run 39346038531](https://github.com/smoe/gentle_rs/actions/runs/39346038531)
+failed: headless and release safety passed; full Linux/Windows failed at
+`specificity_matrix_shared_shell_raw_operation_and_reload_agree`; macOS was
+skipped. Codex independently retrieved the decoded
+[Linux job](https://github.com/smoe/gentle_rs/actions/runs/39346038531/job/118378785454)
+and [Windows job](https://github.com/smoe/gentle_rs/actions/runs/39346038531/job/118378752507)
+logs through the GitHub connector. Each matrix filter passed 9/10 and failed
+on that exact same `catalog doctor` assertion, not a separate primer defect.
+Later CI steps were skipped, not passed.
+
+The narrow local repair moves the four existing catalog agent-plan routes into
+canonical reachability and removes their twelve invalid `shell_passthrough`
+overrides. The override loader remains strictly n/a-only. No gel arithmetic,
+rendering, report contract, provider execution or permission rule changes.
+External protocol/parity/matrix/introspection checks and the remaining three
+native paths are still required; follow the
+[bounded next-check handoff](glen_next_verification_handoff.md#catalog-parity-repair-and-gel-return-2026-10-20).
+Live-model, package, physical-host and scientific acceptance remain separate.
