@@ -4,6 +4,7 @@ use super::*;
 use crate::planning_protocol::{
     ProtocolOverview, ProtocolOverviewStatus, from_explanation, legend, node_details,
 };
+use eframe::egui;
 use std::sync::Arc;
 
 #[derive(Clone)]

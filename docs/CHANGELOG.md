@@ -48,6 +48,41 @@
   tube meshes) outside the sandbox after its Qt NEON probe failure; this is
   neither new-carrier nor Rust exporter execution. Roadmap stays 400 lines.
 
+## 2026-10-20 - Verify And Present Saved Signed Gel Algebra
+
+- Rebase onto local main `5a8bd8ce`, then implement the owner-approved revised
+  plan after Claude's supplied read-only review. Keep the existing distribution
+  comparison renderer/pages unchanged; no reference overlays or fitted scales.
+- Add read-only algebra inspection with frozen v1 serialization/calculation,
+  bounded memoized dependency replay, cycle detection, typed verification and
+  complete operand snapshots/warnings. Detect changed results/operands rather
+  than trusting a supplied input hash. Reject new imported residual claims;
+  legacy/unverifiable data stays inspectable but cannot be report-exported.
+- Classify only the valid new inspection as read-only in the shared Shell;
+  imports, algebra creation, export and malformed payloads retain conservative
+  confirmation. Exercise both this classification and unchanged engine state.
+- Render signed bin integral per bp/kDa with explicit zero, negative values and
+  unavailable gaps. Name derived identity and input digest honestly instead of
+  displaying inherited first-operand run/lane as the result's identity. Append
+  full bounded provenance pages and expose ordered defaulted `algebra_ids` in
+  saved PDF/JSON exports without changing empty-selection legacy output.
+- Use the same SVG in the background-inspected GUI and report, caching by
+  project revision/result and discarding stale, canceled or closed inspections.
+  Rasterize with the configured shared font path in that worker, not the GUI
+  image-loader frame. No frame-loop replay, normalization or new inference; export remains an
+  explicit external no-clobber write with no project edit.
+- Extend tutorial 10.03 with six shared-shell commands and independently
+  calculable signed/missing/unequal-bin examples. Add explicit `synthetic`
+  evidence so invented teaching inputs are not labelled vendor measurements;
+  synchronize only this chapter's catalog notes. Public cell-line coefficients,
+  native GUI/platform/scientific acceptance and raw vendor traces remain open.
+- Targeted verification is recorded in `gel_workbench.md`; isolate main's
+  existing `catalog doctor` parity failure from gel changes. No push, workflow
+  dispatch, new Glen freeze/request, dependency or release-profile change.
+- Required integration prerequisite: add the missing existing `eframe::egui`
+  import in main's planning-protocol UI, which otherwise prevents all desktop
+  root checks/tests from compiling. No planning behavior or dependency changes.
+
 ## 2026-10-19 - Guard Absolute Cloning Ranking Policy Against Drift
 
 - Add seven test-only guards beside the existing bench-model regressions:

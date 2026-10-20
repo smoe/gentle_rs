@@ -272,7 +272,8 @@ gene-specific enrichment result is implied while those inputs are pending.
 5. Glen's image-size/memory/repaint audits and human wet-lab acceptance, plus
    richer image/report inventory and readiness discovery for the inner agent.
 6. Native/platform acceptance of the [locally checked profile workbench](gel_workbench.md#verification-boundary),
-   actual vendor trace export admission and standalone residual-profile PDF pages.
+   actual vendor trace export admission and native acceptance of the
+   [verified standalone residual pages](gel_workbench.md#verify-and-display-a-saved-residual).
 
 Densitometry, concentration estimates and automatic ladder identification remain
 separate later capabilities, not hidden interpretations of this size report.

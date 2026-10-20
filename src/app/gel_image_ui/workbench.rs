@@ -14,6 +14,55 @@ pub(super) struct PendingSuggestions {
     pub(super) suggestions: GelBandSuggestions,
 }
 
+pub(super) struct AlgebraInspection {
+    revision: u64,
+    pub(super) presentation: GelAlgebraPresentation,
+    #[cfg(test)]
+    pub(super) svg: Arc<[u8]>,
+    pub(super) pixels: Option<egui::ColorImage>,
+    pub(super) texture: Option<egui::TextureHandle>,
+    image_uri: String,
+}
+
+impl AlgebraInspection {
+    pub(super) fn new(revision: u64, presentation: GelAlgebraPresentation) -> Result<Self, String> {
+        let svg = gentle_render::gel_workbench::render_algebra_svg(&presentation);
+        let pixels = if presentation.verification == GelAlgebraVerification::Verified {
+            let rendered = crate::svg_png::render_svg_to_png_bytes(&svg, Default::default())?;
+            let rgba =
+                image::load_from_memory_with_format(&rendered.bytes, image::ImageFormat::Png)
+                    .map_err(|e| e.to_string())?
+                    .into_rgba8();
+            Some(egui::ColorImage::from_rgba_unmultiplied(
+                [rgba.width() as usize, rgba.height() as usize],
+                rgba.as_raw(),
+            ))
+        } else {
+            None
+        };
+        let image_uri = format!(
+            "gel-algebra-{}",
+            crate::digest_utils::sha256_hex_bytes(svg.as_bytes())
+        );
+        Ok(Self {
+            revision,
+            presentation,
+            #[cfg(test)]
+            svg: svg.into_bytes().into(),
+            pixels,
+            texture: None,
+            image_uri,
+        })
+    }
+
+    pub(super) fn install_texture(&mut self, ctx: &egui::Context) {
+        if let Some(pixels) = self.pixels.take() {
+            self.texture =
+                Some(ctx.load_texture(&self.image_uri, pixels, egui::TextureOptions::LINEAR));
+        }
+    }
+}
+
 pub(super) struct WorkbenchUi {
     pdf_object_selected: bool,
     pdf_object: u32,
@@ -40,8 +89,11 @@ pub(super) struct WorkbenchUi {
     pub(super) coefficients: [f64; 2],
     pub(super) algebra_id: String,
     pub(super) saved_comparison: String,
+    pub(super) selected_algebra: String,
+    pub(super) algebra_inspection: Option<AlgebraInspection>,
     pub(super) export_analyses: Vec<String>,
     pub(super) export_comparisons: Vec<String>,
+    pub(super) export_algebra: Vec<String>,
     export_title: String,
     export_path: String,
     advanced: String,
@@ -75,8 +127,11 @@ impl Default for WorkbenchUi {
             coefficients: [1.0, -1.0],
             algebra_id: "residual_1".into(),
             saved_comparison: String::new(),
+            selected_algebra: String::new(),
+            algebra_inspection: None,
             export_analyses: Vec::new(),
             export_comparisons: Vec::new(),
+            export_algebra: Vec::new(),
             export_title: "Measured gel comparison".into(),
             export_path: String::new(),
             advanced: String::new(),
@@ -113,6 +168,21 @@ fn compatible(left: &GelProfile, right: &GelProfile) -> bool {
 }
 
 impl WorkbenchUi {
+    pub(super) fn algebra_matches(&self, inspection: &AlgebraInspection, revision: u64) -> bool {
+        inspection.revision == revision
+            && inspection.presentation.profile_id == self.selected_algebra
+    }
+
+    pub(super) fn invalidate_algebra(&mut self, revision: u64) {
+        if self
+            .algebra_inspection
+            .as_ref()
+            .is_some_and(|p| !self.algebra_matches(p, revision))
+        {
+            self.algebra_inspection = None;
+        }
+    }
+
     pub(super) fn clear_suggestions(&mut self) {
         self.pending = None;
         self.selected_suggestions.clear();
@@ -210,9 +280,19 @@ impl WorkbenchUi {
 
     pub(super) fn export_request(&self, inventory: &Inventory) -> Option<GelWorkbenchRequest> {
         if self.export_title.trim().is_empty()
-            || (self.export_analyses.is_empty() && self.export_comparisons.is_empty())
+            || (self.export_analyses.is_empty()
+                && self.export_comparisons.is_empty()
+                && self.export_algebra.is_empty())
             || self.export_analyses.len() > 8
             || self.export_comparisons.len() > 8
+            || self.export_algebra.len() > 8
+            || !self.export_algebra.iter().all(|id| {
+                inventory
+                    .store
+                    .profiles
+                    .get(id)
+                    .is_some_and(|p| p.evidence_kind == GelEvidenceKind::SignedResidual)
+            })
             || !self
                 .export_analyses
                 .iter()
@@ -228,6 +308,7 @@ impl WorkbenchUi {
             path: self.export_path.clone(),
             analysis_ids: self.export_analyses.clone(),
             comparison_ids: self.export_comparisons.clone(),
+            algebra_ids: self.export_algebra.clone(),
             title: self.export_title.clone(),
         }))
     }
@@ -456,6 +537,7 @@ impl GelImageEditor {
         self.extraction_controls(ui, shared, &inventory);
         self.comparison_controls(ui, shared, &inventory);
         self.saved_comparison_controls(ui, &inventory);
+        self.algebra_inspection_controls(ui, shared, &inventory);
         self.workbench_export_controls(ui, shared, &inventory);
         self.advanced_workbench_controls(ui, shared);
     }
@@ -626,6 +708,94 @@ impl GelImageEditor {
         });
     }
 
+    fn algebra_inspection_controls(
+        &mut self,
+        ui: &mut Ui,
+        shared: &Arc<RwLock<GentleEngine>>,
+        inventory: &Inventory,
+    ) {
+        ui.separator();
+        ui.label("Inspect saved signed algebra (no CDF / QQ / significance)");
+        select_id(
+            ui,
+            "gel_algebra_inspect",
+            &mut self.workbench.selected_algebra,
+            "Select a derived result",
+            inventory
+                .store
+                .profiles
+                .values()
+                .filter(|p| p.evidence_kind == GelEvidenceKind::SignedResidual)
+                .map(|p| (p.id.clone(), p.id.clone())),
+        );
+        self.workbench
+            .invalidate_algebra(shared.read().unwrap().mutation_revision());
+        let available = inventory
+            .store
+            .profiles
+            .get(&self.workbench.selected_algebra)
+            .is_some_and(|p| p.evidence_kind == GelEvidenceKind::SignedResidual);
+        if ui
+            .add_enabled(
+                available,
+                egui::Button::new("Verify and display saved algebra"),
+            )
+            .clicked()
+        {
+            self.workbench.algebra_inspection = None;
+            self.start(
+                shared,
+                ui.ctx(),
+                GelJob::Workbench(GelWorkbenchRequest::InspectAlgebra {
+                    profile_id: self.workbench.selected_algebra.clone(),
+                }),
+            );
+        }
+        if let Some(cached) = &self.workbench.algebra_inspection {
+            let report = &cached.presentation;
+            ui.label(format!(
+                "Verification: {:?} (internal consistency, not scientific acceptance)",
+                report.verification
+            ));
+            if let Some(reason) = &report.reason {
+                ui.label(reason);
+            }
+            if report.verification == GelAlgebraVerification::Verified {
+                if let Some(texture) = &cached.texture {
+                    ui.add(
+                        egui::Image::new(texture)
+                            .max_width(ui.available_width())
+                            .shrink_to_fit(),
+                    );
+                }
+                ui.collapsing(
+                    "Complete recorded inputs, coefficients and warnings",
+                    |ui| {
+                        if let Some(request) = &report.request {
+                            for term in &request.terms {
+                                ui.label(format!("{} x {}", term.coefficient, term.profile_id));
+                            }
+                        }
+                        ui.small(format!(
+                            "Algebra input digest: {}",
+                            report.input_digest.as_deref().unwrap_or("unavailable")
+                        ));
+                        for input in &report.inputs {
+                            ui.push_id(&input.id, |ui| {
+                                ui.collapsing(&input.id, |ui| profile_provenance(ui, input));
+                            });
+                        }
+                        for warning in &report.warnings {
+                            ui.small(warning);
+                        }
+                    },
+                );
+            } else {
+                ui.small("No verified plot or report export. Raw legacy fields remain available under saved profile provenance.");
+            }
+        }
+    }
+
     fn workbench_export_controls(
         &mut self,
         ui: &mut Ui,
@@ -639,6 +809,9 @@ impl GelImageEditor {
             ui.label("Saved comparison IDs (export order)");
             ordered_selection(ui, "gel_pdf_comparisons", &mut self.workbench.export_comparisons,
                 inventory.store.comparisons.keys().cloned().collect(), false);
+            ui.label("Saved algebra IDs (append after existing pages; verification required)");
+            ordered_selection(ui, "gel_pdf_algebra", &mut self.workbench.export_algebra,
+                inventory.store.profiles.values().filter(|p| p.evidence_kind == GelEvidenceKind::SignedResidual).map(|p| p.id.clone()).collect(), false);
             ui.horizontal_wrapped(|ui| {
                 ui.label("Report title"); ui.text_edit_singleline(&mut self.workbench.export_title);
                 ui.label("New PDF path (optional)"); ui.text_edit_singleline(&mut self.workbench.export_path);
@@ -647,7 +820,7 @@ impl GelImageEditor {
             if ui.add_enabled(request.is_some(), egui::Button::new("Export stored report PDF...")).clicked() && let Some(request) = request {
                 self.start(shared, ui.ctx(), GelJob::Workbench(request));
             }
-            ui.small("Up to 8 analyses and 8 comparisons. A file dialog runs in the background if no path is given. Existing files are refused, even after an overwrite confirmation. Export writes an external file only: no project commit or undo; closing the window does not cancel it.");
+            ui.small("Up to 8 of each record kind. Algebra export refuses mismatching/unverifiable inputs and excessive provenance pages. A file dialog runs in the background if no path is given. Existing files are refused. Export is external: no project edit or undo; closing does not cancel it.");
         });
     }
 
@@ -675,7 +848,13 @@ impl GelImageEditor {
                             self.status = "Detection JSON must match the selected manual sample rectangles and current detector controls; ladder proposals are not allowed.".into();
                         }
                     }
-                    Ok(request) => self.start(shared, ui.ctx(), GelJob::Workbench(request)),
+                    Ok(request) => {
+                        if let GelWorkbenchRequest::InspectAlgebra { profile_id } = &request {
+                            self.workbench.selected_algebra = profile_id.clone();
+                            self.workbench.algebra_inspection = None;
+                        }
+                        self.start(shared, ui.ctx(), GelJob::Workbench(request));
+                    },
                     Err(error) => self.status = format!("Request not submitted: {error}"),
                 }
             }
@@ -723,10 +902,14 @@ fn profile_choices(inventory: &Inventory) -> Vec<(String, String)> {
         .map(|p| {
             (
                 p.id.clone(),
-                format!(
-                    "{} | {} | run {} / lane {} | {:?}",
-                    p.id, p.label, p.run_id, p.lane_id, p.evidence_kind
-                ),
+                if p.evidence_kind == GelEvidenceKind::SignedResidual {
+                    format!("{} | derived algebra (verify before reporting)", p.id)
+                } else {
+                    format!(
+                        "{} | {} | run {} / lane {} | {:?}",
+                        p.id, p.label, p.run_id, p.lane_id, p.evidence_kind
+                    )
+                },
             )
         })
         .collect()
@@ -791,19 +974,36 @@ fn ordered_selection(
 }
 
 fn profile_provenance(ui: &mut Ui, profile: &GelProfile) {
-    ui.label(format!(
-        "{} | run {} / lane {} | {:?} | size {}",
-        profile.label,
-        profile.run_id,
-        profile.lane_id,
-        profile.evidence_kind,
-        profile.size_kind.unit()
-    ));
+    if profile.evidence_kind == GelEvidenceKind::SignedResidual {
+        ui.label(format!(
+            "{} | derived algebra | size {}",
+            profile.label,
+            profile.size_kind.unit()
+        ));
+        ui.small("Legacy inherited run/lane fields are not the derived result's identity; inspect its recorded operands.");
+    } else {
+        ui.label(format!(
+            "{} | run {} / lane {} | {:?} | size {}",
+            profile.label,
+            profile.run_id,
+            profile.lane_id,
+            profile.evidence_kind,
+            profile.size_kind.unit()
+        ));
+    }
     ui.small(format!(
         "Signal units: {} | integration measure: {}",
         profile.signal_units, profile.measure
     ));
-    ui.small(format!("Source SHA-256: {}", profile.source_sha256));
+    ui.small(format!(
+        "{}: {}",
+        if profile.evidence_kind == GelEvidenceKind::SignedResidual {
+            "Algebra input digest (requires replay verification)"
+        } else {
+            "Source SHA-256"
+        },
+        profile.source_sha256
+    ));
     for step in &profile.processing {
         ui.small(step);
     }

@@ -94,6 +94,11 @@ impl GentleEngine {
                 output.suggestions = Some(suggestions);
             }
             GelWorkbenchRequest::ImportProfile { mut profile } => {
+                if profile.evidence_kind == GelEvidenceKind::SignedResidual {
+                    return Err(EngineError::invalid_input(
+                        "Signed residuals must be created by algebra, not imported; legacy records remain inspectable",
+                    ));
+                }
                 work::validate_profile(&profile)?;
                 profile.warnings.push("Imported structured bin weights: source/calibration/measure are caller-declared; original detector calibration is not independently verified by GENtle.".into());
                 work::validate_profile(&profile)?;
@@ -222,6 +227,9 @@ impl GentleEngine {
                         .clone(),
                 );
             }
+            GelWorkbenchRequest::InspectAlgebra { profile_id } => {
+                output.algebra = Some(self.gel_algebra_presentation(&profile_id)?);
+            }
             GelWorkbenchRequest::Export(request) => {
                 let bytes = self.gel_workbench_export_bytes(&request)?;
                 let path = Path::new(&request.path);
@@ -283,6 +291,48 @@ impl GentleEngine {
             .profiles
             .insert(profile.id.clone(), Arc::new(profile));
         Ok(())
+    }
+
+    fn gel_algebra_presentation(&self, id: &str) -> Result<GelAlgebraPresentation, EngineError> {
+        let mut presentation =
+            crate::gel_workbench::inspect_algebra(&self.state.gel_images.workbench, id)?;
+        if presentation.verification == GelAlgebraVerification::Verified {
+            for profile in &presentation.inputs {
+                if profile.evidence_kind == GelEvidenceKind::SignedResidual {
+                    continue;
+                }
+                let verified = (|| -> Result<(), EngineError> {
+                    self.verified_gel_numeric_source(profile)?;
+                    for image in self
+                        .state
+                        .gel_images
+                        .images
+                        .values()
+                        .filter(|i| i.descriptor.sha256 == profile.source_sha256)
+                    {
+                        crate::gel_image::validate_gel_image_record(image)?;
+                    }
+                    for source in self
+                        .state
+                        .gel_images
+                        .workbench
+                        .sources
+                        .values()
+                        .filter(|s| s.extracted_image_sha256 == profile.source_sha256)
+                    {
+                        self.verified_gel_source_summary(source)?;
+                    }
+                    Ok(())
+                })();
+                if let Err(error) = verified {
+                    presentation.verification = GelAlgebraVerification::Mismatch;
+                    presentation.reason = Some(error.message);
+                    presentation.series = None;
+                    break;
+                }
+            }
+        }
+        Ok(presentation)
     }
 
     fn verified_gel_source_summary(
@@ -386,10 +436,13 @@ impl GentleEngine {
         crate::gel_image::validate_label(&request.title, "report title")?;
         if request.analysis_ids.len() > 8
             || request.comparison_ids.len() > 8
-            || request.analysis_ids.is_empty() && request.comparison_ids.is_empty()
+            || request.algebra_ids.len() > 8
+            || request.analysis_ids.is_empty()
+                && request.comparison_ids.is_empty()
+                && request.algebra_ids.is_empty()
         {
             return Err(EngineError::invalid_input(
-                "Choose 1..8 saved analyses and/or 1..8 comparisons",
+                "Choose saved analyses, comparisons and/or algebra results (at most eight of each)",
             ));
         }
         let mut analyses = Vec::new();
@@ -397,6 +450,52 @@ impl GentleEngine {
         let mut comparisons = Vec::new();
         let mut sources = Vec::new();
         let mut numeric_sources = Vec::new();
+        let mut algebra = Vec::new();
+        let mut algebra_sources = Vec::new();
+        let mut algebra_numeric_sources = Vec::new();
+        for id in &request.algebra_ids {
+            let presentation = self.gel_algebra_presentation(id)?;
+            if presentation.verification != GelAlgebraVerification::Verified {
+                return Err(EngineError::invalid_input(format!(
+                    "Algebra export refused ({:?}): {}",
+                    presentation.verification,
+                    presentation.reason.as_deref().unwrap_or("unverifiable")
+                )));
+            }
+            for profile in &presentation.inputs {
+                if let Some(summary) = self.verified_gel_numeric_source(profile)? {
+                    if !algebra_numeric_sources.contains(&summary) {
+                        algebra_numeric_sources.push(summary);
+                    }
+                }
+                for source in self
+                    .state
+                    .gel_images
+                    .workbench
+                    .sources
+                    .values()
+                    .filter(|s| s.extracted_image_sha256 == profile.source_sha256)
+                {
+                    let summary = self.verified_gel_source_summary(source)?;
+                    if !algebra_sources.contains(&summary) {
+                        algebra_sources.push(summary);
+                    }
+                }
+            }
+            algebra.push(presentation);
+        }
+        let algebra_bins: usize = algebra
+            .iter()
+            .map(|r| {
+                r.inputs.iter().map(|p| p.weights.len()).sum::<usize>()
+                    + r.series.as_ref().map_or(0, |s| s.weights.len())
+            })
+            .sum();
+        if algebra_bins > 1_280_000 {
+            return Err(EngineError::invalid_input(
+                "Selected algebra exports exceed 1280000 retained input/result bins",
+            ));
+        }
         for id in &request.analysis_ids {
             let report = self.gel_image_analysis(id)?;
             let image = self
@@ -473,18 +572,37 @@ impl GentleEngine {
             comparisons.push(r.as_ref());
         }
         if extension == "json" {
-            return serde_json::to_vec_pretty(&serde_json::json!({"schema":"gentle.gel_workbench_export.v1","title":request.title,"sources":sources,"numeric_sources":numeric_sources,"analyses":analyses,"comparisons":comparisons}))
-                .map_err(|e|EngineError::internal(e.to_string()));
+            for source in &algebra_sources {
+                if !sources.contains(source) {
+                    sources.push(source.clone());
+                }
+            }
+            for source in &algebra_numeric_sources {
+                if !numeric_sources.contains(source) {
+                    numeric_sources.push(source.clone());
+                }
+            }
+            let mut report = serde_json::json!({"schema":"gentle.gel_workbench_export.v1","title":request.title,"sources":sources,"numeric_sources":numeric_sources,"analyses":analyses,"comparisons":comparisons});
+            if !algebra.is_empty() {
+                report["algebra"] = serde_json::to_value(&algebra)
+                    .map_err(|e| EngineError::internal(e.to_string()))?;
+            }
+            return serde_json::to_vec_pretty(&report)
+                .map_err(|e| EngineError::internal(e.to_string()));
         }
         let views: Vec<_> = analyses
             .iter()
             .zip(&previews)
             .map(|(a, p)| (*a, p.as_str()))
             .collect();
-        let mut pages = vec![gentle_render::gel_workbench::render_gel_overview_svg(
-            &request.title,
-            &views,
-        )];
+        let mut pages = if views.is_empty() && comparisons.is_empty() && !algebra.is_empty() {
+            vec![]
+        } else {
+            vec![gentle_render::gel_workbench::render_gel_overview_svg(
+                &request.title,
+                &views,
+            )]
+        };
         for chunk in sources.chunks(8) {
             pages.push(gentle_render::gel_workbench::render_sources_svg(chunk));
         }
@@ -500,6 +618,28 @@ impl GentleEngine {
         }
         for r in comparisons {
             pages.push(gentle_render::gel_workbench::render_comparison_svg(r));
+        }
+        algebra_sources.retain(|s| !sources.contains(s));
+        algebra_numeric_sources.retain(|s| !numeric_sources.contains(s));
+        for chunk in algebra_sources.chunks(8) {
+            pages.push(gentle_render::gel_workbench::render_sources_svg(chunk));
+        }
+        for chunk in algebra_numeric_sources.chunks(8) {
+            pages.push(gentle_render::gel_workbench::render_numeric_sources_svg(
+                chunk,
+            ));
+        }
+        for r in &algebra {
+            pages.push(gentle_render::gel_workbench::render_algebra_svg(r));
+            pages.extend(
+                gentle_render::gel_workbench::render_algebra_provenance_svgs(r)
+                    .map_err(EngineError::invalid_input)?,
+            );
+        }
+        if !algebra.is_empty() && pages.len() > 128 {
+            return Err(EngineError::invalid_input(
+                "Combined algebra PDF exceeds 128 pages; export fewer results or JSON",
+            ));
         }
         let temporary =
             tempfile::tempdir().map_err(|e| EngineError::new(ErrorCode::Io, e.to_string()))?;

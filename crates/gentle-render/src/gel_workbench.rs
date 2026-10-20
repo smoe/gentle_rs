@@ -26,6 +26,9 @@ const INK: &str = "#23313d";
 const LEFT: &str = "#076d7b";
 const RIGHT: &str = "#ad4c13";
 
+mod algebra;
+pub use algebra::{render_algebra_provenance_svgs, render_algebra_svg};
+
 fn xml(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for ch in value.chars() {
@@ -279,6 +282,7 @@ fn evidence(kind: GelEvidenceKind) -> &'static str {
         GelEvidenceKind::ImageDisplay => "Image-display evidence (not a vendor measurement)",
         GelEvidenceKind::VendorTrace => "Vendor-trace measurement (supplied measure/units)",
         GelEvidenceKind::SignedResidual => "Signed residual (derived; not a probability measure)",
+        GelEvidenceKind::Synthetic => "Synthetic integrated bins (not experimental evidence)",
     }
 }
 

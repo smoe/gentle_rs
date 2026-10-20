@@ -264,6 +264,7 @@ fn saved_comparison_json_export_is_read_only_no_clobber_and_tamper_checked() {
         title: "Synthetic before/after".into(),
         analysis_ids: vec![],
         comparison_ids: vec!["compare".into()],
+        algebra_ids: vec![],
     };
     let op = Operation::GelWorkbench {
         request: Box::new(GelWorkbenchRequest::Export(request.clone())),
@@ -488,6 +489,7 @@ fn csv_backed_export_checks_original_bytes_and_retains_safe_source_summary() {
         analysis_ids: vec![],
         comparison_ids: vec!["compare".into()],
         title: "CSV original".into(),
+        algebra_ids: vec![],
     };
     engine
         .apply(Operation::GelWorkbench {
@@ -579,6 +581,7 @@ fn pdf_comparison_only_export_rejects_corrupted_raster_and_replaced_document() {
                         title: "Source verification".into(),
                         analysis_ids: vec![],
                         comparison_ids: vec!["compare".into()],
+                        algebra_ids: vec![],
                     }))
                 })
                 .is_err()
@@ -730,6 +733,7 @@ fn saved_tapestation_pdf() -> Vec<u8> {
         title: "26R266 before/after: image-display shapes, not detector traces".into(),
         analysis_ids: vec!["before_A1".into(), "after_L1".into()],
         comparison_ids: vec!["compare".into()],
+        algebra_ids: vec![],
     };
     let result = reopened
         .apply(Operation::GelWorkbench {

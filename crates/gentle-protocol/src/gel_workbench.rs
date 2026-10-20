@@ -11,6 +11,8 @@ pub enum GelEvidenceKind {
     ImageDisplay,
     VendorTrace,
     SignedResidual,
+    /// Explicitly invented teaching/test integrals, never detector evidence.
+    Synthetic,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -220,6 +222,44 @@ pub struct GelAlgebraRequest {
     pub range: [f64; 2],
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GelAlgebraVerification {
+    Verified,
+    Mismatch,
+    Unverifiable,
+}
+
+/// Display transform only: each density is the recorded bin integral divided
+/// by its size width. It is neither normalized nor calibrated fluorescence.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GelAlgebraSeries {
+    pub size_kind: GelSizeKind,
+    pub signal_units: String,
+    pub measure: String,
+    pub edges: Vec<f64>,
+    pub weights: Vec<Option<f64>>,
+    pub density: Vec<Option<f64>>,
+}
+
+/// Read-only, bounded replay of algebra v1. Verification means internal
+/// consistency, not source authenticity or scientific acceptance. Failed
+/// verification carries no plot series. Inputs include nested dependencies;
+/// legacy residual run/lane fields are not identities of the derived result.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GelAlgebraPresentation {
+    pub schema: String,
+    pub profile_id: String,
+    pub label: String,
+    pub verification: GelAlgebraVerification,
+    pub reason: Option<String>,
+    pub input_digest: Option<String>,
+    pub request: Option<GelAlgebraRequest>,
+    pub series: Option<GelAlgebraSeries>,
+    pub inputs: Vec<GelProfile>,
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct GelWorkbenchExportRequest {
@@ -229,6 +269,8 @@ pub struct GelWorkbenchExportRequest {
     pub analysis_ids: Vec<String>,
     #[serde(default)]
     pub comparison_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub algebra_ids: Vec<String>,
     pub title: String,
 }
 
@@ -247,6 +289,7 @@ pub enum GelWorkbenchRequest {
     Inspect {},
     InspectProfile { profile_id: String },
     InspectComparison { comparison_id: String },
+    InspectAlgebra { profile_id: String },
     Export(GelWorkbenchExportRequest),
 }
 
@@ -257,6 +300,7 @@ impl GelWorkbenchRequest {
             Self::Inspect {}
                 | Self::InspectProfile { .. }
                 | Self::InspectComparison { .. }
+                | Self::InspectAlgebra { .. }
                 | Self::Export(_)
                 | Self::DetectBands(_)
         )
@@ -273,6 +317,8 @@ pub struct GelWorkbenchResult {
     pub profile: Option<GelProfile>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub comparison: Option<GelComparisonReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub algebra: Option<GelAlgebraPresentation>,
     pub profile_ids: Vec<String>,
     pub comparison_ids: Vec<String>,
     pub exported_sha256: Option<String>,
@@ -332,6 +378,7 @@ mod tests {
         for (value, mutates) in [
             (json!({"action":"inspect"}), false),
             (json!({"action":"inspect_profile", "profile_id":"a"}), false),
+            (json!({"action":"inspect_algebra", "profile_id":"a"}), false),
             (
                 json!({"action":"inspect_comparison", "comparison_id":"a"}),
                 false,
@@ -397,5 +444,31 @@ mod tests {
         let json = serde_json::to_value(&profile).unwrap();
         assert_eq!(json["weights"], json!([0.0, null, -2.0]));
         assert_eq!(serde_json::from_value::<GelProfile>(json).unwrap(), profile);
+    }
+
+    #[test]
+    fn algebra_export_defaults_preserve_legacy_requests_and_result_json() {
+        let legacy = json!({"action":"export","path":"saved.json","title":"Saved","analysis_ids":[],"comparison_ids":["c"]});
+        let request: GelWorkbenchRequest = serde_json::from_value(legacy.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&request).unwrap(), legacy);
+        let mut extended = legacy;
+        extended["algebra_ids"] = json!(["r"]);
+        let request: GelWorkbenchRequest = serde_json::from_value(extended.clone()).unwrap();
+        assert!(!request.mutates());
+        assert_eq!(serde_json::to_value(request).unwrap(), extended);
+        let mut unknown = extended;
+        unknown["allow_unverified"] = true.into();
+        assert!(serde_json::from_value::<GelWorkbenchRequest>(unknown).is_err());
+        let result: GelWorkbenchResult = serde_json::from_value(
+            json!({"profile_ids":[],"comparison_ids":[],"exported_sha256":null}),
+        )
+        .unwrap();
+        assert!(result.algebra.is_none());
+        assert!(
+            serde_json::to_value(result)
+                .unwrap()
+                .get("algebra")
+                .is_none()
+        );
     }
 }

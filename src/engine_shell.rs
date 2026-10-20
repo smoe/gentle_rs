@@ -14234,13 +14234,17 @@ impl ShellCommand {
         // handoffs keep the conservative generic-op confirmation behavior.
         if let Self::Op { payload } = self
             && let Ok(operation) = serde_json::from_str::<Operation>(payload)
-            && matches!(
-                operation,
+            && match operation {
                 Operation::PlanDnaSequenceDesign { .. }
-                    | Operation::GetPrimerPairMultiReferenceSpecificitySummary { .. }
-                    | Operation::ListPrimerPairMultiReferenceSpecificitySummaries { .. }
-                    | Operation::InspectTranscriptAssayPanelSpecificityMatrix { .. }
-            )
+                | Operation::GetPrimerPairMultiReferenceSpecificitySummary { .. }
+                | Operation::ListPrimerPairMultiReferenceSpecificitySummaries { .. }
+                | Operation::InspectTranscriptAssayPanelSpecificityMatrix { .. } => true,
+                Operation::GelWorkbench { request } => matches!(
+                    request.as_ref(),
+                    gentle_protocol::gel_workbench::GelWorkbenchRequest::InspectAlgebra { .. }
+                ),
+                _ => false,
+            }
         {
             return false;
         }

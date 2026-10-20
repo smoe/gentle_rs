@@ -96,6 +96,8 @@ gentle_cli --state gels.json gel-image workbench '{"action":"extract_profile","p
 Numeric imports are separately `vendor_trace` evidence. `import_profile` accepts
 a complete explicit `GelProfile` in request JSON; source identity and calibration
 there are caller-declared, not independently verified detector evidence.
+Invented teaching inputs instead use explicit `synthetic` evidence; they cannot
+be pooled with vendor/image profiles by merely matching display units.
 `import_profile_file` additionally retains exact original CSV bytes/digest.
 Its strict, documented **integrated-bin** CSV has these three columns:
 
@@ -189,6 +191,57 @@ near a custom-only band is exploratory support, not a gene assignment or proof
 that mixed reverse transcription equals a physical sum of separate reactions.
 Ratios, fitted mixture models and replicate inference remain separate follow-ups.
 
+### Verify And Display A Saved Residual
+
+`inspect_algebra` is read-only. It strictly parses the recorded v1 request and
+replays it against saved operands, including nested residuals, before exposing a
+plot series. It does not fetch data, redetect bands, re-extract lanes, fit scales
+or change project history. The statuses are `verified`, `mismatch` and
+`unverifiable`; verification means **internal consistency**, not authenticity or
+biological acceptance. Original/imported non-residual profiles still carry their
+declared evidence limitations.
+
+```sh
+gentle_cli --state gels.json gel-image workbench '{"action":"inspect_algebra","profile_id":"cell1-residual"}'
+```
+
+The GUI's **Verify and display saved algebra** uses the same operation in a
+background worker. That worker also rasterizes the shared SVG with GENtle's
+configured font path; the GUI only installs/caches the prepared texture. Idle
+frames do not decode SVG, replay or hash operands. Project revision/selection changes, cancellation,
+closing and project replacement discard stale inspections. Reopen and inspect
+again after an edit.
+
+The standalone graph shows **saved bin integral divided by bin width**, labelled
+with the original signal units **per bp** (or **per kDa**). The area under a step
+therefore retains the signed integral even on unequal-width bins. This display
+transform does not change stored weights or imply a calibrated density of DNA
+mass/molecules. The zero line is explicit, negative values remain negative,
+and hatched intervals remain unavailable, not zero. All-zero and all-missing
+results have different messages. Neither defines a new inferential test.
+
+The derived result is identified by its profile ID and **Algebra input digest**,
+not by legacy run/lane fields inherited from its first operand. Its presentation
+retains every dependency's identity, evidence kind, units, source/input digest,
+processing/calibration and warnings. Zero-coefficient operands bind provenance
+and grid edges, but contribute neither signal nor missing-value exclusions.
+Different ladder calibrations need alignment review; subtraction does not fix
+registration uncertainty.
+
+Replay is bounded to depth 16, 64 distinct profiles and 1,280,000 bin visits,
+with memoization of shared dependencies and cycle detection. Exceeding a budget
+is unavailable verification, not a successful zero result. The original algebra
+v1 calculation, digest field order and receipt bytes are frozen. Its 2,048-byte
+receipt limit still applies; long requests fail explicitly. Old saved residuals
+remain readable and can verify without migration. New `import_profile` requests
+cannot claim `signed_residual`; use the algebra operation. Legacy/unverifiable
+records remain inspectable, but **report export refuses them**.
+
+Reference overlays, fitted/manual display factors and changes to the existing
+comparison-page bin-total plot are deferred. The latter is labelled NOT a density;
+its bin-width-sensitive appearance is a separate display follow-up, not changed
+scientific weights or a silent revision of existing report pages.
+
 ## Export The Saved Before/After Report
 
 Select saved analyses in explicit before/after order, plus saved comparison IDs.
@@ -205,6 +258,7 @@ SVG hover remains available in existing per-analysis SVG exports; PDF is static.
 
 ```sh
 gentle_cli --state gels.json gel-image workbench '{"action":"export","path":"gel-comparison.pdf","title":"Before and after cleanup","analysis_ids":["before_A1","after_L1"],"comparison_ids":["cleanup-cell1"]}'
+gentle_cli --state gels.json gel-image workbench '{"action":"export","path":"gel-algebra.pdf","title":"Exploratory signed residual","analysis_ids":[],"algebra_ids":["cell1-residual"]}'
 ```
 
 Use `.json` instead for complete portable machine-readable results. Exports
@@ -212,8 +266,21 @@ never overwrite existing files and are external writes, not undoable project
 edits. The new report does not append the manufacturer's complete PDFs or copy
 its Region Tables automatically; originals remain retained in the project.
 An unavailable encrypted raw trace stays unavailable in every presentation.
-Standalone signed-residual pages are not yet included: algebra results remain
-stored profiles available through `inspect_profile`, not probability curves.
+`algebra_ids` is optional and ordered (at most eight, like each other record
+kind). Selected results must verify again; no stale GUI cache authorizes export.
+Residual pages and complete wrapped operand/warning appendices follow the
+existing pages. Algebra-only exports need no empty before/after overview.
+JSON adds `algebra` only when results are selected, with the prepared series and
+all saved dependency snapshots. Requests omitting `algebra_ids` retain their
+old serialization and existing report pages. There are no residual CDF/QQ/KS,
+Wasserstein, quantile or significance summaries.
+
+Algebra export is bounded to 1,280,000 retained input/result bins in total,
+64 provenance pages per result and 128 total PDF pages. Oversized metadata is
+refused rather than silently clipped; use fewer results or JSON. The new pages
+do not assign public cell-line subtraction coefficients: `1/-1` in the
+[teaching example](tutorial/10-03_measured_gel_sizing_gui_cli.md#optional-synthetic-signed-algebra)
+is illustrative only.
 
 ## Verification Boundary
 
@@ -298,3 +365,79 @@ open. No speed, release, raw-D5000-decoding or significance verdict is claimed.
 Do not substitute the older size-only CLI evidence for this new path. Next
 native review should inspect both cell lines independently, explicit object 5,
 marker masks, source hashes and actual saved PDF/QQ output.
+
+### Signed-Algebra Verification (2026-10-20)
+
+This separate record uses local main
+`5a8bd8cec472f68bc73b88448ed135b1131eb792` plus the signed-algebra working patch
+on `gentle_rs_2_main`, Darwin 27 arm64, Rust/Cargo `1.100.0-beta.5` as above.
+Default desktop/screenshot features are compiled, not exercised as capture.
+Tests use one Cargo job, `CARGO_PROFILE_TEST_DEBUG=0` and the same local Swift
+module-cache redirects shown above. No dependency or Cargo profile changed.
+The desktop build also requires one missing `use eframe::egui` import in the
+inherited planning-protocol UI; this prerequisite changes no planning behavior.
+
+- `gentle-render` / `gel_workbench`: 20 passed, including signed density,
+  gaps/zero, complete hashes, escaped provenance and rendering budgets.
+- The normal protocol gate exposes an inherited canonical-parity failure:
+  `catalog doctor` has a `ShellPassthrough` MCP override where the canonical
+  contract requires `NotApplicable`. Its producer, glossary and parity inputs
+  are unchanged from the rebase base. This is not repaired or counted as green.
+  The remaining full protocol suite passes 90 tests with exactly
+  `shared_workbench_route_keeps_canonical_parity_projection_current` excluded.
+- Root library / `gel_workbench`: 61 passed, two opt-in visual writers ignored.
+  This final run includes worker-side rasterization, stale/canceled/closed/project
+  guards, work/dependency budgets, the narrow Shell inspection exemption and all
+  six tutorial commands. Existing before/after report regressions also pass.
+- Root library / `gel_image`: 42 passed, one failed. The introspection test
+  `introspection_distinguishes_drafts_from_validated_reports` calls the same
+  canonical parity builder and fails on `catalog doctor`. It is a cascade of
+  the primary protocol failure above, not a second independent gel defect.
+- Catalog and manifest freshness: one test passed in each filter, executed from
+  the freshly built root test executable. The optional algebra PDF writer also
+  passed explicitly, outside the default ignored-test set.
+- `cargo check -q --locked --offline` and `cargo fmt --check`: passed on the
+  final sources. Python fixture and LF/CRLF checkout suite: 80 tests, one documented
+  existing-CLI-binary skip; the final focused fixture/tutorial rerun passes eight
+  tests with the same skip. Counts overlap and must not be added.
+- Documentation status, whitespace and roadmap's 400-line bound pass.
+  Pre-commit session-close reports four OK, two warnings (intentional working
+  changes/catalog notes and manual plan fidelity), no failures. The only
+  out-of-gel source prerequisite is the named planning UI import above.
+
+The exported synthetic report has two vector-PDF pages, both rendered with
+Poppler and visually inspected: signed density, a printed zero label, unavailable
+hatching, complete hashes and word-wrapped processing/warnings. Its SHA-256 is
+`9fd0ba6c05423465c9031bfb1f6839e9a6eb0e14550a5a8b87eff4bfc2e30926`.
+This is a local receipt, not a cross-platform golden or real-lane subtraction.
+The report uses the explicit invented recipe from the optional 10.03 exercise.
+
+Reproduce the checks with the common environment above. The known failing gates
+are deliberately visible, not weakened:
+
+```bash
+cargo test --locked --offline -p gentle-protocol -- --test-threads=1
+# Remaining protocol tests only; not a green canonical parity verdict:
+cargo test --locked --offline -p gentle-protocol -- --test-threads=1 --skip shared_workbench_route_keeps_canonical_parity_projection_current
+cargo test --locked --offline -p gentle-render gel_workbench -- --test-threads=1
+cargo test --locked --offline --lib gel_workbench -- --test-threads=1
+cargo test --locked --offline --lib gel_image -- --test-threads=1
+cargo test --locked --offline --lib tutorial_catalog_check_passes_on_committed_tree -- --test-threads=1
+cargo test --locked --offline --lib tutorial_manifest_check_passes_on_committed_tree -- --test-threads=1
+GENTLE_GEL_ALGEBRA_TEST_REPORT=/absolute/new-synthetic-report.pdf cargo test --locked --offline --lib write_verified_algebra_pdf_for_visual_review -- --ignored --test-threads=1
+cargo check -q --locked --offline
+cargo fmt --check
+python3 -m unittest scripts.test_gel_tapestation scripts.test_tutorial_checkouts -q
+git diff --check
+```
+
+The freshness tests and opt-in writer were invoked directly from Cargo's built
+test executable; their equivalent Cargo commands are shown above. Direct test
+invocation must preserve `.cargo/config.toml`'s `RUST_MIN_STACK=16777216`.
+The first standalone writer invocation omitted it and overflowed the default
+test-thread stack before creating a report; rerunning with the repository's
+existing setting passed. No stack configuration, dependency or production
+profile was changed. Linking retains the existing 16-MiB unwind-table warning.
+
+No full workspace, native GUI input/performance, Windows/Linux, live-agent,
+release or scientific acceptance is implied by these scoped local checks.

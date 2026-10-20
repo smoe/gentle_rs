@@ -498,6 +498,16 @@ digest and evidence/measure/units. Comparisons freeze both full profiles and
 the explicit common-support range. Signed residuals do not define probability
 distributions; `p_value` remains null. See [the contract, examples and limits](gel_workbench.md).
 
+`InspectAlgebra { profile_id }` is a read-only `GelWorkbenchRequest` action.
+`GelWorkbenchResult.algebra` optionally returns a `GelAlgebraPresentation` with
+typed verification, an engine-prepared signed-density series and all saved
+dependency snapshots. It does not add stored state. Export's optional defaulted
+`algebra_ids` preserves old request JSON when empty; selected verified results
+add a JSON `algebra` section and standalone PDF/operand-provenance pages. Missing,
+cyclic, changed, unsupported or over-budget provenance cannot become an accepted
+plot/export. Raw legacy profiles remain inspectable. Algebra v1 remains frozen;
+`import_profile` now refuses `signed_residual` declarations.
+
 
 ## TATA-Box Evidence
 

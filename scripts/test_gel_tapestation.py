@@ -6,6 +6,7 @@ explicit binary; CI provides its existing native CLI without an extra build.
 """
 
 import copy
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -20,6 +21,31 @@ from scripts import check_tutorial_checkouts as checkout
 
 
 class TapeStationFixtureTests(unittest.TestCase):
+    def test_optional_algebra_lesson_is_explicitly_synthetic_and_fail_closed(self):
+        prose = (audit.ROOT / "docs/tutorial/10-03_measured_gel_sizing_gui_cli.md").read_text(encoding="utf-8")
+        lesson = prose.split("<!-- gel-algebra-lesson:start -->")[1].split("<!-- gel-algebra-lesson:end -->")[0]
+        requests = []
+        prefix = "gentle_cli --state /tmp/gentle-algebra-lesson/state.json gel-image workbench '"
+        for line in lesson.splitlines():
+            if line.startswith("gentle_cli "):
+                self.assertTrue(line.startswith(prefix))
+                self.assertTrue(line.endswith("'"))
+                requests.append(json.loads(line[len(prefix):-1]))
+        self.assertEqual([r["action"] for r in requests],
+                         ["import_profile", "import_profile", "algebra", "inspect_algebra", "export", "export"])
+        digest = hashlib.sha256(b"GENtle synthetic gel algebra v1").hexdigest()
+        for request in requests[:2]:
+            self.assertEqual(request["profile"]["evidence_kind"], "synthetic")
+            self.assertEqual(request["profile"]["source_sha256"], digest)
+        self.assertEqual(requests[0]["profile"]["weights"], [2, None, 6])
+        self.assertEqual(requests[1]["profile"]["weights"], [3, 1, 3])
+        self.assertEqual([t["coefficient"] for t in requests[2]["terms"]], [1, -1])
+        for request in requests[4:]:
+            self.assertEqual(request["algebra_ids"], ["teaching_residual"])
+            self.assertNotIn("allow_unverified", request)
+        for wording in ("not an approved normalization", "no biological coefficients", "C1/E1 on L1 and G1 on L2", "D1 on L1 and F1/H1 on L2"):
+            self.assertIn(wording, prose)
+
     def test_source_identity_uses_git_blobs_and_rejects_changed_code_in_both_checkout_modes(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "source"

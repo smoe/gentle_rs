@@ -174,6 +174,15 @@ separate from pending native responsiveness and real-gel acceptance. Numerical
 `.D5000` decoding is unsupported; a native thumbnail is
 display-only. This development is not an added `.13` release requirement.
 
+For saved signed results, **Verify and display saved algebra** prepares a
+shared SVG and its raster preview in the background and caches it by revision/result ID; the GUI only installs the texture. The graph
+retains negative values, a zero line and missing intervals with units per
+bp/kDa; complete operand processing/calibration and warnings remain accessible.
+Ordered algebra export appends verified result/provenance pages. Legacy or
+mismatching results stay diagnosable but cannot be report-exported. Existing
+comparison pages and their bin-total display are unchanged; no automatic scale,
+reference overlay, statistical significance or gene-specific enrichment is inferred.
+
 
 ## What To Trust Today
 
