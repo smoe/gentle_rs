@@ -242,6 +242,20 @@ pub struct GelAlgebraSeries {
     pub density: Vec<Option<f64>>,
 }
 
+/// One nonzero request term projected onto `series.edges`, in request order.
+/// Weights are coefficient times rebinned operand integral; density divides
+/// that result by bin width. Each term retains its own missing coverage, even
+/// where another term makes the residual unavailable. Repeated IDs stay distinct.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct GelAlgebraContribution {
+    pub term_index: usize,
+    pub profile_id: String,
+    pub coefficient: f64,
+    pub weights: Vec<Option<f64>>,
+    pub density: Vec<Option<f64>>,
+}
+
 /// Read-only, bounded replay of algebra v1. Verification means internal
 /// consistency, not source authenticity or scientific acceptance. Failed
 /// verification carries no plot series. Inputs include nested dependencies;
@@ -256,6 +270,10 @@ pub struct GelAlgebraPresentation {
     pub input_digest: Option<String>,
     pub request: Option<GelAlgebraRequest>,
     pub series: Option<GelAlgebraSeries>,
+    /// Absent in legacy presentations; re-inspect to obtain overlays. Zero
+    /// coefficients remain in the request/provenance but have no plotted term.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub contributions: Vec<GelAlgebraContribution>,
     pub inputs: Vec<GelProfile>,
     pub warnings: Vec<String>,
 }
@@ -455,6 +473,27 @@ mod tests {
         let json = serde_json::to_value(&profile).unwrap();
         assert_eq!(json["weights"], json!([0.0, null, -2.0]));
         assert_eq!(serde_json::from_value::<GelProfile>(json).unwrap(), profile);
+    }
+
+    #[test]
+    fn algebra_contributions_are_additive_to_legacy_presentations_and_strict() {
+        let legacy = json!({
+            "schema":"gentle.gel_algebra_presentation.v1", "profile_id":"r", "label":"Synthetic",
+            "verification":"unverifiable", "reason":null, "input_digest":null,
+            "request":null, "series":null, "inputs":[], "warnings":[]
+        });
+        let report: GelAlgebraPresentation = serde_json::from_value(legacy.clone()).unwrap();
+        assert!(report.contributions.is_empty());
+        assert_eq!(serde_json::to_value(report).unwrap(), legacy);
+        let mut extended = legacy;
+        extended["contributions"] = json!([{
+            "term_index":1, "profile_id":"synthetic", "coefficient":-0.5,
+            "weights":[-2.0,null], "density":[-0.02,null]
+        }]);
+        let report: GelAlgebraPresentation = serde_json::from_value(extended.clone()).unwrap();
+        assert_eq!(serde_json::to_value(report).unwrap(), extended);
+        extended["contributions"][0]["fitted_scale"] = json!(2);
+        assert!(serde_json::from_value::<GelAlgebraPresentation>(extended).is_err());
     }
 
     #[test]

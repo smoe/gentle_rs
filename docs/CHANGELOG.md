@@ -1,5 +1,34 @@
 # GENtle Changelog
 
+## 2026-10-20 - Show Coefficient-Weighted Signed Gel Operands
+
+- Extend the engine-prepared algebra presentation with ordered nonzero-term
+  contributions on the frozen residual grid. Preserve weighted integrals,
+  densities and independent null coverage; do not collapse repeated IDs.
+  Zero terms stay provenance/grid-only. Reject nonfinite projections without
+  publishing partial curves, clear them on source mismatch and count their
+  retained bins against the existing aggregate export limit.
+- Share one axis and deterministic colour/line-style legend across the signed
+  residual and coefficient-weighted operands in the existing GUI/PDF renderer.
+  Draw the residual last; operand support never fills missing residual bins.
+  Keep frozen algebra-v1 profile/digest/receipt bytes, comparison pages, worker
+  caching, approvals and export routes unchanged. Legacy presentations default
+  to residual-only. No unrelated references, fitted scales or new statistics.
+- Extend tutorial 10.03 with hand-calculated operand contributions and a
+  separate half-B control, used by the shared-shell regression. Author protocol,
+  engine, renderer and cached-GUI assertions for sign/weight/order/repeated IDs,
+  unequal bins/gaps, overflow, JSON/state/reopen and export budget refusal.
+  Add a source-only rational-arithmetic oracle for LF and CRLF lesson text.
+- Rust build/test/check and native/PDF visual acceptance remain Glen/CI work;
+  earlier standalone-algebra evidence does not cover this overlay patch.
+- Verification: 87 source-only tutorial/arithmetic/checkout Python tests pass,
+  as do documentation status, scoped rustfmt and whitespace. Session-close:
+  four OK, two expected warnings (intentional worktree and manual plan fidelity),
+  zero failures. Correct only 10.03's stale index description; no generated
+  tutorial catalog or unrelated artifacts are regenerated.
+  The separate TapeStation source suite ran eight tests with one documented
+  existing-CLI skip; these are not Rust or native acceptance results.
+
 ## 2026-10-20 - Guard Carrier Export Disclosures And Record Compact Storage Intent
 
 - Author PCR96 successful SCAD/four-SVG regression coverage: exactly 96

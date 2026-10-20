@@ -292,22 +292,68 @@ twice as wide as the first; plotting totals as heights would hide that differenc
 The black line is zero; the hatched interval is missing, not zero. There is no
 residual CDF, QQ, KS test or p-value. A coherent replay does not validate biology.
 
+### Read The Weighted Operand Overlays
+
+The thick teal curve is the residual. The thinner coloured/styled curves are
+the **contributions actually added to it**, not independently normalized input
+profiles. Read each numbered legend entry as coefficient times that operand's
+rebinned integral divided by the common bin width. All curves share one Y axis;
+there is no fitted scale or hidden loading correction. Colours and line styles
+follow request order, not a guessed biological grouping.
+
+| Interval (bp) | Term 1: +1 x A per bp | Term 2: -1 x B per bp | Residual per bp |
+| --- | --- | --- | --- |
+| 100-150 | 0.04 | -0.06 | -0.02 |
+| 150-200 | unavailable | -0.02 | unavailable |
+| 200-300 | 0.06 | -0.03 | 0.03 |
+
+The negative B curve is intentional: subtraction contributes negative signal.
+At 150-200 bp, B is still visible but A and the residual are unavailable. A line
+inside a hatched interval does **not** recover the missing residual. Each curve
+breaks at its own gaps. A zero coefficient is labelled provenance/grid-only and
+has no operand curve; two terms naming the same profile remain separate terms.
+
+As a non-unit control, create a **new** result with half of B subtracted. This
+changes the recorded algebra, not just a display setting, and leaves the first
+result untouched. The coefficient is a teaching choice, not an experimentally
+justified loading factor:
+
+<!-- gel-algebra-weighted-lesson:start -->
+```sh
+gentle_cli --state /tmp/gentle-algebra-lesson/state.json gel-image workbench '{"action":"algebra","output_id":"teaching_half_b","range":[100,300],"terms":[{"profile_id":"teaching_a","coefficient":1},{"profile_id":"teaching_b","coefficient":-0.5}]}'
+gentle_cli --state /tmp/gentle-algebra-lesson/state.json gel-image workbench '{"action":"inspect_algebra","profile_id":"teaching_half_b"}'
+```
+<!-- gel-algebra-weighted-lesson:end -->
+
+Expect weights `[0.5, null, 4.5]`, residual densities `[0.01, null, 0.045]`,
+and B's contribution `[-0.03, -0.01, -0.015]`. A's contribution stays
+`[0.04, null, 0.06]`. In the inspection JSON, `contributions` retains each
+nonzero term's zero-based `term_index`, `profile_id`, coefficient, weighted
+integrals and density on `series.edges`. The printed legend numbers start at 1.
+These numbers are explanatory projections; the saved v1 residual and receipt
+are not rewritten by inspection.
+
 **GUI:** open this saved project, choose **Patterns -> Gel Image Analysis...**,
 select `teaching_residual` under **Inspect saved signed algebra**, then **Verify
-and display saved algebra**. Read every operand's processing, coefficients and
-warnings. For PDF export select the algebra ID; existing before/after analyses
+and display saved algebra**. Check the three curves against the table. Select
+`teaching_half_b` and verify the new B contribution and residual rather than
+expecting a cosmetic rescale of the first plot. Read every operand's processing,
+coefficients and warnings. For PDF export select the desired algebra ID; the
+same weighted curves appear in the PDF. Existing before/after analyses
 can still be selected separately, in explicit order. Exports refuse existing
 files and changed/unverifiable residuals rather than trusting an old screen.
 
 **Ask the inner agent:** "Inspect teaching_residual and explain its signed
-density, missing interval, coefficients and verification status. Draft the
-shared export command. Do not fit a scale, identify a gene or claim enrichment."
+density, each weighted operand overlay, missing intervals, coefficients and
+verification status. Draft the shared export command. Do not fit a scale,
+identify a gene or claim enrichment."
 
 Real cell-line inspection must retain each operand's calibration: cell 1 uses
 C1/E1 on L1 and G1 on L2; cell 2 uses D1 on L1 and F1/H1 on L2. Keep those
 differences visible and review registration before interpreting any residual.
 This lesson supplies no biological coefficients, new raw curves or scientific
-acceptance. Reference overlays and automatic display factors remain deferred.
+acceptance. Overlays of unrelated reference profiles and automatic display
+factors remain deferred; only the recorded algebra operands share this axis.
 
 ## Optional: Compare Signal Density Rather Than Bin Totals
 

@@ -141,6 +141,7 @@ fn algebra_replay_detects_result_operand_and_receipt_tampering() {
         let p = inspect_algebra(&s, "r").unwrap();
         assert_eq!(p.verification, GelAlgebraVerification::Mismatch);
         assert!(p.series.is_none());
+        assert!(p.contributions.is_empty());
     }
     let mut s = store();
     Arc::make_mut(s.profiles.get_mut("r").unwrap()).processing[0] = "{}".into();
@@ -320,6 +321,149 @@ fn algebra_all_missing_is_verified_unavailable_not_a_zero_distribution() {
 }
 
 #[test]
+fn algebra_operand_overlays_rebin_weight_and_keep_term_order_and_independent_gaps() {
+    // Invented integrals with unequal/offset bins; no detector measurement.
+    let mut a = profile("a", 0.0);
+    a.edges = vec![100.0, 150.0, 200.0, 300.0];
+    a.weights = vec![Some(2.0), None, Some(6.0)];
+    let mut b = profile("b", 0.0);
+    b.edges = vec![100.0, 200.0, 300.0];
+    b.weights = vec![Some(4.0), Some(8.0)];
+    let mut req = request("r", "a", "b");
+    req.terms[0].coefficient = 2.0;
+    req.terms[1].coefficient = -0.5;
+    req.terms.push(GelAlgebraTerm {
+        profile_id: "a".into(),
+        coefficient: 0.0,
+    });
+    req.terms.push(req.terms[1].clone());
+    let residual = super::super::algebra(&[&a, &b, &a, &b], &req).unwrap();
+    let s = GelWorkbenchStore {
+        profiles: [a, b, residual]
+            .into_iter()
+            .map(|p| (p.id.clone(), Arc::new(p)))
+            .collect(),
+        ..Default::default()
+    };
+    let before = serde_json::to_value(&s).unwrap();
+    let p = inspect_algebra(&s, "r").unwrap();
+    assert_eq!(p.verification, GelAlgebraVerification::Verified);
+    let series = p.series.as_ref().unwrap();
+    assert_eq!(series.edges, vec![100.0, 150.0, 200.0, 300.0]);
+    assert_eq!(series.weights, vec![Some(2.0), None, Some(4.0)]);
+    assert_eq!(
+        p.contributions
+            .iter()
+            .map(|c| c.term_index)
+            .collect::<Vec<_>>(),
+        vec![0, 1, 3]
+    );
+    assert_eq!(
+        p.contributions[0].weights,
+        vec![Some(4.0), None, Some(12.0)]
+    );
+    assert_eq!(
+        p.contributions[0].density,
+        vec![Some(0.08), None, Some(0.12)]
+    );
+    for c in &p.contributions[1..] {
+        assert_eq!(c.profile_id, "b");
+        assert_eq!(c.coefficient, -0.5);
+        assert_eq!(c.weights, vec![Some(-1.0), Some(-1.0), Some(-4.0)]);
+        assert_eq!(c.density, vec![Some(-0.02), Some(-0.02), Some(-0.04)]);
+    }
+    assert!(
+        p.warnings
+            .iter()
+            .any(|w| w.contains("visible operand does not fill"))
+    );
+    assert_eq!(serde_json::to_value(&s).unwrap(), before);
+    let reopened: GelWorkbenchStore = serde_json::from_value(before).unwrap();
+    assert_eq!(inspect_algebra(&reopened, "r").unwrap(), p);
+}
+
+#[test]
+fn algebra_operand_overlays_for_repeated_nested_terms_cancel_without_collapsing_identity() {
+    let mut s = store();
+    let nested = super::super::algebra(
+        &[&s.profiles["r"], &s.profiles["r"]],
+        &request("nested", "r", "r"),
+    )
+    .unwrap();
+    s.profiles.insert("nested".into(), Arc::new(nested));
+    let p = inspect_algebra(&s, "nested").unwrap();
+    assert_eq!(p.series.as_ref().unwrap().weights, vec![Some(0.0)]);
+    assert_eq!(p.contributions.len(), 2);
+    assert_eq!(p.contributions[0].density, vec![Some(0.01)]);
+    assert_eq!(p.contributions[1].density, vec![Some(-0.01)]);
+    assert_eq!(p.contributions[0].profile_id, p.contributions[1].profile_id);
+    assert_ne!(p.contributions[0].term_index, p.contributions[1].term_index);
+}
+
+#[test]
+fn algebra_operand_density_overflow_cannot_publish_a_partial_overlay() {
+    let mut a = profile("a", f64::MAX / 2.0);
+    a.edges = vec![100.0, 100.5];
+    let mut req = request("r", "a", "a");
+    req.range = [100.0, 100.5];
+    req.terms[0].coefficient = 2.0;
+    req.terms[1].coefficient = -2.0;
+    let residual = super::super::algebra(&[&a, &a], &req).unwrap();
+    assert_eq!(residual.weights, vec![Some(0.0)]);
+    let s = GelWorkbenchStore {
+        profiles: [a, residual]
+            .into_iter()
+            .map(|p| (p.id.clone(), Arc::new(p)))
+            .collect(),
+        ..Default::default()
+    };
+    let p = inspect_algebra(&s, "r").unwrap();
+    assert_eq!(p.verification, GelAlgebraVerification::Unverifiable);
+    assert!(p.reason.unwrap().contains("operand display range"));
+    assert!(p.series.is_none());
+    assert!(p.contributions.is_empty());
+}
+
+#[test]
+fn algebra_export_budget_counts_weighted_operand_bins_before_writing() {
+    // Four invented 16-term results fit the old input/result count but their
+    // newly retained overlays exceed the existing aggregate export budget.
+    let mut a = profile("a", 0.0);
+    a.edges = (100..=20_100).map(f64::from).collect();
+    a.weights = vec![Some(1.0); 20_000];
+    let mut s = GelWorkbenchStore::default();
+    for index in 0..4 {
+        let req = GelAlgebraRequest {
+            output_id: format!("r{index}"),
+            range: [100.0, 20_100.0],
+            terms: vec![
+                GelAlgebraTerm {
+                    profile_id: "a".into(),
+                    coefficient: 1.0
+                };
+                16
+            ],
+        };
+        let p = super::super::algebra(&vec![&a; 16], &req).unwrap();
+        s.profiles.insert(p.id.clone(), Arc::new(p));
+    }
+    s.profiles.insert("a".into(), Arc::new(a));
+    let mut e = engine(s);
+    let before = serde_json::to_value(e.state()).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("too many operand bins.json");
+    let ids = (0..4).map(|i| format!("r{i}")).collect();
+    assert!(
+        export(&mut e, &path, ids)
+            .unwrap_err()
+            .message
+            .contains("1280000")
+    );
+    assert!(!path.exists());
+    assert_eq!(serde_json::to_value(e.state()).unwrap(), before);
+}
+
+#[test]
 fn algebra_long_receipts_fail_explicitly_without_changing_v1_limits() {
     let profiles: Vec<_> = (0..16)
         .map(|n| profile(&format!("{n}{}", "x".repeat(220)), 1.0))
@@ -388,6 +532,8 @@ fn algebra_shared_inspection_is_read_only_and_json_export_is_saved_verified_and_
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(json["algebra"][0]["verification"], "verified");
     assert_eq!(json["algebra"][0]["series"]["density"][0], 0.01);
+    assert_eq!(json["algebra"][0]["contributions"][0]["density"][0], 0.02);
+    assert_eq!(json["algebra"][0]["contributions"][1]["density"][0], -0.01);
     assert_eq!(json["algebra"][0]["inputs"].as_array().unwrap().len(), 2);
     assert_eq!(before, serde_json::to_value(engine.state()).unwrap());
     assert!(export(&mut engine, &out, vec!["r".into()]).is_err());
@@ -460,16 +606,24 @@ fn write_verified_algebra_pdf_for_visual_review() {
     b.edges = a.edges.clone();
     b.weights = vec![Some(3.0), Some(1.0), Some(3.0)];
     let residual = super::super::algebra(&[&a, &b], &request("r", "a", "b")).unwrap();
-    s.profiles = [a, b, residual]
+    let mut half_request = request("half_b", "a", "b");
+    half_request.terms[1].coefficient = -0.5;
+    let half_b = super::super::algebra(&[&a, &b], &half_request).unwrap();
+    s.profiles = [a, b, residual, half_b]
         .into_iter()
         .map(|p| (p.id.clone(), Arc::new(p)))
         .collect();
     let output =
         std::env::var("GENTLE_GEL_ALGEBRA_TEST_REPORT").expect("Explicit new PDF path required");
     let mut e = engine(s);
-    export(&mut e, std::path::Path::new(&output), vec!["r".into()]).unwrap();
+    export(
+        &mut e,
+        std::path::Path::new(&output),
+        vec!["r".into(), "half_b".into()],
+    )
+    .unwrap();
     let doc = lopdf::Document::load(&output).unwrap();
-    assert!(doc.get_pages().len() >= 2);
+    assert!(doc.get_pages().len() >= 4);
 }
 
 #[test]
@@ -486,10 +640,21 @@ fn algebra_tutorial_commands_replay_through_the_shared_shell() {
         .split("<!-- gel-algebra-lesson:end -->")
         .next()
         .unwrap();
+    let weighted_lesson = prose
+        .split("<!-- gel-algebra-weighted-lesson:start -->")
+        .nth(1)
+        .unwrap()
+        .split("<!-- gel-algebra-weighted-lesson:end -->")
+        .next()
+        .unwrap();
     let mut e = GentleEngine::new();
     let dir = tempfile::tempdir().unwrap();
     let mut count = 0;
-    for line in lesson.lines().filter(|l| l.starts_with("gentle_cli ")) {
+    for line in lesson
+        .lines()
+        .chain(weighted_lesson.lines())
+        .filter(|l| l.starts_with("gentle_cli "))
+    {
         let shell = line
             .strip_prefix("gentle_cli --state /tmp/gentle-algebra-lesson/state.json ")
             .unwrap();
@@ -521,11 +686,32 @@ fn algebra_tutorial_commands_replay_through_the_shared_shell() {
         crate::engine_shell::execute_shell_command(&mut e, &command).unwrap();
         count += 1;
     }
-    assert_eq!(count, 6);
+    assert_eq!(count, 8);
     let p = inspect_algebra(&e.state().gel_images.workbench, "teaching_residual").unwrap();
+    assert_eq!(
+        p.contributions[0].density,
+        vec![Some(0.04), None, Some(0.06)]
+    );
+    assert_eq!(
+        p.contributions[1].density,
+        vec![Some(-0.06), Some(-0.02), Some(-0.03)]
+    );
     let s = p.series.unwrap();
     assert_eq!(s.weights, vec![Some(-1.0), None, Some(3.0)]);
     assert_eq!(s.density, vec![Some(-0.02), None, Some(0.03)]);
+    let half = inspect_algebra(&e.state().gel_images.workbench, "teaching_half_b").unwrap();
+    assert_eq!(
+        half.series.as_ref().unwrap().weights,
+        vec![Some(0.5), None, Some(4.5)]
+    );
+    assert_eq!(
+        half.series.as_ref().unwrap().density,
+        vec![Some(0.01), None, Some(0.045)]
+    );
+    assert_eq!(
+        half.contributions[1].density,
+        vec![Some(-0.03), Some(-0.01), Some(-0.015)]
+    );
     assert!(dir.path().join("residual.pdf").exists());
     assert_eq!(
         lopdf::Document::load(dir.path().join("residual.pdf"))

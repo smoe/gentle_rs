@@ -27,6 +27,7 @@ fn presentation() -> GelAlgebraPresentation {
             weights: vec![Some(-1.0), None, Some(3.0)],
             density: vec![Some(-0.02), None, Some(0.03)],
         }),
+        contributions: vec![],
         inputs: vec![GelProfile {
             id: "a".into(),
             label: "Synthetic input".into(),
@@ -43,6 +44,101 @@ fn presentation() -> GelAlgebraPresentation {
             warnings: vec!["Display-only source; not calibrated detector data".into()],
         }],
         warnings: vec!["No biological inference".into()],
+    }
+}
+
+#[test]
+fn signed_algebra_weighted_operands_share_axis_keep_gaps_and_use_ordered_styles() {
+    let mut r = presentation();
+    r.request.as_mut().unwrap().terms = vec![
+        GelAlgebraTerm {
+            profile_id: "a<&".into(),
+            coefficient: 2.0,
+        },
+        GelAlgebraTerm {
+            profile_id: "b".into(),
+            coefficient: -0.5,
+        },
+        GelAlgebraTerm {
+            profile_id: "grid-only".into(),
+            coefficient: 0.0,
+        },
+    ];
+    r.contributions = vec![
+        GelAlgebraContribution {
+            term_index: 0,
+            profile_id: "a<&".into(),
+            coefficient: 2.0,
+            weights: vec![Some(10.0), None, Some(20.0)],
+            density: vec![Some(0.2), None, Some(0.2)],
+        },
+        GelAlgebraContribution {
+            term_index: 1,
+            profile_id: "b".into(),
+            coefficient: -0.5,
+            weights: vec![Some(-15.0), Some(-15.0), Some(-30.0)],
+            density: vec![Some(-0.3), Some(-0.3), Some(-0.3)],
+        },
+    ];
+    r.series.as_mut().unwrap().weights = vec![Some(-5.0), None, Some(-10.0)];
+    r.series.as_mut().unwrap().density = vec![Some(-0.1), None, Some(-0.1)];
+    let svg = render_algebra_svg(&r);
+    for (id, moves) in [("algebra-operand-0", 2), ("algebra-operand-1", 1)] {
+        let path = svg
+            .split(&format!("id=\"{id}\" d=\""))
+            .nth(1)
+            .unwrap()
+            .split('"')
+            .next()
+            .unwrap();
+        assert_eq!(path.matches('M').count(), moves);
+    }
+    assert!(svg.contains("Term 1: 2 x a&lt;&amp;"));
+    assert!(svg.contains("Term 2: -0.5 x b"));
+    assert!(svg.contains("zero coefficient: provenance/grid only; not drawn"));
+    assert!(!svg.contains("id=\"algebra-operand-2\""));
+    assert!(svg.contains("0.2"));
+    assert!(svg.contains("-0.3"));
+    // Shared range [-0.3, 0.2], plot y=270..570: positive/negative terms
+    // reach opposite ends; the residual is inside it, not independently fitted.
+    assert!(svg.contains("M 105.00000 270.00000"));
+    assert!(svg.contains("M 105.00000 570.00000"));
+    assert!(
+        svg.find("id=\"algebra-density\"").unwrap() > svg.find("id=\"algebra-operand-1\"").unwrap()
+    );
+    assert!(!svg.contains("id=\"cdf"));
+    assert!(!svg.contains("id=\"qq"));
+    assert_eq!(svg, render_algebra_svg(&r));
+    for index in 0..16 {
+        for previous in 0..index {
+            assert_ne!(contribution_style(index), contribution_style(previous));
+        }
+    }
+}
+
+#[test]
+fn signed_algebra_malformed_operand_projection_never_draws_a_curve() {
+    for fault in 0..6 {
+        let mut r = presentation();
+        r.contributions = vec![GelAlgebraContribution {
+            term_index: 0,
+            profile_id: "a".into(),
+            coefficient: 1.0,
+            weights: r.series.as_ref().unwrap().weights.clone(),
+            density: r.series.as_ref().unwrap().density.clone(),
+        }];
+        match fault {
+            0 => r.contributions[0].density.pop().map(|_| ()).unwrap(),
+            1 => r.contributions[0].coefficient = -1.0,
+            2 => r.contributions[0].term_index = 1,
+            3 => r.contributions[0].density[0] = Some(f64::INFINITY),
+            4 => r.contributions[0].weights[0] = None,
+            _ => r.contributions.push(r.contributions[0].clone()),
+        }
+        let svg = render_algebra_svg(&r);
+        assert!(svg.contains("malformed operand contributions"));
+        assert!(!svg.contains("id=\"algebra-density\""));
+        assert!(!svg.contains("id=\"algebra-operand-0\""));
     }
 }
 
@@ -83,6 +179,7 @@ fn signed_algebra_gaps_split_paths_and_all_missing_is_not_zero() {
     r.series.as_mut().unwrap().density = vec![None; 3];
     r.series.as_mut().unwrap().weights = vec![None; 3];
     assert!(render_algebra_svg(&r).contains("No evaluated bins"));
+    assert!(render_algebra_svg(&r).contains("display fallback, NOT measured zero"));
     r.series.as_mut().unwrap().density = vec![Some(0.0); 3];
     r.series.as_mut().unwrap().weights = vec![Some(0.0); 3];
     assert!(render_algebra_svg(&r).contains("All evaluated bins are exactly zero"));

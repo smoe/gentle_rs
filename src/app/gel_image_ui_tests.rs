@@ -915,6 +915,10 @@ fn gel_workbench_algebra_inspection_rasterizes_off_frame_and_reuses_shared_svg_r
     let cached = result.algebra_inspection.as_ref().unwrap();
     assert!(cached.pixels.is_some());
     assert!(cached.texture.is_none());
+    assert_eq!(cached.presentation.contributions.len(), 2);
+    let svg_text = std::str::from_utf8(&cached.svg).unwrap();
+    assert!(svg_text.contains("id=\"algebra-operand-0\""));
+    assert!(svg_text.contains("id=\"algebra-operand-1\""));
     assert_eq!(
         &*cached.svg,
         gentle_render::gel_workbench::render_algebra_svg(&cached.presentation).as_bytes()

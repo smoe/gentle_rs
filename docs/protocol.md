@@ -515,6 +515,17 @@ the replay-verified report, not a persisted scientific field. The mode requires
 PDF with selected comparisons and is rejected for JSON or an empty selection.
 No new public inspection route or confirmation exemption is introduced.
 
+The presentation's additive default-empty `contributions` contains each nonzero
+request term in order: zero-based `term_index`, `profile_id`, coefficient,
+weighted integrals and density on `series.edges`. Rebinning and multiplication
+are engine-owned; zero terms retain provenance but no curve. Each term keeps
+its own null mask, including where the residual is null. GUI/PDF use the same
+renderer and shared Y axis with no fitted/independent scaling. Legacy returned
+presentations without this field remain readable as residual-only, not evidence
+that the operands were zero. Re-inspection produces the new projection without
+changing frozen algebra-v1 bytes. The existing aggregate export-bin limit now
+counts contributions too; failed verification publishes no contribution series.
+
 
 ## TATA-Box Evidence
 

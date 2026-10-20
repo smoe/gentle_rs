@@ -328,6 +328,7 @@ impl GentleEngine {
                     presentation.verification = GelAlgebraVerification::Mismatch;
                     presentation.reason = Some(error.message);
                     presentation.series = None;
+                    presentation.contributions.clear();
                     break;
                 }
             }
@@ -496,6 +497,10 @@ impl GentleEngine {
             .map(|r| {
                 r.inputs.iter().map(|p| p.weights.len()).sum::<usize>()
                     + r.series.as_ref().map_or(0, |s| s.weights.len())
+                    + r.contributions
+                        .iter()
+                        .map(|c| c.weights.len())
+                        .sum::<usize>()
             })
             .sum();
         if algebra_bins > 1_280_000 {

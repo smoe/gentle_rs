@@ -1682,6 +1682,13 @@ selected comparison; it is rejected on JSON rather than ignored. Comparison
 replay currently compares the entire v1 report, including warning prose; changing
 that algorithm/prose requires an explicit compatibility policy, not silent
 acceptance of older results under changed semantics.
+Coefficient-weighted operand overlays are engine-prepared on the residual grid
+and retain each nonzero term's identity, order and own gaps. They share one
+axis with the residual and never imply that missing residual coverage is known.
+Zero terms remain provenance/grid-only; repeated IDs are not collapsed.
+This additive presentation changes no frozen algebra-v1 bytes, coefficients,
+comparison pages or biological interpretation. Unrelated reference overlays
+and fitted/manual display multipliers require separate approval.
 
 ## Advisory Cloning Time And Cost Boundaries
 

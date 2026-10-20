@@ -207,6 +207,7 @@ pub fn inspect_algebra(
         input_digest: None,
         request: None,
         series: None,
+        contributions: vec![],
         inputs: vec![],
         warnings: vec![],
     };
@@ -238,8 +239,41 @@ pub fn inspect_algebra(
             Some("Internally consistent result exceeds finite density display range".into());
         return Ok(presentation);
     }
+    let mut contributions = Vec::new();
+    for (term_index, term) in request.terms.iter().enumerate() {
+        if term.coefficient == 0.0 {
+            continue;
+        }
+        let weights: Vec<_> = super::rebin(&store.profiles[&term.profile_id], &profile.edges)
+            .into_iter()
+            .map(|w| w.map(|w| w * term.coefficient))
+            .collect();
+        let density: Vec<_> = weights
+            .iter()
+            .zip(profile.edges.windows(2))
+            .map(|(w, edges)| w.map(|w| w / (edges[1] - edges[0])))
+            .collect();
+        if weights
+            .iter()
+            .chain(&density)
+            .flatten()
+            .any(|x| !x.is_finite())
+        {
+            presentation.reason =
+                Some("Internally consistent result exceeds finite operand display range".into());
+            return Ok(presentation);
+        }
+        contributions.push(GelAlgebraContribution {
+            term_index,
+            profile_id: term.profile_id.clone(),
+            coefficient: term.coefficient,
+            weights,
+            density,
+        });
+    }
     let (lo, hi) = density
         .iter()
+        .chain(contributions.iter().flat_map(|c| c.density.iter()))
         .flatten()
         .fold((0.0_f64, 0.0_f64), |(lo, hi), v| (lo.min(*v), hi.max(*v)));
     if !(hi - lo).is_finite() {
@@ -250,6 +284,7 @@ pub fn inspect_algebra(
     let mut warnings = BTreeSet::new();
     warnings.insert("Verified means algebra-v1 internal consistency, not source authenticity or scientific acceptance. No normalization, fitting, distribution summaries or p-values.".to_string());
     warnings.insert("Every operand retains its own calibration/processing. Different ladders or registration uncertainty require review; subtraction does not align them.".into());
+    warnings.insert("Operand overlays show each nonzero coefficient times its rebinned integral per size unit, on one shared axis. Each retains its own gaps; a visible operand does not fill a missing residual. No fitted or manual display scale.".into());
     if request.terms.iter().any(|t| t.coefficient == 0.0) {
         warnings.insert("Zero-coefficient operands bind provenance and grid edges but contribute neither signal nor missing-value exclusions.".into());
     }
@@ -268,6 +303,7 @@ pub fn inspect_algebra(
     presentation.verification = GelAlgebraVerification::Verified;
     presentation.input_digest = Some(profile.source_sha256.clone());
     presentation.request = Some(request);
+    presentation.contributions = contributions;
     presentation.series = Some(GelAlgebraSeries {
         size_kind: profile.size_kind,
         signal_units: profile.signal_units.clone(),

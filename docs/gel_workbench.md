@@ -220,6 +220,23 @@ mass/molecules. The zero line is explicit, negative values remain negative,
 and hatched intervals remain unavailable, not zero. All-zero and all-missing
 results have different messages. Neither defines a new inferential test.
 
+Thin styled operand overlays show **coefficient times rebinned operand integral
+divided by bin width**, on the residual's exact grid and a single shared Y axis.
+The engine prepares them after replay; neither GUI nor renderer rebins or
+chooses coefficients. The thick teal residual is drawn last. Numbered legend
+entries retain request order, including repeated operand IDs; zero-coefficient
+terms are labelled provenance/grid-only and have no curve. Every term keeps its
+own missing coverage: another visible operand inside residual hatching does
+not make the residual available. Axis limits include all displayed values,
+with no separate normalization, fitted scale or manual display multiplier.
+JSON `contributions` contains nonzero terms' zero-based `term_index`, profile ID,
+coefficient, weighted integrals and density; all use `series.edges`. Older
+presentations lacking this additive field show the residual only and should be
+re-inspected for overlays. Saved algebra-v1 profile/digest/receipt bytes do not
+change. Nonfinite contribution values or an unrepresentable shared axis make
+the presentation unavailable, never a partial or silently clipped overlay.
+Projection is bounded by the existing 16-term and 20,000-common-bin limits.
+
 The derived result is identified by its profile ID and **Algebra input digest**,
 not by legacy run/lane fields inherited from its first operand. Its presentation
 retains every dependency's identity, evidence kind, units, source/input digest,
@@ -237,7 +254,7 @@ remain readable and can verify without migration. New `import_profile` requests
 cannot claim `signed_residual`; use the algebra operation. Legacy/unverifiable
 records remain inspectable, but **report export refuses them**.
 
-Reference overlays and fitted/manual display factors remain deferred. Ordinary
+Unrelated reference overlays and fitted/manual display factors remain deferred. Ordinary
 comparisons now offer the separate, explicit display mode below; the signed
 algebra v1 replay and its probability-summary prohibition are unchanged.
 
@@ -312,8 +329,8 @@ all saved dependency snapshots. Requests omitting `algebra_ids` retain their
 old serialization and existing report pages. There are no residual CDF/QQ/KS,
 Wasserstein, quantile or significance summaries.
 
-Algebra export is bounded to 1,280,000 retained input/result bins in total,
-64 provenance pages per result and 128 total PDF pages. Oversized metadata is
+Algebra export is bounded to 1,280,000 retained input/result/contribution bins
+in total, 64 provenance pages per result and 128 total PDF pages. Oversized metadata is
 refused rather than silently clipped; use fewer results or JSON. The new pages
 do not assign public cell-line subtraction coefficients: `1/-1` in the
 [teaching example](tutorial/10-03_measured_gel_sizing_gui_cli.md#optional-synthetic-signed-algebra)
@@ -404,6 +421,33 @@ native review should inspect both cell lines independently, explicit object 5,
 marker masks, source hashes and actual saved PDF/QQ output.
 
 ### Signed-Algebra Verification (2026-10-20)
+
+#### Operand Overlay Follow-Up
+
+The later coefficient-weighted overlay patch and extended eight-command 10.03
+exercise have **not** been built or executed locally in Rust/native GENtle.
+The earlier six-command/PDF/native results below predate these overlays and
+must not be relabelled as their acceptance. Glen/CI should run the protocol
+`algebra_contributions` filter, renderer `signed_algebra`, root-library
+`gel_workbench` (including the tutorial and aggregate-bin refusal), and
+`cargo check -q --locked` at the integrated SHA. Inspect a fresh synthetic PDF
+with the extended opt-in writer (original and half-B results, at least four
+pages) for shared axes, negative and non-unit terms,
+missing residual versus available operands, legend/order and readable styles.
+Retain the existing native stale/cancel/selection/project and legacy export
+checks separately. No source authenticity, biological loading factor, native
+performance or release verdict follows from the authored tests.
+
+```bash
+cargo test --locked -p gentle-protocol algebra_contributions
+cargo test --locked -p gentle-render signed_algebra
+cargo test --locked --lib gel_workbench -- --test-threads=1
+cargo check -q --locked
+# Source-only arithmetic/checkout checks; these do not execute GENtle:
+python3 -m unittest scripts.test_tutorial_gap_lessons scripts.test_tutorial_checkouts -q
+```
+
+#### Earlier Standalone Evidence
 
 This separate record uses local main
 `5a8bd8cec472f68bc73b88448ed135b1131eb792` plus the signed-algebra working patch

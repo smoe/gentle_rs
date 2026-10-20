@@ -5,6 +5,7 @@ The arithmetic oracle and drawn PNG are explicitly synthetic teaching inputs.
 """
 
 import csv
+from fractions import Fraction
 import hashlib
 import importlib.util
 import json
@@ -34,6 +35,45 @@ motif_spec.loader.exec_module(motif_generator)
 
 
 class TutorialGapLessonTests(unittest.TestCase):
+    def test_signed_algebra_overlay_lesson_has_independent_weighted_arithmetic(self):
+        prose = (ROOT / "docs/tutorial/10-03_measured_gel_sizing_gui_cli.md").read_text(encoding="utf-8")
+        for newline in ("\n", "\r\n"):
+            text = prose.replace("\n", newline)
+            requests = []
+            for name in ("gel-algebra-lesson", "gel-algebra-weighted-lesson"):
+                block = text.split(f"<!-- {name}:start -->", 1)[1].split(f"<!-- {name}:end -->", 1)[0]
+                for line in block.splitlines():
+                    if line.startswith("gentle_cli "):
+                        payload = line.split("gel-image workbench '", 1)[1].removesuffix("'")
+                        requests.append(json.loads(payload))
+            self.assertEqual(len(requests), 8)
+            profiles = {r["profile"]["id"]: r["profile"] for r in requests if r["action"] == "import_profile"}
+            expected = {
+                "teaching_residual": ([Fraction(-1), None, Fraction(3)],
+                                      [Fraction("-0.02"), None, Fraction("0.03")],
+                                      [Fraction("-0.06"), Fraction("-0.02"), Fraction("-0.03")]),
+                "teaching_half_b": ([Fraction("0.5"), None, Fraction("4.5")],
+                                    [Fraction("0.01"), None, Fraction("0.045")],
+                                    [Fraction("-0.03"), Fraction("-0.01"), Fraction("-0.015")]),
+            }
+            for request in (r for r in requests if r["action"] == "algebra"):
+                terms = request["terms"]
+                edges = profiles[terms[0]["profile_id"]]["edges"]
+                widths = [Fraction(b - a) for a, b in zip(edges, edges[1:])]
+                contributions = []
+                for term in terms:
+                    p = profiles[term["profile_id"]]
+                    self.assertEqual(p["edges"], edges)
+                    contributions.append([None if w is None else Fraction(str(w)) * Fraction(str(term["coefficient"]))
+                                          for w in p["weights"]])
+                weights = [None if any(w is None for w in values) else sum(values)
+                           for values in zip(*contributions)]
+                density = [None if w is None else w / width for w, width in zip(weights, widths)]
+                b_density = [None if w is None else w / width for w, width in zip(contributions[1], widths)]
+                self.assertEqual((weights, density, b_density), expected[request["output_id"]])
+            self.assertIn("does **not** recover the missing residual", text)
+            self.assertIn("same weighted curves appear in the PDF", text)
+
     def test_png_is_original_eight_bit_grayscale_with_six_drawn_bands(self):
         payload = (GEL / "gel_sizing_synthetic.png").read_bytes()
         self.assertEqual(payload, generator.png_bytes())
