@@ -139,7 +139,7 @@ concrete through `services providers list`, `services providers doctor`,
 `services delivery-route`, `services project-preflight`, and
 `services project-quote`. Built-in provider configuration covers GeneArt quote
 handoff for DNA fragments/cloned genes/reorders/mutagenesis/protein expression
-and Metabion handoff routes for single-tube DNA oligos and m-block fragments. The global protocol-supplier directory is discovery-only; verify [guarded local provider imports](catalog_updates.md), tombstones, stale/tampered previews, LF/CRLF and atomic recovery with Glen/CI. Tutorial 09.04 arithmetic/native review remains separate; product/offer joins, retained documents, reviewed procedures and private observations remain later lanes, not procurement or laboratory acceptance.
+and Metabion handoff routes for single-tube DNA oligos and m-block fragments. The global protocol-supplier directory is discovery-only; verify [guarded local provider imports](catalog_updates.md), tombstones, stale/tampered previews, LF/CRLF and atomic recovery with Glen/CI. Verify [09.04's literal vector/decision/catalog replay and native checkpoints](tutorial/09-04_cloning_time_cost_and_protocol_suppliers.md#acceptance-and-limits); product/offer joins, retained documents, reviewed procedures and private observations remain later lanes, not procurement or laboratory acceptance.
 Generic "deliver this sequence" wording should go through delivery-route
 classification first so sequence kind, length, and construct/protein context
 choose the provider/service route before any quote packet is prepared. Agent
