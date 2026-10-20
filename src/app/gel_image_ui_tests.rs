@@ -902,12 +902,84 @@ fn algebra_editor() -> (Arc<RwLock<GentleEngine>>, GelImageEditor, egui::Context
 }
 
 #[test]
+fn gel_workbench_algebra_reference_is_worker_rendered_selection_bound_and_explicit_in_export() {
+    for changed in [false, true] {
+        let (shared, mut editor, ctx) = algebra_editor();
+        let reference_id = editor.workbench.left.clone();
+        editor.workbench.algebra_reference = reference_id.clone();
+        let result = execute_job(
+            &shared,
+            GelJob::Workbench(GelWorkbenchRequest::InspectAlgebra {
+                profile_id: "residual_1".into(),
+                reference_profile_id: Some(reference_id.clone()),
+            }),
+        )
+        .unwrap();
+        assert!(result.detached.is_none());
+        let inspection = result.algebra_inspection.as_ref().unwrap();
+        assert!(inspection.pixels.is_some());
+        assert_eq!(
+            inspection
+                .presentation
+                .reference
+                .as_ref()
+                .unwrap()
+                .profile
+                .id,
+            reference_id
+        );
+        assert!(
+            std::str::from_utf8(&inspection.svg)
+                .unwrap()
+                .contains("algebra-reference-panel")
+        );
+        pending_result(&mut editor, result);
+        if changed {
+            editor.workbench.algebra_reference.clear();
+        }
+        editor.poll(&shared, &ctx);
+        if changed {
+            assert!(editor.workbench.algebra_inspection.is_none());
+            continue;
+        }
+        assert!(
+            editor
+                .workbench
+                .algebra_inspection
+                .as_ref()
+                .unwrap()
+                .texture
+                .is_some()
+        );
+        let inventory = workbench::Inventory {
+            store: shared.read().unwrap().state().gel_images.workbench.clone(),
+            ..Default::default()
+        };
+        editor.workbench.export_algebra = vec!["residual_1".into()];
+        let GelWorkbenchRequest::Export(request) =
+            editor.workbench.export_request(&inventory).unwrap()
+        else {
+            panic!("export");
+        };
+        assert_eq!(request.algebra_reference_profile_id, Some(reference_id));
+        editor.workbench.export_algebra.push("residual_1".into());
+        assert!(editor.workbench.export_request(&inventory).is_none());
+        editor.workbench.algebra_reference.clear();
+        editor
+            .workbench
+            .invalidate_algebra(shared.read().unwrap().mutation_revision());
+        assert!(editor.workbench.algebra_inspection.is_none());
+    }
+}
+
+#[test]
 fn gel_workbench_algebra_inspection_rasterizes_off_frame_and_reuses_shared_svg_result() {
     let (shared, mut editor, ctx) = algebra_editor();
     let result = execute_job(
         &shared,
         GelJob::Workbench(GelWorkbenchRequest::InspectAlgebra {
             profile_id: "residual_1".into(),
+            reference_profile_id: None,
         }),
     )
     .unwrap();
@@ -986,6 +1058,7 @@ fn gel_workbench_algebra_inspection_rejects_stale_canceled_closed_and_changed_se
             &shared,
             GelJob::Workbench(GelWorkbenchRequest::InspectAlgebra {
                 profile_id: "residual_1".into(),
+                reference_profile_id: None,
             }),
         )
         .unwrap();
@@ -1383,6 +1456,7 @@ fn gel_workbench_export_job_tracking_cannot_offer_cancellation_or_commit() {
             title: "Synthetic export".into(),
             algebra_ids: vec![],
             comparison_display: None,
+            algebra_reference_profile_id: None,
         })),
     );
     assert!(editor.export_running);

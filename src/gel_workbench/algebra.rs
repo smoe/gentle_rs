@@ -208,6 +208,7 @@ pub fn inspect_algebra(
         request: None,
         series: None,
         contributions: vec![],
+        reference: None,
         inputs: vec![],
         warnings: vec![],
     };
@@ -313,5 +314,78 @@ pub fn inspect_algebra(
         density,
     });
     presentation.warnings = warnings.into_iter().collect();
+    Ok(presentation)
+}
+
+/// Attach a native-bin, unscaled reference after algebra verification. This
+/// read-only projection never changes the receipt, residual or its operands.
+pub fn inspect_algebra_with_reference(
+    store: &GelWorkbenchStore,
+    id: &str,
+    reference_id: Option<&str>,
+) -> Result<GelAlgebraPresentation, EngineError> {
+    let mut presentation = inspect_algebra(store, id)?;
+    let Some(reference_id) = reference_id else {
+        return Ok(presentation);
+    };
+    let profile = store.profiles.get(reference_id).ok_or_else(|| {
+        EngineError::new(
+            ErrorCode::NotFound,
+            "Selected custom-only reference not found",
+        )
+    })?;
+    super::validate_profile(profile)?;
+    if profile.evidence_kind == GelEvidenceKind::SignedResidual {
+        return Err(EngineError::invalid_input(
+            "Custom-only reference must be a non-residual profile",
+        ));
+    }
+    if presentation.verification != GelAlgebraVerification::Verified {
+        return Ok(presentation);
+    }
+    let residual = presentation.series.as_ref().unwrap();
+    let range = presentation.request.as_ref().unwrap().range;
+    if profile.size_kind != residual.size_kind
+        || profile.edges[0] >= range[1]
+        || *profile.edges.last().unwrap() <= range[0]
+    {
+        return Err(EngineError::invalid_input(
+            "Custom-only reference requires the same size kind and overlapping size range; signal units may differ on its separate axis",
+        ));
+    }
+    let density: Vec<_> = profile
+        .weights
+        .iter()
+        .zip(profile.edges.windows(2))
+        .map(|(weight, edge)| {
+            let width = edge[1] - edge[0];
+            if !width.is_finite() {
+                return Err(EngineError::invalid_input(
+                    "Reference bin width exceeds finite display range",
+                ));
+            }
+            let value = weight.map(|w| w / width);
+            if value
+                .is_some_and(|d| !d.is_finite() || (d == 0.0 && weight.is_some_and(|w| w != 0.0)))
+            {
+                return Err(EngineError::invalid_input(
+                    "Reference density exceeds finite display range",
+                ));
+            }
+            Ok(value)
+        })
+        .collect::<Result<_, _>>()?;
+    presentation.reference = Some(GelAlgebraReferencePanel {
+        profile: profile.as_ref().clone(),
+        series: GelAlgebraSeries {
+            size_kind: profile.size_kind,
+            signal_units: profile.signal_units.clone(),
+            measure: profile.measure.clone(),
+            edges: profile.edges.clone(),
+            weights: profile.weights.clone(),
+            density,
+        },
+    });
+    presentation.warnings.push("Custom-only reference is caller-selected, not an algebra operand or verified priming condition. Native-bin density is unscaled on a separate Y axis; matching peak positions does not establish comparable amplitudes, gene identity or enrichment. Real-data subtraction coefficients and cross-ladder registration remain undecided.".into());
     Ok(presentation)
 }

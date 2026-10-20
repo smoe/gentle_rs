@@ -405,6 +405,14 @@ density presentation; `export` accepts optional ordered `algebra_ids`. Mismatchi
 or unverifiable residuals cannot be report-exported. See
 [the contract and limits](gel_workbench.md#verify-and-display-a-saved-residual).
 
+For an unscaled, separately labelled custom-only reference panel, pass optional
+`reference_profile_id` to `inspect_algebra`. PDF/JSON export uses
+`algebra_reference_profile_id` with exactly one selected `algebra_ids` entry.
+The caller selects the role; no priming identity, subtraction coefficient or
+amplitude match is inferred. Native reference bins retain their own units,
+calibration and gaps; unsafe or stale sources refuse. See the
+[reference contract](gel_workbench.md#unscaled-custom-only-reference-panel).
+
 PDF `export` accepts optional `comparison_display`: `signal_density_per_size`
 plots saved common-bin weight / size width; `bin_integral` or omission retains
 the byte-identical legacy comparison SVG. This field requires at least one

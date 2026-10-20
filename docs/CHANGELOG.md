@@ -1,5 +1,29 @@
 # GENtle Changelog
 
+## 2026-10-20 - Add An Unscaled Custom-Only Gel Reference Panel
+
+- Extend read-only algebra inspection and single-result JSON/PDF export with an
+  optional caller-selected reference. Keep its native bins and signal-per-size
+  values on a separately labelled Y axis; no rebinning, arithmetic coefficient,
+  normalization or fitted display factor is introduced. Preserve the residual,
+  v1 receipt/digest and absent-reference output path.
+- Validate reference geometry and retained sources, preserve zero versus missing
+  values, include complete source provenance and account for reference bins in
+  export limits. Reject ambiguous export pairing and incompatible size kinds.
+- Reuse the GUI worker and shared renderer; bind inspection adoption/cache and
+  export pairing to the explicit reference selection as well as existing state.
+- Extend tutorial 10.03 with hand-checkable synthetic native-bin reference
+  commands and explicit ordinary-comparison density selection. Real-data
+  subtraction, coefficients, background/marker masks and cross-ladder policy
+  remain undecided; separate axes do not establish comparable amplitudes.
+- Verification on macOS: 8 protocol, 30 renderer and 77 root gel tests pass,
+  including source tampering, stale GUI selection and tutorial PDF/JSON replay;
+  3 manual visual writers remain ignored. The four fast tutorial/TapeStation/
+  checkout suites run 128 tests with 6 expected skips. Locked/offline Cargo check,
+  rustfmt and whitespace checks pass. The root test link emits an unwind-table
+  size warning but succeeds. No native Windows/Linux, scientific or release
+  acceptance is claimed; no push or capture is performed.
+
 ## 2026-10-20 - Add Explicit Compact Safe-Lock Carrier Spacing
 
 - Persist optional whole-micrometre pitch on each rack, with exact decimal

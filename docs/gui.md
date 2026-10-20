@@ -183,6 +183,12 @@ signal per size unit, on the same axis as the thick teal residual. The numbered
 legend follows request order, including duplicate IDs; zero terms have no curve.
 Each operand breaks at its own gaps, and a visible operand never fills hatched
 residual coverage. No coefficients are chosen by the display.
+**Optional custom-only reference** adds a caller-selected, unscaled panel on
+the same size range with its own labelled Y axis, units, native bins and gaps.
+No role/normalization or amplitude comparability is inferred. Changing/clearing
+this selection invalidates cached and late worker pictures. Export with this
+reference requires exactly the inspected algebra ID; clear it for unpaired or
+multiple-result export. Full reference provenance remains separate from operands.
 Ordered algebra export appends verified result/provenance pages. Legacy or
 mismatching results stay diagnosable but cannot be report-exported. Existing
 comparison pages retain their legacy bin-total display when export mode is omitted.
@@ -193,7 +199,7 @@ PDF comparison export; **Legacy bin integrals** is available explicitly. Mode,
 selection or revision changes invalidate the picture; canceled/closed/project
 changes reject late results. If busy, wait and prepare the selected mode again.
 Equal units/common axes do not prove acquisition comparability. No automatic
-scale, reference overlay, statistical significance or enrichment is inferred.
+scale, inferred reference pairing, statistical significance or enrichment is inferred.
 
 
 ## What To Trust Today

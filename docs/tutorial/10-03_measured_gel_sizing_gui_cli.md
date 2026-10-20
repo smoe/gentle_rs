@@ -353,9 +353,66 @@ C1/E1 on L1 and G1 on L2; cell 2 uses D1 on L1 and F1/H1 on L2. Keep those
 differences visible and review registration before interpreting any residual.
 This lesson supplies no biological coefficients, new raw curves or scientific
 acceptance. Overlays of unrelated reference profiles and automatic display
-factors remain deferred; only the recorded algebra operands share this axis.
+factors are not added to this shared axis. The separate, unscaled reference
+panel below adds no real-data subtraction or normalization decision.
+
+### Inspect A Custom-Only Reference Without Scaling It To The Residual
+
+Continue in the same synthetic project. Import a deliberately different native
+grid, select it explicitly for inspection, and export to new paths. This
+caller-declared custom-only role is not a recovered priming condition. Its
+source SHA-256 binds the literal UTF-8 label `GENtle synthetic gel reference panel v1`
+without a trailing newline, not a vendor file. No real C1/D1 subtraction is
+being performed or approved.
+
+<!-- gel-algebra-reference-lesson:start -->
+```sh
+gentle_cli --state /tmp/gentle-algebra-lesson/state.json gel-image workbench '{"action":"import_profile","profile":{"id":"teaching_custom_only","label":"Synthetic custom-only reference","run_id":"synthetic_reference_recipe","lane_id":"custom_only","source_sha256":"d92f3689bb303cc1dfe4b900d9a52f549dad4edad511a03c332e609fd21c199b","evidence_kind":"synthetic","size_kind":"linear_dna_bp","signal_units":"synthetic_reference_area","edges":[90,125,175,250,350],"weights":[70,null,150,0],"measure":"synthetic_reference_bin_integral","processing":["Invented custom-only teaching role; native bins; not a vendor measurement"]}}'
+gentle_cli --state /tmp/gentle-algebra-lesson/state.json gel-image workbench '{"action":"inspect_algebra","profile_id":"teaching_residual","reference_profile_id":"teaching_custom_only"}'
+gentle_cli --state /tmp/gentle-algebra-lesson/state.json gel-image workbench '{"action":"export","path":"/tmp/gentle-algebra-lesson/reference.json","title":"Synthetic reference; positions not comparable amplitudes","analysis_ids":[],"algebra_ids":["teaching_residual"],"algebra_reference_profile_id":"teaching_custom_only"}'
+gentle_cli --state /tmp/gentle-algebra-lesson/state.json gel-image workbench '{"action":"export","path":"/tmp/gentle-algebra-lesson/reference.pdf","title":"Synthetic reference; positions not comparable amplitudes","analysis_ids":[],"algebra_ids":["teaching_residual"],"algebra_reference_profile_id":"teaching_custom_only"}'
+```
+<!-- gel-algebra-reference-lesson:end -->
+
+| Native reference bin (bp) | Saved integral | Unscaled reference signal per bp |
+| --- | --- | --- |
+| 90-125 | 70 | 2 |
+| 125-175 | unavailable | unavailable |
+| 175-250 | 150 | 2 |
+| 250-350 | 0 | 0 |
+
+The reference panel shares the residual's 100-300 bp X range but has a **separate
+Y axis**, labelled `synthetic_reference_area per bp`. A partially visible native
+bin keeps its original density: 70/(125-90) = 2, not 70/(125-100).
+The 125-175 gap stays unavailable and the final bin is genuinely zero. Compare
+positions, not amplitudes; neither curve is fitted to the other. The saved
+residual remains `[-1, null, 3]`. JSON retains `reference.profile` and its native
+`reference.series`, separately from `inputs` and coefficient-weighted operands.
+No reference coefficient, unit conversion or calibration equivalence is inferred.
+
+**GUI:** select `teaching_residual` and choose `teaching_custom_only` in
+**Optional custom-only reference**, then prepare the inspection again. Check
+the separate panel and source details. Changing/clearing the reference invalidates
+the old preview, including late worker results. Select exactly this one algebra
+ID for PDF export; the same reference selection is used. Export refuses zero or
+multiple algebra IDs with a reference rather than guessing a pairing. Clear the
+reference to return to residual-only export. Existing before/after image pages
+and their explicit ordering remain available.
+
+**Ask the inner agent:** "Inspect teaching_residual with teaching_custom_only
+as its explicit unscaled reference. Explain native bins, gaps, the separate Y
+axis and source/calibration limits. Draft the matching saved-report export.
+Leave real-data subtraction coefficients undecided; do not fit or normalize."
 
 ## Optional: Compare Signal Density Rather Than Bin Totals
+
+For matching GUI/CLI presentation, select **Signal per size width** explicitly
+in the GUI and use `"comparison_display":"signal_density_per_size"` on each
+normal comparison PDF export in the CLI. Do not rely on differing defaults:
+GUI starts with density, while an omitted CLI field retains legacy integrals.
+The integral PDF below is an explicitly labelled legacy teaching contrast, not
+the recommended comparison view. Algebra/reference panels already use density;
+`comparison_display` applies only when `comparison_ids` are selected.
 
 Allow another ten minutes. This is a **synthetic** display exercise, not a
 comparison of the cell lines. Create `/tmp/gentle-density-lesson` and start a

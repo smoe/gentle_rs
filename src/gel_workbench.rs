@@ -723,4 +723,4 @@ pub fn algebra(
 }
 
 mod algebra;
-pub use algebra::inspect_algebra;
+pub use algebra::{inspect_algebra, inspect_algebra_with_reference};

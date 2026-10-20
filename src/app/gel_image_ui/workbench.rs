@@ -72,6 +72,7 @@ fn plot_pixels(svg: &str) -> Result<egui::ColorImage, String> {
 
 pub(super) struct AlgebraInspection {
     revision: u64,
+    reference_profile_id: Option<String>,
     pub(super) presentation: GelAlgebraPresentation,
     #[cfg(test)]
     pub(super) svg: Arc<[u8]>,
@@ -81,7 +82,11 @@ pub(super) struct AlgebraInspection {
 }
 
 impl AlgebraInspection {
-    pub(super) fn new(revision: u64, presentation: GelAlgebraPresentation) -> Result<Self, String> {
+    pub(super) fn new(
+        revision: u64,
+        presentation: GelAlgebraPresentation,
+        reference_profile_id: Option<String>,
+    ) -> Result<Self, String> {
         let svg = gentle_render::gel_workbench::render_algebra_svg(&presentation);
         let pixels = if presentation.verification == GelAlgebraVerification::Verified {
             Some(plot_pixels(&svg)?)
@@ -94,6 +99,7 @@ impl AlgebraInspection {
         );
         Ok(Self {
             revision,
+            reference_profile_id,
             presentation,
             #[cfg(test)]
             svg: svg.into_bytes().into(),
@@ -140,6 +146,7 @@ pub(super) struct WorkbenchUi {
     pub(super) comparison_display: GelComparisonDisplay,
     pub(super) comparison_inspection: Option<ComparisonInspection>,
     pub(super) selected_algebra: String,
+    pub(super) algebra_reference: String,
     pub(super) algebra_inspection: Option<AlgebraInspection>,
     pub(super) export_analyses: Vec<String>,
     pub(super) export_comparisons: Vec<String>,
@@ -180,6 +187,7 @@ impl Default for WorkbenchUi {
             comparison_display: GelComparisonDisplay::SignalDensityPerSize,
             comparison_inspection: None,
             selected_algebra: String::new(),
+            algebra_reference: String::new(),
             algebra_inspection: None,
             export_analyses: Vec::new(),
             export_comparisons: Vec::new(),
@@ -266,6 +274,11 @@ impl WorkbenchUi {
     pub(super) fn algebra_matches(&self, inspection: &AlgebraInspection, revision: u64) -> bool {
         inspection.revision == revision
             && inspection.presentation.profile_id == self.selected_algebra
+            && inspection.reference_profile_id.as_deref() == self.algebra_reference_id()
+    }
+
+    pub(super) fn algebra_reference_id(&self) -> Option<&str> {
+        (!self.algebra_reference.is_empty()).then_some(self.algebra_reference.as_str())
     }
 
     pub(super) fn invalidate_algebra(&mut self, revision: u64) {
@@ -381,6 +394,14 @@ impl WorkbenchUi {
             || self.export_analyses.len() > 8
             || self.export_comparisons.len() > 8
             || self.export_algebra.len() > 8
+            || (self.algebra_reference_id().is_some()
+                && (self.export_algebra.len() != 1
+                    || self.export_algebra[0] != self.selected_algebra
+                    || !inventory
+                        .store
+                        .profiles
+                        .get(&self.algebra_reference)
+                        .is_some_and(|p| p.evidence_kind != GelEvidenceKind::SignedResidual)))
             || !self.export_algebra.iter().all(|id| {
                 inventory
                     .store
@@ -406,6 +427,7 @@ impl WorkbenchUi {
             algebra_ids: self.export_algebra.clone(),
             comparison_display: (!self.export_comparisons.is_empty())
                 .then_some(self.comparison_display),
+            algebra_reference_profile_id: self.algebra_reference_id().map(str::to_owned),
             title: self.export_title.clone(),
         }))
     }
@@ -860,6 +882,32 @@ impl GelImageEditor {
                 .filter(|p| p.evidence_kind == GelEvidenceKind::SignedResidual)
                 .map(|p| (p.id.clone(), p.id.clone())),
         );
+        ui.label(
+            "Optional custom-only reference (caller-selected; separate Y axis, no arithmetic)",
+        );
+        select_id(
+            ui,
+            "gel_algebra_reference",
+            &mut self.workbench.algebra_reference,
+            "None selected",
+            std::iter::once((String::new(), "None (no reference panel)".into())).chain(
+                inventory
+                    .store
+                    .profiles
+                    .values()
+                    .filter(|p| p.evidence_kind != GelEvidenceKind::SignedResidual)
+                    .map(|p| {
+                        (
+                            p.id.clone(),
+                            format!(
+                                "{} | {} | run {} / lane {}",
+                                p.id, p.label, p.run_id, p.lane_id
+                            ),
+                        )
+                    }),
+            ),
+        );
+        ui.small("Unscaled native-bin signal per size width. Same size axis, independently labelled Y axis; not comparable amplitudes or verified custom priming. No coefficient is selected or fitted.");
         self.workbench
             .invalidate_algebra(shared.read().unwrap().mutation_revision());
         let available = inventory
@@ -880,6 +928,7 @@ impl GelImageEditor {
                 ui.ctx(),
                 GelJob::Workbench(GelWorkbenchRequest::InspectAlgebra {
                     profile_id: self.workbench.selected_algebra.clone(),
+                    reference_profile_id: self.workbench.algebra_reference_id().map(str::to_owned),
                 }),
             );
         }
@@ -917,6 +966,10 @@ impl GelImageEditor {
                                 ui.collapsing(&input.id, |ui| profile_provenance(ui, input));
                             });
                         }
+                        if let Some(reference) = &report.reference {
+                            ui.label("Custom-only reference (caller-selected, not an operand)");
+                            profile_provenance(ui, &reference.profile);
+                        }
                         for warning in &report.warnings {
                             ui.small(warning);
                         }
@@ -945,6 +998,9 @@ impl GelImageEditor {
             ui.label("Saved algebra IDs (append after existing pages; verification required)");
             ordered_selection(ui, "gel_pdf_algebra", &mut self.workbench.export_algebra,
                 inventory.store.profiles.values().filter(|p| p.evidence_kind == GelEvidenceKind::SignedResidual).map(|p| p.id.clone()).collect(), false);
+            if self.workbench.algebra_reference_id().is_some() {
+                ui.small("The selected custom-only reference is exported only with exactly the inspected algebra ID selected. Clear the reference to export other/multiple algebra results. No reference pairing is inferred.");
+            }
             ui.horizontal_wrapped(|ui| {
                 ui.label("Report title"); ui.text_edit_singleline(&mut self.workbench.export_title);
                 ui.label("New PDF path (optional)"); ui.text_edit_singleline(&mut self.workbench.export_path);
@@ -982,8 +1038,9 @@ impl GelImageEditor {
                         }
                     }
                     Ok(request) => {
-                        if let GelWorkbenchRequest::InspectAlgebra { profile_id } = &request {
+                        if let GelWorkbenchRequest::InspectAlgebra { profile_id, reference_profile_id } = &request {
                             self.workbench.selected_algebra = profile_id.clone();
+                            self.workbench.algebra_reference = reference_profile_id.clone().unwrap_or_default();
                             self.workbench.algebra_inspection = None;
                         }
                         self.start(shared, ui.ctx(), GelJob::Workbench(request));

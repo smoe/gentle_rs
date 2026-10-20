@@ -283,6 +283,16 @@ fn execute_job(shared: &Arc<RwLock<GentleEngine>>, job: GelJob) -> Result<GelJob
         }
         GelJob::Preview(_) | GelJob::ComparisonPlot { .. } => unreachable!(),
     };
+    let reference_profile_id = match &op {
+        Operation::GelWorkbench { request } => match request.as_ref() {
+            GelWorkbenchRequest::InspectAlgebra {
+                reference_profile_id,
+                ..
+            } => reference_profile_id.clone(),
+            _ => None,
+        },
+        _ => None,
+    };
     let mut result = detached.engine_mut().apply(op).map_err(|e| e.message)?;
     let preview = import_id
         .map(|id| prepare_preview(detached.engine().state().gel_images.images[&id].clone()))
@@ -314,7 +324,9 @@ fn execute_job(shared: &Arc<RwLock<GentleEngine>>, job: GelJob) -> Result<GelJob
         .gel_workbench
         .as_mut()
         .and_then(|r| r.algebra.take())
-        .map(|presentation| workbench::AlgebraInspection::new(revision, presentation))
+        .map(|presentation| {
+            workbench::AlgebraInspection::new(revision, presentation, reference_profile_id)
+        })
         .transpose()?;
     Ok(GelJobResult {
         detached: mutates.then_some(detached),

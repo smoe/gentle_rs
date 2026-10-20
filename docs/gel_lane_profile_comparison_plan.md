@@ -189,6 +189,30 @@ flat density, preserved area, legacy bytes, strict requests, failure/no-write,
 read-only state, stale GUI guards and vector PDF output. Native/platform/real-data
 acceptance remains open; no new Glen request, release gate or performance claim.
 
+### Unscaled Reference Panel (Owner-Approved, 2026-10-20)
+
+The owner now approves the bounded exception to the deferred reference work:
+an explicitly selected custom-only profile below one verified residual, with
+its own labelled Y axis. Keep native bins and native-bin weight/width values;
+do not rebin onto the residual grid, multiply, normalize, fit or add the reference
+to the algebra receipt. Sharing an X range permits positional inspection, not
+amplitude comparability, gene identification or enrichment claims. The role is
+caller-declared, not inferred from lane names or independently verified.
+
+Reuse the shared inspection/export contract and GUI worker. Validate the saved
+profile and retained source, include complete reference provenance, retain gaps
+and measured zeros, and fail closed for incompatible size axes or unsafe numeric
+geometry. An export reference requires exactly one explicitly selected algebra
+result. Selection changes invalidate cached/late GUI results. The absent-reference
+path and frozen algebra v1 remain unchanged.
+
+Tutorial 10.03 demonstrates native-bin density using synthetic data and selects
+comparison density explicitly in GUI and CLI, without changing legacy CLI
+defaults. Real C1/D1 reference pairing, subtraction coefficients, background and
+marker masks, and cross-ladder registration remain undecided. Scaled/fitted
+reference views remain deferred. Rust/native acceptance of this panel must be
+reported separately from authored regressions and fast documentation tests.
+
 ### Existing Acceptance Boundary
 
 - Preserve the existing size-only real-gel regression without changing its

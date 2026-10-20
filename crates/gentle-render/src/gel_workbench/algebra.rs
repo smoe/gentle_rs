@@ -7,11 +7,15 @@ use gentle_protocol::gel_workbench::{GelAlgebraPresentation, GelAlgebraVerificat
 mod tests;
 
 /// Project only engine-prepared density values. No CDF, QQ, significance test,
-/// normalization, coefficient fitting or unrelated reference overlay is defined
-/// here. Operand contributions are already rebinned/weighted by the engine.
+/// normalization or coefficient fitting happens here. Operand contributions
+/// and the optional independent native-bin reference are engine-prepared.
 pub fn render_algebra_svg(report: &GelAlgebraPresentation) -> String {
     let terms = report.request.as_ref().map_or(0, |r| r.terms.len().min(16));
-    let mut svg = Svg::new(850 + terms * 24, "GENtle | Saved signed gel algebra");
+    let base_height = 850 + terms * 24;
+    let mut svg = Svg::new(
+        base_height + if report.reference.is_some() { 480 } else { 0 },
+        "GENtle | Saved signed gel algebra",
+    );
     if report.profile_id.len() > 240 || report.label.len() > 240 {
         svg.text(
             32.0,
@@ -133,6 +137,20 @@ pub fn render_algebra_svg(report: &GelAlgebraPresentation) -> String {
             "Unavailable: malformed operand contributions",
             14,
             110,
+        );
+        return svg.finish();
+    }
+    if report
+        .reference
+        .as_ref()
+        .is_some_and(|r| !valid_reference(r, series))
+    {
+        svg.text(
+            32.0,
+            130.0,
+            "Unavailable: malformed custom-only reference panel",
+            14,
+            115,
         );
         return svg.finish();
     }
@@ -319,7 +337,177 @@ pub fn render_algebra_svg(report: &GelAlgebraPresentation) -> String {
         12,
         135,
     );
+    if let Some(reference) = &report.reference {
+        draw_reference(&mut svg, reference, plot, base_height as f64 - 20.0);
+    }
     svg.finish()
+}
+
+fn valid_reference(
+    reference: &gentle_protocol::gel_workbench::GelAlgebraReferencePanel,
+    residual: &gentle_protocol::gel_workbench::GelAlgebraSeries,
+) -> bool {
+    let p = &reference.profile;
+    let s = &reference.series;
+    p.evidence_kind != GelEvidenceKind::SignedResidual
+        && p.id.len() <= 240
+        && p.label.len() <= 240
+        && p.run_id.len() <= 240
+        && p.lane_id.len() <= 240
+        && p.source_sha256.len() == 64
+        && s.signal_units.len() <= 240
+        && s.measure.len() <= 240
+        && s.size_kind == residual.size_kind
+        && s.size_kind == p.size_kind
+        && s.signal_units == p.signal_units
+        && s.measure == p.measure
+        && s.edges == p.edges
+        && s.weights == p.weights
+        && !s.weights.is_empty()
+        && s.weights.len() <= MAX_BINS
+        && s.edges.len() == s.weights.len() + 1
+        && s.density.len() == s.weights.len()
+        && s.edges.iter().all(|v| v.is_finite() && *v > 0.0)
+        && s.edges
+            .windows(2)
+            .all(|e| e[1] > e[0] && (e[1] - e[0]).is_finite())
+        && s.weights
+            .iter()
+            .chain(&s.density)
+            .flatten()
+            .all(|v| v.is_finite() && *v >= 0.0)
+        && s.weights
+            .iter()
+            .zip(&s.density)
+            .all(|(w, d)| w.is_some() == d.is_some())
+        && s.edges[0] < *residual.edges.last().unwrap()
+        && *s.edges.last().unwrap() > residual.edges[0]
+}
+
+fn draw_reference(
+    svg: &mut Svg,
+    reference: &gentle_protocol::gel_workbench::GelAlgebraReferencePanel,
+    residual_plot: Plot,
+    top: f64,
+) {
+    let p = &reference.profile;
+    let s = &reference.series;
+    let _ = writeln!(
+        svg.0,
+        "<g id=\"algebra-reference-panel\"><title>Caller-selected custom-only reference; unscaled native bins; independent Y axis; not an algebra operand</title>"
+    );
+    svg.text(
+        32.0,
+        top,
+        "Custom-only reference (caller-selected; UNSCALED; separate Y axis)",
+        17,
+        115,
+    );
+    svg.text(
+        32.0,
+        top + 25.0,
+        &format!(
+            "Reference: {} | {} | run {} / lane {} | {:?}",
+            p.id, p.label, p.run_id, p.lane_id, p.evidence_kind
+        ),
+        12,
+        140,
+    );
+    svg.text(
+        32.0,
+        top + 48.0,
+        &format!("Source SHA-256: {}", p.source_sha256),
+        12,
+        140,
+    );
+    svg.text(
+        32.0,
+        top + 71.0,
+        &format!(
+            "Y: {} per {} | recorded measure: {}",
+            s.signal_units,
+            s.size_kind.unit(),
+            s.measure
+        ),
+        12,
+        140,
+    );
+    let mut high = 0.0_f64;
+    let mut evaluated = false;
+    for (edges, value) in s.edges.windows(2).zip(&s.density) {
+        if edges[0] < residual_plot.hi
+            && edges[1] > residual_plot.lo
+            && let Some(value) = value
+        {
+            high = high.max(*value);
+            evaluated = true;
+        }
+    }
+    let range = [0.0, if high == 0.0 { 1.0 } else { high }];
+    let plot = Plot {
+        y: top + 140.0,
+        h: 220.0,
+        ..residual_plot
+    };
+    plot.axes(
+        svg,
+        range,
+        &format!("Same size axis ({})", s.size_kind.unit()),
+    );
+    let mut path = String::new();
+    let mut connected = false;
+    let hatch = |a: f64, b: f64, svg: &mut Svg| {
+        let a = a.max(plot.lo);
+        let b = b.min(plot.hi);
+        if a < b {
+            svg.rect(
+                plot.x(a),
+                plot.y,
+                plot.x(b) - plot.x(a),
+                plot.h,
+                "url(#missing)",
+            );
+        }
+    };
+    hatch(plot.lo, s.edges[0], svg);
+    hatch(*s.edges.last().unwrap(), plot.hi, svg);
+    for (edges, value) in s.edges.windows(2).zip(&s.density) {
+        let a = edges[0].max(plot.lo);
+        let b = edges[1].min(plot.hi);
+        if a >= b {
+            continue;
+        }
+        if let Some(value) = value {
+            let _ = write!(
+                path,
+                "{} {:.5} {:.5} L {:.5} {:.5} ",
+                if connected { "L" } else { "M" },
+                plot.x(a),
+                plot.y(*value, range),
+                plot.x(b),
+                plot.y(*value, range)
+            );
+            connected = true;
+        } else {
+            hatch(a, b, svg);
+            connected = false;
+        }
+    }
+    svg.line(
+        plot.x,
+        plot.y(0.0, range),
+        plot.x + plot.w,
+        plot.y(0.0, range),
+        INK,
+    );
+    svg.path("algebra-reference-density", &path, RIGHT, false);
+    if high == 0.0 {
+        svg.text(105.0, top + 120.0, if evaluated { "All evaluated reference bins are zero; 0..1 is a display fallback (gaps remain unavailable)" } else { "No evaluated reference bins here; 0..1 is a display fallback, NOT measured zero" }, 12, 125);
+    }
+    svg.text(32.0, top + 407.0, "Native-bin weight / native-bin width; no rebinning, multiplier, fitting or normalization. Hatched: unavailable.", 12, 140);
+    svg.text(32.0, top + 432.0, "Compare positions, not amplitudes: independent Y axes do not establish loading/calibration or enrichment.", 12, 140);
+    svg.text(32.0, top + 456.0, "Custom-only role is caller-declared; real-data subtraction and cross-ladder registration remain undecided.", 12, 140);
+    svg.0.push_str("</g>\n");
 }
 
 fn contribution_style(index: usize) -> (&'static str, &'static str) {
@@ -358,22 +546,27 @@ pub fn render_algebra_provenance_svgs(
     if report.verification != GelAlgebraVerification::Verified || report.inputs.len() > 64 {
         return Err("Algebra provenance requires a verified, bounded presentation".into());
     }
-    if report.inputs.iter().any(|p| {
-        p.id.len() > 240
-            || p.label.len() > 240
-            || p.run_id.len() > 240
-            || p.lane_id.len() > 240
-            || p.source_sha256.len() != 64
-            || p.signal_units.len() > 240
-            || p.measure.len() > 240
-            || p.weights.len() > MAX_BINS
-            || p.processing.len() > 128
-            || p.warnings.len() > 128
-            || p.processing
-                .iter()
-                .chain(&p.warnings)
-                .any(|s| s.len() > 2048)
-    }) || report.warnings.len() > 8328
+    if report
+        .inputs
+        .iter()
+        .chain(report.reference.iter().map(|r| &r.profile))
+        .any(|p| {
+            p.id.len() > 240
+                || p.label.len() > 240
+                || p.run_id.len() > 240
+                || p.lane_id.len() > 240
+                || p.source_sha256.len() != 64
+                || p.signal_units.len() > 240
+                || p.measure.len() > 240
+                || p.weights.len() > MAX_BINS
+                || p.processing.len() > 128
+                || p.warnings.len() > 128
+                || p.processing
+                    .iter()
+                    .chain(&p.warnings)
+                    .any(|s| s.len() > 2048)
+        })
+        || report.warnings.len() > 8328
         || report.warnings.iter().any(|s| s.len() > 2048)
     {
         return Err("Algebra provenance metadata exceeds rendering bounds".into());
@@ -422,11 +615,18 @@ pub fn render_algebra_provenance_svgs(
             ))?;
         }
     }
-    for profile in &report.inputs {
-        add(format!(
-            "Operand/dependency: {} | {}",
-            profile.id, profile.label
-        ))?;
+    for (profile, role) in report
+        .inputs
+        .iter()
+        .map(|p| (p, "Operand/dependency"))
+        .chain(report.reference.iter().map(|r| {
+            (
+                &r.profile,
+                "Custom-only reference (caller-selected, unscaled; NOT an operand)",
+            )
+        }))
+    {
+        add(format!("{role}: {} | {}", profile.id, profile.label))?;
         if profile.evidence_kind == GelEvidenceKind::SignedResidual {
             add("Derived dependency: inherited run/lane fields are not its identity".into())?;
             add("Algebra input digest:".into())?;

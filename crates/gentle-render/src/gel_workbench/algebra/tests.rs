@@ -28,6 +28,7 @@ fn presentation() -> GelAlgebraPresentation {
             density: vec![Some(-0.02), None, Some(0.03)],
         }),
         contributions: vec![],
+        reference: None,
         inputs: vec![GelProfile {
             id: "a".into(),
             label: "Synthetic input".into(),
@@ -44,6 +45,103 @@ fn presentation() -> GelAlgebraPresentation {
             warnings: vec!["Display-only source; not calibrated detector data".into()],
         }],
         warnings: vec!["No biological inference".into()],
+    }
+}
+
+fn reference_presentation() -> GelAlgebraPresentation {
+    let mut r = presentation();
+    let mut p = r.inputs[0].clone();
+    p.id = "custom<&".into();
+    p.signal_units = "different_reference_area".into();
+    p.edges = vec![90.0, 125.0, 175.0, 250.0, 350.0];
+    p.weights = vec![Some(70.0), None, Some(150.0), Some(0.0)];
+    r.reference = Some(GelAlgebraReferencePanel {
+        series: GelAlgebraSeries {
+            size_kind: p.size_kind,
+            signal_units: p.signal_units.clone(),
+            measure: p.measure.clone(),
+            edges: p.edges.clone(),
+            weights: p.weights.clone(),
+            density: vec![Some(2.0), None, Some(2.0), Some(0.0)],
+        },
+        profile: p,
+    });
+    r
+}
+
+#[test]
+fn signed_algebra_reference_has_native_bins_an_independent_axis_and_no_residual_rescale() {
+    let plain = render_algebra_svg(&presentation());
+    let with = reference_presentation();
+    let svg = render_algebra_svg(&with);
+    let residual_path = |text: &str| {
+        text.split("id=\"algebra-density\" d=\"")
+            .nth(1)
+            .unwrap()
+            .split('"')
+            .next()
+            .unwrap()
+            .to_string()
+    };
+    assert_eq!(residual_path(&plain), residual_path(&svg));
+    let path = svg
+        .split("id=\"algebra-reference-density\" d=\"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap();
+    assert_eq!(
+        path.matches('M').count(),
+        2,
+        "native missing bin breaks the reference path"
+    );
+    assert!(
+        path.starts_with("M 105.00000"),
+        "native 90..125 bin is only display-clipped at 100"
+    );
+    assert!(svg.contains("UNSCALED; separate Y axis"));
+    assert!(svg.contains("Reference: custom&lt;&amp;"));
+    assert!(svg.contains("different_reference_area per bp"));
+    assert!(svg.contains("Compare positions, not amplitudes"));
+    assert!(svg.contains("registration remain undecided"));
+    assert!(!svg.contains("id=\"cdf") && !svg.contains("id=\"qq"));
+    let appendix = render_algebra_provenance_svgs(&with).unwrap().join("\n");
+    assert!(appendix.contains("NOT an operand"));
+    assert!(appendix.contains("Calibration L2"));
+    assert!(appendix.contains(&with.reference.as_ref().unwrap().profile.source_sha256));
+    assert!(!plain.contains("algebra-reference-panel"));
+}
+
+#[test]
+fn signed_algebra_reference_preserves_zero_missing_and_refuses_malformed_series() {
+    for missing in [false, true] {
+        let mut r = reference_presentation();
+        let reference = r.reference.as_mut().unwrap();
+        let value = if missing { None } else { Some(0.0) };
+        reference.profile.weights.fill(value);
+        reference.series.weights.fill(value);
+        reference.series.density.fill(value);
+        let svg = render_algebra_svg(&r);
+        assert!(svg.contains(if missing {
+            "No evaluated reference bins"
+        } else {
+            "All evaluated reference bins are zero"
+        }));
+        assert!(svg.contains("display fallback"));
+    }
+    for mode in 0..3 {
+        let mut r = reference_presentation();
+        let reference = r.reference.as_mut().unwrap();
+        match mode {
+            0 => reference.series.density[0] = Some(f64::NAN),
+            1 => reference.series.weights[0] = Some(999.0),
+            _ => reference.profile.evidence_kind = GelEvidenceKind::SignedResidual,
+        }
+        let svg = render_algebra_svg(&r);
+        assert!(svg.contains("malformed custom-only reference"));
+        assert!(!svg.contains("id=\"algebra-density\""));
+        assert!(!svg.contains("id=\"algebra-reference-density\""));
     }
 }
 

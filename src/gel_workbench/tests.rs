@@ -157,6 +157,7 @@ fn comparison_export_mode_rejects_json_empty_selection_and_tampering_without_fil
                     comparison_ids: ids,
                     algebra_ids: vec![],
                     comparison_display: mode,
+                    algebra_reference_profile_id: None,
                     title: "Synthetic".into(),
                 })),
             })
@@ -490,6 +491,7 @@ fn saved_comparison_json_export_is_read_only_no_clobber_and_tamper_checked() {
         comparison_ids: vec!["compare".into()],
         algebra_ids: vec![],
         comparison_display: None,
+        algebra_reference_profile_id: None,
     };
     let op = Operation::GelWorkbench {
         request: Box::new(GelWorkbenchRequest::Export(request.clone())),
@@ -716,6 +718,7 @@ fn csv_backed_export_checks_original_bytes_and_retains_safe_source_summary() {
         title: "CSV original".into(),
         algebra_ids: vec![],
         comparison_display: None,
+        algebra_reference_profile_id: None,
     };
     engine
         .apply(Operation::GelWorkbench {
@@ -809,6 +812,7 @@ fn pdf_comparison_only_export_rejects_corrupted_raster_and_replaced_document() {
                         comparison_ids: vec!["compare".into()],
                         algebra_ids: vec![],
                         comparison_display: None,
+                        algebra_reference_profile_id: None,
                     }))
                 })
                 .is_err()
@@ -962,6 +966,7 @@ fn saved_tapestation_pdf() -> Vec<u8> {
         comparison_ids: vec!["compare".into()],
         algebra_ids: vec![],
         comparison_display: None,
+        algebra_reference_profile_id: None,
     };
     let result = reopened
         .apply(Operation::GelWorkbench {

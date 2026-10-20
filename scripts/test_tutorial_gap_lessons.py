@@ -35,6 +35,35 @@ motif_spec.loader.exec_module(motif_generator)
 
 
 class TutorialGapLessonTests(unittest.TestCase):
+    def test_custom_only_reference_lesson_has_native_density_and_no_real_data_subtraction(self):
+        prose = (ROOT / "docs/tutorial/10-03_measured_gel_sizing_gui_cli.md").read_text(encoding="utf-8")
+        for newline in ("\n", "\r\n"):
+            text = prose.replace("\n", newline)
+            lesson = text.split("<!-- gel-algebra-reference-lesson:start -->")[1].split(
+                "<!-- gel-algebra-reference-lesson:end -->")[0]
+            requests = [json.loads(line.split(" workbench '", 1)[1][:-1])
+                        for line in lesson.splitlines() if line.startswith("gentle_cli ")]
+            self.assertEqual(len(requests), 4)
+            profile = requests[0]["profile"]
+            self.assertEqual(profile["evidence_kind"], "synthetic")
+            self.assertEqual(profile["source_sha256"], hashlib.sha256(b"GENtle synthetic gel reference panel v1").hexdigest())
+            self.assertEqual(profile["edges"], [90, 125, 175, 250, 350])
+            density = [None if weight is None else weight / (b - a)
+                       for weight, a, b in zip(profile["weights"], profile["edges"], profile["edges"][1:])]
+            self.assertEqual(density, [2, None, 2, 0])
+            self.assertNotEqual(density[0], profile["weights"][0] / (125 - 100))
+            self.assertEqual(requests[1]["reference_profile_id"], profile["id"])
+            for export in requests[2:]:
+                self.assertEqual(export["algebra_ids"], ["teaching_residual"])
+                self.assertEqual(export["algebra_reference_profile_id"], profile["id"])
+                self.assertNotIn("comparison_display", export)
+            for forbidden in ("display_factor", "reference_scale", "fit_scale"):
+                self.assertTrue(all(forbidden not in request for request in requests))
+        self.assertIn("positions, not amplitudes", prose)
+        self.assertIn("No real C1/D1 subtraction", prose)
+        self.assertIn('use `"comparison_display":"signal_density_per_size"`', prose)
+        self.assertIn("unreviewed manifest status is retained", prose)
+
     def test_signed_algebra_overlay_lesson_has_independent_weighted_arithmetic(self):
         prose = (ROOT / "docs/tutorial/10-03_measured_gel_sizing_gui_cli.md").read_text(encoding="utf-8")
         for newline in ("\n", "\r\n"):
