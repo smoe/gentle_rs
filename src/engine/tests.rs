@@ -35191,6 +35191,103 @@ fn labware_carriers_preserve_legacy_json_and_export_both_support_modes() {
 }
 
 #[test]
+fn labware_legacy_carrier_exports_omit_drawing_disclosures() {
+    // Hand-crafted empty 4x9 rack; no physical carrier or sample data.
+    let mut state = ProjectState::default();
+    state.container_state.racks.insert(
+        "legacy".into(),
+        Rack {
+            rack_id: "legacy".into(),
+            name: "Synthetic legacy export guard".into(),
+            profile: RackProfileSnapshot::custom(4, 9),
+            placements: vec![],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let directory = tempdir().unwrap();
+    for template in [
+        RackPhysicalTemplateKind::StoragePcrTubeRack,
+        RackPhysicalTemplateKind::PipettingPcrTubeRack,
+        RackPhysicalTemplateKind::CellCulturePlate,
+    ] {
+        let scad_path = directory.path().join(format!("{}.scad", template.as_str()));
+        engine
+            .apply(Operation::ExportRackOpenScad {
+                rack_id: "legacy".into(),
+                template,
+                path: scad_path.to_str().unwrap().into(),
+            })
+            .unwrap();
+        let scad = fs::read_to_string(&scad_path).unwrap();
+        assert_eq!(scad.lines().next(), Some("// GENtle rack OpenSCAD export"));
+        for disclosure in [
+            "// support_mode=",
+            "// geometry_basis=",
+            "// nonclaim:",
+            "// assumption:",
+        ] {
+            assert!(
+                !scad.contains(disclosure),
+                "legacy {} SCAD gained {disclosure}",
+                template.as_str()
+            );
+        }
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+        let path = directory.path().join(format!("{}.svg", template.as_str()));
+        for (kind, op) in [
+            (
+                "fabrication",
+                Operation::ExportRackFabricationSvg {
+                    rack_id: "legacy".into(),
+                    template,
+                    path: path.to_str().unwrap().into(),
+                },
+            ),
+            (
+                "isometric",
+                Operation::ExportRackIsometricSvg {
+                    rack_id: "legacy".into(),
+                    template,
+                    path: path.to_str().unwrap().into(),
+                },
+            ),
+            (
+                "hero",
+                Operation::ExportRackHeroSvg {
+                    rack_id: "legacy".into(),
+                    template,
+                    path: path.to_str().unwrap().into(),
+                },
+            ),
+            (
+                "labels",
+                Operation::ExportRackCarrierLabelsSvg {
+                    rack_id: "legacy".into(),
+                    template,
+                    path: path.to_str().unwrap().into(),
+                    arrangement_id: None,
+                    preset: RackCarrierLabelPreset::FrontStripAndCards,
+                },
+            ),
+        ] {
+            engine.apply(op).unwrap();
+            let svg = fs::read_to_string(&path).unwrap();
+            for disclosure in ["drawing_derived_unverified", "Drawing-derived; unverified"] {
+                assert!(
+                    !svg.contains(disclosure),
+                    "legacy {} {kind} SVG gained {disclosure}",
+                    template.as_str()
+                );
+            }
+            assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+        }
+    }
+}
+
+#[test]
 fn labware_pcr96_carrier_has_bound_footprint_centers_and_refuses_other_grids() {
     for (rows, columns) in [(8, 12), (8, 11), (12, 8), (16, 24)] {
         let mut state = ProjectState::default();
@@ -35263,6 +35360,109 @@ fn labware_pcr96_carrier_has_bound_footprint_centers_and_refuses_other_grids() {
                 assert!((slot["center_mm"]["y"].as_f64().unwrap() - y).abs() < 1e-4);
             }
         }
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+    }
+}
+
+#[test]
+fn labware_pcr96_carrier_exports_preserve_floor_and_disclose_nonclaims() {
+    // Synthetic empty 8x12 grid, not physical fit or temperature evidence.
+    let mut state = ProjectState::default();
+    state.container_state.racks.insert(
+        "pcr96".into(),
+        Rack {
+            rack_id: "pcr96".into(),
+            name: "Synthetic PCR96 export guard".into(),
+            profile: RackProfileSnapshot::custom(8, 12),
+            placements: vec![],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let directory = tempdir().unwrap();
+    let template = RackPhysicalTemplateKind::PcrTube96PositionCarrier;
+    let scad_path = directory.path().join("PCR carrier's export.scad");
+    engine
+        .apply(Operation::ExportRackOpenScad {
+            rack_id: "pcr96".into(),
+            template,
+            path: scad_path.to_str().unwrap().into(),
+        })
+        .unwrap();
+    let scad = fs::read_to_string(&scad_path).unwrap();
+    let cuts = scad
+        .lines()
+        .filter(|line| line.contains("cylinder("))
+        .collect::<Vec<_>>();
+    assert_eq!(cuts.len(), 96);
+    assert!(cuts.iter().all(|line| {
+        line.contains(", floor_thickness]) cylinder(h=rack_height - floor_thickness + 0.10")
+    }));
+    assert!(!scad.contains(", -0.05]) cylinder"));
+    for expected in [
+        "// support_mode=floor_seated",
+        "// geometry_basis=drawing_derived_unverified",
+        "// nonclaim:",
+        "// assumption:",
+        "rack_height = 15.000;",
+        "opening_diameter = 6.600;",
+        "floor_thickness = 2.000;",
+    ] {
+        assert!(scad.contains(expected), "PCR96 SCAD missing {expected}");
+    }
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+    let path = directory.path().join("PCR carrier's export.svg");
+    for (kind, op) in [
+        (
+            "fabrication",
+            Operation::ExportRackFabricationSvg {
+                rack_id: "pcr96".into(),
+                template,
+                path: path.to_str().unwrap().into(),
+            },
+        ),
+        (
+            "isometric",
+            Operation::ExportRackIsometricSvg {
+                rack_id: "pcr96".into(),
+                template,
+                path: path.to_str().unwrap().into(),
+            },
+        ),
+        (
+            "hero",
+            Operation::ExportRackHeroSvg {
+                rack_id: "pcr96".into(),
+                template,
+                path: path.to_str().unwrap().into(),
+            },
+        ),
+        (
+            "labels",
+            Operation::ExportRackCarrierLabelsSvg {
+                rack_id: "pcr96".into(),
+                template,
+                path: path.to_str().unwrap().into(),
+                arrangement_id: None,
+                preset: RackCarrierLabelPreset::FrontStripAndCards,
+            },
+        ),
+    ] {
+        engine.apply(op).unwrap();
+        let svg = fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            svg.matches("<desc>drawing_derived_unverified;").count(),
+            1,
+            "{kind}"
+        );
+        assert_eq!(
+            svg.matches("Drawing-derived; unverified fit/material/temperature")
+                .count(),
+            1,
+            "{kind}"
+        );
         assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
     }
 }

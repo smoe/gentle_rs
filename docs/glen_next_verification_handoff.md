@@ -70,6 +70,22 @@ state. Verify the canonical parity projection: only template arguments change,
 no operation or command rows are added. Retain native GUI tube/carrier export
 control acceptance separately; authored GUI tests are not live acceptance.
 
+The `labware_` filter also covers these new, unrun export regressions:
+
+- `labware_pcr96_carrier_exports_preserve_floor_and_disclose_nonclaims`: exactly
+  96 floor-preserving/open-top cuts, fixed height/opening/floor and SCAD
+  assumptions/nonclaims; each of the four SVG kinds has exactly one description
+  and one visible unverified disclosure. Project state remains unchanged.
+- `labware_legacy_carrier_exports_omit_drawing_disclosures`: all three legacy
+  templates retain the original SCAD first line, none of the new SCAD comments
+  and neither disclosure in any of the four SVG kinds. This guards disclosure
+  leakage, not full byte identity; the historical baselines remain required.
+
+The earlier `rack_openscad_all_templates_preserve_bottom_floor_and_open_top`
+already resizes its rack to 8x12 and counts 96 PCR96 floor-preserving cuts.
+Retain that coverage; the new test adds total-cut, header and SVG-count guards.
+All new Rust checks remain Glen/CI work, not a locally executed pass.
+
 Capture and commit the nine original carrier baselines from `1c5be317` source-
 matched binaries: SCAD, simulation JSON and the embedded physical spec for each
 legacy template on one fixed synthetic rack. Document exact recreation and raw
@@ -100,6 +116,15 @@ and Safe-Lock checks; inspect new-template SVG disclosures without inferring
 full ANSI/SLAS compliance. No dense spacing, boxes, 0.1 ml profile or thermal
 contact is implemented. The offline mesh harness uses literal parameters and
 actual SCAD format strings, not a freshly built Rust exporter.
+
+Owner requirements clarified 2026-10-20: offer **adjustable** compact spacing
+below 20 mm in a separate extension without changing existing templates.
+Storage prioritizes dense transport/freezer organization rather than treatment
+access. Commercial paper/cardboard boxes should be modeled as possible storage
+destinations, not presumed fabrication targets. Box dimensions/dividers/lids,
+closed-cap clearance, fit and material/temperature qualification still need
+their own evidence/contract. No compact or box support is implemented by this
+test-only follow-up, and none becomes an added release gate.
 
 ## Historical Covering Request, 2026-10-19
 

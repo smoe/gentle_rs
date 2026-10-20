@@ -1784,8 +1784,15 @@ uses nominal plate-format coordinates without claiming a plate, thermocycler
 block, thermal contact or commercial-holder fit. Missing collar/cap dimensions
 remain unknown; the visualization renderer must refuse incomplete dimensions
 without panic or file overwrite. Standard coordinates do not qualify hardware.
-Storage boxes serve transport between institutes on ice and freezer
-organisation; boxes/inserts/lids and denser unchecked pitch remain later
-decisions, not thermal/material qualification. New template metadata is
+Owner clarification, 2026-10-20: offer adjustable compact spacing below 20 mm
+as a separate extension, preserving the existing templates and their numbers.
+Storage is a distinct use from treatment/bench handling: prioritize dense
+transport and freezer organization when samples are not being treated in the
+rack. Commercial paper/cardboard boxes are possible storage destinations, not
+necessarily objects to fabricate. A future box profile needs source/measured
+interior, grid/divider, closed-cap-height and lid constraints; a nominal tube
+volume or cardboard material never establishes fit or temperature suitability.
+Compact pitch admission and box modeling remain unimplemented contracts, not
+thermal/material qualification. New template metadata is
 optional and omitted for legacy templates so their serialized bytes and
 geometry remain unchanged. No new template establishes verified fit.

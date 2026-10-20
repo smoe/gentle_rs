@@ -1,5 +1,29 @@
 # GENtle Changelog
 
+## 2026-10-20 - Guard Carrier Export Disclosures And Record Compact Storage Intent
+
+- Author PCR96 successful SCAD/four-SVG regression coverage: exactly 96
+  floor-preserving/open-top cuts, existing header/dimensions and exactly one
+  semantic/visible disclosure per SVG. Preserve the earlier 8x12 floor-count
+  guard rather than describing it as absent. Assert project state unchanged.
+- Author legacy guards for the original SCAD first line and absence of every
+  new disclosure comment/text across all three templates and four SVG kinds.
+  These are not substitutes for Glen's pending byte baselines, real source-
+  matched OpenSCAD renders, native GUI checks or physical qualification.
+- Add both test names to the carrier handoff. No production code, template
+  numbers, identities, serialization or export bytes are changed. Rust
+  build/test/check remains Glen/CI work; no new executed Rust pass is claimed.
+- The owner's newer clarification supersedes the review prompt's instruction
+  to leave density pending: record requested adjustable sub-20-mm spacing,
+  distinct dense transport/freezer use and commercial cardboard boxes as
+  storage destinations, not mandatory fabrication targets. Amend only the
+  related decision/roadmap/handoff; compact/box geometry is not implemented or
+  qualified by this test tranche, and no new release gate follows.
+- Verification: two source-only Python SCAD-template/newline checks, scoped
+  rustfmt and whitespace checks pass. Session-close reports 4 OK, 2 warnings
+  (intentional working changes and manual plan fidelity), 0 failures. These
+  checks do not execute the new Rust regressions, OpenSCAD or the native GUI.
+
 ## 2026-10-20 - Repair Catalog Reachability Without Weakening Parity Overrides
 
 - Trace both normal-CI primer-matrix failures at `bb1686bd` to the same invalid
