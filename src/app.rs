@@ -25262,6 +25262,10 @@ Error: `{err}`"
                 rack_id.trim(),
                 fill_direction.as_str()
             ),
+            Operation::SetRackCarrierPitch { rack_id, pitch_um } => format!(
+                "Set rack carrier pitch: rack_id={}, override_um={pitch_um:?}",
+                rack_id.trim()
+            ),
             Operation::SetRackProfileCustom {
                 rack_id,
                 rows,

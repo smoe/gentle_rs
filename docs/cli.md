@@ -6266,6 +6266,18 @@ Rendering export commands:
   - Calls engine operation `SetRackFillDirection`.
   - Reflows occupied positions onto the same rack geometry under a different
     deterministic fill order.
+- `racks set-carrier-pitch RACK_ID MM|--clear`
+  - Calls `SetRackCarrierPitch { rack_id, pitch_um }`; `null` clears the override.
+  - MM is a positive decimal with at most three fractional digits, converted
+    exactly to whole micrometres. Exponents, signs and extra precision refuse.
+  - Sets explicit compact Safe-Lock spacing, never an inferred cap clearance.
+    Collar-seated minimum is 11.75 mm; floor-seated exports need at least
+    12.05 mm; maximum is 20 mm. The setter admits collar-compatible spacing,
+    and each export revalidates its own support mode. Old defaults stay 20 mm.
+  - Other physical templates refuse a saved override; clear it before those
+    exports. Clearing restores the original template output.
+  - Grid format is separate: `racks set-custom-profile RACK_ID ROWS COLUMNS`
+    retains the pitch. Variable grids/labels do not prove fit to a storage box.
 - `racks set-custom-profile RACK_ID ROWS COLUMNS`
   - Calls engine operation `SetRackProfileCustom`.
   - Reflows occupied positions onto one custom A1-style rack geometry.

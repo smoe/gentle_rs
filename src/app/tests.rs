@@ -9564,6 +9564,7 @@ fn labware_oversized_rack_gui_helpers_do_not_expand_the_saved_grid() {
         assert!(GENtleApp::rack_available_coordinates(&profile).is_empty());
         assert!(GENtleApp::rack_edge_avoidance_coordinates(&profile).is_none());
         let rack = Rack {
+            carrier_pitch_override_um: None,
             rack_id: "oversized".into(),
             name: "Synthetic saved grid".into(),
             profile,
@@ -9618,6 +9619,16 @@ fn labware_oversized_rack_gui_helpers_do_not_expand_the_saved_grid() {
 
 #[test]
 fn labware_carrier_gui_labels_disclose_support_and_unverified_status() {
+    for (template, visible) in [
+        (RackPhysicalTemplateKind::StoragePcrTubeRack, false),
+        (RackPhysicalTemplateKind::PipettingPcrTubeRack, false),
+        (RackPhysicalTemplateKind::CellCulturePlate, false),
+        (RackPhysicalTemplateKind::PcrTube96PositionCarrier, false),
+        (RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated, true),
+        (RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated, true),
+    ] {
+        assert_eq!(GENtleApp::rack_supports_carrier_pitch(template), visible);
+    }
     for (template, mode) in [
         (
             RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated,
@@ -9646,6 +9657,7 @@ fn open_rack_dialog_prefills_custom_profile_editor_from_snapshot() {
     state.container_state.racks.insert(
         "rack-custom".to_string(),
         Rack {
+            carrier_pitch_override_um: None,
             rack_id: "rack-custom".to_string(),
             name: "Bench".to_string(),
             profile: RackProfileSnapshot {
@@ -9685,6 +9697,7 @@ fn open_rack_dialog_infers_edge_avoidance_template_from_perimeter_blocking() {
     state.container_state.racks.insert(
         "rack-edge".to_string(),
         Rack {
+            carrier_pitch_override_um: None,
             rack_id: "rack-edge".to_string(),
             name: "Plate".to_string(),
             profile: RackProfileSnapshot {
@@ -10081,6 +10094,7 @@ fn rack_help_strip_keycaps_cover_shortcuts() {
 #[test]
 fn rack_ghost_preview_reorders_sample_within_arrangement_block() {
     let rack = crate::engine::Rack {
+        carrier_pitch_override_um: None,
         rack_id: "rack-1".to_string(),
         name: "Bench".to_string(),
         profile: crate::engine::RackProfileSnapshot::custom(1, 4),
@@ -10155,6 +10169,7 @@ fn rack_ghost_preview_reorders_sample_within_arrangement_block() {
 #[test]
 fn rack_ghost_preview_moves_whole_block_and_shifts_neighbors() {
     let rack = crate::engine::Rack {
+        carrier_pitch_override_um: None,
         rack_id: "rack-1".to_string(),
         name: "Bench".to_string(),
         profile: crate::engine::RackProfileSnapshot::custom(1, 4),
@@ -10227,6 +10242,7 @@ fn rack_ghost_preview_moves_whole_block_and_shifts_neighbors() {
 #[test]
 fn rack_ghost_preview_moves_multiple_blocks_together() {
     let rack = crate::engine::Rack {
+        carrier_pitch_override_um: None,
         rack_id: "rack-1".to_string(),
         name: "Bench".to_string(),
         profile: crate::engine::RackProfileSnapshot::custom(1, 4),
@@ -10302,6 +10318,7 @@ fn rack_ghost_preview_moves_multiple_blocks_together() {
 #[test]
 fn rack_ghost_preview_moves_multiple_samples_together_within_block() {
     let rack = crate::engine::Rack {
+        carrier_pitch_override_um: None,
         rack_id: "rack-1".to_string(),
         name: "Bench".to_string(),
         profile: crate::engine::RackProfileSnapshot::custom(1, 4),

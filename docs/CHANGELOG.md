@@ -1,5 +1,32 @@
 # GENtle Changelog
 
+## 2026-10-20 - Add Explicit Compact Safe-Lock Carrier Spacing
+
+- Persist optional whole-micrometre pitch on each rack, with exact decimal
+  shared-shell parsing and `SetRackCarrierPitch` set/clear. Reuse rack mutation,
+  history, generic operation, introspection and adapter paths. New fields are
+  omitted when absent; existing Rack literals explicitly retain `None`.
+- Derive compact Safe-Lock geometry with separate named web/collar allowances,
+  conservative outer margins, support-mode validation and unverified provenance.
+  Other physical templates refuse the override before writing; clear restores
+  default output. Retain old template numbers and absent-override bytes.
+- Expose the saved numeric pitch/Clear only for both Safe-Lock GUI selections,
+  with unverified cap-clearance and incompatible-template messages. No GUI-only
+  geometry, cap model, thermal/material claim or commercial-box fit is added.
+- Author bounds/error-order, exact-decimal/legacy serde, 9x9 coordinates,
+  save/reload/clear/undo/redo, shell/generic-op, unsupported no-write and variable
+  grid-format guards. Record storage boxes as format-variable destinations with
+  separate interior/divider/height/lid evidence; no fixed 9x9 box or box model.
+- Update the glossary/parity projection and existing interface/provenance docs.
+  Rust/native tests, canonical generator freshness, real OpenSCAD exports and
+  legacy byte baselines remain Glen/CI work. No new release gate or push.
+- Verification: three source-only SCAD-template/grid/newline checks and 85
+  checkout/maturity tests pass after updating only the glossary hash in the four
+  generated maturity projections. Initial LF/CRLF failures were stale hashes,
+  not a maturity-verdict change. Generator check, documentation status, scoped
+  rustfmt and whitespace pass; session-close has 4 OK, 2 expected warnings and
+  no failures. No Rust, GUI, physical-model renderer or OpenSCAD execution here.
+
 ## 2026-10-20 - Give Carrier Label Regression Fixtures Placement Scope
 
 - Correct three synthetic `labware_` fixtures to include one unoccupied A1

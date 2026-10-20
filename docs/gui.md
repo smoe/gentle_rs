@@ -5095,10 +5095,17 @@ Exports:
   the grid and processing refuses, rather than expanding or truncating it.
   The physical-template combo additionally offers Safe-Lock 1.5/2.0 ml collar-
   and floor-seated carriers, both explicitly unverified at 20-mm pitch.
+  These two selections expose **Carrier pitch (mm)** and **Clear**, backed by
+  the shared `SetRackCarrierPitch` operation. The optional saved override uses
+  exact whole micrometres; compact exports recheck seating-specific limits and
+  show **Compact spacing: cap clearance not checked**. Other physical templates
+  refuse an override rather than ignore it; the field is hidden for them.
   New exports retain support mode, assumptions and nonclaims. Selecting a
   template neither assigns tube identity to samples nor qualifies fabrication,
   cap clearance, ice/freezer use or commercial-rack compatibility. Storage
-  boxes and denser unchecked spacing remain deferred.
+  boxes remain separate profiles requiring dimensions/dividers/lid evidence.
+  Grid formats are variable, not restricted to 9x9; changing rows/columns keeps
+  the selected pitch and does not qualify a commercial-box fit.
   `PCR 0.2 ml - 8x12 carrier (unverified)` requires exactly eight rows and twelve
   columns. Nominal plate-format coordinates imply neither thermocycler use nor
   holder fit. The separate PCR reference profile retains an unknown seating

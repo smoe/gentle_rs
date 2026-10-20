@@ -3532,6 +3532,10 @@ pub enum Operation {
         rack_id: String,
         fill_direction: RackFillDirection,
     },
+    SetRackCarrierPitch {
+        rack_id: String,
+        pitch_um: Option<u32>,
+    },
     SetRackProfileCustom {
         rack_id: String,
         rows: usize,

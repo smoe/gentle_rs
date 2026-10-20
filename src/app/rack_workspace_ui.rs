@@ -866,6 +866,14 @@ impl GENtleApp {
         }
     }
 
+    pub(super) fn rack_supports_carrier_pitch(template: RackPhysicalTemplateKind) -> bool {
+        matches!(
+            template,
+            RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated
+                | RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated
+        )
+    }
+
     pub(super) fn rack_physical_template_label(template: RackPhysicalTemplateKind) -> &'static str {
         match template {
             RackPhysicalTemplateKind::StoragePcrTubeRack => "Storage PCR tube rack",
@@ -3361,6 +3369,33 @@ impl GENtleApp {
                         }
                     });
             });
+            if Self::rack_supports_carrier_pitch(self.rack_physical_template_kind) {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Carrier pitch (mm)");
+                    let mut pitch_um = rack.carrier_pitch_override_um.unwrap_or(20_000);
+                    let changed = ui.add(egui::DragValue::new(&mut pitch_um).speed(100)
+                        .custom_formatter(|value, _| format!("{:.3}", value / 1000.0))
+                        .custom_parser(|text| gentle_protocol::labware::parse_carrier_pitch_um(text).ok().map(f64::from)))
+                        .on_hover_text("Persisted compact Safe-Lock spacing; support-mode limits are checked by the engine")
+                        .changed();
+                    let clear = ui.add_enabled(rack.carrier_pitch_override_um.is_some(), egui::Button::new("Clear")).clicked();
+                    if changed || clear {
+                        let result = self.engine.write().unwrap().apply(Operation::SetRackCarrierPitch {
+                            rack_id: rack.rack_id.clone(), pitch_um: if clear { None } else { Some(pitch_um) },
+                        });
+                        self.rack_view_status = match result {
+                            Ok(result) => result.messages.first().cloned().unwrap_or_default(),
+                            Err(error) => error.message,
+                        };
+                    }
+                });
+            }
+            if rack.carrier_pitch_override_um.is_some() {
+                ui.small("Compact spacing: cap clearance not checked");
+                if !Self::rack_supports_carrier_pitch(self.rack_physical_template_kind) {
+                    ui.colored_label(egui::Color32::RED, "Saved carrier pitch is incompatible with this template.");
+                }
+            }
             ui.horizontal_wrapped(|ui| {
                 if ui
                     .button("Fabrication SVG...")

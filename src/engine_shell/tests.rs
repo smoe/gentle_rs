@@ -5845,6 +5845,7 @@ fn execute_racks_move_samples_updates_snapshot() {
     state.container_state.racks.insert(
         "rack-1".to_string(),
         Rack {
+            carrier_pitch_override_um: None,
             rack_id: "rack-1".to_string(),
             name: "Bench".to_string(),
             profile: RackProfileSnapshot::custom(1, 4),
@@ -5957,6 +5958,7 @@ fn execute_racks_set_fill_direction_updates_snapshot() {
     state.container_state.racks.insert(
         "rack-1".to_string(),
         Rack {
+            carrier_pitch_override_um: None,
             rack_id: "rack-1".to_string(),
             name: "Bench".to_string(),
             profile: RackProfileSnapshot::from_kind(RackProfileKind::SmallTube4x6),
@@ -6058,6 +6060,7 @@ fn execute_racks_move_blocks_updates_snapshot() {
     state.container_state.racks.insert(
         "rack-1".to_string(),
         Rack {
+            carrier_pitch_override_um: None,
             rack_id: "rack-1".to_string(),
             name: "Bench".to_string(),
             profile: RackProfileSnapshot::custom(1, 4),
@@ -6172,6 +6175,7 @@ fn execute_racks_apply_template_updates_snapshot_impl() {
     state.container_state.racks.insert(
         "rack-1".to_string(),
         Rack {
+            carrier_pitch_override_um: None,
             rack_id: "rack-1".to_string(),
             name: "Bench".to_string(),
             profile: RackProfileSnapshot::custom(4, 4),
@@ -6248,6 +6252,7 @@ fn execute_racks_set_custom_profile_updates_snapshot() {
     state.container_state.racks.insert(
         "rack-1".to_string(),
         Rack {
+            carrier_pitch_override_um: None,
             rack_id: "rack-1".to_string(),
             name: "Bench".to_string(),
             profile: RackProfileSnapshot::from_kind(RackProfileKind::SmallTube4x6),
@@ -6322,6 +6327,7 @@ fn execute_racks_set_blocked_updates_snapshot() {
     state.container_state.racks.insert(
         "rack-1".to_string(),
         Rack {
+            carrier_pitch_override_um: None,
             rack_id: "rack-1".to_string(),
             name: "Bench".to_string(),
             profile: RackProfileSnapshot::custom(28, 3),
@@ -6396,6 +6402,7 @@ fn execute_racks_show_returns_structured_rack_state() {
     state.container_state.racks.insert(
         "rack-1".to_string(),
         Rack {
+            carrier_pitch_override_um: None,
             rack_id: "rack-1".to_string(),
             name: "Bench".to_string(),
             profile: RackProfileSnapshot::from_kind(RackProfileKind::SmallTube4x6),
@@ -6463,6 +6470,7 @@ fn execute_racks_labels_svg_with_preset_writes_marker() {
     state.container_state.racks.insert(
         "rack-1".to_string(),
         Rack {
+            carrier_pitch_override_um: None,
             rack_id: "rack-1".to_string(),
             name: "Bench".to_string(),
             profile: RackProfileSnapshot::from_kind(RackProfileKind::SmallTube4x6),
@@ -6552,6 +6560,7 @@ fn execute_racks_physical_exports_write_markers() {
             state.container_state.racks.insert(
                 "rack-1".to_string(),
                 Rack {
+                    carrier_pitch_override_um: None,
                     rack_id: "rack-1".to_string(),
                     name: "Bench".to_string(),
                     profile: RackProfileSnapshot::from_kind(RackProfileKind::SmallTube4x6),

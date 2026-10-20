@@ -2030,6 +2030,9 @@ pub struct Rack {
     pub placements: Vec<RackPlacementEntry>,
     pub created_by_op: Option<OpId>,
     pub created_at_unix_ms: u128,
+    /// Explicit compact Safe-Lock carrier spacing; absent preserves old bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub carrier_pitch_override_um: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -5753,6 +5756,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "SetRackProfile",
     "ApplyRackTemplate",
     "SetRackFillDirection",
+    "SetRackCarrierPitch",
     "SetRackProfileCustom",
     "SetRackBlockedCoordinates",
     "ExportRackLabelsSvg",

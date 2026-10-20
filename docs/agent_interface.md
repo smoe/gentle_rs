@@ -810,6 +810,7 @@ an agent has selected a deterministic operation.
 - `racks set-blocked`
 - `racks set-custom-profile`
 - `racks set-fill-direction`
+- `racks set-carrier-pitch`
 - `racks set-profile`
 - `racks show`
 - `racks simulation-json`

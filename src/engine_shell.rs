@@ -1053,6 +1053,10 @@ pub enum ShellCommand {
         rack_id: String,
         fill_direction: RackFillDirection,
     },
+    RacksSetCarrierPitch {
+        rack_id: String,
+        pitch_um: Option<u32>,
+    },
     RacksSetCustomProfile {
         rack_id: String,
         rows: usize,
@@ -8095,6 +8099,11 @@ impl ShellCommand {
                 "set rack '{}' fill direction to '{}'",
                 rack_id.trim(),
                 fill_direction.as_str()
+            ),
+            Self::RacksSetCarrierPitch { rack_id, pitch_um } => format!(
+                "set rack '{}' carrier pitch override to {:?} um",
+                rack_id.trim(),
+                pitch_um
             ),
             Self::RacksSetCustomProfile {
                 rack_id,
@@ -22298,6 +22307,14 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         rack_update_descriptor(
             "SetRackFillDirection",
             "Set rack fill direction through the shared engine operation.",
+        ),
+        rack_update_descriptor(
+            "racks set-carrier-pitch",
+            "Set or clear explicit compact Safe-Lock spacing in exact micrometres; cap clearance is unverified.",
+        ),
+        rack_update_descriptor(
+            "SetRackCarrierPitch",
+            "Set or clear rack carrier pitch through the shared engine operation; exports revalidate support mode.",
         ),
         rack_update_descriptor(
             "racks set-custom-profile",
@@ -46631,6 +46648,22 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         fill_direction,
                     })
                 }
+                "set-carrier-pitch" => {
+                    if tokens.len() != 4 || tokens[2].trim().is_empty() {
+                        return Err("racks set-carrier-pitch requires RACK_ID MM|--clear".into());
+                    }
+                    let pitch_um = if tokens[3] == "--clear" {
+                        None
+                    } else {
+                        Some(gentle_protocol::labware::parse_carrier_pitch_um(
+                            &tokens[3],
+                        )?)
+                    };
+                    Ok(ShellCommand::RacksSetCarrierPitch {
+                        rack_id: tokens[2].trim().into(),
+                        pitch_um,
+                    })
+                }
                 "set-custom-profile" => {
                     if tokens.len() != 5 {
                         return Err(
@@ -50767,6 +50800,7 @@ fn execute_shell_command_default(
             | ShellCommand::RacksSetProfile { .. }
             | ShellCommand::RacksApplyTemplate { .. }
             | ShellCommand::RacksSetFillDirection { .. }
+            | ShellCommand::RacksSetCarrierPitch { .. }
             | ShellCommand::RacksSetCustomProfile { .. }
             | ShellCommand::RacksSetBlocked { .. }
     ) {
@@ -52724,6 +52758,12 @@ fn execute_rack_mutation_command(
                     })
                     .map_err(|e| e.to_string())?
             }),
+        }),
+        ShellCommand::RacksSetCarrierPitch { rack_id, pitch_um } => Ok(ShellRunResult {
+            state_changed: true,
+            output: json!({"result": engine.apply(Operation::SetRackCarrierPitch {
+                rack_id: rack_id.clone(), pitch_um: *pitch_um,
+            }).map_err(|e| e.to_string())?}),
         }),
         ShellCommand::RacksSetCustomProfile {
             rack_id,
@@ -68348,6 +68388,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::RacksSetProfile { .. }
             | ShellCommand::RacksApplyTemplate { .. }
             | ShellCommand::RacksSetFillDirection { .. }
+            | ShellCommand::RacksSetCarrierPitch { .. }
             | ShellCommand::RacksSetCustomProfile { .. }
             | ShellCommand::RacksSetBlocked { .. }
     ) {
@@ -69304,6 +69345,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::RacksSetProfile { .. }
         | ShellCommand::RacksApplyTemplate { .. }
         | ShellCommand::RacksSetFillDirection { .. }
+        | ShellCommand::RacksSetCarrierPitch { .. }
         | ShellCommand::RacksSetCustomProfile { .. }
         | ShellCommand::RacksSetBlocked { .. } => execute_rack_mutation_command(engine, command)?,
         ShellCommand::RacksShow { .. }

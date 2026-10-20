@@ -66,6 +66,23 @@ def carrier_template(source, rows, columns, width, depth, height, opening, edge,
 
 
 class LabwareTemplateTests(unittest.TestCase):
+    def test_compact_carrier_scad_retains_floor_and_variable_grid_coordinates(self):
+        # Synthetic geometry, not output from Rust or fit to a storage box.
+        source = (ROOT / "src/engine/state/lineage_containers.rs").read_text()
+        for rows, columns in ((9, 9), (8, 8), (10, 10), (5, 12)):
+            edge, opening, pitch, front = 4.775, 10.45, 14, 10
+            width = 2 * edge + opening + (columns - 1) * pitch
+            depth = front + edge + opening + (rows - 1) * pitch
+            scad = carrier_template(source, rows, columns, width, depth, 24,
+                                    opening, edge, front, pitch)
+            self.assertEqual(scad.count(" cylinder("), rows * columns)
+            self.assertEqual(scad.count(", floor_thickness]) cylinder(h=rack_height - floor_thickness + 0.10"), rows * columns)
+            self.assertIn(f"outer_width = {width:.3f};", scad)
+            if (rows, columns) == (9, 9):
+                self.assertEqual(width, 132)
+                self.assertIn("translate([10.000, 15.225, floor_thickness])", scad)
+                self.assertIn("translate([122.000, 127.225, floor_thickness])", scad)
+
     def test_carrier_scad_fragments_preserve_floor_open_top_and_newline_semantics(self):
         source = (ROOT / "src/engine/state/lineage_containers.rs").read_text()
         args = (4, 9, 180.0, 85.075, 44.0, 10.15, 4.925, 10.0)

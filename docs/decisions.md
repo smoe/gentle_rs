@@ -1809,7 +1809,15 @@ rack. Commercial paper/cardboard boxes are possible storage destinations, not
 necessarily objects to fabricate. A future box profile needs source/measured
 interior, grid/divider, closed-cap-height and lid constraints; a nominal tube
 volume or cardboard material never establishes fit or temperature suitability.
-Compact pitch admission and box modeling remain unimplemented contracts, not
-thermal/material qualification. New template metadata is
+Compact pitch is now an explicit rack-scoped whole-micrometre override, omitted
+when absent. A shared engine operation and pure geometry admission preserve
+the original 20-mm defaults and outer margins. The setter admits collar-seated
+spacing; each export revalidates its selected seating mode. Unsupported templates
+refuse the override, never silently ignore it. Named compact web/collar allowances
+are engineering assumptions, not cap-clearance, strength or material evidence.
+Storage-box formats must remain variable: independent row/column grids, interior
+dimensions, dividers, height and lid, not a hardcoded 9x9 box. Existing generic
+grid/label operations support different formats but do not constitute a physical
+box model or fit qualification. Box modeling remains unimplemented. New template metadata is
 optional and omitted for legacy templates so their serialized bytes and
 geometry remain unchanged. No new template establishes verified fit.

@@ -53,7 +53,8 @@ freezer, autoclave or cell-culture qualification follows. Existing PCR-rack and
 plate templates are unchanged and are not manufacturer-backed compatibility
 evidence. A 96-position layout is not proof that these tubes fit an ordinary
 96-well plate or an ANSI/SLAS carrier. Safe-Lock carriers now offer the explicit
-support modes below. Boxes, inserts, lids and denser unchecked spacing stay deferred.
+support modes below and the explicit compact override. Physical box/insert/lid
+profiles still need their own evidence; no material qualification follows.
 
 ## Safe-Lock 1.5/2.0 ml carriers
 
@@ -63,6 +64,50 @@ worst-case dimensions over both manufacturer profiles, not nominal volume.
 They are `tube_rack`, format `eppendorf_safe_lock_1_5ml_or_2_0ml`, with
 `geometry_basis=drawing_derived_unverified`. They do not modify the three older
 templates. New optional spec fields are omitted for old templates.
+
+### Explicit Compact Spacing
+
+`Rack.carrier_pitch_override_um` is optional, integer micrometres. Without it,
+all existing template numbers and serialized rack/export bytes stay unchanged.
+Use `racks set-carrier-pitch RACK_ID 14` or `--clear`; grid dimensions are a
+separate `racks set-custom-profile` choice, not a box-format assumption.
+
+The pure shared derivation retains conservative outer edge margins (4.925 mm
+collar-seated; 4.775 mm floor-seated) and changes only inter-hole spacing.
+`MIN_WEB=0.8 mm` is a per-side allowance: the admitted pitch must exceed the
+opening by **two** such allowances (1.6 mm total). `COLLAR_GAP=0.5 mm` is the
+separate adjacent-collar allowance. Both are engineering assumptions, not
+manufacturing tolerances or measured mechanical strength.
+
+| Admission order | Reason prefix | Limit |
+| --- | --- | --- |
+| 1 | `compact_pitch_invalid` | finite and positive |
+| 2 | `compact_pitch_not_compact` | at most conservative 20 mm |
+| 3 | `compact_pitch_below_web` | opening + 2 x MIN_WEB: 11.75/12.05 mm collar/floor |
+| 4 | `compact_pitch_collar_overlap` | maximum collar diameter + COLLAR_GAP: 11.3 mm |
+
+The setter admits collar-compatible pitch because the rack has no support-mode
+identity; every export rechecks its selected mode. Thus 11.75 mm is admitted on
+the rack but a floor-seated export refuses it. Other templates, including PCR96,
+refuse `carrier_pitch_override_unsupported` before any write. Clearing restores
+the old output. Row/column changes retain the saved override.
+
+Worked synthetic geometry: a 9x9 floor-seated layout at 14 mm has width
+`2 x 4.775 + 10.45 + 8 x 14 = 132 mm`; A1 centre is `(10, 15.225)` mm and
+I9 is `(122, 127.225)` mm. These are geometry assertions only, not box dimensions.
+Compact exports use `drawing_derived_unverified_compact` and disclose possible
+closed-cap/hinge collisions. Keeping outer margins does not qualify internal
+cap clearance, physical fit, material, freezing, ice, sterility or autoclaving.
+
+### Different Storage-Box Formats
+
+The owner requires different formats, not a single 9x9 convention. Treat a
+commercial paper/cardboard box as a possible destination: independent row/column
+grid, usable interior width/depth, divider layout/thickness, interior height,
+closed-cap height and lid constraints. Square/rectangular custom grids and
+position labels already exist; they are not a physical box profile. Do not infer
+fit from nominal tube volume, a chosen grid, material name or generated pitch.
+Source/measured box profiles and compatibility remain separate future work.
 
 All constants below are **engineering assumptions**, not manufacturer
 tolerances, fabrication guidance or physical qualification:

@@ -19,11 +19,11 @@ Planning estimate v2 adds hands-on, unattended and elapsed ranges, explicit lega
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 59 | 764 | 0 |
-| gentle_cli | 487 | 360 | 0 |
-| MCP | 184 | 527 | 49 |
-| JS | 78 | 588 | 69 |
-| Lua | 77 | 589 | 69 |
+| GUI | 59 | 766 | 0 |
+| gentle_cli | 488 | 361 | 0 |
+| MCP | 184 | 529 | 49 |
+| JS | 78 | 590 | 69 |
+| Lua | 77 | 591 | 69 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -128,6 +128,7 @@ Planning estimate v2 adds hands-on, unattended and elapsed ranges, explicit lega
 | racks set-profile | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | racks apply-template | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | racks set-fill-direction | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| racks set-carrier-pitch | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | racks set-custom-profile | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | racks set-blocked | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | ladders list | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added.<br>JS: Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added.<br>Lua: Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -675,6 +676,7 @@ Planning estimate v2 adds hands-on, unattended and elapsed ranges, explicit lega
 | SetRackProfile | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ApplyRackTemplate | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | SetRackFillDirection | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| SetRackCarrierPitch | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | SetRackProfileCustom | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | SetRackBlockedCoordinates | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ExportRackLabelsSvg | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |

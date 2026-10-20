@@ -38039,6 +38039,14 @@ impl GentleEngine {
                     fill_direction.as_str()
                 ));
             }
+            Operation::SetRackCarrierPitch { rack_id, pitch_um } => {
+                self.set_rack_carrier_pitch(&rack_id, pitch_um)?;
+                result.messages.push(format!(
+                    "Updated rack '{}' carrier pitch override to {:?} um",
+                    rack_id.trim(),
+                    pitch_um
+                ));
+            }
             Operation::SetRackProfileCustom {
                 rack_id,
                 rows,
@@ -38382,6 +38390,7 @@ impl GentleEngine {
             op @ Operation::SetRackProfile { .. }
             | op @ Operation::ApplyRackTemplate { .. }
             | op @ Operation::SetRackFillDirection { .. }
+            | op @ Operation::SetRackCarrierPitch { .. }
             | op @ Operation::SetRackProfileCustom { .. }
             | op @ Operation::SetRackBlockedCoordinates { .. } => {
                 self.apply_rack_mutation_operation(op, result)?;
@@ -40721,6 +40730,7 @@ impl GentleEngine {
             Operation::SetRackProfile { .. }
                 | Operation::ApplyRackTemplate { .. }
                 | Operation::SetRackFillDirection { .. }
+                | Operation::SetRackCarrierPitch { .. }
                 | Operation::SetRackProfileCustom { .. }
                 | Operation::SetRackBlockedCoordinates { .. }
         ) {
@@ -42242,6 +42252,7 @@ impl GentleEngine {
                 op @ Operation::SetRackProfile { .. }
                 | op @ Operation::ApplyRackTemplate { .. }
                 | op @ Operation::SetRackFillDirection { .. }
+                | op @ Operation::SetRackCarrierPitch { .. }
                 | op @ Operation::SetRackProfileCustom { .. }
                 | op @ Operation::SetRackBlockedCoordinates { .. } => {
                     self.apply_rack_mutation_operation(op, &mut result)?;

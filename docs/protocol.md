@@ -3595,6 +3595,7 @@ Current draft operations:
 - `SetRackProfile { rack_id, profile }`
 - `ApplyRackTemplate { rack_id, template }`
 - `SetRackFillDirection { rack_id, fill_direction }`
+- `SetRackCarrierPitch { rack_id, pitch_um }`
 - `SetRackProfileCustom { rack_id, rows, columns }`
 - `SetRackBlockedCoordinates { rack_id, blocked_coordinates }`
 - `ExportRackLabelsSvg { rack_id, path, arrangement_id?, preset }`
@@ -8856,6 +8857,25 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - `column_major`
 - Existing arrangement order is preserved while occupied coordinates are
   reassigned under the new fill order.
+
+`SetRackCarrierPitch` semantics:
+
+- Persist optional `Rack.carrier_pitch_override_um` as whole micrometres;
+  absent/`None` is omitted and preserves legacy rack bytes. `None` clears.
+- The setter validates the less restrictive collar-seated limits; each export
+  validates its selected support mode. Collar/floor minima are 11.75/12.05 mm,
+  maximum 20 mm. Lower-level `InvalidInput` reason prefixes distinguish invalid,
+  noncompact, insufficient-web and collar-overlap geometry. No invalid edit commits.
+- Compact Safe-Lock specs retain conservative outer margins, opening/depth,
+  explicit support mode and `drawing_derived_unverified_compact` provenance.
+  Old physical templates and PCR96 refuse `carrier_pitch_override_unsupported`
+  before writing any file. Position-only labels do not imply physical fit.
+- The shared shell accepts `racks set-carrier-pitch RACK_ID MM|--clear` with
+  exact decimal admission (up to three fractional digits, no exponent/sign).
+  Generic operations, scripting, MCP and workflows use the same engine.
+- Row/column formats are independent of pitch and preserve the override on
+  profile edits. A future storage-box profile must separately describe interior,
+  grid/dividers, height and lid; no fixed box format or fit claim is introduced.
 
 `SetRackProfileCustom` semantics:
 

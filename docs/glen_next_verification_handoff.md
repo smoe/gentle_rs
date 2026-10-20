@@ -122,7 +122,8 @@ the PCR tube visualization (unknown collar), not a crash or invented dimension.
 Render a third, PCR96 carrier mesh using an exact 8x12 grid. Keep all legacy
 and Safe-Lock checks; inspect new-template SVG disclosures without inferring
 full ANSI/SLAS compliance. No dense spacing, boxes, 0.1 ml profile or thermal
-contact is implemented. The offline mesh harness uses literal parameters and
+contact was implemented in the original carrier tranche. The offline mesh
+harness uses literal parameters and
 actual SCAD format strings, not a freshly built Rust exporter.
 
 Owner requirements clarified 2026-10-20: offer **adjustable** compact spacing
@@ -131,8 +132,31 @@ Storage prioritizes dense transport/freezer organization rather than treatment
 access. Commercial paper/cardboard boxes should be modeled as possible storage
 destinations, not presumed fabrication targets. Box dimensions/dividers/lids,
 closed-cap clearance, fit and material/temperature qualification still need
-their own evidence/contract. No compact or box support is implemented by this
-test-only follow-up, and none becomes an added release gate.
+their own evidence/contract. Box formats must be variable, not fixed to 9x9.
+Compact spacing is now authored separately; no physical box model or new release
+gate follows.
+
+### Compact Carrier Follow-Up
+
+Run the existing protocol/root `labware` filters and `cargo check --tests` on the
+integrated commit, then canonical parity freshness and glossary/interface checks.
+New authored tests (not run here):
+
+- `labware_compact_pitch_bounds_preserve_conservative_edges`
+- `labware_compact_pitch_decimal_and_legacy_rack_bytes_are_exact`
+- `labware_compact_pitch_exports_geometry_persists_and_clears_without_drift`
+- `labware_compact_pitch_refuses_invalid_modes_and_other_templates_without_writes`
+- `labware_compact_pitch_shell_and_generic_operation_share_mutation_contract`
+- `labware_compact_pitch_keeps_variable_grid_formats_independent_of_spacing`
+
+Existing GUI-label coverage also checks pitch-control visibility. Review the
+numeric field, exact mm/micrometre conversion, Clear, seating-mode refusal and
+unsupported-template message natively. Source-matched OpenSCAD renders should
+include one compact layout. Retain conservative/legacy byte baselines; none was
+regenerated here. The parity Markdown projection was updated without running
+its Rust generator: Glen/CI must confirm byte-exact canonical freshness.
+The new operation is shared by GUI, CLI, generic MCP/scripting/workflow routes;
+no agent auto-execution/approval exemption is added.
 
 ## Historical Covering Request, 2026-10-19
 

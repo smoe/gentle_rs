@@ -1289,6 +1289,14 @@
       },
       {
          "aliases": [],
+         "engine_operations": ["SetRackCarrierPitch"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct"],
+         "path": "racks set-carrier-pitch",
+         "summary": "Set or clear persisted compact Safe-Lock spacing; cap clearance remains unverified.",
+         "usage": "racks set-carrier-pitch RACK_ID 14"
+      },
+      {
+         "aliases": [],
          "engine_operations": [
             "SetRackProfileCustom"
          ],

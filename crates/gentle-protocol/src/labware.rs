@@ -15,6 +15,9 @@ pub const MIN_COLLAR_LEDGE: f64 = 0.20;
 pub const TIP_CLEARANCE: f64 = 2.0;
 pub const CYLINDER_ENGAGEMENT: f64 = 3.0;
 pub const COLLAR_TOP_MARGIN: f64 = 5.0;
+/// Compact-layout engineering allowances, not measured strength/cap clearance.
+pub const MIN_WEB: f64 = 0.8;
+pub const COLLAR_GAP: f64 = 0.5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -125,6 +128,67 @@ pub fn derive_tube_carrier_geometry(
     mode: RackTubeSupportMode,
 ) -> Result<TubeCarrierGeometry, String> {
     derive_carrier_geometry(profiles, mode, None)
+}
+
+/// Explicit compact layout only. Preserve conservative outer margins; caps and
+/// hinges can collide because their plan-view envelope has not been measured.
+pub fn derive_compact_tube_carrier_geometry(
+    profiles: &[TubeProfile],
+    mode: RackTubeSupportMode,
+    pitch_mm: f64,
+) -> Result<TubeCarrierGeometry, String> {
+    let mut geometry = derive_tube_carrier_geometry(profiles, mode)?;
+    if !pitch_mm.is_finite() || pitch_mm <= 0.0 {
+        return Err("compact_pitch_invalid: pitch must be finite and positive".into());
+    }
+    if pitch_mm > geometry.pitch_mm {
+        return Err("compact_pitch_not_compact: pitch exceeds conservative spacing".into());
+    }
+    if pitch_mm < geometry.opening_diameter_mm + 2.0 * MIN_WEB {
+        return Err(
+            "compact_pitch_below_web: pitch needs two 0.8 mm web allowances beyond the opening"
+                .into(),
+        );
+    }
+    for profile in profiles {
+        let collar = required_dimension(&profile.collar_outer_diameter, "collar diameter")?;
+        if pitch_mm < collar + COLLAR_GAP {
+            return Err("compact_pitch_collar_overlap: adjacent collars need a 0.5 mm gap".into());
+        }
+    }
+    geometry.pitch_mm = pitch_mm;
+    geometry.validate(profiles, mode)?;
+    Ok(geometry)
+}
+
+/// Exact positive decimal millimetres to whole micrometres. No exponent,
+/// rounding, signs or more than three fractional places are accepted.
+pub fn parse_carrier_pitch_um(value: &str) -> Result<u32, String> {
+    let invalid = || {
+        "compact_pitch_invalid: use positive decimal mm with at most three fractional digits"
+            .to_string()
+    };
+    let value = value.trim();
+    let (whole, fraction) = value.split_once('.').unwrap_or((value, ""));
+    if whole.is_empty()
+        || !whole.bytes().all(|b| b.is_ascii_digit())
+        || fraction.len() > 3
+        || !fraction.bytes().all(|b| b.is_ascii_digit())
+        || (value.contains('.') && fraction.is_empty())
+    {
+        return Err(invalid());
+    }
+    let whole = whole.parse::<u32>().map_err(|_| invalid())?;
+    let fractional = if fraction.is_empty() {
+        0
+    } else {
+        fraction.parse::<u32>().map_err(|_| invalid())? * 10_u32.pow(3 - fraction.len() as u32)
+    };
+    whole
+        .checked_mul(1000)
+        .and_then(|v| v.checked_add(fractional))
+        .filter(|v| *v > 0)
+        .ok_or_else(invalid)
 }
 
 /// Explicit 8x12 layout; 9-mm cap compatibility is assumed, never verified.
@@ -503,6 +567,79 @@ mod tests {
         .into_iter()
         .map(tube_profile)
         .collect()
+    }
+
+    #[test]
+    fn labware_compact_pitch_bounds_preserve_conservative_edges() {
+        let profiles = safe_lock_profiles();
+        for (mode, minimum, edge) in [
+            (RackTubeSupportMode::CollarSeated, 11.75, 4.925),
+            (RackTubeSupportMode::FloorSeated, 12.05, 4.775),
+        ] {
+            for pitch in [minimum, 14.0, 20.0] {
+                let g = derive_compact_tube_carrier_geometry(&profiles, mode, pitch).unwrap();
+                assert_eq!(g.pitch_mm, pitch);
+                assert!((g.edge_margin_mm - edge).abs() < 1e-10);
+            }
+            for (pitch, code) in [
+                (minimum - 0.001, "compact_pitch_below_web:"),
+                (20.001, "compact_pitch_not_compact:"),
+                (f64::NAN, "compact_pitch_invalid:"),
+                (f64::INFINITY, "compact_pitch_invalid:"),
+                (0.0, "compact_pitch_invalid:"),
+                (-1.0, "compact_pitch_invalid:"),
+            ] {
+                assert!(
+                    derive_compact_tube_carrier_geometry(&profiles, mode, pitch)
+                        .unwrap_err()
+                        .starts_with(code)
+                );
+            }
+        }
+        let mut synthetic = profiles;
+        synthetic[0].collar_outer_diameter.value_mm = Some(12.0);
+        assert!(
+            derive_compact_tube_carrier_geometry(
+                &synthetic,
+                RackTubeSupportMode::CollarSeated,
+                12.1
+            )
+            .unwrap_err()
+            .starts_with("compact_pitch_collar_overlap:")
+        );
+    }
+
+    #[test]
+    fn labware_compact_pitch_decimal_and_legacy_rack_bytes_are_exact() {
+        for (mm, um) in [
+            ("14", 14000),
+            ("14.000", 14000),
+            ("11.751", 11751),
+            ("0.001", 1),
+        ] {
+            assert_eq!(parse_carrier_pitch_um(mm).unwrap(), um);
+        }
+        for mm in [
+            "", "0", "-1", "+14", "14.0005", "NaN", "inf", "1e1", "14.", ".5", "1.2.3", "4294968",
+        ] {
+            assert!(parse_carrier_pitch_um(mm).is_err(), "{mm}");
+        }
+        let mut rack = crate::Rack::default();
+        let legacy = serde_json::to_string(&rack).unwrap();
+        assert!(!legacy.contains("carrier_pitch_override_um"));
+        assert_eq!(
+            serde_json::from_str::<crate::Rack>(&legacy)
+                .unwrap()
+                .carrier_pitch_override_um,
+            None
+        );
+        rack.carrier_pitch_override_um = Some(14_000);
+        assert_eq!(
+            serde_json::from_str::<crate::Rack>(&serde_json::to_string(&rack).unwrap()).unwrap(),
+            rack
+        );
+        rack.carrier_pitch_override_um = None;
+        assert_eq!(serde_json::to_string(&rack).unwrap(), legacy);
     }
 
     #[test]

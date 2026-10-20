@@ -829,6 +829,7 @@ impl GentleEngine {
                 placements,
                 created_by_op: created_by_op.map(ToString::to_string),
                 created_at_unix_ms: Self::now_unix_ms(),
+                carrier_pitch_override_um: None,
             },
         );
         if set_as_default
@@ -1401,6 +1402,45 @@ impl GentleEngine {
         );
         let ordered = reflowed.into_iter().enumerate().collect::<Vec<_>>();
         self.reflow_ordered_rack_entries(rack_id, &rack.profile, ordered)
+    }
+
+    pub(super) fn set_rack_carrier_pitch(
+        &mut self,
+        rack_id: &str,
+        pitch_um: Option<u32>,
+    ) -> Result<(), EngineError> {
+        if !self.state.container_state.racks.contains_key(rack_id) {
+            return Err(EngineError::new(
+                ErrorCode::NotFound,
+                format!("Rack '{rack_id}' not found"),
+            ));
+        }
+        if let Some(pitch_um) = pitch_um {
+            use gentle_protocol::labware::{
+                RackTubeSupportMode, TubeProfileId, derive_compact_tube_carrier_geometry,
+                tube_profile,
+            };
+            let profiles = [
+                TubeProfileId::EppendorfSafeLock15ml,
+                TubeProfileId::EppendorfSafeLock20ml,
+            ]
+            .map(tube_profile);
+            // Rack state has no support mode: admit the less restrictive collar
+            // layout here; each export revalidates its selected support mode.
+            derive_compact_tube_carrier_geometry(
+                &profiles,
+                RackTubeSupportMode::CollarSeated,
+                f64::from(pitch_um) / 1000.0,
+            )
+            .map_err(EngineError::invalid_input)?;
+        }
+        self.state
+            .container_state
+            .racks
+            .get_mut(rack_id)
+            .unwrap()
+            .carrier_pitch_override_um = pitch_um;
+        Ok(())
     }
 
     pub(super) fn set_rack_profile(
@@ -2048,7 +2088,11 @@ impl GentleEngine {
 
                 cause_chain: vec![],
             })?;
-        let spec = Self::rack_physical_template_spec(template, &rack.profile)?;
+        let spec = Self::rack_physical_template_spec(
+            template,
+            &rack.profile,
+            rack.carrier_pitch_override_um,
+        )?;
         let rows = self.scoped_rack_entries(rack, arrangement_id)?;
         if rows.is_empty() {
             return Err(EngineError {
@@ -2254,7 +2298,19 @@ impl GentleEngine {
     fn rack_physical_template_spec(
         template: RackPhysicalTemplateKind,
         profile: &RackProfileSnapshot,
+        pitch_um: Option<u32>,
     ) -> Result<RackPhysicalTemplateSpec, EngineError> {
+        if pitch_um.is_some()
+            && !matches!(
+                template,
+                RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated
+                    | RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated
+            )
+        {
+            return Err(EngineError::invalid_input(
+                "carrier_pitch_override_unsupported: clear the saved pitch before exporting another template",
+            ));
+        }
         Self::validate_custom_rack_profile_dimensions(profile.rows, profile.columns)?;
         let (
             family,
@@ -2306,6 +2362,7 @@ impl GentleEngine {
                     template,
                     profile,
                     gentle_protocol::labware::RackTubeSupportMode::CollarSeated,
+                    pitch_um,
                 );
             }
             RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated => {
@@ -2313,6 +2370,7 @@ impl GentleEngine {
                     template,
                     profile,
                     gentle_protocol::labware::RackTubeSupportMode::FloorSeated,
+                    pitch_um,
                 );
             }
             RackPhysicalTemplateKind::PcrTube96PositionCarrier => {
@@ -2398,6 +2456,7 @@ impl GentleEngine {
         kind: RackPhysicalTemplateKind,
         profile: &RackProfileSnapshot,
         mode: gentle_protocol::labware::RackTubeSupportMode,
+        pitch_um: Option<u32>,
     ) -> Result<RackPhysicalTemplateSpec, EngineError> {
         use gentle_protocol::labware::{TubeProfileId, derive_tube_carrier_geometry, tube_profile};
         let ids = vec![
@@ -2405,17 +2464,25 @@ impl GentleEngine {
             TubeProfileId::EppendorfSafeLock20ml,
         ];
         let profiles = ids.iter().copied().map(tube_profile).collect::<Vec<_>>();
-        let geometry =
-            derive_tube_carrier_geometry(&profiles, mode).map_err(|message| EngineError {
-                code: ErrorCode::InvalidInput,
-                message,
-                cause_chain: vec![],
-            })?;
+        let geometry = if let Some(pitch_um) = pitch_um {
+            gentle_protocol::labware::derive_compact_tube_carrier_geometry(
+                &profiles,
+                mode,
+                f64::from(pitch_um) / 1000.0,
+            )
+        } else {
+            derive_tube_carrier_geometry(&profiles, mode)
+        }
+        .map_err(|message| EngineError {
+            code: ErrorCode::InvalidInput,
+            message,
+            cause_chain: vec![],
+        })?;
         let pitch = geometry.pitch_mm as f32;
         let opening = geometry.opening_diameter_mm as f32;
         let edge = geometry.edge_margin_mm as f32;
         let front = 10.0;
-        Ok(RackPhysicalTemplateSpec {
+        let mut spec = RackPhysicalTemplateSpec {
             kind,
             family: RackPhysicalTemplateFamily::TubeRack,
             container_format: "eppendorf_safe_lock_1_5ml_or_2_0ml".into(),
@@ -2451,7 +2518,19 @@ impl GentleEngine {
                 "pitch=20.0 mm conservative approximate side-view envelope; cap outline unmeasured".into(),
                 "front_top_clearance=10.0 mm; label strip depth=6.0 mm; recess=0.8 mm; corner radius=2.0 mm".into(),
             ],
-        })
+        };
+        if let Some(pitch_um) = pitch_um {
+            let pitch = f64::from(pitch_um) / 1000.0;
+            spec.geometry_basis = Some("drawing_derived_unverified_compact".into());
+            spec.nonclaims[2] = format!(
+                "Compact spacing {pitch} mm overrides the conservative 20 mm side-view envelope; closed caps and hinges may collide; clearance is not checked"
+            );
+            spec.assumptions[4] =
+                format!("compact pitch={pitch} mm; edge margin kept at the conservative value");
+            spec.assumptions
+                .push("MIN_WEB=0.8 mm; COLLAR_GAP=0.5 mm".into());
+        }
+        Ok(spec)
     }
 
     fn pcr96_carrier_spec(
@@ -2503,7 +2582,10 @@ impl GentleEngine {
             return;
         }
         let text = format!(
-            "drawing_derived_unverified; {}; assumptions: {}",
+            "{}; {}; assumptions: {}",
+            spec.geometry_basis
+                .as_deref()
+                .unwrap_or("drawing_derived_unverified"),
             spec.nonclaims.join("; "),
             spec.assumptions.join("; ")
         );
@@ -3492,7 +3574,11 @@ impl GentleEngine {
 
                 cause_chain: vec![],
             })?;
-        let spec = Self::rack_physical_template_spec(template, &rack.profile)?;
+        let spec = Self::rack_physical_template_spec(
+            template,
+            &rack.profile,
+            rack.carrier_pitch_override_um,
+        )?;
         let mut svg = self.export_rack_physical_svg_string(rack, &spec)?;
         if spec.support_mode.is_some() {
             let mut disclosure = String::new();
@@ -3525,7 +3611,11 @@ impl GentleEngine {
 
                 cause_chain: vec![],
             })?;
-        let spec = Self::rack_physical_template_spec(template, &rack.profile)?;
+        let spec = Self::rack_physical_template_spec(
+            template,
+            &rack.profile,
+            rack.carrier_pitch_override_um,
+        )?;
         let mut svg = self.export_rack_isometric_svg_string(rack, &spec)?;
         if spec.support_mode.is_some() {
             let mut disclosure = String::new();
@@ -3558,7 +3648,11 @@ impl GentleEngine {
 
                 cause_chain: vec![],
             })?;
-        let spec = Self::rack_physical_template_spec(template, &rack.profile)?;
+        let spec = Self::rack_physical_template_spec(
+            template,
+            &rack.profile,
+            rack.carrier_pitch_override_um,
+        )?;
         let mut svg = self.export_rack_hero_svg_string(rack, &spec)?;
         if spec.support_mode.is_some() {
             let mut disclosure = String::new();
@@ -3591,7 +3685,11 @@ impl GentleEngine {
 
                 cause_chain: vec![],
             })?;
-        let spec = Self::rack_physical_template_spec(template, &rack.profile)?;
+        let spec = Self::rack_physical_template_spec(
+            template,
+            &rack.profile,
+            rack.carrier_pitch_override_um,
+        )?;
         let blocked = rack
             .profile
             .blocked_coordinates
@@ -3675,7 +3773,11 @@ impl GentleEngine {
 
                 cause_chain: vec![],
             })?;
-        let spec = Self::rack_physical_template_spec(template, &rack.profile)?;
+        let spec = Self::rack_physical_template_spec(
+            template,
+            &rack.profile,
+            rack.carrier_pitch_override_um,
+        )?;
         let placements = self.sorted_rack_placements(rack)?;
         let blocked = rack
             .profile

@@ -34892,6 +34892,7 @@ fn labware_rack_grid_limits_refuse_before_changing_the_saved_rack() {
     state.container_state.racks.insert(
         "bounded".into(),
         Rack {
+            carrier_pitch_override_um: None,
             rack_id: "bounded".into(),
             name: "Synthetic resource probe".into(),
             profile: RackProfileSnapshot::custom(4, 6),
@@ -34943,6 +34944,7 @@ fn labware_oversized_saved_racks_reopen_but_exports_refuse_without_truncation() 
         state.container_state.racks.insert(
             "historical".into(),
             Rack {
+                carrier_pitch_override_um: None,
                 rack_id: "historical".into(),
                 name: "Synthetic unsupported historical grid".into(),
                 profile: RackProfileSnapshot::custom(rows, columns),
@@ -35049,6 +35051,7 @@ fn labware_carriers_preserve_legacy_json_and_export_both_support_modes() {
     state.container_state.racks.insert(
         "carrier".into(),
         Rack {
+            carrier_pitch_override_um: None,
             rack_id: "carrier".into(),
             name: "Synthetic carrier".into(),
             profile: RackProfileSnapshot::custom(4, 9),
@@ -35203,6 +35206,7 @@ fn labware_legacy_carrier_exports_omit_drawing_disclosures() {
     state.container_state.racks.insert(
         "legacy".into(),
         Rack {
+            carrier_pitch_override_um: None,
             rack_id: "legacy".into(),
             name: "Synthetic legacy export guard".into(),
             profile: RackProfileSnapshot::custom(4, 9),
@@ -35299,6 +35303,246 @@ fn labware_legacy_carrier_exports_omit_drawing_disclosures() {
     }
 }
 
+fn labware_compact_engine(rows: usize, columns: usize) -> GentleEngine {
+    // Synthetic geometry/label scope only, never a commercial-box fit claim.
+    let mut state = ProjectState::default();
+    state.container_state.racks.insert(
+        "compact".into(),
+        Rack {
+            rack_id: "compact".into(),
+            name: "Synthetic compact layout".into(),
+            profile: RackProfileSnapshot::custom(rows, columns),
+            placements: vec![RackPlacementEntry {
+                coordinate: "A1".into(),
+                occupant: None,
+                arrangement_id: "guard".into(),
+                order_index: 0,
+                role_label: "synthetic guard".into(),
+            }],
+            ..Default::default()
+        },
+    );
+    GentleEngine::from_state(state)
+}
+
+fn labware_compact_export_operations(
+    template: RackPhysicalTemplateKind,
+    path: &str,
+) -> [Operation; 6] {
+    [
+        Operation::ExportRackFabricationSvg {
+            rack_id: "compact".into(),
+            template,
+            path: path.into(),
+        },
+        Operation::ExportRackIsometricSvg {
+            rack_id: "compact".into(),
+            template,
+            path: path.into(),
+        },
+        Operation::ExportRackHeroSvg {
+            rack_id: "compact".into(),
+            template,
+            path: path.into(),
+        },
+        Operation::ExportRackCarrierLabelsSvg {
+            rack_id: "compact".into(),
+            template,
+            path: path.into(),
+            arrangement_id: None,
+            preset: RackCarrierLabelPreset::FrontStripAndCards,
+        },
+        Operation::ExportRackOpenScad {
+            rack_id: "compact".into(),
+            template,
+            path: path.into(),
+        },
+        Operation::ExportRackSimulationJson {
+            rack_id: "compact".into(),
+            template,
+            path: path.into(),
+        },
+    ]
+}
+
+#[test]
+fn labware_compact_pitch_exports_geometry_persists_and_clears_without_drift() {
+    let mut e = labware_compact_engine(9, 9);
+    let dir = tempdir().unwrap();
+    let template = RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated;
+    let path = dir.path().join("carrier's geometry.scad");
+    e.apply(Operation::ExportRackOpenScad {
+        rack_id: "compact".into(),
+        template,
+        path: path.to_str().unwrap().into(),
+    })
+    .unwrap();
+    let original = fs::read(&path).unwrap();
+    e.apply(Operation::SetRackCarrierPitch {
+        rack_id: "compact".into(),
+        pitch_um: Some(14_000),
+    })
+    .unwrap();
+    let saved = serde_json::to_vec(e.state()).unwrap();
+    let mut e = GentleEngine::from_state(serde_json::from_slice(&saved).unwrap());
+    assert_eq!(
+        e.state().container_state.racks["compact"].carrier_pitch_override_um,
+        Some(14_000)
+    );
+    let scad_path = dir.path().join("compact.scad");
+    e.apply(Operation::ExportRackOpenScad {
+        rack_id: "compact".into(),
+        template,
+        path: scad_path.to_str().unwrap().into(),
+    })
+    .unwrap();
+    let scad = fs::read_to_string(&scad_path).unwrap();
+    assert!(scad.contains("geometry_basis=drawing_derived_unverified_compact"));
+    assert!(scad.contains("closed caps and hinges may collide"));
+    assert!(scad.contains("outer_width = 132.000;"));
+    let json_path = dir.path().join("compact.json");
+    e.apply(Operation::ExportRackSimulationJson {
+        rack_id: "compact".into(),
+        template,
+        path: json_path.to_str().unwrap().into(),
+    })
+    .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&fs::read(json_path).unwrap()).unwrap();
+    assert_eq!(json["physical_template"]["overall_width_mm"], 132.0);
+    assert_eq!(json["physical_template"]["pitch_x_mm"], 14.0);
+    for (index, coordinate, x, y) in [(0, "A1", 10.0, 15.225), (80, "I9", 122.0, 127.225)] {
+        assert_eq!(json["slots"][index]["coordinate"], coordinate);
+        assert!((json["slots"][index]["center_mm"]["x"].as_f64().unwrap() - x).abs() < 1e-4);
+        assert!((json["slots"][index]["center_mm"]["y"].as_f64().unwrap() - y).abs() < 1e-4);
+    }
+    let before_exports = serde_json::to_value(e.state()).unwrap();
+    for mode in [
+        RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated,
+        template,
+    ] {
+        let path = dir.path().join(format!("{}-export", mode.as_str()));
+        for op in labware_compact_export_operations(mode, path.to_str().unwrap()) {
+            e.apply(op).unwrap();
+            let content = fs::read_to_string(&path).unwrap();
+            assert!(content.contains("drawing_derived_unverified_compact"));
+            assert!(content.contains("closed caps and hinges may collide"));
+            assert_eq!(serde_json::to_value(e.state()).unwrap(), before_exports);
+        }
+    }
+    e.apply(Operation::SetRackCarrierPitch {
+        rack_id: "compact".into(),
+        pitch_um: None,
+    })
+    .unwrap();
+    e.undo_last_operation().unwrap();
+    assert_eq!(
+        e.state().container_state.racks["compact"].carrier_pitch_override_um,
+        Some(14_000)
+    );
+    e.redo_last_operation().unwrap();
+    let cleared = dir.path().join("cleared.scad");
+    e.apply(Operation::ExportRackOpenScad {
+        rack_id: "compact".into(),
+        template,
+        path: cleared.to_str().unwrap().into(),
+    })
+    .unwrap();
+    assert_eq!(fs::read(cleared).unwrap(), original);
+}
+
+#[test]
+fn labware_compact_pitch_refuses_invalid_modes_and_other_templates_without_writes() {
+    let mut e = labware_compact_engine(8, 12);
+    for pitch in [0, 11_749, 20_001, u32::MAX] {
+        let before = serde_json::to_value(e.state()).unwrap();
+        assert!(
+            e.apply(Operation::SetRackCarrierPitch {
+                rack_id: "compact".into(),
+                pitch_um: Some(pitch)
+            })
+            .is_err()
+        );
+        assert_eq!(serde_json::to_value(e.state()).unwrap(), before);
+    }
+    e.apply(Operation::SetRackCarrierPitch {
+        rack_id: "compact".into(),
+        pitch_um: Some(11_750),
+    })
+    .unwrap();
+    let dir = tempdir().unwrap();
+    for (template, code) in [
+        (
+            RackPhysicalTemplateKind::StoragePcrTubeRack,
+            "carrier_pitch_override_unsupported:",
+        ),
+        (
+            RackPhysicalTemplateKind::PipettingPcrTubeRack,
+            "carrier_pitch_override_unsupported:",
+        ),
+        (
+            RackPhysicalTemplateKind::CellCulturePlate,
+            "carrier_pitch_override_unsupported:",
+        ),
+        (
+            RackPhysicalTemplateKind::PcrTube96PositionCarrier,
+            "carrier_pitch_override_unsupported:",
+        ),
+        (
+            RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated,
+            "compact_pitch_below_web:",
+        ),
+    ] {
+        for existing in [false, true] {
+            let path = dir
+                .path()
+                .join(format!("{}-{existing}.svg", template.as_str()));
+            if existing {
+                fs::write(&path, b"keep original").unwrap();
+            }
+            let before = serde_json::to_value(e.state()).unwrap();
+            for op in labware_compact_export_operations(template, path.to_str().unwrap()) {
+                let error = e.apply(op).unwrap_err();
+                assert!(error.message.starts_with(code), "{}", error.message);
+                if existing {
+                    assert_eq!(fs::read(&path).unwrap(), b"keep original");
+                } else {
+                    assert!(!path.exists());
+                }
+                assert_eq!(serde_json::to_value(e.state()).unwrap(), before);
+            }
+        }
+    }
+}
+
+#[test]
+fn labware_compact_pitch_shell_and_generic_operation_share_mutation_contract() {
+    let mut e = labware_compact_engine(4, 9);
+    for (command, expected) in [
+        ("racks set-carrier-pitch compact 14", Some(14_000)),
+        ("racks set-carrier-pitch compact --clear", None),
+        (
+            "op '{\"SetRackCarrierPitch\":{\"rack_id\":\"compact\",\"pitch_um\":14000}}'",
+            Some(14_000),
+        ),
+    ] {
+        let parsed = crate::engine_shell::parse_shell_line(command).unwrap();
+        assert!(parsed.is_state_mutating());
+        execute_shell_command(&mut e, &parsed).unwrap();
+        assert_eq!(
+            e.state().container_state.racks["compact"].carrier_pitch_override_um,
+            expected
+        );
+    }
+    for value in ["14.0005", "nan", "-14", "1e1", "0"] {
+        assert!(
+            crate::engine_shell::parse_shell_line(&format!(
+                "racks set-carrier-pitch compact {value}"
+            ))
+            .is_err()
+        );
+    }
+}
+
 #[test]
 fn labware_pcr96_carrier_has_bound_footprint_centers_and_refuses_other_grids() {
     for (rows, columns) in [(8, 12), (8, 11), (12, 8), (16, 24)] {
@@ -35306,6 +35550,7 @@ fn labware_pcr96_carrier_has_bound_footprint_centers_and_refuses_other_grids() {
         state.container_state.racks.insert(
             "pcr".into(),
             Rack {
+                carrier_pitch_override_um: None,
                 rack_id: "pcr".into(),
                 name: "Synthetic PCR grid".into(),
                 profile: RackProfileSnapshot::custom(rows, columns),
@@ -35377,12 +35622,48 @@ fn labware_pcr96_carrier_has_bound_footprint_centers_and_refuses_other_grids() {
 }
 
 #[test]
+fn labware_compact_pitch_keeps_variable_grid_formats_independent_of_spacing() {
+    let mut e = labware_compact_engine(4, 6);
+    e.apply(Operation::SetRackCarrierPitch {
+        rack_id: "compact".into(),
+        pitch_um: Some(14_000),
+    })
+    .unwrap();
+    let dir = tempdir().unwrap();
+    // Generic grid formats only; no commercial box dimensions or fit evidence.
+    for (rows, columns, last) in [(8, 8, "H8"), (9, 9, "I9"), (10, 10, "J10"), (5, 12, "E12")] {
+        e.apply(Operation::SetRackProfileCustom {
+            rack_id: "compact".into(),
+            rows,
+            columns,
+        })
+        .unwrap();
+        assert_eq!(
+            e.state().container_state.racks["compact"].carrier_pitch_override_um,
+            Some(14_000)
+        );
+        let path = dir.path().join(format!("{rows}x{columns}.json"));
+        e.apply(Operation::ExportRackSimulationJson {
+            rack_id: "compact".into(),
+            template: RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated,
+            path: path.to_str().unwrap().into(),
+        })
+        .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+        let slots = json["slots"].as_array().unwrap();
+        assert_eq!(slots.len(), rows * columns);
+        assert_eq!(slots.last().unwrap()["coordinate"], last);
+    }
+}
+
+#[test]
 fn labware_pcr96_carrier_exports_preserve_floor_and_disclose_nonclaims() {
     // One synthetic unoccupied guard placement gives carrier labels scope.
     let mut state = ProjectState::default();
     state.container_state.racks.insert(
         "pcr96".into(),
         Rack {
+            carrier_pitch_override_um: None,
             rack_id: "pcr96".into(),
             name: "Synthetic PCR96 export guard".into(),
             profile: RackProfileSnapshot::custom(8, 12),
