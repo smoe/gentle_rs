@@ -14373,6 +14373,19 @@ impl ShellCommand {
                 | Self::BatchRun { .. }
                 | Self::SetParameter { .. }
                 | Self::DisplayVisibility { .. }
+                // Keep rack admission aligned with execute_rack_mutation_command;
+                // the source-bound and per-variant rack regressions guard drift.
+                | Self::RacksCreateFromArrangement { .. }
+                | Self::RacksPlaceArrangement { .. }
+                | Self::RacksMove { .. }
+                | Self::RacksMoveSamples { .. }
+                | Self::RacksMoveBlocks { .. }
+                | Self::RacksSetProfile { .. }
+                | Self::RacksApplyTemplate { .. }
+                | Self::RacksSetFillDirection { .. }
+                | Self::RacksSetCarrierPitch { .. }
+                | Self::RacksSetCustomProfile { .. }
+                | Self::RacksSetBlocked { .. }
                 | Self::AgentsExecutePlan { .. }
                 | Self::Op { .. }
                 | Self::Workflow { .. }
@@ -52636,6 +52649,7 @@ fn execute_pool_gel_and_ladder_command(
 }
 
 #[inline(never)]
+// New rack mutations must also enter is_state_mutating and its rack cases.
 fn execute_rack_mutation_command(
     engine: &mut GentleEngine,
     command: &ShellCommand,

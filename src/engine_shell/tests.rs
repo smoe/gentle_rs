@@ -5597,6 +5597,155 @@ fn parse_racks_set_custom_profile_command() {
     }
 }
 
+fn rack_mutator_command_cases() -> [(&'static str, &'static str); 11] {
+    [
+        (
+            "RacksCreateFromArrangement",
+            "racks create-from-arrangement arr --rack-id guard",
+        ),
+        (
+            "RacksPlaceArrangement",
+            "racks place-arrangement arr --rack guard",
+        ),
+        ("RacksMove", "racks move guard --from A1 --to B2"),
+        (
+            "RacksMoveSamples",
+            "racks move-samples guard --from A1 --to B2",
+        ),
+        (
+            "RacksMoveBlocks",
+            "racks move-blocks guard --arrangement arr --to B2",
+        ),
+        ("RacksSetProfile", "racks set-profile guard plate_96"),
+        (
+            "RacksApplyTemplate",
+            "racks apply-template guard bench_rows",
+        ),
+        (
+            "RacksSetFillDirection",
+            "racks set-fill-direction guard column_major",
+        ),
+        ("RacksSetCarrierPitch", "racks set-carrier-pitch guard 14"),
+        (
+            "RacksSetCustomProfile",
+            "racks set-custom-profile guard 9 9",
+        ),
+        ("RacksSetBlocked", "racks set-blocked guard A1"),
+    ]
+}
+
+#[test]
+fn rack_mutators_are_state_mutating_and_block_agent_auto_exec() {
+    for (variant, line) in rack_mutator_command_cases() {
+        let parsed = parse_shell_line(line).unwrap_or_else(|e| panic!("{line}: {e}"));
+        assert!(parsed.is_state_mutating(), "{variant}: {line}");
+    }
+    assert!(
+        !parse_shell_line("racks show guard")
+            .unwrap()
+            .is_state_mutating()
+    );
+
+    // Hand-crafted unoccupied rack; no private samples or provider calls.
+    let mut state = ProjectState::default();
+    state.container_state.racks.insert(
+        "guard".into(),
+        Rack {
+            rack_id: "guard".into(),
+            name: "Synthetic confirmation guard".into(),
+            profile: RackProfileSnapshot::custom(4, 6),
+            ..Default::default()
+        },
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let journal = engine.operation_log().len();
+    let revision = engine.mutation_revision();
+    let suggestions = vec![crate::agent_bridge::AgentSuggestedCommand {
+        command: "racks set-carrier-pitch guard 14".into(),
+        execution: AgentExecutionIntent::Auto,
+        ..Default::default()
+    }];
+    let (changed, reports) = execute_agent_suggested_commands(
+        &mut engine,
+        &suggestions,
+        false,
+        &BTreeSet::new(),
+        true,
+        &ShellExecutionOptions::default(),
+    );
+    assert!(!changed);
+    assert_eq!(reports.len(), 1);
+    assert!(!reports[0].executed);
+    assert_eq!(
+        reports[0].error.as_deref(),
+        Some(AGENT_MUTATION_CONFIRMATION_REQUIRED)
+    );
+    assert_eq!(
+        reports[0].feedback.as_ref().unwrap().status,
+        crate::agent_feedback::AgentExecutionStatus::Blocked
+    );
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+    assert_eq!(engine.operation_log().len(), journal);
+    assert_eq!(engine.mutation_revision(), revision);
+    assert_eq!(
+        engine.state().container_state.racks["guard"].carrier_pitch_override_um,
+        None
+    );
+
+    // Explicitly selecting the same suggestion still authorizes normal execution.
+    let (changed, reports) = execute_agent_suggested_commands(
+        &mut engine,
+        &suggestions,
+        false,
+        &BTreeSet::from([1]),
+        true,
+        &ShellExecutionOptions::default(),
+    );
+    assert!(changed);
+    assert!(reports[0].executed && reports[0].ok);
+    assert_eq!(
+        engine.state().container_state.racks["guard"].carrier_pitch_override_um,
+        Some(14_000)
+    );
+}
+
+#[test]
+fn rack_mutation_admission_cases_stay_in_sync_with_executor_dispatch() {
+    fn names(text: &str, prefix: &str) -> BTreeSet<String> {
+        text.split(prefix)
+            .skip(1)
+            .map(|tail| {
+                tail.chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .collect::<String>()
+            })
+            .filter(|name| name.starts_with("Racks"))
+            .collect()
+    }
+    let source = include_str!("../engine_shell.rs");
+    let executor = source
+        .split("fn execute_rack_mutation_command(")
+        .nth(1)
+        .unwrap()
+        .split("fn execute_rack_mutation_command_with_expanded_stack(")
+        .next()
+        .unwrap();
+    let classification = source
+        .split("pub fn is_state_mutating(&self)")
+        .nth(1)
+        .unwrap()
+        .split("/// Render default text help")
+        .next()
+        .unwrap();
+    let expected = rack_mutator_command_cases()
+        .into_iter()
+        .map(|(name, _)| name.into())
+        .collect::<BTreeSet<String>>();
+    assert_eq!(names(executor, "ShellCommand::"), expected);
+    assert_eq!(names(classification, "Self::"), expected);
+}
+
 #[test]
 fn parse_racks_set_fill_direction_command() {
     let cmd =

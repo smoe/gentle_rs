@@ -1,5 +1,27 @@
 # GENtle Changelog
 
+## 2026-10-20 - Require Confirmation For Agent-Suggested Rack Mutations
+
+- Correct shared-shell classification for all eleven rack mutators. The older
+  omission allowed auto-intent suggestions with `--allow-auto-exec` to bypass
+  the assistant's mutation-confirmation gate. Explicit Run/index/All remains
+  available; `racks show`, export/non-rack policy and MCP tool permissions are
+  unchanged. No carrier geometry, serialization or output strings change.
+- Author per-variant parsing, actual blocked auto-execution/unchanged-state and
+  explicitly selected execution coverage. Bind mutation cases/classification
+  to the central rack handler with a drift guard; add a source-only Python
+  LF/CRLF check and deliberately omitted-member negative control. Rust tests
+  and the full root `--lib` verification remain Glen/CI work, not a local pass.
+- Record the owner's storage clarification: floor-supported 1.5/2.0 ml tubes,
+  square openings in top view and snug tube-to-divider contact, without literal
+  tube-to-tube contact. Link the supplied Semadeni example as a source lead,
+  distinguishing exterior dimensions/nominal volume from unverified fit. A
+  variable-format box model and its physical qualification remain separate.
+- Verification: four source-only Python checks, documentation status, scoped
+  rustfmt and whitespace pass. Session-close: 4 OK, 2 expected warnings
+  (intentional worktree changes and manual plan fidelity), 0 failures. No local
+  Rust, GUI, live-agent or OpenSCAD execution; unrelated outputs are untouched.
+
 ## 2026-10-20 - Add Explicit Compact Safe-Lock Carrier Spacing
 
 - Persist optional whole-micrometre pitch on each rack, with exact decimal

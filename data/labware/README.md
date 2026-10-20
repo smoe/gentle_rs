@@ -109,6 +109,23 @@ position labels already exist; they are not a physical box profile. Do not infer
 fit from nominal tube volume, a chosen grid, material name or generated pitch.
 Source/measured box profiles and compatibility remain separate future work.
 
+Owner clarification, 2026-10-20: regular 1.5/2.0 ml tubes rest on the box bottom.
+The **openings are square in top view**, not a claim about divider cross-section.
+Tubes should fit snugly against the divider walls; adjacent cells are separated
+only by wall thickness. Literal tube-to-tube contact is not required. Any
+eventual model must distinguish that desired fit from sourced dimensions and
+explicit handling/manufacturing tolerances.
+
+The owner supplied [Semadeni's cardboard cryobox example](https://eshop.semadeni.com/de/PRODUKTE/Life-Science_-Proben-nehmen-und-Analysieren/Kryo-Zubehoer/Kryo-Boxen---Karton-9290.html)
+(consulted 2026-10-20) as a storage concept, not a purchase or fit endorsement.
+The page describes an integrated grid and cardboard lid, with 81/100-position
+variants; article 6345 lists 9x9, **exterior** 133x133x50 mm and nominal 1.2/2 ml
+tubes. It does not supply clear cell width, divider thickness or usable internal
+height/lid clearance. Do not divide exterior width by nine to invent cell size,
+or interpret that volume label as evidence of Safe-Lock 1.5/2.0 ml compatibility.
+No supplier temperature statement is adopted as GENtle qualification, no vendor
+profile or runtime dependency is added, and no model dimensions change.
+
 All constants below are **engineering assumptions**, not manufacturer
 tolerances, fabrication guidance or physical qualification:
 

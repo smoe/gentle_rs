@@ -158,6 +158,64 @@ its Rust generator: Glen/CI must confirm byte-exact canonical freshness.
 The new operation is shared by GUI, CLI, generic MCP/scripting/workflow routes;
 no agent auto-execution/approval exemption is added.
 
+### Rack-Mutation Confirmation Follow-Up
+
+Claude reports protocol 11/11 and render 2/2, but root `labware_` 15/16 at
+`17f846eb`: `labware_compact_pitch_shell_and_generic_operation_share_mutation_contract`
+correctly rejects the missing mutation classification. All eleven rack mutators,
+not just compact pitch, were absent from `ShellCommand::is_state_mutating`, so
+`--allow-auto-exec` could bypass the assistant's mutation-confirmation gate.
+The repair adds exactly those eleven variants; no geometry, export strings,
+non-rack classification or MCP tool permission changes. The shared assistant,
+GUI and planner admission now use the corrected flag. Claude's reverted
+267-test probe is not execution of this committed source or current acceptance.
+
+New Rust tests, authored but not run here:
+
+- `rack_mutators_are_state_mutating_and_block_agent_auto_exec`: parse all eleven
+  commands; retain read-only `racks show`; block an actual auto-intent pitch
+  suggestion with `AGENT_MUTATION_CONFIRMATION_REQUIRED` and unchanged rack,
+  state, journal and revision; explicit index selection can still execute it.
+- `rack_mutation_admission_cases_stay_in_sync_with_executor_dispatch`: bind the
+  per-variant cases and classifier to the actual rack mutation handler. This
+  source-set guard plus adjacent comments catches a future dispatch-list drift;
+  it does not substitute for the execution regression above.
+
+After ordinary integration, use the same clean checkout/run-owned target rules
+above, default GUI features and the exact tested SHA. In addition to the
+protocol/render and carrier checks, run the **full root library suite**, not
+only the `labware_` filter:
+
+```sh
+cargo check -q --locked --tests
+cargo test --locked --lib rack_mutat -- --test-threads=1
+cargo test --locked --lib labware_ -- --test-threads=1
+cargo test --locked --lib -- --test-threads=1
+cargo check -q --locked
+```
+
+Keep agent-parity/mutation/GUI results and primary failures separate from any
+mutex-poisoning cascade. The source-only Python LF/CRLF membership/negative
+control checks are not Rust, live-agent or native acceptance. OpenSCAD renders,
+nine legacy baseline files and native GUI review remain outstanding. Include
+11.75..12.049 mm: setter admission uses the collar limit; floor-seated export
+must clearly refuse it. Optional positional disclosure cleanup was deferred.
+
+Export classification inventory (unchanged): all seven named rack SVG/SCAD/JSON
+exports return `is_state_mutating=false`, as do named `SaveProject`, `ExportPool`
+and `LaddersExport`. Named guide oligo/protocol exports return `true`, as does
+the conservative generic `op`/`workflow` route. Thus rack exports match some
+file-writing routes, not a uniform export policy. `false` means no declared
+project mutation here, not absence of filesystem side effects; no broader
+export-policy repair is part of this commit.
+
+The clarified future box requirement is floor-supported 1.5/2.0 ml tubes with
+snug divider contact in openings that are square in top view. Cells are
+separated by wall thickness; literal tube-to-tube contact is not required.
+The [Semadeni example](../data/labware/README.md#different-storage-box-formats)
+supplies a source lead, not interior/divider/lid dimensions or Safe-Lock fit.
+Variable formats and all physical qualification remain separate future work.
+
 ## Historical Covering Request, 2026-10-19
 
 Updated 2026-10-19: after his push, Steffen should forward the

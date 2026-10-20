@@ -1002,6 +1002,12 @@ Key properties:
   `agents execute-plan` execution from suggested commands
 - `/undo` and `/redo` suggestions require explicit confirmation and cannot be
   selected by automatic-suggestion execution
+- all eleven rack-changing shell commands (creation/placement, movement,
+  profile/template, fill direction, carrier pitch, custom grid and blocked
+  positions) are classified as project-mutating. Provider `auto` intent plus
+  `--allow-auto-exec` cannot authorize them: explicit Run/index/All is required.
+  `racks show` remains read-only. This repairs the shared assistant/planner
+  classification; it does not alter MCP tool permissions or export policy.
 - suggested commands can execute shared BLAST routes (`genomes/helpers blast`,
   `genomes/helpers blast-track`) because they use the same parser/executor as
   CLI shell

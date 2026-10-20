@@ -1818,6 +1818,13 @@ are engineering assumptions, not cap-clearance, strength or material evidence.
 Storage-box formats must remain variable: independent row/column grids, interior
 dimensions, dividers, height and lid, not a hardcoded 9x9 box. Existing generic
 grid/label operations support different formats but do not constitute a physical
-box model or fit qualification. Box modeling remains unimplemented. New template metadata is
+box model or fit qualification. Owner clarification, 2026-10-20: 1.5/2.0 ml
+tubes rest on the box bottom; the openings are square **when viewed from above**,
+with snug tube-to-divider contact. Adjacent cells are separated only by divider
+wall thickness, not a requirement for literal tube-to-tube contact. This does
+not establish cap/lid clearance, dimensional tolerance or freezer suitability.
+The [Semadeni example and missing fit evidence](../data/labware/README.md#different-storage-box-formats)
+are recorded as a source lead, not a qualified compatibility profile.
+Box modeling remains unimplemented. New template metadata is
 optional and omitted for legacy templates so their serialized bytes and
 geometry remain unchanged. No new template establishes verified fit.

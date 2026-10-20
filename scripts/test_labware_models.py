@@ -1,4 +1,4 @@
-"""Offline SCAD-template checks, not execution of GENtle's Rust exporter.
+"""Offline labware source checks, not execution of GENtle's Rust paths.
 
 Literal dimensions are hand-transcribed from the drawing sources documented in
 data/labware/README.md. The actual body template is read from the Rust renderer;
@@ -66,6 +66,24 @@ def carrier_template(source, rows, columns, width, depth, height, opening, edge,
 
 
 class LabwareTemplateTests(unittest.TestCase):
+    def test_rack_mutation_admission_matches_dispatch_in_lf_and_crlf_source(self):
+        source = (ROOT / "src/engine_shell.rs").read_text(encoding="utf-8")
+        cases = (ROOT / "src/engine_shell/tests.rs").read_text(encoding="utf-8").split(
+            "fn rack_mutator_command_cases()", 1)[1].split("#[test]", 1)[0]
+        expected = set(re.findall(r'"(Racks\w+)"', cases))
+        self.assertEqual(len(expected), 11)
+        for text in (source, source.replace("\n", "\r\n")):
+            with self.subTest(crlf="\r\n" in text):
+                classifier = text.split("pub fn is_state_mutating(&self)", 1)[1].split(
+                    "/// Render default text help", 1)[0]
+                executor = text.split("fn execute_rack_mutation_command(", 1)[1].split(
+                    "fn execute_rack_mutation_command_with_expanded_stack(", 1)[0]
+                self.assertEqual(set(re.findall(r"ShellCommand::(Racks\w+)", executor)), expected)
+                self.assertEqual(set(re.findall(r"Self::(Racks\w+)", classifier)), expected)
+                # A deliberate omission must fail the membership comparison.
+                incomplete = classifier.replace("Self::RacksSetCarrierPitch", "Self::Missing", 1)
+                self.assertNotEqual(set(re.findall(r"Self::(Racks\w+)", incomplete)), expected)
+
     def test_compact_carrier_scad_retains_floor_and_variable_grid_coordinates(self):
         # Synthetic geometry, not output from Rust or fit to a storage box.
         source = (ROOT / "src/engine/state/lineage_containers.rs").read_text()
