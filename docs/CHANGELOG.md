@@ -67,6 +67,21 @@
   The separate TapeStation source suite ran eight tests with one documented
   existing-CLI skip; these are not Rust or native acceptance results.
 
+## 2026-10-20 - Prepare Reference-Bound Base And Prime Editing Slices
+
+- Inspect local main `050c1030` after integrating the gel density commit and
+  map existing guide filters/oligos, genomic context, SNV materialization,
+  sequence-design approval and sequencing confirmation to their actual limits.
+- Add a preparation-only brief with checked primary literature/corrections,
+  access/provenance limits, proposed typed reports, applicability matrix,
+  independently reviewable slices, deterministic test matrix and inactive
+  learner challenge. Separate strand geometry, bystanders, PBS/RTT, component
+  handoff, measured allele counts and human laboratory decisions.
+- Link the brief from the parking lot only. No editing code, activated profile,
+  tutorial/catalog regeneration, release gate, Rust build, model/provider call,
+  sequence upload, order, push or publication; full base-protocol access and
+  exact editor-profile review remain prerequisites for biological presets.
+
 ## 2026-10-20 - Guard Carrier Export Disclosures And Record Compact Storage Intent
 
 - Author PCR96 successful SCAD/four-SVG regression coverage: exactly 96
