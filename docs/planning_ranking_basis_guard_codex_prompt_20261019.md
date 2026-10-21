@@ -1,8 +1,8 @@
 # Codex prompt: pin the cloning consultation ranking order against silent drift
 
-## Status: Implemented; Glen/CI Verification Pending
+## Status: Implemented and Targeted-Verified; Release Acceptance Separate
 
-Updated 2026-10-19. Implemented in commit
+Updated 2026-10-21. Implemented in commit
 `5a8bd8cec472f68bc73b88448ed135b1131eb792`
 (`test(planning): pin cloning consultation ranking policy`). The brief below
 is historical design/review provenance, not a pending implementation request.
@@ -15,31 +15,82 @@ remain unchanged. The default snapshot has six distinct scores: two tied
 blocks plus four singletons, correcting the historical count below. Production
 scoring, contracts, assets, adapters, roadmap and release scope are unchanged.
 
-**Integrated-source verification remains pending with Glen/CI.** The implementing
-Codex session ran no Rust build, test or check. Earlier 13-test passes below do not
-verify the expanded 20-test suite or establish current-source acceptance.
-Offline source/fixture checks, 17 specialist source tests, scoped rustfmt and
-whitespace checks passed; these are not substitutes for Rust execution.
+The implementing Codex session ran no Rust build, test or check: its evidence
+was 17 offline specialist source checks, literal ID/count checks, scoped
+rustfmt and `git diff --check`. In particular the waiting-profile literals were
+derived by hand offline and had never been executed.
 
-Preserved local review update, 2026-10-20: Claude reports **20/20
-`planning_wetlab_` tests passed on macOS** with `28d964e6` plus a temporary
-`RackPhysicalTemplateKind` import in `src/app/tests.rs`. That import was reverted
-after the run; this is evidence for a modified tree, not clean `28d964e6`.
-`c8fc0764` now commits the import repair. The historical pass does not certify
-this merge, other platforms, or the new capability-maturity paths.
+### Integrated-source verification: executed and passing
 
-Run on the explicitly selected integrated revision, without re-implementing
-this prompt or automatically re-pinning unexpected results:
+Claude ran the three documented commands on macOS at clean `main`
+`40aa261d647af83b1ed3b6d23e8d9deac72d67f3` ("Merge branch 'gentle_rs_2_main'")
+on 2026-10-21, and previously at `17f846eb` on 2026-10-20 with identical
+results. In both runs `src/` and `assets/` were free of local modifications —
+only unrelated untracked `docs/*.md` and `output/` present. No source edit or
+workaround was needed, unlike the earlier `28d964e6` run below.
 
 ```bash
-cargo test --locked --lib planning_wetlab_
-cargo test --locked --lib execute_planning_consult_cloning_returns_ranked_report
-cargo check -q --locked
+cargo test --locked --lib planning_wetlab_                                    # 20 passed, 0 failed
+cargo test --locked --lib execute_planning_consult_cloning_returns_ranked_report  # 1 passed, 0 failed
+cargo check -q --locked                                                       # clean, exit 0
 ```
 
-Native, cross-platform, scientific and release acceptance remain separate. The
-text report still shows only the top five candidates; the guards inspect all
-eleven JSON rows. The previous paused goal is not resumed by this status note.
+All seven new guards pass, including
+`planning_wetlab_ranking_waiting_absolute_policy_snapshot` — so the hand-derived
+waiting literals (the different family order, the
+`golden_gate.type_iis_destination_cleanup` winner and restriction last at
+`-128.35`) are confirmed correct against execution, which was the main open risk
+in `5a8bd8ce`. The 13 pre-existing bench-model tests still pass unchanged. The
+only build diagnostic is the known non-blocking large `__eh_frame` linker
+warning.
+
+This supersedes the pending-verification note for these guards at this revision.
+It is a single-platform targeted pass: native, cross-platform, Windows,
+scientific and release acceptance remain separate and unclaimed, and this is not
+`.13` acceptance. The previous paused goal is not resumed by this status note.
+
+Superseded local review note, 2026-10-20: an earlier 20/20 `planning_wetlab_`
+pass was obtained at `28d964e6` plus a temporary `RackPhysicalTemplateKind`
+import in `src/app/tests.rs`, so it was evidence for a modified tree.
+`c8fc0764` committed that import repair; the clean run above replaces it.
+
+The text report still shows only the top five candidates; the guards inspect all
+eleven JSON rows.
+
+### Anchors re-verified at `40aa261d`
+
+Commits after `84ebede4` — `55ee3504`, `f672ccc1`, `78517c07`, `cc07e0ca`,
+`56ca54ad`, `f83e4eac`, `17f846eb`, then `144c6644` — shifted
+`src/engine_shell.rs`, `src/engine_shell/tests.rs` and the GUI. The brief below
+keeps its historical numbers; current positions are:
+
+| anchor | brief | at `40aa261d` |
+| --- | --- | --- |
+| `estimate_routine_planning` | 4691 | `src/engine_shell.rs:4696` |
+| `estimate_routine_planning_with_bench_catalog` | 4706 | `:4711` |
+| `policy_time_hours` capture | 4813 | `:4818` |
+| `bench_catalog.model` lookup | 4814 | `:4819` |
+| `max_time_hours` guardrail | 4887 | `:4892` |
+| `composite_meta_score` | 4902 | `:4907` |
+| `weight_time * policy_time_hours` | 4904 | `:4909` |
+| `time_policy` explanation block | 4911 | `:4917` |
+| text report `take(5)` | 34551 | `:34635` |
+| shared display lines call | 34560 | `:34644` |
+| within-family `replace` | 35349 | `:35433` |
+| `strategy_candidates.sort_by` | 35364 | `:35451` |
+| GUI display lines | 4838, 4924 | `src/app/routine_and_agent_assistant_ui.rs:4838`, `:4972` |
+
+Unchanged: `src/engine_shell/planning_wetlab.rs:333`, `:362`-`365`, `:404`-`411`,
+and `src/engine.rs:3016` (`weight_time: 1.0`). The three landed tests the brief
+cites moved within `src/engine_shell/planning_wetlab_tests.rs` as the seven new
+guards were prepended at `:147`-`:343`: `:103` → `:473`, `:194` → `:564`,
+`:553` → `:923`; `src/engine_shell/tests.rs:14742` → `:14974` and the module
+wiring `:14722` → `:14955`.
+
+`planning_wetlab_tests.rs` itself is byte-identical between `5a8bd8ce` and
+`40aa261d`; the seven guards sit at `:147`
+(`planning_wetlab_ranking_default_absolute_policy_snapshot`) through `:343`
+(`planning_wetlab_ranking_all_rows_declare_the_same_policy_basis`).
 
 ---
 
