@@ -1,5 +1,91 @@
 # GENtle Changelog
 
+## 2026-10-21 - Isolate Missing BLAST Tools In Async Tests
+
+- Investigate the owner's two full-suite failures while BLAST jobs were still
+  in preflight. The 10-second restart wait and 600-poll missing-genome wait
+  assumed that invented executable names were promptly absent. Both tests pass
+  individually (0.03 s), so the reported wall-time failure is not independently
+  reproduced. A controlled native PATH experiment nevertheless launches four
+  synthetic decoy programs from those supposedly missing-tool fixtures.
+- Add a shared test-only missing-tool fixture: retain a private temporary
+  directory and scoped override, configure an absolute absent `.exe` path with
+  spaces, and never create an executable. Use it in async scheduler/shell
+  fixtures and the corresponding MCP parity test. Preserve the existing waits,
+  worker gate, stale-snapshot normalization and cancellation/queue assertions.
+  Strengthen terminal preflight checks to require the exact configured paths,
+  `found=false`, failed version probes and no resolved executable.
+- Verification on Windows 10 Pro 22H2 build 19045, Rust/Cargo 1.99.1,
+  `x86_64-pc-windows-msvc`, parent `39725fde` plus working-tree changes:
+  all 17 async BLAST tests pass normally (0.72 s) and with four PATH decoys
+  installed only in the test child (0.73 s, zero decoy launches). This proves
+  host-tool isolation; it does not establish the precise cause of the owner's
+  earlier elapsed-time stall. The unfiltered native parallel library rerun
+  passes: 4,260 passed, 0 failed, 15 ignored in 715.67 s, including both reported
+  tests and the MCP parity boundary.
+- `cargo check -q --locked --offline`, scoped rustfmt and whitespace checks pass.
+  Session-close has four OK, two expected worktree/scope warnings and no failures;
+  roadmap remains 400 lines. Preserve generated GUI settings under the local
+  `target/windows-test-repair/blast-worker-followup/` evidence directory.
+- No production BLAST resolver, scheduler, timeout or biological behavior is
+  changed. Preserve all preceding Windows repairs and the owner's Cargo.lock
+  edits; no Unix run, rebuilt package, push, CI dispatch or release acceptance.
+
+## 2026-10-21 - Repair Native Windows Catalog Paths And Test Fixtures
+
+- Reproduce the reported catalog-update `os error 1` on Windows 10 Pro 22H2
+  (build 19045). Defer ancestor metadata inspection until the root separator
+  completes a Windows prefix such as `\\?\C:`. Keep raw traversal rejection,
+  symlink checks and byte-bound preview/history validation. Add a native
+  regression through the real JSON reader for drive and canonical/verbatim
+  paths, including raw traversal negative controls.
+- Reproduce nine model-list fixture failures with an unreachable ambient
+  proxy. Inject a fixture-only loopback client into the shared request path;
+  keep production proxy discovery and timeouts. Add a local explicit-proxy
+  regression, without contacting a provider or changing process-wide settings.
+  Read complete bounded HTTP headers with blocking socket I/O and finite
+  timeouts. Give classification fixtures 20 seconds and the filesystem-backed
+  genome progress/journaling fixture 60 seconds under parallel load, retaining
+  every result/progress/journal assertion and other command waits at 10 seconds.
+- Repair the carrier export fixture with one synthetic placed container,
+  retaining geometry, disclosure, legacy JSON and read-only assertions. Also
+  assert that empty-rack labels fail without overwriting an existing artifact.
+  Filter optional absent catalog sources in two test setups as normal discovery
+  does; retain strict explicit-source loading and missing-source preview binding.
+- Replace the ATtRACT/MaxEnt importer's external `unzip` command with the existing
+  Rust ZIP dependency. Three additional native test failures exposed this absent
+  Windows tool. Read stored/deflated members without filesystem extraction;
+  retain malformed/missing-member errors, literal nested names and table bytes.
+  Cover mixed LF/CRLF bytes and exact directory-versus-compressed-ZIP MaxEnt
+  table SHA-256 parity with inline, explicitly synthetic fixtures.
+- Bring the independent integration-test oracle in line with the four existing
+  catalog shell routes on MCP/JS/Lua. The descriptor was present; the stale
+  expected surfacing caused a misleading "missing registry entry" failure.
+  Keep exact command names, other adapter expectations and the override
+  demotion guard. No protocol registry, parity overrides or matrix rows change.
+- Targeted verification on parent `39725fde` plus these working-tree changes,
+  Rust/Cargo 1.99.1, `x86_64-pc-windows-msvc`, ordinary default-feature dev tests:
+  all 47 affected tests pass, plus all 14 live-probe tests under a broken ambient
+  proxy. An intermediate unfiltered run reproduced nine HTTP failures and the
+  genome timeout; the tutorial and four dependent motif tests passed. Do not
+  interpret their earlier shared-registry poisoning as four biological defects
+  or claim the unreproduced tutorial filesystem failure has a proven root cause.
+  The unfiltered library run now passes: 4,260 passed, 0 failed, 15 ignored
+  (739.71 s). All 144 binary-unit tests pass. After the integration-oracle-only
+  repair, all nine integration targets pass (42 tests); doc-tests have no cases
+  and succeed. Together these cover the standard root-package test targets:
+  4,446 passed, 0 failed, 15 ignored. The full command originally stopped at the
+  stale oracle; reruns cover all integration targets rather than repeating the
+  unaffected library/binary suites. The helper-comment edit is documentation-only.
+- Final `cargo check -q --locked --offline`, scoped rustfmt and whitespace checks
+  pass. Session-close reports four OK, two expected warnings (intentional dirty
+  worktree and manual scope confirmation), no failures; roadmap remains 400 lines.
+  Preserve the test-created GUI settings as local evidence under `target/`,
+  rather than leaving a new settings file in the repository root.
+- Preserve the owner's pre-existing `Cargo.lock` edits. The earlier local
+  Windows ZIP predates this patch; no rebuilt package, GUI acceptance, Unix run,
+  push, CI dispatch, publication or scientific acceptance is claimed here.
+
 ## 2026-10-20 - Repair Catalog Reachability Without Weakening Parity Overrides
 
 - Trace both normal-CI primer-matrix failures at `bb1686bd` to the same invalid

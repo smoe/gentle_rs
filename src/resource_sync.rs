@@ -23,9 +23,8 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeSet, HashMap},
     fs,
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, Read, Write},
     path::Path,
-    process::Command,
     time::Duration,
 };
 use tempfile::NamedTempFile;
@@ -871,48 +870,53 @@ fn with_local_binary_input_path<T>(
     }
 }
 
-fn run_unzip(args: &[&str], archive_path: &Path, member: Option<&str>) -> Result<Vec<u8>, String> {
-    let mut command = Command::new("unzip");
-    for arg in args {
-        command.arg(arg);
-    }
-    command.arg(archive_path);
-    if let Some(member) = member {
-        command.arg(member);
-    }
-    let output = command.output().map_err(|e| {
+fn open_resource_archive(archive_path: &Path) -> Result<zip::ZipArchive<fs::File>, String> {
+    let file = fs::File::open(archive_path).map_err(|error| {
         format!(
-            "Could not run unzip for archive '{}': {e}",
+            "Could not open resource archive '{}': {error}",
             archive_path.display()
         )
     })?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        let detail = if stderr.is_empty() {
-            format!("exit status {}", output.status)
-        } else {
-            stderr
-        };
-        return Err(format!(
-            "Could not read ATtRACT archive '{}': {detail}",
+    zip::ZipArchive::new(file).map_err(|error| {
+        format!(
+            "Could not read resource archive '{}': {error}",
             archive_path.display()
-        ));
-    }
-    Ok(output.stdout)
+        )
+    })
 }
 
 fn list_zip_members(archive_path: &Path) -> Result<Vec<String>, String> {
-    let bytes = run_unzip(&["-Z1"], archive_path, None)?;
-    Ok(String::from_utf8_lossy(&bytes)
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(|line| line.to_string())
-        .collect())
+    let mut archive = open_resource_archive(archive_path)?;
+    (0..archive.len())
+        .map(|index| {
+            archive
+                .by_index_raw(index)
+                .map(|entry| entry.name().to_string())
+                .map_err(|error| {
+                    format!(
+                        "Could not list resource archive '{}': {error}",
+                        archive_path.display()
+                    )
+                })
+        })
+        .collect()
 }
 
 fn read_zip_member_text(archive_path: &Path, member: &str) -> Result<String, String> {
-    let bytes = run_unzip(&["-p"], archive_path, Some(member))?;
+    let mut archive = open_resource_archive(archive_path)?;
+    let mut entry = archive.by_name(member).map_err(|error| {
+        format!(
+            "Could not open member '{member}' in resource archive '{}': {error}",
+            archive_path.display()
+        )
+    })?;
+    let mut bytes = Vec::new();
+    entry.read_to_end(&mut bytes).map_err(|error| {
+        format!(
+            "Could not read member '{member}' in resource archive '{}': {error}",
+            archive_path.display()
+        )
+    })?;
     Ok(String::from_utf8_lossy(&bytes).to_string())
 }
 
@@ -2016,6 +2020,41 @@ T [0 0 0]
     }
 
     #[test]
+    fn resource_archives_read_stored_and_deflated_members_without_newline_conversion() {
+        // Hand-crafted UTF-8 table bytes, including CRLF, for archive I/O only.
+        let temp = tempdir().unwrap();
+        let member = "nested folder/table [1].txt";
+        let bytes = b"name\tvalue\r\nsynthetic\t1\n";
+        for method in [
+            zip::CompressionMethod::Stored,
+            zip::CompressionMethod::Deflated,
+        ] {
+            let path = temp
+                .path()
+                .join(format!("archive with spaces {method:?}.zip"));
+            let mut writer = zip::ZipWriter::new(fs::File::create(&path).unwrap());
+            writer
+                .start_file(
+                    member,
+                    zip::write::SimpleFileOptions::default().compression_method(method),
+                )
+                .unwrap();
+            writer.write_all(bytes).unwrap();
+            writer.finish().unwrap();
+            assert_eq!(list_zip_members(&path).unwrap(), vec![member]);
+            assert_eq!(
+                read_zip_member_text(&path, member).unwrap().as_bytes(),
+                bytes
+            );
+            assert!(read_zip_member_text(&path, "missing.txt").is_err());
+        }
+        let path = temp.path().join("invalid.zip");
+        fs::write(&path, b"synthetic invalid archive").unwrap();
+        assert!(list_zip_members(&path).is_err());
+        assert!(read_zip_member_text(&path, member).is_err());
+    }
+
+    #[test]
     fn parses_attract_pwm_position_row_format() {
         let text = "\
 >M001_0.6\t3
@@ -2056,6 +2095,45 @@ T [0 0 0]
         assert_eq!(snapshot.table_sha256.len(), 11);
         assert_eq!(snapshot.retrieved_on.as_deref(), Some("2026-08-27"));
         assert_eq!(snapshot.redistribution_status, "synthetic_test_tables");
+
+        let archive_path = temp.path().join("synthetic MaxEnt tables.zip");
+        let mut writer = zip::ZipWriter::new(fs::File::create(&archive_path).unwrap());
+        let mut entries = fs::read_dir(input.join("splicemodels"))
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect::<Vec<_>>();
+        entries.sort();
+        for entry in entries {
+            let member = format!(
+                "splicemodels/{}",
+                entry.file_name().unwrap().to_str().unwrap()
+            );
+            writer
+                .start_file(
+                    member,
+                    zip::write::SimpleFileOptions::default()
+                        .compression_method(zip::CompressionMethod::Deflated),
+                )
+                .unwrap();
+            writer.write_all(&fs::read(entry).unwrap()).unwrap();
+        }
+        writer.finish().unwrap();
+        let archive_output = temp.path().join("maxent-from-zip.json");
+        sync_maxent_splice_model(
+            archive_path.to_str().unwrap(),
+            Some(archive_output.to_str().unwrap()),
+            Some("https://example.invalid/maxent-source"),
+            Some("2026-08-27"),
+            Some("synthetic_test_tables"),
+        )
+        .expect("sync compressed MaxEnt tables without an external unzip");
+        let from_archive: MaxEntSpliceModelSnapshot =
+            serde_json::from_slice(&fs::read(archive_output).unwrap()).unwrap();
+        from_archive.validate().unwrap();
+        assert_eq!(
+            serde_json::to_value(&from_archive.table_sha256).unwrap(),
+            serde_json::to_value(&snapshot.table_sha256).unwrap()
+        );
     }
 
     #[test]

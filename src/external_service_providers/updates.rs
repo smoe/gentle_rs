@@ -152,6 +152,11 @@ fn checked_path(path: &Path) -> Result<PathBuf, String> {
     let mut current = PathBuf::new();
     for component in absolute.components() {
         current.push(component.as_os_str());
+        if matches!(component, std::path::Component::Prefix(_)) {
+            // A Windows prefix such as \\?\C: is not a filesystem node until
+            // its root separator is appended. Inspect the root and ancestors.
+            continue;
+        }
         match fs::symlink_metadata(&current) {
             Ok(meta) if meta.file_type().is_symlink() => {
                 return Err(error("symlink", current.display()));

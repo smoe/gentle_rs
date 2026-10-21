@@ -35044,8 +35044,24 @@ fn labware_oversized_saved_racks_reopen_but_exports_refuse_without_truncation() 
 
 #[test]
 fn labware_carriers_preserve_legacy_json_and_export_both_support_modes() {
-    // Hand-crafted empty 4x9 grid; geometry, not physical or scientific evidence.
+    // Hand-crafted 4x9 grid with one synthetic DNA container for label exports;
+    // geometry and software metadata, not physical or scientific evidence.
     let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("carrier-sequence".into(), seq("ACGT"));
+    state.container_state.containers.insert(
+        "carrier-container".into(),
+        Container {
+            container_id: "carrier-container".into(),
+            kind: ContainerKind::Singleton,
+            name: Some("Synthetic label fixture".into()),
+            members: vec!["carrier-sequence".into()],
+            declared_contents_exclusive: true,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
     state.container_state.racks.insert(
         "carrier".into(),
         Rack {
@@ -35058,8 +35074,39 @@ fn labware_carriers_preserve_legacy_json_and_export_both_support_modes() {
         },
     );
     let mut engine = GentleEngine::from_state(state);
-    let before = serde_json::to_value(engine.state()).unwrap();
     let directory = tempdir().unwrap();
+    let empty_path = directory.path().join("empty-carrier.svg");
+    fs::write(&empty_path, b"preserve empty-rack artifact").unwrap();
+    let error = engine
+        .apply(Operation::ExportRackCarrierLabelsSvg {
+            rack_id: "carrier".into(),
+            path: empty_path.to_str().unwrap().into(),
+            arrangement_id: None,
+            template: RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated,
+            preset: RackCarrierLabelPreset::FrontStripAndCards,
+        })
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("no placements"));
+    assert_eq!(
+        fs::read(&empty_path).unwrap(),
+        b"preserve empty-rack artifact"
+    );
+    engine
+        .apply(Operation::CreateArrangementSerial {
+            container_ids: vec!["carrier-container".into()],
+            arrangement_id: Some("carrier-arrangement".into()),
+            name: Some("Synthetic labels".into()),
+            ladders: None,
+        })
+        .unwrap();
+    engine
+        .apply(Operation::PlaceArrangementOnRack {
+            arrangement_id: "carrier-arrangement".into(),
+            rack_id: "carrier".into(),
+        })
+        .unwrap();
+    let before = serde_json::to_value(engine.state()).unwrap();
     for template in [
         RackPhysicalTemplateKind::StoragePcrTubeRack,
         RackPhysicalTemplateKind::PipettingPcrTubeRack,

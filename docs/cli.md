@@ -7069,6 +7069,8 @@ Tutorial companion:
     metadata payload, and a compact summary for catalog views.
 - `resources sync-attract INPUT.zip_or_URL [OUTPUT.attract.json]`
   - Normalizes the published ATtRACT ZIP into GENtle’s runtime motif snapshot.
+  - Reads stored/deflated ZIP members directly, also on Windows; no separate
+    `unzip` installation is needed. Local MaxEnt ZIP imports use the same reader.
   - `INPUT` may be a local ZIP path or an `https://...` URL.
   - Default output: `data/resources/attract.motifs.json`.
   - Current v1 normalization reads `ATtRACT_db.txt`, keeps deterministic

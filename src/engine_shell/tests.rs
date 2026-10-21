@@ -2110,14 +2110,13 @@ fn with_blast_async_test_overrides<R>(
     let _guard = BLAST_ASYNC_TEST_MUTEX
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    // Deliberately absent executables keep scheduler tests independent of host tools.
-    let _blastn = crate::tool_overrides::ScopedToolOverrideGuard::set(
+    let _blastn = crate::test_support::MissingToolFixture::new(
         "GENTLE_BLASTN_BIN",
-        "__gentle_async_missing_blastn__",
+        "__gentle_async_missing_blastn__.exe",
     );
-    let _makeblastdb = crate::tool_overrides::ScopedToolOverrideGuard::set(
+    let _makeblastdb = crate::test_support::MissingToolFixture::new(
         "GENTLE_MAKEBLASTDB_BIN",
-        "__gentle_async_missing_makeblastdb__",
+        "__gentle_async_missing_makeblastdb__.exe",
     );
     let previous_max =
         BLAST_ASYNC_MAX_CONCURRENT_TEST_OVERRIDE.swap(max_concurrent, Ordering::SeqCst);
@@ -24225,13 +24224,13 @@ fn execute_async_blast_start_and_status_reports_failure_for_missing_genome() {
     let _guard = BLAST_ASYNC_TEST_MUTEX
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let _blastn = crate::tool_overrides::ScopedToolOverrideGuard::set(
+    let blastn = crate::test_support::MissingToolFixture::new(
         "GENTLE_BLASTN_BIN",
-        "__gentle_async_missing_blastn__",
+        "__gentle_async_missing_blastn__.exe",
     );
-    let _makeblastdb = crate::tool_overrides::ScopedToolOverrideGuard::set(
+    let makeblastdb = crate::test_support::MissingToolFixture::new(
         "GENTLE_MAKEBLASTDB_BIN",
-        "__gentle_async_missing_makeblastdb__",
+        "__gentle_async_missing_makeblastdb__.exe",
     );
     clear_blast_async_jobs_for_test();
     let mut engine = GentleEngine::new();
@@ -24264,6 +24263,7 @@ fn execute_async_blast_start_and_status_reports_failure_for_missing_genome() {
     assert!(!job_id.is_empty());
 
     let mut terminal_state = String::new();
+    let mut terminal_status = Value::Null;
     for _ in 0..600 {
         let status = execute_shell_command(
             &mut engine,
@@ -24281,6 +24281,7 @@ fn execute_async_blast_start_and_status_reports_failure_for_missing_genome() {
             .and_then(|value| value.as_str())
             .unwrap_or_default()
             .to_string();
+        terminal_status = status.output;
         if matches!(
             terminal_state.as_str(),
             "completed" | "failed" | "cancelled"
@@ -24291,9 +24292,18 @@ fn execute_async_blast_start_and_status_reports_failure_for_missing_genome() {
     }
     assert!(
         matches!(terminal_state.as_str(), "failed" | "cancelled"),
-        "unexpected async blast terminal state: {}",
-        terminal_state
+        "unexpected async blast terminal state: {terminal_state}; last status: {terminal_status}"
     );
+    for (tool, expected) in [
+        ("blastn", blastn.executable()),
+        ("makeblastdb", makeblastdb.executable()),
+    ] {
+        let probe = &terminal_status["job"]["binary_preflight"][tool];
+        assert_eq!(probe["executable"], expected);
+        assert_eq!(probe["found"], false);
+        assert_eq!(probe["version_probe_ok"], false);
+        assert!(probe["resolved_path"].is_null());
+    }
     clear_blast_async_jobs_for_test();
 }
 
@@ -25125,6 +25135,7 @@ fn execute_async_blast_cancel_after_restart_is_deterministic() {
 #[test]
 fn execute_async_blast_restart_snapshot_race_still_normalizes_deterministically() {
     with_blast_async_test_overrides(1, 0, || {
+        let expected_tools = crate::tool_overrides::scoped_tool_overrides_snapshot();
         let (entered_tx, entered_rx) = mpsc::channel();
         let (release_tx, release_rx) = mpsc::channel();
         *BLAST_ASYNC_WORKER_TEST_GATE.lock().unwrap() = Some(BlastAsyncWorkerTestGate {
@@ -25184,14 +25195,19 @@ fn execute_async_blast_restart_snapshot_race_still_normalizes_deterministically(
             std::thread::sleep(std::time::Duration::from_millis(15));
         };
         assert_eq!(terminal_status["job"]["state"], "failed");
-        assert_eq!(
-            terminal_status["job"]["binary_preflight"]["blastn"]["executable"],
-            "__gentle_async_missing_blastn__"
-        );
-        assert_eq!(
-            terminal_status["job"]["binary_preflight"]["makeblastdb"]["executable"],
-            "__gentle_async_missing_makeblastdb__"
-        );
+        for (tool, env_var) in [
+            ("blastn", "GENTLE_BLASTN_BIN"),
+            ("makeblastdb", "GENTLE_MAKEBLASTDB_BIN"),
+        ] {
+            let probe = &terminal_status["job"]["binary_preflight"][tool];
+            let expected = &expected_tools[env_var];
+            assert!(Path::new(expected).is_absolute());
+            assert!(!Path::new(expected).exists());
+            assert_eq!(probe["executable"], expected.as_str());
+            assert_eq!(probe["found"], false);
+            assert_eq!(probe["version_probe_ok"], false);
+            assert!(probe["resolved_path"].is_null());
+        }
 
         {
             let mut jobs = BLAST_ASYNC_JOBS

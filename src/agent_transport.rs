@@ -610,15 +610,10 @@ fn classify_model_list_http_error(
     )
 }
 
-fn build_model_list_live_probe(
-    base_url: &str,
-    api_key: Option<&str>,
-    selected_model: Option<&str>,
+fn model_list_probe_client_builder(
     runtime: &AgentInvocationRuntime,
-    auth: ModelListAuth,
-) -> AgentSystemLiveProbe {
-    let endpoints = model_endpoint_candidates(base_url);
-    let client = match reqwest::blocking::Client::builder()
+) -> reqwest::blocking::ClientBuilder {
+    reqwest::blocking::Client::builder()
         .connect_timeout(Duration::from_secs(
             runtime.connect_timeout_secs.unwrap_or_default().max(1),
         ))
@@ -628,8 +623,16 @@ fn build_model_list_live_probe(
                 .unwrap_or(runtime.timeout_secs)
                 .max(1),
         ))
-        .build()
-    {
+}
+
+fn build_model_list_live_probe(
+    base_url: &str,
+    api_key: Option<&str>,
+    selected_model: Option<&str>,
+    runtime: &AgentInvocationRuntime,
+    auth: ModelListAuth,
+) -> AgentSystemLiveProbe {
+    let client = match model_list_probe_client_builder(runtime).build() {
         Ok(client) => client,
         Err(err) => {
             return live_probe_with_status(
@@ -639,6 +642,25 @@ fn build_model_list_live_probe(
         }
     };
 
+    build_model_list_live_probe_with_client(
+        base_url,
+        api_key,
+        selected_model,
+        runtime,
+        auth,
+        &client,
+    )
+}
+
+fn build_model_list_live_probe_with_client(
+    base_url: &str,
+    api_key: Option<&str>,
+    selected_model: Option<&str>,
+    runtime: &AgentInvocationRuntime,
+    auth: ModelListAuth,
+    client: &reqwest::blocking::Client,
+) -> AgentSystemLiveProbe {
+    let endpoints = model_endpoint_candidates(base_url);
     let mut probe = AgentSystemLiveProbe {
         enabled: true,
         status_class: AgentLiveProbeStatusClass::EndpointUnreachable,
@@ -1306,15 +1328,45 @@ mod tests {
 
     fn test_runtime() -> AgentInvocationRuntime {
         AgentInvocationRuntime {
-            timeout_secs: 2,
-            connect_timeout_secs: Some(2),
-            read_timeout_secs: Some(2),
+            // These fixtures assert HTTP classification, not a two-second
+            // latency contract while the full Windows suite is under load.
+            timeout_secs: 20,
+            connect_timeout_secs: Some(10),
+            read_timeout_secs: Some(20),
             max_retries: 0,
             max_response_bytes: 16 * 1024,
             endpoint_candidates: vec![],
             attempted_endpoints: vec![],
             selected_endpoint: None,
         }
+    }
+
+    fn local_model_list_probe(
+        base_url: &str,
+        api_key: Option<&str>,
+        selected_model: Option<&str>,
+        runtime: &AgentInvocationRuntime,
+        auth: ModelListAuth,
+    ) -> AgentSystemLiveProbe {
+        assert!(base_url.starts_with("http://127.0.0.1:"));
+        let client = model_list_probe_client_builder(runtime)
+            .no_proxy()
+            .build()
+            .expect("local fixture client");
+        let probe = build_model_list_live_probe_with_client(
+            base_url,
+            api_key,
+            selected_model,
+            runtime,
+            auth,
+            &client,
+        );
+        assert_ne!(
+            probe.status_class,
+            AgentLiveProbeStatusClass::EndpointUnreachable,
+            "local model-list fixture was unreachable: {probe:?}"
+        );
+        probe
     }
 
     #[test]
@@ -1552,8 +1604,23 @@ mod tests {
                 let Ok(mut stream) = stream else {
                     continue;
                 };
-                let mut buf = [0_u8; 2048];
-                let read = stream.read(&mut buf).unwrap_or(0);
+                stream
+                    .set_nonblocking(false)
+                    .expect("blocking fixture stream");
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(20)))
+                    .unwrap();
+                stream
+                    .set_write_timeout(Some(Duration::from_secs(20)))
+                    .unwrap();
+                let mut buf = [0_u8; 16 * 1024];
+                let mut read = 0;
+                while !buf[..read].windows(4).any(|bytes| bytes == b"\r\n\r\n") {
+                    assert!(read < buf.len(), "fixture request headers are too large");
+                    let count = stream.read(&mut buf[read..]).expect("read fixture request");
+                    assert!(count > 0, "fixture request ended before its headers");
+                    read += count;
+                }
                 let request = String::from_utf8_lossy(&buf[..read]);
                 let path = request.split_whitespace().nth(1).unwrap_or("/");
                 let (status, body) = routes
@@ -1768,6 +1835,39 @@ mod tests {
     }
 
     #[test]
+    fn live_probe_honors_an_explicit_client_proxy() {
+        let Some(proxy_url) = spawn_model_list_server(vec![(
+            "http://model-probe.invalid/models",
+            200,
+            r#"{"data":[{"id":"synthetic-proxy-model"}]}"#,
+        )]) else {
+            return;
+        };
+        let runtime = test_runtime();
+        let proxy = reqwest::Proxy::all(&proxy_url)
+            .expect("local fixture proxy")
+            .no_proxy(reqwest::NoProxy::from_string(""));
+        let client = model_list_probe_client_builder(&runtime)
+            .proxy(proxy)
+            .build()
+            .expect("explicit proxy client");
+        let probe = build_model_list_live_probe_with_client(
+            "http://model-probe.invalid",
+            None,
+            Some("synthetic-proxy-model"),
+            &runtime,
+            ModelListAuth::OpenaiBearer,
+            &client,
+        );
+        assert_eq!(probe.status_class, AgentLiveProbeStatusClass::Ok);
+        assert!(probe.selected_model_seen);
+        assert_eq!(
+            probe.selected_endpoint.as_deref(),
+            Some("http://model-probe.invalid/models")
+        );
+    }
+
+    #[test]
     fn live_probe_classifies_auth_failure() {
         let Some(base_url) = spawn_model_list_server(vec![(
             "/models",
@@ -1776,7 +1876,7 @@ mod tests {
         )]) else {
             return;
         };
-        let probe = build_model_list_live_probe(
+        let probe = local_model_list_probe(
             &base_url,
             Some("sk-test"),
             Some("gpt-5"),
@@ -1801,7 +1901,7 @@ mod tests {
         )]) else {
             return;
         };
-        let probe = build_model_list_live_probe(
+        let probe = local_model_list_probe(
             &base_url,
             Some("sk-test"),
             Some("gpt-5"),
@@ -1826,7 +1926,7 @@ mod tests {
         let Some(base_url) = spawn_model_list_server(vec![("/models", 200, "not json")]) else {
             return;
         };
-        let probe = build_model_list_live_probe(
+        let probe = local_model_list_probe(
             &base_url,
             None,
             Some("llama3"),
@@ -1849,7 +1949,7 @@ mod tests {
         )]) else {
             return;
         };
-        let probe = build_model_list_live_probe(
+        let probe = local_model_list_probe(
             &base_url,
             None,
             Some("missing-model"),
@@ -1869,7 +1969,7 @@ mod tests {
         ]) else {
             return;
         };
-        let probe = build_model_list_live_probe(
+        let probe = local_model_list_probe(
             &base_url,
             None,
             Some("llama3"),
@@ -1897,7 +1997,7 @@ mod tests {
         )]) else {
             return;
         };
-        let probe = build_model_list_live_probe(
+        let probe = local_model_list_probe(
             &base_url,
             Some("sk-ant-test"),
             Some("claude-sonnet-4-6"),
@@ -1918,7 +2018,7 @@ mod tests {
         )]) else {
             return;
         };
-        let probe = build_model_list_live_probe(
+        let probe = local_model_list_probe(
             &base_url,
             Some("mistral-test"),
             Some("mistral-large-latest"),
@@ -1939,7 +2039,7 @@ mod tests {
         )]) else {
             return;
         };
-        let probe = build_model_list_live_probe(
+        let probe = local_model_list_probe(
             &base_url,
             Some("not-a-console-api-key"),
             Some("claude-sonnet-4-6"),
@@ -1964,7 +2064,7 @@ mod tests {
         )]) else {
             return;
         };
-        let probe = build_model_list_live_probe(
+        let probe = local_model_list_probe(
             &base_url,
             Some("not-a-mistral-api-key"),
             Some("mistral-large-latest"),

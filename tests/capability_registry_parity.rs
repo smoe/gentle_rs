@@ -145,6 +145,13 @@ fn expected_surfacing_without_overrides(
     let interfaces = interfaces_by_path
         .get(&command.path)
         .expect("glossary path interface index");
+    // These catalog services use explicit shared-shell candidates rather than
+    // biological engine operations; keep the expected routes independent of
+    // the registry implementation under test.
+    let catalog_shell_route = matches!(
+        command.path.as_str(),
+        "catalog doctor" | "catalog search" | "catalog updates preview" | "catalog updates apply"
+    );
     match adapter {
         CapabilityAdapter::Gui => {
             if interfaces.contains("gui-menu") {
@@ -167,7 +174,7 @@ fn expected_surfacing_without_overrides(
         CapabilityAdapter::Mcp => {
             if interfaces.contains("mcp") || mcp_command_paths.contains(&command.path) {
                 AdapterSurfacing::Prominent
-            } else if !command.engine_operations.is_empty() {
+            } else if !command.engine_operations.is_empty() || catalog_shell_route {
                 AdapterSurfacing::ShellPassthrough
             } else {
                 AdapterSurfacing::Gap
@@ -176,7 +183,7 @@ fn expected_surfacing_without_overrides(
         CapabilityAdapter::Js => {
             if interfaces.contains("js") {
                 AdapterSurfacing::Prominent
-            } else if !command.engine_operations.is_empty() {
+            } else if !command.engine_operations.is_empty() || catalog_shell_route {
                 AdapterSurfacing::ShellPassthrough
             } else {
                 AdapterSurfacing::Gap
@@ -185,7 +192,7 @@ fn expected_surfacing_without_overrides(
         CapabilityAdapter::Lua => {
             if interfaces.contains("lua") {
                 AdapterSurfacing::Prominent
-            } else if !command.engine_operations.is_empty() {
+            } else if !command.engine_operations.is_empty() || catalog_shell_route {
                 AdapterSurfacing::ShellPassthrough
             } else {
                 AdapterSurfacing::Gap

@@ -427,7 +427,15 @@ mod tests {
     }
 
     fn wait(service: &CommandExecutionService, id: u64) -> Result<ShellRunResult, String> {
-        let deadline = Instant::now() + Duration::from_secs(10);
+        wait_with_timeout(service, id, Duration::from_secs(10))
+    }
+
+    fn wait_with_timeout(
+        service: &CommandExecutionService,
+        id: u64,
+        timeout: Duration,
+    ) -> Result<ShellRunResult, String> {
+        let deadline = Instant::now() + timeout;
         loop {
             if let Some(result) = service.take_result(id) {
                 return result;
@@ -617,7 +625,9 @@ mod tests {
                     options,
                 )
                 .unwrap();
-            let result = wait(&service, id).unwrap();
+            // Local preparation includes durable filesystem writes and tool
+            // preflight; this is a progress/journaling test, not a latency test.
+            let result = wait_with_timeout(&service, id, Duration::from_secs(60)).unwrap();
             assert!(result.output.get("binary_preflight").is_some());
             assert!(progress.load(Ordering::Relaxed) > 0);
             assert_eq!(engine.read().unwrap().journal_len(), expected_journal);

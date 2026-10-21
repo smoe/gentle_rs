@@ -149,6 +149,26 @@ an OS-dependent assumption portable.
   timeouts. Setting a timeout alone does not change the socket mode. Keep the
   listener's bounded accept loop; do not hide `WouldBlock` with longer deadlines
   or skip the real HTTP operation. See [Winsock accept semantics](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-accept#remarks).
+  Build fixture-only clients with `no_proxy()` so ambient Windows/system or
+  environment proxies cannot intercept loopback traffic. Keep production proxy
+  discovery unchanged; exercise an explicitly configured proxy separately with
+  a local proxy fixture. Do not mutate process-wide proxy variables in parallel
+  tests or require a developer to change their network configuration.
+  Read complete bounded request headers rather than assuming one TCP read is a
+  complete request. Classification fixtures have a 20-second request budget;
+  this is a deadlock guard, not a production latency assertion. The local
+  genome preparation progress/journaling test similarly permits 60 seconds for
+  durable filesystem work under parallel Windows load; other command-service
+  waits retain their 10-second budget. Production timeouts are unchanged.
+- **Absent external tools:** use `test_support::MissingToolFixture` to configure
+  an absolute, nonexistent executable in a private temporary directory. An
+  invented bare name still scans host PATH and can even launch an installed
+  program; Windows lookup/spawn occurs before the child-running timeout starts.
+  Assert the worker's exact configured path, `found=false`,
+  `version_probe_ok=false` and absent `resolved_path`. Keep scheduler gates and
+  restart/cancellation assertions; increasing a polling deadline does not remove
+  the host lookup. Use per-child PATH decoys for negative controls rather than
+  changing process-wide PATH in parallel Rust tests.
 - **Shell boundaries:** use `quote_shell_arg` when constructing GENtle shared
   shell lines; use `Command::arg` for native subprocess arguments and a JSON
   serializer for JSON. These are different grammars. Round-trip spaces,
@@ -166,6 +186,15 @@ an OS-dependent assumption portable.
   `canonical_root.join("..")` is not such a test on Windows. Exercise direct
   receipt readers as well as export destinations. Windows syntax tests require
   native Windows; backslashes are ordinary filename characters on Unix.
+  When walking ancestors, append the root separator before querying metadata
+  for a Windows prefix: a bare verbatim drive prefix such as `\\?\C:` is not
+  a filesystem node. Exercise normal and canonical/verbatim temporary paths
+  through the actual reader while retaining raw traversal and symlink refusal.
+- **Resource archives:** read local ATtRACT/MaxEnt ZIPs with the existing Rust
+  ZIP dependency so Windows does not need a separate `unzip` executable. Keep
+  stored/deflated and literal nested-member coverage, malformed/missing-member
+  refusal, exact LF/CRLF table bytes and directory-versus-ZIP table digest parity.
+  Reading a member must not extract archive paths into the filesystem.
 - **Path identity:** canonical paths can change prefix, case and short-name
   spelling. Assert diagnostics against the path actually stored in the manifest,
   and prove equivalence with `paths_refer_to_same_location` where appropriate.

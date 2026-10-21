@@ -34,6 +34,47 @@ const DEMO_REBASE_WITHREFM: &str = "<1>EcoRI\n<2>EcoRI\n<3>GAATTC (1/5)\n<7>N\n/
 const DEMO_JASPAR_PFM: &str =
     ">MA0001.1 TEST\nA [ 10 0 0 0 ]\nC [ 0 10 0 0 ]\nG [ 0 0 10 0 ]\nT [ 0 0 0 10 ]\n";
 
+/// An absent tool at an absolute, private path, with a scoped test override.
+///
+/// The directory lives as long as the override. A bare invented program name
+/// would still consult the host PATH and might find a real executable.
+#[cfg(test)]
+pub(crate) struct MissingToolFixture {
+    executable: String,
+    _override: crate::tool_overrides::ScopedToolOverrideGuard,
+    _directory: tempfile::TempDir,
+}
+
+#[cfg(test)]
+impl MissingToolFixture {
+    pub(crate) fn new(env_var: &str, file_name: &str) -> Self {
+        assert_eq!(Path::new(file_name).components().count(), 1);
+        assert_eq!(
+            Path::new(file_name).file_name(),
+            Some(std::ffi::OsStr::new(file_name))
+        );
+        let directory = tempfile::Builder::new()
+            .prefix("gentle missing tool ")
+            .tempdir()
+            .expect("private missing-tool directory");
+        let path = directory.path().join(file_name);
+        assert!(path.is_absolute());
+        assert!(!path.exists());
+        let executable = path.to_str().expect("UTF-8 fixture tool path").to_string();
+        let tool_override =
+            crate::tool_overrides::ScopedToolOverrideGuard::set(env_var, &executable);
+        Self {
+            executable,
+            _override: tool_override,
+            _directory: directory,
+        }
+    }
+
+    pub(crate) fn executable(&self) -> &str {
+        &self.executable
+    }
+}
+
 #[cfg(test)]
 pub fn transcript_assay_panel_adapter_fixture() -> (ProjectState, Operation) {
     let mut engine = GentleEngine::default();
@@ -743,7 +784,7 @@ fn zip_crc32(bytes: &[u8]) -> u32 {
 /// Write a minimal ZIP archive with stored members for tests.
 ///
 /// This avoids depending on a host `zip` binary while still exercising the
-/// production unzip-backed resource import paths.
+/// production ZIP resource import paths.
 pub fn write_stored_zip_archive(path: &Path, members: &[(&str, &[u8])]) {
     let mut out = Vec::new();
     let mut central = Vec::new();
