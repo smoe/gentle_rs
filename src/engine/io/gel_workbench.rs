@@ -227,8 +227,13 @@ impl GentleEngine {
                         .clone(),
                 );
             }
-            GelWorkbenchRequest::InspectAlgebra { profile_id } => {
-                output.algebra = Some(self.gel_algebra_presentation(&profile_id)?);
+            GelWorkbenchRequest::InspectAlgebra {
+                profile_id,
+                reference_profile_id,
+            } => {
+                output.algebra = Some(
+                    self.gel_algebra_presentation(&profile_id, reference_profile_id.as_deref())?,
+                );
             }
             GelWorkbenchRequest::Export(request) => {
                 let bytes = self.gel_workbench_export_bytes(&request)?;
@@ -293,11 +298,22 @@ impl GentleEngine {
         Ok(())
     }
 
-    fn gel_algebra_presentation(&self, id: &str) -> Result<GelAlgebraPresentation, EngineError> {
-        let mut presentation =
-            crate::gel_workbench::inspect_algebra(&self.state.gel_images.workbench, id)?;
+    fn gel_algebra_presentation(
+        &self,
+        id: &str,
+        reference_id: Option<&str>,
+    ) -> Result<GelAlgebraPresentation, EngineError> {
+        let mut presentation = crate::gel_workbench::inspect_algebra_with_reference(
+            &self.state.gel_images.workbench,
+            id,
+            reference_id,
+        )?;
         if presentation.verification == GelAlgebraVerification::Verified {
-            for profile in &presentation.inputs {
+            for profile in presentation
+                .inputs
+                .iter()
+                .chain(presentation.reference.iter().map(|r| &r.profile))
+            {
                 if profile.evidence_kind == GelEvidenceKind::SignedResidual {
                     continue;
                 }
@@ -331,6 +347,9 @@ impl GentleEngine {
                     presentation.contributions.clear();
                     break;
                 }
+            }
+            if presentation.verification != GelAlgebraVerification::Verified {
+                presentation.reference = None;
             }
         }
         Ok(presentation)
@@ -441,6 +460,11 @@ impl GentleEngine {
                 "comparison_display requires PDF export with at least one saved comparison; JSON retains frozen integrals",
             ));
         }
+        if request.algebra_reference_profile_id.is_some() && request.algebra_ids.len() != 1 {
+            return Err(EngineError::invalid_input(
+                "algebra_reference_profile_id requires exactly one selected algebra result; no reference pairing is inferred",
+            ));
+        }
         crate::gel_image::validate_label(&request.title, "report title")?;
         if request.analysis_ids.len() > 8
             || request.comparison_ids.len() > 8
@@ -462,7 +486,8 @@ impl GentleEngine {
         let mut algebra_sources = Vec::new();
         let mut algebra_numeric_sources = Vec::new();
         for id in &request.algebra_ids {
-            let presentation = self.gel_algebra_presentation(id)?;
+            let presentation =
+                self.gel_algebra_presentation(id, request.algebra_reference_profile_id.as_deref())?;
             if presentation.verification != GelAlgebraVerification::Verified {
                 return Err(EngineError::invalid_input(format!(
                     "Algebra export refused ({:?}): {}",
@@ -470,7 +495,11 @@ impl GentleEngine {
                     presentation.reason.as_deref().unwrap_or("unverifiable")
                 )));
             }
-            for profile in &presentation.inputs {
+            for profile in presentation
+                .inputs
+                .iter()
+                .chain(presentation.reference.iter().map(|r| &r.profile))
+            {
                 if let Some(summary) = self.verified_gel_numeric_source(profile)? {
                     if !algebra_numeric_sources.contains(&summary) {
                         algebra_numeric_sources.push(summary);
@@ -501,6 +530,9 @@ impl GentleEngine {
                         .iter()
                         .map(|c| c.weights.len())
                         .sum::<usize>()
+                    + r.reference
+                        .as_ref()
+                        .map_or(0, |p| p.profile.weights.len() + p.series.weights.len())
             })
             .sum();
         if algebra_bins > 1_280_000 {

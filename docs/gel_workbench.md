@@ -254,7 +254,44 @@ remain readable and can verify without migration. New `import_profile` requests
 cannot claim `signed_residual`; use the algebra operation. Legacy/unverifiable
 records remain inspectable, but **report export refuses them**.
 
-Unrelated reference overlays and fitted/manual display factors remain deferred. Ordinary
+### Unscaled Custom-Only Reference Panel
+
+`inspect_algebra` accepts optional `reference_profile_id`. Select a saved
+non-residual profile explicitly; its custom-only role is caller-declared, not
+verified from a lane name. The result's optional `reference` retains that full
+profile and an engine-prepared native-bin series. It shares the residual's
+size range but uses a separately labelled Y axis and its own units/measure.
+Height is the original weight / original bin width, even for partially visible
+bins. There is no rebinning, display multiplier, fit, normalization, added
+algebra term or claim that amplitudes/priming conditions are comparable.
+Zero and missing/out-of-coverage bins stay distinct; no reference CDF/QQ/test
+is introduced. The source digest, processing/calibration and warnings are
+included separately in the provenance appendix and JSON.
+
+Export accepts optional `algebra_reference_profile_id` only with exactly one
+`algebra_ids` entry, for PDF or JSON. Missing/invalid/residual reference,
+incompatible size kind, disjoint range, unsafe density or changed retained
+source fails before publication. Verified means the existing internal/source
+consistency checks, not re-extraction of image-derived lane profiles or proof
+of custom priming. A failed residual never acquires a trusted reference panel.
+Reference bins count against the aggregate export budget. Omitted fields keep
+the previous inspection/export behavior; stored residual/receipt bytes do not
+change. This is display composition, not a new subtraction decision.
+
+In the GUI choose **Optional custom-only reference** and prepare the saved
+algebra inspection again. The worker prepares/rasterizes the shared SVG;
+reference selection joins result/revision/project in the cache key, so changing
+or clearing it rejects old and late previews. PDF export uses that explicit
+selection only when exactly the inspected residual is selected. Clear it for
+unpaired/multiple algebra exports. No reference is guessed from adjacent lanes.
+
+```sh
+gentle_cli --state gels.json gel-image workbench '{"action":"inspect_algebra","profile_id":"saved-residual","reference_profile_id":"saved-custom-only"}'
+gentle_cli --state gels.json gel-image workbench '{"action":"export","path":"new-reference.pdf","title":"Unscaled reference; no enrichment claim","analysis_ids":[],"algebra_ids":["saved-residual"],"algebra_reference_profile_id":"saved-custom-only"}'
+```
+
+Real-data subtraction coefficients, background/marker policies and cross-ladder
+registration remain undecided. Fitted/manual display factors remain deferred. Ordinary
 comparisons now offer the separate, explicit display mode below; the signed
 algebra v1 replay and its probability-summary prohibition are unchanged.
 

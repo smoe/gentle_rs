@@ -256,6 +256,15 @@ pub struct GelAlgebraContribution {
     pub density: Vec<Option<f64>>,
 }
 
+/// Caller-selected custom-only reference, not an algebra operand. Native bins
+/// and their unscaled densities stay separate from the residual grid/axis.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct GelAlgebraReferencePanel {
+    pub profile: GelProfile,
+    pub series: GelAlgebraSeries,
+}
+
 /// Read-only, bounded replay of algebra v1. Verification means internal
 /// consistency, not source authenticity or scientific acceptance. Failed
 /// verification carries no plot series. Inputs include nested dependencies;
@@ -274,6 +283,8 @@ pub struct GelAlgebraPresentation {
     /// coefficients remain in the request/provenance but have no plotted term.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub contributions: Vec<GelAlgebraContribution>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference: Option<GelAlgebraReferencePanel>,
     pub inputs: Vec<GelProfile>,
     pub warnings: Vec<String>,
 }
@@ -300,6 +311,10 @@ pub struct GelWorkbenchExportRequest {
     /// PDF comparisons only. Omission preserves the legacy integral display.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub comparison_display: Option<GelComparisonDisplay>,
+    /// Explicit reference for exactly one selected algebra result; no inferred
+    /// pairing, arithmetic coefficient, normalization or display multiplier.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub algebra_reference_profile_id: Option<String>,
     pub title: String,
 }
 
@@ -308,7 +323,9 @@ pub struct GelWorkbenchExportRequest {
 pub enum GelWorkbenchRequest {
     ImportSource(GelSourceImportRequest),
     DetectBands(GelDetectRequest),
-    ImportProfile { profile: GelProfile },
+    ImportProfile {
+        profile: GelProfile,
+    },
     ImportProfileFile(GelProfileFileRequest),
     ExtractProfile(GelExtractProfileRequest),
     Compare(GelCompareRequest),
@@ -316,9 +333,17 @@ pub enum GelWorkbenchRequest {
     // An empty struct (not a unit variant) makes Serde enforce unknown fields
     // on this internally tagged action too. Its JSON remains {"action":"inspect"}.
     Inspect {},
-    InspectProfile { profile_id: String },
-    InspectComparison { comparison_id: String },
-    InspectAlgebra { profile_id: String },
+    InspectProfile {
+        profile_id: String,
+    },
+    InspectComparison {
+        comparison_id: String,
+    },
+    InspectAlgebra {
+        profile_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reference_profile_id: Option<String>,
+    },
     Export(GelWorkbenchExportRequest),
 }
 
@@ -379,6 +404,33 @@ impl GelWorkbenchStore {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn algebra_reference_is_optional_read_only_and_has_no_scaling_parameter() {
+        for value in [
+            json!({"action":"inspect_algebra", "profile_id":"r"}),
+            json!({"action":"inspect_algebra", "profile_id":"r", "reference_profile_id":"custom"}),
+        ] {
+            let request: GelWorkbenchRequest = serde_json::from_value(value.clone()).unwrap();
+            assert!(!request.mutates());
+            assert_eq!(serde_json::to_value(request).unwrap(), value);
+        }
+        let legacy =
+            json!({"path":"r.json", "title":"synthetic", "analysis_ids":[], "comparison_ids":[]});
+        let request: GelWorkbenchExportRequest = serde_json::from_value(legacy).unwrap();
+        assert!(request.algebra_reference_profile_id.is_none());
+        assert!(
+            serde_json::to_value(request)
+                .unwrap()
+                .get("algebra_reference_profile_id")
+                .is_none()
+        );
+        for key in ["reference_scale", "display_factor", "allow_unverified"] {
+            let mut value = json!({"action":"inspect_algebra", "profile_id":"r", "reference_profile_id":"custom"});
+            value[key] = json!(1.0);
+            assert!(serde_json::from_value::<GelWorkbenchRequest>(value).is_err());
+        }
+    }
 
     #[test]
     fn legacy_gel_store_keeps_its_bytes_without_a_workbench() {

@@ -52,6 +52,206 @@ fn store() -> GelWorkbenchStore {
     }
 }
 
+fn reference_store() -> GelWorkbenchStore {
+    let mut s = store();
+    let mut p = profile("custom_only", 0.0);
+    p.evidence_kind = GelEvidenceKind::Synthetic;
+    p.signal_units = "different_declared_area".into();
+    p.edges = vec![90.0, 125.0, 175.0, 250.0, 350.0];
+    p.weights = vec![Some(70.0), None, Some(150.0), Some(0.0)];
+    p.processing
+        .push("Synthetic custom-only role; not experimental priming".into());
+    s.profiles.insert(p.id.clone(), Arc::new(p));
+    s
+}
+
+#[test]
+fn algebra_reference_keeps_native_bins_and_leaves_v1_residual_bytes_unchanged() {
+    let s = reference_store();
+    let before = serde_json::to_value(&s).unwrap();
+    let plain = inspect_algebra(&s, "r").unwrap();
+    assert_eq!(
+        plain,
+        inspect_algebra_with_reference(&s, "r", None).unwrap()
+    );
+    assert!(
+        serde_json::to_value(&plain)
+            .unwrap()
+            .get("reference")
+            .is_none()
+    );
+    let with = inspect_algebra_with_reference(&s, "r", Some("custom_only")).unwrap();
+    assert_eq!(with.verification, GelAlgebraVerification::Verified);
+    assert_eq!(with.series, plain.series);
+    assert_eq!(with.request, plain.request);
+    assert_eq!(with.contributions, plain.contributions);
+    assert_eq!(with.inputs, plain.inputs);
+    assert_eq!(with.input_digest, plain.input_digest);
+    let reference = with.reference.unwrap();
+    assert_eq!(reference.profile, *s.profiles["custom_only"]);
+    assert_eq!(
+        reference.series.edges,
+        vec![90.0, 125.0, 175.0, 250.0, 350.0]
+    );
+    assert_eq!(
+        reference.series.weights,
+        vec![Some(70.0), None, Some(150.0), Some(0.0)]
+    );
+    assert_eq!(
+        reference.series.density,
+        vec![Some(2.0), None, Some(2.0), Some(0.0)]
+    );
+    assert_eq!(reference.series.signal_units, "different_declared_area");
+    assert_eq!(serde_json::to_value(&s).unwrap(), before);
+    let reopened: GelWorkbenchStore = serde_json::from_value(before).unwrap();
+    assert_eq!(
+        inspect_algebra_with_reference(&s, "r", Some("custom_only")).unwrap(),
+        inspect_algebra_with_reference(&reopened, "r", Some("custom_only")).unwrap()
+    );
+}
+
+#[test]
+fn algebra_reference_refuses_invalid_geometry_and_keeps_zero_distinct_from_missing() {
+    let s = reference_store();
+    for id in ["missing", "r", ""] {
+        assert!(inspect_algebra_with_reference(&s, "r", Some(id)).is_err());
+    }
+    for mode in 0..7 {
+        let mut s = reference_store();
+        let p = Arc::make_mut(s.profiles.get_mut("custom_only").unwrap());
+        match mode {
+            0 => p.size_kind = GelSizeKind::SdsProteinKda,
+            1 => {
+                p.edges = vec![400.0, 500.0];
+                p.weights = vec![Some(1.0)];
+            }
+            2 => p.weights[0] = Some(-1.0),
+            3 => {
+                p.edges = vec![100.0, 100.0 + 1e-12];
+                p.weights = vec![Some(f64::MAX)];
+            }
+            4 => {
+                p.edges = vec![100.0, 1e308];
+                p.weights = vec![Some(f64::from_bits(1))];
+            }
+            5 => p.weights.fill(Some(0.0)),
+            _ => p.weights.fill(None),
+        }
+        let result = inspect_algebra_with_reference(&s, "r", Some("custom_only"));
+        if mode < 5 {
+            assert!(result.is_err());
+        } else {
+            let reference = result.unwrap().reference.unwrap();
+            assert!(
+                reference
+                    .series
+                    .density
+                    .iter()
+                    .all(|v| *v == if mode == 5 { Some(0.0) } else { None })
+            );
+        }
+    }
+    let mut s = reference_store();
+    Arc::make_mut(s.profiles.get_mut("r").unwrap()).weights[0] = Some(999.0);
+    let report = inspect_algebra_with_reference(&s, "r", Some("custom_only")).unwrap();
+    assert_eq!(report.verification, GelAlgebraVerification::Mismatch);
+    assert!(report.series.is_none() && report.reference.is_none());
+}
+
+#[test]
+fn algebra_reference_export_is_explicit_read_only_and_never_infers_pairing() {
+    let mut e = engine(reference_store());
+    let before = serde_json::to_value(e.state()).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    for ids in [vec![], vec!["r".into(), "r".into()], vec!["r".into()]] {
+        let path = dir.path().join(format!("{}-results.json", ids.len()));
+        let result = e.apply(Operation::GelWorkbench {
+            request: Box::new(GelWorkbenchRequest::Export(GelWorkbenchExportRequest {
+                path: path.display().to_string(),
+                title: "Synthetic reference only".into(),
+                analysis_ids: vec![],
+                comparison_ids: vec![],
+                algebra_ids: ids.clone(),
+                comparison_display: None,
+                algebra_reference_profile_id: Some("custom_only".into()),
+            })),
+        });
+        if ids.len() != 1 {
+            assert!(result.unwrap_err().message.contains("exactly one"));
+            assert!(!path.exists());
+        } else {
+            result.unwrap();
+            let json: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+            assert_eq!(
+                json["algebra"][0]["reference"]["profile"]["id"],
+                "custom_only"
+            );
+            assert_eq!(
+                json["algebra"][0]["reference"]["series"]["density"],
+                serde_json::json!([2.0, null, 2.0, 0.0])
+            );
+        }
+    }
+    assert_eq!(before, serde_json::to_value(e.state()).unwrap());
+}
+
+#[test]
+fn algebra_reference_revalidates_retained_numeric_source_before_plot_or_export() {
+    let mut s = store();
+    let request = GelProfileFileRequest {
+        path: "synthetic.csv".into(),
+        profile_id: "custom_only".into(),
+        label: "Synthetic CSV".into(),
+        run_id: "synthetic".into(),
+        lane_id: "custom".into(),
+        size_kind: GelSizeKind::LinearDnaBp,
+        signal_units: "synthetic_area".into(),
+        measure: "synthetic_bin_integral".into(),
+    };
+    let (p, mut source) =
+        super::super::import_profile_csv(&request, b"left_edge,right_edge,weight\n100,300,10\n")
+            .unwrap();
+    source.original_base64 = "dGFtcGVyZWQ=".into();
+    s.profiles.insert(p.id.clone(), Arc::new(p));
+    s.numeric_sources
+        .insert("custom_only".into(), Arc::new(source));
+    let mut e = engine(s);
+    let report = e
+        .apply(Operation::GelWorkbench {
+            request: Box::new(GelWorkbenchRequest::InspectAlgebra {
+                profile_id: "r".into(),
+                reference_profile_id: Some("custom_only".into()),
+            }),
+        })
+        .unwrap()
+        .gel_workbench
+        .unwrap()
+        .algebra
+        .unwrap();
+    assert_eq!(report.verification, GelAlgebraVerification::Mismatch);
+    assert!(
+        report.series.is_none() && report.reference.is_none() && report.contributions.is_empty()
+    );
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("refused.json");
+    assert!(
+        e.apply(Operation::GelWorkbench {
+            request: Box::new(GelWorkbenchRequest::Export(GelWorkbenchExportRequest {
+                path: path.display().to_string(),
+                title: "Synthetic refusal".into(),
+                analysis_ids: vec![],
+                comparison_ids: vec![],
+                algebra_ids: vec!["r".into()],
+                comparison_display: None,
+                algebra_reference_profile_id: Some("custom_only".into()),
+            }))
+        })
+        .is_err()
+    );
+    assert!(!path.exists());
+}
+
 fn engine(store: GelWorkbenchStore) -> GentleEngine {
     let original = GentleEngine::new();
     let mut value = serde_json::to_value(original.state()).unwrap();
@@ -71,6 +271,7 @@ fn export(
             comparison_ids: vec![],
             algebra_ids: ids,
             comparison_display: None,
+            algebra_reference_profile_id: None,
             title: "Synthetic signed algebra; not experimental enrichment".into(),
         })),
     })
@@ -572,6 +773,7 @@ fn algebra_import_and_failed_verification_never_create_a_report_or_mutate_state(
             .apply(Operation::GelWorkbench {
                 request: Box::new(GelWorkbenchRequest::InspectAlgebra {
                     profile_id: "r".into(),
+                    reference_profile_id: None,
                 }),
             })
             .unwrap()
@@ -647,12 +849,20 @@ fn algebra_tutorial_commands_replay_through_the_shared_shell() {
         .split("<!-- gel-algebra-weighted-lesson:end -->")
         .next()
         .unwrap();
+    let reference_lesson = prose
+        .split("<!-- gel-algebra-reference-lesson:start -->")
+        .nth(1)
+        .unwrap()
+        .split("<!-- gel-algebra-reference-lesson:end -->")
+        .next()
+        .unwrap();
     let mut e = GentleEngine::new();
     let dir = tempfile::tempdir().unwrap();
     let mut count = 0;
     for line in lesson
         .lines()
         .chain(weighted_lesson.lines())
+        .chain(reference_lesson.lines())
         .filter(|l| l.starts_with("gentle_cli "))
     {
         let shell = line
@@ -668,7 +878,11 @@ fn algebra_tutorial_commands_replay_through_the_shared_shell() {
             assert_eq!(profile.evidence_kind, GelEvidenceKind::Synthetic);
             assert_eq!(
                 profile.source_sha256,
-                sha256_hex_bytes(b"GENtle synthetic gel algebra v1")
+                sha256_hex_bytes(if profile.id == "teaching_custom_only" {
+                    b"GENtle synthetic gel reference panel v1".as_slice()
+                } else {
+                    b"GENtle synthetic gel algebra v1".as_slice()
+                })
             );
         }
         if let GelWorkbenchRequest::Export(request) = &mut request {
@@ -686,7 +900,36 @@ fn algebra_tutorial_commands_replay_through_the_shared_shell() {
         crate::engine_shell::execute_shell_command(&mut e, &command).unwrap();
         count += 1;
     }
-    assert_eq!(count, 8);
+    assert_eq!(count, 12);
+    let reference = inspect_algebra_with_reference(
+        &e.state().gel_images.workbench,
+        "teaching_residual",
+        Some("teaching_custom_only"),
+    )
+    .unwrap()
+    .reference
+    .unwrap();
+    assert_eq!(
+        reference.series.edges,
+        vec![90.0, 125.0, 175.0, 250.0, 350.0]
+    );
+    assert_eq!(
+        reference.series.density,
+        vec![Some(2.0), None, Some(2.0), Some(0.0)]
+    );
+    let reference_json: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(dir.path().join("reference.json")).unwrap()).unwrap();
+    assert_eq!(
+        reference_json["algebra"][0]["reference"]["profile"]["id"],
+        "teaching_custom_only"
+    );
+    assert!(
+        lopdf::Document::load(dir.path().join("reference.pdf"))
+            .unwrap()
+            .get_pages()
+            .len()
+            >= 2
+    );
     let p = inspect_algebra(&e.state().gel_images.workbench, "teaching_residual").unwrap();
     assert_eq!(
         p.contributions[0].density,

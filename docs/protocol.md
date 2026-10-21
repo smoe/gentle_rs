@@ -498,7 +498,7 @@ digest and evidence/measure/units. Comparisons freeze both full profiles and
 the explicit common-support range. Signed residuals do not define probability
 distributions; `p_value` remains null. See [the contract, examples and limits](gel_workbench.md).
 
-`InspectAlgebra { profile_id }` is a read-only `GelWorkbenchRequest` action.
+`InspectAlgebra { profile_id, reference_profile_id? }` is a read-only `GelWorkbenchRequest` action.
 `GelWorkbenchResult.algebra` optionally returns a `GelAlgebraPresentation` with
 typed verification, an engine-prepared signed-density series and all saved
 dependency snapshots. It does not add stored state. Export's optional defaulted
@@ -525,6 +525,18 @@ presentations without this field remain readable as residual-only, not evidence
 that the operands were zero. Re-inspection produces the new projection without
 changing frozen algebra-v1 bytes. The existing aggregate export-bin limit now
 counts contributions too; failed verification publishes no contribution series.
+
+Optional `reference_profile_id` explicitly selects one non-residual custom-only
+reference. The additive/default-absent `GelAlgebraPresentation.reference` holds
+`GelAlgebraReferencePanel { profile, series }`: full provenance and native-bin
+unscaled density, separate from `inputs`, the frozen receipt and contributions.
+Same size kind/overlapping range are required, not equal signal units: the
+reference has a separate labelled Y axis and no amplitude-comparability claim.
+PDF/JSON export's optional `algebra_reference_profile_id` requires exactly one
+selected algebra result; source validation and aggregate bin/page limits still
+apply. No scaling parameter or new operation/confirmation exception is added.
+Missing fields preserve old JSON; failed source verification clears all plot
+series, including the reference. Image validation is not lane re-extraction.
 
 
 ## TATA-Box Evidence

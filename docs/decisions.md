@@ -1687,8 +1687,15 @@ and retain each nonzero term's identity, order and own gaps. They share one
 axis with the residual and never imply that missing residual coverage is known.
 Zero terms remain provenance/grid-only; repeated IDs are not collapsed.
 This additive presentation changes no frozen algebra-v1 bytes, coefficients,
-comparison pages or biological interpretation. Unrelated reference overlays
-and fitted/manual display multipliers require separate approval.
+comparison pages or biological interpretation. Owner approval, 2026-10-20:
+an explicitly selected non-residual custom-only reference may occupy a separate,
+unscaled native-bin density panel with its own labelled Y axis and provenance.
+It is not an operand or proven priming identity. Size kind/range and retained
+sources must validate; no units conversion, rebinning, amplitude matching or
+display multiplier is implicit. Pair export with exactly one selected residual;
+reference selection participates in worker/cache identity. Real-data subtraction
+coefficients, background/marker policy and cross-ladder acceptance remain
+undecided. Fitted/manual display multipliers still require separate approval.
 
 ## Advisory Cloning Time And Cost Boundaries
 
