@@ -71,6 +71,57 @@ fn replace() -> Vec<u8> {
     .unwrap()
 }
 
+fn discovered_fixture_index(context: &Context) -> ExternalServiceProviderConfigIndex {
+    let sources = context
+        .candidates
+        .iter()
+        .filter(|source| source.path.try_exists().expect("fixture source metadata"))
+        .cloned()
+        .collect::<Vec<_>>();
+    ExternalServiceProviderConfigIndex::from_sources(&sources, "synthetic".into()).unwrap()
+}
+
+#[cfg(windows)]
+#[test]
+fn provider_update_windows_drive_and_verbatim_paths_preserve_raw_traversal_checks() {
+    let (temp, _context) = fixture();
+    let plain = temp.path().join("built-in.json");
+    let canonical = plain.canonicalize().unwrap();
+    let expected = fs::read(&plain).unwrap();
+    for path in [&plain, &canonical] {
+        assert_eq!(
+            checked_path(path).unwrap(),
+            std::path::absolute(path).unwrap()
+        );
+        let (_, bytes) = read_json::<Value>(path).unwrap();
+        assert_eq!(bytes, expected);
+    }
+
+    let mut raw = temp.path().as_os_str().to_os_string();
+    raw.push("\\unused\\..\\built-in.json");
+    let traversal = PathBuf::from(raw);
+    assert!(
+        traversal
+            .components()
+            .any(|part| matches!(part, std::path::Component::ParentDir))
+    );
+    assert!(
+        checked_path(&traversal)
+            .unwrap_err()
+            .starts_with("catalog_update:unsafe_path:")
+    );
+
+    let mut raw = canonical.parent().unwrap().as_os_str().to_os_string();
+    raw.push("\\unused\\..\\built-in.json");
+    let traversal = PathBuf::from(raw);
+    assert!(traversal.components().any(|part| part.as_os_str() == ".."));
+    assert!(
+        checked_path(&traversal)
+            .unwrap_err()
+            .starts_with("catalog_update:unsafe_path:")
+    );
+}
+
 #[test]
 fn provider_update_preview_apply_retains_raw_history_and_emits_receipt() {
     let (_temp, context) = fixture();
@@ -84,9 +135,7 @@ fn provider_update_preview_apply_retains_raw_history_and_emits_receipt() {
     let history = Path::new(&receipt.history_directory);
     assert!(!history.join("previous.bin").exists()); // previously absent, not empty
     assert_eq!(fs::read(history.join("proposed.json")).unwrap(), bytes);
-    let index =
-        ExternalServiceProviderConfigIndex::from_sources(&context.candidates, "synthetic".into())
-            .unwrap();
+    let index = discovered_fixture_index(&context);
     assert_eq!(
         index.provider("synthetic").unwrap().record.display_name,
         "Replacement"
@@ -112,9 +161,7 @@ fn provider_update_withdrawal_masks_lower_record_and_legacy_overlay_still_works(
         EXTERNAL_SERVICE_PROVIDER_CONFIG_WITHDRAWALS_SCHEMA
     );
     apply_in(&preview, &preview.preview_sha256, &context).unwrap();
-    let index =
-        ExternalServiceProviderConfigIndex::from_sources(&context.candidates, "synthetic".into())
-            .unwrap();
+    let index = discovered_fixture_index(&context);
     assert!(index.provider("synthetic").is_none());
     assert!(index.provider_ids().is_empty());
     assert!(index.to_provider_catalog(0).providers.is_empty());
@@ -126,9 +173,7 @@ fn provider_update_withdrawal_masks_lower_record_and_legacy_overlay_still_works(
         catalog_bytes(&catalog(vec![record("synthetic", "Restored")])).unwrap(),
     )
     .unwrap();
-    let index =
-        ExternalServiceProviderConfigIndex::from_sources(&context.candidates, "synthetic".into())
-            .unwrap();
+    let index = discovered_fixture_index(&context);
     assert_eq!(
         index.provider("synthetic").unwrap().record.display_name,
         "Restored"

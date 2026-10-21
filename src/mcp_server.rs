@@ -6112,14 +6112,14 @@ mod tests {
         let td = tempdir().expect("isolated MCP state directory");
         let state_path = td.path().join("state.json");
         let state_path = state_path.to_str().unwrap();
-        // Synthetic missing tools: deferred preflight must not depend on host BLAST.
-        let _blastn = crate::tool_overrides::ScopedToolOverrideGuard::set(
+        // Synthetic absent files: deferred preflight must not consult host PATH.
+        let blastn = crate::test_support::MissingToolFixture::new(
             "GENTLE_BLASTN_BIN",
-            "__gentle_mcp_async_missing_blastn__",
+            "__gentle_mcp_async_missing_blastn__.exe",
         );
-        let _makeblastdb = crate::tool_overrides::ScopedToolOverrideGuard::set(
+        let makeblastdb = crate::test_support::MissingToolFixture::new(
             "GENTLE_MAKEBLASTDB_BIN",
-            "__gentle_mcp_async_missing_makeblastdb__",
+            "__gentle_mcp_async_missing_makeblastdb__.exe",
         );
         crate::engine_shell::clear_blast_async_jobs_for_test();
         let started = run_tool(
@@ -6174,14 +6174,16 @@ mod tests {
         };
 
         assert_eq!(expected_status["job"]["state"], "failed");
-        assert_eq!(
-            expected_status["job"]["binary_preflight"]["blastn"]["executable"],
-            "__gentle_mcp_async_missing_blastn__"
-        );
-        assert_eq!(
-            expected_status["job"]["binary_preflight"]["makeblastdb"]["executable"],
-            "__gentle_mcp_async_missing_makeblastdb__"
-        );
+        for (tool, expected) in [
+            ("blastn", blastn.executable()),
+            ("makeblastdb", makeblastdb.executable()),
+        ] {
+            let probe = &expected_status["job"]["binary_preflight"][tool];
+            assert_eq!(probe["executable"], expected);
+            assert_eq!(probe["found"], false);
+            assert_eq!(probe["version_probe_ok"], false);
+            assert!(probe["resolved_path"].is_null());
+        }
 
         let mcp_status = run_tool(
             state_path,
