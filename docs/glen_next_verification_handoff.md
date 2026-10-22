@@ -1,5 +1,38 @@
 # Glen: Next Verification And Return
 
+## Glossary And All-Features Follow-Up, 2026-10-22
+
+Glen reports two independent primary failures at `70969635`: ordinary Linux/
+Windows CI `39739876557` stops at the glossary smoke fixture, and a separate
+Linux all-features check reproduces E0521 in the protocol overview. Later CI
+skips do not prove a third failure. The fixes below have source-only checks,
+not local Rust or native acceptance.
+
+On the next ordinary owner-pushed source, use an isolated checkout/target and
+run these bounded checks; no interim freeze, bundle or dispatch is requested:
+
+```sh
+cargo test -q --locked --lib -j1 engine_shell::tests::glossary_ -- --test-threads=1
+cargo test --locked --lib -j1 --features gui-test-support app::planning_protocol_ui::tests:: -- --test-threads=1
+cargo check -q --locked --tests --features gui-test-support
+cargo check -q --locked --all-features
+```
+
+Require the numeric/fractional pitch, `--clear` and invalid-input regression,
+and the feature-enabled protocol-view regression: one static step widget ID,
+distinct hashed subject scopes and unchanged project state. Raw step IDs are
+not legal semantic subject scopes. Observe normal CI through its later gates,
+not just the previously failing step. Record actual source/toolchain/platform,
+commands, failures/skips and retained logs; report through Steffen.
+
+Preserve Glen's reported `70969635` passes separately: root test-target check,
+protocol labware 11/11, renderer labware 2/2, root labware 16/16, rack mutation
+2/2 and planning 20/20. Do not repeat those surveys solely to relabel them.
+Legacy raw baselines, source-matched meshes and native carrier controls remain
+open; missing OpenSCAD skips are not acceptance. The proposed commercial
+product/offer/protocol slice and further bench models are separate work, not
+part of these CI repairs. Historical procedures below remain source-scoped.
+
 ## Catalog-Parity Repair And Gel Return, 2026-10-20
 
 Preserve Glen's [scoped gel pass and partial native return at bb1686bd](gel_workbench.md#integrated-linux-return-at-bb1686bd-2026-10-20).

@@ -2487,10 +2487,11 @@ Patterns menu:
     unavailable, never fabricated bench or material flows. Stale/tampered
     diagrams fail rebinding. The content-keyed view cache never trusts pointer
     identity or a supplied digest alone. Semantic IDs `routine.protocol.open`,
-    `.fit`, `.copy_svg`, `.copy_json` and `.step.STEP_ID` support later native
-    acceptance (`.explanation` returns to the text tab). Both the graph and
-    its detail panel scroll in a small window. No lineage entry, run, supplier
-    call or project edit results.
+    `.fit`, `.copy_svg`, `.copy_json` and static `.step` support later native
+    acceptance; step identity is a separate pseudonymous subject scope, not a
+    dynamically allocated widget ID (`.explanation` returns to the text tab).
+    Both the graph and its detail panel scroll in a small window. No lineage
+    entry, run, supplier call or project edit results.
   - when Routine Assistant is opened from a sequence window with construct
     reasoning, that same strip now keeps the active `construct reasoning`
     sequence id plus variant effect tags / suggested assay ids visible, and

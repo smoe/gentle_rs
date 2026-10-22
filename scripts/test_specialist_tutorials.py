@@ -182,6 +182,17 @@ class SpecialistSourceTests(unittest.TestCase):
         self.assertIn("routine.protocol.copy_svg",ui)
         self.assertNotIn("engine.apply(",ui)
 
+    def test_protocol_overview_semantic_ids_are_static_and_subjects_are_pseudonymous(self):
+        source = (ROOT / "src/app/planning_protocol_ui.rs").read_text(encoding="utf-8")
+        for text in (source, source.replace("\n", "\r\n")):
+            self.assertRegex(text, r"fn semantic\([^\n]*id: &'static str")
+            helper = text.split("fn semantic(", 1)[1].split("pub(super) fn show(", 1)[0]
+            self.assertIn("pseudonymous_subject_scope(&[id, subject])", helper)
+            self.assertIn("scope.as_deref()", helper)
+            self.assertRegex(text, r'&response,\s*"routine\.protocol\.step",\s*Some\(&node\.step\.step_id\)')
+            self.assertNotIn('format!("routine.protocol.step.', text)
+            self.assertIn("fn protocol_overview_semantic_steps_have_static_ids_and_distinct_scopes()", text)
+
     def test_cloning_planning_guide_and_protocol_supplier_scope(self):
         stem = "09-04_cloning_time_cost_and_protocol_suppliers"
         source = read_json(TUTORIALS / "sources" / f"{stem}.json")

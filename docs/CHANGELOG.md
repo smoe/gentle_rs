@@ -1,5 +1,27 @@
 # GENtle Changelog
 
+## 2026-10-22 - Keep Protocol-Overview GUI Identities Static And Pseudonymous
+
+- Address Glen's independent E0521 report at `70969635`: the semantic helper
+  accepted a borrowed dynamic ID even though `GuiTestId` requires a static
+  token. Require `&'static str` and use `routine.protocol.step` for every node.
+  Keep each step in its separate hashed subject scope. Raw step IDs would
+  violate the semantic registry's privacy assertion even after fixing E0521.
+- Author a feature-enabled Rust regression through the actual protocol view:
+  multiple steps retain one static widget ID, distinct pseudonymous scopes,
+  the owning window and unchanged project state. Keep egui interaction IDs,
+  selection behavior, reports and engine/planning logic unchanged.
+- An LF/CRLF source guard fails on the old implementation and passes with the
+  repair. Update the GUI identity reference and bounded Glen handoff, retaining
+  his reported labware/planning/test-target passes at their actual source.
+  The two primary CI repairs are not new product/protocol scope or permission
+  to repeat completed surveys. External Rust/all-features/normal CI and native
+  acceptance remain pending; no local Rust, push, dispatch or provider call.
+- Verification: 101 offline specialist-source/tutorial-checkout/labware-source
+  tests pass with no skips, as do scoped rustfmt and whitespace. Session-close
+  reports 4 OK, 2 expected dirty-worktree/manual-plan warnings and 0 failures;
+  the roadmap remains 400 lines. No Rust test, build or compiler check ran here.
+
 ## 2026-10-22 - Repair The Carrier-Pitch Glossary Smoke Fixture
 
 - Glen reports normal CI run `39739876557` fails the glossary filter on Linux

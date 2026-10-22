@@ -15,16 +15,20 @@ struct ViewState {
     selected: Option<String>,
 }
 
-fn semantic(response: &egui::Response, id: &str, subject: Option<&str>, selected: bool) {
+fn semantic(response: &egui::Response, id: &'static str, subject: Option<&str>, selected: bool) {
     #[cfg(feature = "gui-test-support")]
-    crate::gui_test_support::register_response(
-        response,
-        id,
-        "window.routine_assistant",
-        subject,
-        crate::gui_test_support::GuiTestWidgetKind::Button,
-        selected,
-    );
+    {
+        let scope = subject
+            .map(|subject| crate::gui_test_support::pseudonymous_subject_scope(&[id, subject]));
+        crate::gui_test_support::register_response(
+            response,
+            id,
+            "window.routine_assistant",
+            scope.as_deref(),
+            crate::gui_test_support::GuiTestWidgetKind::Button,
+            selected,
+        );
+    }
     #[cfg(not(feature = "gui-test-support"))]
     let _ = (response, id, subject, selected);
 }
@@ -196,7 +200,7 @@ pub(super) fn show(ui: &mut egui::Ui, expected_routine: &str, output: Option<&se
                                 .on_hover_text(node_details(node));
                             semantic(
                                 &response,
-                                &format!("routine.protocol.step.{}", node.step.step_id),
+                                "routine.protocol.step",
                                 Some(&node.step.step_id),
                                 selected,
                             );
@@ -235,6 +239,73 @@ pub(super) fn show(ui: &mut egui::Ui, expected_routine: &str, output: Option<&se
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "gui-test-support")]
+    #[test]
+    fn protocol_overview_semantic_steps_have_static_ids_and_distinct_scopes() {
+        // Bundled synthetic bench defaults, not a native GUI acceptance run.
+        let mut engine = crate::engine::GentleEngine::default();
+        let before = serde_json::to_value(engine.state()).unwrap();
+        let command = crate::engine_shell::parse_shell_line(
+            "routines explain restriction.digest_ligate_extract_sticky",
+        )
+        .unwrap();
+        let output = crate::engine_shell::execute_shell_command(&mut engine, &command)
+            .unwrap()
+            .output;
+        let report = from_explanation(&output).unwrap();
+        assert_eq!(report.status, ProtocolOverviewStatus::Available);
+        assert!(report.nodes.len() > 1);
+        let ctx = egui::Context::default();
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1200.0, 1000.0),
+            )),
+            ..Default::default()
+        });
+        crate::gui_test_support::begin_frame(&ctx);
+        crate::egui_compat::show_central_panel_for_test_context(
+            &ctx,
+            egui::CentralPanel::default(),
+            |ui| {
+                show(
+                    ui,
+                    "restriction.digest_ligate_extract_sticky",
+                    Some(&output),
+                )
+            },
+        );
+        let snapshot = crate::gui_test_support::snapshot(&ctx);
+        let _ = crate::egui_compat::end_test_pass(&ctx);
+        let steps = snapshot
+            .items
+            .iter()
+            .filter(|item| item.semantic_id.starts_with("routine.protocol.step"))
+            .collect::<Vec<_>>();
+        assert_eq!(steps.len(), report.nodes.len());
+        for item in &steps {
+            assert_eq!(item.semantic_id, "routine.protocol.step");
+            assert_eq!(item.window_id, "window.routine_assistant");
+        }
+        let observed = steps
+            .iter()
+            .map(|item| item.subject_scope.clone().expect("step subject scope"))
+            .collect::<std::collections::BTreeSet<_>>();
+        let expected = report
+            .nodes
+            .iter()
+            .map(|node| {
+                crate::gui_test_support::pseudonymous_subject_scope(&[
+                    "routine.protocol.step",
+                    &node.step.step_id,
+                ])
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(observed.len(), report.nodes.len());
+        assert_eq!(observed, expected);
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+    }
 
     #[test]
     fn protocol_overview_cache_verifies_changed_bytes_even_when_wire_digest_is_retained() {
