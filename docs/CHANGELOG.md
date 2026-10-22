@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-10-22 - Repair The Carrier-Pitch Glossary Smoke Fixture
+
+- Glen reports normal CI run `39739876557` fails the glossary filter on Linux
+  and Windows at `70969635`. The generic usage sampler changes the literal
+  pitch `14` into `demo`; this is a test-fixture defect, not a pitch-parser bug.
+- Add a command-specific parser-only smoke line with a numeric pitch. Keep the
+  production parser and rack confirmation unchanged. Author a Rust regression
+  through the actual glossary helper for numeric and fractional millimetres,
+  `--clear`, mutation classification and invalid/mixed arguments.
+- An LF/CRLF source guard fails before the fixture repair and passes afterward.
+  All five selected source-only labware checks and scoped shell-test rustfmt
+  pass; these do not execute the parser or certify the Rust regression.
+  Local Rust execution and normal CI remain unrun; use the unchanged
+  `engine_shell::tests::glossary_` filter on the next ordinary verification.
+  No catalog/parity regeneration, push or workflow dispatch is performed.
+
 ## 2026-10-21 - Integrate Windows Repairs With Newer Main
 
 - Merge Windows commit `bfe685ed` with local `79756465`, preserving the newer

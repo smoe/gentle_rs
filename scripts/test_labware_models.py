@@ -66,6 +66,21 @@ def carrier_template(source, rows, columns, width, depth, height, opening, edge,
 
 
 class LabwareTemplateTests(unittest.TestCase):
+    def test_carrier_pitch_glossary_smoke_keeps_the_numeric_example(self):
+        source = (ROOT / "src/engine_shell/tests.rs").read_text(encoding="utf-8")
+        glossary = json.loads((ROOT / "docs/glossary.json").read_text(encoding="utf-8"))
+        command = next(row for row in glossary["commands"]
+                       if row["path"] == "racks set-carrier-pitch")
+        literal = command["usage"].split()[-1]
+        self.assertEqual(literal, "14")
+        for text in (source, source.replace("\n", "\r\n")):
+            overrides = text.split("fn smoke_command_override(", 1)[1].split(
+                "fn smoke_command_line_for_glossary_command(", 1)[0]
+            match = re.search(r'"racks set-carrier-pitch"\s*=>\s*Some\("([^"]+)"\)', overrides)
+            self.assertIsNotNone(match, "numeric pitch needs a parser-only smoke fixture")
+            self.assertEqual(match.group(1), f"racks set-carrier-pitch demo {literal}")
+            self.assertIn("fn glossary_carrier_pitch_smoke_retains_numeric_literal_and_clear_flag()", text)
+
     def test_rack_mutation_admission_matches_dispatch_in_lf_and_crlf_source(self):
         source = (ROOT / "src/engine_shell.rs").read_text(encoding="utf-8")
         cases = (ROOT / "src/engine_shell/tests.rs").read_text(encoding="utf-8").split(

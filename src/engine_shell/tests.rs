@@ -1350,6 +1350,7 @@ fn command_tokens_from_glossary_usage(path: &str, usage: &str) -> Vec<String> {
 
 fn smoke_command_override(path: &str) -> Option<&'static str> {
     match path {
+        "racks set-carrier-pitch" => Some("racks set-carrier-pitch demo 14"),
         // Hand-crafted parser-only request; execution still needs a saved pair and references.
         "primers specificity-multi-handoff" => Some(concat!(
             "primers specificity-multi-handoff '",
@@ -1681,6 +1682,38 @@ fn glossary_flag_smoke_preserves_quoted_file_paths() {
     let mut expected = split_shell_words(base).unwrap();
     expected.extend(["--formats".into(), "svg,pdf".into()]);
     assert_eq!(split_shell_words(&line).unwrap(), expected);
+}
+
+#[test]
+fn glossary_carrier_pitch_smoke_retains_numeric_literal_and_clear_flag() {
+    let glossary = glossary_fixture();
+    let command = glossary
+        .commands
+        .iter()
+        .find(|entry| entry.path == "racks set-carrier-pitch")
+        .expect("carrier pitch glossary entry");
+    let scratch = tempdir().unwrap();
+    let line = smoke_command_line_for_glossary_command(command, scratch.path());
+    assert_eq!(line, "racks set-carrier-pitch demo 14");
+    for (line, expected_pitch_um) in [
+        (line.as_str(), Some(14_000)),
+        ("racks set-carrier-pitch demo 14.125", Some(14_125)),
+        ("racks set-carrier-pitch demo --clear", None),
+    ] {
+        let parsed = parse_shell_line(line).expect("literal/clear pitch parses");
+        assert!(parsed.is_state_mutating());
+        let ShellCommand::RacksSetCarrierPitch { rack_id, pitch_um } = parsed else {
+            panic!("carrier pitch command expected");
+        };
+        assert_eq!(rack_id, "demo");
+        assert_eq!(pitch_um, expected_pitch_um);
+    }
+    for invalid in [
+        "racks set-carrier-pitch demo demo",
+        "racks set-carrier-pitch demo 14 --clear",
+    ] {
+        assert!(parse_shell_line(invalid).is_err(), "{invalid}");
+    }
 }
 
 #[test]
