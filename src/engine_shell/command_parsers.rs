@@ -13299,6 +13299,20 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
         );
     }
     match tokens[1].as_str() {
+        "panel-export-summary" => {
+            if tokens.len() != 3 {
+                return Err("Use rna-reads panel-export-summary REQUEST_JSON_OR_@FILE".into());
+            }
+            let request = parse_required_json_payload::<
+                crate::engine::ExportRnaReadPanelSummaryRequest,
+            >(&tokens[2], "RNA panel summary request")?;
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&Operation::ExportRnaReadPanelSummary {
+                    request: Box::new(request),
+                })
+                .map_err(|e| e.to_string())?,
+            })
+        }
         "panel-demo" if tokens.len() == 3 => Ok(ShellCommand::Op {
             payload: serde_json::to_string(&Operation::PrepareRnaReadPanelDemo {
                 output_dir: tokens[2].clone(),

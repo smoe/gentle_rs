@@ -2703,6 +2703,12 @@ impl GentleEngine {
                     Self::push_unique_token(&mut summary.file_paths, &input.path);
                 }
             }
+            Operation::ExportRnaReadPanelSummary { request } => {
+                for path in &request.report_paths {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+                Self::push_unique_token(&mut summary.file_paths, &request.output_dir);
+            }
             Operation::ApplyDnaSequenceDesign { proposal, .. } => {
                 if let gentle_protocol::sequence_design::DnaDesignTarget::LoadedSequence {
                     seq_id,

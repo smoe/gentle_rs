@@ -33,6 +33,22 @@ fn rna_panel_introspection_exposes_typed_requests_without_granting_completion() 
         rna_panel_descriptor("rna-reads panel-show")["mutating"],
         "false"
     );
+    let descriptor = rna_panel_descriptor("rna-reads panel-export-summary");
+    let request: crate::engine::ExportRnaReadPanelSummaryRequest =
+        serde_json::from_value(descriptor["request_template"].clone()).unwrap();
+    assert_eq!(
+        request.schema,
+        crate::engine::RNA_PANEL_SUMMARY_REQUEST_SCHEMA
+    );
+    assert_eq!(request.report_paths.len(), 1);
+    assert_eq!(descriptor["requires_confirmation"], true);
+    let line = format!(
+        "rna-reads panel-export-summary {}",
+        quote_shell_arg(&serde_json::to_string(&request).unwrap())
+    );
+    assert!(parse_shell_line(&line).unwrap().is_state_mutating());
+    assert!(parse_shell_line(&format!("{line} --unknown")).is_err());
+    assert!(parse_shell_line("rna-reads panel-export-summary '{\"schema\":\"v1\",\"report_paths\":[],\"output_dir\":\"new\",\"typo\":true}'").is_err());
     assert!(
         !parse_shell_line("rna-reads panel-show report.json --rows 4")
             .unwrap()
@@ -1567,11 +1583,16 @@ fn smoke_command_line_for_glossary_command(
 ) -> String {
     if matches!(
         command.path.as_str(),
-        "rna-reads panel-build" | "rna-reads panel-screen" | "rna-reads panel-cancel"
+        "rna-reads panel-build"
+            | "rna-reads panel-screen"
+            | "rna-reads panel-cancel"
+            | "rna-reads panel-export-summary"
     ) {
         // Parser-only synthetic requests; empty inputs must fail at execution.
         let request = if command.path.ends_with("panel-build") {
             serde_json::json!({"schema":"gentle.rna_read_panel_build_request.v1", "sources":[], "output_path":"synthetic-panel.json"})
+        } else if command.path.ends_with("panel-export-summary") {
+            serde_json::json!({"schema":"gentle.rna_read_panel_summary_request.v1", "report_paths":[], "output_dir":"synthetic-summary"})
         } else {
             serde_json::json!({"schema":"gentle.rna_read_panel_screen_request.v1", "files":[],
                 "panel_path":"synthetic-panel.json", "output_dir":"synthetic-run", "cancel_path":"synthetic-cancel"})

@@ -47,6 +47,41 @@
   live-agent responsiveness and real-data calibration with Glen/CI. No private
   sequencing files, local Rust build, push, dispatch or goal resumption.
 
+## 2026-10-23 - Export Ambiguity-Preserving FASTQ Read-Support Summaries
+
+- Add shared `ExportRnaReadPanelSummary` and `rna-reads panel-export-summary`
+  over explicit stored reports and their retained panel metadata. Export LF
+  sample/transcript/ambiguous-set TSVs and a content-bound final JSON marker;
+  no FASTQ or nomination-sidecar reread. Count singleton support separately
+  from overlapping per-member ambiguous support; preserve exact sets without
+  winners, fractional assignment, molecule-copy or expression claims.
+- Validate common panel/full policy, source bindings, known sorted members,
+  counts and checked arithmetic. Refuse duplicate compressed-input hashes,
+  repeated reports, sample/barcode/priming conflicts and resource overflow.
+  Cancelled sources stay partial; no-verified-file samples remain numerically
+  unassessed. Fresh destinations/closed handles keep no-overwrite publication.
+- Add inner-agent discovery/approval and MCP/shared-shell parity coverage.
+  Reopen summaries using non-journaling `panel-show`. Keep handler changes thin;
+  calculation lives in the separate engine analysis module. Add only required
+  optional-result fields to existing exhaustive Rust literals.
+- Extend tutorial 10.04 with an engine-generated summary request, spreadsheet
+  table interpretation, explicit ambiguous A-or-B teaching and continuation
+  limits. Give synthetic library read headers distinct identity so the demo
+  does not submit byte-identical files under two sample names. Update scoped
+  glossary/catalog/parity projections and their derived source hashes.
+- Author seven synthetic summary Rust regressions and extend existing MCP/
+  parser/agent tests; leave all Rust/native and canonical-generator execution
+  to Glen/CI. No private reads, unrelated outputs, paused-goal change or push.
+- Verification: 105 Python source/metadata/LF-CRLF checkout tests pass, with
+  the six tutorial checks rerun after the final source/catalog edits. Scoped
+  rustfmt, documentation status, maturity-source freshness and whitespace pass.
+  Session-close: 4 OK, 2 expected pending/generated/manual-plan warnings,
+  0 failures; roadmap stays 400 lines. These are not Rust/runtime acceptance.
+- Retain the end-to-end, read-only Claude review prompt. Its initial CLI attempt
+  failed authentication (HTTP 401); no second-opinion verdict is claimed.
+  Match main's explicit child-path convention for both new summary modules;
+  retain its existing JSON imports and source-scoped acceptance records.
+
 ## 2026-10-22 - Isolate Provider Preview-Writer Test Sources
 
 - Fast-forward local main to the owner's Windows LF-policy commit `1cfea9e3`;

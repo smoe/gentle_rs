@@ -12447,6 +12447,7 @@ Error: `{err}`"
                 rna_read_panel: None,
                 rna_read_panel_screen: None,
                 rna_read_panel_inspection: None,
+                rna_read_panel_summary: None,
                 dna_sequence_design: None,
                 dna_sequence_design_receipt: None,
                 primer_group_target_design: None,

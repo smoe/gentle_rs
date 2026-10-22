@@ -3273,6 +3273,9 @@ pub enum Operation {
     ScreenRnaReadPanel {
         request: Box<ScreenRnaReadPanelRequest>,
     },
+    ExportRnaReadPanelSummary {
+        request: Box<ExportRnaReadPanelSummaryRequest>,
+    },
     PrepareRnaReadPanelDemo {
         output_dir: String,
     },
@@ -10199,6 +10202,7 @@ impl GentleEngine {
             Operation::SaveFile { .. }
                 | Operation::BuildRnaReadPanel { .. }
                 | Operation::ScreenRnaReadPanel { .. }
+                | Operation::ExportRnaReadPanelSummary { .. }
                 | Operation::PrepareRnaReadPanelDemo { .. }
                 | Operation::InspectRnaReadPanel { .. }
                 | Operation::CancelRnaReadPanel { .. }

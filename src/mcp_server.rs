@@ -1422,6 +1422,7 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
             "rna-reads panel-demo",
             "rna-reads panel-show",
             "rna-reads panel-cancel",
+            "rna-reads panel-export-summary",
             "sequence-design apply",
             "primers design-transcript-capture-pool",
             "gene-locus prepare",
@@ -5191,6 +5192,12 @@ mod tests {
                 "schema":"gentle.rna_read_panel_screen_request.v1", "files":[],
                 "panel_path":"missing.json", "output_dir":temp.path().join("forbidden run") }),
             ),
+            (
+                "ExportRnaReadPanelSummary",
+                "rna-reads panel-export-summary",
+                json!({"schema":"gentle.rna_read_panel_summary_request.v1",
+                    "report_paths":["missing.json"], "output_dir":temp.path().join("forbidden summary")}),
+            ),
         ] {
             let mut operation = serde_json::Map::new();
             operation.insert(name.into(), json!({"request":request}));
@@ -5222,6 +5229,7 @@ mod tests {
         assert_eq!(fs::read(state).unwrap(), before);
         assert!(!temp.path().join("forbidden panel.json").exists());
         assert!(!temp.path().join("forbidden run").exists());
+        assert!(!temp.path().join("forbidden summary").exists());
     }
 
     #[test]
@@ -5294,6 +5302,40 @@ mod tests {
             inspected["result"]["structuredContent"]["result"]["rna_read_panel_inspection"]["rows"]
                 [3]["class"],
             "unmatched"
+        );
+        let summary_request = json!({"schema":"gentle.rna_read_panel_summary_request.v1",
+            "report_paths":[root.join("screen/report.json")], "output_dir":root.join("MCP summary")});
+        let exported = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({
+                "state_path":state_path, "confirm":true,
+                "operation":{"ExportRnaReadPanelSummary":{"request":summary_request}}
+            }),
+        );
+        assert_eq!(exported["result"]["isError"], false, "{exported}");
+        let mut direct_summary: crate::engine::ExportRnaReadPanelSummaryRequest =
+            serde_json::from_value(summary_request).unwrap();
+        direct_summary.output_dir = root.join("direct summary").display().to_string();
+        let expected_summary = direct
+            .export_rna_read_panel_summary(&direct_summary)
+            .unwrap();
+        assert_eq!(
+            exported["result"]["structuredContent"]["result"]["rna_read_panel_summary"],
+            serde_json::to_value(expected_summary).unwrap()
+        );
+        let reopened = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({
+                "state_path":state_path, "confirm":true, "operation":{"InspectRnaReadPanel":{
+                    "path":root.join("MCP summary/report.json"), "rows":0}}
+            }),
+        );
+        assert_eq!(reopened["result"]["isError"], false, "{reopened}");
+        assert_eq!(
+            reopened["result"]["structuredContent"]["result"]["rna_read_panel_summary"],
+            exported["result"]["structuredContent"]["result"]["rna_read_panel_summary"]
         );
         let after = ProjectState::load_from_path(&state_path.to_string_lossy()).unwrap();
         assert_eq!(serde_json::to_value(after).unwrap(), before);

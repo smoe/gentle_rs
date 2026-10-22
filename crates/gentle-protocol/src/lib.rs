@@ -5714,6 +5714,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "PrepareRnaReadPanelDemo",
     "InspectRnaReadPanel",
     "CancelRnaReadPanel",
+    "ExportRnaReadPanelSummary",
     "LoadFile",
     "SaveFile",
     "RenderSequenceSvg",
@@ -6318,6 +6319,7 @@ const MCP_PROMINENT_GLOSSARY_COMMAND_PATHS: &[&str] = &[
     "rna-reads panel-demo",
     "rna-reads panel-show",
     "rna-reads panel-cancel",
+    "rna-reads panel-export-summary",
     "planning protein-expression-handoff",
     "primers list-reports",
     "primers show-report",
@@ -7750,6 +7752,7 @@ fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
             | "ScreenRnaReadPanel"
             | "PrepareRnaReadPanelDemo"
             | "CancelRnaReadPanel"
+            | "ExportRnaReadPanelSummary"
     ) || operation.starts_with("Fetch")
         || operation.starts_with("PrepareGenome")
         || operation.starts_with("PrepareCutRun")

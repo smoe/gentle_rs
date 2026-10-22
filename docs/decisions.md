@@ -51,6 +51,19 @@ introduced. A bounded TSV inspection exposes that it has not reverified the
 full sidecar. See [tutorial 10.04](tutorial/10-04_targeted_nanopore_fastq_panel.md).
 Rust/native/real-library calibration and throughput acceptance remain external.
 
+Owner-authorized 2026-10-23: report-only count exports separate single-candidate
+panel support, overlapping per-member ambiguous support and exact member-set
+counts. Each read contributes once to its set, never to multiple exclusive
+isoform counts. No fractional assignment, original molecule/UMI count or
+expression inference follows from enrichment. Use the identical panel/full
+policy, preserve sample/barcode/priming bindings and refuse repeated compressed
+input hashes across reports. Different hashes do not prove read/molecule
+independence. Only completed verified units contribute; cancelled sources
+remain partial and samples without such units remain numerically unassessed.
+Export revalidates retained report/panel content, not original reads or large
+nomination sidecars. This shared, confirmed external export and subsequent
+read-only inspection remain available to the inner agent without OS tools.
+
 ## Development And Release Verification Cadence
 
 Owner decision, 2026-10-15: continue development on `main` without intermediate

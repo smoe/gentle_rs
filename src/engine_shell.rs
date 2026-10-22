@@ -19816,13 +19816,20 @@ fn rna_panel_descriptor(id: &str) -> Value {
                 "expected_md5":null, "expected_sha256":null, "checksum_manifest_key":null}],
             "md5_manifest_path":"/REPLACE/md5_checksums.txt", "output_dir":"/REPLACE/fresh-run",
             "cancel_path":"/REPLACE/fresh-CANCEL", "policy":crate::engine::RnaReadPanelPolicy::default()})
+    } else if matches!(
+        id,
+        "ExportRnaReadPanelSummary" | "rna-reads panel-export-summary"
+    ) {
+        json!({"schema":"gentle.rna_read_panel_summary_request.v1",
+            "report_paths":["/REPLACE/completed-or-cancelled-run/report.json"],
+            "output_dir":"/REPLACE/fresh-summary"})
     } else {
         Value::Null
     };
     json!({"id": id, "kind": "operation", "mutating": if inspect { "false" } else { "external" }, "requires_confirmation": !inspect,
-        "args": [{"name": "REQUEST_OR_PATH", "required": true, "detail": "panel-demo OUTPUT_DIR; panel-build BUILD_REQUEST_JSON_OR_@FILE; panel-screen SCREEN_REQUEST_JSON_OR_@FILE; panel-show PANEL_OR_REPORT_PATH [--file-id ID] [--rows 0..1000]; panel-cancel SCREEN_REQUEST_JSON_OR_@FILE. Screen request v1 binds completed FASTQ/gzip files, checksum expectations, sample/barcode/priming and fresh output directory. Build request v1 binds independent annotated loci."}],
+        "args": [{"name": "REQUEST_OR_PATH", "required": true, "detail": "panel-demo OUTPUT_DIR; panel-build BUILD_REQUEST_JSON_OR_@FILE; panel-screen SCREEN_REQUEST_JSON_OR_@FILE; panel-show PANEL_OR_REPORT_PATH [--file-id ID] [--rows 0..1000]; panel-cancel SCREEN_REQUEST_JSON_OR_@FILE; panel-export-summary SUMMARY_REQUEST_JSON_OR_@FILE. Summary request v1 binds report_paths (1..128 explicit reports) and a fresh output_dir; same panel and policy only, duplicate input hashes refused. Exports samples/transcripts/ambiguous_sets TSV and report.json without reopening FASTQ. Single-candidate and overlapping ambiguous support are reads, not molecule copies or confirmed isoforms. Cancelled sources stay partial. Screen request v1 binds completed FASTQ/gzip files, checksum expectations, sample/barcode/priming and fresh output directory. Build request v1 binds independent annotated loci."}],
         "reads": [], "effects": [], "precondition_expr": {"all": []},
-        "description": if inspect { "Read content-bound panel/report metadata and bounded nomination rows; no full-sidecar revalidation or source mutation." } else { "Prepare a synthetic demo, build a panel, screen FASTQ/gzip once or request cancellation. Retain all qualifying members; no isoform winner, trimming, oligo(dT) flip, POD5 or expression claim. External artifact writes require approval; no project sequence mutation." },
+        "description": if inspect { "Read content-bound panel/report metadata and bounded nomination rows; no full-sidecar revalidation or source mutation." } else { "Prepare a synthetic demo, build a panel, screen FASTQ/gzip once, export report-only supporting read counts with exact ambiguous sets, or request cancellation. Retain all qualifying members; no isoform winner, molecule copy count, trimming, oligo(dT) flip, POD5 or expression claim. External artifact writes require approval; no project sequence mutation." },
         "request_template": template, "request_template_is_example_not_resolved_input": true,
         "annotation_status": "fact_annotated", "registry": registry_metadata_for_introspection(id)})
 }
@@ -21894,6 +21901,8 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         rna_panel_descriptor("rna-reads panel-demo"),
         rna_panel_descriptor("rna-reads panel-show"),
         rna_panel_descriptor("rna-reads panel-cancel"),
+        rna_panel_descriptor("ExportRnaReadPanelSummary"),
+        rna_panel_descriptor("rna-reads panel-export-summary"),
         sequence_design_capability_descriptor("sequence-design plan", false),
         sequence_design_capability_descriptor("ApplyDnaSequenceDesign", true),
         sequence_design_capability_descriptor("sequence-design apply", true),
@@ -66230,14 +66239,15 @@ fn execute_op_command(
         rows,
     } = &op
     {
-        let (panel, report, inspection) = engine
+        let (panel, report, inspection, summary) = engine
             .inspect_rna_read_panel(path, file_id.as_deref(), *rows)
             .map_err(|e| e.to_string())?;
         return Ok(ShellRunResult {
             state_changed: false,
             output: json!({
             "schema":"gentle.rna_read_panel_inspection_command.v1", "result":{
-                "rna_read_panel":panel, "rna_read_panel_screen":report, "rna_read_panel_inspection":inspection } }),
+                "rna_read_panel":panel, "rna_read_panel_screen":report, "rna_read_panel_inspection":inspection,
+                "rna_read_panel_summary":summary } }),
         });
     }
     // Images and immutable reports can be large; these operations have explicit mutation semantics
@@ -66247,6 +66257,7 @@ fn execute_op_command(
         Operation::ImportGelImage { .. }
             | Operation::BuildRnaReadPanel { .. }
             | Operation::ScreenRnaReadPanel { .. }
+            | Operation::ExportRnaReadPanelSummary { .. }
             | Operation::PrepareRnaReadPanelDemo { .. }
             | Operation::InspectRnaReadPanel { .. }
             | Operation::CancelRnaReadPanel { .. }

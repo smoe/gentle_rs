@@ -40536,6 +40536,7 @@ impl GentleEngine {
             rna_read_panel: None,
             rna_read_panel_screen: None,
             rna_read_panel_inspection: None,
+            rna_read_panel_summary: None,
             tube_profiles: None,
             dna_sequence_design: None,
             dna_sequence_design_receipt: None,
@@ -52187,16 +52188,22 @@ impl GentleEngine {
                     file_id,
                     rows,
                 } => {
-                    let (panel, report, inspection) =
+                    let (panel, report, inspection, summary) =
                         self.inspect_rna_read_panel(&path, file_id.as_deref(), rows)?;
                     result.rna_read_panel = panel.map(Box::new);
                     result.rna_read_panel_screen = report.map(Box::new);
                     result.rna_read_panel_inspection = inspection.map(Box::new);
+                    result.rna_read_panel_summary = summary.map(Box::new);
                 }
                 Operation::ScreenRnaReadPanel { request } => {
                     let report = self.screen_rna_read_panel(*request, on_progress)?;
                     result.messages.push(format!("RNA panel screen {}; {} verified completed file units; seed compatibility is not isoform identification", report.status, report.files_completed.len()));
                     result.rna_read_panel_screen = Some(Box::new(report));
+                }
+                Operation::ExportRnaReadPanelSummary { request } => {
+                    let summary = self.export_rna_read_panel_summary(&request)?;
+                    result.messages.push(format!("Exported {} sample(s), {} transcript rows and {} ambiguous member sets; {} for selected reports; supporting reads, not molecule copies", summary.samples.len(), summary.transcripts.len(), summary.ambiguous_sets.len(), summary.completeness));
+                    result.rna_read_panel_summary = Some(Box::new(summary));
                 }
                 Operation::ApplyDnaSequenceDesign {
                     proposal,

@@ -8,6 +8,8 @@ pub const RNA_PANEL_SCHEMA: &str = "gentle.rna_read_panel.v1";
 pub const RNA_PANEL_BUILD_SCHEMA: &str = "gentle.rna_read_panel_build_request.v1";
 pub const RNA_PANEL_SCREEN_SCHEMA: &str = "gentle.rna_read_panel_screen.v1";
 pub const RNA_PANEL_SCREEN_REQUEST_SCHEMA: &str = "gentle.rna_read_panel_screen_request.v1";
+pub const RNA_PANEL_SUMMARY_REQUEST_SCHEMA: &str = "gentle.rna_read_panel_summary_request.v1";
+pub const RNA_PANEL_SUMMARY_SCHEMA: &str = "gentle.rna_read_panel_summary.v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -219,4 +221,92 @@ pub struct RnaReadPanelNomination {
     pub decompressed_record_offset: u64,
     pub class: String,
     pub candidates: Vec<RnaReadPanelCandidate>,
+}
+
+/// Consolidate explicit screen reports without reading original FASTQ or nomination sidecars.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExportRnaReadPanelSummaryRequest {
+    pub schema: String,
+    pub report_paths: Vec<String>,
+    pub output_dir: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RnaReadPanelSummaryRun {
+    pub report_path: String,
+    pub report_sha256: String,
+    pub status: String,
+    pub completed_files: usize,
+    pub files_not_completed: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RnaReadPanelSummaryFile {
+    pub report_sha256: String,
+    pub file_id: String,
+    pub sample_id: String,
+    pub input_path: String,
+    pub observed_sha256: String,
+    pub observed_md5: String,
+    pub reads: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RnaReadPanelSummarySample {
+    pub sample_id: String,
+    pub barcode: String,
+    pub priming: String,
+    pub verified_files: usize,
+    pub reads: u64,
+    pub single_candidate_reads: u64,
+    pub ambiguous_reads: u64,
+    pub no_candidate_reads: u64,
+    pub classes: BTreeMap<String, u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RnaReadPanelSummaryTranscript {
+    pub sample_id: String,
+    pub gene_id: String,
+    pub gene_symbol: String,
+    pub locus_id: String,
+    pub member_id: String,
+    pub transcript_id: String,
+    pub single_candidate_reads: u64,
+    /// The same ambiguous read can support several rows; do not sum this column as read totals.
+    pub ambiguous_compatible_reads: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RnaReadPanelSummaryAmbiguousSet {
+    pub sample_id: String,
+    pub member_ids: Vec<String>,
+    pub reads: u64,
+}
+
+/// Read support, not molecular abundance, exclusive isoform assignment or expression.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RnaReadPanelSummary {
+    pub schema: String,
+    pub content_sha256: String,
+    pub panel_sha256: String,
+    pub policy: RnaReadPanelPolicy,
+    /// Complete only for the explicitly supplied reports; never whole-run or transcriptome coverage.
+    pub completeness: String,
+    pub source_runs: Vec<RnaReadPanelSummaryRun>,
+    pub source_files: Vec<RnaReadPanelSummaryFile>,
+    pub samples: Vec<RnaReadPanelSummarySample>,
+    pub transcripts: Vec<RnaReadPanelSummaryTranscript>,
+    pub ambiguous_sets: Vec<RnaReadPanelSummaryAmbiguousSet>,
+    pub original_inputs_reverified: bool,
+    pub nomination_sidecars_reverified: bool,
+    pub artifacts: Vec<RnaReadPanelArtifact>,
+    pub nonclaims: Vec<String>,
 }

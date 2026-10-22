@@ -4,10 +4,12 @@
 
 New shared operations are `PrepareRnaReadPanelDemo {output_dir}`,
 `BuildRnaReadPanel {request}`, `ScreenRnaReadPanel {request}`,
-`InspectRnaReadPanel {path, file_id?, rows=0}` and `CancelRnaReadPanel {request}`.
+`InspectRnaReadPanel {path, file_id?, rows=0}`, `CancelRnaReadPanel {request}`
+and `ExportRnaReadPanelSummary {request}`.
 The Shell routes are respectively `rna-reads panel-demo OUTPUT_DIR`,
 `panel-build REQUEST_JSON_OR_@FILE`, `panel-screen REQUEST_JSON_OR_@FILE`,
-`panel-show PATH [--file-id ID] [--rows N]` and `panel-cancel SCREEN_REQUEST_JSON_OR_@FILE`.
+`panel-show PATH [--file-id ID] [--rows N]`, `panel-cancel SCREEN_REQUEST_JSON_OR_@FILE`
+and `panel-export-summary SUMMARY_REQUEST_JSON_OR_@FILE`.
 All reuse `op` for MCP/scripting/workflows and agent introspection. No dedicated
 panel GUI is claimed. Artifact-producing operations require confirmation even
 though they do not mutate project sequences. Cancellation is a request, not a
@@ -91,6 +93,55 @@ remains FASTA-only; FASTQ mistakenly sent there now fails before Phred `>` can
 be treated as a header. Its existing tie/posting limitations remain separate.
 See [tutorial 10.04](tutorial/10-04_targeted_nanopore_fastq_panel.md) for synthetic
 and first-chunk paths, including explicit inner-agent commands at every stage.
+
+### Supporting Read-Count Summary
+
+`gentle.rna_read_panel_summary_request.v1` has `report_paths` (1..128 explicit
+screen reports) and a fresh `output_dir`. The engine reads each report and its
+sibling `artifacts/panel.json`, validates their semantic SHA-256 bindings,
+file/request identities, class/equivalence totals, exact sorted member sets
+and common panel/full policy. Input FASTQ and nomination sidecars are not
+opened. Duplicate report digests or compressed-input SHA-256 values are refused
+across all samples/runs, not silently deduplicated. Within a sample, barcode
+and priming must agree. Source content hashes are not authenticated provenance.
+
+`gentle.rna_read_panel_summary.v1` is returned in `OpResult.rna_read_panel_summary`
+and published as `report.json` after closed/synced LF TSV files under `artifacts/`:
+
+- `samples.tsv`: sample/barcode/priming, verified-file count, reads,
+  `single_candidate_reads`, `ambiguous_reads`, `no_candidate_reads`, `classes_json`.
+- `transcripts.tsv`: sample, gene ID/symbol, locus/member/transcript IDs,
+  `single_candidate_reads`, `ambiguous_compatible_reads`. Every selected member
+  has a row per observed sample, including zero support, not biological absence.
+- `ambiguous_sets.tsv`: sample, sorted `member_ids_json` and reads. Every
+  ambiguous read increments exactly one set; per-member ambiguous support
+  overlaps, must not be summed as totals and is never fractionally reassigned.
+
+The JSON retains these rows, exact source report/file digests, the common
+panel/policy, table hashes and nonclaims. Ordering is deterministic by report
+digest, sample and member/set identities, independent of request report order.
+`completeness=complete` covers only supplied completed reports; any cancelled
+source yields `partial`, with its uncompleted-file ledger retained. Only
+verified completed units contribute. A sample without any such unit has no
+numeric rows, not a zero-expression result. Fields `original_inputs_reverified`
+and `nomination_sidecars_reverified` are false. No alignment, molecular copy,
+expression, read-level/PCR/UMI deduplication or exclusive isoform claim is added.
+Distinct input hashes do not prove distinct reads/molecules.
+
+Publication reserves a fresh directory, moves closed artifacts and atomically
+installs the final JSON marker; an I/O failure may leave orphan artifacts
+without that marker, never a complete result. Parent-traversal destinations
+and existing destinations are refused. Admission limits: 256 MB combined
+report/panel metadata, 4096 completed units, 128 observed samples, 250,000
+transcript rows, 65,536 ambiguous sets, two million member visits, 128 MB final
+JSON, with checked u64 count addition. There is no silent truncation.
+
+`panel-show SUMMARY_REPORT_PATH` rechecks the saved summary's content binding
+and returns it without journaling or current-input/table revalidation; row/file
+inspection flags apply only to screen reports. Export remains an external-write
+confirmation boundary across inner agent, CLI/GUI Shell, MCP `op`, scripting
+and workflows, even though project sequences stay unchanged. Demo preparation
+also writes `artifacts/summary.json`; no OS-side helper is needed by the agent.
 
 ## Catalog Evidence And Provider Updates
 

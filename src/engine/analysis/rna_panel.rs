@@ -10,6 +10,8 @@ use std::path::{Path, PathBuf};
 
 #[path = "rna_panel/input.rs"]
 mod input;
+#[path = "rna_panel/summary.rs"]
+mod summary;
 #[path = "rna_panel/tools.rs"]
 mod tools;
 use input::{HashedWriter, visit_fastq};
@@ -53,6 +55,20 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<RnaReadPanelArtifa
 fn seal_panel(panel: &mut RnaReadPanel) -> Result<(), EngineError> {
     panel.content_sha256.clear();
     panel.content_sha256 = sha256_prefixed_bytes(&encode(panel)?);
+    Ok(())
+}
+
+fn validate_screen_report_binding(report: &RnaReadPanelScreenReport) -> Result<(), EngineError> {
+    let mut basis = report.clone();
+    basis.content_sha256.clear();
+    if report.schema != RNA_PANEL_SCREEN_SCHEMA
+        || report.content_sha256 != sha256_prefixed_bytes(&encode(&basis)?)
+        || !matches!(report.status.as_str(), "completed" | "cancelled")
+        || report.isoform_assignment_performed
+        || report.alignment_confirmation_performed
+    {
+        return Err(bad("panel_report_binding"));
+    }
     Ok(())
 }
 
@@ -905,6 +921,9 @@ fn screen(
     Ok(report)
 }
 
+#[cfg(test)]
+#[path = "rna_panel/summary_tests.rs"]
+mod summary_tests;
 #[cfg(test)]
 #[path = "rna_panel/tests.rs"]
 mod tests;

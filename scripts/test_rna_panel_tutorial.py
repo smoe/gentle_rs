@@ -19,7 +19,7 @@ class RnaPanelTutorialTests(unittest.TestCase):
         source_path = ROOT / "src/engine/analysis/rna_panel.rs"
         source = source_path.read_text(encoding="utf-8")
         for text in (source, source.replace("\n", "\r\n")):
-            for child in ("input", "tools", "tests"):
+            for child in ("input", "tools", "tests", "summary", "summary_tests"):
                 match = re.search(r'#\[path = "([^"]+)"\]\s*mod ' + child + r';', text)
                 self.assertIsNotNone(match, f"path-loaded panel needs an explicit {child} path")
                 self.assertEqual(match.group(1), f"rna_panel/{child}.rs")
@@ -31,6 +31,7 @@ class RnaPanelTutorialTests(unittest.TestCase):
         entry, = [e for e in catalog["entries"] if e["id"] == source["id"]]
         self.assertEqual(entry["title"], source["title"])
         self.assertEqual(entry["notes"], source["catalog"]["notes"])
+        self.assertEqual(entry["produces"], source["catalog"]["produces"])
         self.assertEqual(entry["decimal_id"], "10.04")
         self.assertEqual(entry["review_status"], "unreviewed")
         for path in SOURCE.parent.glob("*.json"):
@@ -77,8 +78,8 @@ class RnaPanelTutorialTests(unittest.TestCase):
 
     def test_all_tutorial_stages_have_registered_inner_agent_routes(self):
         operations = ["BuildRnaReadPanel", "ScreenRnaReadPanel", "PrepareRnaReadPanelDemo",
-                      "InspectRnaReadPanel", "CancelRnaReadPanel"]
-        routes = ["rna-reads panel-" + suffix for suffix in ("build", "screen", "demo", "show", "cancel")]
+                      "InspectRnaReadPanel", "CancelRnaReadPanel", "ExportRnaReadPanelSummary"]
+        routes = ["rna-reads panel-" + suffix for suffix in ("build", "screen", "demo", "show", "cancel", "export-summary")]
         glossary = json.loads((ROOT / "docs/glossary.json").read_text())["commands"]
         protocol = (ROOT / "crates/gentle-protocol/src/lib.rs").read_text()
         mcp = (ROOT / "src/mcp_server.rs").read_text()
@@ -113,6 +114,24 @@ class RnaPanelTutorialTests(unittest.TestCase):
                         for state in ("prominent", "shell-only", "gap")]
             match = re.search(r"^\| " + re.escape(adapter) + r" \| (\d+) \| (\d+) \| (\d+) \|$", text, re.M)
             self.assertEqual([int(v) for v in match.groups()], expected)
+
+    def test_summary_lesson_preserves_ambiguity_and_has_an_agent_executable_request(self):
+        for guide in (GUIDE.read_bytes(), GUIDE.read_bytes().replace(b"\n", b"\r\n")):
+            text = guide.decode().replace("\r\n", "\n")
+            requests = [json.loads(block) for block in re.findall(r"```json\n(.*?)```", text, re.S)]
+            summary, = [r for r in requests if r.get("schema") == "gentle.rna_read_panel_summary_request.v1"]
+            self.assertEqual(set(summary), {"schema", "report_paths", "output_dir"})
+            self.assertEqual(len(summary["report_paths"]), 2)
+            for phrase in ("single_candidate_reads", "ambiguous_compatible_reads", "member_ids_json",
+                           "not original molecule copy numbers", "completeness: partial", "no numerical rows",
+                           "panel-export-summary @$RUN/artifacts/summary.json", "panel-show $RUN/summary/report.json"):
+                self.assertIn(phrase, text)
+        implementation = (ROOT / "src/engine/analysis/rna_panel/tools.rs").read_text()
+        self.assertIn('join("summary.json")', implementation)
+        self.assertIn("synthetic_library={number}", implementation)
+        tests = (ROOT / "src/engine/analysis/rna_panel/summary_tests.rs").read_text()
+        self.assertIn("without_resolving_ambiguous_isoforms_or_reopening_inputs", tests)
+        self.assertIn("fs::remove_file", tests)
 
 
 if __name__ == "__main__":

@@ -10,6 +10,12 @@ writes/project loading, exact completed files and supplied sample/barcode/primin
 Do not suggest OS `touch` or Python as GENtle commands. A cancel marker requests
 termination; only the eventual report establishes status. Bounded row inspection
 does not reverify a whole TSV. Seed compatibility is not isoform identification.
+`rna-reads panel-export-summary` accepts a typed summary request (`report_paths`,
+fresh `output_dir`) and requires write approval. It exports supporting reads,
+not molecule copies, separating singleton support from overlapping ambiguous
+support and exact transcript sets. Use `panel-show` to reopen its saved JSON.
+Do not pool incompatible policies/panels or repeated input hashes; cancelled
+sources remain partial. No FASTQ reread, OS helper or abundance inference.
 
 Last updated: 2026-08-26
 

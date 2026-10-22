@@ -1,5 +1,36 @@
 # Glen: Next Verification And Return
 
+## FASTQ Supporting-Read Summary Follow-Up, 2026-10-23
+
+The new shared `ExportRnaReadPanelSummary` / `rna-reads panel-export-summary`
+consumes only stored screen reports and retained panels; no original FASTQ or
+large nomination TSV is reopened. It exports sample/transcript support and
+exact ambiguous sets, preserves cancelled/zero-verified-file uncertainty,
+refuses duplicate input hashes and incompatible panel/policy/sample bindings,
+and publishes a content-bound JSON marker after closed, hashed LF TSVs.
+`panel-show` reopens summaries without journaling. Tutorial 10.04 now supplies
+an engine-created summary request and teaches non-additive ambiguous support.
+The demo's two library headers are deliberately distinct; identical byte
+inputs would otherwise correctly be refused as duplicate evidence.
+
+Run the existing `rna_panel_` filter, glossary, capability/registry parity,
+canonical catalog/manifest freshness and `cargo check -q --locked --tests`
+listed below at the ordinary integrated source. Seven new `rna_panel_summary_`
+tests cover actual aggregation, source deletion/no reread, LF/CRLF report JSON,
+stable ordering/table hashes, chunk/sample pooling, duplicates, cancellation,
+tampering/count overflow, traversal/no-overwrite and shared-shell inspection.
+The existing MCP/agent-approval rehearsal now covers export and reopening.
+These Rust tests are authored, not run locally; neither source checks nor
+rustfmt establish their compilation or execution.
+
+Native Windows must exercise spaced/quoted paths and handle closure before
+publication. In the live inner agent, discover the exact typed request,
+require approval for export, reopen it via `panel-show` and explain that the
+numbers are supporting reads, not molecule copies or confirmed isoforms.
+Do not silently redistribute or add ambiguous per-member support. Keep prior
+native/background/real-library acceptance open; do not process private chunks
+or contact Glen from this worktree without explicit authorization.
+
 ## Provider Preview Fixture Follow-Up, 2026-10-22
 
 After integrating the owner's Windows LF commit `1cfea9e3`, three failures in

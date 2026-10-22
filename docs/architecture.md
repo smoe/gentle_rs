@@ -13,6 +13,10 @@ cancellation also live at this shared boundary, so no tutorial stage requires
 an inner agent to run OS Python/touch commands. Project state stays unchanged;
 external writes retain confirmation. See [the invariant](decisions.md#independent-locus-fastq-panel-nominations)
 and [the protocol](protocol.md#multi-locus-fastq-screening).
+The report-only summary uses this same boundary: count each ambiguous member
+set once, expose overlapping per-member support separately, retain partial
+source status and reject duplicate input hashes. No FASTQ reread, molecular
+abundance estimate or adapter-local reassignment is introduced.
 
 ## Publication projections
 

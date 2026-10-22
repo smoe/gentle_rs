@@ -6,7 +6,7 @@ use flate2::{Compression, write::GzEncoder};
 use md5::{Digest, Md5};
 use serde_json::Value;
 
-fn bases(seed: u64, length: usize) -> String {
+pub(super) fn bases(seed: u64, length: usize) -> String {
     let mut value = seed;
     (0..length)
         .map(|_| {
@@ -16,7 +16,7 @@ fn bases(seed: u64, length: usize) -> String {
         .collect()
 }
 
-fn starter(count: usize, directory: &Path) -> (GentleEngine, BuildRnaReadPanelRequest) {
+pub(super) fn starter(count: usize, directory: &Path) -> (GentleEngine, BuildRnaReadPanelRequest) {
     let mut state = ProjectState::default();
     let mut sources = vec![];
     for i in 0..count {
@@ -59,19 +59,23 @@ fn starter(count: usize, directory: &Path) -> (GentleEngine, BuildRnaReadPanelRe
     )
 }
 
-fn gzip(bytes: &[u8]) -> Vec<u8> {
+pub(super) fn gzip(bytes: &[u8]) -> Vec<u8> {
     let mut writer = GzEncoder::new(Vec::new(), Compression::fast());
     writer.write_all(bytes).unwrap();
     writer.finish().unwrap()
 }
-fn fastq(sequence: &str, quality: u8) -> Vec<u8> {
+pub(super) fn fastq(sequence: &str, quality: u8) -> Vec<u8> {
     format!(
         "@read same-header-may-recur\n{sequence}\n+\n{}\n",
         (quality as char).to_string().repeat(sequence.len())
     )
     .into_bytes()
 }
-fn request(panel: &RnaReadPanel, directory: &Path, sequence: &str) -> ScreenRnaReadPanelRequest {
+pub(super) fn request(
+    panel: &RnaReadPanel,
+    directory: &Path,
+    sequence: &str,
+) -> ScreenRnaReadPanelRequest {
     let path = directory.join("reads.fastq.gz");
     let bytes = gzip(&fastq(sequence, b'>'));
     fs::write(&path, &bytes).unwrap();
@@ -616,6 +620,7 @@ fn rna_panel_tutorial_is_executable_through_shared_agent_commands() {
     for (command, name) in [
         ("panel-build", "build.json"),
         ("panel-screen", "screen.json"),
+        ("panel-export-summary", "summary.json"),
     ] {
         let line = format!(
             "rna-reads {command} {}",

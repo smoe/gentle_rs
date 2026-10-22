@@ -55,6 +55,8 @@ Start in a disposable project and tell the Agent Assistant:
 | Build or rebuild the panel | `rna-reads panel-build BUILD_REQUEST_JSON_OR_@FILE` |
 | Screen explicit completed files | `rna-reads panel-screen SCREEN_REQUEST_JSON_OR_@FILE` |
 | Inspect panel, report and selected nomination rows | `rna-reads panel-show PATH [--file-id ID] [--rows N]` |
+| Export sample/transcript support and exact ambiguous sets | `rna-reads panel-export-summary SUMMARY_REQUEST_JSON_OR_@FILE` |
+| Reopen the saved count summary | `rna-reads panel-show SUMMARY_REPORT_PATH` |
 | Request cooperative cancellation | `rna-reads panel-cancel SCREEN_REQUEST_JSON_OR_@FILE` |
 | See active work | `introspect runtime` (observation, not a completion receipt) |
 | Inspect nominated reads further | existing `rna-reads interpret`, `align-report`, `inspect-alignments` |
@@ -69,7 +71,7 @@ these deterministic commands; Glen/CI must verify those boundaries separately.
 
 ## 1. Rehearse Without Your Sequencing Data
 
-Use an externally verified, source-matched GENtle CLI containing the two new
+Use an externally verified, source-matched GENtle CLI containing the panel
 commands. Do not build Rust for this tutorial on a host where builds are
 delegated to Glen/CI. Replace `GENTLE` below with its absolute executable path.
 Run terminal commands from the repository root, not inside the GUI Shell.
@@ -83,6 +85,8 @@ STATE="$RUN/project.json"
 "$GENTLE" --state "$STATE" shell "rna-reads panel-build @$RUN/artifacts/build.json"
 "$GENTLE" --state "$STATE" --progress-stderr shell "rna-reads panel-screen @$RUN/artifacts/screen.json"
 "$GENTLE" --state "$STATE" shell "rna-reads panel-show $RUN/screen/report.json --rows 4"
+"$GENTLE" --state "$STATE" shell "rna-reads panel-export-summary @$RUN/artifacts/summary.json"
+"$GENTLE" --state "$STATE" shell "rna-reads panel-show $RUN/summary/report.json"
 ```
 
 Use a temporary path without spaces for the literal shared-shell strings above;
@@ -102,6 +106,11 @@ both `locus_0:0` and `locus_0:1`, despite the two transcripts using different
 terminal exons. The repeated transcript labels across different toy loci must
 not merge their identities. `demo_3` has only N bases and is `unmatched`.
 These are software checks on artificial DNA, not results for PATZ1.
+
+The demo gives each artificial library a distinct read-header description so
+its two compressed inputs are not identical copies. The summary must retain
+two samples, four verified reads per sample and exact ambiguous member sets.
+It must not silently distribute the shared first-exon read across isoforms.
 
 ## 2. Prepare The Five Actual Loci
 
@@ -242,6 +251,71 @@ forms. A terminal-exon primer site alone does not recover the missing end.
 There is no oligo(dT) flip, automatic primer trimming, expression estimate,
 whole-transcriptome uniqueness claim or calibrated confidence score.
 
+### 4.1 Export Supporting Read Counts, Not Molecule Copies
+
+`panel-export-summary` turns one or more saved screen reports into tables you
+can inspect in a spreadsheet. It reads their retained `artifacts/panel.json`,
+not FASTQ, POD5 or the potentially huge nomination TSV. Keep each run's report
+and retained panel together, even if you move the run directory.
+
+For the rehearsal, the commands above use the generated `artifacts/summary.json`.
+For actual runs, ask the inner agent to draft this request with the exact paths,
+show it for approval and invoke `rna-reads panel-export-summary`:
+
+```json
+{
+  "schema": "gentle.rna_read_panel_summary_request.v1",
+  "report_paths": [
+    "/absolute/run-one/report.json",
+    "/absolute/run-two/report.json"
+  ],
+  "output_dir": "/absolute/new-summary"
+}
+```
+
+| Saved output | How to interpret it |
+| --- | --- |
+| `artifacts/samples.tsv` | One row per sample: barcode, priming, verified files, total reads, single-candidate reads, ambiguous reads, and no-candidate reads. These last three counts sum to total reads. |
+| `artifacts/transcripts.tsv` | One row per selected panel member and observed sample, including zero support. Gene/locus/member IDs keep reused transcript labels distinct. `single_candidate_reads` supported that member alone under the panel policy; `ambiguous_compatible_reads` also supported alternatives. |
+| `artifacts/ambiguous_sets.tsv` | One row per sample and exact sorted member set, with its read count. A read compatible with A or B increments `[A,B]` once, never either singleton. `member_ids_json` joins to `member_id` in the transcript table. |
+| `report.json` | The same structured counts, panel/policy binding, source report/input hashes, missing-file ledger, table hashes and non-claims. This is the final publication marker. Reopen it with `panel-show`. |
+
+For example, **hypothetical, not a demo or biological result**: 12 reads support
+only A, 7 only B, 30 support A-or-B and 5 support neither. The sample has 54
+reads, including 19 single-candidate and 30 ambiguous reads. Transcript A shows
+12 single-candidate and 30 ambiguous-compatible reads; B shows 7 and 30.
+The ambiguous-set table contains `[A,B]: 30`. Do **not** turn these into 42
+copies of A plus 37 copies of B, or automatically split the 30 between them.
+
+Single-candidate means only one member in this particular panel passed its
+uncalibrated seed-chain policy. It does not establish an exclusive isoform;
+inspect distinguishing aligned junctions separately. These are **supporting
+read counts**, not original molecule copy numbers or expression. Enrichment,
+amplification, incomplete capture and repeated sequencing can distort abundance.
+No PCR/UMI or read-level deduplication is performed.
+
+Combine only reports from the exact same panel and full nomination policy.
+Repeated report hashes or compressed-input SHA-256 values are refused, even
+under renamed paths or different sample labels: select each file once. Different
+chunks may combine within one sample only with the same barcode/priming binding.
+Distinct compressed files can still contain duplicate reads; the refusal is
+not molecule-level deduplication. Never pool the two actual sample identities.
+
+A cancelled source keeps `completeness: partial`, even if another source
+completed. Only its verified completed files contribute counts. Samples with
+no completed files have no numerical rows; consult `source_runs` for their
+uncompleted paths instead of interpreting them as zero expression. `complete`
+means complete for the explicit report selection, not all facility files or
+all molecules. Export checks content bindings and count consistency but does
+not reverify original inputs or sidecars; both revalidation flags remain false.
+An I/O failure can leave artifacts without `report.json`; those are not a
+published summary. Existing output directories are never overwritten.
+
+Limits fail explicitly rather than silently truncate: 128 reports, 256 MB of
+combined report/panel metadata, 4096 completed files, 128 observed samples,
+250,000 transcript rows, 65,536 ambiguous sets, two million member visits and
+128 MB of summary JSON. No large-data throughput claim follows from these caps.
+
 `k=15`, minimum chain coverage 45 bases and junction flanks 5 bases are explicit
 **uncalibrated starting settings**, not experimentally validated thresholds.
 Index/anchor/equivalence budgets fail explicitly rather than silently discarding
@@ -301,6 +375,8 @@ If cancelled, keep the verified completed-file ledger and prepare a new request
 containing only the remaining files, in a new output directory. This is explicit
 file-boundary continuation, not an automatic in-file/gzip checkpoint. Do not
 silently count a completed file twice when combining run summaries.
+The summary exporter enforces distinct compressed-input hashes; retain the
+partial flag and missing-file ledger when including a cancelled source.
 
 ## Notes For Our First Joint Review
 

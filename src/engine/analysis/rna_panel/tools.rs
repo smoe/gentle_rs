@@ -90,7 +90,7 @@ impl GentleEngine {
             for (i, sequence) in reads.iter().enumerate() {
                 writeln!(
                     gzip,
-                    "@demo_{i}\n{sequence}\n+\n{}",
+                    "@demo_{i} synthetic_library={number}\n{sequence}\n+\n{}",
                     ">".repeat(sequence.len())
                 )
                 .map_err(|e| bad(e.to_string()))?;
@@ -130,6 +130,14 @@ impl GentleEngine {
             cancel_path: Some(output.join("CANCEL").display().to_string()),
         };
         write_json(&stage.path().join("screen.json"), &screen)?;
+        write_json(
+            &stage.path().join("summary.json"),
+            &ExportRnaReadPanelSummaryRequest {
+                schema: RNA_PANEL_SUMMARY_REQUEST_SCHEMA.into(),
+                report_paths: vec![output.join("screen/report.json").display().to_string()],
+                output_dir: output.join("summary").display().to_string(),
+            },
+        )?;
         fs::create_dir(&output).map_err(|e| bad(e.to_string()))?;
         if let Err(error) = fs::rename(stage.path(), &directory) {
             let _ = fs::remove_dir(&output);
@@ -139,6 +147,7 @@ impl GentleEngine {
             "starter.json",
             "build.json",
             "screen.json",
+            "summary.json",
             "md5_checksums.txt",
         ]
         .iter()
@@ -190,6 +199,7 @@ impl GentleEngine {
             Option<RnaReadPanel>,
             Option<RnaReadPanelScreenReport>,
             Option<RnaReadPanelInspection>,
+            Option<RnaReadPanelSummary>,
         ),
         EngineError,
     > {
@@ -209,22 +219,30 @@ impl GentleEngine {
             let panel: RnaReadPanel =
                 serde_json::from_value(value).map_err(|e| bad(e.to_string()))?;
             validate_panel(&panel)?;
-            return Ok((Some(panel), None, None));
+            return Ok((Some(panel), None, None, None));
+        }
+        if value.get("schema").and_then(Value::as_str) == Some(RNA_PANEL_SUMMARY_SCHEMA) {
+            if file_id.is_some() || rows != 0 {
+                return Err(bad("panel_inspection_rows_require_screen_report"));
+            }
+            let summary: RnaReadPanelSummary =
+                serde_json::from_value(value).map_err(|e| bad(e.to_string()))?;
+            let mut basis = summary.clone();
+            basis.content_sha256.clear();
+            if summary.content_sha256 != sha256_prefixed_bytes(&encode(&basis)?)
+                || !matches!(summary.completeness.as_str(), "complete" | "partial")
+                || summary.original_inputs_reverified
+                || summary.nomination_sidecars_reverified
+            {
+                return Err(bad("panel_summary_binding"));
+            }
+            return Ok((None, None, None, Some(summary)));
         }
         let report: RnaReadPanelScreenReport =
             serde_json::from_value(value).map_err(|e| bad(e.to_string()))?;
-        let mut basis = report.clone();
-        basis.content_sha256.clear();
-        if report.schema != RNA_PANEL_SCREEN_SCHEMA
-            || report.content_sha256 != sha256_prefixed_bytes(&encode(&basis)?)
-            || !matches!(report.status.as_str(), "completed" | "cancelled")
-            || report.isoform_assignment_performed
-            || report.alignment_confirmation_performed
-        {
-            return Err(bad("panel_report_binding"));
-        }
+        validate_screen_report_binding(&report)?;
         if rows == 0 {
-            return Ok((None, Some(report), None));
+            return Ok((None, Some(report), None, None));
         }
         let receipt = file_id
             .and_then(|id| report.files_completed.iter().find(|r| r.file_id == id))
@@ -286,6 +304,6 @@ impl GentleEngine {
             artifact_content_verified: false,
             rows: inspected,
         };
-        Ok((None, Some(report), Some(inspection)))
+        Ok((None, Some(report), Some(inspection), None))
     }
 }

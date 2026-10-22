@@ -2722,7 +2722,7 @@
         "agent_users",
         "wet_lab_biologists"
       ],
-      "notes": "Five-locus synthetic rehearsal, then one explicitly completed custom-primed FASTQ.gz chunk. Verify supplier MD5 and compressed SHA-256 during screening; retain compatibility sets and ambiguity, not isoform assignments. All stages have shared inner-agent routes. First joint lesson; Rust execution, real-library calibration and native acceptance remain pending.",
+         "notes": "Five-locus synthetic rehearsal, then one explicitly completed custom-primed FASTQ.gz chunk. Verify supplier MD5 and compressed SHA-256 during screening; export supporting-read tables and exact ambiguous transcript sets, not molecule copies or isoform assignments. All stages have shared inner-agent routes. First joint lesson; Rust execution, real-library calibration and native acceptance remain pending.",
       "estimated_minutes": 30,
       "difficulty": "intermediate",
       "network": "offline",
@@ -2735,7 +2735,8 @@
       "produces": [
         "portable multi-locus transcript panel",
         "checksum-bound file receipts",
-        "nomination TSVs and optional per-locus FASTA"
+            "nomination TSVs and optional per-locus FASTA",
+            "supporting-read sample/transcript/ambiguous-set tables and summary JSON"
       ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
