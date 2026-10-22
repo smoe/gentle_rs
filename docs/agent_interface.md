@@ -9,11 +9,19 @@ terminal JSON helper is not an agent dependency. Require approval for external
 writes/project loading, exact completed files and supplied sample/barcode/priming.
 Do not suggest OS `touch` or Python as GENtle commands. A cancel marker requests
 termination; only the eventual report establishes status. Bounded row inspection
-does not reverify a whole TSV. Seed compatibility is not isoform identification.
+does not reverify a whole TSV. Partial seed co-nomination is not whole-read
+compatibility or isoform identification, even if A has junction support and B does not.
 `rna-reads panel-export-summary` accepts a typed summary request (`report_paths`,
 fresh `output_dir`) and requires write approval. It exports supporting reads,
 not molecule copies, separating singleton support from overlapping ambiguous
-support and exact transcript sets. Use `panel-show` to reopen its saved JSON.
+support and class-bound co-nomination sets. Use `panel-show` to reopen its saved JSON,
+or explicitly `panel-show SUMMARY_PATH --verify-artifacts` to verify its three
+summary tables (256 MB budget), never original reads or nomination sidecars.
+V1 sets remain `legacy_class_unresolved`; do not invent the lost class association.
+Explain `sample_coverage` and named missing inputs; `unassessed` is not zero.
+Use fresh request-bound cancellation paths: matching pre-start requests work,
+stale/mismatched markers fail. Progress includes decoder read-ahead; only EOF
+checksum verification and the final report establish verified units/completion.
 Do not pool incompatible policies/panels or repeated input hashes; cancelled
 sources remain partial. No FASTQ reread, OS helper or abundance inference.
 

@@ -168,20 +168,42 @@ impl GentleEngine {
             .as_deref()
             .filter(|p| !p.trim().is_empty())
             .ok_or_else(|| bad("panel_cancel_path_required"))?;
-        let mut file = match fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(path)
-        {
-            Ok(file) => file,
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                return Ok("Cancellation marker already exists; no bytes changed".into());
+        let identity = control::cancel_identity(request)?;
+        if control::marker_requested(Some(path), std::slice::from_ref(&identity))? {
+            return Ok(
+                "Cancellation marker already exists for this exact request; no bytes changed"
+                    .into(),
+            );
+        }
+        let parent = Path::new(path)
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        // Publish the whole identity atomically; a running reader must never see an empty marker.
+        let mut marker = tempfile::NamedTempFile::new_in(parent)
+            .map_err(|e| bad(format!("panel_cancel_marker: {e}")))?;
+        marker
+            .write_all(identity.as_bytes())
+            .map_err(|e| bad(e.to_string()))?;
+        marker
+            .as_file()
+            .sync_all()
+            .map_err(|e| bad(e.to_string()))?;
+        match marker.persist_noclobber(path) {
+            Ok(_) => {}
+            Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => {
+                if !control::marker_requested(Some(path), std::slice::from_ref(&identity))? {
+                    return Err(bad(
+                        "panel_cancel_marker_changed: retry the explicit request",
+                    ));
+                }
+                return Ok(
+                    "Cancellation marker already exists for this exact request; no bytes changed"
+                        .into(),
+                );
             }
             Err(error) => return Err(bad(format!("panel_cancel_marker: {error}"))),
-        };
-        file.write_all(sha256_prefixed_bytes(&encode(request)?).as_bytes())
-            .map_err(|e| bad(e.to_string()))?;
-        file.sync_all().map_err(|e| bad(e.to_string()))?;
+        }
         Ok(
             "Cancellation requested, not confirmed terminated; inspect the eventual report status"
                 .into(),
@@ -221,7 +243,10 @@ impl GentleEngine {
             validate_panel(&panel)?;
             return Ok((Some(panel), None, None, None));
         }
-        if value.get("schema").and_then(Value::as_str) == Some(RNA_PANEL_SUMMARY_SCHEMA) {
+        if matches!(
+            value.get("schema").and_then(Value::as_str),
+            Some(RNA_PANEL_SUMMARY_SCHEMA | RNA_PANEL_SUMMARY_LEGACY_SCHEMA)
+        ) {
             if file_id.is_some() || rows != 0 {
                 return Err(bad("panel_inspection_rows_require_screen_report"));
             }
@@ -233,6 +258,17 @@ impl GentleEngine {
                 || !matches!(summary.completeness.as_str(), "complete" | "partial")
                 || summary.original_inputs_reverified
                 || summary.nomination_sidecars_reverified
+                || (summary.schema == RNA_PANEL_SUMMARY_SCHEMA
+                    && (summary.ambiguous_sets.is_some()
+                        || summary.co_nomination_sets.is_none()
+                        || summary.sample_coverage.is_none()
+                        || summary.class_member_counts_complete.is_none()
+                        || summary.samples.iter().any(|s| {
+                            s.co_nominated_reads.is_none() || s.ambiguous_reads.is_some()
+                        })
+                        || summary.transcripts.iter().any(|s| {
+                            s.co_nominated_reads.is_none() || s.ambiguous_compatible_reads.is_some()
+                        })))
             {
                 return Err(bad("panel_summary_binding"));
             }

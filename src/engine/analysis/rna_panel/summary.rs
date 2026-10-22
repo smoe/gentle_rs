@@ -53,6 +53,18 @@ fn validate_run(report: &RnaReadPanelScreenReport) -> Result<(), EngineError> {
     {
         return Err(bad("panel_summary_run_geometry_or_policy"));
     }
+    if report.schema == RNA_PANEL_SCREEN_SCHEMA {
+        let expected = &report.request.files[report.files_completed.len()..];
+        if report
+            .inputs_not_completed
+            .as_ref()
+            .map(encode)
+            .transpose()?
+            != Some(encode(&expected)?)
+        {
+            return Err(bad("panel_summary_uncompleted_input_binding"));
+        }
+    }
     for (ordinal, file) in report.files_completed.iter().enumerate() {
         if file.file_id != format!("file_{ordinal:04}")
             || encode(&file.input)? != encode(&report.request.files[ordinal])?
@@ -171,10 +183,14 @@ impl GentleEngine {
         let mut samples: BTreeMap<String, RnaReadPanelSummarySample> = BTreeMap::new();
         let mut transcripts: BTreeMap<(String, String), RnaReadPanelSummaryTranscript> =
             BTreeMap::new();
-        let mut sets: BTreeMap<(String, Vec<String>), u64> = BTreeMap::new();
+        let mut sets: BTreeMap<(String, String, Vec<String>), u64> = BTreeMap::new();
+        let mut coverage: BTreeMap<String, RnaReadPanelSampleCoverage> = BTreeMap::new();
+        let mut class_member_counts_complete = true;
         let mut member_visits = 0usize;
         let mut completeness = "complete";
         for (path, report) in reports {
+            let legacy = report.schema == RNA_PANEL_SCREEN_LEGACY_SCHEMA;
+            class_member_counts_complete &= !legacy;
             let retained_panel: RnaReadPanel = bounded_metadata(
                 &Path::new(&path)
                     .parent()
@@ -204,12 +220,48 @@ impl GentleEngine {
             if report.status != "completed" || !report.files_not_completed.is_empty() {
                 completeness = "partial";
             }
+            for (ordinal, input) in report.request.files.iter().enumerate() {
+                let entry = coverage.entry(input.sample_id.clone()).or_insert_with(|| {
+                    RnaReadPanelSampleCoverage {
+                        sample_id: input.sample_id.clone(),
+                        barcode: input.barcode.clone(),
+                        priming: input.priming.clone(),
+                        requested_files: 0,
+                        verified_files: 0,
+                        status: "unassessed".into(),
+                        reads: None,
+                        inputs_not_completed: vec![],
+                    }
+                });
+                if !safe_id(&input.sample_id)
+                    || entry.barcode != input.barcode
+                    || entry.priming != input.priming
+                {
+                    return Err(bad("panel_summary_sample_binding_conflict"));
+                }
+                entry.requested_files += 1;
+                if ordinal >= report.files_completed.len() {
+                    entry.inputs_not_completed.push(input.clone());
+                }
+            }
+            if coverage.len() > 128 {
+                return Err(bad("panel_summary_sample_or_row_budget"));
+            }
             runs.push(RnaReadPanelSummaryRun {
                 report_path: path,
                 report_sha256: report.content_sha256.clone(),
                 status: report.status,
                 completed_files: report.files_completed.len(),
                 files_not_completed: report.files_not_completed,
+                inputs_not_completed: Some(
+                    report
+                        .request
+                        .files
+                        .iter()
+                        .skip(report.files_completed.len())
+                        .cloned()
+                        .collect(),
+                ),
             });
             for file in report.files_completed {
                 if files.len() == 4096 {
@@ -238,7 +290,8 @@ impl GentleEngine {
                             verified_files: 0,
                             reads: 0,
                             single_candidate_reads: 0,
-                            ambiguous_reads: 0,
+                            co_nominated_reads: Some(0),
+                            ambiguous_reads: None,
                             no_candidate_reads: 0,
                             classes: BTreeMap::new(),
                         },
@@ -260,7 +313,8 @@ impl GentleEngine {
                                 member_id: template.member_id.clone(),
                                 transcript_id: template.transcript_id.clone(),
                                 single_candidate_reads: 0,
-                                ambiguous_compatible_reads: 0,
+                                co_nominated_reads: Some(0),
+                                ambiguous_compatible_reads: None,
                             },
                         );
                     }
@@ -276,18 +330,47 @@ impl GentleEngine {
                 }
                 let mut counted = 0;
                 let mut empty = 0;
+                let mut joint_class_counts = BTreeMap::<String, u64>::new();
                 for (key, count) in file.equivalence_classes {
-                    let member_ids: Vec<String> = serde_json::from_str(&key)
-                        .map_err(|e| bad(format!("panel_summary_member_set: {e}")))?;
+                    let (class, member_ids, canonical) = if legacy {
+                        let members: Vec<String> = serde_json::from_str(&key)
+                            .map_err(|e| bad(format!("panel_summary_member_set: {e}")))?;
+                        let canonical =
+                            serde_json::to_string(&members).map_err(|e| bad(e.to_string()))?;
+                        ("legacy_class_unresolved".to_string(), members, canonical)
+                    } else {
+                        let set: RnaReadPanelNominationSetKey = serde_json::from_str(&key)
+                            .map_err(|e| bad(format!("panel_summary_class_member_set: {e}")))?;
+                        let canonical =
+                            serde_json::to_string(&set).map_err(|e| bad(e.to_string()))?;
+                        (set.class, set.member_ids, canonical)
+                    };
                     if count == 0
                         || member_ids.windows(2).any(|w| w[0] >= w[1])
-                        || serde_json::to_string(&member_ids).map_err(|e| bad(e.to_string()))?
-                            != key
+                        || canonical != key
                         || member_ids
                             .iter()
                             .any(|id| !members.contains_key(id.as_str()))
                     {
                         return Err(bad("panel_summary_unknown_unsorted_or_duplicate_member"));
+                    }
+                    if !legacy {
+                        let loci = member_ids
+                            .iter()
+                            .map(|id| members[id.as_str()].locus_id.as_str())
+                            .collect::<BTreeSet<_>>();
+                        let valid = match loci.len() {
+                            0 => matches!(class.as_str(), "partial" | "unmatched"),
+                            1 => class == "single_locus_candidate",
+                            _ => matches!(
+                                class.as_str(),
+                                "multi_locus_ambiguous" | "multi_segment_candidate"
+                            ),
+                        };
+                        if !valid {
+                            return Err(bad("panel_summary_class_member_geometry"));
+                        }
+                        add(joint_class_counts.entry(class.clone()).or_default(), count)?;
                     }
                     member_visits += member_ids.len();
                     if member_visits > MAX_MEMBER_VISITS {
@@ -303,8 +386,8 @@ impl GentleEngine {
                             add(&mut sample.single_candidate_reads, count)?;
                         }
                         _ => {
-                            add(&mut sample.ambiguous_reads, count)?;
-                            let key = (sample_id.clone(), member_ids.clone());
+                            add(sample.co_nominated_reads.as_mut().unwrap(), count)?;
+                            let key = (sample_id.clone(), class, member_ids.clone());
                             if !sets.contains_key(&key) && sets.len() == MAX_AMBIGUOUS_SETS {
                                 return Err(bad("panel_summary_set_budget"));
                             }
@@ -318,7 +401,7 @@ impl GentleEngine {
                         if member_ids.len() == 1 {
                             add(&mut row.single_candidate_reads, count)?;
                         } else {
-                            add(&mut row.ambiguous_compatible_reads, count)?;
+                            add(row.co_nominated_reads.as_mut().unwrap(), count)?;
                         }
                     }
                 }
@@ -327,7 +410,10 @@ impl GentleEngine {
                     &mut expected_empty,
                     *file.classes.get("unmatched").unwrap_or(&0),
                 )?;
-                if counted != file.reads || empty != expected_empty {
+                if counted != file.reads
+                    || empty != expected_empty
+                    || (!legacy && joint_class_counts != file.classes)
+                {
                     return Err(bad("panel_summary_equivalence_total"));
                 }
                 files.push(RnaReadPanelSummaryFile {
@@ -341,16 +427,31 @@ impl GentleEngine {
                 });
             }
         }
+        for (id, entry) in &mut coverage {
+            if let Some(sample) = samples.get(id) {
+                entry.verified_files = sample.verified_files;
+                entry.reads = Some(sample.reads);
+                entry.status = if entry.inputs_not_completed.is_empty() {
+                    "complete"
+                } else {
+                    "partial"
+                }
+                .into();
+            }
+        }
         let mut summary = RnaReadPanelSummary {
             schema: RNA_PANEL_SUMMARY_SCHEMA.into(), content_sha256: String::new(), panel_sha256: panel.unwrap().content_sha256,
             policy, completeness: completeness.into(), source_runs: runs, source_files: files,
             samples: samples.into_values().collect(), transcripts: transcripts.into_values().collect(),
-            ambiguous_sets: sets.into_iter().map(|((sample_id, member_ids), reads)|
-                RnaReadPanelSummaryAmbiguousSet { sample_id, member_ids, reads }).collect(),
+            ambiguous_sets: None,
+            co_nomination_sets: Some(sets.into_iter().map(|((sample_id, class, member_ids), reads)|
+                RnaReadPanelSummaryNominationSet { sample_id, class, member_ids, reads }).collect()),
+            sample_coverage: Some(coverage.into_values().collect()), class_member_counts_complete: Some(class_member_counts_complete),
             original_inputs_reverified: false, nomination_sidecars_reverified: false, artifacts: vec![], nonclaims: vec![
                 "Counts are supporting reads, not original molecule copy numbers, expression or exclusive isoform identification; no alignment confirmation is added.".into(),
-                "Single-candidate means one compatible panel member under the stored nomination policy, not transcriptome-wide uniqueness.".into(),
-                "Ambiguous sets count each read once; per-transcript ambiguous_compatible_reads overlap and must not be summed as read totals. No fractional redistribution or winner is inferred.".into(),
+                "Single-candidate means one seed-nominated panel member, not compatibility with the entire read or transcriptome-wide uniqueness. A distinguishing junction does not remove alternatives nominated through shared exons.".into(),
+                "Co-nomination sets retain class plus members; disjoint-segment nominations are separate from overlapping nominations, not proof of a chimera. Per-transcript co_nominated_reads overlap and must not be summed as read totals.".into(),
+                "V1 reports lost their class/member association: legacy_class_unresolved rows never invent it. No fractional redistribution, exclusive assignment or winner is inferred.".into(),
                 "Zero denotes no stored support among verified files, not biological absence. Completeness covers only the explicit report selection; cancelled reports keep this summary partial.".into(),
                 "Only stored report/panel content bindings and count consistency are checked. Original FASTQ and nomination sidecars are not reopened or reverified; content hashes are not authenticated provenance.".into(),
                 "Duplicate compressed-input hashes are refused. Distinct files can still contain duplicate reads; no read-level or PCR/UMI deduplication is performed.".into(),
@@ -372,26 +473,36 @@ impl GentleEngine {
                 "barcode",
                 "priming",
                 "verified_files",
+                "requested_files",
+                "status",
                 "reads",
                 "single_candidate_reads",
-                "ambiguous_reads",
+                "co_nominated_reads",
                 "no_candidate_reads",
                 "classes_json",
             ],
             summary
-                .samples
+                .sample_coverage
+                .as_ref()
+                .unwrap()
                 .iter()
                 .map(|s| {
+                    let counts = summary.samples.iter().find(|c| c.sample_id == s.sample_id);
                     Ok::<_, EngineError>((
                         &s.sample_id,
                         &s.barcode,
                         &s.priming,
                         s.verified_files,
+                        s.requested_files,
+                        &s.status,
                         s.reads,
-                        s.single_candidate_reads,
-                        s.ambiguous_reads,
-                        s.no_candidate_reads,
-                        serde_json::to_string(&s.classes).map_err(|e| bad(e.to_string()))?,
+                        counts.map(|c| c.single_candidate_reads),
+                        counts.and_then(|c| c.co_nominated_reads),
+                        counts.map(|c| c.no_candidate_reads),
+                        counts
+                            .map(|c| serde_json::to_string(&c.classes))
+                            .transpose()
+                            .map_err(|e| bad(e.to_string()))?,
                     ))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
@@ -407,7 +518,7 @@ impl GentleEngine {
                 "member_id",
                 "transcript_id",
                 "single_candidate_reads",
-                "ambiguous_compatible_reads",
+                "co_nominated_reads",
             ],
             summary.transcripts.iter().map(|r| {
                 (
@@ -418,20 +529,23 @@ impl GentleEngine {
                     &r.member_id,
                     &r.transcript_id,
                     r.single_candidate_reads,
-                    r.ambiguous_compatible_reads,
+                    r.co_nominated_reads,
                 )
             }),
         )?);
         summary.artifacts.push(write_tsv(
             staging.path(),
-            "ambiguous_sets.tsv",
-            &["sample_id", "member_ids_json", "reads"],
+            "co_nomination_sets.tsv",
+            &["sample_id", "class", "member_ids_json", "reads"],
             summary
-                .ambiguous_sets
+                .co_nomination_sets
+                .as_ref()
+                .unwrap()
                 .iter()
                 .map(|r| {
                     Ok::<_, EngineError>((
                         &r.sample_id,
+                        &r.class,
                         serde_json::to_string(&r.member_ids).map_err(|e| bad(e.to_string()))?,
                         r.reads,
                     ))

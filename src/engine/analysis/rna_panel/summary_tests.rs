@@ -54,6 +54,10 @@ fn fixture(
 }
 
 fn save_report(path: &str, report: &mut RnaReadPanelScreenReport) {
+    if report.schema == RNA_PANEL_SCREEN_SCHEMA {
+        report.inputs_not_completed =
+            Some(report.request.files[report.files_completed.len()..].to_vec());
+    }
     report.content_sha256.clear();
     report.content_sha256 = sha256_prefixed_bytes(&encode(report).unwrap());
     fs::write(path, serde_json::to_vec_pretty(report).unwrap()).unwrap();
@@ -72,10 +76,10 @@ fn rna_panel_summary_counts_reads_without_resolving_ambiguous_isoforms_or_reopen
         (
             sample.reads,
             sample.single_candidate_reads,
-            sample.ambiguous_reads,
+            sample.co_nominated_reads,
             sample.no_candidate_reads
         ),
-        (4, 2, 1, 1)
+        (4, 2, Some(1), 1)
     );
     assert_eq!(summary.completeness, "complete");
     assert!(!summary.original_inputs_reverified);
@@ -91,25 +95,25 @@ fn rna_panel_summary_counts_reads_without_resolving_ambiguous_isoforms_or_reopen
     assert_eq!(
         (
             row("locus_0:0").single_candidate_reads,
-            row("locus_0:0").ambiguous_compatible_reads
+            row("locus_0:0").co_nominated_reads
         ),
-        (1, 1)
+        (1, Some(1))
     );
     assert_eq!(
         (
             row("locus_0:1").single_candidate_reads,
-            row("locus_0:1").ambiguous_compatible_reads
+            row("locus_0:1").co_nominated_reads
         ),
-        (0, 1)
+        (0, Some(1))
     );
     assert_eq!(row("locus_1:0").single_candidate_reads, 1);
-    assert_eq!(row("locus_1:1").ambiguous_compatible_reads, 0);
-    assert_eq!(summary.ambiguous_sets.len(), 1);
+    assert_eq!(row("locus_1:1").co_nominated_reads, Some(0));
+    assert_eq!(summary.co_nomination_sets.as_ref().unwrap().len(), 1);
     assert_eq!(
-        summary.ambiguous_sets[0].member_ids,
+        summary.co_nomination_sets.as_ref().unwrap()[0].member_ids,
         vec!["locus_0:0", "locus_0:1"]
     );
-    assert_eq!(summary.ambiguous_sets[0].reads, 1);
+    assert_eq!(summary.co_nomination_sets.as_ref().unwrap()[0].reads, 1);
     assert_eq!(encode(engine.state()).unwrap(), before);
     for artifact in &summary.artifacts {
         let bytes = fs::read(Path::new(&request.output_dir).join(&artifact.path)).unwrap();
@@ -161,7 +165,7 @@ fn rna_panel_summary_combines_samples_deterministically_and_requires_identical_p
     let summary = engine.export_rna_read_panel_summary(&request).unwrap();
     assert_eq!(summary.samples.len(), 2);
     assert_eq!(summary.transcripts.len(), 8);
-    assert_eq!(summary.ambiguous_sets.len(), 2);
+    assert_eq!(summary.co_nomination_sets.as_ref().unwrap().len(), 2);
     let mut reversed = request.clone();
     reversed.report_paths.reverse();
     reversed.output_dir = td.path().join("reverse order").display().to_string();
@@ -190,7 +194,7 @@ fn rna_panel_summary_aggregates_chunks_but_refuses_duplicate_inputs_and_conflict
     let summary = engine.export_rna_read_panel_summary(&request).unwrap();
     assert_eq!(summary.samples.len(), 1);
     assert_eq!(summary.samples[0].reads, 8);
-    assert_eq!(summary.ambiguous_sets[0].reads, 2);
+    assert_eq!(summary.co_nomination_sets.as_ref().unwrap()[0].reads, 2);
     request.output_dir = td.path().join("duplicate input").display().to_string();
     second.files_completed[0].observed_sha256 = first.files_completed[0].observed_sha256.clone();
     second.files_completed[0].observed_md5 = first.files_completed[0].observed_md5.clone();
@@ -232,6 +236,10 @@ fn rna_panel_summary_cancelled_sources_stay_partial_including_zero_verified_unit
     let partial = engine.export_rna_read_panel_summary(&request).unwrap();
     assert_eq!(partial.completeness, "partial");
     assert_eq!(partial.samples[0].reads, 4);
+    let coverage = &partial.sample_coverage.as_ref().unwrap()[0];
+    assert_eq!(coverage.status, "partial");
+    assert_eq!(coverage.reads, Some(4));
+    assert_eq!(coverage.inputs_not_completed[0].sample_id, "sample_a");
     report.files_completed.clear();
     report.files_not_completed = report
         .request
@@ -249,6 +257,239 @@ fn rna_panel_summary_cancelled_sources_stay_partial_including_zero_verified_unit
         "unassessed samples must not acquire zero-count rows"
     );
     assert_eq!(empty.source_runs[0].files_not_completed.len(), 2);
+    let coverage = &empty.sample_coverage.as_ref().unwrap()[0];
+    assert_eq!(coverage.status, "unassessed");
+    assert_eq!(coverage.reads, None);
+    let table =
+        fs::read_to_string(Path::new(&request.output_dir).join("artifacts/samples.tsv")).unwrap();
+    assert!(table.contains("\t0\t2\tunassessed\t\t\t\t\t\n"), "{table}");
+}
+
+#[test]
+fn rna_panel_summary_names_an_unscreened_second_library_without_zero_reads() {
+    let td = tempfile::tempdir().unwrap();
+    let (engine, mut report, request) = fixture(td.path(), "sample_a");
+    report.status = "cancelled".into();
+    let mut missing = report.request.files[0].clone();
+    missing.sample_id = "sample_b".into();
+    missing.barcode = "barcode_b".into();
+    missing.path.push_str(".not-yet-screened");
+    report.request.files.push(missing.clone());
+    report.files_not_completed = vec![missing.path.clone()];
+    save_report(&request.report_paths[0], &mut report);
+    let summary = engine.export_rna_read_panel_summary(&request).unwrap();
+    let coverage = summary.sample_coverage.as_ref().unwrap();
+    assert_eq!(coverage.len(), 2);
+    assert_eq!(coverage[0].status, "complete");
+    assert_eq!(coverage[0].reads, Some(4));
+    assert_eq!(coverage[1].sample_id, "sample_b");
+    assert_eq!(coverage[1].barcode, "barcode_b");
+    assert_eq!(coverage[1].status, "unassessed");
+    assert_eq!(coverage[1].reads, None);
+    assert_eq!(coverage[1].inputs_not_completed[0].path, missing.path);
+    assert_eq!(summary.completeness, "partial");
+    assert!(
+        summary
+            .transcripts
+            .iter()
+            .all(|t| t.sample_id == "sample_a")
+    );
+}
+
+#[test]
+fn rna_panel_summary_preserves_joint_class_member_counts_and_legacy_uncertainty() {
+    let td = tempfile::tempdir().unwrap();
+    let (engine, mut report, mut request) = fixture(td.path(), "sample_a");
+    let ids = vec!["locus_0:0".to_string(), "locus_1:0".to_string()];
+    let file = &mut report.files_completed[0];
+    file.classes = BTreeMap::from([
+        ("multi_locus_ambiguous".into(), 2),
+        ("multi_segment_candidate".into(), 2),
+    ]);
+    file.equivalence_classes = file
+        .classes
+        .iter()
+        .map(|(class, count)| {
+            (
+                serde_json::to_string(&RnaReadPanelNominationSetKey {
+                    class: class.clone(),
+                    member_ids: ids.clone(),
+                })
+                .unwrap(),
+                *count,
+            )
+        })
+        .collect();
+    save_report(&request.report_paths[0], &mut report);
+    let summary = engine.export_rna_read_panel_summary(&request).unwrap();
+    let sets = summary.co_nomination_sets.as_ref().unwrap();
+    assert_eq!(sets.len(), 2);
+    assert_eq!(sets[0].member_ids, sets[1].member_ids);
+    assert_ne!(sets[0].class, sets[1].class);
+    assert_eq!(sets.iter().map(|s| s.reads).sum::<u64>(), 4);
+    assert_eq!(summary.class_member_counts_complete, Some(true));
+    // V1 deliberately lost the association. Converting its stored counts must never reconstruct it.
+    report.schema = RNA_PANEL_SCREEN_LEGACY_SCHEMA.into();
+    report.inputs_not_completed = None;
+    report.files_completed[0].equivalence_classes =
+        BTreeMap::from([(serde_json::to_string(&ids).unwrap(), 4)]);
+    save_report(&request.report_paths[0], &mut report);
+    request.output_dir = td.path().join("legacy").display().to_string();
+    let legacy = engine.export_rna_read_panel_summary(&request).unwrap();
+    assert_eq!(legacy.class_member_counts_complete, Some(false));
+    let set = &legacy.co_nomination_sets.as_ref().unwrap()[0];
+    assert_eq!(set.class, "legacy_class_unresolved");
+    assert_eq!(set.reads, 4);
+    assert_eq!(set.member_ids, ids);
+    assert_eq!(legacy.samples[0].classes["multi_segment_candidate"], 2);
+}
+
+#[test]
+fn rna_panel_summary_legacy_json_keeps_digest_and_never_acquires_new_claims() {
+    let td = tempfile::tempdir().unwrap();
+    let (engine, _, request) = fixture(td.path(), "sample_a");
+    let summary = engine.export_rna_read_panel_summary(&request).unwrap();
+    let mut old = serde_json::to_value(summary).unwrap();
+    old["schema"] = RNA_PANEL_SUMMARY_LEGACY_SCHEMA.into();
+    let sets = old
+        .as_object_mut()
+        .unwrap()
+        .remove("co_nomination_sets")
+        .unwrap();
+    old["ambiguous_sets"] = sets;
+    for set in old["ambiguous_sets"].as_array_mut().unwrap() {
+        set.as_object_mut().unwrap().remove("class");
+    }
+    for name in ["sample_coverage", "class_member_counts_complete"] {
+        old.as_object_mut().unwrap().remove(name);
+    }
+    for row in old["samples"].as_array_mut().unwrap() {
+        let count = row
+            .as_object_mut()
+            .unwrap()
+            .remove("co_nominated_reads")
+            .unwrap();
+        row["ambiguous_reads"] = count;
+    }
+    for row in old["transcripts"].as_array_mut().unwrap() {
+        let count = row
+            .as_object_mut()
+            .unwrap()
+            .remove("co_nominated_reads")
+            .unwrap();
+        row["ambiguous_compatible_reads"] = count;
+    }
+    for run in old["source_runs"].as_array_mut().unwrap() {
+        run.as_object_mut().unwrap().remove("inputs_not_completed");
+    }
+    old["content_sha256"] = "".into();
+    old["content_sha256"] = sha256_prefixed_bytes(&encode(&old).unwrap()).into();
+    let path = td.path().join("legacy-summary.json");
+    for newline in ["\n", "\r\n"] {
+        fs::write(
+            &path,
+            serde_json::to_string_pretty(&old)
+                .unwrap()
+                .replace('\n', newline),
+        )
+        .unwrap();
+        let shown = engine
+            .inspect_rna_read_panel(&path.to_string_lossy(), None, 0)
+            .unwrap()
+            .3
+            .unwrap();
+        assert_eq!(encode(&shown).unwrap(), encode(&old).unwrap());
+        assert!(shown.co_nomination_sets.is_none());
+        assert!(shown.class_member_counts_complete.is_none());
+        assert!(shown.transcripts[0].co_nominated_reads.is_none());
+    }
+}
+
+#[test]
+fn rna_panel_summary_verification_is_explicit_bounded_and_hash_bound() {
+    let td = tempfile::tempdir().unwrap();
+    let (engine, _, request) = fixture(&td.path().join("with space and 'quote"), "sample_a");
+    let summary = engine.export_rna_read_panel_summary(&request).unwrap();
+    let path = Path::new(&request.output_dir).join("report.json");
+    let path = path.to_str().unwrap();
+    let verified = engine
+        .verify_rna_read_panel_summary_artifacts(path, &summary)
+        .unwrap();
+    assert_eq!(verified.summary_sha256, summary.content_sha256);
+    assert_eq!(
+        verified.verified_bytes,
+        summary.artifacts.iter().map(|a| a.bytes).sum::<u64>()
+    );
+    assert!(!verified.original_inputs_reverified);
+    let target = Path::new(&request.output_dir).join("artifacts/transcripts.tsv");
+    let bytes = fs::read(&target).unwrap();
+    let mut edited = bytes.clone();
+    edited[0] = b'X';
+    fs::write(&target, &edited).unwrap();
+    assert!(engine.inspect_rna_read_panel(path, None, 0).is_ok());
+    assert!(
+        engine
+            .verify_rna_read_panel_summary_artifacts(path, &summary)
+            .unwrap_err()
+            .message
+            .contains("artifact_hash_or_size")
+    );
+    fs::write(
+        &target,
+        String::from_utf8(bytes.clone())
+            .unwrap()
+            .replace('\n', "\r\n"),
+    )
+    .unwrap();
+    assert!(
+        engine.inspect_rna_read_panel(path, None, 0).is_ok(),
+        "default show remains metadata-only"
+    );
+    assert!(
+        engine
+            .verify_rna_read_panel_summary_artifacts(path, &summary)
+            .is_err()
+    );
+    fs::write(&target, &bytes).unwrap();
+    assert!(
+        engine
+            .verify_rna_read_panel_summary_artifacts(path, &summary)
+            .is_ok()
+    );
+    let mut traversal = summary.clone();
+    traversal.artifacts[0].path = "artifacts/../report.json".into();
+    traversal.content_sha256.clear();
+    traversal.content_sha256 = sha256_prefixed_bytes(&encode(&traversal).unwrap());
+    assert!(
+        engine
+            .verify_rna_read_panel_summary_artifacts(path, &traversal)
+            .unwrap_err()
+            .message
+            .contains("allowlist")
+    );
+    let mut excessive = summary.clone();
+    excessive.artifacts[0].bytes = 256_000_001;
+    excessive.content_sha256.clear();
+    excessive.content_sha256 = sha256_prefixed_bytes(&encode(&excessive).unwrap());
+    assert!(
+        engine
+            .verify_rna_read_panel_summary_artifacts(path, &excessive)
+            .unwrap_err()
+            .message
+            .contains("byte_budget")
+    );
+    #[cfg(unix)]
+    {
+        fs::remove_file(&target).unwrap();
+        std::os::unix::fs::symlink(td.path().join("missing"), &target).unwrap();
+        assert!(
+            engine
+                .verify_rna_read_panel_summary_artifacts(path, &summary)
+                .unwrap_err()
+                .message
+                .contains("file_binding")
+        );
+    }
 }
 
 #[test]

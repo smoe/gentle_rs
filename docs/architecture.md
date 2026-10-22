@@ -13,10 +13,16 @@ cancellation also live at this shared boundary, so no tutorial stage requires
 an inner agent to run OS Python/touch commands. Project state stays unchanged;
 external writes retain confirmation. See [the invariant](decisions.md#independent-locus-fastq-panel-nominations)
 and [the protocol](protocol.md#multi-locus-fastq-screening).
-The report-only summary uses this same boundary: count each ambiguous member
-set once, expose overlapping per-member support separately, retain partial
+The report-only summary uses this same boundary: count each class/member
+co-nomination set once, expose overlapping per-member support separately, retain partial
 source status and reject duplicate input hashes. No FASTQ reread, molecular
 abundance estimate or adapter-local reassignment is introduced.
+Partial seed co-nomination is not whole-read compatibility, even with one
+candidate's junction support. V2 preserves joint class/member counts; v1's
+lost association remains unresolved. Named missing inputs and per-sample
+coverage distinguish unassessed from zero. Request-bound throttled cancellation,
+read-ahead-labelled byte progress and explicit bounded summary-table verification
+live here, not in adapters. Default inspection remains metadata-only.
 
 ## Publication projections
 

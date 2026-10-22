@@ -54,6 +54,26 @@ fn rna_panel_introspection_exposes_typed_requests_without_granting_completion() 
             .unwrap()
             .is_state_mutating()
     );
+    let verify =
+        parse_shell_line("rna-reads panel-show 'summary with space.json' --verify-artifacts")
+            .unwrap();
+    assert!(!verify.is_state_mutating());
+    if let ShellCommand::Op { payload } = verify {
+        let operation: Operation = serde_json::from_str(&payload).unwrap();
+        assert!(matches!(
+            operation,
+            Operation::InspectRnaReadPanel {
+                verify_artifacts: true,
+                ..
+            }
+        ));
+    } else {
+        panic!("verification must use the shared operation");
+    }
+    assert!(
+        parse_shell_line("rna-reads panel-show summary.json --verify-artifacts --verify-artifacts")
+            .is_err()
+    );
     for line in [
         "rna-reads panel-demo fresh-output",
         "rna-reads panel-show report.json --unknown 4",

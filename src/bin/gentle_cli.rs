@@ -1051,6 +1051,11 @@ impl ProgressPrinter {
                 ));
             }
             OperationProgress::Tfbs(p) => self.on_tfbs_progress(p),
+            OperationProgress::RnaReadPanel(p) => self.print_line(&format!(
+                "progress rna-panel file={}/{} file_id={} sample_id={} phase={} processed_reads={} compressed_bytes_read={}/{} (decoder read-ahead; not checksum success)",
+                p.file_ordinal, p.files_total, p.file_id, p.sample_id, p.phase,
+                p.processed_reads, p.compressed_bytes_read, p.compressed_bytes_total
+            )),
             OperationProgress::GenomePrepare(p) => self.on_genome_prepare_progress(p),
             OperationProgress::GenomeTrackImport(p) => self.on_genome_track_import_progress(p),
             OperationProgress::DbSnpFetch(p) => self.on_dbsnp_fetch_progress(p),

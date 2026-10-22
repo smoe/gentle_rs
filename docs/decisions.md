@@ -28,7 +28,8 @@ not double-counted or silently turned into a consensus annotation.
 
 One packed-word index retains all template postings. Exact seeds are chained
 with the existing Rust-Bio LCSk++ implementation. Every qualifying member and
-orientation is retained; compatibility sets are not exclusive isoform calls,
+orientation is retained; partial seed co-nominations are not whole-read-compatible
+transcript sets or exclusive isoform calls,
 expression, full-length capture or whole-transcriptome uniqueness. Budgets fail
 explicitly, never by annotation-order truncation. Junction support requires
 declared flanks; substitutions/indels require separate alignment inspection.
@@ -63,6 +64,20 @@ remain partial and samples without such units remain numerically unassessed.
 Export revalidates retained report/panel content, not original reads or large
 nomination sidecars. This shared, confirmed external export and subsequent
 read-only inspection remain available to the inner agent without OS tools.
+
+The narrowed 2026-10-23 repair preserves `(class, sorted members)` jointly in
+v2 receipts and summaries. Never reconstruct that association for member-only
+v1 reports: label it `legacy_class_unresolved`. A distinguishing junction in A
+does not exclude B nominated through shared exons; there is no whole-read
+compatibility filter or isoform resolver in this slice. Retain named requested
+but uncompleted inputs and numerically unassessed samples. Do not merge a
+delivery FASTQ with its constituent chunks: different hashes cannot detect
+shared reads. Keep fail-closed resource limits, request-bound cancellation
+(including matching pre-start requests), throttled marker I/O and honest
+compressed-byte/read-ahead progress. Table verification is explicit, bounded
+and digest-bound, not an implicit expensive display operation or a revalidation
+of original reads/nomination sidecars. V1 fields remain readable without
+changing their semantic digest or promoting their historical names into claims.
 
 ## Development And Release Verification Cadence
 

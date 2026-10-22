@@ -1,4 +1,4 @@
-//! Portable multi-locus seed-screen contracts; compatibility is not isoform identification.
+//! Portable multi-locus seed-screen contracts; co-nomination is not whole-read compatibility.
 
 use super::SequenceGenomeAnchorSummary;
 use serde::{Deserialize, Serialize};
@@ -6,10 +6,34 @@ use std::collections::BTreeMap;
 
 pub const RNA_PANEL_SCHEMA: &str = "gentle.rna_read_panel.v1";
 pub const RNA_PANEL_BUILD_SCHEMA: &str = "gentle.rna_read_panel_build_request.v1";
-pub const RNA_PANEL_SCREEN_SCHEMA: &str = "gentle.rna_read_panel_screen.v1";
+pub const RNA_PANEL_SCREEN_LEGACY_SCHEMA: &str = "gentle.rna_read_panel_screen.v1";
+pub const RNA_PANEL_SCREEN_SCHEMA: &str = "gentle.rna_read_panel_screen.v2";
 pub const RNA_PANEL_SCREEN_REQUEST_SCHEMA: &str = "gentle.rna_read_panel_screen_request.v1";
 pub const RNA_PANEL_SUMMARY_REQUEST_SCHEMA: &str = "gentle.rna_read_panel_summary_request.v1";
-pub const RNA_PANEL_SUMMARY_SCHEMA: &str = "gentle.rna_read_panel_summary.v1";
+pub const RNA_PANEL_SUMMARY_LEGACY_SCHEMA: &str = "gentle.rna_read_panel_summary.v1";
+pub const RNA_PANEL_SUMMARY_SCHEMA: &str = "gentle.rna_read_panel_summary.v2";
+
+/// V2 count keys preserve segment classification, unlike v1 member-only keys.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RnaReadPanelNominationSetKey {
+    pub class: String,
+    pub member_ids: Vec<String>,
+}
+
+/// Raw compressed bytes consumed can include decoder read-ahead; they are not verified EOF.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RnaReadPanelProgress {
+    pub file_id: String,
+    pub sample_id: String,
+    pub file_ordinal: usize,
+    pub files_total: usize,
+    pub processed_reads: u64,
+    pub compressed_bytes_read: u64,
+    pub compressed_bytes_total: u64,
+    pub phase: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -175,7 +199,7 @@ pub struct RnaReadPanelFileReceipt {
     pub compressed_bytes: u64,
     pub reads: u64,
     pub classes: BTreeMap<String, u64>,
-    /// Each read increments one member-set class, not every member's exclusive count.
+    /// V2 keys encode NominationSetKey; v1 keys encode only member IDs. Neither is an isoform call.
     pub equivalence_classes: BTreeMap<String, u64>,
     pub artifacts: Vec<RnaReadPanelArtifact>,
 }
@@ -194,6 +218,8 @@ pub struct RnaReadPanelScreenReport {
     pub alignment_confirmation_performed: bool,
     pub files_completed: Vec<RnaReadPanelFileReceipt>,
     pub files_not_completed: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inputs_not_completed: Option<Vec<RnaReadPanelInput>>,
     pub nonclaims: Vec<String>,
 }
 
@@ -240,6 +266,8 @@ pub struct RnaReadPanelSummaryRun {
     pub status: String,
     pub completed_files: usize,
     pub files_not_completed: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inputs_not_completed: Option<Vec<RnaReadPanelInput>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -263,7 +291,11 @@ pub struct RnaReadPanelSummarySample {
     pub verified_files: usize,
     pub reads: u64,
     pub single_candidate_reads: u64,
-    pub ambiguous_reads: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub co_nominated_reads: Option<u64>,
+    /// Retained only when reading historical v1 summaries; not whole-read compatibility.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ambiguous_reads: Option<u64>,
     pub no_candidate_reads: u64,
     pub classes: BTreeMap<String, u64>,
 }
@@ -278,8 +310,12 @@ pub struct RnaReadPanelSummaryTranscript {
     pub member_id: String,
     pub transcript_id: String,
     pub single_candidate_reads: u64,
-    /// The same ambiguous read can support several rows; do not sum this column as read totals.
-    pub ambiguous_compatible_reads: u64,
+    /// Overlapping partial seed support; do not sum this column as read totals.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub co_nominated_reads: Option<u64>,
+    /// Historical v1 name only; does not assert compatibility with the entire read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ambiguous_compatible_reads: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -288,6 +324,40 @@ pub struct RnaReadPanelSummaryAmbiguousSet {
     pub sample_id: String,
     pub member_ids: Vec<String>,
     pub reads: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RnaReadPanelSummaryNominationSet {
+    pub sample_id: String,
+    pub class: String,
+    pub member_ids: Vec<String>,
+    pub reads: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RnaReadPanelSampleCoverage {
+    pub sample_id: String,
+    pub barcode: String,
+    pub priming: String,
+    pub requested_files: usize,
+    pub verified_files: usize,
+    pub status: String,
+    /// None means no verified unit, not zero observed reads.
+    pub reads: Option<u64>,
+    pub inputs_not_completed: Vec<RnaReadPanelInput>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RnaReadPanelArtifactVerification {
+    pub schema: String,
+    pub summary_sha256: String,
+    pub artifacts: Vec<RnaReadPanelArtifact>,
+    pub verified_bytes: u64,
+    pub original_inputs_reverified: bool,
+    pub scope: String,
 }
 
 /// Read support, not molecular abundance, exclusive isoform assignment or expression.
@@ -304,7 +374,15 @@ pub struct RnaReadPanelSummary {
     pub source_files: Vec<RnaReadPanelSummaryFile>,
     pub samples: Vec<RnaReadPanelSummarySample>,
     pub transcripts: Vec<RnaReadPanelSummaryTranscript>,
-    pub ambiguous_sets: Vec<RnaReadPanelSummaryAmbiguousSet>,
+    /// Historical v1 rows have no recoverable class/member association.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ambiguous_sets: Option<Vec<RnaReadPanelSummaryAmbiguousSet>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub co_nomination_sets: Option<Vec<RnaReadPanelSummaryNominationSet>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_coverage: Option<Vec<RnaReadPanelSampleCoverage>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub class_member_counts_complete: Option<bool>,
     pub original_inputs_reverified: bool,
     pub nomination_sidecars_reverified: bool,
     pub artifacts: Vec<RnaReadPanelArtifact>,

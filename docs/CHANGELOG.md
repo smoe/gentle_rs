@@ -1,5 +1,26 @@
 # GENtle Changelog
 
+## 2026-10-23 - Narrow FASTQ Co-Nomination And Inspection Repairs
+
+- V2 screen/summary records preserve class plus member-set counts, name partial
+  seed co-nomination honestly and retain v1 inspection without inventing lost
+  class associations. No aligner, whole-read compatibility test, isoform resolver
+  or molecule-count estimator is added; demo_1 explicitly shows the limitation.
+- Preserve named uncompleted inputs and per-sample requested/verified coverage;
+  unassessed samples have blank read counts, not zero. Keep resource-budget
+  failure closed, now with file/read/record diagnostics. Throttle marker I/O
+  and expose within-file processed-read/compressed-byte progress labelled for
+  decoder read-ahead. Request-bound markers retain matching pre-start cancel
+  and refuse stale/mismatched markers.
+- Add opt-in `panel-show SUMMARY_PATH --verify-artifacts`: exact size/SHA-256
+  verification of three allowlisted summary tables within 256 MB, separate
+  from metadata display, original FASTQ and nomination sidecars. All routes
+  remain shared and discoverable to inner/outer agents; writes still need approval.
+- Update tutorial 10.04, source/catalog metadata and interface contracts;
+  author regressions for v1/v2, joint counts, ambiguity, cancellation, progress,
+  unassessed samples and table tampering/paths. Rust/native/real-data execution
+  remains Glen/CI's; no private reads processed, old goal resumed or push.
+
 ## 2026-10-22 - Reconcile Glen's Two-Repair Verification
 
 - Validate all 26 manifested payloads in the owner's 128,815-byte

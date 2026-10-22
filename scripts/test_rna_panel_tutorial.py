@@ -19,7 +19,7 @@ class RnaPanelTutorialTests(unittest.TestCase):
         source_path = ROOT / "src/engine/analysis/rna_panel.rs"
         source = source_path.read_text(encoding="utf-8")
         for text in (source, source.replace("\n", "\r\n")):
-            for child in ("input", "tools", "tests", "summary", "summary_tests"):
+            for child in ("input", "control", "verification", "tools", "tests", "summary", "summary_tests"):
                 match = re.search(r'#\[path = "([^"]+)"\]\s*mod ' + child + r';', text)
                 self.assertIsNotNone(match, f"path-loaded panel needs an explicit {child} path")
                 self.assertEqual(match.group(1), f"rna_panel/{child}.rs")
@@ -122,7 +122,7 @@ class RnaPanelTutorialTests(unittest.TestCase):
             summary, = [r for r in requests if r.get("schema") == "gentle.rna_read_panel_summary_request.v1"]
             self.assertEqual(set(summary), {"schema", "report_paths", "output_dir"})
             self.assertEqual(len(summary["report_paths"]), 2)
-            for phrase in ("single_candidate_reads", "ambiguous_compatible_reads", "member_ids_json",
+            for phrase in ("single_candidate_reads", "co_nominated_reads", "member_ids_json",
                            "not original molecule copy numbers", "completeness: partial", "no numerical rows",
                            "panel-export-summary @$RUN/artifacts/summary.json", "panel-show $RUN/summary/report.json"):
                 self.assertIn(phrase, text)
@@ -132,6 +132,26 @@ class RnaPanelTutorialTests(unittest.TestCase):
         tests = (ROOT / "src/engine/analysis/rna_panel/summary_tests.rs").read_text()
         self.assertIn("without_resolving_ambiguous_isoforms_or_reopening_inputs", tests)
         self.assertIn("fs::remove_file", tests)
+
+    def test_repaired_lesson_explains_limits_and_all_new_shared_controls(self):
+        text = GUIDE.read_text()
+        for phrase in ("demo_1", "supported_junction_offsets: [40]", "whole-read",
+                       "legacy_class_unresolved", "class_member_counts_complete=false",
+                       "sample_coverage", "unassessed", "inputs_not_completed", "MD5SUMS",
+                       "merged delivery FASTQ", "constituent chunks", "decoder read-ahead",
+                       "file_checksum_verified", "pre-start", "record index",
+                       "--verify-artifacts", "256 MB", "co_nomination_sets.tsv"):
+            self.assertIn(phrase, text)
+        bridge = (ROOT / "src/agent_bridge.rs").read_text()
+        for phrase in ("--verify-artifacts", "legacy_class_unresolved", "co_nominated_reads",
+                       "sample_coverage", "decoder read-ahead"):
+            self.assertIn(phrase, bridge)
+        # These are source-contract assertions, not execution of the Rust paths.
+        control = (ROOT / "src/engine/analysis/rna_panel/control.rs").read_text()
+        self.assertIn("panel_cancel_marker_mismatch", control)
+        source = (ROOT / "src/engine/analysis/rna_panel.rs").read_text()
+        polling = source.split("let mut gate = control::PollGate::default();", 1)[1]
+        self.assertLess(polling.index("if !gate.due"), polling.index("control::marker_requested(request.cancel_path"))
 
 
 if __name__ == "__main__":

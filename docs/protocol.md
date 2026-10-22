@@ -4,11 +4,11 @@
 
 New shared operations are `PrepareRnaReadPanelDemo {output_dir}`,
 `BuildRnaReadPanel {request}`, `ScreenRnaReadPanel {request}`,
-`InspectRnaReadPanel {path, file_id?, rows=0}`, `CancelRnaReadPanel {request}`
+`InspectRnaReadPanel {path, file_id?, rows=0, verify_artifacts=false}`, `CancelRnaReadPanel {request}`
 and `ExportRnaReadPanelSummary {request}`.
 The Shell routes are respectively `rna-reads panel-demo OUTPUT_DIR`,
 `panel-build REQUEST_JSON_OR_@FILE`, `panel-screen REQUEST_JSON_OR_@FILE`,
-`panel-show PATH [--file-id ID] [--rows N]`, `panel-cancel SCREEN_REQUEST_JSON_OR_@FILE`
+`panel-show PATH [--file-id ID] [--rows N] [--verify-artifacts]`, `panel-cancel SCREEN_REQUEST_JSON_OR_@FILE`
 and `panel-export-summary SUMMARY_REQUEST_JSON_OR_@FILE`.
 All reuse `op` for MCP/scripting/workflows and agent introspection. No dedicated
 panel GUI is claimed. Artifact-producing operations require confirmation even
@@ -45,12 +45,16 @@ panel/report/row payloads are the same; no adapter-local classification is added
   manifest entry. `checksum_manifest_key` selects an exact supplier path when
   basenames collide; supplier paths need not exist locally. Sample identities
   cannot map to conflicting barcode/priming values within a request.
-- `gentle.rna_read_panel_screen.v1`: effective request with resolved expected
+- `gentle.rna_read_panel_screen.v2`: effective request with resolved expected
   digests, panel SHA-256, posting count, `completed|cancelled` status, verified
-  `files_completed`, `files_not_completed`, nonclaims and explicit false
+  `files_completed`, `files_not_completed`, named `inputs_not_completed`, nonclaims and explicit false
   `isoform_assignment_performed` / `alignment_confirmation_performed`.
   Each receipt binds raw/compressed MD5/SHA-256 and bytes, read/class counts,
-  sorted member-set equivalence counts, TSV and optional locus FASTA hashes.
+  joint class/member-set counts, TSV and optional locus FASTA hashes.
+  `equivalence_classes` keys serialize `{class,member_ids}` in that field order,
+  with sorted unique members. Different classes never collapse into one key.
+  V1 reports remain readable with their original member-only keys; those lost
+  associations cannot be reconstructed from separate class totals.
   The final `report.json` is the publication marker. Parse/checksum/resource
   errors return structured `InvalidInput` diagnostics and publish no report.
   An output-I/O failure can leave orphan artifacts without a final marker;
@@ -68,7 +72,9 @@ classes per file and no FASTA exports. Hard limits: 128 loci, 4096 templates,
 32 million template bases, 2 million bases per read/template, 4096 input files,
 4 million postings, 250,000 anchors/read, 16,384 equivalence classes/file and
 16 MB of equivalence keys across the run. Exceeding a limit fails, never drops
-later isoforms. This is an uncalibrated starting policy, not a performance or
+later isoforms. Read-dependent budget diagnostics include stable file ID,
+zero-based record index and original read ID; no implicit resource-limited
+continuation is introduced. This is an uncalibrated starting policy, not a performance or
 specificity guarantee for twenty targets.
 
 Four-line Phred+33 FASTQ supports LF/CRLF and concatenated gzip detected by
@@ -80,7 +86,9 @@ Reads support all qualifying members/orientations through one packed-word
 index, retaining junction-flank evidence. Classes are `single_locus_candidate`,
 `multi_locus_ambiguous`, `multi_segment_candidate`, `partial`, `unmatched`;
 none certifies an exclusive isoform, antisense event, fusion, absence or
-expression. Optional per-locus FASTA headers retain the ambiguity/member set.
+expression. These are partial seed co-nominations, not whole-read compatibility.
+Junction support for A does not eliminate B nominated through shared exons.
+Optional per-locus FASTA headers retain the ambiguity/member set.
 The nomination TSV contains stable file/record identity and decompressed
 offsets, never compressed seek offsets, plus the full expected input digest
 verified at EOF. Optional FASTA read tokens include sample/digest identity to
@@ -88,7 +96,16 @@ avoid name collisions across chunks/runs. No oligo(dT) flip or trimming occurs.
 
 Cancellation publishes only verified completed-file units and a cancelled
 report. The current partial unit is discarded; a fresh request can select
-remaining files. No changed-input or in-file resume. Legacy RNA interpretation
+remaining files. Markers carry the SHA-256 of the original/effective request;
+a matching pre-start marker cancels, while stale/mismatched/nonregular markers
+fail explicitly. Marker checks and progress callbacks are throttled to 100 ms
+inside a file/nomination (forced at boundaries), not per k-mer.
+`OperationProgress::RnaReadPanel` carries file/sample IDs, one-based ordinal,
+file count, processed reads, compressed bytes read/total and phase.
+`streaming_unverified` bytes include decoder read-ahead; neither bytes nor
+processed reads imply integrity success. `file_checksum_verified` follows EOF
+and expected checksums; the report, not progress, confirms run publication.
+No changed-input or in-file resume. Legacy RNA interpretation
 remains FASTA-only; FASTQ mistakenly sent there now fails before Phred `>` can
 be treated as a header. Its existing tie/posting limitations remain separate.
 See [tutorial 10.04](tutorial/10-04_targeted_nanopore_fastq_panel.md) for synthetic
@@ -105,28 +122,41 @@ opened. Duplicate report digests or compressed-input SHA-256 values are refused
 across all samples/runs, not silently deduplicated. Within a sample, barcode
 and priming must agree. Source content hashes are not authenticated provenance.
 
-`gentle.rna_read_panel_summary.v1` is returned in `OpResult.rna_read_panel_summary`
+`gentle.rna_read_panel_summary.v2` is returned in `OpResult.rna_read_panel_summary`
 and published as `report.json` after closed/synced LF TSV files under `artifacts/`:
 
-- `samples.tsv`: sample/barcode/priming, verified-file count, reads,
-  `single_candidate_reads`, `ambiguous_reads`, `no_candidate_reads`, `classes_json`.
+- `samples.tsv`: sample/barcode/priming, verified/requested-file counts, status,
+  reads, `single_candidate_reads`, `co_nominated_reads`, `no_candidate_reads`, `classes_json`.
+  Unassessed samples have blank read/count cells, not zero.
 - `transcripts.tsv`: sample, gene ID/symbol, locus/member/transcript IDs,
-  `single_candidate_reads`, `ambiguous_compatible_reads`. Every selected member
-  has a row per observed sample, including zero support, not biological absence.
-- `ambiguous_sets.tsv`: sample, sorted `member_ids_json` and reads. Every
-  ambiguous read increments exactly one set; per-member ambiguous support
+  `single_candidate_reads`, `co_nominated_reads`. Every selected member
+  has a row per assessed sample, including zero support, not biological absence.
+- `co_nomination_sets.tsv`: sample, class, sorted `member_ids_json` and reads. Every
+  co-nominated read increments exactly one joint set; per-member support
   overlaps, must not be summed as totals and is never fractionally reassigned.
 
 The JSON retains these rows, exact source report/file digests, the common
 panel/policy, table hashes and nonclaims. Ordering is deterministic by report
 digest, sample and member/set identities, independent of request report order.
 `completeness=complete` covers only supplied completed reports; any cancelled
-source yields `partial`, with its uncompleted-file ledger retained. Only
+source yields `partial`, with its named uncompleted-input ledger retained. Only
 verified completed units contribute. A sample without any such unit has no
-numeric rows, not a zero-expression result. Fields `original_inputs_reverified`
+numeric transcript rows, not a zero-expression result. `sample_coverage` lists
+every requested sample with requested/verified units, `complete|partial|unassessed`,
+optional reads (None for unassessed) and full missing input identities.
+Cancelled ledgers are retained even alongside a later continuation; no automatic
+cross-run coverage reconciliation is inferred. Fields `original_inputs_reverified`
 and `nomination_sidecars_reverified` are false. No alignment, molecular copy,
 expression, read-level/PCR/UMI deduplication or exclusive isoform claim is added.
 Distinct input hashes do not prove distinct reads/molecules.
+Do not combine merged-delivery FASTQ with constituent chunks; compressed-hash
+deduplication cannot detect that overlap. V1 screen aggregation labels sets
+`legacy_class_unresolved`, and `class_member_counts_complete=false`; all-v2
+input makes that flag true. Historical v1 summary fields (`ambiguous_reads`,
+`ambiguous_compatible_reads`, `ambiguous_sets`) remain readable with no new
+claim or digest change. V2 emits the co-nomination fields instead. New optional
+fields are omitted when absent, preserving v1 semantic-digest round trips;
+v2 inspection requires its named fields. All requests remain v1.
 
 Publication reserves a fresh directory, moves closed artifacts and atomically
 installs the final JSON marker; an I/O failure may leave orphan artifacts
@@ -142,6 +172,15 @@ inspection flags apply only to screen reports. Export remains an external-write
 confirmation boundary across inner agent, CLI/GUI Shell, MCP `op`, scripting
 and workflows, even though project sequences stay unchanged. Demo preparation
 also writes `artifacts/summary.json`; no OS-side helper is needed by the agent.
+
+`panel-show SUMMARY_REPORT_PATH --verify-artifacts` explicitly verifies the
+three allowlisted summary tables (v1 or v2 paths) only, with a 256 MB total
+byte budget, exact sizes/SHA-256, regular files and no traversal/symlinks.
+The separate `gentle.rna_read_panel_artifact_verification.v1` receipt is returned
+as `OpResult.rna_read_panel_verification`, bound to the inspected summary digest.
+It never rewrites the summary, verifies original reads/nomination sidecars or
+claims authenticated provenance. The default remains cheap metadata-only
+inspection. A table's LF/CRLF conversion must fail exact-byte verification.
 
 ## Catalog Evidence And Provider Updates
 

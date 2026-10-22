@@ -5,8 +5,12 @@ workflow, not a new RNA Mapping tab. [Tutorial 10.04](tutorial/10-04_targeted_na
 provides `panel-demo`, `panel-build`, `panel-screen`, `panel-show` and
 `panel-cancel` routes for every stage. Export read-support summaries with
 `rna-reads panel-export-summary REQUEST_JSON_OR_@FILE`, then reopen them using
-`panel-show`. The tables retain exact ambiguous transcript sets; their counts
+`panel-show`. The tables retain class-bound partial co-nomination sets; their counts
 are supporting reads, not molecule copies. Export requires write approval.
+Use `panel-show SUMMARY_PATH --verify-artifacts` explicitly to verify the three
+summary tables, not FASTQ/nomination sidecars. Default inspection is metadata-only.
+Missing input/sample ledgers distinguish unassessed from zero. Byte progress
+includes decoder read-ahead, not checksum success; no whole-read fit is inferred.
 Use a disposable project before loading
 the synthetic starter. Review writes and explicit sample/file bindings; live
 model/GUI responsiveness and real-library calibration are not established by

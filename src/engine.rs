@@ -3284,6 +3284,8 @@ pub enum Operation {
     InspectRnaReadPanel {
         path: String,
         #[serde(default)]
+        verify_artifacts: bool,
+        #[serde(default)]
         file_id: Option<String>,
         #[serde(default)]
         rows: usize,

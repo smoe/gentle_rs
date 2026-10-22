@@ -176,9 +176,10 @@ fn rna_panel_shared_prefix_retains_isoforms_and_roundtrips_reports_and_artifacts
     assert_eq!(report.files_completed[0].reads, 1);
     let receipt = &report.files_completed[0];
     assert_eq!(receipt.classes.get("single_locus_candidate"), Some(&1));
-    let equivalence: Vec<String> =
+    let equivalence: RnaReadPanelNominationSetKey =
         serde_json::from_str(receipt.equivalence_classes.keys().next().unwrap()).unwrap();
-    assert_eq!(equivalence, vec!["locus_0:0", "locus_0:1"]);
+    assert_eq!(equivalence.member_ids, vec!["locus_0:0", "locus_0:1"]);
+    assert_eq!(equivalence.class, "single_locus_candidate");
     for artifact in &receipt.artifacts {
         let bytes = fs::read(Path::new(&run.output_dir).join(&artifact.path)).unwrap();
         assert_eq!(artifact.sha256, sha256_prefixed_bytes(&bytes));
@@ -584,6 +585,36 @@ fn rna_panel_reverse_locus_and_disjoint_multi_locus_segments_remain_candidates()
             .iter()
             .any(|c| c.member_id == b.member_id && c.read_orientation == "as_read")
     );
+    let mut run = request(&panel, td.path(), &joined);
+    run.policy = policy.clone();
+    let report = engine
+        .screen_rna_read_panel(run.clone(), &mut |_| true)
+        .unwrap();
+    let key: RnaReadPanelNominationSetKey = serde_json::from_str(
+        report.files_completed[0]
+            .equivalence_classes
+            .keys()
+            .next()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(key.class, "multi_segment_candidate");
+    let summary = engine
+        .export_rna_read_panel_summary(&ExportRnaReadPanelSummaryRequest {
+            schema: RNA_PANEL_SUMMARY_REQUEST_SCHEMA.into(),
+            report_paths: vec![
+                Path::new(&run.output_dir)
+                    .join("report.json")
+                    .display()
+                    .to_string(),
+            ],
+            output_dir: td.path().join("segment summary").display().to_string(),
+        })
+        .unwrap();
+    let set = &summary.co_nomination_sets.as_ref().unwrap()[0];
+    assert_eq!(set.class, key.class);
+    assert_eq!(set.member_ids, key.member_ids);
+    assert_eq!(set.reads, 1);
     // Hand-introduced substitution and insertion need not improve a score;
     // they must not turn a deterministic seed screen into an exclusive call.
     let mut noisy = a.sequence.clone();
@@ -648,6 +679,36 @@ fn rna_panel_tutorial_is_executable_through_shared_agent_commands() {
         2
     );
     assert_eq!(inspected["rows"][3]["class"], "unmatched");
+    let junction_read = inspected["rows"][1]["candidates"].as_array().unwrap();
+    let a = junction_read
+        .iter()
+        .find(|c| c["member_id"] == "locus_0:0" && c["read_orientation"] == "as_read")
+        .unwrap();
+    let b = junction_read
+        .iter()
+        .find(|c| c["member_id"] == "locus_0:1" && c["read_orientation"] == "as_read")
+        .unwrap();
+    assert_eq!(a["supported_junction_offsets"], serde_json::json!([40]));
+    assert_eq!(b["supported_junction_offsets"], serde_json::json!([]));
+    // demo_1 spans A's junction, but shared-exon seeds still nominate B. This is not whole-read fit.
+    let verify = format!(
+        "rna-reads panel-show {} --verify-artifacts",
+        quote_shell_arg(&run.join("summary/report.json").display().to_string())
+    );
+    let command = parse_shell_line(&verify).unwrap();
+    assert!(!command.is_state_mutating());
+    let verified = execute_shell_command(&mut engine, &command).unwrap();
+    assert_eq!(
+        verified.output["result"]["rna_read_panel_verification"]["original_inputs_reverified"],
+        false
+    );
+    assert_eq!(
+        verified.output["result"]["rna_read_panel_verification"]["artifacts"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
     let mut request: ScreenRnaReadPanelRequest =
         load(&directory.join("screen.json").display().to_string()).unwrap();
     request.output_dir = run.join("counterfactual").display().to_string();
@@ -725,4 +786,112 @@ fn rna_panel_named_controls_do_not_invalidate_a_running_detached_screen() {
         crate::agent_feedback::AgentExecutionStatus::Completed,
         "inspection completed, analysis cancelled"
     );
+}
+
+#[test]
+fn rna_panel_cancellation_is_request_bound_and_marker_checks_are_throttled() {
+    let td = tempfile::tempdir().unwrap();
+    let (engine, build) = starter(1, td.path());
+    let panel = engine.build_rna_read_panel(&build).unwrap();
+    let mut run = request(&panel, td.path(), &panel.templates[0].sequence);
+    let marker = td.path().join("CANCEL");
+    run.cancel_path = Some(marker.display().to_string());
+    engine.cancel_rna_read_panel(&run).unwrap();
+    let bytes = fs::read(&marker).unwrap();
+    engine.cancel_rna_read_panel(&run).unwrap();
+    assert_eq!(fs::read(&marker).unwrap(), bytes);
+    let mut other = run.clone();
+    other.output_dir = td.path().join("other").display().to_string();
+    assert!(
+        engine
+            .screen_rna_read_panel(other.clone(), &mut |_| true)
+            .unwrap_err()
+            .message
+            .contains("marker_mismatch")
+    );
+    assert!(!Path::new(&other.output_dir).exists());
+    assert!(engine.cancel_rna_read_panel(&other).is_err());
+    assert_eq!(fs::read(&marker).unwrap(), bytes);
+    let cancelled = engine.screen_rna_read_panel(run, &mut |_| true).unwrap();
+    assert_eq!(cancelled.status, "cancelled");
+    assert!(
+        cancelled.files_completed.is_empty(),
+        "matching pre-start cancellation is supported"
+    );
+    assert_eq!(cancelled.inputs_not_completed.as_ref().unwrap().len(), 1);
+    let start = std::time::Instant::now();
+    let mut gate = control::PollGate::default();
+    let mut checks = 0;
+    for micros in 0..1_000_000 {
+        if gate.due(start + std::time::Duration::from_micros(micros), false) {
+            checks += 1;
+        }
+    }
+    assert_eq!(
+        checks, 10,
+        "marker I/O and progress only follow admitted polls, never each k-mer"
+    );
+    assert!(gate.due(start + std::time::Duration::from_secs(1), true));
+    fs::write(&marker, b"unrelated old marker").unwrap();
+    assert!(engine.cancel_rna_read_panel(&other).is_err());
+}
+
+#[test]
+fn rna_panel_budget_errors_identify_the_record_and_publish_no_partial_results() {
+    let td = tempfile::tempdir().unwrap();
+    let (engine, build) = starter(1, td.path());
+    let panel = engine.build_rna_read_panel(&build).unwrap();
+    let mut run = request(&panel, td.path(), &panel.templates[0].sequence);
+    run.policy.max_anchors_per_read = 1;
+    let output = run.output_dir.clone();
+    let error = engine
+        .screen_rna_read_panel(run, &mut |_| true)
+        .unwrap_err();
+    for part in [
+        "budget",
+        "file_id=file_0000",
+        "record_index=0",
+        "read_id=read",
+        "no result directory published",
+    ] {
+        assert!(error.message.contains(part), "{}: {part}", error.message);
+    }
+    assert!(!Path::new(&output).exists());
+}
+
+#[test]
+fn rna_panel_progress_separates_decoder_read_ahead_from_verified_file_units() {
+    let td = tempfile::tempdir().unwrap();
+    let (engine, build) = starter(1, td.path());
+    let panel = engine.build_rna_read_panel(&build).unwrap();
+    let run = request(&panel, td.path(), &panel.templates[0].sequence);
+    let mut observations = vec![];
+    let report = engine
+        .screen_rna_read_panel(run, &mut |event| {
+            if let OperationProgress::RnaReadPanel(progress) = event {
+                observations.push(progress);
+            }
+            true
+        })
+        .unwrap();
+    assert!(observations.len() >= 3);
+    assert!(
+        observations
+            .windows(2)
+            .all(|p| p[0].compressed_bytes_read <= p[1].compressed_bytes_read
+                && p[0].processed_reads <= p[1].processed_reads)
+    );
+    assert!(
+        observations[..observations.len() - 1]
+            .iter()
+            .all(|p| p.phase == "streaming_unverified")
+    );
+    let last = observations.last().unwrap();
+    assert_eq!(last.phase, "file_checksum_verified");
+    assert_eq!(last.processed_reads, report.files_completed[0].reads);
+    assert_eq!(
+        last.compressed_bytes_read,
+        report.files_completed[0].compressed_bytes
+    );
+    assert_eq!(last.compressed_bytes_total, last.compressed_bytes_read);
 }

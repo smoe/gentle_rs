@@ -7902,6 +7902,22 @@ Error: `{err}`"
                     percent,
                 )
             }
+            OperationProgress::RnaReadPanel(p) => Self::tutorial_project_progress_message(
+                chapter_id,
+                chapter_title,
+                "execute_workflow",
+                &format!(
+                    "RNA panel {}/{} {}: {} reads; {} / {} compressed bytes (decoder read-ahead; phase {})",
+                    p.file_ordinal,
+                    p.files_total,
+                    p.file_id,
+                    p.processed_reads,
+                    p.compressed_bytes_read,
+                    p.compressed_bytes_total,
+                    p.phase
+                ),
+                None,
+            ),
             OperationProgress::GenomicRegionHomology(p) => {
                 let percent = if p.target_count > 0 {
                     Some(p.target_ordinal as f32 / p.target_count as f32)
@@ -12449,6 +12465,7 @@ Error: `{err}`"
                 rna_read_panel_screen: None,
                 rna_read_panel_inspection: None,
                 rna_read_panel_summary: None,
+                rna_read_panel_verification: None,
                 dna_sequence_design: None,
                 dna_sequence_design_receipt: None,
                 primer_group_target_design: None,

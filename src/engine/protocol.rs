@@ -5513,6 +5513,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_read_panel_summary: Option<Box<RnaReadPanelSummary>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rna_read_panel_verification: Option<Box<RnaReadPanelArtifactVerification>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub genome_edit_intent: Option<Box<gentle_protocol::genome_editing::GenomeEditIntentReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tube_profiles: Option<Vec<gentle_protocol::labware::TubeProfile>>,
@@ -6670,6 +6672,7 @@ pub enum OperationProgress {
     DbSnpFetch(DbSnpFetchProgress),
     ReadAcquisition(SharedAssetActivityStatus),
     RnaReadInterpret(RnaReadInterpretProgress),
+    RnaReadPanel(RnaReadPanelProgress),
     GenomicRegionHomology(GenomicRegionHomologyProgress),
 }
 

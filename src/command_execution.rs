@@ -303,6 +303,10 @@ impl CommandExecutionService {
                             job.receipt.phase = p.phase.clone();
                             callback_frame.update_from_progress(p.phase, p.item, p.bytes_done, p.bytes_total, p.percent);
                         }
+                        OperationProgress::RnaReadPanel(p) => {
+                            job.receipt.phase = p.phase.clone();
+                            callback_frame.update_from_progress(p.phase, format!("{}: {} reads; compressed bytes include decoder read-ahead, not checksum success", p.file_id, p.processed_reads), p.compressed_bytes_read, (p.compressed_bytes_total > 0).then_some(p.compressed_bytes_total), None);
+                        }
                         OperationProgress::PrimerDesign(p) => {
                             job.receipt.phase = format!("{}: {}", p.design_kind, p.stage);
                             callback_frame.update_detail(p.detail);

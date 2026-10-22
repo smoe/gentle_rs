@@ -13,6 +13,8 @@ pub(super) struct FastqRecord {
     pub read_id: String,
     pub sequence: Vec<u8>,
     pub logical_offset: u64,
+    pub compressed_bytes_read: u64,
+    pub compressed_bytes_total: u64,
 }
 
 #[derive(Clone)]
@@ -157,6 +159,8 @@ pub(super) fn visit_fastq(
             read_id: read_id.into(),
             sequence,
             logical_offset,
+            compressed_bytes_read: state.borrow().bytes,
+            compressed_bytes_total: before.len(),
         })? {
             return Ok(None);
         }

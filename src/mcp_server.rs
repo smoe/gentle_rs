@@ -5386,7 +5386,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             exported["result"]["structuredContent"]["result"]["rna_read_panel_summary"],
-            serde_json::to_value(expected_summary).unwrap()
+            serde_json::to_value(&expected_summary).unwrap()
         );
         let reopened = run_tool(
             DEFAULT_MCP_STATE_PATH,
@@ -5400,6 +5400,25 @@ mod tests {
         assert_eq!(
             reopened["result"]["structuredContent"]["result"]["rna_read_panel_summary"],
             exported["result"]["structuredContent"]["result"]["rna_read_panel_summary"]
+        );
+        let verified = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({"state_path":state_path, "confirm":false,
+                "operation":{"InspectRnaReadPanel":{
+                    "path":root.join("MCP summary/report.json"), "verify_artifacts":true}}
+            }),
+        );
+        assert_eq!(verified["result"]["isError"], false, "{verified}");
+        let expected_verification = direct
+            .verify_rna_read_panel_summary_artifacts(
+                root.join("direct summary/report.json").to_str().unwrap(),
+                &expected_summary,
+            )
+            .unwrap();
+        assert_eq!(
+            verified["result"]["structuredContent"]["result"]["rna_read_panel_verification"],
+            serde_json::to_value(expected_verification).unwrap()
         );
         let after = ProjectState::load_from_path(&state_path.to_string_lossy()).unwrap();
         assert_eq!(serde_json::to_value(after).unwrap(), before);

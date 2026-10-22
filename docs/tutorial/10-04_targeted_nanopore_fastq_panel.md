@@ -55,8 +55,9 @@ Start in a disposable project and tell the Agent Assistant:
 | Build or rebuild the panel | `rna-reads panel-build BUILD_REQUEST_JSON_OR_@FILE` |
 | Screen explicit completed files | `rna-reads panel-screen SCREEN_REQUEST_JSON_OR_@FILE` |
 | Inspect panel, report and selected nomination rows | `rna-reads panel-show PATH [--file-id ID] [--rows N]` |
-| Export sample/transcript support and exact ambiguous sets | `rna-reads panel-export-summary SUMMARY_REQUEST_JSON_OR_@FILE` |
+| Export sample/transcript support and class-bound co-nomination sets | `rna-reads panel-export-summary SUMMARY_REQUEST_JSON_OR_@FILE` |
 | Reopen the saved count summary | `rna-reads panel-show SUMMARY_REPORT_PATH` |
+| Explicitly verify the three summary tables | `rna-reads panel-show SUMMARY_REPORT_PATH --verify-artifacts` |
 | Request cooperative cancellation | `rna-reads panel-cancel SCREEN_REQUEST_JSON_OR_@FILE` |
 | See active work | `introspect runtime` (observation, not a completion receipt) |
 | Inspect nominated reads further | existing `rna-reads interpret`, `align-report`, `inspect-alignments` |
@@ -87,6 +88,7 @@ STATE="$RUN/project.json"
 "$GENTLE" --state "$STATE" shell "rna-reads panel-show $RUN/screen/report.json --rows 4"
 "$GENTLE" --state "$STATE" shell "rna-reads panel-export-summary @$RUN/artifacts/summary.json"
 "$GENTLE" --state "$STATE" shell "rna-reads panel-show $RUN/summary/report.json"
+"$GENTLE" --state "$STATE" shell "rna-reads panel-show $RUN/summary/report.json --verify-artifacts"
 ```
 
 Use a temporary path without spaces for the literal shared-shell strings above;
@@ -103,13 +105,18 @@ gzip files were not unpacked onto disk or read twice for an upfront checksum.
 
 The `demo_0` read contains only a shared first exon. Its TSV row should retain
 both `locus_0:0` and `locus_0:1`, despite the two transcripts using different
-terminal exons. The repeated transcript labels across different toy loci must
+terminal exons. **Also inspect `demo_1`:** it is the entire artificial A
+transcript and crosses A's junction at offset 40. A has
+`supported_junction_offsets: [40]`; B has `[]` but remains nominated by their
+shared first exon. This screen does not reject B based on the rest of the read.
+Do not call these whole-read-compatible transcripts or isoform-resolved counts.
+The repeated transcript labels across different toy loci must
 not merge their identities. `demo_3` has only N bases and is `unmatched`.
 These are software checks on artificial DNA, not results for PATZ1.
 
 The demo gives each artificial library a distinct read-header description so
 its two compressed inputs are not identical copies. The summary must retain
-two samples, four verified reads per sample and exact ambiguous member sets.
+two samples, four verified reads per sample and exact class-bound co-nomination sets.
 It must not silently distribute the shared first-exon read across isoforms.
 
 ## 2. Prepare The Five Actual Loci
@@ -177,8 +184,9 @@ DATA="$HOME/GitHub/gentle_rs/data/MelanomaEnrichedSequencing"
 ANALYSIS="$(mktemp -d)"
 PANEL="/absolute/run/reference-panel.json"
 FIRST="/absolute/path/to/a/completed/barcode13/chunk.fastq.gz"
+MANIFEST="/absolute/path/to/the/supplied/MD5SUMS"
 python3 scripts/prepare_rna_panel_tutorial.py request \
-  --panel "$PANEL" --md5-manifest "$DATA/md5_checksums.txt" \
+  --panel "$PANEL" --md5-manifest "$MANIFEST" \
   --output-dir "$ANALYSIS/first-chunk" --output "$ANALYSIS/request.json" \
   --input 26R266-1 barcode13 custom_only "$FIRST" --declared-complete \
   --write-locus-fastas --cancel-path "$ANALYSIS/CANCEL"
@@ -197,10 +205,24 @@ with one chunk per run while transfers and settings are still being checked;
 do not risk an entire library on an untested multi-file request.
 
 The supplier manifest's original absolute server paths need not exist locally.
+First locate the actual supplier manifest: it may be named `MD5SUMS`,
+`md5_checksums.txt` or `*.md5`; there is no required filename. Choose it explicitly,
+not a wildcard selecting FASTQ files from a still-growing download. Inspect its
+entries before drafting the request. Do not manufacture expected digests by
+hashing an unfinished local copy, or assume the demo's manifest applies to real reads.
 A unique unchanged filename is sufficient; duplicate filenames require the
 exact supplier `checksum_manifest_key`. Renaming folders is fine. Renaming files
 requires that explicit key or an explicit expected digest. MD5 checks transfer
 integrity; it does not authenticate the source. SHA-256 binds what GENtle read.
+
+**Progress checkpoint:** `--progress-stderr` and `introspect runtime` expose
+file ordinal, stable file/sample IDs, processed reads, and compressed bytes
+read/total. Compressed bytes include decoder read-ahead, not the proportion of
+reads already classified; reaching the file size is not checksum success.
+`streaming_unverified` remains unverified until EOF and matching checksums.
+`file_checksum_verified` marks a verified unit, not completion of the whole run;
+the final report remains the completion/publication oracle. Progress and marker
+polls are throttled to approximately 100 ms, not emitted per sequence word.
 
 To request cooperative cancellation from another terminal, create the exact
 declared cancel marker through GENtle. Only completed, checksum-verified file units are retained;
@@ -210,6 +232,10 @@ the current partial file is discarded and the report says `cancelled`.
 "$GENTLE" --state "$STATE" shell "rna-reads panel-cancel @$ANALYSIS/request.json"
 ```
 
+Markers are bound to the exact original or effective screen request. Matching
+pre-start cancellation is supported; a stale, malformed or different-request
+marker is refused, never silently treated as cancellation. Do not create markers
+with `touch` or reuse an old marker for changed inputs/settings.
 Use a fresh cancel path for a new run. A command returning with a
 cancelled report is not a completed analysis. New runs always need a fresh
 output directory; no report or input is overwritten. Start with the terminal
@@ -244,9 +270,13 @@ Retained artifact receipts describe what screening wrote, not immutable storage.
 | `partial` | some indexed words match, but no chain passes the declared threshold |
 | `unmatched` | no indexed canonical word matched; not proof the transcript is absent |
 
-`equivalence_classes` counts one sorted set of candidate members per read.
+In a v2 screen report, `equivalence_classes` keys are canonical JSON objects
+with both `class` and sorted `member_ids`. A read increments that joint key once.
+The same members in overlapping cross-locus support and disjoint-segment support
+remain different keys. A v1 report stored only member IDs and cannot recover
+that association; an exported row is explicitly `legacy_class_unresolved`.
 Do not add the same ambiguous read to every isoform's exclusive count. A read
-missing the promoter-specific 5' region may remain compatible with TA and DeltaN
+missing the promoter-specific 5' region may still co-nominate TA and DeltaN
 forms. A terminal-exon primer site alone does not recover the missing end.
 There is no oligo(dT) flip, automatic primer trimming, expression estimate,
 whole-transcriptome uniqueness claim or calibrated confidence score.
@@ -275,16 +305,18 @@ show it for approval and invoke `rna-reads panel-export-summary`:
 
 | Saved output | How to interpret it |
 | --- | --- |
-| `artifacts/samples.tsv` | One row per sample: barcode, priming, verified files, total reads, single-candidate reads, ambiguous reads, and no-candidate reads. These last three counts sum to total reads. |
-| `artifacts/transcripts.tsv` | One row per selected panel member and observed sample, including zero support. Gene/locus/member IDs keep reused transcript labels distinct. `single_candidate_reads` supported that member alone under the panel policy; `ambiguous_compatible_reads` also supported alternatives. |
-| `artifacts/ambiguous_sets.tsv` | One row per sample and exact sorted member set, with its read count. A read compatible with A or B increments `[A,B]` once, never either singleton. `member_ids_json` joins to `member_id` in the transcript table. |
+| `artifacts/samples.tsv` | One row per requested sample: barcode, priming, requested/verified files and `status`. Assessed rows carry reads, `single_candidate_reads`, `co_nominated_reads`, and `no_candidate_reads`; these last three sum to reads. An unassessed sample has blank read counts, not zero. |
+| `artifacts/transcripts.tsv` | One row per selected panel member and assessed sample, including observed zero support. Gene/locus/member IDs keep reused transcript labels distinct. `single_candidate_reads` nominated that member alone; `co_nominated_reads` nominated it together with alternatives through partial seed support, not whole-read fit. |
+| `artifacts/co_nomination_sets.tsv` | One row per sample, `class` and exact sorted member set, with read count. A read co-nominating A and B increments `[A,B]` in that class once, never either singleton. `member_ids_json` joins to `member_id` in the transcript table. |
 | `report.json` | The same structured counts, panel/policy binding, source report/input hashes, missing-file ledger, table hashes and non-claims. This is the final publication marker. Reopen it with `panel-show`. |
 
 For example, **hypothetical, not a demo or biological result**: 12 reads support
-only A, 7 only B, 30 support A-or-B and 5 support neither. The sample has 54
-reads, including 19 single-candidate and 30 ambiguous reads. Transcript A shows
-12 single-candidate and 30 ambiguous-compatible reads; B shows 7 and 30.
-The ambiguous-set table contains `[A,B]: 30`. Do **not** turn these into 42
+only A, 7 only B, 30 co-nominate A and B through partial seeds and 5 nominate
+neither. The sample has 54 reads, including 19 single-candidate and 30
+co-nominated reads. Transcript A shows 12 single-candidate and 30 co-nominated
+reads; B shows 7 and 30. If all 30 have one class, the co-nomination table
+contains `[A,B]: 30` for that class; different classes get separate rows.
+Do **not** turn these into 42
 copies of A plus 37 copies of B, or automatically split the 30 between them.
 
 Single-candidate means only one member in this particular panel passed its
@@ -293,28 +325,55 @@ inspect distinguishing aligned junctions separately. These are **supporting
 read counts**, not original molecule copy numbers or expression. Enrichment,
 amplification, incomplete capture and repeated sequencing can distort abundance.
 No PCR/UMI or read-level deduplication is performed.
+The summary does not add junction-resolution counts: member-specific junction
+evidence remains in each read's candidate JSON in the nomination TSV.
 
 Combine only reports from the exact same panel and full nomination policy.
 Repeated report hashes or compressed-input SHA-256 values are refused, even
 under renamed paths or different sample labels: select each file once. Different
 chunks may combine within one sample only with the same barcode/priming binding.
 Distinct compressed files can still contain duplicate reads; the refusal is
-not molecule-level deduplication. Never pool the two actual sample identities.
+not molecule-level deduplication. **Never include a merged delivery FASTQ and
+its constituent chunks in one analysis:** their different compressed hashes
+do not detect that overlap, and their reads would be counted twice.
+Never pool the two actual sample identities.
 
 A cancelled source keeps `completeness: partial`, even if another source
 completed. Only its verified completed files contribute counts. Samples with
-no completed files have no numerical rows; consult `source_runs` for their
-uncompleted paths instead of interpreting them as zero expression. `complete`
+no completed files have no numerical rows in the transcript table; their
+`samples.tsv` row is `unassessed` with blank read counts. JSON `sample_coverage`
+lists each requested sample's barcode/priming, requested/verified file counts,
+`complete|partial|unassessed` status and named `inputs_not_completed`, not just
+anonymous paths. `source_runs` retains each missing input identity as well.
+These are selected request-file units; including an old cancelled run keeps
+its missing ledger/partial status even if a later run covers a remaining file.
+Inspect and select evidence deliberately; there is no automatic reconciliation.
+Do not interpret unassessed input as zero expression. `complete`
 means complete for the explicit report selection, not all facility files or
 all molecules. Export checks content bindings and count consistency but does
 not reverify original inputs or sidecars; both revalidation flags remain false.
+Legacy v1 summaries remain inspectable with their historical field names;
+`ambiguous_compatible_reads` was only partial seed co-nomination despite that
+name. V2 writes `co_nominated_reads` and class-bound rows. When v1 screen counts
+are exported, `class_member_counts_complete=false` and the class is
+`legacy_class_unresolved`; class totals cannot be joined to member sets retroactively.
 An I/O failure can leave artifacts without `report.json`; those are not a
 published summary. Existing output directories are never overwritten.
 
 Limits fail explicitly rather than silently truncate: 128 reports, 256 MB of
 combined report/panel metadata, 4096 completed files, 128 observed samples,
-250,000 transcript rows, 65,536 ambiguous sets, two million member visits and
+250,000 transcript rows, 65,536 co-nomination sets, two million member visits and
 128 MB of summary JSON. No large-data throughput claim follows from these caps.
+
+**Verify the exported tables explicitly:** `panel-show SUMMARY_REPORT_PATH
+--verify-artifacts` reads only the three allowlisted summary TSVs, checks their
+exact sizes/SHA-256 and returns `rna_read_panel_verification` bound to this
+summary digest. Total table size is capped at 256 MB; traversal, symlinks and
+unknown table paths are refused. The default show remains metadata-only.
+Changing LF to CRLF in a TSV changes its bytes and correctly fails verification.
+This receipt does not alter the saved summary, reverify FASTQ/nomination rows,
+authenticate source evidence or reassess the biology. Nomination-prefix
+inspection still reports `artifact_content_verified=false`.
 
 `k=15`, minimum chain coverage 45 bases and junction flanks 5 bases are explicit
 **uncalibrated starting settings**, not experimentally validated thresholds.
@@ -322,6 +381,11 @@ Index/anchor/equivalence budgets fail explicitly rather than silently discarding
 later isoforms. Short reads, sequencing errors, repeats and untrimmed adapters
 can change nomination rates. We will tune only after reviewing real reads and
 representative background together, retaining the old policy/report.
+If an anchor/chain or class-key budget is exceeded, the run still fails closed,
+with file ID, zero-based record index and read ID in the diagnostic. No
+`resource_limited` continuation or result directory is silently published.
+Retain the diagnostic and adjust a new explicit request only after review;
+previous units in that failed unpublished run are not summary evidence.
 
 ## 5. Inspect Alignments As A Separate Follow-Up
 
@@ -382,7 +446,7 @@ partial flag and missing-file ledger when including a cancelled source.
 
 Please retain the source/binary version, panel, request, supplier manifest and
 report. For the first chunk, we will inspect: integrity/completion, target counts,
-the ambiguous member sets, junction support, read-length/coverage examples and
+the class-bound co-nomination sets, junction support, read-length/coverage examples and
 nomination rates. Then record which step was unclear and what extra table or
 plot would help. Neither a maximum score nor a TapeStation band proves identity.
 

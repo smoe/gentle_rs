@@ -13334,8 +13334,14 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             let mut file_id = None;
             let mut rows = 0;
             let mut rows_seen = false;
+            let mut verify_artifacts = false;
             let mut i = 3;
             while i < tokens.len() {
+                if tokens[i] == "--verify-artifacts" && !verify_artifacts {
+                    verify_artifacts = true;
+                    i += 1;
+                    continue;
+                }
                 let value = tokens
                     .get(i + 1)
                     .ok_or_else(|| "Missing panel-show option value".to_string())?;
@@ -13354,6 +13360,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             Ok(ShellCommand::Op {
                 payload: serde_json::to_string(&Operation::InspectRnaReadPanel {
                     path: tokens[2].clone(),
+                    verify_artifacts,
                     file_id,
                     rows,
                 })

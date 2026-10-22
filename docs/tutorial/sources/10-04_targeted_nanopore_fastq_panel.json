@@ -9,13 +9,13 @@
     "status": "manual/hybrid",
     "source": "hand_written_markdown",
     "audiences": ["cli_first", "agent_users", "wet_lab_biologists"],
-    "notes": "Five-locus synthetic rehearsal, then one explicitly completed custom-primed FASTQ.gz chunk. Verify supplier MD5 and compressed SHA-256 during screening; export supporting-read tables and exact ambiguous transcript sets, not molecule copies or isoform assignments. All stages have shared inner-agent routes. First joint lesson; Rust execution, real-library calibration and native acceptance remain pending.",
+    "notes": "Five-locus rehearsal including a junction-spanning read that still co-nominates a shared-exon alternative, then one explicitly completed FASTQ.gz chunk. Same-pass supplier checksums, request-bound cancellation, read-ahead progress, named sample coverage and class-bound co-nomination tables; explicit bounded summary-table verification. Partial seeds are not whole-read fit, molecule copies or isoform calls. All stages have inner-agent routes; Rust/native/calibration acceptance remains pending.",
     "estimated_minutes": 30,
     "difficulty": "intermediate",
     "network": "offline",
     "interfaces": ["CLI / shared shell", "MCP op", "Agent Assistant (explicit approval)"],
     "starting_state": "Externally verified CLI and disposable synthetic project; actual loci and completed files are a separate follow-up",
-    "produces": ["portable multi-locus transcript panel", "checksum-bound file receipts", "nomination TSVs and optional per-locus FASTA", "supporting-read sample/transcript/ambiguous-set tables and summary JSON"],
+    "produces": ["portable multi-locus transcript panel", "checksum-bound file receipts", "nomination TSVs and optional per-locus FASTA", "class-bound co-nomination tables, sample coverage and summary JSON", "explicit summary-table verification receipt"],
     "group": "10",
     "group_position": 4
   }

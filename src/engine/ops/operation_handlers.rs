@@ -40541,6 +40541,7 @@ impl GentleEngine {
             rna_read_panel_screen: None,
             rna_read_panel_inspection: None,
             rna_read_panel_summary: None,
+            rna_read_panel_verification: None,
             genome_edit_intent: None,
             tube_profiles: None,
             dna_sequence_design: None,
@@ -52195,11 +52196,21 @@ impl GentleEngine {
                 }
                 Operation::InspectRnaReadPanel {
                     path,
+                    verify_artifacts,
                     file_id,
                     rows,
                 } => {
                     let (panel, report, inspection, summary) =
                         self.inspect_rna_read_panel(&path, file_id.as_deref(), rows)?;
+                    if verify_artifacts {
+                        result.rna_read_panel_verification =
+                            Some(Box::new(self.verify_rna_read_panel_summary_artifacts(
+                                &path,
+                                summary.as_ref().ok_or_else(|| {
+                                    EngineError::invalid_input("panel_verify_requires_summary")
+                                })?,
+                            )?));
+                    }
                     result.rna_read_panel = panel.map(Box::new);
                     result.rna_read_panel_screen = report.map(Box::new);
                     result.rna_read_panel_inspection = inspection.map(Box::new);
@@ -52207,12 +52218,12 @@ impl GentleEngine {
                 }
                 Operation::ScreenRnaReadPanel { request } => {
                     let report = self.screen_rna_read_panel(*request, on_progress)?;
-                    result.messages.push(format!("RNA panel screen {}; {} verified completed file units; seed compatibility is not isoform identification", report.status, report.files_completed.len()));
+                    result.messages.push(format!("RNA panel screen {}; {} verified completed file units; partial seed co-nomination is not whole-read compatibility or isoform identification", report.status, report.files_completed.len()));
                     result.rna_read_panel_screen = Some(Box::new(report));
                 }
                 Operation::ExportRnaReadPanelSummary { request } => {
                     let summary = self.export_rna_read_panel_summary(&request)?;
-                    result.messages.push(format!("Exported {} sample(s), {} transcript rows and {} ambiguous member sets; {} for selected reports; supporting reads, not molecule copies", summary.samples.len(), summary.transcripts.len(), summary.ambiguous_sets.len(), summary.completeness));
+                    result.messages.push(format!("Exported {} assessed sample(s), {} transcript rows and {} class-bound co-nomination sets; {} for selected reports; supporting reads, not molecule copies", summary.samples.len(), summary.transcripts.len(), summary.co_nomination_sets.as_ref().map_or(0, Vec::len), summary.completeness));
                     result.rna_read_panel_summary = Some(Box::new(summary));
                 }
                 Operation::ApplyDnaSequenceDesign {

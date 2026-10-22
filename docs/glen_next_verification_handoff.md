@@ -1,5 +1,42 @@
 # Glen: Next Verification And Return
 
+## Narrowed FASTQ Repairs, 2026-10-23
+
+The follow-up keeps the existing seed/chaining algorithm and fail-closed
+budget policy. V2 records retain class plus members; the renamed counts are
+partial co-nomination, never whole-read compatibility. The demo_1 regression
+requires A's junction `[40]` and B's `[]` while both remain nominated. V1
+screen aggregation uses `legacy_class_unresolved`; v1 summary JSON must keep
+its original semantic digest. Named sample coverage distinguishes incomplete
+and wholly unassessed libraries. Progress counts processed reads and compressed
+read-ahead bytes, not verified read fractions. Matching pre-start cancellation
+works; stale/mismatched markers fail, and polls are throttled. Explicit table
+verification reads three allowlisted tables only, capped at 256 MB; ordinary
+display and bounded nomination prefixes never silently rehash large sidecars.
+
+At the integrated SHA, using the usual run-owned target, Glen/CI should run:
+
+```sh
+cargo test --locked --lib -j1 rna_panel_ -- --test-threads=1
+cargo test --locked --lib -j1 rna_panel_mcp -- --test-threads=1
+cargo test --locked --test glossary_cli_usage
+cargo test --locked --test capability_registry_parity
+cargo test --locked --test parity_matrix_freshness
+cargo check -q --locked --tests
+```
+
+Replay all of 10.04 synthetically, through CLI and MCP/shared-agent commands,
+including `panel-show summary/report.json --verify-artifacts`. Native Windows
+must cover quoted paths, closed handles, TSV LF/CRLF tampering and publication;
+Unix adds symlink refusal. Check named missing sample B after cancellation
+following sample A, and wholly unassessed samples with blank counts. Keep the
+original `artifact_content_verified=false` for bounded nomination prefixes.
+The live inner agent must discover the new flag and explain co-nomination,
+unknown coverage and pending integrity separately; no OS helper is required.
+Retain exact SHA/toolchain/platform/test counts and distinguish failures from
+cascades. No local Rust or native execution is claimed here; no private reads,
+performance/biological verdict, new freeze, Glen contact, push or dispatch.
+
 ## FASTQ Supporting-Read Summary Follow-Up, 2026-10-23
 
 The new shared `ExportRnaReadPanelSummary` / `rna-reads panel-export-summary`

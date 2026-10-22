@@ -8,12 +8,16 @@ use super::*;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
+#[path = "rna_panel/control.rs"]
+mod control;
 #[path = "rna_panel/input.rs"]
 mod input;
 #[path = "rna_panel/summary.rs"]
 mod summary;
 #[path = "rna_panel/tools.rs"]
 mod tools;
+#[path = "rna_panel/verification.rs"]
+mod verification;
 use input::{HashedWriter, visit_fastq};
 
 fn bad(message: impl Into<String>) -> EngineError {
@@ -61,8 +65,10 @@ fn seal_panel(panel: &mut RnaReadPanel) -> Result<(), EngineError> {
 fn validate_screen_report_binding(report: &RnaReadPanelScreenReport) -> Result<(), EngineError> {
     let mut basis = report.clone();
     basis.content_sha256.clear();
-    if report.schema != RNA_PANEL_SCREEN_SCHEMA
-        || report.content_sha256 != sha256_prefixed_bytes(&encode(&basis)?)
+    if !matches!(
+        report.schema.as_str(),
+        RNA_PANEL_SCREEN_SCHEMA | RNA_PANEL_SCREEN_LEGACY_SCHEMA
+    ) || report.content_sha256 != sha256_prefixed_bytes(&encode(&basis)?)
         || !matches!(report.status.as_str(), "completed" | "cancelled")
         || report.isoform_assignment_performed
         || report.alignment_confirmation_performed
@@ -665,7 +671,10 @@ fn screen(
     mut request: ScreenRnaReadPanelRequest,
     progress: &mut dyn FnMut(OperationProgress) -> bool,
 ) -> Result<RnaReadPanelScreenReport, EngineError> {
+    let original_cancel_id = control::cancel_identity(&request)?;
     validate_request(&mut request)?;
+    let cancel_ids = [original_cancel_id, control::cancel_identity(&request)?];
+    control::marker_requested(request.cancel_path.as_deref(), &cancel_ids)?;
     let panel: RnaReadPanel = load(&request.panel_path)?;
     validate_panel(&panel)?;
     if !panel.overlapping_source_pairs.is_empty() {
@@ -687,8 +696,9 @@ fn screen(
     let mut report = RnaReadPanelScreenReport { schema: RNA_PANEL_SCREEN_SCHEMA.into(), content_sha256: String::new(),
         status: "completed".into(), request: request.clone(), panel_sha256: panel.content_sha256.clone(), indexed_postings: count,
         isoform_assignment_performed: false, alignment_confirmation_performed: false,
-        files_completed: vec![], files_not_completed: vec![], nonclaims: vec![
-            "Seed-chain compatibility is not exclusive isoform identification, full-length capture, calibrated probability, expression or whole-transcriptome specificity.".into(),
+        files_completed: vec![], files_not_completed: vec![], inputs_not_completed: Some(vec![]), nonclaims: vec![
+            "Partial seed-chain support only co-nominates members; it does not establish compatibility with the entire read, exclusive isoform identification, full-length capture, calibrated probability, expression or transcriptome-wide specificity.".into(),
+            "A read spanning one isoform's distinguishing junction can still co-nominate an alternative through a shared exon. Junction confirmation remains separate; no conflicting isoform is eliminated by this screen.".into(),
             "Every supported template/orientation is retained. No primer trimming or oligo(dT) orientation flip is applied.".into(),
             "Lookup uppercases bases and converts U to T; quality characters are validated but do not filter or weight nominations. Raw input bytes remain digest-bound.".into(),
             "Junction words are local seed evidence, not splice-aware alignment confirmation. Multi-segment candidates are not proven chimeras or fusions.".into(),
@@ -757,41 +767,83 @@ fn screen(
             equivalence_classes: BTreeMap::new(),
             artifacts: vec![],
         };
-        let mut last_poll: Option<std::time::Instant> = None;
-        let mut cancelled = |progress: &mut dyn FnMut(OperationProgress) -> bool| {
-            if request
-                .cancel_path
-                .as_ref()
-                .is_some_and(|p| Path::new(p).exists())
-            {
-                return true;
+        let mut gate = control::PollGate::default();
+        let mut cancelled = |progress: &mut dyn FnMut(OperationProgress) -> bool,
+                             processed_reads: u64,
+                             bytes_read: u64,
+                             bytes_total: u64,
+                             force: bool|
+         -> Result<bool, EngineError> {
+            if !gate.due(std::time::Instant::now(), force) {
+                return Ok(false);
             }
-            if last_poll.is_some_and(|at| at.elapsed() < std::time::Duration::from_millis(100)) {
-                return false;
+            if control::marker_requested(request.cancel_path.as_deref(), &cancel_ids)? {
+                return Ok(true);
             }
-            last_poll = Some(std::time::Instant::now());
-            !progress(OperationProgress::Workflow {
+            Ok(!progress(OperationProgress::RnaReadPanel(
+                RnaReadPanelProgress {
+                    file_id: file_id.clone(),
+                    sample_id: source.sample_id.clone(),
+                    file_ordinal: ordinal + 1,
+                    files_total: request.files.len(),
+                    processed_reads,
+                    compressed_bytes_read: bytes_read,
+                    compressed_bytes_total: bytes_total,
+                    phase: "streaming_unverified".into(),
+                },
+            )))
+        };
+        if cancelled(progress, 0, 0, 0, true)?
+            || !progress(OperationProgress::Workflow {
                 completed: ordinal,
                 total: request.files.len(),
             })
-        };
-        if cancelled(progress) {
+        {
             report.status = "cancelled".into();
             break;
         }
         let digest = visit_fastq(Path::new(&source.path), &mut |record| {
-            if receipt.reads % 256 == 0 && cancelled(progress) {
+            if cancelled(
+                progress,
+                receipt.reads,
+                record.compressed_bytes_read,
+                record.compressed_bytes_total,
+                receipt.reads == 0,
+            )? {
                 return Ok(false);
             }
-            let (class, candidates) = match nominate(
+            let mut control_error = None;
+            let nomination = nominate(
                 &panel,
                 &index,
                 &request.policy,
                 &record.sequence,
-                &mut || cancelled(progress),
-            ) {
+                &mut || match cancelled(
+                    progress,
+                    receipt.reads,
+                    record.compressed_bytes_read,
+                    record.compressed_bytes_total,
+                    false,
+                ) {
+                    Ok(cancel) => cancel,
+                    Err(error) => {
+                        control_error = Some(error);
+                        true
+                    }
+                },
+            );
+            if let Some(error) = control_error {
+                return Err(error);
+            }
+            let (class, candidates) = match nomination {
                 Err(error) if error.message == "panel_cancelled" => return Ok(false),
-                other => other?,
+                Err(error) => {
+                    return Err(bad(format!(
+                        "{}; file_id={file_id}; record_index={}; read_id={}; input={}; no result directory published",
+                        error.message, receipt.reads, record.read_id, source.path
+                    )));
+                }
+                Ok(value) => value,
             };
             let mut members = candidates
                 .iter()
@@ -800,18 +852,26 @@ fn screen(
                 .into_iter()
                 .collect::<Vec<_>>();
             members.sort();
-            let equivalence = serde_json::to_string(&members).map_err(|e| bad(e.to_string()))?;
+            let equivalence = serde_json::to_string(&RnaReadPanelNominationSetKey {
+                class: class.clone(),
+                member_ids: members.clone(),
+            })
+            .map_err(|e| bad(e.to_string()))?;
             if !receipt.equivalence_classes.contains_key(&equivalence)
                 && receipt.equivalence_classes.len() >= request.policy.max_equivalence_classes
             {
-                return Err(bad("panel_equivalence_budget: no classes silently dropped"));
+                return Err(bad(format!(
+                    "panel_equivalence_budget: no classes silently dropped; file_id={file_id}; record_index={}; read_id={}; no result directory published",
+                    receipt.reads, record.read_id
+                )));
             }
             if !receipt.equivalence_classes.contains_key(&equivalence) {
                 equivalence_bytes += equivalence.len();
                 if equivalence_bytes > 16_000_000 {
-                    return Err(bad(
-                        "panel_equivalence_byte_budget: all file-unit keys together exceed 16 MB",
-                    ));
+                    return Err(bad(format!(
+                        "panel_equivalence_byte_budget: all file-unit keys together exceed 16 MB; file_id={file_id}; record_index={}; read_id={}; no result directory published",
+                        receipt.reads, record.read_id
+                    )));
                 }
             }
             *receipt.equivalence_classes.entry(equivalence).or_default() += 1;
@@ -873,6 +933,18 @@ fn screen(
         receipt.observed_sha256 = digest.sha256;
         receipt.observed_md5 = digest.md5;
         receipt.compressed_bytes = digest.bytes;
+        if !progress(OperationProgress::RnaReadPanel(RnaReadPanelProgress {
+            file_id: file_id.clone(),
+            sample_id: source.sample_id.clone(),
+            file_ordinal: ordinal + 1,
+            files_total: request.files.len(),
+            processed_reads: receipt.reads,
+            compressed_bytes_read: digest.bytes,
+            compressed_bytes_total: digest.bytes,
+            phase: "file_checksum_verified".into(),
+        })) {
+            report.status = "cancelled".into();
+        }
         let writer = rows.into_inner().map_err(|e| bad(e.to_string()))?;
         receipt
             .artifacts
@@ -886,6 +958,9 @@ fn screen(
         }
         fs::rename(unit.path(), staging.path().join(&file_id)).map_err(|e| bad(e.to_string()))?;
         report.files_completed.push(receipt);
+        if report.status == "cancelled" {
+            break;
+        }
     }
     report.files_not_completed = request
         .files
@@ -893,6 +968,17 @@ fn screen(
         .skip(report.files_completed.len())
         .map(|i| i.path.clone())
         .collect();
+    report.inputs_not_completed = Some(
+        request
+            .files
+            .iter()
+            .skip(report.files_completed.len())
+            .cloned()
+            .collect(),
+    );
+    if control::marker_requested(request.cancel_path.as_deref(), &cancel_ids)? {
+        report.status = "cancelled".into();
+    }
     if !progress(OperationProgress::Workflow {
         completed: report.files_completed.len(),
         total: request.files.len(),

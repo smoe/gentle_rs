@@ -19828,9 +19828,9 @@ fn rna_panel_descriptor(id: &str) -> Value {
         Value::Null
     };
     json!({"id": id, "kind": "operation", "mutating": if inspect { "false" } else { "external" }, "requires_confirmation": !inspect,
-        "args": [{"name": "REQUEST_OR_PATH", "required": true, "detail": "panel-demo OUTPUT_DIR; panel-build BUILD_REQUEST_JSON_OR_@FILE; panel-screen SCREEN_REQUEST_JSON_OR_@FILE; panel-show PANEL_OR_REPORT_PATH [--file-id ID] [--rows 0..1000]; panel-cancel SCREEN_REQUEST_JSON_OR_@FILE; panel-export-summary SUMMARY_REQUEST_JSON_OR_@FILE. Summary request v1 binds report_paths (1..128 explicit reports) and a fresh output_dir; same panel and policy only, duplicate input hashes refused. Exports samples/transcripts/ambiguous_sets TSV and report.json without reopening FASTQ. Single-candidate and overlapping ambiguous support are reads, not molecule copies or confirmed isoforms. Cancelled sources stay partial. Screen request v1 binds completed FASTQ/gzip files, checksum expectations, sample/barcode/priming and fresh output directory. Build request v1 binds independent annotated loci."}],
+        "args": [{"name": "REQUEST_OR_PATH", "required": true, "detail": "panel-demo OUTPUT_DIR; panel-build BUILD_REQUEST_JSON_OR_@FILE; panel-screen SCREEN_REQUEST_JSON_OR_@FILE; panel-show PATH [--file-id ID] [--rows 0..1000] [--verify-artifacts]; panel-cancel SCREEN_REQUEST_JSON_OR_@FILE; panel-export-summary SUMMARY_REQUEST_JSON_OR_@FILE. Summary request v1: report_paths (1..128 explicit reports), fresh output_dir; same panel/policy, duplicate input hashes refused. V2 outputs samples/transcripts/co_nomination_sets TSV with class-plus-member counts and named sample/input coverage, no FASTQ reread. V1 member-only association stays legacy_class_unresolved. Single-candidate/co-nominated reads are partial seed support, not whole-read compatibility or isoform counts. Cancelled sources stay partial, unassessed samples are not zero. Screen request v1 binds completed files, expected checksums, sample/barcode/priming, fresh outputs/cancel path; mismatched markers fail, matching pre-start cancellation works. Byte progress includes read-ahead, not checksum success. Build request v1 binds independent annotated loci. --verify-artifacts is summary-only, explicitly checks three TSV hashes/sizes within 256 MB; no original-read or nomination-sidecar verification."}],
         "reads": [], "effects": [], "precondition_expr": {"all": []},
-        "description": if inspect { "Read content-bound panel/report metadata and bounded nomination rows; no full-sidecar revalidation or source mutation." } else { "Prepare a synthetic demo, build a panel, screen FASTQ/gzip once, export report-only supporting read counts with exact ambiguous sets, or request cancellation. Retain all qualifying members; no isoform winner, molecule copy count, trimming, oligo(dT) flip, POD5 or expression claim. External artifact writes require approval; no project sequence mutation." },
+        "description": if inspect { "Read content-bound metadata and bounded unverified nomination rows; explicitly opt into bounded verification of three summary tables only. No source mutation or original-read revalidation." } else { "Prepare a synthetic demo, build a panel, screen FASTQ/gzip once, export class-bound partial co-nomination counts, or request cancellation. No whole-read compatibility, isoform winner, molecule copy count, trimming, oligo(dT) flip, POD5 or expression claim. External artifact writes require approval; no project sequence mutation." },
         "request_template": template, "request_template_is_example_not_resolved_input": true,
         "annotation_status": "fact_annotated", "registry": registry_metadata_for_introspection(id)})
 }
@@ -66249,6 +66249,7 @@ fn execute_op_command(
     }
     if let Operation::InspectRnaReadPanel {
         path,
+        verify_artifacts,
         file_id,
         rows,
     } = &op
@@ -66256,12 +66257,26 @@ fn execute_op_command(
         let (panel, report, inspection, summary) = engine
             .inspect_rna_read_panel(path, file_id.as_deref(), *rows)
             .map_err(|e| e.to_string())?;
+        let verification = if *verify_artifacts {
+            Some(
+                engine
+                    .verify_rna_read_panel_summary_artifacts(
+                        path,
+                        summary
+                            .as_ref()
+                            .ok_or_else(|| "panel_verify_requires_summary".to_string())?,
+                    )
+                    .map_err(|e| e.to_string())?,
+            )
+        } else {
+            None
+        };
         return Ok(ShellRunResult {
             state_changed: false,
             output: json!({
             "schema":"gentle.rna_read_panel_inspection_command.v1", "result":{
                 "rna_read_panel":panel, "rna_read_panel_screen":report, "rna_read_panel_inspection":inspection,
-                "rna_read_panel_summary":summary } }),
+                "rna_read_panel_summary":summary, "rna_read_panel_verification":verification } }),
         });
     }
     // Images and immutable reports can be large; these operations have explicit mutation semantics
