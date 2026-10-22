@@ -375,6 +375,19 @@ is illustrative only.
 
 ## Verification Boundary
 
+Tutorial 10.03 also includes a [real no-subtraction priming comparison](tutorial/10-03_measured_gel_sizing_gui_cli.md#5-compare-all-three-priming-conditions-without-subtraction).
+The optional `--compare-priming` sizing replay composes six saved display-profile
+extractions and three pairwise comparisons for each cell, using the retained
+after-cleanup C1/E1/G1 and D1/F1/H1 associations. Density export is explicit;
+the native PDF/JSON reports supply all statistics. The
+[2026-10-22 return](figures/tapestation_priming/README.md) is bound to
+the existing `40aa261d` macOS CLI and matching canonical gel sources, not a new
+Rust build or native/scientific acceptance at later HEAD. Both combined profiles
+are closer to manufacturer-only by these descriptive shape distances. This
+neither identifies custom targets nor chooses subtraction/background/marker or
+cross-ladder policy for quantitative interpretation. Original sizing and
+before/after exports remain separate and unchanged.
+
 Deterministic Rust regressions cover synthetic band proposals, conservation of
 integrated weights, explicit gaps, identity/shifted QQ, analytically known
 KS/Wasserstein distances, signed subtraction, CSV LF/CRLF identity, source

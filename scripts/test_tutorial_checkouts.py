@@ -546,6 +546,32 @@ class TutorialCheckoutTests(unittest.TestCase):
         prepare_unprotected_checkout(self.root, broken, unprotected)
         self.assertNotEqual((broken / relative / "manifest.json").read_bytes(), payloads[relative / "manifest.json"])
 
+    def test_priming_return_and_plot_hashes_survive_both_checkout_modes(self):
+        relative = Path("docs/figures/tapestation_priming")
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        names = ("cell_1_custom_vs_combined.png", "cell_1_manufacturer_vs_combined.png",
+                 "cell_2_custom_vs_combined.png", "cell_2_manufacturer_vs_combined.png",
+                 "observations.json", "SHA256SUMS")
+        for name in names:
+            target = self.root / relative / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((checker.ROOT / relative / name).read_bytes())
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "priming return")
+        for mode in checker.MODES:
+            clone = Path(self.tmp.name) / f"priming-{mode[0]}"
+            checker.prepare_checkout(self.root, clone, mode)
+            for line in (clone / relative / "SHA256SUMS").read_text().splitlines():
+                digest, name = line.split("  ", 1)
+                self.assertEqual(hashlib.sha256((clone / relative / name).read_bytes()).hexdigest(), digest)
+        unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                 if not line.startswith(b"docs/figures/tapestation_priming/*.json "))
+        broken = Path(self.tmp.name) / "priming-unprotected"
+        prepare_unprotected_checkout(self.root, broken, unprotected)
+        self.assertNotEqual((broken / relative / "observations.json").read_bytes(),
+                            (checker.ROOT / relative / "observations.json").read_bytes())
+
     def test_repeat_lesson_raw_rmsk_hash_survives_both_checkout_modes(self):
         relative = Path("test_files/fixtures/repeat_cohort/local_project.rmsk.txt")
         payload = (checker.ROOT / relative).read_bytes()

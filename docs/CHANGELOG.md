@@ -52,6 +52,35 @@
   warnings, zero failures. Logs: local `target/stash-pop-resolution/`.
   Full Rust tests, all-features and release/native acceptance remain separate.
 
+## 2026-10-22 - Compare Real Priming Profiles Without Subtraction In Tutorial 10.03
+
+- Extend the existing public TapeStation replay with optional `--compare-priming`:
+  six saved image-display profiles and all three within-cell pairs for each
+  cell. Use retained C1/E1/G1 and D1/F1/H1 associations and their L1/L2
+  calibrations; 100-5000 bp is requested, with unavailable edges retained.
+  Reuse the engine for extraction, comparison and explicit-density PDF/JSON
+  export; no new biological operation, statistics calculator or subtraction.
+- Replay on the existing source-identified `40aa261d` macOS CLI, checking nine
+  canonical implementation files against this checkout. Retain its binary hash,
+  exact requests, six descriptive returns and four unaltered native-PDF page
+  renderings, with provenance, scoped hashes and LF/CRLF coverage.
+- Teach the unscaled-density versus normalized-shape distinction, both cells'
+  manufacturer-like combined patterns, non-intermediate cell-2 median, QQ
+  crossings and KS distance without p-values. Do not infer gene identity,
+  fluorescence/yield, additive chemistry or custom enrichment. Keep original
+  before/after evidence and real-data subtraction policy unchanged.
+- This is a bounded existing-binary/tutorial return, not native GUI, platform,
+  Rust-compilation, release or human scientific acceptance. No push/capture.
+- Pre-rebase verification: the opt-in real CLI replay completes all six pairs; the
+  unchanged default CLI sizing replay passes separately. The four fast suites
+  run 133 cases with 6 expected skips; all executed cases pass. Visual contracts
+  (68 tutorials / 95 assets), retained PNGs, LF/CRLF hashes and whitespace pass.
+  No local Rust compilation/check or native GUI session is run.
+- Rebase integration retains main's LF policy, provider-fixture and lockfile
+  updates. Use its existing unprotected-checkout helper only in the new
+  negative fixture, so the global LF fallback does not mask a missing scoped
+  hash rule. Production checkout policy and retained evidence stay unchanged.
+
 ## 2026-10-22 - Keep Protocol-Overview GUI Identities Static And Pseudonymous
 
 - Address Glen's independent E0521 report at `70969635`: the semantic helper

@@ -162,6 +162,9 @@ test_files/fixtures/gel_images/tapestation_26r266/*.pdf binary
 test_files/fixtures/gel_images/tapestation_26r266/*.png binary
 test_files/fixtures/gel_images/tapestation_26r266/*.json text eol=lf
 test_files/fixtures/gel_images/tapestation_26r266/SHA256SUMS text eol=lf
+docs/figures/tapestation_priming/*.png binary
+docs/figures/tapestation_priming/*.json text eol=lf
+docs/figures/tapestation_priming/SHA256SUMS text eol=lf
 
 # Capability maturity freshness binds these exact public source/output bytes.
 assets/capability_maturity.json text eol=lf

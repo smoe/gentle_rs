@@ -21,6 +21,90 @@ from scripts import check_tutorial_checkouts as checkout
 
 
 class TapeStationFixtureTests(unittest.TestCase):
+    def test_priming_plan_keeps_both_cells_roles_ladders_and_no_subtraction(self):
+        plan = audit.priming_requests(audit.load_fixture())
+        self.assertEqual([g["cell_line"] for g in plan], ["cell_1", "cell_2"])
+        self.assertEqual([[(p["lane"], p["ladder"]) for p in g["profiles"]] for g in plan],
+                         [[("C1", "L1"), ("E1", "L1"), ("G1", "L2")],
+                          [("D1", "L1"), ("F1", "L2"), ("H1", "L2")]])
+        for group in plan:
+            for profile in group["profiles"]:
+                request = profile["request"]
+                self.assertEqual(request["action"], "extract_profile")
+                self.assertTrue(request["dark_bands"])
+                self.assertEqual(request["background"], 0.0)
+                self.assertEqual(request["masked_ranges"], [])
+            self.assertEqual(len(group["comparisons"]), 3)
+            for request in group["comparisons"]:
+                self.assertEqual(request["action"], "compare")
+                self.assertEqual(request["range"], [100.0, 5000.0])
+                self.assertIsNone(request["short_threshold"])
+                self.assertNotIn("coefficient", json.dumps(request))
+                self.assertNotIn("algebra", json.dumps(request))
+
+    def test_priming_plan_refuses_ambiguous_calibration_and_changed_pairing_bytes(self):
+        manifest = audit.load_fixture()
+        changed = copy.deepcopy(manifest)
+        changed["cases"].append(copy.deepcopy(changed["cases"][1]))
+        with self.assertRaisesRegex(ValueError, "one explicit retained calibration"):
+            audit.priming_requests(changed)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ("region_summaries.json", "SHA256SUMS"):
+                (root / name).write_bytes((audit.FIXTURE / name).read_bytes())
+            (root / "region_summaries.json").write_bytes(b"{}\n")
+            with self.assertRaisesRegex(ValueError, "pairing source digest mismatch"):
+                audit.priming_requests(manifest, root)
+            data = json.loads((audit.FIXTURE / "region_summaries.json").read_bytes())
+            data["after_priming_groups"][0]["custom_lane"] = "../escape"
+            (root / "region_summaries.json").write_text(json.dumps(data), encoding="utf-8")
+            (root / "SHA256SUMS").write_text(
+                f'{audit.sha256(root / "region_summaries.json")}  region_summaries.json\n', encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Invalid priming lane identity"):
+                audit.priming_requests(manifest, root)
+
+    def test_retained_priming_return_figures_and_tutorial_are_source_bound(self):
+        root = audit.ROOT / "docs/figures/tapestation_priming"
+        for line in (root / "SHA256SUMS").read_text(encoding="utf-8").splitlines():
+            digest, name = line.split("  ", 1)
+            self.assertEqual(audit.sha256(audit.fixture_file(root, name)), digest)
+        data = json.loads((root / "observations.json").read_bytes())
+        self.assertRegex(data["binary_source_sha"], r"^[0-9a-f]{40}$")
+        self.assertRegex(data["binary_sha256"], r"^[0-9a-f]{64}$")
+        self.assertEqual(set(data["matching_gel_source_files"]), set(audit.PRIMING_FILES))
+        after = audit.load_fixture()["sources"][1]
+        self.assertEqual(data["source_image_sha256"], after["image_sha256"])
+        self.assertEqual(data["pairing_source_sha256"], audit.sha256(audit.FIXTURE / "region_summaries.json"))
+        self.assertEqual(data["range_bp"], [100, 5000])
+        prose = (audit.ROOT / "docs/tutorial/10-03_measured_gel_sizing_gui_cli.md").read_text(encoding="utf-8")
+        plan = audit.priming_requests(audit.load_fixture())
+        for group, expected in zip(data["cells"], plan):
+            self.assertEqual(group["profiles"], [{k: v for k, v in p.items() if k != "request"}
+                                              | {"profile_id": p["request"]["profile_id"]}
+                                              for p in expected["profiles"]])
+            for report, request, label in zip(group["descriptive_results"], expected["comparisons"],
+                    ("Custom", "Custom", "Manufacturer")):
+                self.assertEqual(report["request"], {k: v for k, v in request.items() if k != "action"})
+                self.assertIsNone(report["p_value"])
+                self.assertTrue(report["excluded_intervals"])
+                right = "manufacturer" if request["right_profile"].find("manufacturer") >= 0 else "combined"
+                left_lane = report["request"]["left_profile"].rsplit("_", 1)[1]
+                right_lane = report["request"]["right_profile"].rsplit("_", 1)[1]
+                row = f'| {group["cell_line"][-1]} | {label} {left_lane} / {right} {right_lane} | {report["ks_distance"]:.3f} | {report["wasserstein_distance"]:.0f} |'
+                self.assertIn(row, prose)
+            results = group["descriptive_results"]
+            self.assertLess(results[2]["ks_distance"], results[1]["ks_distance"])
+            self.assertLess(results[2]["wasserstein_distance"], results[1]["wasserstein_distance"])
+            for role in ("custom", "manufacturer"):
+                name = f'{group["cell_line"]}_{role}_vs_combined.png'
+                png = (root / name).read_bytes()
+                self.assertEqual(png[:8], b"\x89PNG\r\n\x1a\n")
+                self.assertEqual((int.from_bytes(png[16:20], "big"), int.from_bytes(png[20:24], "big")), (1100, 1460))
+                self.assertIn(f"../figures/tapestation_priming/{name}", prose)
+        for wording in ("--compare-priming", "No subtraction, coefficient", "not screenshots",
+                        "not four percent of DNA molecules", "not between"):
+            self.assertIn(wording, prose)
+
     def test_optional_algebra_lesson_is_explicitly_synthetic_and_fail_closed(self):
         prose = (audit.ROOT / "docs/tutorial/10-03_measured_gel_sizing_gui_cli.md").read_text(encoding="utf-8")
         lesson = prose.split("<!-- gel-algebra-lesson:start -->")[1].split("<!-- gel-algebra-lesson:end -->")[0]
@@ -54,7 +138,7 @@ class TapeStationFixtureTests(unittest.TestCase):
             checkout.git(root, "config", "core.autocrlf", "false")
             checkout.git(root, "config", "user.name", "Synthetic source identity test")
             checkout.git(root, "config", "user.email", "fixture@example.invalid")
-            for name in audit.ALGORITHM_FILES:
+            for name in audit.PRIMING_FILES:
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(b"//! Synthetic source identity fixture.\npub fn example() {}\n")
@@ -62,10 +146,12 @@ class TapeStationFixtureTests(unittest.TestCase):
             checkout.git(root, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "synthetic source")
             revision = checkout.git(root, "rev-parse", "HEAD").decode("ascii").strip()
             expected = audit.verify_source_files(revision, root)
+            expected_priming = audit.verify_source_files(revision, root, files=audit.PRIMING_FILES)
             for mode in checkout.MODES:
                 clone = root.parent / mode[0]
                 checkout.prepare_checkout(root, clone, mode)
                 self.assertEqual(audit.verify_source_files(revision, clone), expected)
+                self.assertEqual(audit.verify_source_files(revision, clone, files=audit.PRIMING_FILES), expected_priming)
                 path = clone / audit.ALGORITHM_FILES[0]
                 self.assertEqual(b"\r\n" in path.read_bytes(), mode[0] == "crlf")
                 path.write_bytes(path.read_bytes() + b"// changed\n")

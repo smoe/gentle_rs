@@ -255,6 +255,126 @@ coefficients; this lesson's region summaries do not supply those inputs. Preserv
 unknown scale factors and unavailable values rather than forcing a positive
 "custom contribution".
 
+### 5. Compare All Three Priming Conditions Without Subtraction
+
+Allow another 15 minutes. Here the question is simply: **does the combined
+preparation look more like custom-only, manufacturer-only, or neither?** We use
+the six **after-cleanup** lanes; there is no combined-before lane to compare.
+This extends the size-only replay above with GENtle's saved **image-display
+profiles**, not newly recovered detector traces. The original before/after
+reports and tables stay unchanged.
+
+Run the same replay into a new directory, adding one explicit option:
+
+```sh
+python3 scripts/gel_tapestation_acceptance.py \
+  --gentle-cli /absolute/path/to/gentle_cli \
+  --output-dir /tmp/gentle-priming-lesson \
+  --compare-priming
+```
+
+The script invokes existing GENtle operations; it does not implement another
+profile extractor or statistical calculator. It retains six `extract_profile`
+requests, six pairwise `compare` requests, the saved project and two four-page
+PDFs, `cell_1-priming.pdf` and `cell_2-priming.pdf`. Each cell's pages 2-4 show
+custom/manufacturer, custom/combined and manufacturer/combined in that order.
+Matching JSON exports retain the full profiles, comparisons and exact settings.
+`priming-summary.json` is an audit index/excerpt, not a second analysis model.
+
+| Cell | Custom-only | Manufacturer-only | Combined |
+| --- | --- | --- | --- |
+| 1 | after C1, L1 calibration | after E1, L1 calibration | after G1, L2 calibration |
+| 2 | after D1, L1 calibration | after F1, L2 calibration | after H1, L2 calibration |
+
+The declared extraction uses dark bands, background **0** and no additional
+marker mask. No background is fitted. The requested comparison interval is
+**100-5000 bp**, keeping the 15/10000 bp alignment-marker centres outside it.
+Small unscored edge intervals remain missing: shared valid support is roughly
+101-4972 bp, with exact pair-specific exclusions in the JSON. This is not proof
+that marker tails, background or saturation have no effect. L1/L2 registration
+and the expiry warnings remain limitations, not newly accepted calibrations.
+
+**How to read the figures:** teal/solid is the named left lane; orange/dashed
+is the right lane. The density panel divides each saved integral by its bin
+width, using one common numeric Y axis per pair. It does **not** multiply a
+curve to match another or normalize their heights. Different panels can have
+different Y ranges: read their axes. Darkness is not calibrated DNA quantity.
+The CDF and QQ panels instead compare **shape** after dividing each profile by
+its own total on shared valid support. That declared shape normalization is
+not subtraction or an estimate of the custom contribution.
+
+#### Cell 1: C1, E1 And G1
+
+The combined G1 profile is closer in overall display-weighted shape to E1
+(manufacturer-only) than to C1 (custom-only). The custom-only profile has a
+noticeable short-size feature near 0.70 kb; the marked combined feature is
+near 0.64 kb. Do not call those the same band merely because they are nearby.
+The broad combined smear also differs from E1, rather than copying it exactly.
+
+![Cell 1: custom-only C1 versus combined G1, native GENtle density, CDF and QQ](../figures/tapestation_priming/cell_1_custom_vs_combined.png)
+
+![Cell 1: manufacturer-only E1 versus combined G1, native GENtle density, CDF and QQ](../figures/tapestation_priming/cell_1_manufacturer_vs_combined.png)
+
+#### Cell 2: D1, F1 And H1
+
+Again, combined H1 is closer overall to manufacturer-only F1 than to custom-only
+D1. Its median image-weighted size is about 1757 bp, compared with 1627 bp for
+F1 and 1538 bp for D1. Thus even the median is **not between** the two single-
+primer conditions here; a simple intermediate-looking mixture is not a safe
+assumption. The short selected marks are near 0.70 kb in D1 and 0.63 kb in H1,
+not evidence that one identified custom product has been retained.
+
+![Cell 2: custom-only D1 versus combined H1, native GENtle density, CDF and QQ](../figures/tapestation_priming/cell_2_custom_vs_combined.png)
+
+![Cell 2: manufacturer-only F1 versus combined H1, native GENtle density, CDF and QQ](../figures/tapestation_priming/cell_2_manufacturer_vs_combined.png)
+
+#### The Six Descriptive Comparisons
+
+The [retained return and figure provenance](../figures/tapestation_priming/README.md)
+bind these rounded values to the actual GENtle reports and binary. Smaller
+distances mean more similar **display-weighted shape on the recorded support**,
+not better primers, greater yield or a statistically accepted match.
+
+| Cell | Pair | KS distance D | Wasserstein distance (bp) |
+| --- | --- | --- | --- |
+| 1 | Custom C1 / manufacturer E1 | 0.195 | 321 |
+| 1 | Custom C1 / combined G1 | 0.156 | 275 |
+| 1 | Manufacturer E1 / combined G1 | 0.042 | 123 |
+| 2 | Custom D1 / manufacturer F1 | 0.136 | 223 |
+| 2 | Custom D1 / combined H1 | 0.134 | 223 |
+| 2 | Manufacturer F1 / combined H1 | 0.047 | 86 |
+
+KS distance is the largest gap between the two normalized cumulative curves.
+For example, D about 0.04 means a gap of about four percentage points of
+**image-derived weight**, not four percent of DNA molecules. No significance
+p-value is computed: neighbouring pixels are correlated, not independent
+fragments or biological replicates. Wasserstein distance describes how far the
+normalized image-weight distribution differs along the bp axis, not physical
+movement or added fragment length. In a QQ plot the diagonal means equal
+quantiles; crossings mean the difference is not a uniform shift to longer or
+shorter sizes. These image-weighted quantiles are **not** the vendor's Region
+Table averages over 500-7000 bp.
+
+**What we can take away:** both combined preparations have a manufacturer-like
+overall smear, while short-size structure can be inspected separately. This
+does not settle whether custom primers enriched PATZ1, E2F1 or a TP53-family
+transcript. Sequence-level evidence and numerical measurements with suitable
+controls are still needed. No subtraction, coefficient, enrichment percentage
+or additive reaction model has been chosen.
+
+**GUI:** open the replay's `project.gentle.json`, then **Patterns -> Gel Image
+Analysis...**. Choose one saved `cell_1_...` or `cell_2_...` comparison, select
+**Signal per size width** explicitly and prepare its saved comparison view.
+Inspect all three pairs for a cell; do not pair adjacent wells automatically.
+For a new PDF choose the three saved comparison IDs in the table's order.
+The viewer/export reads saved results, not newly detected bands. These figures
+are native PDF renderings, **not screenshots or native GUI acceptance**.
+
+**Ask the inner agent:** "Compare the three saved priming comparisons for each
+cell separately. Explain the image-display evidence, density/CDF/QQ and both
+ladder calibrations. Do not subtract, choose coefficients, identify a gene or
+infer enrichment. Draft a density PDF export from the saved results."
+
 ## Optional Synthetic Signed Algebra
 
 This separate exercise teaches arithmetic and report inspection, not enrichment

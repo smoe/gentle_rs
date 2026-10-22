@@ -96,8 +96,12 @@ teaches replay, GUI report inspection, sample pairing and the limits of the
 available region summaries. Targeted priming and physical length enrichment
 are separate dimensions. The
 [profile-comparison plan](../../../../docs/gel_lane_profile_comparison_plan.md)
-keeps full distributions and lane algebra pending numeric trace admission;
-neither is implemented by this fixture or its Python sizing replay.
+keeps detector distributions and scientifically justified lane algebra pending
+numeric trace admission. The opt-in `--compare-priming` replay now invokes
+GENtle's existing **image-display** profile extraction and six within-cell
+pairwise comparisons without subtraction. The
+[retained teaching return and PDF-derived figures](../../../../docs/figures/tapestation_priming/README.md)
+record the settings and evidence limits; the default sizing replay is unchanged.
 
 - `src/gel_image/tests.rs::tapestation_real_images_preserve_sources_and_match_vendor_peak_sizes`
   exercises real PNG import, engine analysis, persisted-project reopen, shared
