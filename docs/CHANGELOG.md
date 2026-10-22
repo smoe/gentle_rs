@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-10-22 - Integrate RNA Panel And Resolve Its Child Modules
+
+- Fast-forward main from `2ea67b1b` to `9a2594fc`, retaining the combined
+  transcript-panel/FASTQ feature, synthetic tutorial 10.04 and its external
+  acceptance limits. Preserve unrelated private data, output files and paper.
+- Recursive rustfmt then fails to resolve the path-loaded RNA panel's bare
+  child modules, looking for `analysis/input.rs`. Add explicit relative paths
+  to `rna_panel/input.rs`, `tools.rs` and the test module, matching the existing
+  sequence-design layout. No streaming, matching, approval or report semantics
+  change. An LF/CRLF source-path regression fails before this repair and passes
+  afterward; direct Rust compiler verification remains unrun.
+- Verification after the repair: 117 source/metadata/checkout checks pass without
+  skips, as do recursive rustfmt, capability-maturity freshness, documentation
+  status and whitespace. Session-close reports 4 OK, 2 expected unrelated-dirty-
+  worktree/manual-plan warnings and 0 failures; roadmap stays at 400 lines.
+  Keep canonical Rust generation, runtime/CLI replay, native Windows handles,
+  live-agent responsiveness and real-data calibration with Glen/CI. No private
+  sequencing files, local Rust build, push, dispatch or goal resumption.
+
 ## 2026-10-22 - Isolate Provider Preview-Writer Test Sources
 
 - Fast-forward local main to the owner's Windows LF-policy commit `1cfea9e3`;

@@ -30,6 +30,13 @@ is requested here. Local source checks do not certify the Rust paths.
 
 ## Targeted FASTQ Panel, 2026-10-22
 
+Main integrated `9a2594fc` on `2ea67b1b`. Its recursive formatting check exposed
+unresolved bare child-module paths under the path-loaded `rna_panel.rs`;
+explicit `rna_panel/{input,tools,tests}.rs` paths now resolve. A new LF/CRLF
+source guard fails before that repair and passes afterward. Recursive rustfmt
+is not compiler/runtime acceptance; use the integrated source for the checks
+below, retaining the original feature handoff's limits.
+
 Changed areas: `src/engine/analysis/rna_panel.rs` and its `input.rs`, `tools.rs`,
 `tests.rs`; `src/engine/protocol/rna_panel.rs`; thin enum/result/parser/MCP/
 feedback/introspection wiring (including required `OpResult` literal fields),

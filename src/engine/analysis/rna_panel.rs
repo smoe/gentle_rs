@@ -8,7 +8,9 @@ use super::*;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
+#[path = "rna_panel/input.rs"]
 mod input;
+#[path = "rna_panel/tools.rs"]
 mod tools;
 use input::{HashedWriter, visit_fastq};
 
@@ -904,4 +906,5 @@ fn screen(
 }
 
 #[cfg(test)]
+#[path = "rna_panel/tests.rs"]
 mod tests;

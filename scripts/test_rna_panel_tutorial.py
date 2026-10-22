@@ -15,6 +15,16 @@ HELPER = ROOT / "scripts/prepare_rna_panel_tutorial.py"
 
 
 class RnaPanelTutorialTests(unittest.TestCase):
+    def test_path_loaded_panel_children_resolve_to_their_tracked_sources(self):
+        source_path = ROOT / "src/engine/analysis/rna_panel.rs"
+        source = source_path.read_text(encoding="utf-8")
+        for text in (source, source.replace("\n", "\r\n")):
+            for child in ("input", "tools", "tests"):
+                match = re.search(r'#\[path = "([^"]+)"\]\s*mod ' + child + r';', text)
+                self.assertIsNotNone(match, f"path-loaded panel needs an explicit {child} path")
+                self.assertEqual(match.group(1), f"rna_panel/{child}.rs")
+                self.assertTrue((source_path.parent / match.group(1)).is_file())
+
     def test_source_catalog_discovery_and_unique_placement(self):
         source = json.loads(SOURCE.read_text())
         catalog = json.loads((ROOT / "docs/tutorial/catalog.json").read_text())
