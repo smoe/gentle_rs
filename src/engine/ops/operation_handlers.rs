@@ -40481,8 +40481,12 @@ impl GentleEngine {
         run_id: &str,
         on_progress: &mut dyn FnMut(OperationProgress) -> bool,
     ) -> Result<OpResult, EngineError> {
-        self.reconcile_lineage_nodes();
-        self.reconcile_containers();
+        // Inspection must not repair legacy/unreconciled project state, even
+        // when the request is refused. Other operations keep their setup.
+        if !matches!(&op, Operation::EvaluateGenomeEditIntent { .. }) {
+            self.reconcile_lineage_nodes();
+            self.reconcile_containers();
+        }
         let op_for_containers = op.clone();
         let op = match op {
             Operation::MergeContainersById {
@@ -40537,6 +40541,7 @@ impl GentleEngine {
             rna_read_panel_screen: None,
             rna_read_panel_inspection: None,
             rna_read_panel_summary: None,
+            genome_edit_intent: None,
             tube_profiles: None,
             dna_sequence_design: None,
             dna_sequence_design_receipt: None,
@@ -52154,6 +52159,11 @@ impl GentleEngine {
                         .warnings
                         .extend(plan.warnings.iter().map(|warning| warning.detail.clone()));
                     result.regulatory_fragment_panel_plan = Some(Box::new(plan));
+                }
+                Operation::EvaluateGenomeEditIntent { request } => {
+                    let report = self.evaluate_genome_edit_intent(*request)?;
+                    result.messages.push("Validated one reference-bound SNV intent; no sequence, file or experimental result created".into());
+                    result.genome_edit_intent = Some(Box::new(report));
                 }
                 Operation::PlanDnaSequenceDesign { request, path } => {
                     let budget = request.max_evaluations;

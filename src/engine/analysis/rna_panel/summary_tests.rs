@@ -364,7 +364,7 @@ fn rna_panel_summary_shared_shell_reopens_summary_without_mutating_project_or_hi
         result.output["result"]["rna_read_panel_summary"]["samples"][0]["reads"],
         4
     );
-    let journal = engine.journal().len();
+    let journal = engine.journal_len();
     let show = crate::engine_shell::parse_shell_line(&format!(
         "rna-reads panel-show {}",
         crate::engine_shell::quote_shell_arg(
@@ -380,6 +380,6 @@ fn rna_panel_summary_shared_shell_reopens_summary_without_mutating_project_or_hi
         shown.output["result"]["rna_read_panel_summary"],
         result.output["result"]["rna_read_panel_summary"]
     );
-    assert_eq!(engine.journal().len(), journal);
+    assert_eq!(engine.journal_len(), journal);
     assert_eq!(encode(engine.state()).unwrap(), before);
 }

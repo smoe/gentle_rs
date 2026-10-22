@@ -633,6 +633,35 @@ fn load_json_arg(value: &str) -> Result<String, String> {
     Ok(value.to_string())
 }
 
+fn execute_direct_operation(
+    operation: Operation,
+    state_path: &str,
+    progress_sink: Option<ProgressSink>,
+) -> Result<gentle::engine::OpResult, String> {
+    // Preserve the legacy save policy for other operations. Inspection must
+    // neither create a missing project nor rewrite an existing representation.
+    let preserves_state_file = matches!(&operation, Operation::EvaluateGenomeEditIntent { .. });
+    let mut engine = GentleEngine::from_state(load_state(state_path)?);
+    let result = if let Some(sink) = progress_sink {
+        let mut printer = ProgressPrinter::new(sink);
+        engine
+            .apply_with_progress(operation, |p| {
+                printer.on_progress(p);
+                true
+            })
+            .map_err(|e| e.to_string())?
+    } else {
+        engine.apply(operation).map_err(|e| e.to_string())?
+    };
+    if !preserves_state_file {
+        engine
+            .state()
+            .save_to_path(state_path)
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(result)
+}
+
 fn is_text_input_url(path_or_url: &str) -> bool {
     path_or_url.starts_with("http://") || path_or_url.starts_with("https://")
 }
@@ -1337,22 +1366,7 @@ fn run() -> Result<(), String> {
                 serde_json::from_str(&json).map_err(|e| format!("Invalid operation JSON: {e}"))?;
             let export_dir = gentle_cli_tss_output::export_directory(&op);
 
-            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-            let result = if let Some(sink) = global.progress_sink {
-                let mut printer = ProgressPrinter::new(sink);
-                engine
-                    .apply_with_progress(op, |p| {
-                        printer.on_progress(p);
-                        true
-                    })
-                    .map_err(|e| e.to_string())?
-            } else {
-                engine.apply(op).map_err(|e| e.to_string())?
-            };
-            engine
-                .state()
-                .save_to_path(&state_path)
-                .map_err(|e| e.to_string())?;
+            let result = execute_direct_operation(op, &state_path, global.progress_sink)?;
             print_json(&gentle_cli_tss_output::operation_output(
                 result,
                 export_dir.as_deref(),
@@ -1422,6 +1436,92 @@ mod tests {
     use tempfile::tempdir;
 
     static TEST_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn genome_edit_intent_cli_preserves_missing_existing_and_refused_state_files() {
+        // Literal synthetic DNA and pinned semantic hash; no real locus or editor.
+        let temp = tempdir().unwrap();
+        let request_path = temp.path().join("SNV's request.json");
+        let operation = json!({"EvaluateGenomeEditIntent":{"request":{
+            "schema":"gentle.genome_edit_intent_request.v1",
+            "target":{"kind":"inline_sequence","sequence":"ACGTAC"},
+            "reference":{"kind":"synthetic","namespace":"synthetic:cli-test","reference_id":"six-bases"},
+            "anchor":{"start_1based":1001,"end_1based":1006,"strand":"plus"},
+            "expected_sequence_sha256":"sha256:e76797dcfb9f3a4639fdf013e8a72d0bd943a105bfc397387335c6540c496559",
+            "design_haplotype":"reference",
+            "intent":{"start_0based":1001,"end_0based_exclusive":1002,"deleted":"C","inserted":"T"}
+        }}});
+        let json = serde_json::to_string_pretty(&operation).unwrap();
+        for (ending_index, ending) in ["\n", "\r\n"].into_iter().enumerate() {
+            fs::write(&request_path, json.replace('\n', ending)).unwrap();
+            let payload = load_json_arg(&format!("@{}", request_path.display())).unwrap();
+            for (mode_index, progress) in [None, Some(ProgressSink::Stderr)].into_iter().enumerate()
+            {
+                let state = temp
+                    .path()
+                    .join(format!("SNV's state-{ending_index}-{mode_index}.json"));
+                let state_path = state.to_str().unwrap();
+                let result = execute_direct_operation(
+                    serde_json::from_str(&payload).unwrap(),
+                    state_path,
+                    progress,
+                )
+                .unwrap();
+                let output = serde_json::to_value(
+                    gentle_cli_tss_output::operation_output(result, None, false).unwrap(),
+                )
+                .unwrap();
+                assert_eq!(
+                    output["genome_edit_intent"]["desired_genomic_forward_sequence"],
+                    "ATGTAC"
+                );
+                assert!(!state.exists(), "inspection must not create a project");
+
+                // Compact JSON plus trailing CRLF whitespace makes any rewrite
+                // detectable independently of object ordering or timestamps.
+                let mut original = serde_json::to_vec(&ProjectState::default()).unwrap();
+                original.extend_from_slice(b"\r\n \r\n");
+                fs::write(&state, &original).unwrap();
+                execute_direct_operation(
+                    serde_json::from_str(&payload).unwrap(),
+                    state_path,
+                    progress,
+                )
+                .unwrap();
+                assert_eq!(fs::read(&state).unwrap(), original);
+                let mut refused = operation.clone();
+                refused["EvaluateGenomeEditIntent"]["request"]["expected_sequence_sha256"] =
+                    json!(format!("sha256:{}", "0".repeat(64)));
+                assert!(
+                    execute_direct_operation(
+                        serde_json::from_value(refused).unwrap(),
+                        state_path,
+                        progress,
+                    )
+                    .is_err()
+                );
+                assert_eq!(fs::read(&state).unwrap(), original);
+            }
+        }
+        let legacy = temp.path().join("legacy control.json");
+        execute_direct_operation(
+            Operation::CreateSequenceFromText {
+                sequence_text: "AAAA".into(),
+                output_id: Some("legacy_control".into()),
+                name: None,
+                circular: false,
+            },
+            legacy.to_str().unwrap(),
+            None,
+        )
+        .unwrap();
+        assert!(
+            load_state(legacy.to_str().unwrap())
+                .unwrap()
+                .sequences
+                .contains_key("legacy_control")
+        );
+    }
 
     fn jaspar_test_lock() -> &'static Mutex<()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();

@@ -1333,6 +1333,8 @@ pub(crate) use region_homology::validate_genomic_region_homology_report;
 pub(crate) use tss_workspace::tests::{
     approved as synthetic_tss_approval, engine as synthetic_tss_engine,
 };
+#[path = "engine/analysis/genome_editing.rs"]
+mod genome_editing;
 #[path = "engine/analysis/primer_specificity_matrix.rs"]
 mod primer_specificity_matrix;
 #[path = "engine/analysis/primer_specificity_multi.rs"]
@@ -3288,6 +3290,9 @@ pub enum Operation {
     },
     CancelRnaReadPanel {
         request: Box<ScreenRnaReadPanelRequest>,
+    },
+    EvaluateGenomeEditIntent {
+        request: Box<gentle_protocol::genome_editing::GenomeEditIntentRequest>,
     },
     PlanDnaSequenceDesign {
         request: Box<gentle_protocol::sequence_design::DnaSequenceDesignRequest>,
@@ -10206,6 +10211,7 @@ impl GentleEngine {
                 | Operation::PrepareRnaReadPanelDemo { .. }
                 | Operation::InspectRnaReadPanel { .. }
                 | Operation::CancelRnaReadPanel { .. }
+                | Operation::EvaluateGenomeEditIntent { .. }
                 | Operation::PlanDnaSequenceDesign { .. }
                 | Operation::ComputeTssTfbsProfiles { .. }
                 | Operation::ExportTssTfbsProfiles { .. }

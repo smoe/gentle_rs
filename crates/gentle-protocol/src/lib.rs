@@ -23,6 +23,8 @@ pub mod gel_workbench;
 pub mod gene_groups;
 pub mod gene_set_publication;
 pub mod gene_sets;
+/// Strict reference-bound single-nucleotide intent requests and read-only reports.
+pub mod genome_editing;
 pub mod genomic_motif_evidence;
 pub mod genomic_regions;
 pub mod isoform_evidence;
@@ -5715,6 +5717,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "InspectRnaReadPanel",
     "CancelRnaReadPanel",
     "ExportRnaReadPanelSummary",
+    "EvaluateGenomeEditIntent",
     "LoadFile",
     "SaveFile",
     "RenderSequenceSvg",
@@ -7778,6 +7781,7 @@ fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
         || operation.starts_with("Resolve")
         || operation.starts_with("Recommend")
         || operation == "SaveFile"
+        || operation == "EvaluateGenomeEditIntent"
         || operation == "FindRestrictionSites"
         || operation == "AlignSequences"
         || operation == "PreparePrimerPairSpecificityHandoff"
@@ -7821,7 +7825,8 @@ fn inline_operand_ok_for_operations(operations: &[String]) -> Option<bool> {
 
 fn inline_operand_ok_for_operation(operation: &str) -> Option<bool> {
     match operation {
-        "RenderTfbsScoreTracksSvg"
+        "EvaluateGenomeEditIntent"
+        | "RenderTfbsScoreTracksSvg"
         | "FindRestrictionSites"
         | "SummarizeTfbsScoreTracks"
         | "SummarizeTfbsTrackSimilarity"

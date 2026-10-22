@@ -319,6 +319,73 @@ isoform discrimination, oligo QC or experimental/order approval. See
 [tutorial 04.09](tutorial/04-09_reference_bound_primer_specificity.md) for the
 biological motivation and a manual execution checklist.
 
+## Read-Only SNV Intent
+
+`EvaluateGenomeEditIntent { request }` returns
+`gentle.genome_edit_intent_report.v1` in `OpResult.genome_edit_intent` through the
+shared generic `op` route. The strict `gentle.genome_edit_intent_request.v1`
+contract is in `gentle_protocol::genome_editing`. No projection/status, editor,
+output path, mutation, save operation or approval field is accepted in the
+request. Older `OpResult` JSON remains readable with the new optional field absent.
+
+Required fields are `schema`, exactly one `target` (`loaded_sequence` with
+`seq_id`, or `inline_sequence` with `sequence`), `reference`, `anchor`,
+`expected_sequence_sha256`, `design_haplotype` and `intent`. DNA is linear,
+1..100000 bases, ASCII A/C/G/T only; ASCII case is normalized, never ambiguity,
+whitespace or U. Expected SHA-256 binds uppercase DNA in source orientation;
+the report separately hashes genomic-forward and desired sequences. Identity
+strings are at most 256 trimmed, non-control bytes; contig aliases at most 32.
+
+`anchor` has positive 1-based inclusive `start_1based`/`end_1based` and explicit
+`plus`/`minus` strand, with length equal to the entire supplied window. `intent`
+has genomic-forward `start_0based`/`end_0based_exclusive`, `deleted` and `inserted`.
+The admitted span and both alleles are exactly one base, with an exact deleted
+reference base and changed inserted base. All twelve SNV substitutions are valid
+sequence intents, not assertions that a base editor can install them. Genomic
+arithmetic stays `u64`; only bounded local indices convert to `usize`.
+
+Reference variants compose existing primitives:
+
+- `synthetic`: explicit `namespace=synthetic:<id>` and `reference_id`, no invented
+  biological accessions. A genome-anchored loaded source cannot be relabelled
+  synthetic.
+- `genomic`: nested `GenomicRegionReference` with required versioned assembly
+  and contig accessions, positive taxon ID, and nonempty assembly/contig names.
+  Inline association is `inline_caller_declared`, not provider-authenticated.
+  Loaded association requires complete retained extraction provenance with
+  exact matching accession/version identities and a verified matching anchor.
+  The newest typed record must itself match; an incomplete record cannot fall
+  back to an older anchor or be joined to another record through aliases.
+  Legacy unversioned catalog names/aliases alone are insufficient; GENtle does
+  not read a catalog, infer an accession or fetch a reference to repair them.
+
+Optional `context` reuses `BiologicalContext`. Supplied assembly/taxon/genome
+identities must agree; annotation source/release are paired or both absent.
+The report says `annotation_not_supplied` or `supplied_not_evaluated`, never
+claims a CDS/splicing consequence. Context identity is not a laboratory approval.
+Synthetic context cannot claim biological organism/taxon/assembly/genome identity.
+
+Malformed/omitted data, stale/wrong digest, ambiguous DNA, conflicting context,
+wrong reference base/anchor and out-of-window intent return `InvalidInput`
+with a `genome_edit_intent.*` reason in `cause_chain`. A missing loaded sequence
+returns `NotFound`. Representable non-SNV replacements/indels and circular or
+non-DNA sources return `Unsupported`; unknown fields/multi-intent/HGVS payloads
+fail parsing instead of being silently interpreted. No successful warning-only
+report legitimizes a stale projection. Projections are constructed inside the
+engine, only for verified loaded genomic input; inline input invents no `seq_id`.
+The reused projection retains its existing hash of stored sequence bytes,
+which can differ from the report's uppercase semantic hash for lowercase DNA;
+both are checked freshly without changing the source or legacy projection rules.
+
+The result retains the checked request, exact source/genomic-forward/desired
+sequences and hashes, local SNV interval, reference-verification scope and
+non-claims. It is not persisted and creates no project sequence, file, network
+activity, undo entry or mutation/structural revision. The ordinary operation
+journal/execution receipt may advance. Generic MCP `op` still requires
+`confirm=true`, but this operation does not create or rewrite its state file.
+There is no dedicated editing command, GUI designer, guide/profile selection,
+efficacy/off-target prediction, observed genotype or laboratory execution.
+
 ## Synthetic Sequence Design
 
 `PlanDnaSequenceDesign { request, path? }` is a read-only bounded synonymous

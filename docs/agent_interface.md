@@ -485,6 +485,12 @@ Key properties:
   Feature preview is read-only; materialization is explicitly confirmed,
   undoable and requires the fresh preview approval digest. Both use the exact
   locally prepared reference, never a download or compatible-assembly fallback.
+- `EvaluateGenomeEditIntent` is reached through generic typed `op`, not a named
+  MCP tool or invented `editing ...` command. It checks one exact reference-bound
+  SNV and returns a transient report; no guide/editor, efficacy or genotype
+  claim. The generic tool still requires `confirm=true` but does not save/create
+  state for this operation. GUI Shell, CLI and scripting use the same engine
+  validator; dedicated GUI/tutorial editing workflows remain deferred.
 - `uniprot build-linked-transcript-inventory` and the five
   `splicing cryptic-*` inspection/export routes are advertised through the
   generic typed `op` tool, not through duplicate MCP-only implementations.

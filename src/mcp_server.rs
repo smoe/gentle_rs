@@ -3574,6 +3574,9 @@ fn op_tool_result(default_state_path: &str, arguments: &Value) -> Value {
             );
         }
     };
+    // This inspection has no project effects; even a missing state file must
+    // remain missing. Keep the generic op confirmation gate unchanged.
+    let preserves_state_file = matches!(&operation, Operation::EvaluateGenomeEditIntent { .. });
     let state = match load_state(&state_path) {
         Ok(state) => state,
         Err(err) => {
@@ -3591,8 +3594,10 @@ fn op_tool_result(default_state_path: &str, arguments: &Value) -> Value {
             return tool_result_json(json!({ "state_path": state_path, "error": err }), true);
         }
     };
-    if let Err(err) = engine.state().save_to_path(&state_path) {
-        return tool_result_json(json!({ "state_path": state_path, "error": err }), true);
+    if !preserves_state_file {
+        if let Err(err) = engine.state().save_to_path(&state_path) {
+            return tool_result_json(json!({ "state_path": state_path, "error": err }), true);
+        }
     }
     tool_result_json(
         json!({
@@ -5140,6 +5145,65 @@ mod tests {
             .and_then(Value::as_str)
             .unwrap_or_default();
         assert!(text.contains("confirm=true"));
+    }
+
+    #[test]
+    fn genome_edit_intent_mcp_preserves_missing_existing_and_refused_state_files() {
+        // Six literal synthetic bases; the source hash is independently pinned.
+        let temp = tempdir().unwrap();
+        let state_path = temp.path().join("SNV's project.json");
+        let payload = json!({
+            "schema":"gentle.genome_edit_intent_request.v1",
+            "target":{"kind":"inline_sequence","sequence":"ACGTAC"},
+            "reference":{"kind":"synthetic","namespace":"synthetic:mcp-test","reference_id":"six-bases"},
+            "anchor":{"start_1based":1001,"end_1based":1006,"strand":"plus"},
+            "expected_sequence_sha256":"sha256:e76797dcfb9f3a4639fdf013e8a72d0bd943a105bfc397387335c6540c496559",
+            "design_haplotype":"reference",
+            "intent":{"start_0based":1001,"end_0based_exclusive":1002,"deleted":"C","inserted":"T"}
+        });
+        let expected = GentleEngine::new()
+            .evaluate_genome_edit_intent(serde_json::from_value(payload.clone()).unwrap())
+            .unwrap();
+        let mut args = json!({"state_path":state_path.to_string_lossy(),"operation":{"EvaluateGenomeEditIntent":{"request":payload}}});
+        let denied = run_tool(DEFAULT_MCP_STATE_PATH, "op", args.clone());
+        assert_eq!(
+            denied.pointer("/result/isError").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert!(!state_path.exists());
+        args["confirm"] = true.into();
+        let allowed = run_tool(DEFAULT_MCP_STATE_PATH, "op", args.clone());
+        assert_eq!(
+            allowed.pointer("/result/isError").and_then(Value::as_bool),
+            Some(false),
+            "{allowed}"
+        );
+        assert_eq!(
+            allowed
+                .pointer("/result/structuredContent/result/genome_edit_intent")
+                .unwrap(),
+            &serde_json::to_value(expected).unwrap()
+        );
+        assert!(
+            !state_path.exists(),
+            "read-only op must not materialize an empty state file"
+        );
+        ProjectState::default()
+            .save_to_path(state_path.to_str().unwrap())
+            .unwrap();
+        let original = std::fs::read(&state_path).unwrap();
+        for wrong_digest in [false, true] {
+            if wrong_digest {
+                args["operation"]["EvaluateGenomeEditIntent"]["request"]["expected_sequence_sha256"] =
+                    json!(format!("sha256:{}", "0".repeat(64)));
+            }
+            let result = run_tool(DEFAULT_MCP_STATE_PATH, "op", args.clone());
+            assert_eq!(
+                result.pointer("/result/isError").and_then(Value::as_bool),
+                Some(wrong_digest)
+            );
+            assert_eq!(std::fs::read(&state_path).unwrap(), original);
+        }
     }
 
     #[test]

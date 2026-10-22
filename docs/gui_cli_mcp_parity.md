@@ -19,11 +19,11 @@ Planning estimate v2 adds hands-on, unattended and elapsed ranges, explicit lega
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 59 | 778 | 0 |
-| gentle_cli | 494 | 367 | 0 |
-| MCP | 190 | 535 | 49 |
-| JS | 78 | 602 | 69 |
-| Lua | 77 | 603 | 69 |
+| GUI | 59 | 779 | 0 |
+| gentle_cli | 494 | 368 | 0 |
+| MCP | 190 | 536 | 49 |
+| JS | 78 | 603 | 69 |
+| Lua | 77 | 604 | 69 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -641,6 +641,7 @@ Planning estimate v2 adds hands-on, unattended and elapsed ranges, explicit lega
 | InspectRnaReadPanel | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | CancelRnaReadPanel | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ExportRnaReadPanelSummary | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| EvaluateGenomeEditIntent | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | LoadFile | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | SaveFile | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | RenderSequenceSvg | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |

@@ -2668,6 +2668,14 @@ impl GentleEngine {
                 summary.sequence_ids = nested.sequence_ids;
                 summary.file_paths = nested.file_paths;
             }
+            Operation::EvaluateGenomeEditIntent { request } => {
+                if let gentle_protocol::genome_editing::GenomeEditTarget::LoadedSequence {
+                    seq_id,
+                } = &request.target
+                {
+                    Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+                }
+            }
             Operation::PlanDnaSequenceDesign { request, path } => {
                 if let gentle_protocol::sequence_design::DnaDesignTarget::LoadedSequence {
                     seq_id,

@@ -82,6 +82,104 @@
   Match main's explicit child-path convention for both new summary modules;
   retain its existing JSON imports and source-scoped acceptance records.
 
+## 2026-10-23 - Validate Reference-Bound SNV Intents Without Mutation
+
+- Implement the owner-authorized S1 only: strict versioned request/report
+  records compose existing reference/context primitives and share one bounded
+  `EvaluateGenomeEditIntent` validator. Check exact source hashes, explicit
+  inclusive anchors, both local orientations, one genomic-forward SNV and
+  reconstructed desired DNA. Missing annotations remain unavailable; synthetic
+  identity and caller-declared inline genomic identity remain explicit.
+- Refuse stale/malformed bindings and ambiguous DNA. Loaded genomic input
+  requires the newest typed retained provenance to be verified, complete and
+  bound to the same versioned assembly/contig, interval and strand; do not
+  fall back to older records or mix them through caller aliases. Unversioned
+  catalog names do not authorize guessed accessions or provider lookups.
+  Indels, circular/non-DNA input and editor feasibility are
+  outside this slice. No network, project sequence, persisted report, file,
+  mutation/structural revision or undo entry is created.
+- Expose the existing generic operation across Shell/CLI/MCP/scripting and
+  capability discovery. Preserve redo and legacy result deserialization;
+  initialize the new optional result field at existing literals. Skip generic
+  lineage/container repair for this inspection so even refused requests leave
+  unreconciled state untouched. MCP retains
+  its independent confirmation gate but does not create or rewrite state for
+  this inspection. The CLI's separate legacy `op` route also withholds its
+  usual state save; test actual LF/CRLF request-file loading, both progress
+  paths, missing/existing project bytes and refusal. Preserve other operations'
+  persistence and document the distinct CLI/shared-Shell result envelopes.
+  Regenerate only the required canonical parity matrix.
+- Document the implemented boundary, tested synthetic CLI payload, durable
+  no-claims and separately authorized future S2. Keep the learner draft
+  inactive, preserve unrelated output bundles and leave native/platform,
+  scientific and release acceptance unclaimed.
+- Rebase onto local main `2351fdcf`, preserving its Nanopore summary contract.
+  Correct two upstream RNA-summary test calls from nonexistent `journal()` to
+  `journal_len()` so the focused library test target can compile; no RNA
+  algorithm, output or expected assertion changes.
+- Verification on macOS 27.0.1 arm64, Rust 1.100.0-beta.5, local main
+  `2351fdcf` plus this working change: 113 protocol tests (including two S1
+  regressions), 13 S1 library/MCP tests, one CLI filesystem test and seven
+  RNA-summary tests pass. Locked offline Cargo check, formatting, canonical
+  parity generation, capability-maturity freshness and whitespace pass. The
+  macOS linker emits its nonfatal oversized-unwind-table warning.
+- The 95-test Python checkout/teaching run has 94 passes and one existing-main
+  failure: `targeted_nanopore_fastq_panel` lacks a tutorial review-manifest
+  entry. Do not manufacture a review or change unrelated tutorial metadata in
+  this slice. Session-close: four OK, two expected dirty-tree/manual-plan
+  warnings, zero failures; roadmap remains 400 lines. No full-suite,
+  native-Windows/GUI, scientific or release acceptance is claimed.
+
+## 2026-10-22 - Reconcile Claude's Base-Editing Software Review
+
+- Verify the owner's forwarded reply against unchanged `2ea67b1b`; retain the
+  original proposal in its prompt and record feedback plus revised decisions
+  in the preparation brief. Claude reviewed source only, not the papers or
+  experimental applicability. No direct consultation or runtime pass is claimed.
+- Narrow proposed S1 to one read-only SNV, composing existing reference/context
+  primitives with required-field validation. Specify checked inclusive-anchor
+  conversion, engine-constructed projections, explicit error/refusal behavior,
+  synthetic identity and independent ambiguity checks. Reuse existing ROI
+  validation rather than treating permissive serde defaults as a proven live
+  bypass; preserve legacy contracts and keep indels outside the first slice.
+- Retain missing annotation as unavailable for sequence-only validation; require
+  complete source/release only when bound. Require an exact explicit editor
+  profile later without an impossible test of how a normalized guide's nuclease
+  originated. Reuse DNA-design preview/stale-check patterns, not its private
+  approval hash as laboratory approval or context equality as a full binding.
+- Update the one related parking-lot item and the prompt's historical status.
+  No source code, active tutorial, catalog, release gate, Rust execution,
+  external-tool invocation or output bundle changes; implementation remains
+  separately authorized and all scientific/native acceptance remains open.
+
+## 2026-10-22 - Plan A Report-Backed Base-Editing Protocol
+
+- Read the owner-requested Porto et al. review in its accessible PMC manuscript
+  and inspect the current guide, oligo, bench-handoff and DNA-viewer contracts
+  at `2ea67b1b`. Extend the existing preparation brief rather than creating a
+  competing editing roadmap or treating generic guide intake as editor design.
+- Specify the base-specific S1/S2/S4/S5/S6 sequence: reference-bound intent,
+  reviewed/synthetic profiles, read-only SOP-bound protocol drafts, shared
+  DNA-viewer/CLI/agent inspection and saved-result exports, then measured allele
+  imports and an activated lesson. Keep feasibility, context approval,
+  execution and functional evidence separate; do not invent laboratory values.
+- Record the accessible Osgood et al. methods alternative: full access to the
+  older L1 protocol specifically is not the only possible evidence route.
+  Preserve exact-construct/source/correction review before biological presets.
+  Update only the related parking-lot item; no editing implementation, active
+  tutorial, generated catalog, release gate, Rust build, upload or tool execution.
+  Optional Claude review is offered, not claimed; laboratory/native acceptance
+  remains open. Existing local output bundles are untouched.
+- At the owner's request, prepare a self-contained, read-only Claude review
+  prompt identifying the uncommitted plan, original proposal, exact source
+  baseline, reusable contracts and ten focused challenge questions. Keep the
+  plan provisional pending the owner's forwarded reply; do not invoke Claude,
+  implement a slice or claim that a review occurred.
+- Verification: 20 tutorial-gap teaching/source tests pass, whitespace passes,
+  and session-close reports four OK, two expected pending-change/manual-plan
+  warnings and zero failures; roadmap remains 400 lines. No Rust/runtime test
+  or experimental acceptance is claimed by these documentation checks.
+
 ## 2026-10-22 - Isolate Provider Preview-Writer Test Sources
 
 - Fast-forward local main to the owner's Windows LF-policy commit `1cfea9e3`;

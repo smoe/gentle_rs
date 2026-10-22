@@ -1208,6 +1208,7 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
     area.sequencing_confirmation_ui.trace_import_add_to_run = true;
 
     area.handle_imported_sequencing_trace_result(&OpResult {
+        genome_edit_intent: None,
         tube_profiles: None,
         rna_read_panel: None,
         rna_read_panel_screen: None,
@@ -5375,6 +5376,7 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
     };
     area.handle_operation_success(
         super::OpResult {
+            genome_edit_intent: None,
             tube_profiles: None,
             rna_read_panel: None,
             rna_read_panel_screen: None,

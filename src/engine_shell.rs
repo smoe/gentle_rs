@@ -14244,7 +14244,8 @@ impl ShellCommand {
         if let Self::Op { payload } = self
             && let Ok(operation) = serde_json::from_str::<Operation>(payload)
             && match operation {
-                Operation::PlanDnaSequenceDesign { .. }
+                Operation::EvaluateGenomeEditIntent { .. }
+                | Operation::PlanDnaSequenceDesign { .. }
                 | Operation::GetPrimerPairMultiReferenceSpecificitySummary { .. }
                 | Operation::ListPrimerPairMultiReferenceSpecificitySummaries { .. }
                 | Operation::InspectRnaReadPanel { .. }
@@ -21487,6 +21488,18 @@ fn tss_profile_capability_descriptor(id: &str, compute: bool) -> Value {
     })
 }
 
+fn genome_edit_intent_capability_descriptor() -> Value {
+    json!({
+        "id":"EvaluateGenomeEditIntent", "kind":"operation", "mutating":"false",
+        "requires_confirmation":false,
+        "args":[{"name":"REQUEST", "required":true, "subject_kind":"other",
+            "detail":"gentle.genome_edit_intent_request.v1: exactly one loaded/inline linear ACGT DNA window (1..100000 bp), explicit genomic or synthetic reference, positive inclusive anchor/strand, expected uppercase-DNA SHA-256, selected design haplotype and one genomic-forward half-open SNV. Optional annotation source/release must be paired. Runtime revalidates identity, digest, geometry and retained loaded anchors; no caller-certified status or projection."}],
+        "reads":[], "precondition_expr":{"all":[]}, "effects":[],
+        "description":"Read-only SNV sequence/coordinate validation through generic op, shared by CLI, MCP, scripts and agents. Returns exact desired DNA as data, never a project sequence or saved report. No file/network activity, editor/guide/window selection, annotation consequence, measured genotype, efficacy or laboratory approval. Missing annotations remain unavailable; inline genomic reference association is caller-declared. Shape readiness is not runtime validation.",
+        "annotation_status":"fact_annotated", "registry":registry_metadata_for_introspection("EvaluateGenomeEditIntent")
+    })
+}
+
 fn sequence_design_capability_descriptor(id: &str, apply: bool) -> Value {
     let mut args = vec![
         json!({"name":"REQUEST", "required":true, "subject_kind":"other", "detail": if apply {
@@ -21903,6 +21916,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         rna_panel_descriptor("rna-reads panel-cancel"),
         rna_panel_descriptor("ExportRnaReadPanelSummary"),
         rna_panel_descriptor("rna-reads panel-export-summary"),
+        genome_edit_intent_capability_descriptor(),
         sequence_design_capability_descriptor("sequence-design plan", false),
         sequence_design_capability_descriptor("ApplyDnaSequenceDesign", true),
         sequence_design_capability_descriptor("sequence-design apply", true),
@@ -66261,6 +66275,7 @@ fn execute_op_command(
             | Operation::PrepareRnaReadPanelDemo { .. }
             | Operation::InspectRnaReadPanel { .. }
             | Operation::CancelRnaReadPanel { .. }
+            | Operation::EvaluateGenomeEditIntent { .. }
             | Operation::GelWorkbench { .. }
             | Operation::PlanDnaSequenceDesign { .. }
             | Operation::SaveGelImageDraft { .. }

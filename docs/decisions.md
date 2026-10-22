@@ -183,6 +183,21 @@ edits do not rewrite the creation evidence. Digital placement is neither a
 verified freezer inventory nor qualified fabrication. Generic reviewed `op`
 routes supply parity; no GUI-only mapping or new automatic planner is implied.
 
+## Read-Only Genome-Edit Intent
+
+SNV intent validation is separate from editor/guide design, synthetic synonymous
+redesign and experimental approval. `EvaluateGenomeEditIntent` is one shared
+read-only engine path with strict reference/anchor/digest binding; a caller's
+serialized projection status cannot certify those facts. Genomic and synthetic
+identities remain disjoint. Retained unversioned names do not authorize guessed
+accessions, inline reference association is caller-declared, and absent
+annotations stay unavailable. Desired sequence strings in a transient report
+are neither materialized project DNA nor observed alleles. Generic adapter
+reachability must preserve no-mutation semantics; MCP's independent tool
+confirmation does not authorize a state-file write for this inspection. Future
+editor feasibility, persisted handoff/apply and laboratory review need their
+own explicit contracts, not a widened S1 or transferred sequence-design approval.
+
 ## Synthetic Sequence-Design Boundaries
 
 Status: active for experimental synonymous motif removal and explicit GC constraints;

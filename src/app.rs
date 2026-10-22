@@ -12443,6 +12443,7 @@ Error: `{err}`"
                 }
             })
             .map(|report| OpResult {
+                genome_edit_intent: None,
                 tube_profiles: None,
                 rna_read_panel: None,
                 rna_read_panel_screen: None,
