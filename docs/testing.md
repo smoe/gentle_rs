@@ -110,6 +110,12 @@ platform's green job alone proves those paths on the other platform.
 Apply these rules to production code and its tests. A local pass does not make
 an OS-dependent assumption portable.
 
+- **Repository text:** source and ordinary text use LF on every platform via
+  the root `.gitattributes` default, including under `core.autocrlf=true`.
+  The fast `scripts.test_tutorial_checkouts` gate checks actual Git checkouts
+  and staging of source text, binary bytes and immutable audit exceptions.
+  Its scoped byte-contract negative controls remove the general LF default
+  as well as the scoped rule to expose the original unprotected CRLF failure.
 - **Profile-independent presentation:** exercise the actual linear-map header,
   screen/wide/print view-SVG composition, and RNA-read progress policy in the
   ordinary debug-asserting test build. No `debug_assertions` branch may select

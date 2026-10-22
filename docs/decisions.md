@@ -1,5 +1,22 @@
 # GENtle Decisions
 
+## Repository Line Endings
+
+Owner decision, 2026-10-21: source and ordinary repository text use Unix LF
+line endings in both Git and working copies on every platform. The root
+`.gitattributes` default `* text=auto eol=lf` overrides ambient Windows
+`core.autocrlf=true`; `.editorconfig` requests the same editor behavior without
+changing contributors' global Git settings. Binary files remain byte-exact.
+Existing explicit `-text` rules for immutable audit originals also remain
+byte-exact, including their historical mixed line endings; do not normalize
+them or rewrite their recorded hashes. Scoped LF rules for hash-bound inputs
+and generated outputs remain explicit documentation of those byte contracts.
+
+`scripts.test_tutorial_checkouts` exercises real LF/CRLF-policy Git checkouts
+with the committed attributes, source text, binaries and verbatim records.
+Missing-scoped-rule negative controls also remove the general LF default so
+they still reproduce the original unprotected CRLF boundary.
+
 ## Development And Release Verification Cadence
 
 Owner decision, 2026-10-15: continue development on `main` without intermediate

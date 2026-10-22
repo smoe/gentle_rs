@@ -26,6 +26,19 @@ from scripts import generate_capability_maturity as maturity_generator
 from scripts.test_capability_maturity import populate as populate_maturity_fixture
 
 
+def prepare_unprotected_checkout(source, destination, attributes):
+    """Reproduce pre-policy CRLF drift after a caller removes a scoped rule.
+
+    The repository-wide LF fallback would otherwise mask the missing scoped
+    byte contract. This affects negative fixtures only, never the real policy.
+    """
+    attributes = b"\n".join(
+        line for line in attributes.split(b"\n")
+        if line.split() != [b"*", b"text=auto", b"eol=lf"]
+    )
+    return checker.prepare_checkout(source, destination, checker.MODES[1], attributes)
+
+
 class DocumentationStatusTests(unittest.TestCase):
     """Copy public source inputs into synthetic disposable documentation repos."""
 
@@ -141,7 +154,7 @@ class DocumentationStatusTests(unittest.TestCase):
                 clone = root.parent / mode[0]
                 checker.prepare_checkout(root, clone, mode)
                 payload = (clone / "docs/reviewer_preview.md").read_bytes()
-                self.assertEqual(b"\r\n" in payload, mode[0] == "crlf")
+                self.assertNotIn(b"\r", payload, "Repository policy keeps documentation LF")
                 self.assertEqual(doc_status.readme_version_errors(clone), [])
                 self.assertEqual(doc_status.preview_errors(clone), [])
                 self.assertEqual(doc_status.catalog_errors(clone), [])
@@ -265,6 +278,57 @@ class TutorialCheckoutTests(unittest.TestCase):
                                  .decode().strip(), revision)
         self.assertEqual(checker.git(self.root, "status", "--porcelain"), before)
 
+    def test_repository_lf_default_preserves_source_binary_and_verbatim_bytes(self):
+        # Synthetic literal fixtures exercise ordinary, previously unpinned
+        # source paths and each verbatim exception from the real Git policy.
+        text = b"first\nsecond\n"
+        payloads = {path: text for path in (
+            "src/unpinned.rs", "scripts/unpinned.sh", "docs/unpinned.md", "config.toml",
+        )}
+        for relative in (
+            "test_files/pGEX_3X.fa",
+            "test_files/fixtures/mapping/ensembl_human_tp63_all.fasta",
+            "docs/figures/tert_upstream_early_coding_llr_background_tail_log10_cross_strand_spearman.tsv",
+            "docs/figures/tert_upstream_early_coding_llr_background_tail_log10_cross_strand_spearman_tp73.tsv",
+        ):
+            payloads[relative] = (checker.ROOT / relative).read_bytes()
+            self.assertNotIn(b"\r", payloads[relative], relative)
+        payloads["binary.bin"] = b"\x00\xff\n\r\n"
+        # Even a PDF without NULs must respect the explicit binary override.
+        payloads["assets/probe.pdf"] = b"%PDF-synthetic\r\nfirst\nsecond\r\n"
+        for relative in (
+            "docs/audits/glen_followups_20261008/candidate_df5c8244/glen/original.log",
+            "docs/audits/glen_followups_20261008/candidate_df5c8244/native-x11-supplement/original.log",
+            "docs/audits/glen_followups_20261008/candidate_de9df8af/original.json",
+        ):
+            payloads[relative] = b"first\r\nsecond\nthird\r\n"
+        (self.root / ".gitattributes").write_bytes((checker.ROOT / ".gitattributes").read_bytes())
+        for relative, payload in payloads.items():
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "Synthetic repository LF and verbatim fixtures")
+        for mode in checker.MODES:
+            with self.subTest(mode=mode[0]):
+                target = Path(self.tmp.name) / f"repository-{mode[0]}"
+                checker.prepare_checkout(self.root, target, mode)
+                for relative, payload in payloads.items():
+                    self.assertEqual((target / relative).read_bytes(), payload, relative)
+                    self.assertEqual(checker.git(target, "show", f"HEAD:{relative}"), payload, relative)
+                self.assertEqual(checker.git(target, "status", "--porcelain"), b"")
+                # Editors can still save CRLF: Git must normalize newly added
+                # source in either ambient configuration, without touching data.
+                (target / "src/added.rs").write_bytes(text.replace(b"\n", b"\r\n"))
+                checker.git(target, "add", "--", "src/added.rs")
+                self.assertEqual(checker.git(target, "show", ":src/added.rs"), text)
+        broken = Path(self.tmp.name) / "repository-without-default"
+        prepare_unprotected_checkout(self.root, broken,
+                                     (checker.ROOT / ".gitattributes").read_bytes())
+        self.assertEqual((broken / "src/unpinned.rs").read_bytes(),
+                         text.replace(b"\n", b"\r\n"))
+
     def test_capability_maturity_survives_real_checkouts_and_detects_missing_rules(self):
         populate_maturity_fixture(self.root)
         attributes = (checker.ROOT / ".gitattributes").read_bytes()
@@ -286,7 +350,7 @@ class TutorialCheckoutTests(unittest.TestCase):
                                        if not line.startswith(relative.encode() + b" "))
             self.assertNotEqual(unprotected, attributes)
             target = Path(self.tmp.name) / f"maturity-unprotected-{index}"
-            checker.prepare_checkout(self.root, target, checker.MODES[1], unprotected)
+            prepare_unprotected_checkout(self.root, target, unprotected)
             self.assertIn(b"\r\n", (target / relative).read_bytes())
             outputs = maturity_generator.generate(target)
             self.assertTrue(any((target / path).read_bytes() != expected
@@ -321,7 +385,7 @@ class TutorialCheckoutTests(unittest.TestCase):
         unprotected = b"\n".join(line for line in attributes.split(b"\n")
                                    if not line.startswith(b"Cargo.lock "))
         broken = Path(self.tmp.name) / "rnapkin-lock-unprotected"
-        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        prepare_unprotected_checkout(self.root, broken, unprotected)
         self.assertEqual((broken / relative).read_bytes(), payload.replace(b"\n", b"\r\n"))
         self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(), digest)
         for mode in checker.MODES:
@@ -445,7 +509,7 @@ class TutorialCheckoutTests(unittest.TestCase):
         unprotected = b"\n".join(line for line in attributes.split(b"\n")
                                  if not line.startswith(b"docs/tutorial/inputs/gel_sizing/*.json "))
         broken = Path(self.tmp.name) / "gel-unprotected"
-        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        prepare_unprotected_checkout(self.root, broken, unprotected)
         self.assertNotEqual((broken / relative / "dna-analysis.json").read_bytes(), payloads[relative / "dna-analysis.json"])
 
     def test_public_tapestation_inputs_preserve_pdf_png_and_coordinate_hashes(self):
@@ -479,7 +543,7 @@ class TutorialCheckoutTests(unittest.TestCase):
         unprotected = b"\n".join(line for line in attributes.split(b"\n")
                                  if not line.startswith(b"test_files/fixtures/gel_images/tapestation_26r266/*.json "))
         broken = Path(self.tmp.name) / "tapestation-unprotected"
-        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        prepare_unprotected_checkout(self.root, broken, unprotected)
         self.assertNotEqual((broken / relative / "manifest.json").read_bytes(), payloads[relative / "manifest.json"])
 
     def test_repeat_lesson_raw_rmsk_hash_survives_both_checkout_modes(self):
@@ -502,7 +566,7 @@ class TutorialCheckoutTests(unittest.TestCase):
         unprotected = b"\n".join(line for line in attributes.split(b"\n")
                                  if not line.startswith(b"test_files/fixtures/repeat_cohort/*.txt "))
         broken = Path(self.tmp.name) / "repeat-unprotected"
-        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        prepare_unprotected_checkout(self.root, broken, unprotected)
         self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(), digest)
 
     def test_retained_vkorc1_wip_bytes_and_hashes_survive_both_checkout_modes(self):
@@ -542,7 +606,7 @@ class TutorialCheckoutTests(unittest.TestCase):
         }
         ledger = json.loads((checker.ROOT / "docs/tutorial/generated/report.json").read_bytes())
         for path in (chapter, hub):
-            name = str(path.relative_to("docs/tutorial/generated"))
+            name = path.relative_to("docs/tutorial/generated").as_posix()
             self.assertEqual(hashlib.sha256(payloads[path]).hexdigest(), ledger["file_checksums"][name])
         attributes = (checker.ROOT / ".gitattributes").read_bytes()
         (self.root / ".gitattributes").write_bytes(attributes)
@@ -555,10 +619,10 @@ class TutorialCheckoutTests(unittest.TestCase):
                     "-m", "synthetic 08.04 acceptance byte boundaries")
         unprotected = b"\n".join(
             line for line in attributes.split(b"\n")
-            if not any(line.startswith(str(path).encode() + b" ") for path in payloads)
+            if not any(line.startswith(path.as_posix().encode() + b" ") for path in payloads)
         )
         broken = Path(self.tmp.name) / "vkorc1-guard-unprotected"
-        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        prepare_unprotected_checkout(self.root, broken, unprotected)
         for relative, payload in payloads.items():
             self.assertNotEqual((broken / relative).read_bytes(), payload)
         for mode in checker.MODES:
@@ -582,9 +646,9 @@ class TutorialCheckoutTests(unittest.TestCase):
         checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
                     "-m", "owner-supplied exact-candidate audit report")
         unprotected = b"\n".join(line for line in attributes.split(b"\n")
-                                  if not line.startswith(str(relative).encode() + b" "))
+                                  if not line.startswith(relative.as_posix().encode() + b" "))
         broken = Path(self.tmp.name) / "glen-audit-unprotected"
-        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        prepare_unprotected_checkout(self.root, broken, unprotected)
         self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(), expected)
         for mode in checker.MODES:
             with self.subTest(mode=mode[0]):
@@ -633,11 +697,11 @@ class TutorialCheckoutTests(unittest.TestCase):
         checker.git(self.root, "add", "--all")
         checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
                     "-m", "owner-supplied frozen-main report and manifest")
-        rules = tuple(str(path).encode() + b" " for path in expected)
+        rules = tuple(path.as_posix().encode() + b" " for path in expected)
         unprotected = b"\n".join(line for line in attributes.split(b"\n")
                                    if not line.startswith(rules))
         broken = Path(self.tmp.name) / "f35a58e6-unprotected"
-        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        prepare_unprotected_checkout(self.root, broken, unprotected)
         for relative, digest in expected.items():
             self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(), digest)
         for mode in checker.MODES:
@@ -663,9 +727,9 @@ class TutorialCheckoutTests(unittest.TestCase):
         checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
                     "-m", "original audit archive verification receipt")
         unprotected = b"\n".join(line for line in attributes.split(b"\n")
-                                  if not line.startswith(str(relative).encode() + b" "))
+                                  if not line.startswith(relative.as_posix().encode() + b" "))
         broken = Path(self.tmp.name) / "original-audit-receipt-unprotected"
-        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        prepare_unprotected_checkout(self.root, broken, unprotected)
         self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(), expected)
         for mode in checker.MODES:
             with self.subTest(mode=mode[0]):
@@ -692,7 +756,7 @@ class TutorialCheckoutTests(unittest.TestCase):
         unprotected = b"\n".join(line for line in attributes.split(b"\n")
                                   if not line.startswith(BASE.as_posix().encode() + b"/"))
         broken = Path(self.tmp.name) / "frozen-audit-unprotected"
-        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        prepare_unprotected_checkout(self.root, broken, unprotected)
         for path in expected:
             self.assertNotEqual(hashlib.sha256((broken / path).read_bytes()).hexdigest(), expected[path])
         for mode in checker.MODES:
@@ -725,7 +789,7 @@ class TutorialCheckoutTests(unittest.TestCase):
         unprotected = b"\n".join(line for line in attributes.split(b"\n")
                                   if not line.startswith(BASE.as_posix().encode() + b"/"))
         broken = Path(self.tmp.name) / "df5c8244-unprotected"
-        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        prepare_unprotected_checkout(self.root, broken, unprotected)
         for path in (GLEN / "REPORT.md", NATIVE / "INDEX.md"):
             self.assertNotEqual((broken / path).read_bytes(), payloads[path])
         for mode in checker.MODES:
@@ -753,7 +817,7 @@ class TutorialCheckoutTests(unittest.TestCase):
         unprotected = b"\n".join(line for line in attributes.split(b"\n")
                                   if not line.startswith(BASE.as_posix().encode() + b"/"))
         broken = Path(self.tmp.name) / "de9df8af-unprotected"
-        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        prepare_unprotected_checkout(self.root, broken, unprotected)
         probe = BASE / "default_stack_from_logs.json"
         self.assertIn(b"\n", payloads[probe])
         self.assertNotEqual((broken / probe).read_bytes(), payloads[probe])
@@ -787,7 +851,7 @@ class TutorialCheckoutTests(unittest.TestCase):
         unprotected = b"\n".join(line for line in attributes.split(b"\n")
                                   if not line.startswith(relative.as_posix().encode() + b" "))
         broken = Path(self.tmp.name) / "container-receipt-unprotected"
-        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        prepare_unprotected_checkout(self.root, broken, unprotected)
         self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(), expected)
         for mode in checker.MODES:
             with self.subTest(mode=mode[0]):
@@ -819,9 +883,9 @@ class TutorialCheckoutTests(unittest.TestCase):
                     "-m", "exact-candidate native, scroll, public and live evidence")
         for relative in payloads:
             unprotected = b"\n".join(line for line in attributes.split(b"\n")
-                                      if not line.startswith(str(relative).encode() + b" "))
+                                      if not line.startswith(relative.as_posix().encode() + b" "))
             broken = Path(self.tmp.name) / f"candidate-receipt-{relative.name}-unprotected"
-            checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+            prepare_unprotected_checkout(self.root, broken, unprotected)
             self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(),
                                 expected[relative])
         for mode in checker.MODES:
@@ -852,8 +916,8 @@ class TutorialCheckoutTests(unittest.TestCase):
                 target = Path(self.tmp.name) / f"sequence-design-{mode[0]}"
                 checker.prepare_checkout(self.root, target, mode)
                 guide_bytes = (target / guide_path).read_bytes()
-                if mode[0] == "crlf":
-                    self.assertIn(b"\r\n", guide_bytes, "Exercise the real CRLF boundary")
+                self.assertNotIn(b"\r", guide_bytes,
+                                 "Repository LF policy overrides the CRLF checkout mode")
                 self.assertEqual(fenced_request(guide_bytes.decode("utf-8")), request)
                 self.assertEqual(json.loads((target / request_path).read_bytes()), request)
                 self.assertEqual(json.loads((target / source_path).read_bytes()), source)
@@ -884,9 +948,9 @@ class TutorialCheckoutTests(unittest.TestCase):
                     "-m", "repaired-candidate audit evidence")
         for relative in payloads:
             unprotected = b"\n".join(line for line in attributes.split(b"\n")
-                                      if not line.startswith(str(relative).encode() + b" "))
+                                      if not line.startswith(relative.as_posix().encode() + b" "))
             broken = Path(self.tmp.name) / f"repaired-receipt-{relative.name}-unprotected"
-            checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+            prepare_unprotected_checkout(self.root, broken, unprotected)
             self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(),
                                 expected[relative])
         for mode in checker.MODES:
@@ -917,7 +981,7 @@ class TutorialCheckoutTests(unittest.TestCase):
                 if not line.startswith(relative.as_posix().encode() + b" ")
             )
             broken = Path(self.tmp.name) / f"public-audit-unprotected-{index}"
-            checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+            prepare_unprotected_checkout(self.root, broken, unprotected)
             self.assertEqual((broken / relative).read_bytes(), payloads[relative].replace(b"\n", b"\r\n"))
             self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).digest(),
                                 hashlib.sha256(payloads[relative]).digest())
@@ -943,9 +1007,9 @@ class TutorialCheckoutTests(unittest.TestCase):
         checker.git(self.root, "add", "--all")
         checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "scroll smoke receipt")
         unprotected = b"\n".join(line for line in attributes.split(b"\n")
-                                  if not line.startswith(str(relative).encode() + b" "))
+                                  if not line.startswith(relative.as_posix().encode() + b" "))
         broken = Path(self.tmp.name) / "scroll-receipt-unprotected"
-        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        prepare_unprotected_checkout(self.root, broken, unprotected)
         self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(), expected)
         for mode in checker.MODES:
             target = Path(self.tmp.name) / f"scroll-receipt-{mode[0]}"
@@ -1014,7 +1078,7 @@ class TutorialCheckoutTests(unittest.TestCase):
             if not any(line.startswith(path + b" ") for path in protected_paths)
         )
         broken = Path(self.tmp.name) / "uniprot-review-unprotected"
-        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        prepare_unprotected_checkout(self.root, broken, unprotected)
         for relative, (payload, digest) in expected.items():
             with self.subTest(mode="unprotected-crlf", path=relative):
                 converted = (broken / relative).read_bytes()
@@ -1054,7 +1118,7 @@ class TutorialCheckoutTests(unittest.TestCase):
             if not line.startswith(b"docs/tutorial/generated/artifacts/patz1_transcript_assay_panels_cli/artifacts/")
         )
         broken = Path(self.tmp.name) / "panel-baselines-unprotected"
-        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        prepare_unprotected_checkout(self.root, broken, unprotected)
         for relative, (payload, digest) in expected.items():
             with self.subTest(mode="unprotected-crlf", path=relative):
                 converted = (broken / relative).read_bytes()
@@ -1103,7 +1167,7 @@ class TutorialCheckoutTests(unittest.TestCase):
             if b"docs/screenshots/gene_assay_study_gui/" not in line
         )
         broken = Path(self.tmp.name) / "gene-assay-evidence-unprotected"
-        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        prepare_unprotected_checkout(self.root, broken, unprotected)
         changed = [
             relative
             for relative, (payload, _digest) in expected.items()
@@ -1150,7 +1214,7 @@ class TutorialCheckoutTests(unittest.TestCase):
             if b"docs/screenshots/tss_regulatory_view_gui/" not in line
         )
         broken = Path(self.tmp.name) / "tss-evidence-unprotected"
-        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        prepare_unprotected_checkout(self.root, broken, unprotected)
         self.assertEqual(
             sorted(relative for relative, (payload, _) in expected.items()
                    if (broken / relative).read_bytes() != payload),
@@ -1196,7 +1260,7 @@ class TutorialCheckoutTests(unittest.TestCase):
             if b"docs/screenshots/tss_collection_gui/" not in line
         )
         broken = Path(self.tmp.name) / "tss-collection-evidence-unprotected"
-        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        prepare_unprotected_checkout(self.root, broken, unprotected)
         text_paths = sorted(relative for relative in expected
                             if relative.suffix == ".json")
         self.assertEqual(len(text_paths), 4)
@@ -1258,7 +1322,7 @@ class TutorialCheckoutTests(unittest.TestCase):
             if not any(scope in line for scope in scopes)
         )
         broken = Path(self.tmp.name) / "tp73-tss-pcr-unprotected"
-        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        prepare_unprotected_checkout(self.root, broken, unprotected)
         text_paths = sorted(relative for relative in expected
                             if relative.suffix in (".json", ".svg", ".gb"))
         self.assertEqual(len(text_paths), 7)
@@ -1298,7 +1362,7 @@ class TutorialCheckoutTests(unittest.TestCase):
             if relative.encode() not in line
         )
         broken = Path(self.tmp.name) / "parity-unprotected"
-        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        prepare_unprotected_checkout(self.root, broken, unprotected)
         self.assertTrue(
             (broken / relative).read_bytes() == payload.replace(b"\n", b"\r\n"),
             "The missing-rule control must reproduce CRLF conversion of the parity matrix",
@@ -1767,13 +1831,12 @@ class TutorialVisualContractTests(unittest.TestCase):
                 receipt = json.loads((expression / "evidence.json").read_bytes())
                 self.assertEqual(checker.visual_sha256(expression / receipt["project"]["path"]),
                                  receipt["project"]["before_sha256"])
-                if mode[0] == "crlf":
-                    self.assertIn(b"\r\n", (target / "docs/tutorial/manual.md").read_bytes())
+                self.assertNotIn(b"\r", (target / "docs/tutorial/manual.md").read_bytes())
         attributes = (self.root / ".gitattributes").read_bytes()
         broken_policy = b"\n".join(line for line in attributes.split(b"\n")
                                     if not line.startswith(b"docs/screenshots/tutorial_gui_acceptance/"))
         broken = Path(self.tmp.name) / "missing-hash-policy"
-        checker.prepare_checkout(self.root, broken, checker.MODES[1], broken_policy)
+        prepare_unprotected_checkout(self.root, broken, broken_policy)
         with self.assertRaisesRegex(RuntimeError, "capture_hash_mismatch"):
             checker.check_tutorial_visuals(broken)
 

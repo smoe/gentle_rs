@@ -1,0 +1,11 @@
+root = true
+
+[*]
+end_of_line = lf
+
+# Retained audit originals have a byte contract, including mixed line endings.
+[docs/audits/glen_followups_20261008/candidate_df5c8244/{glen,native-x11-supplement}/**]
+end_of_line = unset
+
+[docs/audits/glen_followups_20261008/candidate_de9df8af/*.json]
+end_of_line = unset

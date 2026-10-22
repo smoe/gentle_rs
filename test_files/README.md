@@ -12,6 +12,13 @@ live under `test_files/fixtures/`.
     benchmarks used in deterministic seed-filter tests.
 - `pGEX-3X.gb`, `pGEX_3X.fa`, `tp73.ncbi.gb`:
   - historical sequence fixtures still referenced by existing tests/examples.
+  - `pGEX_3X.fa` is the retained ENA/GenBank `U13852.1` pGEX-3X FASTA,
+    consumed by `src/dna_sequence.rs` and the pGEX import/cloning workflows.
+    On 2026-10-21 only CRLF separators were converted to LF; headers and bases
+    were preserved. Recreate the exact LF bytes from retained Git blob
+    `a94886313138706ca76b3a13c3673017ef026433` by replacing each `b'\r\n'`
+    with `b'\n'` in its raw bytes. The normalized SHA-256 is
+    `333aab70795b01433f5b7d063b6327d3d74596f51e42e46a77429167cfee33d4`.
   - `tp73.ncbi.gb` is the public RefSeq `NC_000001.11` forward-strand excerpt
     at chr1:3652516..3736201, GRCh38.p14 (`GCF_000001405.40`); its record date is
     26-AUG-2024. The deterministic retained fixture is Git blob

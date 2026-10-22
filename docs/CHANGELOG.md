@@ -1,5 +1,25 @@
 # GENtle Changelog
 
+## 2026-10-22 - Reconcile Stashed LF Policy With Updated Main
+
+- Resolve the owner's `stash pop` conflicts on `5ab0b02a`. Preserve the newer
+  roadmap priorities and all upstream changelog entries; restore the local
+  repository-wide LF policy and its separately source-bound Windows evidence.
+  Keep the roadmap at 400 lines and historical verification claims unchanged.
+- Include `.editorconfig` with the restored attributes, checkout regressions,
+  fixture provenance and four formatting-only FASTA/TSV changes in the owner's
+  requested commit. Preserve the retained stash as a recovery copy.
+- Verification on native Windows 10, `5ab0b02a` plus the resolved LF changes:
+  all 74 checkout tests finish in 261.634 s (72 passed, two host-restricted
+  symlink cases skipped), including the LF/CRLF and staging boundary. The
+  targeted LF-policy regression also passes separately in 11.774 s. Default
+  `cargo check -q --locked --offline`, documentation status and whitespace
+  checks pass. Exact comparisons retain every upstream changelog entry,
+  roadmap priority and decision, plus the previously verified LF files.
+  Pre-commit session-close: four OK, two expected pending-change/plan-label
+  warnings, zero failures. Logs: local `target/stash-pop-resolution/`.
+  Full Rust tests, all-features and release/native acceptance remain separate.
+
 ## 2026-10-22 - Keep Protocol-Overview GUI Identities Static And Pseudonymous
 
 - Address Glen's independent E0521 report at `70969635`: the semantic helper
@@ -57,6 +77,44 @@
   session-close reports 4 OK, 2 expected dirty-worktree/manual-plan warnings,
   0 failures. The roadmap remains 400 lines. Preserve the unrelated dirty
   paper submodule, untracked review prompts and output directory.
+
+## 2026-10-21 - Keep Repository Text LF On Windows
+
+- Diagnose the owner's commit warnings: effective `core.autocrlf=true` and
+  missing source-file LF attributes allow future CRLF working copies. The
+  affected Rust blobs in owner-pushed `bfe685ed` already contain LF; the
+  warning does not indicate CRLF source committed to Git.
+- Add repository-wide `* text=auto eol=lf` and an LF editor default. Preserve
+  binary files, explicit verbatim audit exceptions and scoped byte-contract
+  rules without changing global Git configuration or historical hashes.
+  Document the policy in decisions, testing and contributing guidance.
+- Restore LF in the local text checkout, verifying unchanged text against
+  index blobs and all 260 binary/verbatim resources against their original
+  SHA-256 values. Normalize the four historical CRLF/mixed text blobs: pGEX
+  and TP63 FASTA plus two TERT Spearman TSV tables. Preserve every line's
+  content and document exact retained-blob recreation in adjacent READMEs.
+  Refresh Git's stat/conversion metadata for 1,551 unchanged files, verifying
+  that every indexed blob stays identical and no real changes are staged.
+- Extend the fast checkout gate with actual LF/CRLF-policy clones and staging
+  of newly added source, binary/verbatim controls and the four real resources.
+  Remove the broad LF fallback only in missing-scoped-rule negative controls;
+  retain their original byte/hash failure assertions. Use forward slashes for
+  native Windows Git-rule selectors and generated-manifest lookup keys.
+- The owner reports a successful local Windows build. Delete the obsolete
+  `39725fde` local Windows ZIP as requested; this selects no release candidate
+  and makes no new package or GUI acceptance claim.
+- Verification on native Windows 10, `bfe685ed` plus these working changes:
+  all 74 fast checkout tests finish successfully in 214.228 s (72 passed,
+  two symlink cases skipped because the host cannot create symlinks). All
+  eight repaired native cases pass separately in 87.306 s. The new policy
+  regression also passes with the owner's actual Git Bash installation,
+  Git `2.56.0.windows.2` (9.988 s), whose system configuration confirms
+  `core.autocrlf=true`. `cargo check -q --locked --offline`, documentation
+  status and whitespace checks pass. Session-close: four OK, two expected
+  dirty-worktree/generated-data and plan-label warnings, zero failures;
+  roadmap remains 400 lines. Evidence and complete changed-file inventory:
+  local `target/line-ending-policy/verification-summary.json`. No new Linux,
+  macOS, full Rust-suite or package acceptance is inferred from this repair.
 
 ## 2026-10-21 - Isolate Missing BLAST Tools In Async Tests
 

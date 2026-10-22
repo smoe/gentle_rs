@@ -39,6 +39,11 @@ Disk-usage note:
 
 ## Contribution Notes
 
+- Save source and ordinary text files with Unix line endings (LF), including
+  on Windows. `.gitattributes` enforces LF checkouts independently of
+  `core.autocrlf`; `.editorconfig` supplies the editor default. Existing binary
+  and verbatim audit exceptions preserve their exact bytes. See the
+  [line-ending policy](docs/decisions.md#repository-line-endings).
 - Keep behavior aligned across GUI, CLI, and other interfaces when possible.
 - Update documentation when user-visible behavior changes.
 - Prefer deterministic checks and reproducible examples when validating a

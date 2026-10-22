@@ -761,6 +761,13 @@ render the same Spearman heatmap with `forward_only` and `reverse_only`
 signals respectively, so promoter case studies can compare strand-collapsed
 versus strand-specific motif co-occurrence.
 
+The retained `tert_upstream_early_coding_llr_background_tail_log10_cross_strand_spearman.tsv`
+and its `_tp73.tsv` companion use LF separators as of 2026-10-21. Only CRLF
+separators changed; all table fields and numeric values are preserved. Their
+exact LF bytes can be recreated by replacing `b'\r\n'` with `b'\n'` in Git
+blobs `6c84c228dace099529c0d42f68172ca4ad9e1405` and
+`c2373470a9d566edd76f5c365455ce626a124de1`, respectively.
+
 The matching `.png` files are the README-friendly raster derivatives.
 
 Regenerate the TERT TFBS figure family from the repository root with:

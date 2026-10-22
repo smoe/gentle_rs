@@ -36,6 +36,12 @@ Compact RNA-seed mapping benchmark fixtures used by deterministic tests.
 - Exact upstream export URLs and parameter snapshots are not yet captured in
   this repository; this is tracked as a documentation/provenance follow-up in
   `docs/roadmap.md`.
+- On 2026-10-21 the retained `ensembl_human_tp63_all.fasta` mixed CRLF/LF
+  separators were normalized to LF without changing headers or sequences.
+  Recreate these exact bytes from Git blob
+  `971865c79fa00d0c1b9b1e4668aa12d43aae76cf` by replacing `b'\r\n'` with
+  `b'\n'`. The LF SHA-256 is
+  `e1eb919541c381a0ce360d6606ccbb45e7379c8cae006b10590c56749024784c`.
 - Newly generated Ensembl cDNA fixtures should be produced through
   `scripts/fetch_ensembl_cdna_fixtures.sh`, which invokes `gentle_cli` for live
   Ensembl gene retrieval, imports the locus into GENtle state, derives
