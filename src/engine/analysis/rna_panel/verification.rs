@@ -1,7 +1,7 @@
 //! Explicit bounded verification of allowlisted summary tables, never original reads.
 
 use super::*;
-use sha2::{Digest, Sha256};
+use ring::digest::{Context, SHA256};
 
 const MAX_TABLE_BYTES: u64 = 256_000_000;
 
@@ -68,7 +68,7 @@ impl GentleEngine {
             let file = fs::File::open(&target).map_err(|e| bad(e.to_string()))?;
             let opened = file.metadata().map_err(|e| bad(e.to_string()))?;
             let mut reader = file.take(artifact.bytes + 1);
-            let mut hasher = Sha256::new();
+            let mut hasher = Context::new(&SHA256);
             let mut bytes = 0u64;
             let mut buffer = [0u8; 65_536];
             loop {
@@ -95,7 +95,7 @@ impl GentleEngine {
                 || !final_path.is_file()
                 || final_path.len() != bytes
                 || final_path.modified().ok() != after.modified().ok()
-                || format!("sha256:{}", input::hex(&hasher.finalize())) != artifact.sha256
+                || format!("sha256:{}", input::hex(hasher.finish().as_ref())) != artifact.sha256
             {
                 return Err(bad("panel_verify_artifact_hash_or_size"));
             }

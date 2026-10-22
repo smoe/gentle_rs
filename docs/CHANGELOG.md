@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-10-23 - Use The Declared Hash Backend In RNA Table Verification
+
+- Fix the owner's E0432: the RNA table verifier imported undeclared `sha2`.
+  Use the root crate's existing `ring::digest` streaming SHA-256 context, as
+  the FASTQ reader and digest helpers already do. Keep identical hash encoding,
+  bounded reads, byte budgets, allowlists, size/mtime and symlink checks; no
+  dependency, lockfile, result schema or stored digest changes.
+- Remove the two unnecessary `Engine` imports added by the prior confirmation/
+  starter repair; `GentleEngine::state` is an inherent method. Add an LF/CRLF
+  source regression that fails before the backend repair and passes afterward.
+  Existing artifact-verification Rust regressions remain the runtime gate;
+  no local Rust build/test/check or push is performed.
+- Verification: 35 focused source tests, scoped rustfmt, documentation status,
+  maturity freshness and whitespace checks pass. These do not establish a
+  current-source Rust compile or native artifact-verification pass.
+
 ## 2026-10-23 - Repair RNA Agent Confirmation And Tutorial Freshness
 
 - Enforce the shared parsed-command mutation classification for shell/UI,

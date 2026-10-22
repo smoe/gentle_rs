@@ -1,5 +1,16 @@
 # Glen: Next Verification And Return
 
+## RNA Table-Verifier Import Repair, 2026-10-23
+
+The owner's compiler found E0432 in `rna_panel/verification.rs`: `sha2` was
+not declared by the root crate. The verifier now uses the same already-declared
+`ring::digest::Context` / SHA-256 as FASTQ intake, keeping bounded streaming and
+all exact hash/size/path checks. No dependency or lockfile update is needed.
+The previous repair's two unused `Engine` imports are removed. Include the
+existing `rna_panel_summary_verification_is_explicit_bounded_and_hash_bound`
+Rust regression in the ordinary `rna_panel_` filter below; source/format checks
+are not compiler acceptance. No new campaign or repeated historical checks.
+
 ## RNA Confirmation, Starter And Tutorial Freshness Repairs, 2026-10-23
 
 The reported five failures have three causes: the stored-plan executor trusted

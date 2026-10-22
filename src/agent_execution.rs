@@ -342,7 +342,7 @@ mod tests {
     use super::*;
     use crate::{
         agent_planner::{AgentPlanExecutionMode, AgentPlanResult},
-        engine::{Engine, ProjectState},
+        engine::ProjectState,
     };
 
     #[test]

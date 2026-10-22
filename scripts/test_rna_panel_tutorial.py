@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +16,18 @@ HELPER = ROOT / "scripts/prepare_rna_panel_tutorial.py"
 
 
 class RnaPanelTutorialTests(unittest.TestCase):
+    def test_table_verifier_uses_the_declared_streaming_hash_backend(self):
+        dependencies = tomllib.loads((ROOT / "Cargo.toml").read_text())["dependencies"]
+        self.assertIn("ring", dependencies)
+        source = (ROOT / "src/engine/analysis/rna_panel/verification.rs").read_text()
+        for text in (source, source.replace("\n", "\r\n")):
+            self.assertIn("use ring::digest::{Context, SHA256};", text)
+            self.assertIn("Context::new(&SHA256)", text)
+            self.assertIn("hasher.finish().as_ref()", text)
+            self.assertNotIn("use sha2::", text)
+            self.assertIn("file.take(artifact.bytes + 1)", text)
+            self.assertIn("panel_verify_artifact_hash_or_size", text)
+
     def test_agent_confirmation_uses_parsed_commands_before_execution(self):
         source = (ROOT / "src/agent_execution.rs").read_text(encoding="utf-8")
         for text in (source, source.replace("\n", "\r\n")):

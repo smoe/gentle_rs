@@ -1,7 +1,6 @@
 //! Bounded inspection, explicit cancellation and a synthetic rehearsal for every adapter.
 
 use super::*;
-use crate::engine::Engine;
 use md5::{Digest, Md5};
 use serde_json::Value;
 use std::io::Read;
