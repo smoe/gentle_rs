@@ -4,6 +4,7 @@
 use super::*;
 use flate2::{Compression, write::GzEncoder};
 use md5::{Digest, Md5};
+use serde_json::Value;
 
 fn bases(seed: u64, length: usize) -> String {
     let mut value = seed;

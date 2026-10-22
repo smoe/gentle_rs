@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+## 2026-10-22 - Import RNA Panel JSON Values Explicitly
+
+- The owner's local compiler reports E0425/E0433 in RNA panel inspection and
+  its report-tampering test. Import `serde_json::Value` explicitly in both
+  child modules instead of relying on the ancestor glob import. This is a
+  missing name binding, not a dependency or JSON-contract change.
+- Keep the existing inspection/tampering runtime regressions for Glen/CI;
+  all six RNA tutorial source tests and recursive rustfmt pass. These checks
+  do not establish Rust compilation. No local Rust build/test/check, private
+  sequencing processing or push is performed.
+
 ## 2026-10-22 - Integrate RNA Panel And Resolve Its Child Modules
 
 - Fast-forward main from `2ea67b1b` to `9a2594fc`, retaining the combined
