@@ -81,6 +81,49 @@
   negative fixture, so the global LF fallback does not mask a missing scoped
   hash rule. Production checkout policy and retained evidence stay unchanged.
 
+## 2026-10-22 - Screen Independent RNA Loci Directly From FASTQ/Gzip
+
+- Add portable source-bound multi-locus panels, one combined packed-word index
+  and Rust-Bio seed chaining. Retain all qualifying transcript/orientation
+  candidates, shared-region equivalence sets, junction-flank evidence and
+  explicit resource failures; no exclusive isoform, expression or uniqueness
+  claim. Independent locus/selected/annotated counts stay separate. Refuse
+  potentially overlapping source views rather than double-counting annotations.
+- Strict four-line FASTQ validates markers, lengths, LF/CRLF and concatenated
+  gzip. Hash raw compressed bytes with SHA-256 and supplier MD5 during the same
+  parse, not an upfront pass; verify at EOF and reject growing/corrupt input.
+  Stream TSV/optional nominated FASTA, retaining ambiguity labels. Fresh output
+  publication and file-boundary cancellation preserve only verified units.
+- Shared demo/build/screen/show/cancel operations serve CLI, GUI Shell, MCP,
+  scripting/workflows and the inner agent. Add bounded row inspection with an
+  explicit unverified-sidecar flag, cancellation feedback, approval regressions
+  and a full synthetic shared-shell/MCP rehearsal. Legacy FASTA intake now
+  refuses FASTQ before quality `>` can become a bogus header; legacy winner,
+  posting-cap and strand-filter defects remain a separate follow-up.
+- Keep named inspection/cancellation non-journaling so observation/control does
+  not stale the running detached screen. Author a concurrent-control regression;
+  completing inspection of a cancelled report is distinct from completing its
+  analysis. No generic job-service or history policy is relaxed.
+- Tutorial 10.04 starts with five artificial loci, alternative terminal exons
+  and ambiguous shared reads, then a deliberately selected completed chunk for
+  owner-bound 26R266-1/barcode13 and 26R266-2/barcode14. Every stage has an
+  inner-agent route. An optional terminal helper only assembles JSON; it does
+  not inspect downloads or make scientific decisions. Keep this first lesson
+  unreviewed for joint improvement, not a validated sequencing assay.
+- Add a direct `md-5` dependency already present at the same locked version;
+  no package/version refresh. Update glossary and its maturity source hashes,
+  source/catalog discovery, parity projection and scientific interface docs.
+  Rust tests/checks, real-library/background calibration, throughput and native
+  acceptance remain Glen/CI's. No actual FASTQ/POD5 was processed, no private
+  data or unrelated outputs changed, no push and no previous-goal resume.
+- Offline checks: `python3 -m unittest scripts.test_rna_panel_tutorial
+  scripts.test_specialist_tutorials.SpecialistSourceTests` (28 passed),
+  `python3 -m unittest scripts.test_tutorial_checkouts` (73 passed), documentation
+  status, capability-maturity freshness, scoped rustfmt and whitespace. These
+  are 101 Python/source checks, not execution of the new Rust paths. Session
+  close reports 4 OK, 2 expected dirty/generated/manual-plan warnings, 0 failures;
+  roadmap stays 400 lines. Canonical Rust catalog/parity checks remain unrun.
+
 ## 2026-10-22 - Keep Protocol-Overview GUI Identities Static And Pseudonymous
 
 - Address Glen's independent E0521 report at `70969635`: the semantic helper

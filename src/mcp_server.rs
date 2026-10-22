@@ -1417,6 +1417,11 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
         "op" => &[
             "op",
             "sequence-design plan",
+            "rna-reads panel-build",
+            "rna-reads panel-screen",
+            "rna-reads panel-demo",
+            "rna-reads panel-show",
+            "rna-reads panel-cancel",
             "sequence-design apply",
             "primers design-transcript-capture-pool",
             "gene-locus prepare",
@@ -5160,6 +5165,139 @@ mod tests {
                 assert_sequence_design_mcp_parity(conflict, global, true);
             }
         }
+    }
+
+    #[test]
+    fn rna_panel_mcp_and_agent_routes_require_explicit_artifact_confirmation() {
+        // Synthetic missing references: confirmation must happen before any I/O.
+        let temp = tempdir().unwrap();
+        let state = temp.path().join("panel project.json");
+        ProjectState::default()
+            .save_to_path(&state.to_string_lossy())
+            .unwrap();
+        let before = fs::read(&state).unwrap();
+        for (name, command, request) in [
+            (
+                "BuildRnaReadPanel",
+                "rna-reads panel-build",
+                json!({
+                "schema":"gentle.rna_read_panel_build_request.v1", "sources":[],
+                "output_path":temp.path().join("forbidden panel.json") }),
+            ),
+            (
+                "ScreenRnaReadPanel",
+                "rna-reads panel-screen",
+                json!({
+                "schema":"gentle.rna_read_panel_screen_request.v1", "files":[],
+                "panel_path":"missing.json", "output_dir":temp.path().join("forbidden run") }),
+            ),
+        ] {
+            let mut operation = serde_json::Map::new();
+            operation.insert(name.into(), json!({"request":request}));
+            let response = run_tool(
+                DEFAULT_MCP_STATE_PATH,
+                "op",
+                json!({
+                "state_path":state, "operation":operation, "confirm":false }),
+            );
+            assert_eq!(response["result"]["isError"], true, "{response}");
+            assert!(response.to_string().contains("confirm"), "{response}");
+            let line = format!(
+                "{} {}",
+                command,
+                crate::engine_shell::quote_shell_arg(&request.to_string())
+            );
+            let plan = json!({"schema":"gentle.agent_plan_result.v1", "assistant_message":"Synthetic screening", "questions":[], "candidates":[{
+                "candidate_id":"panel", "title":"Panel", "rationale":"Explicit scope", "kind":"shell", "mutating":false,
+                "requires_confirmation":false, "execution_mode":"auto", "shell_command":line }]});
+            let denied = run_tool(
+                DEFAULT_MCP_STATE_PATH,
+                "agent_execute_plan",
+                json!({
+                "state_path":state, "candidate_id":"panel", "plan":plan }),
+            );
+            assert_eq!(denied["result"]["isError"], true, "{denied}");
+            assert!(denied.to_string().contains("confirm"), "{denied}");
+        }
+        assert_eq!(fs::read(state).unwrap(), before);
+        assert!(!temp.path().join("forbidden panel.json").exists());
+        assert!(!temp.path().join("forbidden run").exists());
+    }
+
+    #[test]
+    fn rna_panel_mcp_rehearsal_matches_direct_scientific_payload() {
+        // Uses only the shared hand-crafted five-locus demo, never private reads.
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("MCP rehearsal with spaces");
+        let empty = temp.path().join("empty.json");
+        ProjectState::default()
+            .save_to_path(&empty.to_string_lossy())
+            .unwrap();
+        let prepared = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({
+            "state_path":empty, "confirm":true, "operation":{"PrepareRnaReadPanelDemo":{"output_dir":root}} }),
+        );
+        assert_eq!(prepared["result"]["isError"], false, "{prepared}");
+        let state_path = root.join("artifacts/starter.json");
+        let state = ProjectState::load_from_path(&state_path.to_string_lossy()).unwrap();
+        let before = serde_json::to_value(&state).unwrap();
+        let build: Value =
+            serde_json::from_slice(&fs::read(root.join("artifacts/build.json")).unwrap()).unwrap();
+        let built = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({
+            "state_path":state_path, "confirm":true, "operation":{"BuildRnaReadPanel":{"request":build}} }),
+        );
+        assert_eq!(built["result"]["isError"], false, "{built}");
+        let direct = GentleEngine::from_state(state);
+        let mut direct_build: crate::engine::BuildRnaReadPanelRequest =
+            serde_json::from_value(build).unwrap();
+        direct_build.output_path = root.join("direct-panel.json").display().to_string();
+        let direct_panel = direct.build_rna_read_panel(&direct_build).unwrap();
+        assert_eq!(
+            built["result"]["structuredContent"]["result"]["rna_read_panel"]["content_sha256"],
+            direct_panel.content_sha256
+        );
+        let request: Value =
+            serde_json::from_slice(&fs::read(root.join("artifacts/screen.json")).unwrap()).unwrap();
+        let screened = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({
+            "state_path":state_path, "confirm":true, "operation":{"ScreenRnaReadPanel":{"request":request}} }),
+        );
+        assert_eq!(screened["result"]["isError"], false, "{screened}");
+        let mut direct_request: crate::engine::ScreenRnaReadPanelRequest =
+            serde_json::from_value(request).unwrap();
+        direct_request.output_dir = root.join("direct-screen").display().to_string();
+        let expected = direct
+            .screen_rna_read_panel(direct_request, &mut |_| true)
+            .unwrap();
+        let actual = &screened["result"]["structuredContent"]["result"]["rna_read_panel_screen"];
+        assert_eq!(actual["status"], "completed");
+        assert_eq!(
+            actual["files_completed"],
+            serde_json::to_value(expected.files_completed).unwrap()
+        );
+        let inspected = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({
+            "state_path":state_path, "confirm":true, "operation":{"InspectRnaReadPanel":{
+                "path":root.join("screen/report.json"), "file_id":"file_0000", "rows":4}} }),
+        );
+        assert_eq!(inspected["result"]["isError"], false, "{inspected}");
+        assert_eq!(
+            inspected["result"]["structuredContent"]["result"]["rna_read_panel_inspection"]["rows"]
+                [3]["class"],
+            "unmatched"
+        );
+        let after = ProjectState::load_from_path(&state_path.to_string_lossy()).unwrap();
+        assert_eq!(serde_json::to_value(after).unwrap(), before);
+        assert_eq!(serde_json::to_value(direct.state()).unwrap(), before);
     }
 
     fn assert_sequence_design_mcp_parity(conflict_directed: bool, gc: bool, window: bool) {

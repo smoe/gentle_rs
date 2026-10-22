@@ -14688,6 +14688,9 @@ fn poll_prepare_success_after_cancel_request_reports_completion_prefix() {
         job_id: 54,
         result: Ok(OpResult {
             tube_profiles: None,
+            rna_read_panel: None,
+            rna_read_panel_screen: None,
+            rna_read_panel_inspection: None,
             dna_sequence_design: None,
             dna_sequence_design_receipt: None,
             primer_group_target_design: None,
@@ -14980,6 +14983,9 @@ fn poll_track_import_refreshes_only_changed_sequence_windows() {
         job_id: 91,
         result: Ok(GenomeTrackTaskResult::Operation(OpResult {
             tube_profiles: None,
+            rna_read_panel: None,
+            rna_read_panel_screen: None,
+            rna_read_panel_inspection: None,
             dna_sequence_design: None,
             dna_sequence_design_receipt: None,
             primer_group_target_design: None,
@@ -15156,6 +15162,9 @@ fn poll_track_import_refreshes_all_open_windows_when_changed_ids_missing() {
         job_id: 92,
         result: Ok(GenomeTrackTaskResult::Operation(OpResult {
             tube_profiles: None,
+            rna_read_panel: None,
+            rna_read_panel_screen: None,
+            rna_read_panel_inspection: None,
             dna_sequence_design: None,
             dna_sequence_design_receipt: None,
             primer_group_target_design: None,
@@ -15554,6 +15563,9 @@ fn poll_track_autosync_marks_stale_result_and_allows_new_key_retry() {
 fn format_extract_region_status_includes_annotation_fallback_reason() {
     let status = GENtleApp::format_extract_region_status(&OpResult {
         tube_profiles: None,
+        rna_read_panel: None,
+        rna_read_panel_screen: None,
+        rna_read_panel_inspection: None,
         dna_sequence_design: None,
         dna_sequence_design_receipt: None,
         primer_group_target_design: None,

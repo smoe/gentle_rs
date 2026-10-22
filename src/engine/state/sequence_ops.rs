@@ -2679,6 +2679,30 @@ impl GentleEngine {
                     Self::push_unique_token(&mut summary.file_paths, path);
                 }
             }
+            Operation::BuildRnaReadPanel { request } => {
+                for source in &request.sources {
+                    Self::push_unique_token(&mut summary.sequence_ids, &source.seq_id);
+                }
+                Self::push_unique_token(&mut summary.file_paths, &request.output_path);
+            }
+            Operation::PrepareRnaReadPanelDemo { output_dir } => {
+                Self::push_unique_token(&mut summary.file_paths, output_dir);
+            }
+            Operation::InspectRnaReadPanel { path, .. } => {
+                Self::push_unique_token(&mut summary.file_paths, path);
+            }
+            Operation::CancelRnaReadPanel { request } => {
+                if let Some(path) = &request.cancel_path {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+            }
+            Operation::ScreenRnaReadPanel { request } => {
+                Self::push_unique_token(&mut summary.file_paths, &request.panel_path);
+                Self::push_unique_token(&mut summary.file_paths, &request.output_dir);
+                for input in &request.files {
+                    Self::push_unique_token(&mut summary.file_paths, &input.path);
+                }
+            }
             Operation::ApplyDnaSequenceDesign { proposal, .. } => {
                 if let gentle_protocol::sequence_design::DnaDesignTarget::LoadedSequence {
                     seq_id,

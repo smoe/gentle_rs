@@ -1,5 +1,19 @@
 # GENtle Architecture (Working Draft)
 
+## Multi-Locus RNA Panel Boundary
+
+`engine/analysis/rna_panel` is a separate portable nomination contract, not an
+extension of the single-coordinate `RnaReadInterpretationReport` or a second
+aligner. It reuses mature-transcript geometry and Rust-Bio sparse chaining.
+Its strict streaming intake hashes the same compressed bytes it parses; each
+verified input unit streams nominations to sidecars rather than retaining reads
+in memory. Independent locus/member identities, ambiguity and explicit resource
+failures survive every adapter. Synthetic tutorial preparation, inspection and
+cancellation also live at this shared boundary, so no tutorial stage requires
+an inner agent to run OS Python/touch commands. Project state stays unchanged;
+external writes retain confirmation. See [the invariant](decisions.md#independent-locus-fastq-panel-nominations)
+and [the protocol](protocol.md#multi-locus-fastq-screening).
+
 ## Publication projections
 
 Multi-gene publication output follows a request → resolved report → renderer

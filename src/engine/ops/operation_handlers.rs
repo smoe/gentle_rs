@@ -21,6 +21,8 @@ use super::feature_expert_ops::{DbsnpReferenceCheck, DbsnpResolvedPlacement};
 use super::*;
 #[path = "../analysis/gene_set_arrangement.rs"]
 mod gene_set_arrangement;
+#[path = "../analysis/rna_panel.rs"]
+mod rna_panel;
 #[path = "../analysis/transcript_capture.rs"]
 mod transcript_capture;
 use crate::engine::sequence_ops::{Primer3PairDesignOptions, PrimerDesignProgressContext};
@@ -40531,6 +40533,9 @@ impl GentleEngine {
         let op_id = self.next_op_id();
         let mut parent_seq_ids: Vec<SeqId> = vec![];
         let mut result = OpResult {
+            rna_read_panel: None,
+            rna_read_panel_screen: None,
+            rna_read_panel_inspection: None,
             tube_profiles: None,
             dna_sequence_design: None,
             dna_sequence_design_receipt: None,
@@ -52163,6 +52168,35 @@ impl GentleEngine {
                     }
                     result.messages.push(format!("Synthetic motif-removal preview: {:?}; {} candidate(s) evaluated; source unchanged", report.status, report.evaluated_candidates));
                     result.dna_sequence_design = Some(Box::new(report));
+                }
+                Operation::BuildRnaReadPanel { request } => {
+                    let panel = self.build_rna_read_panel(&request)?;
+                    result.messages.push(format!("Prepared {} source loci and {} transcript members; original sequences unchanged", panel.locus_count, panel.selected_transcript_count));
+                    result.rna_read_panel = Some(Box::new(panel));
+                }
+                Operation::PrepareRnaReadPanelDemo { output_dir } => {
+                    result
+                        .messages
+                        .extend(self.prepare_rna_read_panel_demo(&output_dir)?);
+                }
+                Operation::CancelRnaReadPanel { request } => {
+                    result.messages.push(self.cancel_rna_read_panel(&request)?);
+                }
+                Operation::InspectRnaReadPanel {
+                    path,
+                    file_id,
+                    rows,
+                } => {
+                    let (panel, report, inspection) =
+                        self.inspect_rna_read_panel(&path, file_id.as_deref(), rows)?;
+                    result.rna_read_panel = panel.map(Box::new);
+                    result.rna_read_panel_screen = report.map(Box::new);
+                    result.rna_read_panel_inspection = inspection.map(Box::new);
+                }
+                Operation::ScreenRnaReadPanel { request } => {
+                    let report = self.screen_rna_read_panel(*request, on_progress)?;
+                    result.messages.push(format!("RNA panel screen {}; {} verified completed file units; seed compatibility is not isoform identification", report.status, report.files_completed.len()));
+                    result.rna_read_panel_screen = Some(Box::new(report));
                 }
                 Operation::ApplyDnaSequenceDesign {
                     proposal,

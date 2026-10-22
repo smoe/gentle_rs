@@ -10092,6 +10092,11 @@ impl GentleEngine {
                 continue;
             }
             if current_header.is_none() {
+                if !line.trim().is_empty() && !line.starts_with(';') {
+                    return Err(EngineError::invalid_input(
+                        "FASTA requires a > header before sequence data; use rna-reads panel-screen for FASTQ/gzip, not this FASTA path",
+                    ));
+                }
                 continue;
             }
             current_sequence.push_str(line.trim());
@@ -14511,6 +14516,9 @@ impl GentleEngine {
         let checkpoint = self.maybe_capture_checkpoint(&op);
         let mut result = OpResult {
             tube_profiles: None,
+            rna_read_panel: None,
+            rna_read_panel_screen: None,
+            rna_read_panel_inspection: None,
             dna_sequence_design: None,
             dna_sequence_design_receipt: None,
             primer_group_target_design: None,
@@ -14688,6 +14696,9 @@ impl GentleEngine {
         let checkpoint = self.maybe_capture_checkpoint(&op);
         let mut result = OpResult {
             tube_profiles: None,
+            rna_read_panel: None,
+            rna_read_panel_screen: None,
+            rna_read_panel_inspection: None,
             dna_sequence_design: None,
             dna_sequence_design_receipt: None,
             primer_group_target_design: None,

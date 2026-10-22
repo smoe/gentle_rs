@@ -12444,6 +12444,9 @@ Error: `{err}`"
             })
             .map(|report| OpResult {
                 tube_profiles: None,
+                rna_read_panel: None,
+                rna_read_panel_screen: None,
+                rna_read_panel_inspection: None,
                 dna_sequence_design: None,
                 dna_sequence_design_receipt: None,
                 primer_group_target_design: None,

@@ -1,0 +1,22 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "targeted_nanopore_fastq_panel",
+  "title": "Screen Targeted cDNA FASTQ Across Independent Gene Loci",
+  "catalog": {
+    "order": 125,
+    "path": "docs/tutorial/10-04_targeted_nanopore_fastq_panel.md",
+    "type": "cli_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": ["cli_first", "agent_users", "wet_lab_biologists"],
+    "notes": "Five-locus synthetic rehearsal, then one explicitly completed custom-primed FASTQ.gz chunk. Verify supplier MD5 and compressed SHA-256 during screening; retain compatibility sets and ambiguity, not isoform assignments. All stages have shared inner-agent routes. First joint lesson; Rust execution, real-library calibration and native acceptance remain pending.",
+    "estimated_minutes": 30,
+    "difficulty": "intermediate",
+    "network": "offline",
+    "interfaces": ["CLI / shared shell", "MCP op", "Agent Assistant (explicit approval)"],
+    "starting_state": "Externally verified CLI and disposable synthetic project; actual loci and completed files are a separate follow-up",
+    "produces": ["portable multi-locus transcript panel", "checksum-bound file receipts", "nomination TSVs and optional per-locus FASTA"],
+    "group": "10",
+    "group_position": 4
+  }
+}

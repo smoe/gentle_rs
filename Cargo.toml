@@ -173,6 +173,7 @@ rfd = { workspace = true, optional = true }
 reqwest = { workspace = true, features = ["blocking", "form", "json"] }
 tempfile = { workspace = true }
 flate2 = "1.0"
+md-5 = "0.11.0"
 memchr = "2"
 regex = "^1"
 scraper = "0.27.0"

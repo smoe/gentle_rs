@@ -13299,6 +13299,77 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
         );
     }
     match tokens[1].as_str() {
+        "panel-demo" if tokens.len() == 3 => Ok(ShellCommand::Op {
+            payload: serde_json::to_string(&Operation::PrepareRnaReadPanelDemo {
+                output_dir: tokens[2].clone(),
+            })
+            .map_err(|e| e.to_string())?,
+        }),
+        "panel-cancel" if tokens.len() == 3 => {
+            let request = serde_json::from_str(&parse_json_payload(&tokens[2])?)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&Operation::CancelRnaReadPanel { request })
+                    .map_err(|e| e.to_string())?,
+            })
+        }
+        "panel-show" => {
+            if tokens.len() < 3 {
+                return Err("Use rna-reads panel-show PATH [--file-id ID] [--rows 0..1000]".into());
+            }
+            let mut file_id = None;
+            let mut rows = 0;
+            let mut rows_seen = false;
+            let mut i = 3;
+            while i < tokens.len() {
+                let value = tokens
+                    .get(i + 1)
+                    .ok_or_else(|| "Missing panel-show option value".to_string())?;
+                match tokens[i].as_str() {
+                    "--file-id" if file_id.is_none() => file_id = Some(value.clone()),
+                    "--rows" if !rows_seen => {
+                        rows_seen = true;
+                        rows = value
+                            .parse::<usize>()
+                            .map_err(|_| "Invalid row count".to_string())?
+                    }
+                    _ => return Err("Unknown/duplicate panel-show option".into()),
+                }
+                i += 2;
+            }
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&Operation::InspectRnaReadPanel {
+                    path: tokens[2].clone(),
+                    file_id,
+                    rows,
+                })
+                .map_err(|e| e.to_string())?,
+            })
+        }
+        "panel-build" | "panel-screen" => {
+            if tokens.len() != 3 {
+                return Err("Use rna-reads panel-build|panel-screen REQUEST_JSON_OR_@FILE".into());
+            }
+            let payload = parse_json_payload(&tokens[2])?;
+            let operation = if tokens[1] == "panel-build" {
+                Operation::BuildRnaReadPanel {
+                    request: Box::new(
+                        serde_json::from_str::<crate::engine::BuildRnaReadPanelRequest>(&payload)
+                            .map_err(|e| e.to_string())?,
+                    ),
+                }
+            } else {
+                Operation::ScreenRnaReadPanel {
+                    request: Box::new(
+                        serde_json::from_str::<crate::engine::ScreenRnaReadPanelRequest>(&payload)
+                            .map_err(|e| e.to_string())?,
+                    ),
+                }
+            };
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&operation).map_err(|e| e.to_string())?,
+            })
+        }
         "allele-hash-screen" => {
             let mut gene: Option<String> = None;
             let mut transcript_fasta: Option<String> = None;

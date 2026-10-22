@@ -1,0 +1,109 @@
+"""Source/metadata checks for 10.04; these do not execute GENtle or certify biology."""
+
+import json
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+import unittest
+
+ROOT = Path(__file__).resolve().parents[1]
+GUIDE = ROOT / "docs/tutorial/10-04_targeted_nanopore_fastq_panel.md"
+SOURCE = ROOT / "docs/tutorial/sources/10-04_targeted_nanopore_fastq_panel.json"
+HELPER = ROOT / "scripts/prepare_rna_panel_tutorial.py"
+
+
+class RnaPanelTutorialTests(unittest.TestCase):
+    def test_source_catalog_discovery_and_unique_placement(self):
+        source = json.loads(SOURCE.read_text())
+        catalog = json.loads((ROOT / "docs/tutorial/catalog.json").read_text())
+        entry, = [e for e in catalog["entries"] if e["id"] == source["id"]]
+        self.assertEqual(entry["title"], source["title"])
+        self.assertEqual(entry["notes"], source["catalog"]["notes"])
+        self.assertEqual(entry["decimal_id"], "10.04")
+        self.assertEqual(entry["review_status"], "unreviewed")
+        for path in SOURCE.parent.glob("*.json"):
+            other = json.loads(path.read_text())
+            if other.get("id") != source["id"] and "catalog" in other:
+                self.assertNotEqual(other["catalog"]["order"], source["catalog"]["order"])
+        self.assertIn("10-04_targeted_nanopore_fastq_panel.md",
+                      (ROOT / "docs/tutorial/README.md").read_text())
+
+    def test_literal_bash_is_syntactically_valid_in_lf_and_crlf(self):
+        payload = GUIDE.read_bytes()
+        for raw in (payload.replace(b"\r\n", b"\n"), payload.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")):
+            text = raw.decode().replace("\r\n", "\n")
+            blocks = re.findall(r"```bash\n(.*?)```", text, re.S)
+            self.assertGreaterEqual(len(blocks), 5)
+            for block in blocks:
+                result = subprocess.run(["bash", "-n"], input=block, text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_request_helper_binds_explicit_samples_without_opening_inputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "request with spaces.json"
+            # Intentionally nonexistent references/reads: this is metadata preparation only.
+            args = [sys.executable, str(HELPER), "request", "--panel", str(root / "panel.json"),
+                    "--md5-manifest", str(root / "md5_checksums.txt"), "--output-dir", str(root / "run"),
+                    "--output", str(output), "--declared-complete", "--write-locus-fastas",
+                    "--input", "26R266-1", "barcode13", "custom_only", str(root / "renamed folder/a.fastq.gz"),
+                    "--input", "26R266-2", "barcode14", "custom_only", str(root / "b.fastq.gz")]
+            result = subprocess.run(args, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            request = json.loads(output.read_text())
+            self.assertEqual([(f["sample_id"], f["barcode"]) for f in request["files"]],
+                             [("26R266-1", "barcode13"), ("26R266-2", "barcode14")])
+            self.assertTrue(all(f["declared_complete"] for f in request["files"]))
+            self.assertTrue(request["policy"]["write_locus_fastas"])
+            self.assertNotIn(b"\r", output.read_bytes())
+            before = output.read_bytes()
+            self.assertNotEqual(subprocess.run(args, capture_output=True).returncode, 0)
+            self.assertEqual(output.read_bytes(), before)
+            args.remove("--declared-complete")
+            self.assertNotEqual(subprocess.run(args, capture_output=True).returncode, 0)
+            self.assertFalse((root / "run").exists())
+
+    def test_all_tutorial_stages_have_registered_inner_agent_routes(self):
+        operations = ["BuildRnaReadPanel", "ScreenRnaReadPanel", "PrepareRnaReadPanelDemo",
+                      "InspectRnaReadPanel", "CancelRnaReadPanel"]
+        routes = ["rna-reads panel-" + suffix for suffix in ("build", "screen", "demo", "show", "cancel")]
+        glossary = json.loads((ROOT / "docs/glossary.json").read_text())["commands"]
+        protocol = (ROOT / "crates/gentle-protocol/src/lib.rs").read_text()
+        mcp = (ROOT / "src/mcp_server.rs").read_text()
+        bridge = (ROOT / "src/agent_bridge.rs").read_text()
+        matrix = (ROOT / "docs/gui_cli_mcp_parity.md").read_text()
+        for operation, route in zip(operations, routes):
+            entry, = [row for row in glossary if row["path"] == route]
+            self.assertEqual(entry["engine_operations"], [operation])
+            self.assertIn('"' + operation + '"', protocol)
+            self.assertIn('"' + route + '"', mcp)
+            self.assertIn(route.split(" ", 1)[1], bridge)
+            self.assertIn("| " + route + " | glossary-command |", matrix)
+        guide = GUIDE.read_text()
+        for phrase in ("Follow This Through The Inner Agent", "panel-show", "panel-cancel",
+                       "26R266-1", "barcode13", "26R266-2", "barcode14",
+                       "not a validated assay", "unresolved", "artifact_content_verified=false"):
+            self.assertIn(phrase, guide)
+        self.assertIn("rna_panel_tutorial_is_executable_through_shared_agent_commands",
+                      (ROOT / "src/engine/analysis/rna_panel/tests.rs").read_text())
+        shell = (ROOT / "src/engine_shell.rs").read_text()
+        self.assertIn("request_template_is_example_not_resolved_input", shell)
+        for schema in ("gentle.rna_read_panel_cancel_request.v1", "gentle.rna_read_panel_inspection_command.v1"):
+            self.assertIn(schema, shell)
+
+    def test_parity_table_totals_match_its_rows(self):
+        text = (ROOT / "docs/gui_cli_mcp_parity.md").read_text()
+        lines = text.split("## Open Gaps", 1)[0].splitlines()
+        rows = [line.split("|")[1:-1] for line in lines
+                if re.match(r"\| .* \| (glossary-command|engine-operation|mcp-tool) \|", line)]
+        for column, adapter in enumerate(("GUI", "gentle_cli", "MCP", "JS", "Lua", "ClawBio"), 2):
+            expected = [sum(row[column].strip() == state for row in rows)
+                        for state in ("prominent", "shell-only", "gap")]
+            match = re.search(r"^\| " + re.escape(adapter) + r" \| (\d+) \| (\d+) \| (\d+) \|$", text, re.M)
+            self.assertEqual([int(v) for v in match.groups()], expected)
+
+
+if __name__ == "__main__":
+    unittest.main()

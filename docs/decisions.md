@@ -17,6 +17,40 @@ with the committed attributes, source text, binaries and verbatim records.
 Missing-scoped-rule negative controls also remove the general LF default so
 they still reproduce the original unprotected CRLF boundary.
 
+## Independent-Locus FASTQ Panel Nominations
+
+Owner-authorized 2026-10-22: a portable RNA panel binds independent loaded
+loci, source-record and mature-sequence hashes, declared assembly/release/gene
+labels, local exon geometry and namespaced `(locus_id, transcript_feature_id)`
+members. Labels and content hashes are not authenticated reference provenance.
+Potential overlapping source views are disclosed and refused for screening,
+not double-counted or silently turned into a consensus annotation.
+
+One packed-word index retains all template postings. Exact seeds are chained
+with the existing Rust-Bio LCSk++ implementation. Every qualifying member and
+orientation is retained; compatibility sets are not exclusive isoform calls,
+expression, full-length capture or whole-transcriptome uniqueness. Budgets fail
+explicitly, never by annotation-order truncation. Junction support requires
+declared flanks; substitutions/indels require separate alignment inspection.
+The legacy single-locus winner/tie semantics are not a panel assignment oracle.
+
+Parse four-line FASTQ directly, including concatenated gzip members. Compute
+compressed-byte SHA-256 and supplier MD5 in that same pass, verify expected
+digests at EOF and reject changing/incomplete copies. No upfront full-file
+checksum pass or full FASTA conversion. MD5 checks transfer integrity only.
+Publish a final report only after artifact handles close; failure is distinct
+from zero support. Cancellation retains verified completed-file units, marks
+the run cancelled and discards the partial unit. Continue with remaining
+explicit files in a fresh run; there is no in-file or changed-input resume.
+
+Demo preparation, build, screen, bounded inspection and cancellation are shared
+engine commands available to the inner agent and other adapters. Artifact
+writes require explicit approval; no recursive agent execution, automatic
+trimming, oligo(dT) flip, implicit resource preparation, POD5 or scheduler is
+introduced. A bounded TSV inspection exposes that it has not reverified the
+full sidecar. See [tutorial 10.04](tutorial/10-04_targeted_nanopore_fastq_panel.md).
+Rust/native/real-library calibration and throughput acceptance remain external.
+
 ## Development And Release Verification Cadence
 
 Owner decision, 2026-10-15: continue development on `main` without intermediate

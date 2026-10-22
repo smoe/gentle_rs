@@ -28,6 +28,46 @@ below remain the existing request, not a second full campaign. No interim
 freeze, bundle, push, dispatch, native capture, provider call or package build
 is requested here. Local source checks do not certify the Rust paths.
 
+## Targeted FASTQ Panel, 2026-10-22
+
+Changed areas: `src/engine/analysis/rna_panel.rs` and its `input.rs`, `tools.rs`,
+`tests.rs`; `src/engine/protocol/rna_panel.rs`; thin enum/result/parser/MCP/
+feedback/introspection wiring (including required `OpResult` literal fields),
+legacy FASTA format refusal, tutorial 10.04/source/catalog/index, glossary/parity
+and derived maturity source hashes. The only dependency change makes the
+already-locked `md-5` version directly available. No external binary added.
+
+Authored, not Rust-verified: `rna_panel_` covers independent source/member
+identities, 20 loci / 200 ambiguous members without a 64-posting cap, both
+orientations, junction flanks, strict FASTQ/gzip including truncation, quality
+`>`, changed files, same-pass MD5/SHA-256, overlapping sources, cancellation,
+file-boundary continuation, no overwrite, report binding and shared-shell/MCP
+scientific payloads. Run normal checks at the integrated source, not a new
+intermediate acceptance freeze:
+
+```bash
+cargo test --locked --lib rna_panel_
+cargo test --locked --lib glossary_
+cargo test --locked --lib multi_gene_sparse
+cargo test --locked --test capability_registry_parity
+cargo test --locked --test parity_matrix_freshness
+cargo run --locked --bin gentle_examples_docs -- tutorial-catalog-check
+cargo run --locked --bin gentle_examples_docs -- tutorial-manifest-check
+cargo check -q --locked --tests
+```
+
+Confirm the catalog/parity projections with the canonical Rust generators;
+their Python/source checks are not generator execution. Follow [10.04](tutorial/10-04_targeted_nanopore_fastq_panel.md)
+on synthetic data before any explicitly authorized real chunk. Native Windows
+must exercise spaced paths, gzip failure and handle closure before publication.
+For live inner-agent acceptance: each tutorial stage must use the shared route,
+approve external writes/project loading, preserve compatibility sets and
+support runtime inspection/cancellation without inventing completion. Native
+responsiveness is unestablished; no new persistent job scheduler was added.
+Any throughput/background run must identify exact source/policy/input hashes;
+twenty-target capacity is a synthetic functional fixture, not a measured claim.
+Do not process ongoing downloads, POD5 or private libraries without approval.
+
 ## Glossary And All-Features Follow-Up, 2026-10-22
 
 Glen reports two independent primary failures at `70969635`: ordinary Linux/

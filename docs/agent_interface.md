@@ -1,5 +1,16 @@
 # GENtle Agent Interface
 
+Targeted FASTQ [tutorial 10.04](tutorial/10-04_targeted_nanopore_fastq_panel.md)
+has shared routes for preparation (`rna-reads panel-demo`), source binding
+(`panel-build`), streaming (`panel-screen`), inspection (`panel-show`) and
+cancellation (`panel-cancel`); MCP `op`, workflows and scripting use the same
+engine operations. The inner agent can draft typed JSON inline, so the optional
+terminal JSON helper is not an agent dependency. Require approval for external
+writes/project loading, exact completed files and supplied sample/barcode/priming.
+Do not suggest OS `touch` or Python as GENtle commands. A cancel marker requests
+termination; only the eventual report establishes status. Bounded row inspection
+does not reverify a whole TSV. Seed compatibility is not isoform identification.
+
 Last updated: 2026-08-26
 
 This guide explains how agents can control GENtle and how the available

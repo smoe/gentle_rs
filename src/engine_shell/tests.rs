@@ -12,6 +12,44 @@
 use super::*;
 
 #[test]
+fn rna_panel_introspection_exposes_typed_requests_without_granting_completion() {
+    let build = rna_panel_descriptor("rna-reads panel-build");
+    let request: crate::engine::BuildRnaReadPanelRequest =
+        serde_json::from_value(build["request_template"].clone()).unwrap();
+    assert_eq!(request.sources.len(), 1);
+    assert_eq!(build["mutating"], "external");
+    for route in ["rna-reads panel-screen", "rna-reads panel-cancel"] {
+        let descriptor = rna_panel_descriptor(route);
+        let request: crate::engine::ScreenRnaReadPanelRequest =
+            serde_json::from_value(descriptor["request_template"].clone()).unwrap();
+        assert!(
+            !request.files[0].declared_complete,
+            "only the caller may attest transfer completion"
+        );
+        assert_eq!(request.policy.kmer_len, 15);
+        assert_eq!(descriptor["requires_confirmation"], true);
+    }
+    assert_eq!(
+        rna_panel_descriptor("rna-reads panel-show")["mutating"],
+        "false"
+    );
+    assert!(
+        !parse_shell_line("rna-reads panel-show report.json --rows 4")
+            .unwrap()
+            .is_state_mutating()
+    );
+    for line in [
+        "rna-reads panel-demo fresh-output",
+        "rna-reads panel-show report.json --unknown 4",
+    ] {
+        match parse_shell_line(line) {
+            Ok(command) => assert!(command.is_state_mutating()),
+            Err(_) => assert!(line.contains("--unknown")),
+        }
+    }
+}
+
+#[test]
 fn labware_carrier_templates_round_trip_shell_and_generic_operations() {
     for template in [
         RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated,
@@ -1350,6 +1388,8 @@ fn command_tokens_from_glossary_usage(path: &str, usage: &str) -> Vec<String> {
 
 fn smoke_command_override(path: &str) -> Option<&'static str> {
     match path {
+        "rna-reads panel-demo" => Some("rna-reads panel-demo synthetic-demo"),
+        "rna-reads panel-show" => Some("rna-reads panel-show synthetic-report.json --rows 4"),
         "racks set-carrier-pitch" => Some("racks set-carrier-pitch demo 14"),
         // Hand-crafted parser-only request; execution still needs a saved pair and references.
         "primers specificity-multi-handoff" => Some(concat!(
@@ -1525,6 +1565,19 @@ fn smoke_command_line_for_glossary_command(
     command: &GlossaryCommandFixture,
     scratch: &Path,
 ) -> String {
+    if matches!(
+        command.path.as_str(),
+        "rna-reads panel-build" | "rna-reads panel-screen" | "rna-reads panel-cancel"
+    ) {
+        // Parser-only synthetic requests; empty inputs must fail at execution.
+        let request = if command.path.ends_with("panel-build") {
+            serde_json::json!({"schema":"gentle.rna_read_panel_build_request.v1", "sources":[], "output_path":"synthetic-panel.json"})
+        } else {
+            serde_json::json!({"schema":"gentle.rna_read_panel_screen_request.v1", "files":[],
+                "panel_path":"synthetic-panel.json", "output_dir":"synthetic-run", "cancel_path":"synthetic-cancel"})
+        };
+        return format!("{} {}", command.path, quote_shell_arg(&request.to_string()));
+    }
     if matches!(
         command.path.as_str(),
         "sequence-design plan" | "sequence-design apply"

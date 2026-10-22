@@ -1,6 +1,41 @@
 {
    "commands": [
       {
+         "aliases": [], "engine_operations": ["PrepareRnaReadPanelDemo"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "rna-reads panel-demo",
+         "summary": "Prepare five artificial independent loci, alternative terminal exons, two tiny FASTQ.gz files and checksum-bound requests in a fresh directory. Tutorial 10.04 rehearsal only; no project mutation or biological control claim.",
+         "usage": "rna-reads panel-demo OUTPUT_DIR"
+      },
+      {
+         "aliases": [], "engine_operations": ["InspectRnaReadPanel"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "rna-reads panel-show",
+         "summary": "Inspect content-bound panel/report metadata and optionally a bounded nomination TSV prefix. Does not rerun screening or reverify the entire sidecar.",
+         "usage": "rna-reads panel-show PATH [--file-id ID] [--rows N]"
+      },
+      {
+         "aliases": [], "engine_operations": ["CancelRnaReadPanel"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "rna-reads panel-cancel",
+         "summary": "Request cooperative cancellation using the explicit screen request's marker. Never modifies inputs or overwrites a marker; request is not proof of termination.",
+         "usage": "rna-reads panel-cancel REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [], "engine_operations": ["BuildRnaReadPanel"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "rna-reads panel-build",
+         "summary": "Bind independent annotated loci and mature-transcript geometry into a portable screening panel. Writes a new file; no source mutation or authenticated-reference claim.",
+         "usage": "rna-reads panel-build REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [], "engine_operations": ["ScreenRnaReadPanel"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "rna-reads panel-screen",
+         "summary": "Stream completed FASTQ or gzip files once through one combined multi-locus index, verifying compressed-byte checksums at EOF and preserving all qualifying transcript candidates. No isoform identification or expression claim; writes a new audited directory.",
+         "usage": "rna-reads panel-screen REQUEST_JSON_OR_@FILE"
+      },
+      {
          "aliases": [],
          "engine_operations": ["GelWorkbench"],
          "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],

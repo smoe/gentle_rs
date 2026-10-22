@@ -1,5 +1,97 @@
 # GENtle Engine Protocol (Draft v1)
 
+## Multi-Locus FASTQ Screening
+
+New shared operations are `PrepareRnaReadPanelDemo {output_dir}`,
+`BuildRnaReadPanel {request}`, `ScreenRnaReadPanel {request}`,
+`InspectRnaReadPanel {path, file_id?, rows=0}` and `CancelRnaReadPanel {request}`.
+The Shell routes are respectively `rna-reads panel-demo OUTPUT_DIR`,
+`panel-build REQUEST_JSON_OR_@FILE`, `panel-screen REQUEST_JSON_OR_@FILE`,
+`panel-show PATH [--file-id ID] [--rows N]` and `panel-cancel SCREEN_REQUEST_JSON_OR_@FILE`.
+All reuse `op` for MCP/scripting/workflows and agent introspection. No dedicated
+panel GUI is claimed. Artifact-producing operations require confirmation even
+though they do not mutate project sequences. Cancellation is a request, not a
+terminated/successful job receipt; the existing progress callback is cooperative.
+Shared-shell `panel-show` and `panel-cancel` call the engine's inspection/control
+helpers without appending operation history, so they do not stale a running
+detached screen. They return versioned inspection-command / cancel-request
+envelopes; the latter has `cancel_requested=true`, `termination_confirmed=false`.
+Raw engine/MCP operations retain normal operation receipts. Scientific
+panel/report/row payloads are the same; no adapter-local classification is added.
+
+- `gentle.rna_read_panel_build_request.v1`: explicit `sources[]` each bind
+  `locus_id`, `seq_id`, `source_feature_id`, `source`, `assembly`,
+  `annotation_release`, `gene_id`, `gene_symbol`, optional exact
+  `selected_transcript_ids`; `output_path` must be new. Empty selection means
+  the source feature's annotated gene/strand group, not a canonical transcript.
+- `gentle.rna_read_panel.v1`: content SHA-256 (compact JSON with sorted object
+  keys and cleared digest field), loci with source record hashes over the loaded
+  forward DNA plus ordered feature records, not raw source-file bytes or caches;
+  optional genome anchors and all annotated transcript labels; selected mature
+  templates with independent member IDs, sequence hashes, transcript-oriented
+  junction offsets and source-local half-open exon intervals. Locus, gene,
+  selected transcript and annotated transcript counts are separate. Potential
+  source overlaps are disclosed; screening refuses them pending curation.
+  Admission is conservative: a repeated loaded sequence, repeated declared
+  assembly/gene ID or same-strand overlapping genome anchors is flagged. Use
+  independently extracted records for disjoint genes on one larger sequence;
+  no source reconciliation or biological consensus is inferred.
+- `gentle.rna_read_panel_screen_request.v1`: `panel_path`, explicit `files[]`,
+  optional `md5_manifest_path`, new `output_dir`, optional `cancel_path`,
+  `policy`. Each file declares `sample_id`, `barcode`, `priming`, `path`,
+  `declared_complete=true`, and expected MD5/SHA-256 or an unambiguous supplier
+  manifest entry. `checksum_manifest_key` selects an exact supplier path when
+  basenames collide; supplier paths need not exist locally. Sample identities
+  cannot map to conflicting barcode/priming values within a request.
+- `gentle.rna_read_panel_screen.v1`: effective request with resolved expected
+  digests, panel SHA-256, posting count, `completed|cancelled` status, verified
+  `files_completed`, `files_not_completed`, nonclaims and explicit false
+  `isoform_assignment_performed` / `alignment_confirmation_performed`.
+  Each receipt binds raw/compressed MD5/SHA-256 and bytes, read/class counts,
+  sorted member-set equivalence counts, TSV and optional locus FASTA hashes.
+  The final `report.json` is the publication marker. Parse/checksum/resource
+  errors return structured `InvalidInput` diagnostics and publish no report.
+  An output-I/O failure can leave orphan artifacts without a final marker;
+  never interpret such a directory as a completed run.
+- `gentle.rna_read_panel_inspection.v1` optionally accompanies an inspected
+  screen report in `OpResult.rna_read_panel_inspection`. It binds the report
+  digest and expected TSV digest, but reports `artifact_content_verified=false`:
+  at most 1000 rows / 8 MB of prefix are read, not the entire large sidecar.
+  `--file-id` requires a positive `--rows` count; it is never silently ignored.
+  Metadata inspection rechecks its content digest, not current source files.
+
+Default policy: k=15 (allowed 8..16), minimum chain coverage 45 bp, junction
+flanks 5 bp, 2 million postings, 100,000 anchors per read, 4096 equivalence
+classes per file and no FASTA exports. Hard limits: 128 loci, 4096 templates,
+32 million template bases, 2 million bases per read/template, 4096 input files,
+4 million postings, 250,000 anchors/read, 16,384 equivalence classes/file and
+16 MB of equivalence keys across the run. Exceeding a limit fails, never drops
+later isoforms. This is an uncalibrated starting policy, not a performance or
+specificity guarantee for twenty targets.
+
+Four-line Phred+33 FASTQ supports LF/CRLF and concatenated gzip detected by
+magic bytes. `@`/`+`, repeated IDs and equal sequence/quality lengths are
+validated; malformed/truncated/wrapped input fails. SHA-256 and MD5 are updated
+on raw bytes during decompression, not by an upfront reread. EOF verifies
+expected checksums and unchanged size/mtime. No full input copy is made.
+Reads support all qualifying members/orientations through one packed-word
+index, retaining junction-flank evidence. Classes are `single_locus_candidate`,
+`multi_locus_ambiguous`, `multi_segment_candidate`, `partial`, `unmatched`;
+none certifies an exclusive isoform, antisense event, fusion, absence or
+expression. Optional per-locus FASTA headers retain the ambiguity/member set.
+The nomination TSV contains stable file/record identity and decompressed
+offsets, never compressed seek offsets, plus the full expected input digest
+verified at EOF. Optional FASTA read tokens include sample/digest identity to
+avoid name collisions across chunks/runs. No oligo(dT) flip or trimming occurs.
+
+Cancellation publishes only verified completed-file units and a cancelled
+report. The current partial unit is discarded; a fresh request can select
+remaining files. No changed-input or in-file resume. Legacy RNA interpretation
+remains FASTA-only; FASTQ mistakenly sent there now fails before Phred `>` can
+be treated as a header. Its existing tie/posting limitations remain separate.
+See [tutorial 10.04](tutorial/10-04_targeted_nanopore_fastq_panel.md) for synthetic
+and first-chunk paths, including explicit inner-agent commands at every stage.
+
 ## Catalog Evidence And Provider Updates
 
 Shared shell `catalog doctor` / `catalog search` project existing helper and

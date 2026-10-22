@@ -10,6 +10,17 @@ need to start with raw operation JSON.
 
 ## Start Here
 
+For targeted multi-gene cDNA FASTQ, use [tutorial 10.04](tutorial/10-04_targeted_nanopore_fastq_panel.md):
+`rna-reads panel-demo OUTPUT_DIR`, `rna-reads panel-build REQUEST_JSON_OR_@FILE`,
+`rna-reads panel-screen REQUEST_JSON_OR_@FILE`,
+`rna-reads panel-show PATH [--file-id ID] [--rows N]` and
+`rna-reads panel-cancel SCREEN_REQUEST_JSON_OR_@FILE` through `gentle_cli shell`.
+Compressed FASTQ is parsed directly; expected MD5/SHA-256 verifies during that
+same pass, not upfront. Retain compatibility/ambiguity, not exclusive isoform
+counts. Requests bind completed individual files and explicit sample/barcode/
+priming. Fresh external outputs require approval; no input overwrite or resource
+download. [Protocol and limits](protocol.md#multi-locus-fastq-screening).
+
 Catalog discovery and guarded local provider updates use the same shared shell:
 `catalog doctor`, `catalog search --entity product|provider|protocol --query TEXT`,
 `catalog updates preview BUNDLE_PATH --scope user|project --output PREVIEW_PATH`,

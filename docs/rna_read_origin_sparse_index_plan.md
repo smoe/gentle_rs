@@ -1,5 +1,14 @@
 # RNA Read Origin: Current Implementation And Residual Plan
 
+2026-10-22 addition: independent loaded loci and direct FASTQ/gzip use a separate
+portable `rna-reads panel-*` contract, with all qualifying member sets and
+same-pass supplier MD5/compressed SHA-256 verification. See [tutorial 10.04](tutorial/10-04_targeted_nanopore_fastq_panel.md)
+and [the protocol](protocol.md#multi-locus-fastq-screening). Rust/native/real-data
+acceptance is pending. This does not repair or relabel legacy annotation-order
+ties, the 64-posting chain cap or strand-filter/matched-target ordering below;
+the new panel does not use those winner/cap paths. Legacy FASTA intake now
+refuses FASTQ rather than treating a quality `>` as a sequence header.
+
 Source review: 2026-10-07. Multi-gene transcript targeting, origin classes and
 strand diagnostics are implemented. Annotation-independent ROI capture is
 still inactive in the interpretation path; a retained option is not execution
@@ -41,6 +50,18 @@ classification and cross-strand tie handling have deterministic Rust regression
 tests; this documentation review did not execute them or establish throughput.
 
 ## Genuinely Open Work
+
+The independent-panel slice deliberately uses strict separate FASTQ requests,
+not a new format variant on the legacy single-coordinate report. Full compressed
+digests are verified during parsing instead of a head/tail fingerprint or an
+upfront pass. Continuation is by verified file units, not record-count resume
+into possibly replaced gzip. Potential duplicate source views are refused, not
+merged automatically. Its `*_candidate` classes deliberately avoid "unique
+isoform" or "proven chimera" language. Demo/show/cancel routes were added to
+make every tutorial stage available to the inner agent without OS shell tools.
+Separate repairs of legacy same-strand winner ties, the 64-posting cap and
+matched-before-strand-filter bookkeeping remain open; do not count the new
+panel's deterministic tests as fixing or accepting that legacy path.
 
 1. Annotation-independent genomic ROI seed capture. The current engine warns
    `ROI capture layer is planned but not active in phase-1 scoring` when

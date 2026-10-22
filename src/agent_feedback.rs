@@ -64,6 +64,21 @@ impl AgentExecutionStatus {
 
     /// Interpret only engine-owned job envelopes, never free-text messages.
     pub fn from_shell_output(output: &Value) -> Self {
+        if output.get("schema").and_then(Value::as_str)
+            == Some("gentle.rna_read_panel_inspection_command.v1")
+        {
+            return Self::Completed;
+        }
+        if let Some(status) = output
+            .pointer("/result/rna_read_panel_screen/status")
+            .and_then(Value::as_str)
+        {
+            return match status {
+                "completed" => Self::Completed,
+                "cancelled" => Self::Cancelled,
+                _ => Self::Failed,
+            };
+        }
         match output.get("schema").and_then(Value::as_str) {
             Some(
                 "gentle.blast_async_start.v1"

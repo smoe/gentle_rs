@@ -28,6 +28,7 @@ dependencies = [
  "itertools 0.15.0",
  "libc",
  "lopdf",
+ "md-5",
  "memchr",
  "mlua",
  "objc2 0.6.5",

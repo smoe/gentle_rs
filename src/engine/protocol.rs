@@ -22,6 +22,10 @@ pub use reporter_fragment_selection::*;
 mod transcript_capture;
 pub use transcript_capture::*;
 
+#[path = "protocol/rna_panel.rs"]
+mod rna_panel;
+pub use rna_panel::*;
+
 #[path = "protocol/primer_specificity_multi.rs"]
 mod primer_specificity_multi;
 pub use primer_specificity_multi::*;
@@ -5500,6 +5504,12 @@ pub struct Workflow {
 /// `created_seq_ids` and `changed_seq_ids` are the stable adapter-facing hint
 /// for which sequence windows/views may need refresh after an operation.
 pub struct OpResult {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rna_read_panel: Option<Box<RnaReadPanel>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rna_read_panel_screen: Option<Box<RnaReadPanelScreenReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rna_read_panel_inspection: Option<Box<RnaReadPanelInspection>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tube_profiles: Option<Vec<gentle_protocol::labware::TubeProfile>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

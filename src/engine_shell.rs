@@ -14247,6 +14247,7 @@ impl ShellCommand {
                 Operation::PlanDnaSequenceDesign { .. }
                 | Operation::GetPrimerPairMultiReferenceSpecificitySummary { .. }
                 | Operation::ListPrimerPairMultiReferenceSpecificitySummaries { .. }
+                | Operation::InspectRnaReadPanel { .. }
                 | Operation::InspectTranscriptAssayPanelSpecificityMatrix { .. } => true,
                 Operation::GelWorkbench { request } => matches!(
                     request.as_ref(),
@@ -19794,6 +19795,38 @@ fn transcript_capture_descriptor(id: &str) -> Value {
     })
 }
 
+fn rna_panel_descriptor(id: &str) -> Value {
+    let inspect = matches!(id, "InspectRnaReadPanel" | "rna-reads panel-show");
+    let template = if matches!(id, "BuildRnaReadPanel" | "rna-reads panel-build") {
+        json!({"schema":"gentle.rna_read_panel_build_request.v1", "sources":[{
+            "locus_id":"REPLACE_LOCUS", "seq_id":"REPLACE_LOADED_ID", "source_feature_id":0,
+            "source":"REPLACE_SOURCE", "assembly":"REPLACE_ASSEMBLY", "annotation_release":"REPLACE_RELEASE",
+            "gene_id":"REPLACE_GENE_ID", "gene_symbol":"REPLACE_SYMBOL", "selected_transcript_ids":[]}],
+            "output_path":"/REPLACE/fresh-panel.json"})
+    } else if matches!(
+        id,
+        "ScreenRnaReadPanel"
+            | "CancelRnaReadPanel"
+            | "rna-reads panel-screen"
+            | "rna-reads panel-cancel"
+    ) {
+        json!({"schema":"gentle.rna_read_panel_screen_request.v1", "panel_path":"/REPLACE/panel.json",
+            "files":[{"sample_id":"REPLACE_SAMPLE", "barcode":"REPLACE_BARCODE", "priming":"REPLACE_PRIMING",
+                "path":"/REPLACE/completed.fastq.gz", "declared_complete":false,
+                "expected_md5":null, "expected_sha256":null, "checksum_manifest_key":null}],
+            "md5_manifest_path":"/REPLACE/md5_checksums.txt", "output_dir":"/REPLACE/fresh-run",
+            "cancel_path":"/REPLACE/fresh-CANCEL", "policy":crate::engine::RnaReadPanelPolicy::default()})
+    } else {
+        Value::Null
+    };
+    json!({"id": id, "kind": "operation", "mutating": if inspect { "false" } else { "external" }, "requires_confirmation": !inspect,
+        "args": [{"name": "REQUEST_OR_PATH", "required": true, "detail": "panel-demo OUTPUT_DIR; panel-build BUILD_REQUEST_JSON_OR_@FILE; panel-screen SCREEN_REQUEST_JSON_OR_@FILE; panel-show PANEL_OR_REPORT_PATH [--file-id ID] [--rows 0..1000]; panel-cancel SCREEN_REQUEST_JSON_OR_@FILE. Screen request v1 binds completed FASTQ/gzip files, checksum expectations, sample/barcode/priming and fresh output directory. Build request v1 binds independent annotated loci."}],
+        "reads": [], "effects": [], "precondition_expr": {"all": []},
+        "description": if inspect { "Read content-bound panel/report metadata and bounded nomination rows; no full-sidecar revalidation or source mutation." } else { "Prepare a synthetic demo, build a panel, screen FASTQ/gzip once or request cancellation. Retain all qualifying members; no isoform winner, trimming, oligo(dT) flip, POD5 or expression claim. External artifact writes require approval; no project sequence mutation." },
+        "request_template": template, "request_template_is_example_not_resolved_input": true,
+        "annotation_status": "fact_annotated", "registry": registry_metadata_for_introspection(id)})
+}
+
 fn primer_design_operation_descriptor(id: &str, report_kind: &str, description: &str) -> Value {
     json!({
         "id": id,
@@ -21851,6 +21884,16 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         ),
         tss_workspace_capability_descriptor("InspectTssInventory", false, false),
         sequence_design_capability_descriptor("PlanDnaSequenceDesign", false),
+        rna_panel_descriptor("BuildRnaReadPanel"),
+        rna_panel_descriptor("ScreenRnaReadPanel"),
+        rna_panel_descriptor("rna-reads panel-build"),
+        rna_panel_descriptor("rna-reads panel-screen"),
+        rna_panel_descriptor("PrepareRnaReadPanelDemo"),
+        rna_panel_descriptor("InspectRnaReadPanel"),
+        rna_panel_descriptor("CancelRnaReadPanel"),
+        rna_panel_descriptor("rna-reads panel-demo"),
+        rna_panel_descriptor("rna-reads panel-show"),
+        rna_panel_descriptor("rna-reads panel-cancel"),
         sequence_design_capability_descriptor("sequence-design plan", false),
         sequence_design_capability_descriptor("ApplyDnaSequenceDesign", true),
         sequence_design_capability_descriptor("sequence-design apply", true),
@@ -66168,11 +66211,45 @@ fn execute_op_command(
     let json_text = parse_json_payload(payload)?;
     let op: Operation =
         serde_json::from_str(&json_text).map_err(|e| format!("Invalid operation JSON: {e}"))?;
+    // Observation/control must not append history and invalidate the detached
+    // screen being inspected or cancelled. The engine still owns all behavior.
+    if let Operation::CancelRnaReadPanel { request } = &op {
+        let message = engine
+            .cancel_rna_read_panel(request)
+            .map_err(|e| e.to_string())?;
+        return Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+            "schema":"gentle.rna_read_panel_cancel_request.v1", "cancel_requested":true,
+            "termination_confirmed":false, "message":message }),
+        });
+    }
+    if let Operation::InspectRnaReadPanel {
+        path,
+        file_id,
+        rows,
+    } = &op
+    {
+        let (panel, report, inspection) = engine
+            .inspect_rna_read_panel(path, file_id.as_deref(), *rows)
+            .map_err(|e| e.to_string())?;
+        return Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+            "schema":"gentle.rna_read_panel_inspection_command.v1", "result":{
+                "rna_read_panel":panel, "rna_read_panel_screen":report, "rna_read_panel_inspection":inspection } }),
+        });
+    }
     // Images and immutable reports can be large; these operations have explicit mutation semantics
     // and must not serialize the entire project twice just to detect a change.
     if matches!(
         &op,
         Operation::ImportGelImage { .. }
+            | Operation::BuildRnaReadPanel { .. }
+            | Operation::ScreenRnaReadPanel { .. }
+            | Operation::PrepareRnaReadPanelDemo { .. }
+            | Operation::InspectRnaReadPanel { .. }
+            | Operation::CancelRnaReadPanel { .. }
             | Operation::GelWorkbench { .. }
             | Operation::PlanDnaSequenceDesign { .. }
             | Operation::SaveGelImageDraft { .. }
@@ -66195,6 +66272,7 @@ fn execute_op_command(
         let result = if matches!(
             &op,
             Operation::ComputeTssTfbsProfiles { .. }
+                | Operation::ScreenRnaReadPanel { .. }
                 | Operation::ExportTssTfbsProfiles { .. }
                 | Operation::PlanDnaSequenceDesign { .. }
         ) {

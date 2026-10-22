@@ -3267,6 +3267,25 @@ impl BlastRunOptions {
 /// rely on `GentleEngine::apply` for execution. This preserves one deterministic
 /// behavior surface and avoids adapter-specific biology logic branches.
 pub enum Operation {
+    BuildRnaReadPanel {
+        request: Box<BuildRnaReadPanelRequest>,
+    },
+    ScreenRnaReadPanel {
+        request: Box<ScreenRnaReadPanelRequest>,
+    },
+    PrepareRnaReadPanelDemo {
+        output_dir: String,
+    },
+    InspectRnaReadPanel {
+        path: String,
+        #[serde(default)]
+        file_id: Option<String>,
+        #[serde(default)]
+        rows: usize,
+    },
+    CancelRnaReadPanel {
+        request: Box<ScreenRnaReadPanelRequest>,
+    },
     PlanDnaSequenceDesign {
         request: Box<gentle_protocol::sequence_design::DnaSequenceDesignRequest>,
         #[serde(default)]
@@ -10178,6 +10197,11 @@ impl GentleEngine {
         if matches!(
             op,
             Operation::SaveFile { .. }
+                | Operation::BuildRnaReadPanel { .. }
+                | Operation::ScreenRnaReadPanel { .. }
+                | Operation::PrepareRnaReadPanelDemo { .. }
+                | Operation::InspectRnaReadPanel { .. }
+                | Operation::CancelRnaReadPanel { .. }
                 | Operation::PlanDnaSequenceDesign { .. }
                 | Operation::ComputeTssTfbsProfiles { .. }
                 | Operation::ExportTssTfbsProfiles { .. }

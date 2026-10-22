@@ -5709,6 +5709,11 @@ struct ParityMatrixOverride {
 }
 
 const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
+    "BuildRnaReadPanel",
+    "ScreenRnaReadPanel",
+    "PrepareRnaReadPanelDemo",
+    "InspectRnaReadPanel",
+    "CancelRnaReadPanel",
     "LoadFile",
     "SaveFile",
     "RenderSequenceSvg",
@@ -6308,6 +6313,11 @@ const MCP_TOOL_NAMES: &[(&str, &str, &str, CapabilityMutation)] = &[
 ];
 
 const MCP_PROMINENT_GLOSSARY_COMMAND_PATHS: &[&str] = &[
+    "rna-reads panel-build",
+    "rna-reads panel-screen",
+    "rna-reads panel-demo",
+    "rna-reads panel-show",
+    "rna-reads panel-cancel",
     "planning protein-expression-handoff",
     "primers list-reports",
     "primers show-report",
@@ -7733,7 +7743,13 @@ fn infer_command_mutation(path: &str, operations: &[String]) -> CapabilityMutati
 fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
     if matches!(
         operation,
-        "ComputeTssTfbsProfiles" | "ExportTssTfbsProfiles" | "GelWorkbench"
+        "ComputeTssTfbsProfiles"
+            | "ExportTssTfbsProfiles"
+            | "GelWorkbench"
+            | "BuildRnaReadPanel"
+            | "ScreenRnaReadPanel"
+            | "PrepareRnaReadPanelDemo"
+            | "CancelRnaReadPanel"
     ) || operation.starts_with("Fetch")
         || operation.starts_with("PrepareGenome")
         || operation.starts_with("PrepareCutRun")

@@ -1209,6 +1209,9 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
 
     area.handle_imported_sequencing_trace_result(&OpResult {
         tube_profiles: None,
+        rna_read_panel: None,
+        rna_read_panel_screen: None,
+        rna_read_panel_inspection: None,
         dna_sequence_design: None,
         dna_sequence_design_receipt: None,
         primer_group_target_design: None,
@@ -5372,6 +5375,9 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
     area.handle_operation_success(
         super::OpResult {
             tube_profiles: None,
+            rna_read_panel: None,
+            rna_read_panel_screen: None,
+            rna_read_panel_inspection: None,
             dna_sequence_design: None,
             dna_sequence_design_receipt: None,
             primer_group_target_design: None,

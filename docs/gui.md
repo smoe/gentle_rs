@@ -1,5 +1,14 @@
 # GENtle GUI Manual
 
+Targeted FASTQ panel screening is currently a shared **Shell / Agent Assistant**
+workflow, not a new RNA Mapping tab. [Tutorial 10.04](tutorial/10-04_targeted_nanopore_fastq_panel.md)
+provides `panel-demo`, `panel-build`, `panel-screen`, `panel-show` and
+`panel-cancel` routes for every stage. Use a disposable project before loading
+the synthetic starter. Review writes and explicit sample/file bindings; live
+model/GUI responsiveness and real-library calibration are not established by
+the authored headless tests. For an initial long file, the terminal CLI is an
+alternative that does not occupy a GUI command session.
+
 Catalog inspection and guarded provider imports are currently GUI **Shell**
 routes, not a new catalog browser: use `catalog doctor` / `catalog search`,
 then explicitly review `catalog updates preview` before approving `apply`.
