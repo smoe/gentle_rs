@@ -580,8 +580,20 @@ fn preview_in(bytes: &[u8], context: &Context) -> Result<ProviderUpdatePreview, 
 
 /// Save a fresh preview artifact; never overwrite any existing destination.
 pub fn write_preview(path: &Path, preview: &ProviderUpdatePreview) -> Result<(), String> {
+    write_preview_with_sources(
+        path,
+        preview,
+        &external_service_provider_config_discovery_candidates(),
+    )
+}
+
+fn write_preview_with_sources(
+    path: &Path,
+    preview: &ProviderUpdatePreview,
+    sources: &[ExternalServiceProviderConfigSourceCandidate],
+) -> Result<(), String> {
     let path = checked_path(path)?;
-    for source in external_service_provider_config_discovery_candidates() {
+    for source in sources {
         let source = checked_path(&source.path)?;
         if source == path || path.starts_with(&source) {
             return Err(error("preview_is_catalog_source", path.display()));

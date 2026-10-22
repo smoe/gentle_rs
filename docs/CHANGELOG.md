@@ -1,5 +1,37 @@
 # GENtle Changelog
 
+## 2026-10-22 - Isolate Provider Preview-Writer Test Sources
+
+- Fast-forward local main to the owner's Windows LF-policy commit `1cfea9e3`;
+  preserve the uncommitted owner lockfile byte-for-byte. Review the four
+  reported failures against current source: `254091c7` already supplies numeric
+  pitch smoke input, and `bfe685ed` already filters absent optional `.d` sources
+  in the replacement/withdrawal fixtures. Do not weaken the real parser or
+  explicit-source loader to repair obsolete test setup.
+- Trace the remaining macOS `/etc` symlink failure to mixed test dependencies:
+  preview/apply use a synthetic Context, while writing the preview rediscovered
+  host-wide catalog sources. Factor the existing writer into a private helper
+  with an explicit source list; use the fixture's own candidates in its reopen
+  and no-overwrite checks. The public writer still discovers and validates all
+  configured sources. Canonical root requirements and symlink refusal remain.
+- Author Rust guards for exact file/directory catalog-destination refusal with
+  unchanged source bindings, symlink destinations without overwriting source
+  bytes, and an unrelated synthetic `/etc`-style symlink source ancestor that
+  still fails closed without creating a preview. No process-global environment
+  mutation or host-catalog access is introduced into these fixtures.
+- An LF/CRLF source-only regression fails before the helper repair and passes
+  afterward. Rust execution, including macOS reopen and native Windows path
+  verification, remains external. No local Rust, push, dispatch or new candidate
+  freeze; preserve unrelated paper/output files and historical evidence.
+- Verification: 103 offline specialist-source/tutorial-checkout/labware-source
+  tests pass without skips, as do scoped rustfmt and whitespace checks.
+  Session-close reports 4 OK, 2 expected dirty-worktree/manual-plan warnings,
+  0 failures; roadmap stays at 400 lines. The four incoming FASTA/TSV resources
+  compare identically when ignoring only CR at line endings. The owner's
+  uncommitted Cargo.lock retains SHA-256
+  `7fb3e53f2911c07ffe55e437ee774473d22b045fa0bec9d10392564288a0095e`;
+  it is neither changed nor included in this repair commit.
+
 ## 2026-10-22 - Reconcile Stashed LF Policy With Updated Main
 
 - Resolve the owner's `stash pop` conflicts on `5ab0b02a`. Preserve the newer

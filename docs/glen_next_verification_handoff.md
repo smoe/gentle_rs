@@ -1,5 +1,33 @@
 # Glen: Next Verification And Return
 
+## Provider Preview Fixture Follow-Up, 2026-10-22
+
+After integrating the owner's Windows LF commit `1cfea9e3`, three failures in
+the supplied macOS log are already addressed in source: the numeric glossary
+fixture (`254091c7`) and optional-source discovery in two provider tests
+(`bfe685ed`). Keep their focused regressions; no new parser broadening or
+missing-explicit-source tolerance is intended.
+
+The remaining preview-reopen test mixed its synthetic preview/apply Context
+with host-wide discovery in the writer. It now injects the same fixture source
+list into the shared writer implementation. The public entry point still
+discovers and checks every configured source; raw traversal, symlink, source-
+destination and no-overwrite refusals are unchanged, not bypassed for macOS.
+
+On the next ordinary verification, use a clean checkout and run-owned target:
+
+```sh
+cargo test --locked --lib -j1 external_service_providers::updates::tests:: -- --test-threads=1
+```
+
+Include macOS for the original reopen failure and the synthetic symlink-source
+ancestor guard; retain native Windows coverage for the existing drive/verbatim
+tests. Report executed test counts, failures/skips, actual source/lockfile/
+toolchain/platform and logs through Steffen. The glossary/all-features checks
+below remain the existing request, not a second full campaign. No interim
+freeze, bundle, push, dispatch, native capture, provider call or package build
+is requested here. Local source checks do not certify the Rust paths.
+
 ## Glossary And All-Features Follow-Up, 2026-10-22
 
 Glen reports two independent primary failures at `70969635`: ordinary Linux/

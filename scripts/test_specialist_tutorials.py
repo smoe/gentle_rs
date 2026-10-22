@@ -193,6 +193,25 @@ class SpecialistSourceTests(unittest.TestCase):
             self.assertNotIn('format!("routine.protocol.step.', text)
             self.assertIn("fn protocol_overview_semantic_steps_have_static_ids_and_distinct_scopes()", text)
 
+    def test_provider_preview_writer_uses_the_fixture_catalog_sources(self):
+        source = (ROOT / "src/external_service_providers/updates.rs").read_text(encoding="utf-8")
+        tests = (ROOT / "src/external_service_providers/updates/tests.rs").read_text(encoding="utf-8")
+        for text in (source, source.replace("\n", "\r\n")):
+            writer = text.split("pub fn write_preview(", 1)[1].split("pub fn apply(", 1)[0]
+            self.assertIn("write_preview_with_sources(", writer)
+            public, isolated = writer.split("fn write_preview_with_sources(", 1)
+            self.assertIn("external_service_provider_config_discovery_candidates()", public)
+            self.assertNotIn("external_service_provider_config_discovery_candidates()", isolated)
+            self.assertIn("let path = checked_path(path)?;", isolated)
+            self.assertIn("let source = checked_path(&source.path)?;", isolated)
+            self.assertIn("preview_is_catalog_source", isolated)
+            self.assertIn("persist_noclobber(path)", isolated)
+        reopen = tests.split("fn provider_update_preview_artifacts_are_fresh_and_hash_bound_on_reopen()", 1)[1].split(
+            "#[test]", 1)[0]
+        self.assertEqual(reopen.count("write_preview_with_sources(&path, &preview, &context.candidates)"), 2)
+        self.assertNotIn("write_preview(&path", reopen)
+        self.assertIn("fn provider_update_preview_writer_refuses_catalog_sources_without_writes()", tests)
+
     def test_cloning_planning_guide_and_protocol_supplier_scope(self):
         stem = "09-04_cloning_time_cost_and_protocol_suppliers"
         source = read_json(TUTORIALS / "sources" / f"{stem}.json")

@@ -395,9 +395,9 @@ fn provider_update_preview_artifacts_are_fresh_and_hash_bound_on_reopen() {
         .canonicalize()
         .unwrap()
         .join("preview with spaces.json");
-    write_preview(&path, &preview).unwrap();
+    write_preview_with_sources(&path, &preview, &context.candidates).unwrap();
     let saved = fs::read(&path).unwrap();
-    assert!(write_preview(&path, &preview).is_err());
+    assert!(write_preview_with_sources(&path, &preview, &context.candidates).is_err());
     assert_eq!(fs::read(&path).unwrap(), saved);
     let (reopened, bytes): (ProviderUpdatePreview, _) = read_json(&path).unwrap();
     assert_eq!(bytes, saved);
@@ -412,6 +412,25 @@ fn provider_update_preview_artifacts_are_fresh_and_hash_bound_on_reopen() {
                 .to_string()
         )
     );
+}
+
+#[test]
+fn provider_update_preview_writer_refuses_catalog_sources_without_writes() {
+    let (_temp, context) = fixture();
+    let preview = preview_in(&replace(), &context).unwrap();
+    let before = capture(&context).unwrap().bindings;
+    for source in &context.candidates {
+        let mut paths = vec![source.path.clone()];
+        if source.path.extension().is_none() {
+            paths.push(source.path.join("preview.json"));
+        }
+        for path in paths {
+            let error =
+                write_preview_with_sources(&path, &preview, &context.candidates).unwrap_err();
+            assert!(error.starts_with("catalog_update:preview_is_catalog_source:"));
+            assert_eq!(capture(&context).unwrap().bindings, before);
+        }
+    }
 }
 
 #[test]
@@ -555,4 +574,34 @@ fn provider_update_rejects_symlink_sources_and_destinations() {
     linked.target = link;
     let preview = preview_in(&replace(), &context).unwrap();
     assert!(apply_in(&preview, &preview.preview_sha256, &linked).is_err());
+    let before = fs::read(&context.candidates[0].path).unwrap();
+    assert!(
+        write_preview_with_sources(&linked.target, &preview, &context.candidates)
+            .unwrap_err()
+            .starts_with("catalog_update:symlink:")
+    );
+    assert_eq!(fs::read(&context.candidates[0].path).unwrap(), before);
+}
+
+#[cfg(unix)]
+#[test]
+fn provider_update_preview_writer_rejects_symlink_source_ancestors() {
+    // Recreate an /etc-style directory alias without consulting host catalogs.
+    let (_temp, context) = fixture();
+    let root = context.candidates[0].path.parent().unwrap();
+    let system = root.join("synthetic system");
+    let alias = root.join("linked system");
+    fs::create_dir(&system).unwrap();
+    std::os::unix::fs::symlink(&system, &alias).unwrap();
+    let mut sources = context.candidates.clone();
+    sources.push(ExternalServiceProviderConfigSourceCandidate {
+        scope: "system",
+        path: alias.join("catalogs/external_service_providers.json"),
+    });
+    let preview = preview_in(&replace(), &context).unwrap();
+    let output = root.join("preview outside catalogs.json");
+    let error = write_preview_with_sources(&output, &preview, &sources).unwrap_err();
+    assert!(error.starts_with("catalog_update:symlink:"));
+    assert!(!output.exists());
+    assert!(!context.target.parent().unwrap().exists());
 }
