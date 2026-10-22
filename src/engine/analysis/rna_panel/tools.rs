@@ -1,6 +1,7 @@
 //! Bounded inspection, explicit cancellation and a synthetic rehearsal for every adapter.
 
 use super::*;
+use crate::engine::Engine;
 use md5::{Digest, Md5};
 use serde_json::Value;
 use std::io::Read;
@@ -69,7 +70,9 @@ impl GentleEngine {
             });
             sequences.push(sequence);
         }
-        state.save_to_path(&stage.path().join("starter.json").display().to_string())?;
+        GentleEngine::from_state(state)
+            .state()
+            .save_to_path(&stage.path().join("starter.json").display().to_string())?;
         let build = BuildRnaReadPanelRequest {
             schema: RNA_PANEL_BUILD_SCHEMA.into(),
             sources,

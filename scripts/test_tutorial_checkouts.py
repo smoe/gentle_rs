@@ -419,7 +419,8 @@ class TutorialCheckoutTests(unittest.TestCase):
         sources = ("07-04_microarray_evidence_gui_cli.json",
                    "10-03_measured_gel_sizing_gui_cli.json",
                    "08-18_repeat_environment_cohorts.json",
-                   "09-04_cloning_time_cost_and_protocol_suppliers.json")
+                   "09-04_cloning_time_cost_and_protocol_suppliers.json",
+                   "10-04_targeted_nanopore_fastq_panel.json")
         paths = [Path("docs/tutorial/review_manifest.json"), Path("docs/tutorial/catalog.json")]
         paths.extend(Path("docs/tutorial/sources") / name for name in sources)
         payloads = {path: (checker.ROOT / path).read_bytes() for path in paths}
@@ -441,6 +442,10 @@ class TutorialCheckoutTests(unittest.TestCase):
             known = {json.loads((target / path).read_bytes())["id"] for path in paths[2:]}
             self.assertEqual(known - set(reviews), set(), "missing entries add report warnings")
             self.assertEqual((target / paths[1]).read_bytes(), payloads[paths[1]])
+            canonical = (json.dumps(json.loads(payloads[paths[1]]),
+                                    ensure_ascii=False, indent=2) + "\n").encode()
+            self.assertEqual((target / paths[1]).read_bytes(), canonical,
+                             "catalog formatting is part of generator freshness")
             for identifier in known:
                 with self.subTest(mode=mode[0], tutorial=identifier):
                     self.assertEqual(reviews[identifier]["tutorial_kind"], "guided_walkthrough")

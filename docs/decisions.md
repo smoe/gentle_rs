@@ -557,6 +557,14 @@ explicit confirmation. Agent-suggested commands must not recursively invoke
 `agents ask`, `agents plan`, or `agents execute-plan`, including through macro
 expansion paths.
 
+The stored-plan executor checks the shared parsed command's mutation policy,
+not just model-supplied `mutating` / `requires_confirmation` flags. Shell,
+UI-intent, raw-operation and workflow candidates cannot relabel project changes
+or classified external artifact writes as read-only to bypass `--confirm`.
+Explicit candidate confirmation requirements still apply. Named read-only
+inspections keep the shared policy's exemptions; direct MCP `op` retains its
+independent confirmation requirement.
+
 ## DEC-014: Screenshot Capture Policy
 
 Status: active

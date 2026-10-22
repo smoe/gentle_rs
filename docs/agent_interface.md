@@ -385,8 +385,11 @@ Key properties:
 - accepts free prose just like the local assistant
 - returns `gentle.agent_plan_result.v1`
 - executes stored plans through `gentle.agent_execution_result.v1`
-- shell candidates may execute directly through the shared shell executor
-- `op`/`workflow` candidates require explicit confirmation when marked mutating
+- all candidate kinds use the shared command mutation policy before execution;
+  classified writes require explicit confirmation even if model flags say
+  read-only. Explicit candidate confirmation requirements also remain binding.
+- named read-only inspections keep their shared-policy exemptions; direct MCP
+  `op` retains its independent `confirm=true` gate
 - execution never silently re-plans
 
 ### Documentation context for inner helpers

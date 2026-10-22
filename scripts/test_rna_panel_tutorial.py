@@ -15,6 +15,26 @@ HELPER = ROOT / "scripts/prepare_rna_panel_tutorial.py"
 
 
 class RnaPanelTutorialTests(unittest.TestCase):
+    def test_agent_confirmation_uses_parsed_commands_before_execution(self):
+        source = (ROOT / "src/agent_execution.rs").read_text(encoding="utf-8")
+        for text in (source, source.replace("\n", "\r\n")):
+            guard = text.split("pub fn execute_agent_plan_candidate_with_feedback(", 1)[1].split(
+                "status = AgentExecutionStatus::Failed;", 1)[0]
+            self.assertIn("parsed.is_state_mutating()", guard)
+            self.assertIn("selected.requires_confirmation", guard)
+            self.assertIn("explicit --confirm", guard)
+            self.assertRegex(guard, r"AgentPlanCandidateKind::Op => Some\(ShellCommand::Op")
+            self.assertRegex(guard, r"AgentPlanCandidateKind::Workflow => Some\(ShellCommand::Workflow")
+        self.assertIn("fn rna_artifact_writes_require_confirm_even_when_candidate_flags_are_false()", source)
+        self.assertIn("fn read_only_shell_and_rna_inspection_do_not_require_confirm()", source)
+
+    def test_demo_saves_reconciled_state_before_the_mcp_unchanged_state_check(self):
+        source = (ROOT / "src/engine/analysis/rna_panel/tools.rs").read_text(encoding="utf-8")
+        for text in (source, source.replace("\n", "\r\n")):
+            self.assertRegex(text, r"GentleEngine::from_state\(state\)\s*\.state\(\)\s*\.save_to_path\(")
+        mcp = (ROOT / "src/mcp_server.rs").read_text(encoding="utf-8")
+        self.assertIn("the synthetic starter must already contain reconciled lineage and containers", mcp)
+
     def test_path_loaded_panel_children_resolve_to_their_tracked_sources(self):
         source_path = ROOT / "src/engine/analysis/rna_panel.rs"
         source = source_path.read_text(encoding="utf-8")

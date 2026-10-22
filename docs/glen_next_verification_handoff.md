@@ -1,5 +1,40 @@
 # Glen: Next Verification And Return
 
+## RNA Confirmation, Starter And Tutorial Freshness Repairs, 2026-10-23
+
+The reported five failures have three causes: the stored-plan executor trusted
+shell candidate flags instead of shared command mutation policy; the demo saved
+unreconciled lineage/containers; and 10.04 lacked a review entry while its catalog
+projection had noncanonical indentation. The repair checks parsed commands for
+every candidate kind, saves an engine-reconciled synthetic starter and registers
+10.04 explicitly as unreviewed. It preserves V2 co-nomination, cancellation and
+table-verification contracts from `874ff657`.
+
+Do not relax confirmation, unchanged-state assertions or freshness checks.
+New Rust tests exercise mislabeled shell/raw-op writes denied before artifacts,
+successful explicit approval, unchanged blocked state/history and read-only
+inspection without approval. The MCP rehearsal now also checks that loading
+the saved starter is idempotent before its unchanged-state comparison.
+
+At the next ordinary owner-pushed source, run the existing RNA/MCP checks below
+plus `cargo test --locked --lib -j1 agent_execution::tests:: -- --test-threads=1`.
+Re-run the three originally failing `workflow_examples::tests` cases:
+`tutorial_source_units_generate_committed_catalog`,
+`tutorial_catalog_check_passes_on_committed_tree` and
+`tutorial_check_passes_on_committed_tree`. Keep canonical generator checks;
+do not repeat completed gel or earlier glossary/protocol acceptance campaigns.
+Report failures/skips and actual source/toolchain/platform through Steffen.
+
+Codex used the existing `f37f7039` documentation binary for catalog regeneration
+and freshness diagnostics; its generator source is unchanged at the integrated
+revision. This is not new-source Rust compilation or acceptance of the revised
+agent/demo code. Both existing-binary catalog and full tutorial freshness checks
+pass after the repair; the two historical stale-review warnings remain. All 109
+Python/source/LF-CRLF checkout checks pass without skips, alongside formatting
+and documentation/maturity checks. No local Rust build/test harness, push,
+dispatch or private-read run is performed. Existing scientific artifacts and
+tutorial report stay intact.
+
 ## Narrowed FASTQ Repairs, 2026-10-23
 
 The follow-up keeps the existing seed/chaining algorithm and fail-closed

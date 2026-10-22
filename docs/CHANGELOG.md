@@ -1,5 +1,32 @@
 # GENtle Changelog
 
+## 2026-10-23 - Repair RNA Agent Confirmation And Tutorial Freshness
+
+- Enforce the shared parsed-command mutation classification for shell/UI,
+  raw-operation and workflow plan candidates before execution, regardless of
+  model-supplied read-only flags. Preserve explicit candidate confirmation,
+  nested-agent refusal, named read-only exemptions and direct MCP approval.
+  Author real synthetic artifact denial/approval and read-only regressions;
+  no candidate can downgrade a classified write by changing its metadata.
+- Save the synthetic RNA starter through `GentleEngine::from_state` so its
+  lineage/containers are already reconciled. Strengthen the existing MCP
+  rehearsal with an idempotent-reload assertion; keep its scientific-payload
+  parity and final unchanged-state assertions intact.
+- Register tutorial 10.04 as explicitly unreviewed, with no invented Codex or
+  human sign-off. Regenerate only catalog formatting with the existing
+  `f37f7039` documentation binary (generator source unchanged); do not alter
+  historical artifacts or suppress the extra review warning in the checker.
+  Extend actual LF/CRLF checkout coverage to the new registration and canonical
+  catalog bytes, plus source guards for both code repairs. Current-source Rust
+  unit/native acceptance remains Glen/CI work; no local Rust build or push.
+- Verification: 109 Python/source/LF-CRLF checkout tests pass without skips;
+  scoped rustfmt, documentation status, maturity freshness and whitespace pass.
+  Existing-binary catalog freshness and the full tutorial replay/check now pass;
+  the two historical stale-human-review warnings remain explicit. The generator
+  binary is from `f37f7039`, not a build of these agent/demo repairs. Session-
+  close: four OK, two expected dirty-worktree/manual-plan warnings, no failures;
+  roadmap stays at 400 lines. Preserve unrelated private data, paper and output.
+
 ## 2026-10-23 - Narrow FASTQ Co-Nomination And Inspection Repairs
 
 - V2 screen/summary records preserve class plus member-set counts, name partial

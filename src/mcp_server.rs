@@ -5315,6 +5315,12 @@ mod tests {
         let state_path = root.join("artifacts/starter.json");
         let state = ProjectState::load_from_path(&state_path.to_string_lossy()).unwrap();
         let before = serde_json::to_value(&state).unwrap();
+        let rehydrated = GentleEngine::from_state(state.clone());
+        assert_eq!(
+            serde_json::to_value(rehydrated.state()).unwrap(),
+            before,
+            "the synthetic starter must already contain reconciled lineage and containers"
+        );
         let build: Value =
             serde_json::from_slice(&fs::read(root.join("artifacts/build.json")).unwrap()).unwrap();
         let built = run_tool(

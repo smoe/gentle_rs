@@ -267,21 +267,44 @@ pub fn execute_agent_plan_candidate_with_feedback(
                 selected.candidate_id
             ));
         }
-        if let Some(command) = shell_command_for_candidate(selected)? {
-            let parsed = parse_shell_line(&command).map_err(|err| {
-                format!(
-                    "Could not parse shell command for planner candidate '{}': {err}",
-                    selected.candidate_id
-                )
-            })?;
+        let parsed = match selected.kind {
+            AgentPlanCandidateKind::Op => Some(ShellCommand::Op {
+                payload: serde_json::to_string(&selected.operation)
+                    .map_err(|err| format!("Could not encode operation payload: {err}"))?,
+            }),
+            AgentPlanCandidateKind::Workflow => Some(ShellCommand::Workflow {
+                payload: serde_json::to_string(&selected.workflow)
+                    .map_err(|err| format!("Could not encode workflow payload: {err}"))?,
+            }),
+            AgentPlanCandidateKind::Shell | AgentPlanCandidateKind::UiIntent => {
+                shell_command_for_candidate(selected)?
+                    .map(|command| {
+                        parse_shell_line(&command).map_err(|err| {
+                            format!(
+                                "Could not parse shell command for planner candidate '{}': {err}",
+                                selected.candidate_id
+                            )
+                        })
+                    })
+                    .transpose()?
+            }
+        };
+        if let Some(parsed) = parsed {
             if command_is_blocked(&parsed) {
                 return Err(
                     "Agent plan execution blocks nested agent assistant/planner commands"
                         .to_string(),
                 );
             }
-            if matches!(&parsed, ShellCommand::Catalog(command) if command.mutating()) && !confirm {
-                return Err("Catalog artifact writes and imports require explicit --confirm, regardless of candidate mutation flags".into());
+            if !confirm
+                && (selected.mutating
+                    || selected.requires_confirmation
+                    || parsed.is_state_mutating())
+            {
+                return Err(format!(
+                    "Planner candidate '{}' requires explicit --confirm before shared-command execution, regardless of candidate mutation flags",
+                    selected.candidate_id
+                ));
             }
         }
         status = AgentExecutionStatus::Failed;
@@ -319,7 +342,7 @@ mod tests {
     use super::*;
     use crate::{
         agent_planner::{AgentPlanExecutionMode, AgentPlanResult},
-        engine::ProjectState,
+        engine::{Engine, ProjectState},
     };
 
     #[test]
@@ -388,5 +411,107 @@ mod tests {
         assert_eq!(attempt.feedback.status, AgentExecutionStatus::Blocked);
         assert_eq!(attempt.feedback.before, attempt.feedback.after);
         assert!(attempt.feedback.error_sha256.is_some());
+    }
+
+    #[test]
+    fn rna_artifact_writes_require_confirm_even_when_candidate_flags_are_false() {
+        for kind in [AgentPlanCandidateKind::Shell, AgentPlanCandidateKind::Op] {
+            let temp = tempfile::tempdir().unwrap();
+            let output = temp.path().join("synthetic demo with 'quotes'");
+            let candidate = AgentPlanCandidate {
+                candidate_id: "panel".into(),
+                title: "Synthetic demo".into(),
+                kind,
+                execution_mode: AgentPlanExecutionMode::Auto,
+                shell_command: (kind == AgentPlanCandidateKind::Shell).then(|| {
+                    format!(
+                        "rna-reads panel-demo {}",
+                        crate::engine_shell::quote_shell_arg(&output.to_string_lossy())
+                    )
+                }),
+                operation: (kind == AgentPlanCandidateKind::Op)
+                    .then(|| serde_json::json!({"PrepareRnaReadPanelDemo":{"output_dir":output}})),
+                ..Default::default()
+            };
+            let plan = AgentPlanResult {
+                schema: "gentle.agent_plan_result.v1".into(),
+                assistant_message: "Synthetic approval boundary".into(),
+                questions: vec![],
+                candidates: vec![candidate],
+            };
+            let mut engine = GentleEngine::from_state(ProjectState::default());
+            let before = serde_json::to_value(engine.state()).unwrap();
+            let journal = engine.journal_len();
+            let denied = execute_agent_plan_candidate_with_feedback(
+                &mut engine,
+                &plan,
+                "panel",
+                false,
+                &ShellExecutionOptions::default(),
+            );
+            assert!(denied.result.unwrap_err().contains("explicit --confirm"));
+            assert_eq!(denied.feedback.status, AgentExecutionStatus::Blocked);
+            assert_eq!(denied.feedback.before, denied.feedback.after);
+            assert!(!output.exists());
+            assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+            assert_eq!(engine.journal_len(), journal);
+
+            let allowed = execute_agent_plan_candidate(
+                &mut engine,
+                &plan,
+                "panel",
+                true,
+                &ShellExecutionOptions::default(),
+            )
+            .unwrap();
+            assert!(allowed.confirmed);
+            assert!(output.join("artifacts/starter.json").is_file());
+            assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+        }
+    }
+
+    #[test]
+    fn read_only_shell_and_rna_inspection_do_not_require_confirm() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut candidate = AgentPlanCandidate {
+            candidate_id: "inspect".into(),
+            title: "Read-only observation".into(),
+            kind: AgentPlanCandidateKind::Shell,
+            shell_command: Some("history status".into()),
+            execution_mode: AgentPlanExecutionMode::Auto,
+            ..Default::default()
+        };
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        let before = serde_json::to_value(engine.state()).unwrap();
+        for kind in [AgentPlanCandidateKind::Shell, AgentPlanCandidateKind::Op] {
+            if kind == AgentPlanCandidateKind::Op {
+                candidate.kind = kind;
+                candidate.shell_command = None;
+                candidate.operation = Some(serde_json::json!({"InspectRnaReadPanel":{
+                    "path":temp.path().join("missing-report.json"), "rows":0
+                }}));
+            }
+            let plan = AgentPlanResult {
+                schema: "gentle.agent_plan_result.v1".into(),
+                assistant_message: "Synthetic read-only boundary".into(),
+                questions: vec![],
+                candidates: vec![candidate.clone()],
+            };
+            let attempt = execute_agent_plan_candidate_with_feedback(
+                &mut engine,
+                &plan,
+                "inspect",
+                false,
+                &ShellExecutionOptions::default(),
+            );
+            if kind == AgentPlanCandidateKind::Shell {
+                assert!(!attempt.result.unwrap().confirmed);
+            } else {
+                assert_eq!(attempt.feedback.status, AgentExecutionStatus::Failed);
+                assert!(!attempt.result.unwrap_err().contains("--confirm"));
+            }
+            assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+            assert_eq!(engine.journal_len(), 0);
+        }
     }
 }
