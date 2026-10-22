@@ -1,5 +1,22 @@
 # GENtle Changelog
 
+## 2026-10-22 - Reconcile Glen's Two-Repair Verification
+
+- Validate all 26 manifested payloads in the owner's 128,815-byte
+  `gentle-two-repair-5ab0b02a-20261022.tar.gz`; retain archive/manifest hashes
+  and source-bound results in the existing next-verification handoff.
+- At `5ab0b02a`, Glen's Linux glossary 8/8 and protocol UI 2/2 pass; test-target
+  GUI-support and all-features checks return 0. Same-source CI passes both
+  repaired gates on Windows/macOS and completes Windows, Linux headless and
+  release safety. Full Linux is skipped, not accepted.
+- Preserve overall CI `39774820033` as failed: macOS stops later in the full
+  suite, with no named test in the retained public receipts (HTTP 403). Do not
+  invent a cause, reopen either completed repair or infer that subsequent
+  provider/RNA changes are accepted. Keep disk-full warnings as environment
+  observations; request no rerun of completed campaigns or shared-cache cleanup.
+- Update active roadmap/handoff wording accordingly. RNA imports and their
+  local source checks are separate; no local Rust, push or goal resumption.
+
 ## 2026-10-22 - Import RNA Panel JSON Values Explicitly
 
 - The owner's local compiler reports E0425/E0433 in RNA panel inspection and

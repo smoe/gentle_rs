@@ -23,8 +23,8 @@ cargo test --locked --lib -j1 external_service_providers::updates::tests:: -- --
 Include macOS for the original reopen failure and the synthetic symlink-source
 ancestor guard; retain native Windows coverage for the existing drive/verbatim
 tests. Report executed test counts, failures/skips, actual source/lockfile/
-toolchain/platform and logs through Steffen. The glossary/all-features checks
-below remain the existing request, not a second full campaign. No interim
+toolchain/platform and logs through Steffen. The completed glossary/all-features
+return below is historical evidence, not a second full campaign. No interim
 freeze, bundle, push, dispatch, native capture, provider call or package build
 is requested here. Local source checks do not certify the Rust paths.
 
@@ -36,6 +36,11 @@ explicit `rna_panel/{input,tools,tests}.rs` paths now resolve. A new LF/CRLF
 source guard fails before that repair and passes afterward. Recursive rustfmt
 is not compiler/runtime acceptance; use the integrated source for the checks
 below, retaining the original feature handoff's limits.
+
+The owner's subsequent local compiler exposed E0425/E0433 for `Value` in
+`tools.rs` and `tests.rs`. Repair `f37f7039` imports `serde_json::Value` in both
+modules. Six source tests and recursive formatting pass, not a Rust check;
+include that repair in the next ordinary RNA verification.
 
 Changed areas: `src/engine/analysis/rna_panel.rs` and its `input.rs`, `tools.rs`,
 `tests.rs`; `src/engine/protocol/rna_panel.rs`; thin enum/result/parser/MCP/
@@ -77,28 +82,44 @@ Do not process ongoing downloads, POD5 or private libraries without approval.
 
 ## Glossary And All-Features Follow-Up, 2026-10-22
 
-Glen reports two independent primary failures at `70969635`: ordinary Linux/
-Windows CI `39739876557` stops at the glossary smoke fixture, and a separate
-Linux all-features check reproduces E0521 in the protocol overview. Later CI
-skips do not prove a third failure. The fixes below have source-only checks,
-not local Rust or native acceptance.
+The two repairs are independently verified at
+`5ab0b02aef2c05edc15e8434be2cf1429ebf1ce5`, tree
+`ac970706ac5ee4804b5022050f33479f15cb4871`; do not repeat the completed campaign
+or transfer this scoped pass to later source. The previous failures were the
+glossary fixture and E0521 at `70969635` / CI `39739876557`.
 
-On the next ordinary owner-pushed source, use an isolated checkout/target and
-run these bounded checks; no interim freeze, bundle or dispatch is requested:
+Retained owner-supplied archive:
+`/tmp/gentle-two-repair-5ab0b02a-20261022.tar.gz` (128,815 bytes), SHA-256
+`ed724dbe04adfe480872e2e072ba76a5f792f98fdc1979bdbd3ef7d7093dbed0`.
+Codex validated all 26 manifested payloads in place; `SHA256SUMS` SHA-256 is
+`5e50695983ef47ac6d1db6635306421fa35c7693b2f820951439d77a2be72ead`.
+`REPORT.md`, `COMMANDS.md`, four command streams and CI JSON receipts preserve
+the scope; binaries are identified by hash but not included.
 
-```sh
-cargo test -q --locked --lib -j1 engine_shell::tests::glossary_ -- --test-threads=1
-cargo test --locked --lib -j1 --features gui-test-support app::planning_protocol_ui::tests:: -- --test-threads=1
-cargo check -q --locked --tests --features gui-test-support
-cargo check -q --locked --all-features
-```
+- Linux: glossary 8/8; protocol UI 2/2, including seven widgets with one static
+  step ID, distinct expected pseudonymous scopes and unchanged engine state.
+- Linux: `cargo check --tests --features gui-test-support` and `--all-features`
+  both returned 0. Checks compile targets; they do not execute tests.
+- Toolchain/profile: Rust/Cargo 1.97.1, Debian forky x86_64, locked dev/test,
+  one build job/test thread and repository-configured 16 MiB `RUST_MIN_STACK`.
+  This is not default-stack evidence or native GUI acceptance.
+- Same-source [CI 39774820033](https://github.com/smoe/gentle_rs/actions/runs/39774820033)
+  passed both repaired gates on Windows/macOS. Windows completed all later
+  gates; Linux headless and release safety passed. Full Linux was skipped.
+- Overall CI remains **FAIL**: macOS later failed `Full test suite` (exit 101).
+  Retained public logs returned HTTP 403 and disclose no failing test. Do not
+  attribute it to either repair or claim the later provider-fixture fix
+  resolves it without the named failure/results.
 
-Require the numeric/fractional pitch, `--clear` and invalid-input regression,
-and the feature-enabled protocol-view regression: one static step widget ID,
-distinct hashed subject scopes and unchanged project state. Raw step IDs are
-not legal semantic subject scopes. Observe normal CI through its later gates,
-not just the previously failing step. Record actual source/toolchain/platform,
-commands, failures/skips and retained logs; report through Steffen.
+Next action is normal current-source CI/RNA verification plus the separate
+provider-fixture follow-up above, not another glossary/protocol survey. The
+RNA glossary filter covers newly added routes. Obtain the named macOS failure
+from authorized logs if it remains reproducible. Disk-full warnings and a
+failed final fetch are retained environment limits; confirm adequate free space
+before Glen's next run, without cleaning a shared cache. A write-free remote
+comparison established that the tested source was an ancestor of `1cfea9e3`,
+not evidence for that descendant. No local Rust, push, dispatch or rerun was
+performed when reconciling this return.
 
 Preserve Glen's reported `70969635` passes separately: root test-target check,
 protocol labware 11/11, renderer labware 2/2, root labware 16/16, rack mutation
