@@ -3606,6 +3606,9 @@ pub enum Operation {
     ExportTubeOpenScad {
         profile: gentle_protocol::labware::TubeProfileId,
         path: String,
+        /// Omitted: full strip, or one individual tube. Strips admit 1..=8.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tube_count: Option<usize>,
     },
     ExportRackCarrierLabelsSvg {
         rack_id: String,

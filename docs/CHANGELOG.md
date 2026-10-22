@@ -82,6 +82,33 @@
   Match main's explicit child-path convention for both new summary modules;
   retain its existing JSON imports and source-scoped acceptance records.
 
+## 2026-10-22 - Model Cut 0.2 ml PCR Strips
+
+- Add the manufacturer-bound BRAND 781320 reference to the existing tube
+  catalogue, citing page 6 and the raw SHA-256 of the official datasheet.
+  Capacity is per tube; 9-mm pitch and the documented envelope remain distinct
+  from explicitly illustrative transition, collar and bridge details.
+- Extend `ExportTubeOpenScad` additively with optional `tube_count`: a strip
+  defaults to eight and accepts one through eight contiguous retained tubes.
+  Invalid counts refuse before overwriting files. The Rack workspace's tube
+  models section offers the same bounded selection through the shared operation.
+  No new inventory, rack geometry, operation name or shell parser is introduced.
+- Preserve legacy profile/operation serialization when new fields are absent,
+  individual-tube geometry and incomplete PCR-profile refusal. Author protocol,
+  renderer, engine, shell and GUI-builder regressions with synthetic inputs.
+- Verification: all nine Python/OpenSCAD labware tests pass, including finite
+  bounds and connected geometry at every cut length. OpenSCAD required a run
+  outside the sandbox after Qt's CPU-feature detection failed inside it. The
+  mesh reader accepts optional OFF face colors. Rust tests/check/format and
+  native GUI interaction are not run under the standing no-local-Rust limit;
+  physical fit and cap/thermal/material qualification are not claimed.
+- With owner approval, render and visually inspect PNG previews for one,
+  three and eight tubes using the production SCAD template and the harness's
+  literal dimensions/assumptions. All are fully framed; only internal bridges
+  remain. Previews are kept outside the repository, not bundled as fixtures.
+  This is template-level visual evidence, not execution of the Rust exporter
+  or native GENtle GUI acceptance.
+
 ## 2026-10-22 - Isolate Provider Preview-Writer Test Sources
 
 - Fast-forward local main to the owner's Windows LF-policy commit `1cfea9e3`;

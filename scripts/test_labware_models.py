@@ -32,6 +32,22 @@ def body_template(source):
     return match.group(1)
 
 
+def strip_template(source, count):
+    """Actual strip SCAD with literal BRAND callouts/declared visual assumptions."""
+    match = re.search(r'const PCR_STRIP_SCAD: &str = r#"(.*?)"#;', source, re.S)
+    if not match:
+        raise ValueError("PCR strip template not found; review the harness")
+    return (
+        f"$fn=64; tube_count={count}; max_tubes=8; center_pitch_mm=9;\n"
+        "body_length_mm=20.75; body_diameter_mm=6; collar_diameter_mm=8;\n"
+        "rim_diameter_mm=7.05; tip_diameter_mm=2.75;\n"
+        "visual_shoulder_fraction=0.55; visual_collar_drop_mm=4.5;\n"
+        "visual_collar_thickness_mm=0.9; visual_rim_thickness_mm=0.6;\n"
+        "visual_bridge_width_mm=1.0; visual_bridge_height_mm=0.7;\n"
+        + match.group(1)
+    )
+
+
 def openscad_binary():
     explicit = os.environ.get("GENTLE_OPENSCAD_BIN")
     if explicit:
@@ -66,6 +82,79 @@ def carrier_template(source, rows, columns, width, depth, height, opening, edge,
 
 
 class LabwareTemplateTests(unittest.TestCase):
+    def test_pcr_strip_template_newlines_and_internal_bridges(self):
+        source = (ROOT / "crates/gentle-render/src/labware.rs").read_text()
+        for count in range(1, 9):
+            lf = strip_template(source, count)
+            crlf = strip_template(source.replace("\n", "\r\n"), count)
+            self.assertEqual(lf, crlf.replace("\r\n", "\n"))
+            self.assertIn("if (tube_count > 1)", lf)
+            self.assertIn("[0 : tube_count - 2]", lf)
+        with self.assertRaises(ValueError):
+            strip_template("missing", 8)
+
+    def test_pcr_strip_meshes_have_one_connected_body_and_cut_length_bounds(self):
+        binary = openscad_binary()
+        if not binary:
+            self.skipTest("OpenSCAD unavailable; Rust exporter acceptance remains separate")
+        source = (ROOT / "crates/gentle-render/src/labware.rs").read_text()
+        with tempfile.TemporaryDirectory(prefix="gentle PCR strips ") as directory:
+            for count in range(1, 9):
+                with self.subTest(tubes=count):
+                    scad = Path(directory) / f"strip-{count}.scad"
+                    mesh = scad.with_suffix(".off")
+                    scad.write_text(strip_template(source, count), encoding="utf-8")
+                    result = subprocess.run([binary, "-o", str(mesh), str(scad)],
+                                            capture_output=True, text=True, timeout=120)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertNotIn("ERROR:", result.stderr)
+                    mesh_text = mesh.read_text(encoding="utf-8")
+                    tokens = mesh_text.split()
+                    self.assertEqual(tokens[0], "OFF")
+                    vertices, faces, _ = map(int, tokens[1:4])
+                    self.assertGreater(vertices, 0)
+                    self.assertGreater(faces, 0)
+                    points = [tuple(map(float, tokens[start:start + 3]))
+                              for start in range(4, 4 + 3 * vertices, 3)]
+                    self.assertTrue(all(math.isfinite(v) for point in points for v in point))
+                    self.assertAlmostEqual(min(p[0] for p in points), -4, places=4)
+                    self.assertAlmostEqual(max(p[0] for p in points), (count - 1) * 9 + 4, places=4)
+                    self.assertAlmostEqual(min(p[1] for p in points), -4, places=4)
+                    self.assertAlmostEqual(max(p[1] for p in points), 4, places=4)
+                    self.assertGreaterEqual(min(p[2] for p in points), -0.001)
+                    self.assertLess(min(p[2] for p in points), 0.02)
+                    self.assertAlmostEqual(max(p[2] for p in points), 20.75, places=4)
+                    # Surface connectivity catches detached tubes or bridges.
+                    neighbors = [set() for _ in points]
+                    lines = mesh_text.splitlines()
+                    header_lines = 1 if len(lines[0].split()) > 1 else 2
+                    face_lines = lines[header_lines + vertices:]
+                    self.assertEqual(len(face_lines), faces)
+                    for line in face_lines:
+                        fields = line.split()
+                        size = int(fields[0])
+                        # OFF face rows may end with RGB/RGBA colors.
+                        indices = list(map(int, fields[1:1 + size]))
+                        self.assertEqual(len(indices), size)
+                        for index in indices[1:]:
+                            neighbors[indices[0]].add(index)
+                            neighbors[index].add(indices[0])
+                    visited, pending = set(), [0]
+                    while pending:
+                        index = pending.pop()
+                        if index not in visited:
+                            visited.add(index)
+                            pending.extend(neighbors[index] - visited)
+                    self.assertEqual(len(visited), vertices, "disconnected strip geometry")
+            for count in (0, 9):
+                scad = Path(directory) / f"invalid-{count}.scad"
+                mesh = scad.with_suffix(".off")
+                scad.write_text(strip_template(source, count), encoding="utf-8")
+                result = subprocess.run([binary, "-o", str(mesh), str(scad)],
+                                        capture_output=True, text=True, timeout=120)
+                self.assertIn("ERROR:", result.stderr)
+                self.assertFalse(mesh.exists())
+
     def test_carrier_pitch_glossary_smoke_keeps_the_numeric_example(self):
         source = (ROOT / "src/engine_shell/tests.rs").read_text(encoding="utf-8")
         glossary = json.loads((ROOT / "docs/glossary.json").read_text(encoding="utf-8"))

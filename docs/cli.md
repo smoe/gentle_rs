@@ -6323,17 +6323,29 @@ the GUI Shell and inner agent; there is no second labware command parser:
 ```text
 op '{"InspectTubeProfiles":{}}'
 op '{"ExportTubeOpenScad":{"profile":"eppendorf_safe_lock_1_5ml","path":"tube.visualization.scad"}}'
+op '{"ExportTubeOpenScad":{"profile":"brand_pcr_strip_0_2ml_781320","tube_count":5,"path":"pcr-strip-5.visualization.scad"}}'
 ```
 
 Inspection returns `tube_profiles` with drawing source URLs/digests and per-field
 `drawing`, `approximate_drawing` or `not_documented` basis. Available profile IDs
 are `eppendorf_safe_lock_0_5ml`, `eppendorf_safe_lock_1_5ml` and
-`eppendorf_safe_lock_2_0ml`, plus `eppendorf_pcr_tube_0_2ml`. Export writes the explicitly selected file and
+`eppendorf_safe_lock_2_0ml`, `eppendorf_pcr_tube_0_2ml` and
+`brand_pcr_strip_0_2ml_781320`. Export writes the explicitly selected file and
 returns the selected profile, but neither operation changes project state.
 Normal adapter confirmation policies still apply to artifact writes. The SCAD
 is an outer-body/collar visualization with labelled assumptions, not a printable
 vessel; cap, hinge and cavity are omitted. No fit with existing rack/plate
 templates is inferred. See [drawing provenance](../data/labware/README.md).
+
+The BRAND profile represents a standard **0.2 ml per tube** strip, article 781320.
+`tube_count` selects **1 through 8 contiguous tubes** after cutting; omission
+selects eight. Only the retained tubes and their internal bridges are drawn.
+Individual-tube profiles default to one and reject counts other than one;
+zero or oversized counts fail before overwriting an output. The strip uses the
+manufacturer's 9-mm pitch and cited dimensions, but transition/bridge details
+are explicitly illustrative. Caps, cavities, numbering and cut stubs/end tab
+are omitted. The original Eppendorf individual PCR model still refuses its
+undocumented seating collar. No rack binding or inventory change is made.
 
 The existing rack export commands also accept
 `safe_lock_tube_rack_collar_seated` and `safe_lock_tube_rack_floor_seated`.

@@ -9161,17 +9161,34 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 - Printable labels/front strips remain separate shared exports rather than
   being baked permanently into the 3D geometry in this first baseline.
 
-`InspectTubeProfiles {}` and `ExportTubeOpenScad { profile, path }` semantics:
+`InspectTubeProfiles {}` and `ExportTubeOpenScad { profile, path, tube_count? }` semantics:
 
 - Both use the canonical static `gentle.tube_profile.v1` table in
   `gentle_protocol::labware`; neither changes saved project state. Existing
   rack templates and container records acquire no new tube binding.
 - `profile` is exactly `eppendorf_safe_lock_0_5ml`,
-  `eppendorf_safe_lock_1_5ml` or `eppendorf_safe_lock_2_0ml`. Unknown IDs fail
+  `eppendorf_safe_lock_1_5ml`, `eppendorf_safe_lock_2_0ml`,
+  `eppendorf_pcr_tube_0_2ml` or `brand_pcr_strip_0_2ml_781320`. Unknown IDs fail
   deserialization rather than selecting a similar-looking tube.
-- Inspection returns all three rows in that order. Export returns its selected
+- Inspection returns all five rows in that order. Export returns its selected
   row and writes one deterministic OpenSCAD outer-body/collar visualization.
   `OpResult.tube_profiles` is optional/defaulted for old result readers.
+- The additive optional `TubeProfile.strip` holds `max_tubes`, `center_pitch`,
+  `rim_outer_diameter` and `tip_outer_diameter`. It is omitted for individual
+  tubes, preserving old profile bytes. `nominal_volume_ml` stays **per tube**.
+  Optional `tube_count` is likewise omitted when absent; old operations still
+  deserialize and serialize without it. Omission selects the full strip (8)
+  or a single tube (1). Counts outside 1..=profile maximum fail with
+  `tube_model_count_invalid` before filesystem writes, never clamp. Fractions,
+  negatives and strings fail operation deserialization.
+- BRAND 781320 uses a dedicated strip silhouette with 1-8 tubes and N-1
+  internal bridges. Its taper transition, collar position/thickness, bridge
+  section and rounding are declared visualization assumptions. Unknown
+  cylindrical length and cap dimensions stay null; missing required envelope
+  dimensions still refuse export. This does not relax the individual-tube
+  renderer's collar/cylinder requirements: the Eppendorf PCR tube remains an
+  inspectable but non-exportable incomplete profile. No existing rack geometry
+  or inventory placement is changed.
 - Every dimension carries `value_mm`, a typed `basis` (`drawing`,
   `approximate_drawing`, `not_documented`) and an optional source callout.
   Source URL, raw-PDF SHA-256, document revision and page are retained. Unknown

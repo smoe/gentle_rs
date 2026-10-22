@@ -1327,8 +1327,33 @@ impl GENtleApp {
         }
     }
 
+    pub(super) fn tube_model_export_operation(
+        &self,
+        profile: gentle_protocol::labware::TubeProfileId,
+        path: String,
+    ) -> Operation {
+        Operation::ExportTubeOpenScad {
+            profile,
+            path,
+            tube_count: gentle_protocol::labware::tube_profile(profile)
+                .strip
+                .map(|_| self.rack_tube_strip_count),
+        }
+    }
+
     fn prompt_export_tube_openscad(&mut self, profile: gentle_protocol::labware::TubeProfileId) {
-        let filename = format!("{}.visualization.scad", profile.as_str());
+        let filename = if gentle_protocol::labware::tube_profile(profile)
+            .strip
+            .is_some()
+        {
+            format!(
+                "{}.{}-tubes.visualization.scad",
+                profile.as_str(),
+                self.rack_tube_strip_count
+            )
+        } else {
+            format!("{}.visualization.scad", profile.as_str())
+        };
         let Some(path) = rfd::FileDialog::new()
             .set_file_name(&filename)
             .add_filter("OpenSCAD", &["scad"])
@@ -1336,14 +1361,8 @@ impl GENtleApp {
         else {
             return;
         };
-        let result = self
-            .engine
-            .write()
-            .unwrap()
-            .apply(Operation::ExportTubeOpenScad {
-                profile,
-                path: path.display().to_string(),
-            });
+        let operation = self.tube_model_export_operation(profile, path.display().to_string());
+        let result = self.engine.write().unwrap().apply(operation);
         self.rack_view_status = match result {
             Ok(result) => result.messages.join("\n"),
             Err(error) => format!("Could not export tube visualization: {}", error.message),
@@ -1358,6 +1377,11 @@ impl GENtleApp {
                 let profile = gentle_protocol::labware::tube_profile(id);
                 ui.horizontal_wrapped(|ui| {
                     ui.label(&profile.name).on_hover_text(&profile.source_url);
+                    if let Some(strip) = &profile.strip {
+                        ui.label("Retained tubes");
+                        ui.add(egui::DragValue::new(&mut self.rack_tube_strip_count).range(1..=strip.max_tubes))
+                            .on_hover_text("Contiguous cut length; 0.2 ml per tube. Bridge details are illustrative, not physical-fit evidence.");
+                    }
                     if ui.button("Export tube OpenSCAD...")
                         .on_hover_text("Required drawing dimensions must be documented. Incomplete profiles (including the PCR seating collar) are refused without overwriting files.")
                         .clicked() {

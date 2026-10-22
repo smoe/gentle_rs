@@ -225,3 +225,63 @@ format strings with literal expected dimensions for both Safe-Lock modes and
 PCR96. It checks finite nonempty meshes and outer bounds, with no Rust build.
 This does not run the Rust derivation/exporter and cannot replace Glen's
 source-matched export, legacy-byte or native/physical checks.
+
+## Cut PCR strips, 0.2 ml per tube
+
+`brand_pcr_strip_0_2ml_781320` models **one through eight contiguous tubes**,
+default eight, following the owner's 2026-10-22 request to represent cut strips.
+It is distinct from the individual Eppendorf PCR profile and from rack carriers.
+Counts do not assign sample inventory or claim a new purchasable manufacturer
+article. The model omits separate caps, cavity, numbering and end tab/cut stubs;
+only N-1 internal bridges are retained, including zero bridges for one tube.
+
+Source: [BRAND's product page](https://shop.brand.de/de/pcr-strips-pp-bio-certr-pcr-quality-p545.html)
+and its linked [German technical datasheet](https://shop.brand.de/media/import/1/27/32406/42485/53752/56329/55264/Data_sheet_PCR_strips_DE.pdf),
+**page 6, article 781320**, retrieved and visually inspected 2026-10-22.
+No revision/date is printed on that page. Raw PDF SHA-256:
+`8ba466736960b6933c642568d03ac5901c09010db176b7278d6e2989ffbd3c13`.
+Re-download the PDF, hash its original bytes and inspect page 6 to reproduce
+the check; the PDF is not redistributed or fetched at runtime.
+
+| Drawing callout (mm) | Value |
+| --- | --- |
+| Adjacent tube centers | 9 |
+| First-to-last centers, eight tubes | 63 |
+| Overall uncapped height | 20.75 |
+| Main body OD | 6 |
+| Collar OD | 8 |
+| Upper rim OD | 7.05 |
+| Lower OD before rounded tip | 2.75 |
+
+The catalogue records 0.2 ml **per tube** and a single-bridge standard strip;
+the 0.15-ml low-profile, 12-tube and attached-cap variants are not added.
+Cylindrical-section length, collar elevation and closed-cap envelope are not
+dimensioned sufficiently for this model and remain unknown. The dedicated
+strip renderer uses the known envelope with these **illustrative assumptions**:
+taper transition at 55% of height, spherical tip radius 2.75/2, collar bottom
+4.5 mm below the rim with 0.9-mm thickness, rim thickness 0.6 mm, and rectangular
+bridges 1.0 mm wide by 0.7 mm high at the collar. Do not read the drawing's
+end-tab dimensions as bridge dimensions. Cut ends are idealized with no stubs.
+This is a solid visualization, not a printable vessel, measured cavity,
+seating model, cap-clearance test or thermal/material/sterility qualification.
+Other manufacturer profiles and their missing-dimension refusals are unchanged.
+
+Rust tests authored for this addition cover all counts, invalid-count refusal
+before overwrite, serde compatibility, deterministic exports and the shared
+GUI/shell/engine path. They require Glen/CI under the no-local-Rust instruction:
+`cargo test -q -p gentle-protocol labware`,
+`cargo test -q -p gentle-render labware`, `cargo test -q --lib labware`, then
+`cargo check -q` and `cargo fmt --check`. Native GUI interaction remains separate.
+The existing Python/OpenSCAD harness reads the actual strip template with
+literal source dimensions and declared assumptions; it checks all eight cut
+lengths, finite bounds, connected geometry and rejection of zero/nine tubes.
+These synthetic cases live in `scripts/test_labware_models.py` and reproduce
+with `python3 -m unittest scripts.test_labware_models -v`. They are not execution
+of the Rust exporter or evidence of physical fit.
+
+On 2026-10-22, owner-approved OpenSCAD PNG previews of one, three and eight tubes
+were visually inspected: complete framing, the expected tube counts and only
+internal bridges. These previews use `strip_template` from the Python harness,
+not an executed Rust export. The solid tops are outer-envelope surfaces, not
+caps; cavities are intentionally absent. Preview PNG/SCAD files remain outside
+the repository and establish neither native GUI acceptance nor physical fit.

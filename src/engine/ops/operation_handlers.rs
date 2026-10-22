@@ -38097,23 +38097,29 @@ impl GentleEngine {
                         .collect(),
                 );
             }
-            Operation::ExportTubeOpenScad { profile, path } => {
+            Operation::ExportTubeOpenScad {
+                profile,
+                path,
+                tube_count,
+            } => {
                 let source =
-                    gentle_render::labware::render_tube_openscad(profile).map_err(|message| {
-                        EngineError {
+                    gentle_render::labware::render_tube_openscad_with_count(profile, tube_count)
+                        .map_err(|message| EngineError {
                             code: ErrorCode::InvalidInput,
                             message,
                             cause_chain: vec![],
-                        }
-                    })?;
+                        })?;
                 fs::write(&path, source).map_err(|error| EngineError {
                     code: ErrorCode::Io,
                     message: format!("Could not write tube visualization '{path}': {error}"),
                     cause_chain: vec![],
                 })?;
-                result.tube_profiles = Some(vec![gentle_protocol::labware::tube_profile(profile)]);
+                let reference = gentle_protocol::labware::tube_profile(profile);
+                let count = tube_count
+                    .unwrap_or_else(|| reference.strip.as_ref().map_or(1, |strip| strip.max_tubes));
+                result.tube_profiles = Some(vec![reference]);
                 result.messages.push(format!(
-                    "Wrote tube outer-body visualization '{}' to '{}'; cap/hinge omitted; no fit or manufacturing claim",
+                    "Wrote tube outer-body visualization '{}' ({count} tube(s)) to '{}'; caps/cavity omitted; no fit or manufacturing claim",
                     profile.as_str(), path
                 ));
             }
