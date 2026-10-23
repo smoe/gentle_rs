@@ -35834,6 +35834,8 @@ fn labware_pcr_strip_exports_all_lengths_and_refuses_before_overwrite() {
         engine.apply(operation).unwrap();
         assert_eq!(fs::read(&path).unwrap(), first);
     }
+    let journal_after_exports = journal_before + 16;
+    assert_eq!(engine.journal_len(), journal_after_exports);
     let sentinel = b"keep previous model";
     for (id, count) in [
         (profile, 0),
@@ -35852,9 +35854,10 @@ fn labware_pcr_strip_exports_all_lengths_and_refuses_before_overwrite() {
         assert!(matches!(error.code, ErrorCode::InvalidInput));
         assert!(error.message.starts_with("tube_model_count_invalid:"));
         assert_eq!(fs::read(&path).unwrap(), sentinel);
+        assert_eq!(engine.journal_len(), journal_after_exports);
     }
     assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
-    assert_eq!(engine.journal_len(), journal_before);
+    assert_eq!(engine.journal_len(), journal_after_exports);
 }
 
 #[test]

@@ -1,5 +1,22 @@
 # Glen: Next Verification And Return
 
+## PCR-Strip Test-Contract Repairs, 2026-10-23
+
+Glen's two isolated failures from `fc75114a` are corrected in tests only:
+16 successful exports append 16 external-operation receipts without changing
+project state; invalid count types are refused during operation execution, not
+generic shell parsing. Refusals must preserve journal length and existing model
+bytes. Valid exports, quoted paths, legacy serialization and capability checks
+remain covered. At the next ordinary integrated source, rerun only:
+
+```sh
+cargo test --locked --lib -j1 labware_pcr_strip_ -- --test-threads=1
+```
+
+Return actual source/toolchain/platform and results through Steffen. No repeated
+mesh render, completed acceptance campaign or new source freeze is requested.
+Codex ran no Rust verification; production journaling/parser behavior is unchanged.
+
 ## Stored-Plan And RNA MCP Test Expectations, 2026-10-23
 
 The owner's two latest library failures were obsolete approval expectations,

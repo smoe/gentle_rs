@@ -200,6 +200,7 @@ fn labware_generic_op_route_preserves_profiles_models_and_project_state() {
 #[test]
 fn labware_pcr_strip_generic_op_defaults_and_explicit_count_round_trip() {
     let mut engine = GentleEngine::from_state(ProjectState::default());
+    let before = serde_json::to_value(engine.state()).unwrap();
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("PCR strip's model.scad");
     for count in [None, Some(1), Some(4), Some(8)] {
@@ -218,17 +219,24 @@ fn labware_pcr_strip_generic_op_defaults_and_explicit_count_round_trip() {
         let source = std::fs::read_to_string(&path).unwrap();
         assert!(source.contains(&format!("tube_count = {};", count.unwrap_or(8))));
     }
+    let model_before = std::fs::read(&path).unwrap();
+    let journal_before_refusals = engine.journal_len();
     for count in [
         serde_json::json!(-1),
         serde_json::json!(2.5),
         serde_json::json!("4"),
     ] {
         let payload = serde_json::json!({"ExportTubeOpenScad": {
-            "profile": "brand_pcr_strip_0_2ml_781320", "path": "unused.scad", "tube_count": count
+            "profile": "brand_pcr_strip_0_2ml_781320", "path": path.to_str().unwrap(), "tube_count": count
         }});
-        assert!(
-            parse_shell_line(&format!("op {}", quote_shell_arg(&payload.to_string()))).is_err()
-        );
+        let parsed = parse_shell_line(&format!("op {}", quote_shell_arg(&payload.to_string())))
+            .expect("generic op parsing defers operation type checking to execution");
+        let error = execute_shell_command(&mut engine, &parsed)
+            .expect_err("operation deserialization must reject an invalid tube_count type");
+        assert!(error.starts_with("Invalid operation JSON:"), "{error}");
+        assert_eq!(std::fs::read(&path).unwrap(), model_before);
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+        assert_eq!(engine.journal_len(), journal_before_refusals);
     }
     let legacy = serde_json::json!({"ExportTubeOpenScad": {
         "profile": "eppendorf_safe_lock_1_5ml", "path": "unused.scad"

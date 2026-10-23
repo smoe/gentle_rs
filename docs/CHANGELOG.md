@@ -1,5 +1,22 @@
 # GENtle Changelog
 
+## 2026-10-23 - Correct PCR-Strip Journal And Parser Regressions
+
+- Address Glen's two isolated `fc75114a` test failures without production
+  changes. Count the 16 successful model exports as 16 journal receipts while
+  retaining unchanged project state and byte-identical repeated exports.
+  Every invalid-count refusal must preserve the journal and sentinel file.
+- Exercise invalid `tube_count` types through generic shell parsing followed
+  by operation execution: parsing retains the JSON, deserialization refuses
+  negative, fractional and string values. Preserve the quoted output path,
+  existing model bytes, project state and history on refusal. Keep valid-count,
+  legacy serialization and capability assertions. Rust reruns remain external;
+  no local build, push or artifact regeneration is performed.
+- Verification: six scoped labware source checks, rustfmt, documentation status,
+  capability-maturity freshness and whitespace pass. Session-close reports four
+  OK, two expected dirty-tree/manual-plan warnings and no failures; roadmap
+  remains 400 lines. No Rust/runtime acceptance is claimed.
+
 ## 2026-10-23 - Align Stored-Plan And RNA MCP Tests With Approval Policy
 
 - Replace the obsolete shell-plan expectation that a parameter write succeeds
