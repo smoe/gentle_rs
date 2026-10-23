@@ -22462,7 +22462,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "requires_confirmation": false,
             "args": [], "reads": [], "effects": [],
             "precondition_expr": {"all": []},
-            "description": "Inspect source-backed Safe-Lock tube dimensions; no rack or sample required. No physical fit claim.",
+            "description": "Inspect source-backed tube and PCR-strip dimensions; no rack or sample required. No physical fit claim.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("InspectTubeProfiles")
         }),
@@ -22473,14 +22473,16 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "requires_confirmation": true,
             "args": [
                 {"name": "PROFILE", "required": true, "subject_kind": "other",
-                 "detail": "exact source-backed Safe-Lock profile ID from InspectTubeProfiles"},
+                 "detail": "exact source-backed tube or PCR-strip profile ID from InspectTubeProfiles"},
+                {"name": "TUBE_COUNT", "required": false, "subject_kind": "other",
+                 "detail": "tube_count: 1-8 contiguous tubes for a strip (default full strip); individual tubes accept only 1"},
                 external_output_arg()
             ],
             "reads": [],
             "effects": [{"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"},
                          "effect_kind": "external_handoff"}],
             "precondition_expr": {"all": []},
-            "description": "Export a visualization-only tube body and collar; no cap, hinge, cavity, rack binding or fit claim.",
+            "description": "Export a visualization-only tube body or cut PCR strip; no cap, cavity, rack binding or fit claim. Strip bridge and transition geometry is illustrative.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("ExportTubeOpenScad")
         }),

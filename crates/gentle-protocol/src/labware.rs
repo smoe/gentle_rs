@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 
 /// Resource budget for processing a rectangular grid, not a carrier capacity claim.
 pub const MAX_RACK_PROCESSING_POSITIONS: usize = 1_536;
+/// A cut PCR strip retains one through eight contiguous tubes.
+pub const MAX_PCR_STRIP_TUBES: usize = 8;
 
 /// Engineering assumptions in millimetres, not manufacturing tolerances.
 pub const RADIAL_CLEARANCE_COLLAR: f64 = 0.15;
@@ -294,15 +296,18 @@ pub enum TubeProfileId {
     EppendorfSafeLock20ml,
     #[serde(rename = "eppendorf_pcr_tube_0_2ml")]
     EppendorfPcrTube02ml,
+    #[serde(rename = "brand_pcr_strip_0_2ml_781320")]
+    BrandPcrStrip02ml781320,
 }
 
 impl TubeProfileId {
-    /// Stable inspection order: Safe-Lock 0.5/1.5/2.0 ml, then PCR 0.2 ml.
-    pub const ALL: [Self; 4] = [
+    /// Stable inspection order; new profiles are appended.
+    pub const ALL: [Self; 5] = [
         Self::EppendorfSafeLock05ml,
         Self::EppendorfSafeLock15ml,
         Self::EppendorfSafeLock20ml,
         Self::EppendorfPcrTube02ml,
+        Self::BrandPcrStrip02ml781320,
     ];
 
     /// The same stable identity used by the JSON contract.
@@ -312,6 +317,7 @@ impl TubeProfileId {
             Self::EppendorfSafeLock15ml => "eppendorf_safe_lock_1_5ml",
             Self::EppendorfSafeLock20ml => "eppendorf_safe_lock_2_0ml",
             Self::EppendorfPcrTube02ml => "eppendorf_pcr_tube_0_2ml",
+            Self::BrandPcrStrip02ml781320 => "brand_pcr_strip_0_2ml_781320",
         }
     }
 }
@@ -361,6 +367,15 @@ pub enum TubeBottomShape {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// Drawing-backed strip layout, separate from illustrative bridge/transition geometry.
+pub struct TubeStripLayout {
+    pub max_tubes: usize,
+    pub center_pitch: DrawingDimension,
+    pub rim_outer_diameter: DrawingDimension,
+    pub tip_outer_diameter: DrawingDimension,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 /// Portable drawing reference, never a saved inventory or compatibility record.
 pub struct TubeProfile {
     pub schema: String,
@@ -383,7 +398,28 @@ pub struct TubeProfile {
     pub open_90_side_view_width: DrawingDimension,
     pub cap_plan_outline_width: DrawingDimension,
     pub bottom_shape: TubeBottomShape,
+    /// Absent for individual tubes; old profile payloads/bytes stay unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strip: Option<TubeStripLayout>,
     pub nonclaims: Vec<String>,
+}
+
+impl TubeProfile {
+    /// Omission selects the full strip or one individual tube. Never clamp input.
+    pub fn model_tube_count(&self, requested: Option<usize>) -> Result<usize, String> {
+        let maximum = self.strip.as_ref().map_or(1, |strip| strip.max_tubes);
+        if maximum == 0 || maximum > MAX_PCR_STRIP_TUBES {
+            return Err("tube_model_strip_invalid: maximum must be in 1..=8".into());
+        }
+        let count = requested.unwrap_or(maximum);
+        if count == 0 || count > maximum {
+            return Err(format!(
+                "tube_model_count_invalid: {} requires 1..={maximum} tubes, got {count}",
+                self.id.as_str()
+            ));
+        }
+        Ok(count)
+    }
 }
 
 /// Static, source-cited data; never inferred from a project's container contents.
@@ -453,6 +489,7 @@ pub fn tube_profile(id: TubeProfileId) -> TubeProfile {
             TubeBottomShape::Rounded,
         ),
         TubeProfileId::EppendorfPcrTube02ml => return pcr_tube_profile(),
+        TubeProfileId::BrandPcrStrip02ml781320 => return brand_pcr_strip_profile(),
     };
     TubeProfile {
         schema: "gentle.tube_profile.v1".into(),
@@ -484,6 +521,7 @@ pub fn tube_profile(id: TubeProfileId) -> TubeProfile {
             source_callout: None,
         },
         bottom_shape: shape,
+        strip: None,
         nonclaims: vec![
             "Visualization reference, not a manufacturing drawing or a printable vessel".into(),
             "No verified fit, cap clearance, material, sterility or temperature qualification"
@@ -514,6 +552,7 @@ fn pcr_tube_profile() -> TubeProfile {
         closed_height: unknown(), closed_side_view_width: unknown(),
         open_90_height: unknown(), open_90_side_view_width: unknown(),
         cap_plan_outline_width: unknown(), bottom_shape: TubeBottomShape::ConicalWithRoundedTip,
+        strip: None,
         nonclaims: vec![
             "Drawing reference only; no physical fit, cap clearance or thermal/material qualification".into(),
             "No sufficient seating collar documented: maximum rim 6.0 versus main body 5.8 mm".into(),
@@ -522,9 +561,85 @@ fn pcr_tube_profile() -> TubeProfile {
     }
 }
 
+fn brand_pcr_strip_profile() -> TubeProfile {
+    let unknown = || DrawingDimension {
+        value_mm: None,
+        basis: DimensionBasis::NotDocumented,
+        source_callout: None,
+    };
+    TubeProfile {
+        schema: "gentle.tube_profile.v1".into(),
+        id: TubeProfileId::BrandPcrStrip02ml781320,
+        name: "BRAND PCR strip 0.2 ml - 1-8 tubes (781320)".into(),
+        nominal_volume_ml: 0.2,
+        source_url: "https://shop.brand.de/media/import/1/27/32406/42485/53752/56329/55264/Data_sheet_PCR_strips_DE.pdf".into(),
+        source_sha256: "sha256:8ba466736960b6933c642568d03ac5901c09010db176b7278d6e2989ffbd3c13".into(),
+        source_document: "BRAND PCR strips datasheet, article 781320; undated, retrieved 2026-10-22".into(),
+        source_page_1based: 6,
+        body_outer_diameter: DrawingDimension::measured(6.0, "section A-A: main body diameter 6"),
+        body_inner_diameter: unknown(),
+        collar_outer_diameter: DrawingDimension::measured(8.0, "section A-A: outer collar diameter 8"),
+        body_length: DrawingDimension::measured(20.75, "section A-A: overall uncapped height 20.75"),
+        cylindrical_section_length: unknown(),
+        closed_height: unknown(),
+        closed_side_view_width: unknown(),
+        open_90_height: unknown(),
+        open_90_side_view_width: unknown(),
+        cap_plan_outline_width: unknown(),
+        bottom_shape: TubeBottomShape::ConicalWithRoundedTip,
+        strip: Some(TubeStripLayout {
+            max_tubes: MAX_PCR_STRIP_TUBES,
+            center_pitch: DrawingDimension::measured(9.0, "adjacent centers 9; first-to-last centers 63 for eight tubes"),
+            rim_outer_diameter: DrawingDimension::measured(7.05, "section A-A: upper rim diameter 7.05"),
+            tip_outer_diameter: DrawingDimension::measured(2.75, "section A-A: lower outer diameter 2.75 before rounded tip"),
+        }),
+        nonclaims: vec![
+            "0.2 ml is nominal capacity per tube, not measured model cavity volume".into(),
+            "Visualization only; no physical fit, manufacturing, material or temperature qualification".into(),
+            "Separate caps, inner cavities, numbering and end tab/cut stubs are omitted".into(),
+            "Bridge cross-section, collar position/thickness, taper transition and tip rounding are illustrative, not drawing dimensions".into(),
+            "Counts 1-8 represent user-selected contiguous cut lengths, not separate manufacturer articles".into(),
+        ],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn labware_pcr_strip_count_bounds_and_source_dimensions() {
+        let profile = tube_profile(TubeProfileId::BrandPcrStrip02ml781320);
+        let strip = profile.strip.as_ref().unwrap();
+        assert_eq!(profile.nominal_volume_ml, 0.2);
+        assert_eq!(profile.source_page_1based, 6);
+        assert_eq!(strip.max_tubes, 8);
+        assert_eq!(strip.center_pitch.value_mm, Some(9.0));
+        assert_eq!(profile.body_length.value_mm, Some(20.75));
+        assert_eq!(profile.body_outer_diameter.value_mm, Some(6.0));
+        assert_eq!(profile.collar_outer_diameter.value_mm, Some(8.0));
+        assert_eq!(strip.rim_outer_diameter.value_mm, Some(7.05));
+        assert_eq!(strip.tip_outer_diameter.value_mm, Some(2.75));
+        assert_eq!(profile.cylindrical_section_length.value_mm, None);
+        assert_eq!(profile.closed_height.value_mm, None);
+        assert_eq!(profile.model_tube_count(None).unwrap(), 8);
+        for count in 1..=8 {
+            assert_eq!(profile.model_tube_count(Some(count)).unwrap(), count);
+        }
+        for count in [0, 9, usize::MAX] {
+            assert!(profile.model_tube_count(Some(count)).is_err());
+        }
+        assert_eq!(
+            serde_json::from_value::<TubeProfile>(serde_json::to_value(&profile).unwrap()).unwrap(),
+            profile
+        );
+        let single = tube_profile(TubeProfileId::EppendorfSafeLock15ml);
+        assert_eq!(single.model_tube_count(None).unwrap(), 1);
+        assert!(single.model_tube_count(Some(2)).is_err());
+        let old = serde_json::to_value(&single).unwrap();
+        assert!(old.get("strip").is_none());
+        assert_eq!(serde_json::from_value::<TubeProfile>(old).unwrap(), single);
+    }
 
     #[test]
     fn labware_pcr_profile_and_96_carrier_preserve_unknowns_and_require_8x12() {

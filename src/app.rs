@@ -1068,6 +1068,7 @@ pub struct GENtleApp {
     rack_label_sheet_preset: RackLabelSheetPreset,
     rack_carrier_label_preset: RackCarrierLabelPreset,
     rack_physical_template_kind: RackPhysicalTemplateKind,
+    rack_tube_strip_count: usize,
     rack_view_scroll_offset: Vec2,
     rack_view_selected_coordinates: BTreeSet<String>,
     rack_view_selected_arrangement_ids: BTreeSet<String>,
@@ -3015,6 +3016,7 @@ impl Default for GENtleApp {
             rack_label_sheet_preset: RackLabelSheetPreset::default(),
             rack_carrier_label_preset: RackCarrierLabelPreset::default(),
             rack_physical_template_kind: RackPhysicalTemplateKind::default(),
+            rack_tube_strip_count: gentle_protocol::labware::MAX_PCR_STRIP_TUBES,
             rack_view_scroll_offset: Vec2::ZERO,
             rack_view_selected_coordinates: BTreeSet::new(),
             rack_view_selected_arrangement_ids: BTreeSet::new(),
@@ -25363,9 +25365,14 @@ Error: `{err}`"
                 path
             ),
             Operation::InspectTubeProfiles {} => "Inspect drawing-backed tube profiles".into(),
-            Operation::ExportTubeOpenScad { profile, path } => format!(
-                "Export visualization-only tube model: profile={}, path={}",
+            Operation::ExportTubeOpenScad {
+                profile,
+                path,
+                tube_count,
+            } => format!(
+                "Export visualization-only tube model: profile={}, tube_count={}, path={}",
                 profile.as_str(),
+                tube_count.map_or_else(|| "profile default".into(), |count| count.to_string()),
                 path
             ),
             Operation::ExportRackCarrierLabelsSvg {

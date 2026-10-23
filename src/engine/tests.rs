@@ -35808,11 +35808,64 @@ fn labware_pcr96_carrier_exports_preserve_floor_and_disclose_nonclaims() {
 }
 
 #[test]
+fn labware_pcr_strip_exports_all_lengths_and_refuses_before_overwrite() {
+    use gentle_protocol::labware::TubeProfileId;
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let journal_before = engine.journal_len();
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("cut strip's model.scad");
+    let profile = TubeProfileId::BrandPcrStrip02ml781320;
+    for count in 1..=8 {
+        let operation = Operation::ExportTubeOpenScad {
+            profile,
+            path: path.to_str().unwrap().into(),
+            tube_count: Some(count),
+        };
+        let result = engine.apply(operation.clone()).unwrap();
+        assert_eq!(result.tube_profiles.unwrap()[0].id, profile);
+        let first = fs::read(&path).unwrap();
+        assert_eq!(
+            first,
+            gentle_render::labware::render_tube_openscad_with_count(profile, Some(count))
+                .unwrap()
+                .as_bytes()
+        );
+        engine.apply(operation).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), first);
+    }
+    let sentinel = b"keep previous model";
+    for (id, count) in [
+        (profile, 0),
+        (profile, 9),
+        (profile, usize::MAX),
+        (TubeProfileId::EppendorfSafeLock15ml, 2),
+    ] {
+        fs::write(&path, sentinel).unwrap();
+        let error = engine
+            .apply(Operation::ExportTubeOpenScad {
+                profile: id,
+                path: path.to_str().unwrap().into(),
+                tube_count: Some(count),
+            })
+            .unwrap_err();
+        assert!(matches!(error.code, ErrorCode::InvalidInput));
+        assert!(error.message.starts_with("tube_model_count_invalid:"));
+        assert_eq!(fs::read(&path).unwrap(), sentinel);
+    }
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+    assert_eq!(engine.journal_len(), journal_before);
+}
+
+#[test]
 fn labware_tube_profile_inspection_and_model_exports_are_state_read_only() {
     let mut engine = GentleEngine::from_state(ProjectState::default());
     let before = serde_json::to_value(engine.state()).unwrap();
     let inspected = engine.apply(Operation::InspectTubeProfiles {}).unwrap();
-    assert_eq!(inspected.tube_profiles.unwrap().len(), 4);
+    assert_eq!(
+        inspected.tube_profiles.unwrap().len(),
+        gentle_protocol::labware::TubeProfileId::ALL.len()
+    );
     assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
     let directory = tempdir().unwrap();
     for profile in gentle_protocol::labware::TubeProfileId::ALL {
@@ -35823,6 +35876,7 @@ fn labware_tube_profile_inspection_and_model_exports_are_state_read_only() {
                 .apply(Operation::ExportTubeOpenScad {
                     profile,
                     path: path.to_str().unwrap().into(),
+                    tube_count: None,
                 })
                 .unwrap_err();
             assert!(matches!(error.code, ErrorCode::InvalidInput));
@@ -35839,6 +35893,7 @@ fn labware_tube_profile_inspection_and_model_exports_are_state_read_only() {
             .apply(Operation::ExportTubeOpenScad {
                 profile,
                 path: path.to_str().unwrap().into(),
+                tube_count: None,
             })
             .unwrap();
         assert_eq!(result.tube_profiles.unwrap()[0].id, profile);
@@ -35853,6 +35908,7 @@ fn labware_tube_profile_inspection_and_model_exports_are_state_read_only() {
         .apply(Operation::ExportTubeOpenScad {
             profile: gentle_protocol::labware::TubeProfileId::EppendorfSafeLock15ml,
             path: directory.path().to_str().unwrap().into(),
+            tube_count: None,
         })
         .unwrap_err();
     assert!(matches!(error.code, ErrorCode::Io));

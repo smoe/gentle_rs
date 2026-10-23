@@ -172,7 +172,7 @@ fn labware_generic_op_route_preserves_profiles_models_and_project_state() {
             .as_array()
             .unwrap()
             .len(),
-        4
+        gentle_protocol::labware::TubeProfileId::ALL.len()
     );
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("tube model's output.scad");
@@ -180,6 +180,7 @@ fn labware_generic_op_route_preserves_profiles_models_and_project_state() {
     let op = Operation::ExportTubeOpenScad {
         profile,
         path: path.to_str().unwrap().into(),
+        tube_count: None,
     };
     let payload = serde_json::to_string(&op).unwrap();
     let parsed = parse_shell_line(&format!("op {}", quote_shell_arg(&payload))).unwrap();
@@ -194,6 +195,55 @@ fn labware_generic_op_route_preserves_profiles_models_and_project_state() {
         gentle_render::labware::render_tube_openscad(profile).unwrap()
     );
     assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+}
+
+#[test]
+fn labware_pcr_strip_generic_op_defaults_and_explicit_count_round_trip() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("PCR strip's model.scad");
+    for count in [None, Some(1), Some(4), Some(8)] {
+        let mut payload = serde_json::json!({"ExportTubeOpenScad": {
+            "profile": "brand_pcr_strip_0_2ml_781320",
+            "path": path.to_str().unwrap()
+        }});
+        if let Some(count) = count {
+            payload["ExportTubeOpenScad"]["tube_count"] = serde_json::json!(count);
+        }
+        let operation: Operation = serde_json::from_value(payload.clone()).unwrap();
+        assert_eq!(serde_json::to_value(operation).unwrap(), payload);
+        let line = format!("op {}", quote_shell_arg(&payload.to_string()));
+        let result = execute_shell_command(&mut engine, &parse_shell_line(&line).unwrap()).unwrap();
+        assert!(!result.state_changed);
+        let source = std::fs::read_to_string(&path).unwrap();
+        assert!(source.contains(&format!("tube_count = {};", count.unwrap_or(8))));
+    }
+    for count in [
+        serde_json::json!(-1),
+        serde_json::json!(2.5),
+        serde_json::json!("4"),
+    ] {
+        let payload = serde_json::json!({"ExportTubeOpenScad": {
+            "profile": "brand_pcr_strip_0_2ml_781320", "path": "unused.scad", "tube_count": count
+        }});
+        assert!(parse_shell_line(&format!("op {}", quote_shell_arg(&payload.to_string()))).is_err());
+    }
+    let legacy = serde_json::json!({"ExportTubeOpenScad": {
+        "profile": "eppendorf_safe_lock_1_5ml", "path": "unused.scad"
+    }});
+    let operation: Operation = serde_json::from_value(legacy.clone()).unwrap();
+    assert_eq!(serde_json::to_value(operation).unwrap(), legacy);
+    let descriptor = introspection_capability_descriptors(None)
+        .into_iter()
+        .find(|row| row["id"] == "ExportTubeOpenScad")
+        .unwrap();
+    assert!(
+        descriptor["args"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|arg| arg["name"] == "TUBE_COUNT" && arg["required"] == false)
+    );
 }
 
 #[test]

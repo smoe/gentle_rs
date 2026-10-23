@@ -9618,6 +9618,47 @@ fn labware_oversized_rack_gui_helpers_do_not_expand_the_saved_grid() {
 }
 
 #[test]
+fn labware_pcr_strip_gui_selection_uses_shared_export_without_inventory_changes() {
+    use gentle_protocol::labware::TubeProfileId;
+    let mut app = GENtleApp::default();
+    assert_eq!(app.rack_tube_strip_count, 8);
+    let before = serde_json::to_value(app.engine.read().unwrap().state()).unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("GUI cut strip.scad");
+    for count in [1, 3, 8] {
+        app.rack_tube_strip_count = count;
+        let operation = app.tube_model_export_operation(
+            TubeProfileId::BrandPcrStrip02ml781320,
+            path.to_str().unwrap().into(),
+        );
+        assert!(
+            matches!(&operation, Operation::ExportTubeOpenScad { tube_count: Some(n), .. } if *n == count)
+        );
+        app.engine.write().unwrap().apply(operation).unwrap();
+        assert!(
+            std::fs::read_to_string(&path)
+                .unwrap()
+                .contains(&format!("tube_count = {count};"))
+        );
+    }
+    let single = app.tube_model_export_operation(
+        TubeProfileId::EppendorfSafeLock15ml,
+        path.to_str().unwrap().into(),
+    );
+    assert!(matches!(
+        single,
+        Operation::ExportTubeOpenScad {
+            tube_count: None,
+            ..
+        }
+    ));
+    assert_eq!(
+        serde_json::to_value(app.engine.read().unwrap().state()).unwrap(),
+        before
+    );
+}
+
+#[test]
 fn labware_carrier_gui_labels_disclose_support_and_unverified_status() {
     for (template, visible) in [
         (RackPhysicalTemplateKind::StoragePcrTubeRack, false),

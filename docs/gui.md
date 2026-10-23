@@ -5114,6 +5114,13 @@ Exports:
   the hover; complete dimensions/provenance accompany the exported file.
   Cap, hinge and cavity are omitted and assumptions are labelled. These are
   not printable vessels or proof of compatibility with an existing template.
+- The same section includes **BRAND PCR strip 0.2 ml - 1-8 tubes (781320)**.
+  **Retained tubes** defaults to eight and admits one through eight contiguous
+  tubes, representing a cut strip. Export goes through `ExportTubeOpenScad`
+  with `tube_count`; the selected count is included in the suggested filename.
+  Capacity is 0.2 ml per tube. Only internal bridges are retained; separate caps,
+  cavities and cut stubs/end tab are omitted. Bridge and taper details remain
+  illustrative, not physical-fit evidence. This creates no sample inventory.
 - Grid processing is bounded to 1,536 positions with overflow-checked dimensions.
   Unsupported saved racks still open unchanged; a visible explanation replaces
   the grid and processing refuses, rather than expanding or truncating it.

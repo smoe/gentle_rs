@@ -1937,3 +1937,14 @@ are recorded as a source lead, not a qualified compatibility profile.
 Box modeling remains unimplemented. New template metadata is
 optional and omitted for legacy templates so their serialized bytes and
 geometry remain unchanged. No new template establishes verified fit.
+
+Owner request, 2026-10-22: model contiguous cut 0.2-ml PCR strips of one through
+eight tubes. BRAND 781320 is a separate manufacturer-bound reference, not a
+renaming of the Eppendorf tube or PCR96 carrier. Its additive strip layout and
+optional export count use the existing tube inspection/export operations.
+The dedicated strip silhouette consumes the documented envelope and pitch;
+undimensioned taper transition, collar position/thickness and bridge details
+are explicit visualization assumptions, not filled-in drawing dimensions.
+Keep those unknown profile fields null and retain individual-tube refusal
+rules. Cut count does not change per-tube nominal capacity, create inventory,
+qualify fit, or establish manufacturer support for cut-end geometry.
