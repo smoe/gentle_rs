@@ -226,7 +226,9 @@ fn labware_pcr_strip_generic_op_defaults_and_explicit_count_round_trip() {
         let payload = serde_json::json!({"ExportTubeOpenScad": {
             "profile": "brand_pcr_strip_0_2ml_781320", "path": "unused.scad", "tube_count": count
         }});
-        assert!(parse_shell_line(&format!("op {}", quote_shell_arg(&payload.to_string()))).is_err());
+        assert!(
+            parse_shell_line(&format!("op {}", quote_shell_arg(&payload.to_string()))).is_err()
+        );
     }
     let legacy = serde_json::json!({"ExportTubeOpenScad": {
         "profile": "eppendorf_safe_lock_1_5ml", "path": "unused.scad"
@@ -25956,8 +25958,8 @@ fn execute_agents_plan_builtin_echo_returns_typed_plan() {
 }
 
 #[test]
-fn execute_agents_execute_plan_runs_shell_candidate_without_confirm() {
-    let plan = serde_json::json!({
+fn execute_agents_execute_plan_requires_confirm_for_mutating_shell_candidate() {
+    let mut plan = serde_json::json!({
         "schema": "gentle.agent_plan_result.v1",
         "assistant_message": "ready",
         "questions": [],
@@ -25974,7 +25976,64 @@ fn execute_agents_execute_plan_runs_shell_candidate_without_confirm() {
             }
         ]
     });
+    for declared_mutating in [true, false] {
+        plan["candidates"][0]["mutating"] = declared_mutating.into();
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        let before = serde_json::to_value(engine.state()).unwrap();
+        let journal_before = engine.journal_len();
+        let err = execute_shell_command(
+            &mut engine,
+            &ShellCommand::AgentsExecutePlan {
+                plan_input: plan.to_string(),
+                candidate_id: "candidate-1".to_string(),
+                confirm: false,
+            },
+        )
+        .expect_err("a mutating shell command requires confirmation regardless of model flags");
+        assert!(err.contains("--confirm"), "unexpected error: {err}");
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+        assert_eq!(engine.journal_len(), journal_before);
+
+        let out = execute_shell_command(
+            &mut engine,
+            &ShellCommand::AgentsExecutePlan {
+                plan_input: plan.to_string(),
+                candidate_id: "candidate-1".to_string(),
+                confirm: true,
+            },
+        )
+        .expect("execute explicitly confirmed plan");
+        assert!(out.state_changed);
+        assert_eq!(engine.state().parameters.max_fragments_per_container, 123);
+        assert_eq!(engine.journal_len(), journal_before + 1);
+        assert_eq!(
+            out.output["schema"].as_str(),
+            Some("gentle.agent_execution_result.v1")
+        );
+        assert_eq!(out.output["candidate_id"].as_str(), Some("candidate-1"));
+    }
+}
+
+#[test]
+fn execute_agents_execute_plan_runs_read_only_shell_candidate_without_confirm() {
+    let plan = serde_json::json!({
+        "schema": "gentle.agent_plan_result.v1",
+        "assistant_message": "ready",
+        "questions": [],
+        "candidates": [{
+            "candidate_id": "candidate-1",
+            "title": "Inspect state",
+            "rationale": "read-only shell command",
+            "kind": "shell",
+            "mutating": false,
+            "requires_confirmation": false,
+            "execution_mode": "auto",
+            "shell_command": "state-summary"
+        }]
+    });
     let mut engine = GentleEngine::from_state(ProjectState::default());
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let journal_before = engine.journal_len();
     let out = execute_shell_command(
         &mut engine,
         &ShellCommand::AgentsExecutePlan {
@@ -25983,8 +26042,10 @@ fn execute_agents_execute_plan_runs_shell_candidate_without_confirm() {
             confirm: false,
         },
     )
-    .expect("execute plan");
-    assert!(out.state_changed);
+    .expect("execute read-only plan without confirmation");
+    assert!(!out.state_changed);
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+    assert_eq!(engine.journal_len(), journal_before);
     assert_eq!(
         out.output["schema"].as_str(),
         Some("gentle.agent_execution_result.v1")

@@ -5407,14 +5407,22 @@ mod tests {
             reopened["result"]["structuredContent"]["result"]["rna_read_panel_summary"],
             exported["result"]["structuredContent"]["result"]["rna_read_panel_summary"]
         );
-        let verified = run_tool(
-            DEFAULT_MCP_STATE_PATH,
-            "op",
-            json!({"state_path":state_path, "confirm":false,
-                "operation":{"InspectRnaReadPanel":{
-                    "path":root.join("MCP summary/report.json"), "verify_artifacts":true}}
-            }),
-        );
+        let summary_path = root.join("MCP summary/report.json");
+        let state_bytes = fs::read(&state_path).unwrap();
+        let summary_bytes = fs::read(&summary_path).unwrap();
+        let mut verification_args = json!({
+            "state_path":state_path, "confirm":false,
+            "operation":{"InspectRnaReadPanel":{
+                "path":summary_path, "rows":0, "verify_artifacts":true}}
+        });
+        let denied = run_tool(DEFAULT_MCP_STATE_PATH, "op", verification_args.clone());
+        assert_eq!(denied["result"]["isError"], true, "{denied}");
+        assert!(denied.to_string().contains("confirm"), "{denied}");
+        assert_eq!(fs::read(&state_path).unwrap(), state_bytes);
+        assert_eq!(fs::read(&summary_path).unwrap(), summary_bytes);
+
+        verification_args["confirm"] = true.into();
+        let verified = run_tool(DEFAULT_MCP_STATE_PATH, "op", verification_args);
         assert_eq!(verified["result"]["isError"], false, "{verified}");
         let expected_verification = direct
             .verify_rna_read_panel_summary_artifacts(
@@ -5426,6 +5434,7 @@ mod tests {
             verified["result"]["structuredContent"]["result"]["rna_read_panel_verification"],
             serde_json::to_value(expected_verification).unwrap()
         );
+        assert_eq!(fs::read(&summary_path).unwrap(), summary_bytes);
         let after = ProjectState::load_from_path(&state_path.to_string_lossy()).unwrap();
         assert_eq!(serde_json::to_value(after).unwrap(), before);
         assert_eq!(serde_json::to_value(direct.state()).unwrap(), before);

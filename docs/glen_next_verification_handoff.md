@@ -1,5 +1,27 @@
 # Glen: Next Verification And Return
 
+## Stored-Plan And RNA MCP Test Expectations, 2026-10-23
+
+The owner's two latest library failures were obsolete approval expectations,
+not evidence that either production gate should be relaxed. The shell test now
+requires denial for a parameter write (including falsely read-only metadata),
+unchanged denied state/history and one confirmed operation. A separate read-only
+shell plan still executes without confirmation. The RNA MCP rehearsal first
+denies raw `op` verification without `confirm=true`, checks untouched project/
+report bytes, then explicitly approves it and retains scientific-payload parity
+and unchanged semantic state. Shared-shell read-only exemptions are unchanged.
+
+At the next ordinary integrated run, include these focused checks; do not
+restart completed acceptance campaigns or impose an interim source freeze:
+
+```sh
+cargo test --locked --lib -j1 engine_shell::tests::execute_agents_execute_plan_ -- --test-threads=1
+cargo test --locked --lib -j1 mcp_server::tests::rna_panel_mcp_rehearsal_matches_direct_scientific_payload -- --exact --test-threads=1
+```
+
+Use the normal run-owned target and return actual source/toolchain/platform,
+failures/skips and retained logs through Steffen. Codex ran no Rust verification.
+
 ## RNA Table-Verifier Import Repair, 2026-10-23
 
 The owner's compiler found E0432 in `rna_panel/verification.rs`: `sha2` was

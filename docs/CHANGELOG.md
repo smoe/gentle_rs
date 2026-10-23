@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-10-23 - Align Stored-Plan And RNA MCP Tests With Approval Policy
+
+- Replace the obsolete shell-plan expectation that a parameter write succeeds
+  without approval. Require refusal with unchanged state/history for both honest
+  and falsely read-only candidate flags, then verify confirmed execution adds
+  exactly one operation. Keep a separate genuinely read-only, unconfirmed test.
+- Preserve the raw MCP `op` confirmation gate in the RNA rehearsal: first assert
+  refusal and byte-identical project/report files, then approve verification and
+  retain direct-engine payload parity, unchanged report bytes and semantic
+  project-state equality. No production gate, freshness or scientific assertion
+  is weakened. Rust execution remains with the owner/Glen/CI; no local build,
+  push or provider call is performed.
+- Verification: 92 Python source/checkout checks pass, including LF/CRLF;
+  scoped rustfmt, documentation status, maturity freshness and whitespace pass.
+  Format one newly merged strip-test assertion as required by rustfmt.
+  Session-close: four OK, two expected dirty-tree/manual-plan warnings, no
+  failures; roadmap remains 400 lines. These are not Rust/runtime acceptance.
+
 ## 2026-10-23 - Use The Declared Hash Backend In RNA Table Verification
 
 - Fix the owner's E0432: the RNA table verifier imported undeclared `sha2`.
