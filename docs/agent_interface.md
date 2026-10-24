@@ -24,6 +24,14 @@ stale/mismatched markers fail. Progress includes decoder read-ahead; only EOF
 checksum verification and the final report establish verified units/completion.
 Do not pool incompatible policies/panels or repeated input hashes; cancelled
 sources remain partial. No FASTQ reread, OS helper or abundance inference.
+For a mid-run marker failure, distinguish a returned report from successful
+screening: `status=control_error` retains only verified units, emits a warning
+and is failed execution feedback, not authorized cancellation. Use `panel-show`
+to explain `control_error` (code/message/path/phase/file ID) and named missing
+inputs. Summary `source_runs` retains that diagnostic and stays partial, even
+when finalization failed after every file verified. Never silently overwrite
+the marker, repair the report, restart or inherit permission for a new request.
+Preflight marker failures and non-control hard errors remain unchanged.
 
 Last updated: 2026-08-26
 

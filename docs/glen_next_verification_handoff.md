@@ -17,6 +17,39 @@ Return actual source/toolchain/platform and results through Steffen. No repeated
 mesh render, completed acceptance campaign or new source freeze is requested.
 Codex ran no Rust verification; production journaling/parser behavior is unchanged.
 
+## Mid-Run FASTQ Control-Error Retention, 2026-10-23
+
+At the ordinary integrated SHA, run the focused `rna_panel_` and
+`rna_panel_mcp` lib filters, agent-feedback/agent-execution and shared-shell
+approval tests, existing glossary/parity/catalog freshness, and
+`cargo check -q --locked --tests`. No new freeze or private chunk is requested.
+
+New `rna_panel_mid_run_marker_errors_preserve_verified_units_with_explicit_outcomes`
+injects faults through progress callbacks without sleeps. Require preserved
+first-unit bytes/hashes and `status=control_error` at file boundary, during
+intake and at finalization; malformed/nonregular markers follow the same policy.
+Check zero verified units remain unassessed, matching cancellation remains
+cancelled, and a later callback cancel cannot overwrite the control error.
+The hard checksum/resource-error regression must still publish no result, even
+after an earlier unit verified. Preflight mismatch remains a hard refusal.
+The binding regression rejects missing diagnostics, mismatched paths and
+relabelled success/cancel/legacy outcomes. MCP rehearsal now inspects the
+retained control-error report and exports a partial summary with the same cause.
+
+Replay tutorial 10.04 in a disposable project through CLI, MCP and the live
+inner agent. Require a visible warning, failed screening feedback and retained
+named missing inputs, while named inspection can complete. A summary keeps
+`source_runs[].control_error` and remains partial even if finalization failed
+after every file verified. The agent should explain fresh control/output paths
+and explicit remaining-file retry, not silently restart or edit the marker.
+Native Windows must verify closed handles before partial-unit cleanup and
+publication; retain Unix nonregular/symlink coverage. Optional diagnostics are
+omitted when absent so historical v1/v2 semantic digests remain unchanged.
+No Rust/native checks were run locally; report exact source/toolchain/platform
+and executed results, not a new biological or throughput verdict. The added
+selection/cumulative-budget tutorial cautions do not implement the separate
+index rewrite, resource-limited continuation or legacy-path follow-ups.
+
 ## Stored-Plan And RNA MCP Test Expectations, 2026-10-23
 
 The owner's two latest library failures were obsolete approval expectations,

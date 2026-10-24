@@ -46,7 +46,7 @@ panel/report/row payloads are the same; no adapter-local classification is added
   basenames collide; supplier paths need not exist locally. Sample identities
   cannot map to conflicting barcode/priming values within a request.
 - `gentle.rna_read_panel_screen.v2`: effective request with resolved expected
-  digests, panel SHA-256, posting count, `completed|cancelled` status, verified
+  digests, panel SHA-256, posting count, `completed|cancelled|control_error` status, verified
   `files_completed`, `files_not_completed`, named `inputs_not_completed`, nonclaims and explicit false
   `isoform_assignment_performed` / `alignment_confirmation_performed`.
   Each receipt binds raw/compressed MD5/SHA-256 and bytes, read/class counts,
@@ -100,6 +100,19 @@ remaining files. Markers carry the SHA-256 of the original/effective request;
 a matching pre-start marker cancels, while stale/mismatched/nonregular markers
 fail explicitly. Marker checks and progress callbacks are throttled to 100 ms
 inside a file/nomination (forced at boundaries), not per k-mer.
+Preflight marker errors still refuse admission without publishing a report.
+After startup, marker errors stop work with `status=control_error`, preserving
+only checksum-verified completed units and discarding the unfinished unit.
+The optional `control_error` diagnostic contains stable code
+`panel_control_marker_error`, underlying message, marker path, phase
+(`file_boundary|streaming|finalization`) and affected file ID (null for
+finalization). A foreign marker is not an authorized cancellation; later
+progress-cancellation feedback cannot overwrite the observed control error.
+An error observed at finalization can retain every requested unit but still
+cannot report successful analysis completion. Other data/resource/publication
+failures keep their existing hard-error contracts. New diagnostic fields are
+omitted when absent, preserving historical v1/v2 digest round trips; a
+control-error outcome requires a bound diagnostic and is not admitted as v1.
 `OperationProgress::RnaReadPanel` carries file/sample IDs, one-based ordinal,
 file count, processed reads, compressed bytes read/total and phase.
 `streaming_unverified` bytes include decoder read-ahead; neither bytes nor
@@ -138,12 +151,18 @@ and published as `report.json` after closed/synced LF TSV files under `artifacts
 The JSON retains these rows, exact source report/file digests, the common
 panel/policy, table hashes and nonclaims. Ordering is deterministic by report
 digest, sample and member/set identities, independent of request report order.
-`completeness=complete` covers only supplied completed reports; any cancelled
+`completeness=complete` covers only supplied completed reports; any cancelled or control-error
 source yields `partial`, with its named uncompleted-input ledger retained. Only
 verified completed units contribute. A sample without any such unit has no
 numeric transcript rows, not a zero-expression result. `sample_coverage` lists
 every requested sample with requested/verified units, `complete|partial|unassessed`,
 optional reads (None for unassessed) and full missing input identities.
+`source_runs[].control_error` retains the exact diagnostic alongside its
+`status`. Sample coverage describes verified-file coverage, not normal run
+completion: all samples may have complete coverage while the summary remains
+partial because a source ended with a control error. Shared agent execution
+feedback reports a control-error screen as failed; named report inspection
+can complete successfully without changing that saved analysis outcome.
 Cancelled ledgers are retained even alongside a later continuation; no automatic
 cross-run coverage reconciliation is inferred. Fields `original_inputs_reverified`
 and `nomination_sidecars_reverified` are false. No alignment, molecular copy,

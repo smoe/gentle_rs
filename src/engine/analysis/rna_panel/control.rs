@@ -24,6 +24,22 @@ pub(super) fn cancel_identity(request: &ScreenRnaReadPanelRequest) -> Result<Str
     Ok(sha256_prefixed_bytes(&encode(request)?))
 }
 
+pub(super) fn diagnostic(
+    error: EngineError,
+    marker_path: Option<&str>,
+    phase: RnaReadPanelControlErrorPhase,
+    file_id: Option<&str>,
+) -> RnaReadPanelControlError {
+    RnaReadPanelControlError {
+        code: "panel_control_marker_error".into(),
+        message: error.message,
+        // marker_requested can only fail when a path was supplied.
+        marker_path: marker_path.unwrap_or_default().into(),
+        phase,
+        file_id: file_id.map(str::to_string),
+    }
+}
+
 /// A matching pre-start request remains a valid cancellation; stale/malformed markers fail closed.
 pub(super) fn marker_requested(
     path: Option<&str>,

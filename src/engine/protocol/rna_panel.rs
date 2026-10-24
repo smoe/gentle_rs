@@ -204,9 +204,29 @@ pub struct RnaReadPanelFileReceipt {
     pub artifacts: Vec<RnaReadPanelArtifact>,
 }
 
+/// Where a marker failure was observed, not a request to cancel.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RnaReadPanelControlErrorPhase {
+    FileBoundary,
+    Streaming,
+    Finalization,
+}
+
+/// Post-start marker failure; retaining verified units does not authorize cancellation or prove completion.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-/// Verified file units and ambiguity counts; cancelled never means a complete run.
+pub struct RnaReadPanelControlError {
+    pub code: String,
+    pub message: String,
+    pub marker_path: String,
+    pub phase: RnaReadPanelControlErrorPhase,
+    pub file_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+/// Verified units survive cancellation/control errors; neither outcome means a complete analysis.
 pub struct RnaReadPanelScreenReport {
     pub schema: String,
     pub content_sha256: String,
@@ -220,6 +240,9 @@ pub struct RnaReadPanelScreenReport {
     pub files_not_completed: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inputs_not_completed: Option<Vec<RnaReadPanelInput>>,
+    /// Absent on historical v1/v2 reports and on successful or requested-cancel outcomes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub control_error: Option<RnaReadPanelControlError>,
     pub nonclaims: Vec<String>,
 }
 
@@ -268,6 +291,8 @@ pub struct RnaReadPanelSummaryRun {
     pub files_not_completed: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inputs_not_completed: Option<Vec<RnaReadPanelInput>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub control_error: Option<RnaReadPanelControlError>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

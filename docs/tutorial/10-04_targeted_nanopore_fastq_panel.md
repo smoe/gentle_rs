@@ -157,7 +157,10 @@ a build request like the following, adding one source row for each actual locus:
 and release with the inspected source values. An empty transcript list includes
 all transcripts in that explicit source feature's gene/strand group. A nonempty
 list restricts it to those exact transcript IDs; it is not a canonical-isoform
-selection. Selected transcripts, source loci and all annotated transcripts are
+selection. **Restriction also removes competitors from the index.** A read
+from an excluded isoform can therefore nominate a selected member alone through
+shared exons. A singleton is relative to the selected panel, not evidence that
+excluded alternatives were tested or absent. Selected transcripts, source loci and all annotated transcripts are
 reported separately. Check these counts before screening reads.
 
 ```bash
@@ -234,7 +237,9 @@ the current partial file is discarded and the report says `cancelled`.
 
 Markers are bound to the exact original or effective screen request. Matching
 pre-start cancellation is supported; a stale, malformed or different-request
-marker is refused, never silently treated as cancellation. Do not create markers
+marker is never treated as an authorized cancellation. Before startup it is a
+hard refusal; after startup it produces the `control_error` outcome explained below.
+Do not create markers
 with `touch` or reuse an old marker for changed inputs/settings.
 Use a fresh cancel path for a new run. A command returning with a
 cancelled report is not a completed analysis. New runs always need a fresh
@@ -245,6 +250,55 @@ engine operations; external writes require explicit approval. No dedicated
 panel GUI or separate job scheduler is added here. Standard four-line FASTQ
 records are supported (LF/CRLF, Phred+33, concatenated gzip members); wrapped
 sequence/quality records are refused, not silently repaired.
+
+### 3.1 When A Cancellation Marker Goes Wrong Mid-Run
+
+The marker is a control file, not sequencing data. For example, a second process
+could reuse its path for a different request, replace it with a directory, or
+leave unreadable/malformed contents. A marker problem does **not** mean your
+reads failed their checksums, and it is not your authorized cancellation.
+
+If GENtle observes such a problem after startup, it stops screening and uses
+the normal safeguards to publish `report.json` with **`status: control_error`**.
+An unrelated output/I/O failure can still prevent publication. Only file units already read to
+EOF, checksum-verified and closed are retained. The unfinished unit is discarded;
+it never contributes partial counts. A problem detected before any unit completes
+can therefore produce a report with no verified files and unassessed samples.
+
+The report's `control_error` object gives `code: panel_control_marker_error`,
+the underlying `message`, `marker_path`, `phase` and affected `file_id`:
+
+| Phase | Where the problem was observed |
+| --- | --- |
+| `file_boundary` | Before starting the next file; its ID is given. Earlier verified units remain. |
+| `streaming` | During intake/nomination of the named file. That whole unfinished unit is discarded. |
+| `finalization` | After file units were verified but before report publication; `file_id` is null. All verified units remain, but the analysis still did not finish normally. |
+
+**Visible outcome:** the screen result carries a warning; shared agent feedback
+marks screening failed, not cancelled or completed. A command may return a
+structured report successfully; its process exit or a published JSON file alone
+does not establish a completed analysis. Check `status` explicitly. Reopening
+the report is a successful inspection, not a change to the saved outcome.
+
+1. Use `rna-reads panel-show /absolute/run/report.json` to inspect the outcome,
+   diagnostic, `files_completed` and named `inputs_not_completed`.
+2. Investigate the conflicting path/process. Do not overwrite the marker or
+   edit the report to make it look successful. Use a fresh cancel path and fresh
+   output directory for any new, explicitly reviewed request.
+3. `panel-export-summary` can export the preserved units. It retains
+   `source_runs[].status: control_error` and the diagnostic, with overall
+   `completeness: partial`. Sample coverage still describes verified files only:
+   a sample can have complete file coverage while the run has a control error.
+4. Retry only the named uncompleted inputs after fixing the control path and
+   confirming copying is complete. There is no automatic restart, in-file resume
+   or cross-run reconciliation. If finalization failed after every unit was
+   verified, inspect that evidence rather than blindly re-screening and double-counting it.
+
+This retention rule is **only for post-start marker errors**. A wrong marker
+already present at preflight still gives a hard error with no new result.
+Parse errors, corrupt/truncated gzip, changing inputs, checksum mismatches,
+resource-budget errors and publication/I/O failures keep their existing hard
+failure rules. They are never converted into control errors to rescue counts.
 
 ## 4. Read The Evidence, Not Just The Largest Count
 
@@ -338,7 +392,7 @@ its constituent chunks in one analysis:** their different compressed hashes
 do not detect that overlap, and their reads would be counted twice.
 Never pool the two actual sample identities.
 
-A cancelled source keeps `completeness: partial`, even if another source
+A cancelled or control-error source keeps `completeness: partial`, even if another source
 completed. Only its verified completed files contribute counts. Samples with
 no completed files have no numerical rows in the transcript table; their
 `samples.tsv` row is `unassessed` with blank read counts. JSON `sample_coverage`
@@ -386,6 +440,16 @@ with file ID, zero-based record index and read ID in the diagnostic. No
 `resource_limited` continuation or result directory is silently published.
 Retain the diagnostic and adjust a new explicit request only after review;
 previous units in that failed unpublished run are not summary evidence.
+The anchor budget counts postings across all indexed members, so long reads
+and many shared isoforms can hit it without the read being biologically wrong.
+Class-key storage is also cumulative: at most 16 MB across **all files in one
+screen request**, not 16 MB per chunk. Screen requests admit at most 4096 files.
+Start with one explicitly completed chunk per run and keep runs small while
+Glen measures real-library behavior; this bounds the cost of a hard failure.
+Summary exports can combine compatible completed units afterward. Do not narrow
+the transcript selection merely to avoid a budget without acknowledging the
+removed competitors. No locus-index rewrite or resource-limited continuation
+is introduced by the control-error repair.
 
 ## 5. Inspect Alignments As A Separate Follow-Up
 

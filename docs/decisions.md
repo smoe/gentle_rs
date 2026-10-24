@@ -79,6 +79,15 @@ and digest-bound, not an implicit expensive display operation or a revalidation
 of original reads/nomination sidecars. V1 fields remain readable without
 changing their semantic digest or promoting their historical names into claims.
 
+Owner-authorized 2026-10-23 follow-up: a marker error after startup preserves
+checksum-verified file units under an explicit `control_error` outcome with
+a source-bound diagnostic, never as an authorized cancellation or successful
+analysis. Discard the unfinished unit, retain named missing inputs, and keep
+control-error source summaries partial even if all requested files happened
+to verify before finalization. Preflight marker errors and unrelated data,
+resource and publication failures keep their existing hard-error behavior.
+No automatic retry, overwrite, reconciliation or budget-policy change follows.
+
 ## Development And Release Verification Cadence
 
 Owner decision, 2026-10-15: continue development on `main` without intermediate

@@ -23,6 +23,11 @@ lost association remains unresolved. Named missing inputs and per-sample
 coverage distinguish unassessed from zero. Request-bound throttled cancellation,
 read-ahead-labelled byte progress and explicit bounded summary-table verification
 live here, not in adapters. Default inspection remains metadata-only.
+Post-start marker failures are explicit control-error outcomes, retaining
+verified units and source diagnostics without converting the failure into
+authorized cancellation, successful analysis or biological absence. Summary
+and agent consumers preserve that distinction; data/resource failures are
+not broadened into partial-result recovery.
 
 ## Publication projections
 

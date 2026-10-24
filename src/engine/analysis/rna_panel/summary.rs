@@ -251,6 +251,7 @@ impl GentleEngine {
                 report_path: path,
                 report_sha256: report.content_sha256.clone(),
                 status: report.status,
+                control_error: report.control_error,
                 completed_files: report.files_completed.len(),
                 files_not_completed: report.files_not_completed,
                 inputs_not_completed: Some(
@@ -452,7 +453,7 @@ impl GentleEngine {
                 "Single-candidate means one seed-nominated panel member, not compatibility with the entire read or transcriptome-wide uniqueness. A distinguishing junction does not remove alternatives nominated through shared exons.".into(),
                 "Co-nomination sets retain class plus members; disjoint-segment nominations are separate from overlapping nominations, not proof of a chimera. Per-transcript co_nominated_reads overlap and must not be summed as read totals.".into(),
                 "V1 reports lost their class/member association: legacy_class_unresolved rows never invent it. No fractional redistribution, exclusive assignment or winner is inferred.".into(),
-                "Zero denotes no stored support among verified files, not biological absence. Completeness covers only the explicit report selection; cancelled reports keep this summary partial.".into(),
+                "Zero denotes no stored support among verified files, not biological absence. Completeness covers only the explicit report selection; cancelled or control-error reports keep this summary partial.".into(),
                 "Only stored report/panel content bindings and count consistency are checked. Original FASTQ and nomination sidecars are not reopened or reverified; content hashes are not authenticated provenance.".into(),
                 "Duplicate compressed-input hashes are refused. Distinct files can still contain duplicate reads; no read-level or PCR/UMI deduplication is performed.".into(),
             ],

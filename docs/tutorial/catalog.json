@@ -2722,7 +2722,7 @@
         "agent_users",
         "wet_lab_biologists"
       ],
-      "notes": "Five-locus rehearsal including a junction-spanning read that still co-nominates a shared-exon alternative, then one explicitly completed FASTQ.gz chunk. Same-pass supplier checksums, request-bound cancellation, read-ahead progress, named sample coverage and class-bound co-nomination tables; explicit bounded summary-table verification. Partial seeds are not whole-read fit, molecule copies or isoform calls. All stages have inner-agent routes; Rust/native/calibration acceptance remains pending.",
+      "notes": "Five-locus rehearsal including a junction-spanning read that still co-nominates a shared-exon alternative, then one explicitly completed FASTQ.gz chunk. Same-pass supplier checksums, request-bound cancellation, read-ahead progress, named sample coverage and class-bound co-nomination tables; explicit bounded summary-table verification. Post-start marker faults retain verified units as control_error, not cancellation or success. Partial seeds are not whole-read fit, molecule copies or isoform calls. All stages have inner-agent routes; Rust/native/calibration acceptance remains pending.",
       "estimated_minutes": 30,
       "difficulty": "intermediate",
       "network": "offline",

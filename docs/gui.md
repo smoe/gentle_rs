@@ -11,6 +11,11 @@ Use `panel-show SUMMARY_PATH --verify-artifacts` explicitly to verify the three
 summary tables, not FASTQ/nomination sidecars. Default inspection is metadata-only.
 Missing input/sample ledgers distinguish unassessed from zero. Byte progress
 includes decoder read-ahead, not checksum success; no whole-read fit is inferred.
+If a marker fails mid-run, the result warns and says `control_error`. Inspect
+the diagnostic and verified/missing input ledger with `panel-show`; counts
+from the unfinished unit are discarded. The agent must not describe that as
+completed analysis or your authorized cancellation. A summary of preserved
+units remains partial; fresh control/output paths require an explicit retry.
 Use a disposable project before loading
 the synthetic starter. Review writes and explicit sample/file bindings; live
 model/GUI responsiveness and real-library calibration are not established by

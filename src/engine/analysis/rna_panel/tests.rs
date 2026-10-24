@@ -860,6 +860,289 @@ fn rna_panel_budget_errors_identify_the_record_and_publish_no_partial_results() 
 }
 
 #[test]
+fn rna_panel_mid_run_marker_errors_preserve_verified_units_with_explicit_outcomes() {
+    use RnaReadPanelControlErrorPhase::{FileBoundary, Finalization, Streaming};
+    // All faults are injected by deterministic progress callbacks, never sleeps or private data.
+    for (trigger, fault, expected_phase, verified) in [
+        ("boundary", "foreign", Some(FileBoundary), 1),
+        ("streaming", "foreign", Some(Streaming), 1),
+        ("partial", "foreign", Some(Streaming), 1),
+        ("finalization", "foreign", Some(Finalization), 1),
+        ("empty", "foreign", Some(Streaming), 0),
+        ("streaming", "malformed", Some(Streaming), 1),
+        ("boundary", "directory", Some(FileBoundary), 1),
+        ("streaming", "matching", None, 1),
+    ] {
+        let td = tempfile::tempdir().unwrap();
+        let (engine, build) = starter(1, td.path());
+        let panel = engine.build_rna_read_panel(&build).unwrap();
+        let mut run = request(&panel, td.path(), &panel.templates[0].sequence);
+        run.policy.write_locus_fastas = true;
+        let marker = td.path().join("CANCEL");
+        run.cancel_path = Some(marker.display().to_string());
+        if trigger != "finalization" {
+            let mut second = run.files[0].clone();
+            second.sample_id = "sample_b".into();
+            second.barcode = "barcode02".into();
+            second.path = td.path().join("second.fastq.gz").display().to_string();
+            let mut raw = fastq(&panel.templates[0].sequence, b'I');
+            if trigger == "partial" {
+                raw.extend(fastq(&panel.templates[0].sequence, b'I'));
+            }
+            let bytes = gzip(&raw);
+            fs::write(&second.path, &bytes).unwrap();
+            second.expected_md5 = Some(input::hex(&Md5::digest(&bytes)));
+            run.files.push(second);
+        }
+        let before = encode(engine.state()).unwrap();
+        let mut injected = false;
+        let mut callback = |event: OperationProgress| {
+            let inject_here = match &event {
+                OperationProgress::RnaReadPanel(p) => {
+                    (matches!(trigger, "boundary" | "finalization")
+                        && p.file_id == "file_0000"
+                        && p.phase == "file_checksum_verified")
+                        || (trigger == "partial"
+                            && p.file_id == "file_0001"
+                            && p.phase == "streaming_unverified"
+                            && p.processed_reads == 1)
+                }
+                OperationProgress::Workflow { completed, .. } => {
+                    (trigger == "streaming" && *completed == 1)
+                        || (trigger == "empty" && *completed == 0)
+                }
+                _ => false,
+            };
+            if !injected && inject_here {
+                match fault {
+                    "foreign" => fs::write(&marker, format!("sha256:{}", "f".repeat(64))).unwrap(),
+                    "malformed" => fs::write(&marker, [0xff]).unwrap(),
+                    "directory" => fs::create_dir(&marker).unwrap(),
+                    "matching" => {
+                        engine.cancel_rna_read_panel(&run).unwrap();
+                    }
+                    _ => unreachable!(),
+                }
+                injected = true;
+                return true;
+            }
+            // A later callback cancellation must not relabel an already-observed control error.
+            !(injected && matches!(event, OperationProgress::Workflow { .. }))
+        };
+        let report = if trigger == "partial" {
+            let start = std::time::Instant::now();
+            let mut tick = 0;
+            screen_with_clock(run.clone(), &mut callback, || {
+                tick += 1;
+                start + std::time::Duration::from_millis(tick * 100)
+            })
+        } else {
+            engine.screen_rna_read_panel(run.clone(), &mut callback)
+        }
+        .unwrap();
+        assert!(injected);
+        assert_eq!(report.files_completed.len(), verified, "{trigger}/{fault}");
+        assert_eq!(report.files_not_completed.len(), run.files.len() - verified);
+        assert_eq!(
+            report.inputs_not_completed.as_ref().unwrap().len(),
+            run.files.len() - verified
+        );
+        if let Some(phase) = expected_phase {
+            assert_eq!(report.status, "control_error");
+            let error = report.control_error.as_ref().unwrap();
+            assert_eq!(error.phase, phase);
+            assert_eq!(error.code, "panel_control_marker_error");
+            assert_eq!(error.marker_path, marker.display().to_string());
+            assert!(error.message.starts_with("panel_cancel_marker"));
+            assert_eq!(
+                error.file_id,
+                if phase == Finalization {
+                    None
+                } else {
+                    Some(format!("file_{verified:04}"))
+                }
+            );
+        } else {
+            assert_eq!(report.status, "cancelled");
+            assert!(report.control_error.is_none());
+        }
+        assert_eq!(encode(engine.state()).unwrap(), before);
+        let output = Path::new(&run.output_dir);
+        for file in &report.files_completed {
+            for artifact in &file.artifacts {
+                let bytes = fs::read(output.join(&artifact.path)).unwrap();
+                assert_eq!(sha256_prefixed_bytes(&bytes), artifact.sha256);
+                assert_eq!(bytes.len() as u64, artifact.bytes);
+            }
+        }
+        assert!(
+            !output
+                .join(format!("artifacts/file_{verified:04}"))
+                .exists(),
+            "unfinished units must be discarded"
+        );
+        let path = output.join("report.json");
+        let shown = engine
+            .inspect_rna_read_panel(&path.to_string_lossy(), None, 0)
+            .unwrap()
+            .1
+            .unwrap();
+        assert_eq!(encode(&shown).unwrap(), encode(&report).unwrap());
+        let mut inspector = engine.clone_without_history();
+        let journal = inspector.journal_len();
+        let command = crate::engine_shell::parse_shell_line(&format!(
+            "rna-reads panel-show {}",
+            crate::engine_shell::quote_shell_arg(&path.to_string_lossy())
+        ))
+        .unwrap();
+        assert!(!command.is_state_mutating());
+        let inspection =
+            crate::engine_shell::execute_shell_command(&mut inspector, &command).unwrap();
+        assert_eq!(
+            inspection.output["result"]["rna_read_panel_screen"],
+            serde_json::to_value(&report).unwrap()
+        );
+        assert_eq!(
+            crate::agent_feedback::AgentExecutionStatus::from_shell_output(&inspection.output),
+            crate::agent_feedback::AgentExecutionStatus::Completed,
+            "inspection completed; this does not change the saved analysis outcome"
+        );
+        assert_eq!(inspector.journal_len(), journal);
+        let feedback = serde_json::json!({"result":{"rna_read_panel_screen": &report}});
+        assert_eq!(
+            crate::agent_feedback::AgentExecutionStatus::from_shell_output(&feedback),
+            if expected_phase.is_some() {
+                crate::agent_feedback::AgentExecutionStatus::Failed
+            } else {
+                crate::agent_feedback::AgentExecutionStatus::Cancelled
+            }
+        );
+        let summary = engine
+            .export_rna_read_panel_summary(&ExportRnaReadPanelSummaryRequest {
+                schema: RNA_PANEL_SUMMARY_REQUEST_SCHEMA.into(),
+                report_paths: vec![path.display().to_string()],
+                output_dir: td.path().join("summary").display().to_string(),
+            })
+            .unwrap();
+        assert_eq!(summary.completeness, "partial");
+        assert_eq!(summary.source_runs[0].status, report.status);
+        assert_eq!(
+            encode(&summary.source_runs[0].control_error).unwrap(),
+            encode(&report.control_error).unwrap()
+        );
+        assert_eq!(summary.source_files.len(), verified);
+        assert_eq!(
+            summary.samples.iter().map(|s| s.reads).sum::<u64>(),
+            verified as u64
+        );
+        let coverage = summary.sample_coverage.as_ref().unwrap();
+        if verified == 0 {
+            assert!(
+                coverage
+                    .iter()
+                    .all(|s| s.status == "unassessed" && s.reads.is_none())
+            );
+        }
+        if run.files.len() > verified {
+            assert_eq!(coverage.last().unwrap().reads, None);
+        }
+    }
+}
+
+#[test]
+fn rna_panel_control_repair_keeps_checksum_and_resource_failures_hard() {
+    for failure in ["checksum", "resource"] {
+        let td = tempfile::tempdir().unwrap();
+        let (engine, build) = starter(1, td.path());
+        let panel = engine.build_rna_read_panel(&build).unwrap();
+        let mut run = request(&panel, td.path(), &panel.templates[0].sequence[..12]);
+        let mut second = run.files[0].clone();
+        second.path = td.path().join("second.fastq.gz").display().to_string();
+        let bytes = gzip(&fastq(&panel.templates[0].sequence, b'I'));
+        fs::write(&second.path, &bytes).unwrap();
+        second.expected_md5 = Some(if failure == "checksum" {
+            "0".repeat(32)
+        } else {
+            input::hex(&Md5::digest(&bytes))
+        });
+        run.files.push(second);
+        if failure == "resource" {
+            run.policy.max_anchors_per_read = 64;
+        }
+        let mut verified_first = false;
+        let error = engine
+            .screen_rna_read_panel(run.clone(), &mut |event| {
+                if let OperationProgress::RnaReadPanel(p) = event {
+                    verified_first |=
+                        p.file_id == "file_0000" && p.phase == "file_checksum_verified";
+                }
+                true
+            })
+            .unwrap_err();
+        assert!(verified_first);
+        assert!(
+            error.message.contains(if failure == "checksum" {
+                "checksum_mismatch"
+            } else {
+                "anchor_budget"
+            }),
+            "{}",
+            error.message
+        );
+        assert!(
+            !Path::new(&run.output_dir).exists(),
+            "only control errors have the new retention policy"
+        );
+    }
+}
+
+#[test]
+fn rna_panel_control_error_binding_cannot_be_relabelled_as_success_or_legacy() {
+    let td = tempfile::tempdir().unwrap();
+    let (engine, build) = starter(1, td.path());
+    let panel = engine.build_rna_read_panel(&build).unwrap();
+    let run = request(&panel, td.path(), &panel.templates[0].sequence);
+    let report = engine.screen_rna_read_panel(run, &mut |_| true).unwrap();
+    assert!(
+        serde_json::to_value(&report)
+            .unwrap()
+            .get("control_error")
+            .is_none(),
+        "historical digest encoding stays unchanged when absent"
+    );
+    let mut invalid = report.clone();
+    invalid.request.cancel_path = Some("synthetic_marker".into());
+    invalid.control_error = Some(control::diagnostic(
+        bad("panel_cancel_marker_mismatch: synthetic"),
+        Some("synthetic_marker"),
+        RnaReadPanelControlErrorPhase::Finalization,
+        None,
+    ));
+    let seal = |r: &mut RnaReadPanelScreenReport| {
+        r.content_sha256.clear();
+        r.content_sha256 = sha256_prefixed_bytes(&encode(r).unwrap());
+    };
+    for status in ["completed", "cancelled"] {
+        invalid.status = status.into();
+        seal(&mut invalid);
+        assert!(validate_screen_report_binding(&invalid).is_err());
+    }
+    invalid.status = "control_error".into();
+    seal(&mut invalid);
+    validate_screen_report_binding(&invalid).unwrap();
+    invalid.schema = RNA_PANEL_SCREEN_LEGACY_SCHEMA.into();
+    seal(&mut invalid);
+    assert!(validate_screen_report_binding(&invalid).is_err());
+    invalid.schema = RNA_PANEL_SCREEN_SCHEMA.into();
+    invalid.control_error.as_mut().unwrap().marker_path = "another_request_marker".into();
+    seal(&mut invalid);
+    assert!(validate_screen_report_binding(&invalid).is_err());
+    invalid.control_error = None;
+    seal(&mut invalid);
+    assert!(validate_screen_report_binding(&invalid).is_err());
+}
+
+#[test]
 fn rna_panel_progress_separates_decoder_read_ahead_from_verified_file_units() {
     let td = tempfile::tempdir().unwrap();
     let (engine, build) = starter(1, td.path());

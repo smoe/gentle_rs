@@ -5435,6 +5435,63 @@ mod tests {
             serde_json::to_value(expected_verification).unwrap()
         );
         assert_eq!(fs::read(&summary_path).unwrap(), summary_bytes);
+        let mut control_request = expected.request.clone();
+        control_request.output_dir = root.join("control-error screen").display().to_string();
+        let marker = root.join("foreign CANCEL");
+        control_request.cancel_path = Some(marker.display().to_string());
+        let control_report = direct
+            .screen_rna_read_panel(control_request, &mut |event| {
+                if matches!(
+                    event,
+                    crate::engine::OperationProgress::Workflow { completed: 1, .. }
+                ) && !marker.exists()
+                {
+                    fs::write(&marker, b"foreign request marker").unwrap();
+                }
+                true
+            })
+            .unwrap();
+        assert_eq!(control_report.status, "control_error");
+        assert_eq!(control_report.files_completed.len(), 1);
+        let control_path = root.join("control-error screen/report.json");
+        let inspected_control = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({
+                "state_path":state_path, "confirm":true,
+                "operation":{"InspectRnaReadPanel":{"path":control_path}}
+            }),
+        );
+        assert_eq!(
+            inspected_control["result"]["isError"], false,
+            "{inspected_control}"
+        );
+        assert_eq!(
+            inspected_control["result"]["structuredContent"]["result"]["rna_read_panel_screen"],
+            serde_json::to_value(&control_report).unwrap()
+        );
+        let control_summary = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({
+                "state_path":state_path, "confirm":true,
+                "operation":{"ExportRnaReadPanelSummary":{"request":{
+                    "schema":"gentle.rna_read_panel_summary_request.v1", "report_paths":[control_path],
+                    "output_dir":root.join("control-error summary")
+                }}}
+            }),
+        );
+        assert_eq!(
+            control_summary["result"]["isError"], false,
+            "{control_summary}"
+        );
+        let partial =
+            &control_summary["result"]["structuredContent"]["result"]["rna_read_panel_summary"];
+        assert_eq!(partial["completeness"], "partial");
+        assert_eq!(
+            partial["source_runs"][0]["control_error"],
+            serde_json::to_value(&control_report.control_error).unwrap()
+        );
         let after = ProjectState::load_from_path(&state_path.to_string_lossy()).unwrap();
         assert_eq!(serde_json::to_value(after).unwrap(), before);
         assert_eq!(serde_json::to_value(direct.state()).unwrap(), before);

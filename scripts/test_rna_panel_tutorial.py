@@ -186,6 +186,29 @@ class RnaPanelTutorialTests(unittest.TestCase):
         polling = source.split("let mut gate = control::PollGate::default();", 1)[1]
         self.assertLess(polling.index("if !gate.due"), polling.index("control::marker_requested(request.cancel_path"))
 
+    def test_control_errors_are_taught_as_failed_analysis_with_preserved_units(self):
+        for raw in (GUIDE.read_bytes(), GUIDE.read_bytes().replace(b"\n", b"\r\n")):
+            text = re.sub(r"\s+", " ", raw.decode())
+            for phrase in ("status: control_error", "panel_control_marker_error", "marker_path",
+                           "file_boundary", "streaming", "finalization", "source_runs[].status",
+                           "not your authorized cancellation", "unfinished unit is discarded",
+                           "fresh cancel path", "no automatic restart", "before any unit completes",
+                           "only for post-start marker errors", "process exit", "competitors from the index",
+                           "16 MB across", "all files in one screen request"):
+                self.assertIn(phrase, text)
+        protocol = (ROOT / "src/engine/protocol/rna_panel.rs").read_text()
+        self.assertEqual(len(re.findall(r'#\[serde\(default, skip_serializing_if = "Option::is_none"\)\]\s*pub control_error: Option<RnaReadPanelControlError>', protocol)), 2)
+        bridge = (ROOT / "src/agent_bridge.rs").read_text()
+        self.assertIn("FASTQ control-error rule", bridge)
+        self.assertIn("Never silently overwrite the marker/report or auto-retry", bridge)
+        feedback = (ROOT / "src/agent_feedback.rs").read_text()
+        self.assertIn('"control_error" => Self::Failed', feedback)
+        tests = (ROOT / "src/engine/analysis/rna_panel/tests.rs").read_text()
+        for name in ("rna_panel_mid_run_marker_errors_preserve_verified_units_with_explicit_outcomes",
+                     "rna_panel_control_repair_keeps_checksum_and_resource_failures_hard",
+                     "rna_panel_control_error_binding_cannot_be_relabelled_as_success_or_legacy"):
+            self.assertIn("fn " + name, tests)
+
 
 if __name__ == "__main__":
     unittest.main()

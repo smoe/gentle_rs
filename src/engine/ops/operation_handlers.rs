@@ -52225,6 +52225,9 @@ impl GentleEngine {
                 Operation::ScreenRnaReadPanel { request } => {
                     let report = self.screen_rna_read_panel(*request, on_progress)?;
                     result.messages.push(format!("RNA panel screen {}; {} verified completed file units; partial seed co-nomination is not whole-read compatibility or isoform identification", report.status, report.files_completed.len()));
+                    if let Some(error) = &report.control_error {
+                        result.warnings.push(format!("{}: {}; verified file units preserved, unfinished units discarded. This is not an authorized cancellation or completed analysis; inspect report.json before any explicit retry.", error.code, error.message));
+                    }
                     result.rna_read_panel_screen = Some(Box::new(report));
                 }
                 Operation::ExportRnaReadPanelSummary { request } => {

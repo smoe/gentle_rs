@@ -17,6 +17,27 @@
   OK, two expected dirty-tree/manual-plan warnings and no failures; roadmap
   remains 400 lines. No Rust/runtime acceptance is claimed.
 
+## 2026-10-23 - Preserve Verified FASTQ Units On Mid-Run Marker Errors
+
+- Stop post-start marker faults with explicit `status=control_error`, preserving
+  only checksum-verified closed file units and discarding the unfinished unit.
+  Retain a bound code/message/path/phase/file diagnostic in screen reports and
+  summary source runs; summaries stay partial, and screening feedback is failed,
+  not authorized cancellation or successful analysis. Emit a result warning.
+- Preserve preflight refusal, matching pre-start cancellation, normal marker
+  polling cadence and hard parse/checksum/resource/publication errors. Absent
+  optional diagnostics preserve historical v1/v2 report digest encoding. No
+  automatic retry, reconciliation, index rewrite or new read class is added.
+- Extend tutorial 10.04 with visible symptoms, three observation phases,
+  inspection, retained-count interpretation and fresh-path recovery. Add the
+  separately reviewed teaching cautions about restricted competitor sets and
+  cumulative class-key budgets; do not change selection/index/legacy behavior.
+- Author deterministic boundary/intake/finalization/zero-unit fault tests,
+  malformed/nonregular markers, genuine cancellation, preserved hashes and
+  partial summaries, failed-screen versus completed-inspection feedback, hard
+  non-control failures and MCP inspection/export parity. Rust/native/real-data
+  verification remains Glen/CI's; no private inputs, goal resume or push.
+
 ## 2026-10-23 - Align Stored-Plan And RNA MCP Tests With Approval Policy
 
 - Replace the obsolete shell-plan expectation that a parameter write succeeds

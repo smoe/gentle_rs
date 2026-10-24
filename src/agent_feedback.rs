@@ -76,6 +76,7 @@ impl AgentExecutionStatus {
             return match status {
                 "completed" => Self::Completed,
                 "cancelled" => Self::Cancelled,
+                "control_error" => Self::Failed,
                 _ => Self::Failed,
             };
         }

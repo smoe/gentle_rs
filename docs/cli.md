@@ -31,6 +31,11 @@ inputs and `unassessed` sample rows never mean zero expression. Legacy v1
 class/member associations stay unresolved. Progress reports compressed bytes
 with decoder read-ahead, not checksum success. Use fresh request-bound cancel
 paths; matching pre-start cancellation works, stale markers fail explicitly.
+Before startup, marker errors refuse the run. Mid-run marker errors return a
+`control_error` report and warning with verified file units preserved, not a
+completed or authorized-cancel analysis. Inspect its diagnostic and missing
+inputs via `panel-show`; summaries retain the diagnostic and stay partial.
+An ordinary process return/report publication alone is not analysis success.
 
 Catalog discovery and guarded local provider updates use the same shared shell:
 `catalog doctor`, `catalog search --entity product|provider|protocol --query TEXT`,
