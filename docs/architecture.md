@@ -44,6 +44,16 @@ undo/redo. GUI and SVG lineage projections show the set, source DNA and parent
 panel relationships without probing external files. External file publication
 and project registration are separate effects: undo cannot remove files, and a
 stale detached commit must disclose a possibly written but unattached file.
+Managed standalone screen/summary jobs are now the explicit artifact-only
+exception: their self-describing published evidence is retained without a live
+engine/journal merge. Ordinary project edits cannot stale that evidence, nor can
+its retention stale another detached job. Mutation jobs keep their original
+guards. Shared result bindings distinguish submitted/effective requests and
+panel/report identities; metadata inspection can verify the expected binding
+without rereading manifests, original FASTQ or current locus records. Observation
+and marker control have separately bounded host lanes; neither is run on the
+paint thread or gated by full execution slots. Native screen/monitor/inspector
+work is tracked in [the active plan](rna_panel_gui_processing_plan.md).
 
 ## Publication projections
 

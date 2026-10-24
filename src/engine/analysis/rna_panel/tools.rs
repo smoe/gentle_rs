@@ -121,6 +121,7 @@ impl GentleEngine {
         fs::write(stage.path().join("md5_checksums.txt"), manifest)
             .map_err(|e| bad(e.to_string()))?;
         let screen = ScreenRnaReadPanelRequest {
+            expected_panel_sha256: None,
             schema: RNA_PANEL_SCREEN_REQUEST_SCHEMA.into(),
             panel_path: build.output_path.clone(),
             files,

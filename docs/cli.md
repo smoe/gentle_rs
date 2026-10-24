@@ -54,6 +54,13 @@ Before startup, marker errors refuse the run. Mid-run marker errors return a
 completed or authorized-cancel analysis. Inspect its diagnostic and missing
 inputs via `panel-show`; summaries retain the diagnostic and stay partial.
 An ordinary process return/report publication alone is not analysis success.
+Pin the reviewed panel with optional `expected_panel_sha256` in the screen
+request; a different valid panel at the same path is refused before streaming.
+New results distinguish submitted-request hashes from effective requests after
+manifest resolution. A retained `gentle.rna_read_panel_result_binding.v1` can be
+supplied as `panel-show PATH --binding BINDING_JSON_OR_@FILE` for exact reopening;
+do not substitute an arbitrary existing `report.json` after a failed run. This
+rechecks metadata bindings, not the original reads or a now-changed manifest.
 
 Catalog discovery and guarded local provider updates use the same shared shell:
 `catalog doctor`, `catalog search --entity product|provider|protocol --query TEXT`,

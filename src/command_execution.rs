@@ -1,9 +1,11 @@
 //! Host-owned, bounded command admission above the synchronous shell executor.
 //!
 //! Workers own detached engines. Observation and cancellation never acquire the
-//! project lock. Only a successful, still-current result is committed; failed
-//! or cancelled work can leave external resource/file effects but no live engine
-//! delta. Receipts survive consumption of the result until bounded eviction.
+//! project lock. Project mutations commit only when successful and current.
+//! Named RNA file-only operations retain bound published results without merging
+//! their private journals; published outcomes survive late host cancellation.
+//! Observation/control use independent bounded lanes. Receipts survive result
+//! consumption until bounded eviction; they are not portable worker handles.
 
 use crate::{
     digest_utils::sha256_prefixed_bytes,
@@ -29,13 +31,81 @@ const MAX_ACTIVE: usize = 4;
 const MAX_RETAINED: usize = 32;
 const MAX_RESULT_BYTES: usize = 16 * 1024 * 1024;
 
+mod rna_artifacts;
+#[cfg(test)]
+mod rna_tests;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Lane {
+    Execution,
+    Observation,
+    Control,
+}
+
+impl Lane {
+    fn active_limit(self) -> usize {
+        if self == Self::Execution {
+            MAX_ACTIVE
+        } else {
+            2
+        }
+    }
+    fn retained_limit(self) -> usize {
+        if self == Self::Execution {
+            MAX_RETAINED
+        } else {
+            8
+        }
+    }
+}
+
+enum Publication {
+    Project,
+    Artifact(crate::engine::RnaReadPanelResultBinding),
+    Observation,
+}
+
+struct WorkResult {
+    run: ShellRunResult,
+    publication: Publication,
+}
+
+impl WorkResult {
+    fn project(run: ShellRunResult) -> Self {
+        Self {
+            run,
+            publication: Publication::Project,
+        }
+    }
+}
+
+fn bounded_output(value: &serde_json::Value) -> Result<Vec<u8>, serde_json::Error> {
+    struct Limited(Vec<u8>);
+    impl std::io::Write for Limited {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            if bytes.len() > MAX_RESULT_BYTES.saturating_sub(self.0.len()) {
+                return Err(std::io::Error::other("interactive output budget"));
+            }
+            self.0.extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut buffer = Limited(Vec::new());
+    serde_json::to_writer(&mut buffer, value)?;
+    Ok(buffer.0)
+}
+
 /// Cached receipt. Counts describe operations, never a runtime estimate or a
 /// biological acceptance verdict. Approval remains the shell's responsibility.
 #[derive(Debug, Clone, Serialize)]
 pub struct CommandReceipt {
     pub schema: &'static str,
     pub job_id: u64,
-    pub owner_instance: u64,
+    /// Optional admission context; independent work never requires a project lock/identity.
+    pub owner_instance: Option<u64>,
     pub result_instance: Option<u64>,
     /// Revision at commit, so UI consumers can detect later edits without
     /// confusing the command's own structural changes with stale results.
@@ -52,9 +122,14 @@ pub struct CommandReceipt {
     pub total_steps: Option<usize>,
     pub result_sha256: Option<String>,
     pub error: Option<String>,
+    pub publication: &'static str,
+    pub artifact_result: Option<crate::engine::RnaReadPanelResultBinding>,
+    pub requires_project_commit: bool,
+    pub rna_progress: Option<crate::engine::RnaReadPanelProgress>,
 }
 
 struct Job {
+    lane: Lane,
     cancel: Arc<AtomicBool>,
     published: bool,
     receipt: CommandReceipt,
@@ -129,34 +204,78 @@ impl CommandExecutionService {
             engine,
             sha256_prefixed_bytes(command_text.as_bytes()),
             cancel,
+            Lane::Execution,
+            true,
             move |engine, callback| {
                 let command = parse_shell_line(&command_text)?;
-                let caller_callback = options.progress_callback.clone();
-                let options = ShellExecutionOptions {
-                    progress_callback: Some(Arc::new(Mutex::new(Box::new(move |event| {
-                        if !callback
-                            .lock()
-                            .map(|mut f| f(event.clone()))
-                            .unwrap_or(false)
-                        {
-                            return false;
-                        }
-                        let keep_going = caller_callback
-                            .as_ref()
-                            .map(|cb| cb.lock().map(|mut f| f(event)).unwrap_or(false))
-                            .unwrap_or(true);
-                        if !keep_going {
-                            caller_cancel.store(true, Ordering::Release);
-                        }
-                        keep_going
-                    })))),
-                    ..options
-                };
-                execute_shell_command_with_options(engine, &command, &options)
+                execute_command(engine, command, options, callback, caller_cancel)
             },
         )
     }
 
+    /// Frozen shared-parser inputs select independent control/observation lanes without
+    /// any request-file read or probe on admission. These lanes never merge project state.
+    pub fn submit_parsed(
+        &self,
+        engine: Arc<RwLock<GentleEngine>>,
+        command: ShellCommand,
+        command_text: String,
+        options: ShellExecutionOptions,
+    ) -> Result<u64, String> {
+        if command_text.len() > 1024 * 1024 {
+            return Err("Interactive command exceeds 1 MiB".into());
+        }
+        let policy = rna_artifacts::admission(&command);
+        let cancel = Arc::new(AtomicBool::new(false));
+        let caller_cancel = cancel.clone();
+        self.submit_work_with_cancel(
+            engine,
+            sha256_prefixed_bytes(command_text.as_bytes()),
+            cancel,
+            policy.lane(),
+            policy.needs_project(),
+            move |engine, callback| {
+                execute_command(engine, command, options, callback, caller_cancel)
+            },
+        )
+    }
+}
+
+fn execute_command(
+    engine: &mut GentleEngine,
+    mut command: ShellCommand,
+    options: ShellExecutionOptions,
+    callback: crate::engine_shell::ShellProgressCallback,
+    caller_cancel: Arc<AtomicBool>,
+) -> Result<WorkResult, String> {
+    let policy = rna_artifacts::freeze(&mut command)?;
+    let caller_callback = options.progress_callback.clone();
+    let options = ShellExecutionOptions {
+        progress_callback: Some(Arc::new(Mutex::new(Box::new(move |event| {
+            if !callback
+                .lock()
+                .map(|mut f| f(event.clone()))
+                .unwrap_or(false)
+            {
+                return false;
+            }
+            let keep_going = caller_callback
+                .as_ref()
+                .map(|cb| cb.lock().map(|mut f| f(event)).unwrap_or(false))
+                .unwrap_or(true);
+            if !keep_going {
+                caller_cancel.store(true, Ordering::Release);
+            }
+            keep_going
+        })))),
+        ..options
+    };
+    let run = execute_shell_command_with_options(engine, &command, &options)?;
+    let publication = rna_artifacts::publication(policy, &run.output)?;
+    Ok(WorkResult { run, publication })
+}
+
+impl CommandExecutionService {
     /// Admit trusted in-process work with the same snapshot, cancellation and
     /// commit rules as shell commands. Callers own input/approval validation.
     pub(crate) fn submit_work<F>(
@@ -177,7 +296,9 @@ impl CommandExecutionService {
             engine,
             command_sha256,
             Arc::new(AtomicBool::new(false)),
-            work,
+            Lane::Execution,
+            true,
+            move |engine, callback| work(engine, callback).map(WorkResult::project),
         )
     }
 
@@ -186,44 +307,62 @@ impl CommandExecutionService {
         engine: Arc<RwLock<GentleEngine>>,
         command_sha256: String,
         cancel: Arc<AtomicBool>,
+        lane: Lane,
+        needs_project: bool,
         work: F,
     ) -> Result<u64, String>
     where
         F: FnOnce(
                 &mut GentleEngine,
                 crate::engine_shell::ShellProgressCallback,
-            ) -> Result<ShellRunResult, String>
+            ) -> Result<WorkResult, String>
             + Send
             + 'static,
     {
-        let (owner, admitted_revision, admitted_journal_len) = {
-            let live = engine.try_read().map_err(|_| {
-                "Project is busy; command was not admitted. Retry shortly.".to_string()
-            })?;
-            (
-                live.instance_id(),
-                live.structural_revision(),
-                live.journal_len(),
-            )
+        let baseline = if needs_project {
+            Some({
+                let live = engine.try_read().map_err(|_| {
+                    "Project is busy; command was not admitted. Retry shortly.".to_string()
+                })?;
+                (
+                    live.instance_id(),
+                    live.structural_revision(),
+                    live.journal_len(),
+                )
+            })
+        } else {
+            None
         };
+        let owner = baseline
+            .map(|b| b.0)
+            .or_else(|| engine.try_read().ok().map(|e| e.instance_id()));
         let (id, job) = {
             let mut store = self.0.lock().map_err(|_| "Command registry unavailable")?;
             let active = store
                 .jobs
                 .values()
-                .filter(|job| !terminal(job.lock().unwrap().receipt.state))
+                .filter(|job| {
+                    let job = job.lock().unwrap();
+                    job.lane == lane && !terminal(job.receipt.state)
+                })
                 .count();
-            if active >= MAX_ACTIVE {
+            if active >= lane.active_limit() {
                 return Err("Command capacity reached; command was not admitted".into());
             }
-            while store.jobs.len() >= MAX_RETAINED {
+            while store
+                .jobs
+                .values()
+                .filter(|job| job.lock().unwrap().lane == lane)
+                .count()
+                >= lane.retained_limit()
+            {
                 // Unconsumed outputs are never evicted on the submitting thread.
                 let removable = store
                     .jobs
                     .iter()
                     .find(|(_, job)| {
                         let job = job.lock().unwrap();
-                        terminal(job.receipt.state) && job.result.is_none()
+                        job.lane == lane && terminal(job.receipt.state) && job.result.is_none()
                     })
                     .map(|(id, _)| *id);
                 let Some(id) = removable else {
@@ -236,6 +375,7 @@ impl CommandExecutionService {
             store.next += 1;
             let id = store.next;
             let job = Arc::new(Mutex::new(Job {
+                lane,
                 cancel: cancel.clone(),
                 published: false,
                 receipt: CommandReceipt {
@@ -255,6 +395,10 @@ impl CommandExecutionService {
                     total_steps: None,
                     result_sha256: None,
                     error: None,
+                    publication: "pending",
+                    artifact_result: None,
+                    requires_project_commit: needs_project,
+                    rna_progress: None,
                 },
                 result: None,
             }));
@@ -274,9 +418,11 @@ impl CommandExecutionService {
             let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<ShellRunResult, String> {
                 if cancel.load(Ordering::Acquire) { return Err("Command cancelled before snapshot".into()); }
                 frame.update_phase("snapshot");
-                let mut detached = {
+                let mut detached = if let Some((owner, revision, journal_len)) = baseline {
                     let live = engine.read().map_err(|_| "Project lock unavailable")?;
-                    fork_admitted_command(&live, owner, admitted_revision, admitted_journal_len)?
+                    fork_admitted_command(&live, owner, revision, journal_len)?
+                } else {
+                    GentleEngine::new().fork_detached_execution()
                 };
                 let baseline = detached.engine().journal_len();
                 if cancel.load(Ordering::Acquire) { return Err("Command cancelled after snapshot; execution did not start".into()); }
@@ -306,7 +452,8 @@ impl CommandExecutionService {
                         }
                         OperationProgress::RnaReadPanel(p) => {
                             job.receipt.phase = p.phase.clone();
-                            callback_frame.update_from_progress(p.phase, format!("{}: {} reads; compressed bytes include decoder read-ahead, not checksum success", p.file_id, p.processed_reads), p.compressed_bytes_read, (p.compressed_bytes_total > 0).then_some(p.compressed_bytes_total), None);
+                            job.receipt.rna_progress = Some(p.clone());
+                            callback_frame.update_from_progress(p.phase, format!("{}/{} {} / {}: {} reads; compressed bytes include decoder read-ahead, not checksum success", p.file_ordinal, p.files_total, p.sample_id, p.file_id, p.processed_reads), p.compressed_bytes_read, (p.compressed_bytes_total > 0).then_some(p.compressed_bytes_total), None);
                         }
                         OperationProgress::PrimerDesign(p) => {
                             job.receipt.phase = format!("{}: {}", p.design_kind, p.stage);
@@ -319,14 +466,42 @@ impl CommandExecutionService {
                 let result = work(detached.engine_mut(), callback);
                 let retained_operations = detached.engine().journal_len().saturating_sub(baseline);
                 worker_job.lock().unwrap().receipt.computed_operations = if result.is_err() && retained_operations == 0 { None } else { Some(retained_operations) };
-                let result = result?;
-                if detached.engine().instance_id() != owner {
+                let WorkResult { mut run, publication } = result?;
+                let project_commit = matches!(&publication, Publication::Project);
+                if project_commit && (baseline.is_none() || Some(detached.engine().instance_id()) != owner) {
                     return Err("Managed command replaced its project instance; use the explicit project load/import route instead".into());
                 }
-                let bytes = serde_json::to_vec(&result.output).map_err(|e| e.to_string())?;
-                if bytes.len() > MAX_RESULT_BYTES { return Err("Command result exceeds the 16 MiB interactive retention limit; use a file-export operation".into()); }
+                let mut bytes = bounded_output(&run.output);
+                if bytes.is_err() {
+                    if let Publication::Artifact(binding) = &publication {
+                        run.output = serde_json::json!({"schema":"gentle.command_artifact_result.v1",
+                            "artifact_result":binding, "full_output_retained_in_report":true});
+                        bytes = bounded_output(&run.output);
+                    }
+                }
+                let bytes = bytes.map_err(|_| "Command result exceeds the 16 MiB interactive retention limit; use a file-export operation")?;
                 let digest = sha256_prefixed_bytes(&bytes);
                 drop(bytes);
+                if !project_commit {
+                    let mut job = worker_job.lock().unwrap();
+                    if matches!(&publication, Publication::Observation) && cancel.load(Ordering::Acquire) {
+                        return Err("Command cancelled after observation; no project state changed".into());
+                    }
+                    if run.state_changed { return Err("Independent command unexpectedly changed project state".into()); }
+                    job.published = true;
+                    job.receipt.result_sha256 = Some(digest);
+                    match publication {
+                        Publication::Artifact(binding) => {
+                            job.receipt.publication = "artifact_only";
+                            job.receipt.artifact_result = Some(binding);
+                        }
+                        Publication::Observation => job.receipt.publication = "observation_control",
+                        Publication::Project => unreachable!(),
+                    }
+                    job.receipt.requires_project_commit = false;
+                    // No live engine lock, journal append, or late cancellation veto.
+                    return Ok(run);
+                }
                 frame.update_phase("committing");
                 let old = {
                     let mut live = engine.write().map_err(|_| "Project lock unavailable")?;
@@ -340,22 +515,34 @@ impl CommandExecutionService {
                     job.receipt.result_structural_revision = Some(live.structural_revision());
                     job.receipt.committed_operations = job.receipt.computed_operations.unwrap_or(0);
                     job.receipt.result_sha256 = Some(digest);
+                    job.receipt.publication = "project";
                     old
                 };
                 drop(old);
-                Ok(result)
+                Ok(run)
             })).unwrap_or_else(|_| Err("Command worker panicked; no success receipt was issued".into()));
             let mut job = worker_job.lock().unwrap();
             job.receipt.cancel_requested = cancel.load(Ordering::Acquire);
             if let Err(error) = &run {
-                job.receipt.state = if job.receipt.cancel_requested { RuntimeStatusFrameState::Cancelled } else { RuntimeStatusFrameState::Failed };
-                job.receipt.phase = if job.receipt.cancel_requested { "cancelled" } else { "failed" }.into();
+                let cancelled = job.receipt.cancel_requested && (needs_project || error.starts_with("Command cancelled"));
+                job.receipt.state = if cancelled { RuntimeStatusFrameState::Cancelled } else { RuntimeStatusFrameState::Failed };
+                job.receipt.phase = if cancelled { "cancelled" } else { "failed" }.into();
                 job.receipt.error = Some(error.clone());
-                if job.receipt.cancel_requested { frame.cancel(error); } else { frame.fail(error); }
+                if cancelled { frame.cancel(error); } else { frame.fail(error); }
             } else {
-                job.receipt.state = RuntimeStatusFrameState::Completed;
-                job.receipt.phase = "completed".into();
-                frame.update_state(RuntimeStatusFrameState::Completed);
+                let outcome = job.receipt.artifact_result.as_ref().filter(|b| b.kind == crate::engine::RnaReadPanelResultKind::Screen)
+                    .map(|b| b.outcome.clone());
+                job.receipt.state = match outcome.as_deref() {
+                    Some("cancelled") => RuntimeStatusFrameState::Cancelled,
+                    Some("control_error") => RuntimeStatusFrameState::Failed,
+                    _ => RuntimeStatusFrameState::Completed,
+                };
+                job.receipt.phase = outcome.unwrap_or_else(|| "completed".into());
+                if job.receipt.phase == "control_error" {
+                    job.receipt.error = Some("Screening control failed; bound verified-unit report retained".into());
+                }
+                frame.update_phase(job.receipt.phase.clone());
+                frame.update_state(job.receipt.state);
             }
             job.result = Some(run);
         });
@@ -376,6 +563,20 @@ impl CommandExecutionService {
             receipt.phase = "cancelling".into();
         }
         Some(receipt)
+    }
+
+    /// Cached host-local history, including bound file-only results after consumption.
+    pub fn receipts(&self) -> Vec<CommandReceipt> {
+        self.0
+            .lock()
+            .map(|store| {
+                store
+                    .jobs
+                    .values()
+                    .filter_map(|job| job.lock().ok().map(|job| job.receipt.clone()))
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// Cooperative request, not a terminal cancellation or proof of child exit.

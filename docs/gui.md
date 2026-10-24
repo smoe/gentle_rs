@@ -20,6 +20,13 @@ Workers use history-free project snapshots; other windows remain usable. If the
 project changes during a successful save, the file is disclosed as an earlier
 snapshot, not promoted as the current panel. Closing the editor is not cancellation
 of an approved file write. These controls do not launch FASTQ screening.
+Shared-agent screens/summary exports retain their bound external reports
+without merging a private journal into the active project. Unrelated edits do
+not invalidate published file-only evidence. A cancelled/control-error report
+remains inspectable, not successful screening; late host cancellation does not
+rewrite an engine-published outcome. Metadata inspection and marker cancellation
+have independent bounded capacity. Native screening/monitoring remains the next
+step in [the active implementation plan](rna_panel_gui_processing_plan.md).
 
 **Keep panel in project graph** retains a validated snapshot through the same
 build operation. The main lineage graph and its SVG export show the target gene

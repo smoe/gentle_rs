@@ -52,11 +52,27 @@ class RnaPanelTutorialTests(unittest.TestCase):
         source_path = ROOT / "src/engine/analysis/rna_panel.rs"
         source = source_path.read_text(encoding="utf-8")
         for text in (source, source.replace("\n", "\r\n")):
-            for child in ("input", "control", "verification", "tools", "tests", "summary", "summary_tests", "project"):
+            for child in ("input", "control", "verification", "tools", "tests", "summary", "summary_tests", "project", "result_binding", "result_binding_tests"):
                 match = re.search(r'#\[path = "([^"]+)"\]\s*mod ' + child + r';', text)
                 self.assertIsNotNone(match, f"path-loaded panel needs an explicit {child} path")
                 self.assertEqual(match.group(1), f"rna_panel/{child}.rs")
                 self.assertTrue((source_path.parent / match.group(1)).is_file())
+
+    def test_artifact_only_policy_and_request_bindings_are_not_inferred_from_flags(self):
+        policy = (ROOT / "src/command_execution/rna_artifacts.rs").read_text(encoding="utf-8")
+        for operation in ("ScreenRnaReadPanel", "ExportRnaReadPanelSummary", "InspectRnaReadPanel", "CancelRnaReadPanel"):
+            self.assertIn("Operation::" + operation, policy)
+        self.assertIn("_ => Policy::Project", policy)
+        self.assertNotIn("state_changed", policy)
+        types = (ROOT / "src/engine/protocol/rna_panel.rs").read_text(encoding="utf-8")
+        for field in ("expected_panel_sha256", "submitted_request_sha256"):
+            self.assertRegex(types, r'#\[serde\(default, skip_serializing_if = "Option::is_none"\)\]\s*pub ' + field)
+        tests = (ROOT / "src/command_execution/rna_tests.rs").read_text(encoding="utf-8")
+        for name in ("rna_panel_service_late_cancel_and_live_edit_keep_published_completion",
+                     "rna_panel_service_retention_does_not_stale_another_detached_job",
+                     "rna_panel_control_and_metadata_do_not_compete_with_execution_slots_or_project_lock",
+                     "rna_panel_registered_build_keeps_project_commit_and_mutation_feedback"):
+            self.assertIn(name, tests)
 
     def test_native_preparation_reuses_gene_sets_and_shared_routes(self):
         guide = GUIDE.read_text(encoding="utf-8")

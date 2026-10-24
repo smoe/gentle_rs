@@ -81,6 +81,10 @@ panel/report/row payloads are the same; no adapter-local classification is added
   manifest entry. `checksum_manifest_key` selects an exact supplier path when
   basenames collide; supplier paths need not exist locally. Sample identities
   cannot map to conflicting barcode/priming values within a request.
+  Optional `expected_panel_sha256` binds the reviewed content at `panel_path`.
+  A replacement valid panel is refused before indexing, streaming or staging.
+  Omitted/None is the historical unpinned behavior, not proof of prior review;
+  the absent field is omitted from serialization/cancel identities.
 - `gentle.rna_read_panel_screen.v2`: effective request with resolved expected
   digests, panel SHA-256, posting count, `completed|cancelled|control_error` status, verified
   `files_completed`, `files_not_completed`, named `inputs_not_completed`, nonclaims and explicit false
@@ -95,12 +99,28 @@ panel/report/row payloads are the same; no adapter-local classification is added
   errors return structured `InvalidInput` diagnostics and publish no report.
   An output-I/O failure can leave orphan artifacts without a final marker;
   never interpret such a directory as a completed run.
+  New reports carry optional `submitted_request_sha256` before manifest MD5
+  resolution. Their stored `request` remains the effective request. Missing
+  historical hashes are not reconstructed as authenticated submission evidence.
 - `gentle.rna_read_panel_inspection.v1` optionally accompanies an inspected
   screen report in `OpResult.rna_read_panel_inspection`. It binds the report
   digest and expected TSV digest, but reports `artifact_content_verified=false`:
   at most 1000 rows / 8 MB of prefix are read, not the entire large sidecar.
   `--file-id` requires a positive `--rows` count; it is never silently ignored.
   Metadata inspection rechecks its content digest, not current source files.
+
+`gentle.rna_read_panel_result_binding.v1` binds `kind` (`screen|summary`),
+`submitted_request_sha256`, `effective_request_sha256`, `panel_sha256`,
+`report_content_sha256`, `report_path` and `outcome`. Screen outcomes retain
+completed/cancelled/control_error; summary outcomes describe complete/partial
+source coverage, not export failure. New summaries also carry the optional
+submitted-request hash; summary requests are not normalized. All absent new
+report fields remain omitted for historical semantic-digest compatibility.
+`InspectRnaReadPanel.expected_result` or shared-shell
+`panel-show PATH --binding BINDING_JSON_OR_@FILE` verifies those bindings after
+ordinary metadata inspection. It does not reread manifests/reads, rerun fresh-
+output admission or infer a result from a matching filename. Unbound legacy
+inspection stays available without inventing a new verified submission receipt.
 
 Default policy: k=15 (allowed 8..16), minimum chain coverage 45 bp, junction
 flanks 5 bp, 2 million postings, 100,000 anchors per read, 4096 equivalence
@@ -611,6 +631,26 @@ limit bound admission. Outputs are consumed once; their receipts remain until
 capacity requires oldest-consumed-terminal eviction. Missing/cancelled/stale
 results are never published as successful partial output. External resource/file
 effects are not rolled back by discarding a detached engine.
+The standalone RNA screen/summary allowlist is an explicit file-only exception:
+published typed outcomes are retained without live project or journal merging.
+Receipts expose `publication`, `requires_project_commit` and optional
+`artifact_result`. `owner_instance` may be null for independent work admitted
+without a project lock; it is not a fabricated zero identity. Project replacement
+cannot attach an old result to the new project. Late host cancellation cannot
+change an already-published screen outcome; early engine cancellation is intact.
+Cancelled/control-error reports remain consumable results, with Cancelled/Failed
+receipt states respectively. Oversize file-only outputs use the small
+`gentle.command_artifact_result.v1` binding envelope instead of losing the
+published result to the interactive 16 MiB limit. The full scientific record
+remains in the bound report, not silently truncated.
+
+Frozen shared-parser submission uses separate observation and control lanes,
+each with two workers/eight retained receipts, outside four execution slots.
+Both run without a live project lock and do not merge private journals.
+Explicit table verification uses execution capacity but remains non-committing.
+The raw-text convenience API retains its historical worker-side parsing; hosts
+use `submit_parsed` to preserve the reviewed payload and independent admission.
+`receipts()` is cached host-local history, not a new CLI job server or queue.
 State-replacing commands inside managed macros are rejected before commit: a
 loaded/reconstructed project must not be merged as an ordinary detached delta.
 Explicit project load/import routes retain their existing host handling.

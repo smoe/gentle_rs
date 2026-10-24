@@ -1,5 +1,29 @@
 # GENtle Changelog
 
+## 2026-10-24 - Retain Bound File-Only RNA Results
+
+- Classify only standalone screen and summary export as artifact-only managed
+  work. Retain validated published results without merging their private journals
+  into the live project; ordinary mutation/stale-owner safeguards remain intact.
+- Preserve engine-published outcomes across late host cancellation, retaining
+  cancelled/control-error reports as evidence with distinct lifecycle states.
+  Bound small envelopes retain oversized file-only results without truncating
+  the scientific report. Independent bounded observation/control lanes remain
+  available when execution slots or the live project lock are occupied.
+- Add optional reviewed-panel digest admission, submitted/effective request
+  identities and bound report reopening on shared inspection routes. Omitted
+  optional fields preserve legacy request/cancel/report bytes. Plain metadata
+  inspection never reruns admission or rereads a changed manifest/FASTQ.
+- Correct the existing registered-panel build's shared-shell mutation feedback;
+  it remains a normal guarded project commit, not part of the file-only allowlist.
+- Author synthetic channel-controlled concurrency, late/partial cancellation,
+  control-error, capacity, provenance/tampering and LF/CRLF legacy regressions.
+  Rust/native execution remains Glen/CI work; the subsequent native form,
+  monitor, inspector/export and full 10.04 rehearsal remain in progress.
+- Verification: 89 Python source/tutorial/checkout tests, scoped rustfmt,
+  capability-maturity freshness and whitespace pass. This is not Rust/native
+  acceptance and does not establish live-agent responsiveness or throughput.
+
 ## 2026-10-24 - Native And Shared RNA-Panel Preparation
 
 - Add Genome > RNA Read Panel, command-palette and shared UI-intent access for

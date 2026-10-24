@@ -12,7 +12,7 @@
          "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
          "path": "rna-reads panel-show",
          "summary": "Inspect content-bound panel/screen/summary metadata or a bounded unverified nomination prefix. Explicit --verify-artifacts verifies only the three summary tables within 256 MB, never original FASTQ or nomination sidecars; default display remains metadata-only.",
-         "usage": "rna-reads panel-show PATH [--file-id ID] [--rows N] [--verify-artifacts]"
+         "usage": "rna-reads panel-show PATH [--file-id ID] [--rows N] [--verify-artifacts] [--binding BINDING_JSON_OR_@FILE]"
       },
       {
          "aliases": [], "engine_operations": ["CancelRnaReadPanel"],

@@ -63,6 +63,7 @@ fn rna_panel_introspection_exposes_typed_requests_without_granting_completion() 
         assert!(matches!(
             operation,
             Operation::InspectRnaReadPanel {
+                expected_result: None,
                 verify_artifacts: true,
                 ..
             }

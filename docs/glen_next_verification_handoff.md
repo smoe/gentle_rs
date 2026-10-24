@@ -1,5 +1,41 @@
 # Glen: Next Verification And Return
 
+## File-Only RNA Execution And Result Bindings, 2026-10-24
+
+At the ordinary integrated source, run the focused `rna_panel_` lib filter,
+existing `command_execution::tests`, `agent_feedback`/approval/MCP parity tests,
+glossary/capability/parity freshness and `cargo check -q --locked --tests`.
+No new freeze, local Codex Rust build, private FASTQ run or native acceptance is
+claimed. Regenerate/replay the synthetic tutorial with a source-matched binary;
+new submitted-request fields legitimately change new report hashes, while
+legacy omitted-field canonical bytes and cancel identities must remain stable.
+
+New engine tests cover exact frozen legacy request bytes (LF/CRLF), reviewed
+panel replacement before streaming, submitted/effective manifest normalization,
+changed/deleted source files after publication, binding tampering, bound shared-
+shell inspection and summary/legacy metadata. New service tests use channels to
+hold the publication-to-retention window, request late cancellation and edit
+live structure; require retained Completed evidence, zero committed operations
+and no overwritten project edits. A separate held mutator must still commit
+after artifact retention, proving there was no intervening live journal append.
+
+Exercise callback cancellation and foreign-marker control errors after the
+first verified file. Require Cancelled/Failed lifecycle states respectively,
+retained bound partial reports and unchanged scientific outcomes. Fill all four
+execution slots and hold the live project lock: marker control and metadata
+inspection must still finish in their independent lanes; explicit expensive
+verification must report execution-capacity refusal. Registered panel builds
+remain normal project commits with correct mutation feedback. Oversized file-
+only output must retain a small bound envelope and the full published report.
+
+Preserve existing mutator stale/cancel rejection and bounded history tests;
+do not infer file-only policy from `state_changed=false` or caller JSON. Review
+`submit_parsed` freezing versus raw-text worker parsing, agent project-change
+handling and compact-result feedback. Cross-process cancellation remains the
+request-bound marker; these process-local job IDs are not portable handles.
+The active [processing plan](rna_panel_gui_processing_plan.md) continues with
+native setup/monitor/inspector/export and tutorial acceptance in later commits.
+
 ## Gene-Set RNA Panel Preparation And Graph, 2026-10-24
 
 At the ordinary integrated source, without another freeze, run:

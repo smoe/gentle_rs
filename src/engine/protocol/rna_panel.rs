@@ -201,6 +201,9 @@ impl Default for RnaReadPanelPolicy {
 pub struct ScreenRnaReadPanelRequest {
     pub schema: String,
     pub panel_path: String,
+    /// Bind the reviewed panel, not merely its mutable filesystem location.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_panel_sha256: Option<String>,
     pub files: Vec<RnaReadPanelInput>,
     #[serde(default)]
     pub md5_manifest_path: Option<String>,
@@ -277,6 +280,9 @@ pub struct RnaReadPanelControlError {
 pub struct RnaReadPanelScreenReport {
     pub schema: String,
     pub content_sha256: String,
+    /// Canonical submitted request, before manifest resolution/normalization.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub submitted_request_sha256: Option<String>,
     pub status: String,
     pub request: ScreenRnaReadPanelRequest,
     pub panel_sha256: String,
@@ -438,6 +444,8 @@ pub struct RnaReadPanelArtifactVerification {
 pub struct RnaReadPanelSummary {
     pub schema: String,
     pub content_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub submitted_request_sha256: Option<String>,
     pub panel_sha256: String,
     pub policy: RnaReadPanelPolicy,
     /// Complete only for the explicitly supplied reports; never whole-run or transcriptome coverage.
@@ -459,4 +467,26 @@ pub struct RnaReadPanelSummary {
     pub nomination_sidecars_reverified: bool,
     pub artifacts: Vec<RnaReadPanelArtifact>,
     pub nonclaims: Vec<String>,
+}
+
+/// Portable binding for reopening an exact file-only result, not an authenticated signature.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RnaReadPanelResultBinding {
+    pub schema: String,
+    pub kind: RnaReadPanelResultKind,
+    pub submitted_request_sha256: String,
+    pub effective_request_sha256: String,
+    pub panel_sha256: String,
+    pub report_content_sha256: String,
+    pub report_path: String,
+    /// Screen: completed/cancelled/control_error. Summary: complete/partial source coverage.
+    pub outcome: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RnaReadPanelResultKind {
+    Screen,
+    Summary,
 }

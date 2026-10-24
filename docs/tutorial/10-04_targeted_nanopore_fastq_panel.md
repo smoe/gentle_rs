@@ -397,6 +397,30 @@ Parse errors, corrupt/truncated gzip, changing inputs, checksum mismatches,
 resource-budget errors and publication/I/O failures keep their existing hard
 failure rules. They are never converted into control errors to rescue counts.
 
+### 3.2 Keep The Reviewed Panel And Published Result Bound
+
+Include `expected_panel_sha256` with the actual panel hash reviewed through
+`panel-show` when preparing a screen request. A filename can be replaced; the
+hash pins that reviewed competitor set. The inner agent should carry this value
+into its draft, not invent it. Older requests without it still work, but do not
+prove which panel was reviewed beforehand.
+
+The report keeps the effective request after resolving expected MD5 values from
+the manifest, plus the submitted-request hash. These may legitimately differ.
+Do not "repair" a receipt because the manifest's checksum was filled in. Managed
+screen/summary jobs retain a small result binding with submitted/effective,
+panel/report hashes, outcome and exact report path. Reopen it with
+`rna-reads panel-show PATH --binding BINDING_JSON_OR_@FILE`; this checks metadata,
+not the original FASTQ or a now-changed manifest.
+
+An unrelated edit in the active project does not invalidate those published
+file-only results or implicitly attach them to a different project. Cancellation
+before engine publication may still produce a partial cancelled report. A later
+host cancel cannot rewrite a report already published as completed. A retained
+`control_error` remains failed screening, even though its verified units are
+inspectable. If a run failed before publication, never open a presumed old
+`report.json` merely because a file exists at that location.
+
 ## 4. Read The Evidence, Not Just The Largest Count
 
 Each verified file has a nomination TSV under `artifacts/file_NNNN/` and its
