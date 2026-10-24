@@ -4395,7 +4395,16 @@ GENtle tracks open native windows and can raise a selected one to front.
 
 The `Help` menu now includes:
 
-- `GUI Manual`: opens `docs/gui.md` in an in-app markdown viewer
+- `GUI Manual`: opens `docs/gui.md` one section at a time. Use **Section**,
+  **Previous section** and **Next section** to navigate. Oversized sections
+  have numbered continuations, split between complete Markdown blocks or
+  top-level bullet items; code, tables, numbered lists and nested items stay together. Scrolling
+  lays out only the selected section, not the entire manual. The section index
+  and display text are cached until the source changes or **Reload** is used.
+  **Find** searches the complete manual and selects the section containing
+  the chosen match; the source line/snippet locates it within that section.
+  **Selectable Text** shows the selected section, while **Copy Manual** copies
+  the complete source. Other Help tabs and tutorials retain their own navigation.
 - `CLI Manual`: opens `docs/cli.md` in an in-app markdown viewer
 - `Agent Interface`: opens `docs/agent_interface.md` in an in-app markdown viewer
 - `Reviewer Quickstart`: opens `docs/reviewer_preview.md` (internal preview checklist and known limitations)

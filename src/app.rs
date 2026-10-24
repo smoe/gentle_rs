@@ -44,6 +44,9 @@
 #[path = "app/help_docs.rs"]
 mod help_docs;
 
+#[path = "app/help_manual.rs"]
+mod help_manual;
+
 #[path = "app/tutorial_menus.rs"]
 mod tutorial_menus;
 
@@ -759,6 +762,8 @@ pub struct GENtleApp {
     help_markdown_cache: CommonMarkCache,
     help_rendered_markdown_cache: HashMap<String, RenderedHelpMarkdownEntry>,
     help_gui_markdown: String,
+    help_gui_pages: Option<Arc<help_manual::ManualPages>>,
+    help_gui_page: usize,
     help_cli_markdown: String,
     help_agent_interface_markdown: String,
     help_reviewer_preview_markdown: String,
@@ -2701,6 +2706,8 @@ impl Default for GENtleApp {
             help_markdown_cache: CommonMarkCache::default(),
             help_rendered_markdown_cache: HashMap::new(),
             help_gui_markdown: GUI_MANUAL_MD.to_string(),
+            help_gui_pages: None,
+            help_gui_page: 0,
             help_cli_markdown: CLI_MANUAL_MD.to_string(),
             help_agent_interface_markdown: AGENT_INTERFACE_MD.to_string(),
             help_reviewer_preview_markdown: REVIEWER_PREVIEW_MD.to_string(),
@@ -3851,7 +3858,7 @@ impl GENtleApp {
 
     fn help_render_cache_key(&self, doc: HelpDoc) -> String {
         match doc {
-            HelpDoc::Gui => "gui".to_string(),
+            HelpDoc::Gui => format!("gui:{}", self.help_gui_page),
             HelpDoc::Cli => "cli".to_string(),
             HelpDoc::AgentInterface => "agent_interface".to_string(),
             HelpDoc::ReviewerPreview => "reviewer_preview".to_string(),
@@ -3865,7 +3872,12 @@ impl GENtleApp {
 
     fn help_source_markdown(&self, doc: HelpDoc) -> &str {
         match doc {
-            HelpDoc::Gui => self.help_gui_markdown.as_str(),
+            HelpDoc::Gui => self
+                .help_gui_pages
+                .as_ref()
+                .and_then(|index| index.pages.get(self.help_gui_page))
+                .map(|page| page.markdown.as_str())
+                .unwrap_or(self.help_gui_markdown.as_str()),
             HelpDoc::Cli => self.help_cli_markdown.as_str(),
             HelpDoc::AgentInterface => self.help_agent_interface_markdown.as_str(),
             HelpDoc::ReviewerPreview => self.help_reviewer_preview_markdown.as_str(),
@@ -3875,6 +3887,9 @@ impl GENtleApp {
     }
 
     fn rendered_help_markdown_for(&mut self, doc: HelpDoc) -> Arc<str> {
+        if doc == HelpDoc::Gui {
+            self.ensure_gui_manual_pages();
+        }
         let cache_key = self.help_render_cache_key(doc);
         let source_hash = Self::help_markdown_hash(self.help_source_markdown(doc));
         let needs_refresh = self
@@ -3936,6 +3951,7 @@ Error: `{err}`"
             Self::generate_shell_help_markdown_for(self.help_shell_interface)
         });
         self.help_rendered_markdown_cache.clear();
+        self.help_gui_pages = None;
         self.help_tutorial_entries = measure(Phase::HelpTutorialDiscovery, || {
             Self::discover_help_tutorial_entries()
         });
@@ -6254,6 +6270,7 @@ Error: `{err}`"
         } else if self.help_search_selected >= self.help_search_matches.len() {
             self.help_search_selected = self.help_search_matches.len() - 1;
         }
+        self.show_gui_manual_search_match();
     }
 
     fn select_next_help_match(&mut self) {
@@ -6262,6 +6279,7 @@ Error: `{err}`"
         }
         self.help_search_selected =
             (self.help_search_selected + 1) % self.help_search_matches.len();
+        self.show_gui_manual_search_match();
     }
 
     fn select_prev_help_match(&mut self) {
@@ -6273,6 +6291,7 @@ Error: `{err}`"
         } else {
             self.help_search_selected -= 1;
         }
+        self.show_gui_manual_search_match();
     }
 
     pub fn new() -> Self {
@@ -24220,6 +24239,9 @@ Error: `{err}`"
     }
 
     fn render_help_contents(&mut self, ui: &mut Ui) {
+        if self.help_doc == HelpDoc::Gui {
+            self.ensure_gui_manual_pages();
+        }
         window_backdrop::paint_window_backdrop(
             ui,
             WindowBackdropKind::Help,
@@ -24329,8 +24351,8 @@ Error: `{err}`"
                     active_doc_changed = true;
                 }
                 if ui
-                    .button("Copy Page")
-                    .on_hover_text("Copy the current help/tutorial markdown source to the clipboard")
+                    .button(if self.help_doc == HelpDoc::Gui { "Copy Manual" } else { "Copy Page" })
+                    .on_hover_text("Copy the complete current help/tutorial markdown source to the clipboard")
                     .clicked()
                 {
                     ui.ctx().copy_text(self.active_help_copyable_text());
@@ -24363,6 +24385,29 @@ Error: `{err}`"
             });
 
             ui.horizontal_wrapped(|ui| {
+                if self.help_doc == HelpDoc::Gui {
+                    let pages = self.ensure_gui_manual_pages();
+                    let mut selected = self.help_gui_page;
+                    ui.label("Section:");
+                    egui::ComboBox::from_id_salt("help_gui_section")
+                        .width(Self::clamp_help_topic_combo_width(ui.available_width()))
+                        .selected_text(&pages.pages[selected].title)
+                        .show_ui(ui, |ui| {
+                            for (index, page) in pages.pages.iter().enumerate() {
+                                ui.selectable_value(&mut selected, index, &page.title)
+                                    .on_hover_text(format!("Starts at manual line {}; {} source bytes", page.first_line, page.source_range.len()));
+                            }
+                        });
+                    if ui.add_enabled(selected > 0, egui::Button::new("Previous section")).clicked() {
+                        selected -= 1;
+                    }
+                    if ui.add_enabled(selected + 1 < pages.pages.len(), egui::Button::new("Next section")).clicked() {
+                        selected += 1;
+                    }
+                    ui.small(format!("{}/{}", selected + 1, pages.pages.len()));
+                    self.select_gui_manual_page(selected);
+                    ui.separator();
+                }
                 if self.help_doc == HelpDoc::Tutorial {
                     if self.help_tutorial_entries.is_empty() {
                         self.help_tutorial_entries = Self::discover_help_tutorial_entries();

@@ -24,6 +24,43 @@ status: manual/reference\n\
 Practical guide for the in-app Agent Assistant, provider quick starts, reviewed shared-shell suggestions, CLI/shared shell, MCP, and external coding agents.";
 
 impl GENtleApp {
+    pub(super) fn ensure_gui_manual_pages(&mut self) -> Arc<super::help_manual::ManualPages> {
+        let source_hash = Self::help_markdown_hash(&self.help_gui_markdown);
+        if self
+            .help_gui_pages
+            .as_ref()
+            .is_none_or(|index| index.source_hash != source_hash)
+        {
+            let index = super::help_manual::ManualPages::new(&self.help_gui_markdown, source_hash);
+            self.help_gui_page = self.help_gui_page.min(index.pages.len() - 1);
+            self.help_gui_pages = Some(Arc::new(index));
+            self.help_rendered_markdown_cache
+                .retain(|key, _| !key.starts_with("gui:"));
+            self.help_markdown_cache = CommonMarkCache::default();
+        }
+        self.help_gui_pages.as_ref().unwrap().clone()
+    }
+
+    pub(super) fn select_gui_manual_page(&mut self, index: usize) {
+        let pages = self.ensure_gui_manual_pages();
+        let index = index.min(pages.pages.len() - 1);
+        if self.help_gui_page != index {
+            self.help_gui_page = index;
+            self.help_markdown_cache = CommonMarkCache::default();
+            self.help_last_content_width = 0.0;
+        }
+    }
+
+    pub(super) fn show_gui_manual_search_match(&mut self) {
+        if self.help_doc == HelpDoc::Gui
+            && let Some(hit) = self.help_search_matches.get(self.help_search_selected)
+        {
+            let line = hit.line_number;
+            let pages = self.ensure_gui_manual_pages();
+            self.select_gui_manual_page(pages.page_for_line(line));
+        }
+    }
+
     fn help_document_path(&self) -> Option<PathBuf> {
         let path = match self.help_doc {
             HelpDoc::Gui => "docs/gui.md",

@@ -4,6 +4,152 @@
 use super::*;
 use crate::gui_profiler::startup_trace;
 
+#[test]
+fn gui_manual_pages_reuse_index_and_render_cache_until_source_changes() {
+    let mut app = GENtleApp::default();
+    app.help_gui_markdown =
+        "# Manual\n\nOverview\n\n## First\n\nFIRST_BODY\n\n## Second\n\nSECOND_BODY\n".into();
+    let source = app.help_gui_markdown.clone();
+    let index = app.ensure_gui_manual_pages();
+    app.select_gui_manual_page(1);
+    let first = app.rendered_help_markdown_for(HelpDoc::Gui);
+    let second = app.rendered_help_markdown_for(HelpDoc::Gui);
+    assert!(Arc::ptr_eq(&first, &second));
+    assert!(Arc::ptr_eq(&index, &app.ensure_gui_manual_pages()));
+    assert!(first.contains("FIRST_BODY"));
+    assert!(!first.contains("SECOND_BODY"));
+    app.select_gui_manual_page(2);
+    assert!(
+        app.rendered_help_markdown_for(HelpDoc::Gui)
+            .contains("SECOND_BODY")
+    );
+    assert_eq!(app.active_help_copyable_text(), source);
+    app.help_gui_markdown = "# Replaced\n\nNEW_BODY\n".into();
+    let replaced = app.rendered_help_markdown_for(HelpDoc::Gui);
+    assert!(!Arc::ptr_eq(&index, &app.ensure_gui_manual_pages()));
+    assert_eq!(app.help_gui_page, 0);
+    assert!(replaced.contains("NEW_BODY"));
+    assert!(!replaced.contains("FIRST_BODY"));
+}
+
+#[test]
+fn gui_manual_pages_search_whole_manual_and_navigate_to_matching_section() {
+    let mut app = GENtleApp::default();
+    app.help_gui_markdown = "# Manual\n\n## One\n\nneedle one\n\n## Two\n\nneedle two\n".into();
+    app.help_search_query = "needle".into();
+    app.refresh_help_search_matches();
+    assert_eq!(app.help_search_matches.len(), 2);
+    assert_eq!(app.help_gui_page, 1);
+    assert!(
+        app.help_source_markdown(HelpDoc::Gui)
+            .contains("needle one")
+    );
+    app.select_next_help_match();
+    assert_eq!(app.help_gui_page, 2);
+    assert!(
+        app.help_source_markdown(HelpDoc::Gui)
+            .contains("needle two")
+    );
+    app.select_prev_help_match();
+    assert_eq!(app.help_gui_page, 1);
+    let before = serde_json::to_value(app.engine.read().unwrap().state()).unwrap();
+    click_help_link(&mut app, "Next section");
+    assert_eq!(app.help_gui_page, 2);
+    assert_eq!(
+        serde_json::to_value(app.engine.read().unwrap().state()).unwrap(),
+        before
+    );
+}
+
+#[test]
+fn gui_manual_pages_real_help_wheel_moves_content_without_rendering_other_sections() {
+    let mut app = GENtleApp::default();
+    app.help_gui_markdown = format!(
+        "# Manual\n\n## Scroll\n\n{}\n## Hidden\n\nHIDDEN_PAGE_BODY\n",
+        (0..150)
+            .map(|i| format!("Scrolling row {i}\n\n"))
+            .collect::<String>()
+    );
+    app.select_gui_manual_page(1);
+    app.show_help_dialog = true;
+    let ctx = egui::Context::default();
+    ctx.set_embed_viewports(true);
+    let mut time = 0.0;
+    // Exercise the actual hosted Help window. A synthetic CentralPanel on an
+    // unregistered layer can paint text, but cannot own wheel input in egui.
+    let mut frame = |events| {
+        time += 1.0 / 60.0;
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1200.0, 1000.0),
+                )),
+                time: Some(time),
+                events,
+                ..Default::default()
+            },
+            |_ui| app.render_help_dialog(&ctx),
+        );
+        output.textures_delta.clear();
+        output
+    };
+    let visible_rows = |output: &egui::FullOutput| {
+        output
+            .shapes
+            .iter()
+            .filter_map(|shape| {
+                let egui::epaint::Shape::Text(text) = &shape.shape else {
+                    return None;
+                };
+                assert!(!text.galley.job.text.contains("HIDDEN_PAGE_BODY"));
+                if !egui::Rect::from_min_size(text.pos, text.galley.size())
+                    .intersects(shape.clip_rect)
+                {
+                    return None;
+                }
+                text.galley
+                    .job
+                    .text
+                    .strip_prefix("Scrolling row ")
+                    .and_then(|s| s.trim().parse::<usize>().ok())
+            })
+            .min()
+            .unwrap()
+    };
+    for _ in 0..3 {
+        frame(vec![]).drop_without_applying_deltas();
+    }
+    let before = frame(vec![]);
+    let first = visible_rows(&before);
+    let pointer = before
+        .shapes
+        .iter()
+        .find_map(|shape| help_link_text_center(&shape.shape, &format!("Scrolling row {first}")))
+        .unwrap();
+    before.drop_without_applying_deltas();
+    let mut last = first;
+    for index in 0..20 {
+        let mut events = vec![egui::Event::PointerMoved(pointer)];
+        if index == 0 {
+            events.push(egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                delta: egui::vec2(0.0, -350.0),
+                modifiers: egui::Modifiers::NONE,
+                phase: egui::TouchPhase::Move,
+            });
+        }
+        let output = frame(events);
+        last = visible_rows(&output);
+        output.drop_without_applying_deltas();
+    }
+    assert!(
+        last > first,
+        "wheel must advance the visible manual rows: {first} -> {last}"
+    );
+    assert_eq!(app.help_gui_page, 1);
+}
+
 // Hand-written temporary Markdown and egui pointer events reproduce the links
 // in 03.09 without rasterizing its historical screenshots or touching user files.
 fn help_link_test_app(root: &Path, newline: &str) -> GENtleApp {

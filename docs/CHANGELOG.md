@@ -28,6 +28,31 @@
   source-discovery tests. Rust/native acceptance remains Glen/CI work; no
   private reads, local Rust build, push or prior-goal resumption.
 
+## 2026-10-24 - Read The GUI Manual In Small Sections
+
+- Address the owner's blocked-wheel report: Help previously laid out all of
+  `docs/gui.md` on every scroll frame. Keep that single source, but index it
+  once per content change and render only the selected section. Add a section
+  picker, previous/next navigation and numbered continuations for large
+  sections, using complete Markdown blocks/top-level bullet items as boundaries.
+- Preserve code, tables, nested items, cross-page reference links/footnotes,
+  relative-link routing, full-manual Find and complete-source copying. Find
+  chooses the section containing each match; selectable text is section-local.
+  Existing tutorial/other-manual navigation, fonts, engine state and scientific
+  exports are unchanged. Do not enable the vendored renderer's explicitly
+  buggy scroll-virtualization API or duplicate the manual into generated files.
+- Add deterministic source-coverage, LF/CRLF, cache-invalidation, search,
+  navigation and real Help-renderer wheel-input regressions. Native macOS/
+  Windows/packaged responsiveness remains a separate check, not a timed claim.
+- Verification on macOS, Rust 1.100.0-beta.5, `2a37ae8d` plus this change:
+  all 62 focused Help tests pass, including six new pagination/hosted-window
+  regressions; 75 checkout and 18 startup-summary Python tests pass. Locked
+  offline Cargo check, rustfmt, capability freshness and whitespace pass.
+  Retain the nonfatal macOS oversized-unwind-table linker warning separately.
+  Session-close: four OK, two expected intentional-worktree/manual-plan
+  warnings, zero failures; roadmap remains 400 lines. No full-suite,
+  physical/native-device or packaged performance acceptance is claimed.
+
 ## 2026-10-23 - Correct PCR-Strip Journal And Parser Regressions
 
 - Address Glen's two isolated `fc75114a` test failures without production
