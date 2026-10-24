@@ -551,6 +551,14 @@ impl GENtleApp {
                 }
             }
             LineageNodeKind::Analysis => {
+                if row.node_id.starts_with("analysis:rna_panel:") || row.node_id.starts_with("gene_set:") {
+                    let label = if row.node_id.starts_with("gene_set:") { "Open Gene Set Inspector" } else { "Open RNA Read Panel" };
+                    if ui.button(label).clicked() {
+                        self.try_open_rna_panel_graph_node(&row.node_id);
+                        ui.close();
+                    }
+                    return;
+                }
                 if let Some((kind, seq_id, artifact_id)) = Self::lineage_analysis_open_payload(row)
                     && ui.button("Open saved analysis")
                         .on_hover_text("Inspect this saved result in its existing specialist viewer; this does not rerun the analysis")
@@ -4496,7 +4504,9 @@ impl GENtleApp {
             }
         }
         if let Some(seq_id) = open_seq {
-            self.open_sequence_window(&seq_id);
+            if !self.try_open_rna_panel_graph_node(&seq_id) {
+                self.open_sequence_window(&seq_id);
+            }
         }
         if let Some((representative, pool_members)) = open_pool {
             self.open_pool_window(&representative, pool_members);

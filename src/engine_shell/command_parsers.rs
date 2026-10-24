@@ -13299,6 +13299,11 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
         );
     }
     match tokens[1].as_str() {
+        "panel-build" if (3..=4).contains(&tokens.len()) && tokens[2] == "--list-sources" => {
+            Ok(ShellCommand::RnaReadPanelSources {
+                gene_set_id: tokens.get(3).cloned(),
+            })
+        }
         "panel-export-summary" => {
             if tokens.len() != 3 {
                 return Err("Use rna-reads panel-export-summary REQUEST_JSON_OR_@FILE".into());

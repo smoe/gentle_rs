@@ -11,6 +11,24 @@ need to start with raw operation JSON.
 ## Start Here
 
 For targeted multi-gene cDNA FASTQ, use [tutorial 10.04](tutorial/10-04_targeted_nanopore_fastq_panel.md):
+`rna-reads panel-build --list-sources [GENE_SET_ID]` discovers loaded groups and stored gene-set bindings without writes,
+using the same inventory as the native editor. Review blank provenance; do not
+infer assembly/release or stable gene IDs from names. To extend an existing
+panel, add optional `base_panel_path` to the existing build request, list only
+new loci in `sources`, and choose a fresh `output_path`. Original loaded sources
+must still match their hashes. Recompose explicitly with all desired sources
+and no base to edit/remove retained loci. Old panels/screens remain unchanged;
+new panels need new screening and cannot be merged into old-panel summaries.
+Reuse an existing resolved gene set with `gene_set: {resolution_id,
+resolution_sha256}` from the inventory; the optional ID requests exact loaded
+member mappings. Preserve the discovered `expected_source_record_sha256` values.
+Unresolved, missing or competing stable IDs are not zero-transcript results.
+Set `register_in_project=true` to retain the same panel/set/parent graph snapshot
+as the native editor. Omit it for legacy file-only behavior; project undo does
+not remove external files. The panel embeds the gene-set snapshot and, on
+extension, `parent_panel_sha256` as part of its content identity.
+
+The other shared routes are
 `rna-reads panel-demo OUTPUT_DIR`, `rna-reads panel-build REQUEST_JSON_OR_@FILE`,
 `rna-reads panel-screen REQUEST_JSON_OR_@FILE`,
 `rna-reads panel-show PATH [--file-id ID] [--rows N] [--verify-artifacts]` and

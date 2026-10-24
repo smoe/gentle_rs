@@ -10199,6 +10199,12 @@ impl GentleEngine {
     }
 
     fn operation_checkpoint_kind(op: &Operation) -> Option<EngineHistoryCheckpointKind> {
+        if let Operation::BuildRnaReadPanel { request } = op {
+            return request
+                .register_in_project
+                .unwrap_or(false)
+                .then_some(EngineHistoryCheckpointKind::Full);
+        }
         if let Operation::GelWorkbench { request } = op {
             return request
                 .mutates()
@@ -10210,7 +10216,6 @@ impl GentleEngine {
         if matches!(
             op,
             Operation::SaveFile { .. }
-                | Operation::BuildRnaReadPanel { .. }
                 | Operation::ScreenRnaReadPanel { .. }
                 | Operation::ExportRnaReadPanelSummary { .. }
                 | Operation::PrepareRnaReadPanelDemo { .. }

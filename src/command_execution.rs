@@ -102,6 +102,7 @@ impl CommandExecutionService {
         matches!(
             command,
             ShellCommand::ReferencePrepare { .. }
+                | ShellCommand::RnaReadPanelSources { .. }
                 | ShellCommand::Workflow { .. }
                 | ShellCommand::Op { .. }
                 | ShellCommand::MacrosRun { .. }

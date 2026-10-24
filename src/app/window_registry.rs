@@ -16,6 +16,12 @@ pub struct GuiProminentGlossaryEntry {
 
 const GUI_PROMINENT_GLOSSARY_ENTRIES: &[GuiProminentGlossaryEntry] = &[
     GuiProminentGlossaryEntry {
+        glossary_path: "rna-reads panel-build",
+        menu_path: "Genome > RNA Read Panel...",
+        palette_title: "RNA Read Panel",
+        ui_intent_target: Some(UiIntentTarget::RnaReadPanel),
+    },
+    GuiProminentGlossaryEntry {
         glossary_path: "planning protein-expression-handoff",
         menu_path: "Services > Protein Expression Handoff...",
         palette_title: "Protein Expression Handoff",
@@ -419,6 +425,11 @@ impl GENtleApp {
                 Self::hosted_protein_expression_window_id(),
             ));
         }
+        if viewport_id == Self::rna_panel_viewport_id() {
+            return Some(Self::embedded_window_layer_from_window_id(
+                Self::hosted_rna_panel_window_id(),
+            ));
+        }
         if viewport_id == Self::external_services_viewport_id() {
             return Some(Self::embedded_window_layer_from_window_id(
                 Self::hosted_external_services_window_id(),
@@ -553,6 +564,7 @@ impl GENtleApp {
         self.show_command_palette_dialog.hash(&mut hasher);
         self.external_services_ui.show_panel.hash(&mut hasher);
         self.protein_expression_ui.open.hash(&mut hasher);
+        self.rna_panel_ui.open.hash(&mut hasher);
         self.gene_set_inspector.show_panel.hash(&mut hasher);
         self.evidence_preparation_panel.show_panel.hash(&mut hasher);
         self.history_ui.show_panel.hash(&mut hasher);
@@ -652,6 +664,14 @@ impl GENtleApp {
                 viewport_id: Self::protein_expression_viewport_id(),
                 title: "Protein Expression Handoff".into(),
                 detail: "Read-only product, requirements and provider-binding review".into(),
+            });
+        }
+        if self.rna_panel_ui.open {
+            entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(Self::rna_panel_viewport_id()),
+                viewport_id: Self::rna_panel_viewport_id(),
+                title: "RNA Read Panel".into(),
+                detail: "Multi-locus annotated reference panel preparation".into(),
             });
         }
         if self.external_services_ui.show_panel {
@@ -1154,6 +1174,8 @@ impl GENtleApp {
             self.command_palette_focus_query = true;
         } else if viewport_id == Self::protein_expression_viewport_id() {
             self.protein_expression_ui.open = true;
+        } else if viewport_id == Self::rna_panel_viewport_id() {
+            self.rna_panel_ui.open = true;
         } else if viewport_id == Self::external_services_viewport_id() {
             self.external_services_ui.show_panel = true;
         } else if viewport_id == Self::gene_set_inspector_viewport_id() {

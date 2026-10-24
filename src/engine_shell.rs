@@ -688,6 +688,9 @@ pub enum ShellCommand {
         seq_id: String,
         target: FeatureExpertTarget,
     },
+    RnaReadPanelSources {
+        gene_set_id: Option<String>,
+    },
     InspectSplicingAttract {
         seq_id: String,
         feature_id: usize,
@@ -7480,6 +7483,9 @@ impl ShellCommand {
                     .map(|exon| exon.token())
                     .unwrap_or_else(|| "-".to_string())
             ),
+            Self::RnaReadPanelSources { .. } => {
+                "inspect loaded RNA-panel source groups without writing files".into()
+            }
             Self::InspectFeatureExpert { seq_id, target } => {
                 format!(
                     "inspect feature expert view for '{seq_id}' target={}",
@@ -19803,7 +19809,8 @@ fn rna_panel_descriptor(id: &str) -> Value {
             "locus_id":"REPLACE_LOCUS", "seq_id":"REPLACE_LOADED_ID", "source_feature_id":0,
             "source":"REPLACE_SOURCE", "assembly":"REPLACE_ASSEMBLY", "annotation_release":"REPLACE_RELEASE",
             "gene_id":"REPLACE_GENE_ID", "gene_symbol":"REPLACE_SYMBOL", "selected_transcript_ids":[]}],
-            "output_path":"/REPLACE/fresh-panel.json"})
+            "output_path":"/REPLACE/fresh-panel.json", "base_panel_path":null,
+            "gene_set":null, "register_in_project":false})
     } else if matches!(
         id,
         "ScreenRnaReadPanel"
@@ -19831,6 +19838,7 @@ fn rna_panel_descriptor(id: &str) -> Value {
         "args": [{"name": "REQUEST_OR_PATH", "required": true, "detail": "panel-demo OUTPUT_DIR; panel-build BUILD_REQUEST_JSON_OR_@FILE; panel-screen SCREEN_REQUEST_JSON_OR_@FILE; panel-show PATH [--file-id ID] [--rows 0..1000] [--verify-artifacts]; panel-cancel SCREEN_REQUEST_JSON_OR_@FILE; panel-export-summary SUMMARY_REQUEST_JSON_OR_@FILE. Summary request v1: report_paths (1..128 explicit reports), fresh output_dir; same panel/policy, duplicate input hashes refused. V2 outputs samples/transcripts/co_nomination_sets TSV with class-plus-member counts and named sample/input coverage, no FASTQ reread. V1 member-only association stays legacy_class_unresolved. Single-candidate/co-nominated reads are partial seed support, not whole-read compatibility or isoform counts. Cancelled sources stay partial, unassessed samples are not zero. Screen request v1 binds completed files, expected checksums, sample/barcode/priming, fresh outputs/cancel path; mismatched markers fail, matching pre-start cancellation works. Byte progress includes read-ahead, not checksum success. Build request v1 binds independent annotated loci. --verify-artifacts is summary-only, explicitly checks three TSV hashes/sizes within 256 MB; no original-read or nomination-sidecar verification."}],
         "reads": [], "effects": [], "precondition_expr": {"all": []},
         "description": if inspect { "Read content-bound metadata and bounded unverified nomination rows; explicitly opt into bounded verification of three summary tables only. Inspection success does not change a saved control_error analysis outcome. No source mutation or original-read revalidation." } else { "Prepare a synthetic demo, build a panel, screen FASTQ/gzip once, export class-bound partial co-nomination counts, or request cancellation. Post-start marker faults return control_error with verified units retained and a structured diagnostic; not authorized cancellation or successful analysis. Summaries retain this source diagnostic and stay partial; preflight/data/resource failures remain hard errors. No whole-read compatibility, isoform winner, molecule copy count, trimming, oligo(dT) flip, POD5 or expression claim. External artifact writes require approval; no project sequence mutation." },
+        "panel_preparation_contract": "rna-reads panel-build --list-sources [GENE_SET_ID] is read-only: source inventory v1 retains geometry diagnostics, blank unknown provenance, expected source hashes and existing gene-set resolution bindings. Optional ID requests unique exact stable-ID source mapping. Build gene_set:{resolution_id,resolution_sha256} reuses the stored operand with full member/context checks, not a new gene-list model. Optional base_panel_path extends unchanged loaded originals with new sources; duplicate loci fail, output_path is new. Recomposition supplies all sources without a base. register_in_project=true retains an undoable graph snapshot with set/source/parent links, not read support; undo does not delete files. Legacy omitted/false remains file-only. Existing screens/summaries retain their original panel binding. Native UI: ui open|focus|close rna-read-panel. No implicit extraction, download, rescoring or FASTQ run.",
         "request_template": template, "request_template_is_example_not_resolved_input": true,
         "annotation_status": "fact_annotated", "registry": registry_metadata_for_introspection(id)})
 }
@@ -41388,6 +41396,7 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 UiIntentTarget::GelImageEditor
                     | UiIntentTarget::TssView
                     | UiIntentTarget::ProteinExpressionHandoff
+                    | UiIntentTarget::RnaReadPanel
             ) && tokens.len() != 3
             {
                 return Err(format!(
@@ -63023,6 +63032,27 @@ fn execute_feature_expert_command(
     command: &ShellCommand,
 ) -> Result<ShellRunResult, String> {
     match command {
+        ShellCommand::RnaReadPanelSources { gene_set_id } => {
+            let (selected_gene_set, sources) = match gene_set_id {
+                Some(id) => {
+                    let (binding, sources) = engine
+                        .rna_read_panel_gene_set_sources(id)
+                        .map_err(|e| e.to_string())?;
+                    (Some(binding), sources)
+                }
+                None => (
+                    None,
+                    engine
+                        .rna_read_panel_source_choices()
+                        .map_err(|e| e.to_string())?,
+                ),
+            };
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({"schema":"gentle.rna_read_panel_source_inventory.v1",
+                "sources":sources, "gene_sets":engine.rna_read_panel_gene_sets().map_err(|e| e.to_string())?, "selected_gene_set":selected_gene_set}),
+            })
+        }
         ShellCommand::InspectFeatureExpert { seq_id, target } => {
             let view = engine
                 .inspect_feature_expert(seq_id, target)
@@ -68883,7 +68913,8 @@ fn execute_shell_command_with_options_dispatch_inner(
     }
     if matches!(
         command,
-        ShellCommand::InspectFeatureExpert { .. }
+        ShellCommand::RnaReadPanelSources { .. }
+            | ShellCommand::InspectFeatureExpert { .. }
             | ShellCommand::InspectSplicingAttract { .. }
             | ShellCommand::SplicingCrypticScreen { .. }
             | ShellCommand::SplicingCrypticRender { .. }
@@ -69234,7 +69265,8 @@ fn execute_shell_command_with_options_inner(
                 output: json!({ "result": op_result }),
             }
         }
-        ShellCommand::InspectFeatureExpert { .. }
+        ShellCommand::RnaReadPanelSources { .. }
+        | ShellCommand::InspectFeatureExpert { .. }
         | ShellCommand::GenomicRegions { .. }
         | ShellCommand::InspectSplicingAttract { .. }
         | ShellCommand::SplicingCrypticScreen { .. }

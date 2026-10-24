@@ -1,5 +1,15 @@
 # GENtle Agent Interface
 
+Targeted RNA-panel preparation reuses stored gene sets, not an independent gene
+list. Use `rna-reads panel-build --list-sources [GENE_SET_ID]` for read-only loaded
+source and exact resolution-hash discovery. `BuildRnaReadPanel` / `panel-build`
+accept that `gene_set` binding, source hashes, optional immutable `base_panel_path`
+extension and explicit `register_in_project=true` for the same project graph as
+the native editor (`ui open rna-read-panel`). Builds require confirmation; graph
+reference definitions are not read-support results, and undo does not delete
+exported files. Every tutorial 10.04 screen/inspect/cancel/summary route remains
+shared; no OS helper or implicit sequencing run is needed.
+
 Targeted FASTQ [tutorial 10.04](tutorial/10-04_targeted_nanopore_fastq_panel.md)
 has shared routes for preparation (`rna-reads panel-demo`), source binding
 (`panel-build`), streaming (`panel-screen`), inspection (`panel-show`) and

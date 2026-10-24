@@ -10,8 +10,9 @@ The Shell routes are respectively `rna-reads panel-demo OUTPUT_DIR`,
 `panel-build REQUEST_JSON_OR_@FILE`, `panel-screen REQUEST_JSON_OR_@FILE`,
 `panel-show PATH [--file-id ID] [--rows N] [--verify-artifacts]`, `panel-cancel SCREEN_REQUEST_JSON_OR_@FILE`
 and `panel-export-summary SUMMARY_REQUEST_JSON_OR_@FILE`.
-All reuse `op` for MCP/scripting/workflows and agent introspection. No dedicated
-panel GUI is claimed. Artifact-producing operations require confirmation even
+All reuse `op` for MCP/scripting/workflows and agent introspection. Native panel
+preparation uses these same contracts via `Genome > RNA Read Panel...` and
+`ui open|focus|close rna-read-panel`. Artifact-producing operations require confirmation even
 though they do not mutate project sequences. Cancellation is a request, not a
 terminated/successful job receipt; the existing progress callback is cooperative.
 Shared-shell `panel-show` and `panel-cancel` call the engine's inspection/control
@@ -26,6 +27,36 @@ panel/report/row payloads are the same; no adapter-local classification is added
   `annotation_release`, `gene_id`, `gene_symbol`, optional exact
   `selected_transcript_ids`; `output_path` must be new. Empty selection means
   the source feature's annotated gene/strand group, not a canonical transcript.
+  Optional `base_panel_path` (omitted when absent) extends a validated saved
+  panel: `sources[]` are additions, original sources must remain loaded with
+  identical DNA/ordered-feature hashes, and the output is a new file. Duplicate
+  locus IDs and missing/changed original sources fail before publication. Source
+  edits/removals use an explicit complete request without a base. Historical
+  screen/summary bindings are never updated; different panel digests cannot be
+  combined by the summary exporter. No schema bump or legacy digest change is
+  needed: absent optional fields remain omitted from canonical legacy payloads.
+  Optional `gene_set: {resolution_id, resolution_sha256}` binds the existing
+  stored `gentle.gene_set_resolution.v1` report, not another gene-list type.
+  The hash covers canonical report content. Every resolved member requires one
+  source with the exact annotated stable gene ID; unresolved members, conflicting
+  reference contexts and missing/duplicate mappings refuse publication. Labels
+  cannot establish this relation. `expected_source_record_sha256` on a source
+  optionally rejects feature-ID drift since source discovery.
+  `register_in_project=true` additionally retains the validated panel snapshot
+  in `rna_read_panels.v1` project metadata and is undoable through the outer build
+  operation; omitted/false preserves legacy external-file-only behavior. Undo
+  never deletes the external file. Project registration does not run a screen.
+- `rna-reads panel-build --list-sources [GENE_SET_ID]` is a read-only shared-shell projection,
+  `gentle.rna_read_panel_source_inventory.v1`, available through CLI/GUI Shell,
+  scripting shell wrappers, inner-agent suggestions and MCP's deterministic
+  shell-plan executor. Rows contain editable `source`, `transcript_ids` and an
+  optional geometry `diagnostic`. Exact identical transcript-feature groups
+  collapse, not shared exons or reused labels in distinct records. Unknown
+  source/assembly/release/gene fields stay blank for explicit review. This is
+  source discovery, not reference authentication, extraction or artifact approval.
+  It includes existing `gene_sets[]` with exact bindings. The optional ID requests
+  an unambiguous exact-ID source mapping and returns `selected_gene_set`; missing
+  or competing sources are errors, not zero biological targets.
 - `gentle.rna_read_panel.v1`: content SHA-256 (compact JSON with sorted object
   keys and cleared digest field), loci with source record hashes over the loaded
   forward DNA plus ordered feature records, not raw source-file bytes or caches;
@@ -38,6 +69,11 @@ panel/report/row payloads are the same; no adapter-local classification is added
   assembly/gene ID or same-strand overlapping genome anchors is flagged. Use
   independently extracted records for disjoint genes on one larger sequence;
   no source reconciliation or biological consensus is inferred.
+  Optional `gene_set_resolution` embeds the selected target operand and
+  `parent_panel_sha256` binds extension provenance; both contribute to the panel
+  hash and are omitted in historical panels. Thus an extension and an independent
+  full build can share templates without sharing provenance identity. Registered
+  snapshots are inspectable without external-file probes in GUI/lineage SVG.
 - `gentle.rna_read_panel_screen_request.v1`: `panel_path`, explicit `files[]`,
   optional `md5_manifest_path`, new `output_dir`, optional `cancel_path`,
   `policy`. Each file declares `sample_id`, `barcode`, `priming`, `path`,

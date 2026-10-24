@@ -52,11 +52,35 @@ class RnaPanelTutorialTests(unittest.TestCase):
         source_path = ROOT / "src/engine/analysis/rna_panel.rs"
         source = source_path.read_text(encoding="utf-8")
         for text in (source, source.replace("\n", "\r\n")):
-            for child in ("input", "control", "verification", "tools", "tests", "summary", "summary_tests"):
+            for child in ("input", "control", "verification", "tools", "tests", "summary", "summary_tests", "project"):
                 match = re.search(r'#\[path = "([^"]+)"\]\s*mod ' + child + r';', text)
                 self.assertIsNotNone(match, f"path-loaded panel needs an explicit {child} path")
                 self.assertEqual(match.group(1), f"rna_panel/{child}.rs")
                 self.assertTrue((source_path.parent / match.group(1)).is_file())
+
+    def test_native_preparation_reuses_gene_sets_and_shared_routes(self):
+        guide = GUIDE.read_text(encoding="utf-8")
+        for phrase in ("Gene sets...", "Resolve new set > Explicit members",
+                       "Bind loaded gene-set members", "Keep panel in project graph",
+                       "parent_panel_sha256", "expected_source_record_sha256",
+                       "register_in_project=true", "20", "ui open rna-read-panel"):
+            self.assertIn(phrase, guide)
+        source = (ROOT / "src/app/rna_panel_ui.rs").read_text(encoding="utf-8")
+        for phrase in ("ShellCommand::RnaReadPanelSources", "Operation::BuildRnaReadPanel",
+                       "execute_on_engine_snapshot", "try_open_rna_panel_graph_node",
+                       "rna_panel_gene_set_registration_graph_save_reload_and_undo_agree",
+                       "rna_panel_gene_set_binding_rejects_stale_unresolved_and_relabelled_sources"):
+            self.assertIn(phrase, source)
+        project = (ROOT / "src/engine/analysis/rna_panel/project.rs").read_text(encoding="utf-8")
+        for phrase in ("get_gene_set_resolution_artifact", "resolution_sha256",
+                       "panel_gene_set_ambiguous_or_missing_source", "panel_gene_set_changed"):
+            self.assertIn(phrase, project)
+        bridge = (ROOT / "src/agent_bridge.rs").read_text(encoding="utf-8")
+        self.assertIn("--list-sources [GENE_SET_ID]", bridge)
+        self.assertIn('Builds remain execution="ask"', bridge)
+        glossary = json.loads((ROOT / "docs/glossary.json").read_text())["commands"]
+        entry, = [row for row in glossary if row["path"] == "rna-reads panel-build"]
+        self.assertIn("gui-menu", entry["interfaces"])
 
     def test_source_catalog_discovery_and_unique_placement(self):
         source = json.loads(SOURCE.read_text())

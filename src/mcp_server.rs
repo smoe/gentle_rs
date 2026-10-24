@@ -4925,6 +4925,63 @@ mod tests {
     }
 
     #[test]
+    fn rna_panel_sources_mcp_plan_matches_shared_shell_without_confirmation_or_writes() {
+        // Hand-crafted annotated DNA, not a human locus or experimental read.
+        let temp = tempfile::tempdir().unwrap();
+        let state_path = temp.path().join("source inventory.json");
+        let mut state = ProjectState::default();
+        let mut dna = crate::dna_sequence::DNAsequence::from_sequence(&"ACGT".repeat(30)).unwrap();
+        for id in ["toy_a", "toy_b"] {
+            dna.features_mut().push(gb_io::seq::Feature {
+                kind: "mRNA".into(),
+                location: gb_io::seq::Location::Join(vec![
+                    gb_io::seq::Location::simple_range(0, 30),
+                    gb_io::seq::Location::simple_range(70, 100),
+                ]),
+                qualifiers: vec![
+                    ("gene".into(), Some("SYNTHETIC".into())),
+                    ("transcript_id".into(), Some(id.into())),
+                ],
+            });
+        }
+        state.sequences.insert("toy_source".into(), dna);
+        let mut engine = GentleEngine::from_state(state);
+        engine
+            .state()
+            .save_to_path(&state_path.to_string_lossy())
+            .unwrap();
+        let before = fs::read(&state_path).unwrap();
+        let command = "rna-reads panel-build --list-sources";
+        let expected = execute_shell_command(
+            &mut engine,
+            &crate::engine_shell::parse_shell_line(command).unwrap(),
+        )
+        .unwrap();
+        assert!(!expected.state_changed);
+        let response = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "agent_execute_plan",
+            json!({
+                "state_path":state_path, "candidate_id":"sources", "plan":{
+                    "schema":"gentle.agent_plan_result.v1", "assistant_message":"Read-only source inventory",
+                    "questions":[], "candidates":[{"candidate_id":"sources", "title":"Loaded RNA sources",
+                        "rationale":"Explicit read-only discovery", "kind":"shell", "mutating":false,
+                        "requires_confirmation":false, "execution_mode":"auto", "shell_command":command}]
+                }
+            }),
+        );
+        assert_eq!(response["result"]["isError"], false, "{response}");
+        let execution = &response["result"]["structuredContent"];
+        assert_eq!(execution["state_changed"], false);
+        assert_eq!(execution["output"], expected.output);
+        assert_eq!(
+            execution["output"]["sources"][0]["transcript_ids"],
+            json!(["toy_a", "toy_b"])
+        );
+        assert_eq!(fs::read(&state_path).unwrap(), before);
+    }
+
+    #[test]
     fn mcp_exon_skip_plan_and_materialize_use_shared_shell_contract() {
         thread::Builder::new()
             .name("mcp-exon-skip".to_string())

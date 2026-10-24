@@ -10,7 +10,7 @@ verified input unit streams nominations to sidecars rather than retaining reads
 in memory. Independent locus/member identities, ambiguity and explicit resource
 failures survive every adapter. Synthetic tutorial preparation, inspection and
 cancellation also live at this shared boundary, so no tutorial stage requires
-an inner agent to run OS Python/touch commands. Project state stays unchanged;
+an inner agent to run OS Python/touch commands. Source sequences stay unchanged;
 external writes retain confirmation. See [the invariant](decisions.md#independent-locus-fastq-panel-nominations)
 and [the protocol](protocol.md#multi-locus-fastq-screening).
 The report-only summary uses this same boundary: count each class/member
@@ -28,6 +28,22 @@ verified units and source diagnostics without converting the failure into
 authorized cancellation, successful analysis or biological absence. Summary
 and agent consumers preserve that distinction; data/resource failures are
 not broadened into partial-result recovery.
+The native RNA-panel editor projects shared source discovery and build requests,
+not a GUI-owned transcript index. Read-only source discovery is also available
+through shared-shell `panel-build --list-sources`. Optional base-panel extension
+revalidates original loaded source hashes and writes a new immutable panel;
+source changes/removals require explicit recomposition. Earlier screens/counts
+never acquire a new competitor universe implicitly. GUI workers remain snapshot-
+bound and do not hold the engine lock during panel construction or file I/O.
+The existing gene-set resolution is the target operand; per-locus source and
+transcript selections are reference bindings, not a second gene-list model.
+Exact resolution hashes, annotated stable IDs and explicit reference contexts
+govern the binding. Optional project registration retains validated immutable
+panel snapshots in metadata through the same engine operation, with normal
+undo/redo. GUI and SVG lineage projections show the set, source DNA and parent
+panel relationships without probing external files. External file publication
+and project registration are separate effects: undo cannot remove files, and a
+stale detached commit must disclose a possibly written but unattached file.
 
 ## Publication projections
 

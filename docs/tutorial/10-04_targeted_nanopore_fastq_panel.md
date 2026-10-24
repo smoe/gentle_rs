@@ -119,7 +119,103 @@ its two compressed inputs are not identical copies. The summary must retain
 two samples, four verified reads per sample and exact class-bound co-nomination sets.
 It must not silently distribute the shared first-exon read across isoforms.
 
-## 2. Prepare The Five Actual Loci
+## 2. Prepare Your Actual Loci In The GUI
+
+Use a disposable saved project before this first rehearsal. The panel editor is
+**Genome > RNA Read Panel...**, or the command-palette entry **RNA Read Panel**.
+An agent can open the same window with `ui open rna-read-panel`; opening it does
+not approve a build or run any reads. These are native preparation controls,
+not the older single-locus RNA-read Mapping workspace.
+
+1. Click **Gene sets...**, choose **Resolve new set > Explicit members**, and
+   resolve the intended target names against your chosen prepared reference.
+   This is GENtle's existing reusable gene-set definition, not a second list
+   maintained by the panel. Review unresolved names before continuing.
+   Then click **Retrieve gene...** to open the existing local-reference retrieval
+   window. Choose one prepared assembly/release and import each intended gene
+   as its own annotated locus. Do not prepare a missing reference implicitly.
+   For the owner's expanded panel, review TP53, TP63, TP73, PATZ1, POU2F1,
+   POU2F2, FUS, TDP43, MDM2 and MDM4: ten requested names, not eight. Resolve
+   aliases such as the requested TDP43 name against the chosen annotation and
+   retain its exact source symbol/stable gene ID; do not infer identity by label.
+2. Return to **RNA Read Panel** and click **Refresh loaded loci**. Select the
+   stored target gene set, then **Bind loaded gene-set members**. Each member
+   must map to one loaded group by exact annotated stable gene ID. Missing or
+   competing groups refuse binding; inspect the sources, or explicitly select
+   the correct views with **Add loaded locus**. Labels cannot substitute for IDs.
+   Refreshing later does not automatically add genes or erase your draft. Red
+   geometry diagnostics mean unavailable evidence, not zero isoforms.
+3. Expand **Identity and transcript selection** for every added locus. Check
+   its source feature, stable gene ID and provenance. Unknown fields remain
+   blank. **Declared provenance defaults > Fill missing draft provenance**
+   copies your reviewed source/assembly/release into blank new rows only; it
+   does not authenticate them or overwrite retained base sources.
+4. Keep **All annotated transcripts** selected initially. Restricting the list
+   removes competing isoforms from the scientific index, not merely the display.
+   An apparent singleton afterward is relative to that restricted panel.
+5. Choose a fresh **New panel file**, leave **Keep panel in project graph**
+   selected, then click **Build new panel**. Check the
+   saved gene and selected/annotated transcript counts, content hash and any
+   overlapping-source warning. Source records are not modified. Closing the
+   editor does not cancel an already approved save; source changes during a save
+   make the output an explicitly earlier snapshot, not an up-to-date panel.
+6. Inspect the main **Lineage Graph**: the target gene set leads to an **RNA
+   panel** node with gene/transcript counts, also linked to loaded source DNA.
+   These are reference definitions, not sequencing-support results. Right-click
+   **Open RNA Read Panel** or double-click to reopen its retained snapshot;
+   the gene-set node opens the existing inspector. Save/reload retains the
+   snapshot; undo removes project registration but never deletes the panel file.
+7. To add a newly loaded gene later, resolve an expanded gene set first, then
+   **Open panel...**, refresh the loaded loci, select the expanded set and bind
+   its members. Save under another filename. Original rows remain
+   retained; the extension verifies their loaded source hashes. Missing/edited
+   originals require inspection, not blind reuse. **Recompose all sources** is
+   the explicit route to editing/removing original rows, again into a new file.
+   The new graph node links to the retained parent panel when present. A moved
+   external file can still be inspected from its project snapshot, but extension
+   requires the actual file and current loaded source records.
+
+**Checkpoint:** reopen the new panel with `rna-reads panel-show PATH`. The old
+panel and any old screens/counts must remain unchanged. Extending the panel
+requires a new screen: new competitors can change candidate sets. Do not merge
+old/new-panel summaries or call earlier single-candidate counts isoform-resolved.
+Continue at step 3 only after reviewing one completed input file. Native FASTQ
+file selection/screening is not added by this preparation editor.
+
+### 2.1 Equivalent CLI And Inner-Agent Preparation
+
+`rna-reads panel-build --list-sources [GENE_SET_ID]` returns the same loaded source choices
+without writing files or changing project history. Agents and scripting shell
+wrappers can inspect this inventory; MCP can use its deterministic shell-plan
+executor for discovery and `op` with confirmation for the build. No model is
+needed to execute a reviewed plan. The GUI's **Copy build request** exposes the
+exact request for the shared `panel-build` / `BuildRnaReadPanel` route.
+The inventory also returns existing resolved gene sets and their exact binding
+hashes. The optional ID maps one stored set to loaded groups, refusing missing
+or ambiguous stable IDs. Copy its `selected_gene_set` into the build's `gene_set`
+field, or choose a binding from `gene_sets`. These are the existing gene-set
+operands; `sources` specifies their reference/transcript bindings.
+
+```bash
+"$GENTLE" --state "$STATE" shell 'rna-reads panel-build --list-sources'
+"$GENTLE" --state "$STATE" shell 'ui open rna-read-panel'
+```
+
+The UI intent records a request only on a headless host; it does not create a
+graphical window there. For an extension, copy the reviewed build request and
+set `base_panel_path` to the existing panel, `sources` to the additions only and
+`output_path` to a new filename. Omitting `base_panel_path` means a full build;
+historical requests remain readable. A wrong source binding or duplicate locus
+refuses publication on every adapter. Earlier files are not overwritten.
+Preserve each discovered `expected_source_record_sha256`; it detects feature-ID
+drift before building. `register_in_project=true` keeps the same project graph
+as the GUI, with undoable registration. Omitted/false is the older file-only
+behavior. Extension inherits its base's gene set unless a new exact resolution
+is supplied; adding targets therefore requires an expanded set. The embedded
+set and `parent_panel_sha256` are identity-bound, so identical mature templates
+do not erase a different derivation history.
+
+The earlier five-gene example below remains a useful small starting panel:
 
 Use PATZ1, TP53, TP63, TP73 and E2F1 from one explicitly chosen, already prepared
 reference release. Do not concatenate their genomic sequences or reuse feature
@@ -247,7 +343,8 @@ output directory; no report or input is overwritten. Start with the terminal
 CLI so this long job does not occupy an interactive GENtle window. GUI Shell,
 MCP `op` (`confirm=true`), Python `op`, JS/Lua and the inner agent reach the same
 engine operations; external writes require explicit approval. No dedicated
-panel GUI or separate job scheduler is added here. Standard four-line FASTQ
+screening GUI or separate job scheduler is added here. The native editor only
+prepares/extends references. Standard four-line FASTQ
 records are supported (LF/CRLF, Phred+33, concatenated gzip members); wrapped
 sequence/quality records are refused, not silently repaired.
 

@@ -1052,6 +1052,11 @@ fn lineage_svg_node_subtitle(row: &EngineLineageRenderRow) -> String {
             row.macro_op_count
         ),
         EngineLineageRenderRowKind::Analysis => match row.analysis_kind.as_deref() {
+            Some("rna_panel_definition") => format!(
+                "reference definition | {} transcripts | {}",
+                row.analysis_target_count.unwrap_or(0),
+                row.analysis_status.as_deref().unwrap_or("unassessed")
+            ),
             Some("dotplot") => format!(
                 "dotplot | provenance={} | reference={}",
                 row.analysis_status
@@ -1105,6 +1110,17 @@ pub fn build_lineage_svg_graph(
     > = HashMap::new();
     let mut gene_set_resolution_reports: BTreeMap<String, GeneSetResolutionReport> =
         BTreeMap::new();
+    let rna_panel_entries = GentleEngine::rna_read_panel_project_entries(state);
+    if let Ok(entries) = &rna_panel_entries {
+        for entry in entries {
+            if let Some(report) = &entry.panel.gene_set_resolution {
+                gene_set_resolution_reports.insert(
+                    GentleEngine::gene_set_resolution_artifact_id(report),
+                    (**report).clone(),
+                );
+            }
+        }
+    }
     let mut gene_set_promoter_cohort_reports: BTreeMap<String, GeneSetPromoterCohortReport> =
         BTreeMap::new();
     let mut gene_set_cutrun_support_reports: BTreeMap<
@@ -1750,6 +1766,64 @@ pub fn build_lineage_svg_graph(
             if projected_edge_ids.insert(edge.clone()) {
                 projected_edges.push(edge);
             }
+        }
+    }
+
+    match rna_panel_entries {
+        Ok(entries) => {
+            let present = entries
+                .iter()
+                .map(|e| e.panel.content_sha256.clone())
+                .collect::<HashSet<_>>();
+            for entry in entries {
+                let panel = entry.panel;
+                let node = format!("analysis:rna_panel:{}", panel.content_sha256);
+                let mut row = gene_set_analysis_render_row(
+                    node.clone(),
+                    format!(
+                        "RNA panel: {} genes / {} transcripts",
+                        panel.gene_count, panel.selected_transcript_count
+                    ),
+                    Some(entry.op_id.clone()),
+                    entry.created_at_unix_ms,
+                    "rna_panel_definition",
+                    panel.selected_transcript_count,
+                    None,
+                );
+                row.analysis_status = Some("Reference definition, not read support".into());
+                projected_rows.push(row);
+                let mut parents = BTreeSet::new();
+                if let Some(report) = &panel.gene_set_resolution {
+                    parents.insert(gene_set_resolution_node_id(report));
+                }
+                if let Some(parent) = &panel.parent_panel_sha256 {
+                    if present.contains(parent) {
+                        parents.insert(format!("analysis:rna_panel:{parent}"));
+                    }
+                }
+                for locus in &panel.loci {
+                    if let Some(parent) = state.lineage.seq_to_node.get(&locus.source.seq_id) {
+                        parents.insert(parent.clone());
+                    }
+                }
+                op_label_by_id.insert(entry.op_id.clone(), "Build RNA reference panel".into());
+                for parent in parents {
+                    projected_edges.push((parent, node.clone(), entry.op_id.clone()));
+                }
+            }
+        }
+        Err(error) => {
+            let mut row = gene_set_analysis_render_row(
+                "analysis:rna_panel_error".into(),
+                "RNA panel store unavailable".into(),
+                None,
+                0,
+                "rna_panel_definition",
+                0,
+                None,
+            );
+            row.analysis_status = Some(error.to_string());
+            projected_rows.push(row);
         }
     }
 

@@ -1,6 +1,38 @@
 # GENtle GUI Manual
 
-Targeted FASTQ panel screening is currently a shared **Shell / Agent Assistant**
+Prepare targeted RNA-read panels in **Genome > RNA Read Panel...**, also available
+through the command palette and `ui open|focus|close rna-read-panel`. Refresh
+loaded loci and stored gene sets, bind the target set to independently annotated gene groups, review exact identities
+and provenance, and retain all annotated transcripts unless deliberately restricted.
+Use Retrieve gene... for the existing prepared-reference import window; it does
+not automatically download or select genes. Unknown provenance remains blank.
+Use **Gene sets... > Resolve new set > Explicit members** to reuse the existing
+gene-set model. Select that stored resolution and **Bind loaded gene-set members**;
+exact stable IDs are required, unresolved or competing sources refuse binding.
+Manual source choices remain available to resolve competing loaded views, not
+to redefine the gene set by labels. Expanding the targets requires a new resolved
+set, then a new panel version. The source fields describe the reference binding.
+Build new panel saves the existing shared build request to a fresh panel file.
+Open panel retains its original source rows; adding loci extends it after source
+hash checks. Recompose all sources explicitly unlocks retained rows for editing
+or removal. Neither action overwrites earlier panels or reinterprets old screens.
+Workers use history-free project snapshots; other windows remain usable. If the
+project changes during a successful save, the file is disclosed as an earlier
+snapshot, not promoted as the current panel. Closing the editor is not cancellation
+of an approved file write. These controls do not launch FASTQ screening.
+
+**Keep panel in project graph** retains a validated snapshot through the same
+build operation. The main lineage graph and its SVG export show the target gene
+set, panel gene/transcript counts, loaded source DNA relationships and any retained
+parent-panel version. These are reference definitions, not read-support results.
+Right-click the panel to **Open RNA Read Panel**, or double-click it; gene-set
+nodes open the existing inspector. Save/reload preserves the snapshot even if
+its external file moves; extension still requires that file and current sources.
+Undo removes project registration, not the external panel file. Clearing the
+checkbox makes a file-only build; CLI/agents control the same choice with
+`register_in_project`.
+
+Targeted FASTQ screening/summary inspection remains a shared **Shell / Agent Assistant**
 workflow, not a new RNA Mapping tab. [Tutorial 10.04](tutorial/10-04_targeted_nanopore_fastq_panel.md)
 provides `panel-demo`, `panel-build`, `panel-screen`, `panel-show` and
 `panel-cancel` routes for every stage. Export read-support summaries with

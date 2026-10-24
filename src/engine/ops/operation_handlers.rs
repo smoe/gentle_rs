@@ -52188,7 +52188,14 @@ impl GentleEngine {
                     result.dna_sequence_design = Some(Box::new(report));
                 }
                 Operation::BuildRnaReadPanel { request } => {
+                    if request.register_in_project.unwrap_or(false) {
+                        Self::rna_read_panel_project_entries(self.state())?;
+                    }
                     let panel = self.build_rna_read_panel(&request)?;
+                    if request.register_in_project.unwrap_or(false) {
+                        self.register_rna_read_panel(&panel, &request.output_path, &result.op_id)?;
+                        result.messages.push("Panel definition retained in the project graph; external file removal is not undone by project history".into());
+                    }
                     result.messages.push(format!("Prepared {} source loci and {} transcript members; original sequences unchanged", panel.locus_count, panel.selected_transcript_count));
                     result.rna_read_panel = Some(Box::new(panel));
                 }

@@ -1,6 +1,6 @@
 //! Portable multi-locus seed-screen contracts; co-nomination is not whole-read compatibility.
 
-use super::SequenceGenomeAnchorSummary;
+use super::{GeneSetResolutionReport, SequenceGenomeAnchorSummary};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -49,6 +49,9 @@ pub struct RnaReadPanelSource {
     pub gene_symbol: String,
     #[serde(default)]
     pub selected_transcript_ids: Vec<String>,
+    /// Optional optimistic source binding, supplied by shared source discovery.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_source_record_sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,6 +61,46 @@ pub struct BuildRnaReadPanelRequest {
     pub schema: String,
     pub sources: Vec<RnaReadPanelSource>,
     pub output_path: String,
+    /// Extend this validated panel with new loci; recheck its loaded source hashes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_panel_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_set: Option<RnaReadPanelGeneSetBinding>,
+    /// Explicit project-graph persistence through the BuildRnaReadPanel operation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub register_in_project: Option<bool>,
+}
+
+/// Exact reference to the existing gene-set operand, not a second gene-list model.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RnaReadPanelGeneSetBinding {
+    pub resolution_id: String,
+    pub resolution_sha256: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RnaReadPanelGeneSetChoice {
+    pub binding: RnaReadPanelGeneSetBinding,
+    pub resolution: GeneSetResolutionReport,
+}
+
+/// Project-owned immutable panel snapshot; external file existence is not implied.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RnaReadPanelProjectEntry {
+    pub panel: RnaReadPanel,
+    pub output_path: String,
+    pub op_id: String,
+    pub created_at_unix_ms: u128,
+}
+
+/// Editable source defaults from loaded annotations, not authenticated provider identity.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RnaReadPanelSourceChoice {
+    pub source: RnaReadPanelSource,
+    pub transcript_ids: Vec<String>,
+    /// Geometry failures remain visible rather than becoming an empty biological result.
+    pub diagnostic: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -101,6 +144,10 @@ pub struct RnaReadPanel {
     pub annotated_transcript_count: usize,
     /// Potential duplicate source views are disclosed, never silently counted as independent loci.
     pub overlapping_source_pairs: Vec<(String, String)>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_set_resolution: Option<Box<GeneSetResolutionReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_panel_sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

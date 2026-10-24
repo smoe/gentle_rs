@@ -1,5 +1,33 @@
 # GENtle Changelog
 
+## 2026-10-24 - Native And Shared RNA-Panel Preparation
+
+- Add Genome > RNA Read Panel, command-palette and shared UI-intent access for
+  editable multi-locus preparation: refresh loaded annotations, review identities
+  and transcript competitors, fill explicitly declared missing provenance, open
+  a saved panel and build a new version. Geometry failures remain visible and
+  unknown identities stay blank. No reads are run by these controls.
+- Share read-only `panel-build --list-sources` discovery with CLI/agents/scripts
+  and MCP's shell-plan route. Extend the existing build request with optional
+  `base_panel_path`; verify original loaded source hashes, reject duplicates,
+  and never overwrite/reinterpret old panels or counts. Explicit recomposition
+  handles source edits/removal. GUI work runs on history-free snapshots.
+- Reuse stored gene-set resolutions as targets, with exact report hashes,
+  annotated stable-ID/source binding and explicit reference-context checks.
+  Unresolved, missing or ambiguous mappings cannot become empty biological
+  results. Discovery's source hashes also reject feature-ID drift.
+- Add opt-in undoable project registration through that same build operation;
+  GUI and SVG graphs show set/source/parent relationships and reference counts,
+  not read support. Reopen saved panel snapshots from the graph, including after
+  file relocation; extension still requires the actual file/current sources.
+  Project undo never deletes exported panel files. Legacy file-only behavior
+  and omitted optional-field digests remain unchanged.
+- Extend tutorial 10.04 with native steps, the ten requested names, CLI/agent
+  equivalence, immutable extension and changed-competitor cautions. Author
+  synthetic 10-to-20-locus, stale/duplicate/LF-CRLF, GUI/shared-shell and MCP
+  source-discovery tests. Rust/native acceptance remains Glen/CI work; no
+  private reads, local Rust build, push or prior-goal resumption.
+
 ## 2026-10-23 - Correct PCR-Strip Journal And Parser Regressions
 
 - Address Glen's two isolated `fc75114a` test failures without production

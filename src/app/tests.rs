@@ -7497,6 +7497,7 @@ fn assert_command_palette_ui_intent_side_effect(app: &GENtleApp, target: UiInten
     );
     match target {
         UiIntentTarget::ProteinExpressionHandoff => assert!(app.protein_expression_ui.open),
+        UiIntentTarget::RnaReadPanel => assert!(app.rna_panel_ui.open),
         UiIntentTarget::GelImageEditor => assert!(app.gel_image_editor.open),
         UiIntentTarget::PrepareReferenceGenome => {
             assert!(app.show_reference_genome_prepare_dialog);
@@ -7599,6 +7600,7 @@ fn command_palette_gui_prominent_ui_intents_dispatch_to_expected_windows() {
         verified_targets,
         HashSet::from([
             UiIntentTarget::ProteinExpressionHandoff.as_str(),
+            UiIntentTarget::RnaReadPanel.as_str(),
             UiIntentTarget::PrepareReferenceGenome.as_str(),
             UiIntentTarget::RetrieveGenomeSequence.as_str(),
             UiIntentTarget::BlastGenomeSequence.as_str(),

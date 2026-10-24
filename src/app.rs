@@ -76,6 +76,8 @@ mod external_services_ui;
 
 #[path = "app/protein_expression_ui.rs"]
 mod protein_expression_ui;
+#[path = "app/rna_panel_ui.rs"]
+mod rna_panel_ui;
 
 #[path = "app/clawbio_bridge.rs"]
 mod clawbio_bridge;
@@ -1109,6 +1111,7 @@ pub struct GENtleApp {
     command_palette_focus_query: bool,
     external_services_ui: ExternalServicesUiState,
     protein_expression_ui: protein_expression_ui::ProteinExpressionUiState,
+    rna_panel_ui: rna_panel_ui::RnaPanelUiState,
     gene_set_inspector: gene_set_ui::GeneSetInspectorUiState,
     clawbio_panel: clawbio_ui::ClawBioPanelState,
     mirna_panel: mirna_ui::MirnaTargetScanPanelState,
@@ -3055,6 +3058,7 @@ impl Default for GENtleApp {
             command_palette_focus_query: false,
             external_services_ui: ExternalServicesUiState::default(),
             protein_expression_ui: protein_expression_ui::ProteinExpressionUiState::default(),
+            rna_panel_ui: rna_panel_ui::RnaPanelUiState::default(),
             gene_set_inspector: gene_set_ui::GeneSetInspectorUiState::default(),
             clawbio_panel: clawbio_ui::ClawBioPanelState::default(),
             mirna_panel: mirna_ui::MirnaTargetScanPanelState::default(),
@@ -5451,6 +5455,7 @@ Error: `{err}`"
 
     fn has_active_background_jobs(&self) -> bool {
         self.protein_expression_inspection_pending()
+            || self.rna_panel_pending()
             || self.genome_prepare_task.is_some()
             || self.genome_blast_task.is_some()
             || self.genome_track_import_task.is_some()
@@ -17099,6 +17104,10 @@ Error: `{err}`"
                 }
             });
             ui.menu_button(self.tr("menu.genome"), |ui| {
+                if ui.button(self.tr("menu.genome.rna_read_panel")).clicked() {
+                    self.open_rna_panel_dialog();
+                    ui.close();
+                }
                 let launch = LaunchContext::capture(self, false);
                 if ui
                     .button(self.tr("menu.genome.prepare_reference"))
@@ -19413,6 +19422,12 @@ Error: `{err}`"
                 })
                 .collect();
             racks.sort_by(|a, b| a.rack_id.cmp(&b.rack_id));
+            Self::append_rna_panel_lineage_rows(
+                state,
+                &mut out,
+                &mut lineage_edges,
+                &mut op_label_by_id,
+            );
             (
                 out,
                 lineage_edges,
@@ -25763,6 +25778,7 @@ impl GENtleApp {
 
             self.poll_prepare_reference_genome_task(ctx);
             self.poll_protein_expression_report();
+            self.poll_rna_panel_action();
             self.poll_tutorial_project_task(ctx);
             self.poll_reference_genome_blast_task(ctx);
             self.poll_genome_track_import_task(ctx);
@@ -25840,6 +25856,7 @@ impl GENtleApp {
                 self.render_agent_assistant_dialog(ctx);
                 self.render_external_services_dialog(ctx);
                 self.render_protein_expression_dialog(ctx);
+                self.render_rna_panel_dialog(ctx);
                 self.render_gene_set_inspector_dialog(ctx);
                 self.render_clawbio_dialog(ctx);
                 self.render_mirna_target_scan_dialog(ctx);

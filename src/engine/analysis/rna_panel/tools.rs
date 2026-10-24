@@ -66,6 +66,7 @@ impl GentleEngine {
                 gene_id: format!("SYN_{i}"),
                 gene_symbol: format!("SYN_{i}"),
                 selected_transcript_ids: vec![],
+                expected_source_record_sha256: None,
             });
             sequences.push(sequence);
         }
@@ -73,6 +74,9 @@ impl GentleEngine {
             .state()
             .save_to_path(&stage.path().join("starter.json").display().to_string())?;
         let build = BuildRnaReadPanelRequest {
+            gene_set: None,
+            register_in_project: None,
+            base_panel_path: None,
             schema: RNA_PANEL_BUILD_SCHEMA.into(),
             sources,
             output_path: directory.join("panel.json").display().to_string(),

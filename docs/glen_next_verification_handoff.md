@@ -1,5 +1,42 @@
 # Glen: Next Verification And Return
 
+## Gene-Set RNA Panel Preparation And Graph, 2026-10-24
+
+At the ordinary integrated source, without another freeze, run:
+
+```sh
+cargo test --locked --lib -j1 rna_panel_ -- --test-threads=1
+cargo test --locked --lib -j1 rna_panel_mcp -- --test-threads=1
+cargo test --locked -p gentle-shell ui_intent
+cargo test --locked --test capability_registry_parity
+cargo test --locked --test parity_matrix_freshness
+cargo check -q --locked --tests
+```
+
+Run the normal tutorial/catalog/maturity generators and freshness checks; the
+source/metadata Python tests do not replace Rust execution. New authored tests
+cover loaded-group discovery, immutable 10-to-20-locus extension, source-hash
+drift, gene-set binding, registration/save/reload/undo/redo, GUI/SVG graph edges,
+UI-intent lifecycle, stale workers and MCP read-only discovery. Require legacy
+omitted-field digests and the synthetic screen/summary outputs to stay unchanged.
+
+Follow tutorial 10.04 in a disposable native and hosted project: resolve an
+explicit set in Gene Set Inspector; import its annotated loci; refresh, bind exact
+stable IDs, review provenance/transcripts and build. Verify the set/source/panel
+graph, reopen by right-click and double-click, save/restart, then extend with an
+expanded set. Undo must remove only registration, not the external file; old
+panels/screens must remain unchanged. A moved panel file must not prevent
+snapshot inspection, but must prevent extension until explicitly resolved.
+Missing/ambiguous IDs, unresolved members and stale source hashes are errors,
+not zero transcripts. Other windows must remain usable during preparation.
+
+Compare CLI `panel-build --list-sources [GENE_SET_ID]`, the copied build JSON,
+MCP confirmed `op`, and inner-agent approved builds using the same scientific
+payload. Discovery is read-only; file/project writes stay ask/confirmation-bound.
+Live-model invocation and native semantics remain unverified locally. This is
+panel preparation, not a new native FASTQ-screening form, isoform-discrimination
+acceptance or a private sequencing run. Return exact source/platform/toolchain.
+
 ## PCR-Strip Test-Contract Repairs, 2026-10-23
 
 Glen's two isolated failures from `fc75114a` are corrected in tests only:

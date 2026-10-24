@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 mod control;
 #[path = "rna_panel/input.rs"]
 mod input;
+#[path = "rna_panel/project.rs"]
+mod project;
 #[path = "rna_panel/summary.rs"]
 mod summary;
 #[path = "rna_panel/tools.rs"]
@@ -133,11 +135,139 @@ fn source_overlaps(loci: &[RnaReadPanelLocus]) -> Vec<(String, String)> {
 }
 
 impl GentleEngine {
+    /// Source-picker projection using the same transcript grouping/templates as panel construction.
+    /// Missing provenance stays blank for explicit caller review, never guessed from a record name.
+    pub fn rna_read_panel_source_choices(
+        &self,
+    ) -> Result<Vec<RnaReadPanelSourceChoice>, EngineError> {
+        let mut records = self.state.sequences.iter().collect::<Vec<_>>();
+        records.sort_by(|a, b| a.0.cmp(b.0));
+        let mut rows = Vec::new();
+        for (seq_id, dna) in records {
+            if dna.is_protein_sequence() {
+                continue;
+            }
+            let qualifier = |feature: &gb_io::seq::Feature, keys: &[&str]| {
+                Self::first_nonempty_feature_qualifier(feature, keys).unwrap_or_default()
+            };
+            let origin = dna
+                .features()
+                .iter()
+                .find(|f| f.kind.to_string().eq_ignore_ascii_case("source"));
+            let provenance = |keys: &[&str]| origin.map(|f| qualifier(f, keys)).unwrap_or_default();
+            let mut seen = BTreeSet::new();
+            // Gene seeds first; transcript-only annotations remain usable without a gene feature.
+            let mut seeds = dna
+                .features()
+                .iter()
+                .enumerate()
+                .filter(|(_, f)| {
+                    f.kind.to_string().eq_ignore_ascii_case("gene")
+                        || Self::is_splicing_transcript_feature(f)
+                })
+                .collect::<Vec<_>>();
+            if seeds.is_empty() {
+                continue;
+            }
+            let source_hash =
+                sha256_prefixed_bytes(&encode(&(dna.get_forward_string(), dna.features()))?);
+            seeds.sort_by_key(|(id, f)| (!f.kind.to_string().eq_ignore_ascii_case("gene"), *id));
+            for (feature_id, feature) in seeds {
+                let result = self
+                    .build_splicing_expert_view(
+                        seq_id,
+                        feature_id,
+                        SplicingScopePreset::TargetGroupTargetStrand,
+                    )
+                    .and_then(|view| Self::build_qpcr_transcript_design_templates(dna, &view));
+                let (mut ids, group, diagnostic) = match result {
+                    Ok(templates) if !templates.is_empty() => {
+                        let group = templates
+                            .iter()
+                            .map(|t| t.transcript_feature_id)
+                            .collect::<BTreeSet<_>>();
+                        (
+                            templates
+                                .into_iter()
+                                .map(|t| t.transcript_id)
+                                .collect::<Vec<_>>(),
+                            group,
+                            None,
+                        )
+                    }
+                    Ok(_) => (vec![], BTreeSet::new(), Some("panel_no_transcripts".into())),
+                    Err(error) => (vec![], BTreeSet::new(), Some(error.to_string())),
+                };
+                ids.sort();
+                // Only identical transcript groups collapse, never groups with merely a shared exon.
+                if diagnostic.is_none() && !seen.insert(group) {
+                    continue;
+                }
+                rows.push(RnaReadPanelSourceChoice {
+                    source: RnaReadPanelSource {
+                        locus_id: format!(
+                            "locus_{}",
+                            sha256_prefixed_str(&format!("{seq_id}:{feature_id}"))
+                                .trim_start_matches("sha256:")
+                        ),
+                        seq_id: seq_id.clone(),
+                        source_feature_id: feature_id,
+                        source: provenance(&["annotation_provider", "annotation_source", "source"]),
+                        assembly: provenance(&["assembly", "assembly_name"]),
+                        annotation_release: provenance(&["annotation_release", "release"]),
+                        gene_id: qualifier(feature, &["gene_id", "locus_tag"]),
+                        gene_symbol: qualifier(feature, &["gene", "gene_name"]),
+                        selected_transcript_ids: vec![],
+                        expected_source_record_sha256: Some(source_hash.clone()),
+                    },
+                    transcript_ids: ids,
+                    diagnostic,
+                });
+            }
+        }
+        Ok(rows)
+    }
+
     /// Build a portable panel from independent loaded annotated loci, without changing project state.
     pub fn build_rna_read_panel(
         &self,
         request: &BuildRnaReadPanelRequest,
     ) -> Result<RnaReadPanel, EngineError> {
+        let mut effective = request.clone();
+        let mut inherited_resolution = None;
+        let mut parent_panel_sha256 = None;
+        if let Some(path) = &request.base_panel_path {
+            let base: RnaReadPanel = load(path)?;
+            validate_panel(&base)?;
+            inherited_resolution = base.gene_set_resolution.clone();
+            parent_panel_sha256 = Some(base.content_sha256.clone());
+            for locus in &base.loci {
+                let dna = self
+                    .state
+                    .sequences
+                    .get(&locus.source.seq_id)
+                    .ok_or_else(|| bad(format!("panel_source_missing: {}", locus.source.seq_id)))?;
+                let digest =
+                    sha256_prefixed_bytes(&encode(&(dna.get_forward_string(), dna.features()))?);
+                if digest != locus.source_record_sha256 {
+                    return Err(bad(format!(
+                        "panel_base_source_changed: {}",
+                        locus.source.locus_id
+                    )));
+                }
+            }
+            effective.sources = base
+                .loci
+                .into_iter()
+                .map(|l| l.source)
+                .chain(request.sources.clone())
+                .collect();
+        }
+        let request = &effective;
+        let gene_set_resolution = match &request.gene_set {
+            Some(binding) => Some(Box::new(self.rna_read_panel_resolve_gene_set(binding)?)),
+            None => inherited_resolution,
+        };
         if request.schema != RNA_PANEL_BUILD_SCHEMA
             || request.sources.is_empty()
             || request.sources.len() > 128
@@ -156,6 +286,8 @@ impl GentleEngine {
             selected_transcript_count: 0,
             annotated_transcript_count: 0,
             overlapping_source_pairs: vec![],
+            gene_set_resolution,
+            parent_panel_sha256,
         };
         let mut ids = BTreeSet::new();
         for source in &request.sources {
@@ -183,6 +315,26 @@ impl GentleEngine {
             if dna.is_protein_sequence() {
                 return Err(bad("panel_source_requires_dna"));
             }
+            let source_record_sha256 =
+                sha256_prefixed_bytes(&encode(&(dna.get_forward_string(), dna.features()))?);
+            if source
+                .expected_source_record_sha256
+                .as_deref()
+                .is_some_and(|expected| expected != source_record_sha256.as_str())
+            {
+                return Err(bad(format!("panel_source_changed: {}", source.locus_id)));
+            }
+            if panel.gene_set_resolution.is_some() {
+                let annotated_id = dna.features().get(source.source_feature_id).and_then(|f| {
+                    Self::first_nonempty_feature_qualifier(f, &["gene_id", "locus_tag"])
+                });
+                if annotated_id.as_deref() != Some(source.gene_id.as_str()) {
+                    return Err(bad(format!(
+                        "panel_gene_set_source_id_unbound: {}",
+                        source.locus_id
+                    )));
+                }
+            }
             let view = self.build_splicing_expert_view(
                 &source.seq_id,
                 source.source_feature_id,
@@ -205,10 +357,7 @@ impl GentleEngine {
             panel.annotated_transcript_count += templates.len();
             panel.loci.push(RnaReadPanelLocus {
                 source: source.clone(),
-                source_record_sha256: sha256_prefixed_bytes(&encode(&(
-                    dna.get_forward_string(),
-                    dna.features(),
-                ))?),
+                source_record_sha256,
                 genome_anchor: self.transcript_qpcr_panel_source_anchor(&source.seq_id, dna),
                 annotated_transcript_count: templates.len(),
                 annotated_transcript_ids: templates
@@ -253,6 +402,7 @@ impl GentleEngine {
             .len();
         panel.selected_transcript_count = panel.templates.len();
         panel.overlapping_source_pairs = source_overlaps(&panel.loci);
+        project::validate_gene_set(&panel)?;
         seal_panel(&mut panel)?;
         validate_panel(&panel)?;
         let destination = Path::new(&request.output_path);
@@ -281,6 +431,7 @@ impl GentleEngine {
 }
 
 fn validate_panel(panel: &RnaReadPanel) -> Result<(), EngineError> {
+    project::validate_gene_set(panel)?;
     let mut copy = panel.clone();
     seal_panel(&mut copy)?;
     if panel.schema != RNA_PANEL_SCHEMA

@@ -202,6 +202,7 @@
   "genome.extract.region": "提取区域",
   "menu.genome.prepare_reference": "Prepare Reference Genome...",
   "menu.genome.gene_set_inspector": "Gene Set Inspector...",
+  "menu.genome.rna_read_panel": "RNA Read Panel...",
   "menu.genome.saved_genomic_regions": "Saved Genomic Regions...",
   "menu.genome.prepared_references": "Prepared References...",
   "menu.genome.clear_caches": "Clear Caches...",

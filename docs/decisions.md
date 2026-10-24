@@ -88,6 +88,24 @@ to verify before finalization. Preflight marker errors and unrelated data,
 resource and publication failures keep their existing hard-error behavior.
 No automatic retry, overwrite, reconciliation or budget-policy change follows.
 
+Owner-authorized 2026-10-24: native and command-line panel preparation share the
+source inventory and builder. Default to the full annotated transcript group;
+changing a competitor set is scientific input, not a display filter. Extension
+binds an explicit saved base and verifies every original loaded source hash,
+rejecting missing/changed originals and duplicate locus identities. Publish a
+new panel only; edit/removal is explicit full recomposition. Old panel/report
+files are never overwritten or reinterpreted, and different panel digests remain
+incompatible summary inputs. GUI requests/drafts are session-local; source
+provenance remains caller-reviewed, not authenticated by editable labels.
+Reuse stored gene-set resolutions for target membership, with exact report
+hashes and annotated stable gene IDs for each source. No name/alias inference
+or parallel panel gene-list primitive is introduced. A resolved expansion is a
+new operand and a new panel, not an in-place mutation of historical evidence.
+Explicit `register_in_project` retains the panel snapshot and its set/source/
+parent relationships for the GUI graph and shared SVG projection. Registration
+is undoable project state; the external panel file is not. Graph nodes describe
+reference definitions, never read counts or proof of isoform discrimination.
+
 ## Development And Release Verification Cadence
 
 Owner decision, 2026-10-15: continue development on `main` without intermediate

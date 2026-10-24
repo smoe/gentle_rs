@@ -23,10 +23,10 @@
       },
       {
          "aliases": [], "engine_operations": ["BuildRnaReadPanel"],
-         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
          "path": "rna-reads panel-build",
-         "summary": "Bind independent annotated loci and mature-transcript geometry into a portable screening panel. Writes a new file; no source mutation or authenticated-reference claim.",
-         "usage": "rna-reads panel-build REQUEST_JSON_OR_@FILE"
+         "summary": "Prepare a new panel or extend base_panel_path with additional loaded loci after checking original source hashes. Reuse an existing gene_set resolution/hash; register_in_project explicitly retains set/source/parent graph links. Never overwrite a panel or reinterpret older screens. --list-sources [GENE_SET_ID] is read-only exact-ID source discovery with unknown provenance left blank. Native editor: Genome > RNA Read Panel. No source mutation or authenticated-reference claim.",
+         "usage": "rna-reads panel-build REQUEST_JSON_OR_@FILE|--list-sources [GENE_SET_ID]"
       },
       {
          "aliases": [], "engine_operations": ["ScreenRnaReadPanel"],

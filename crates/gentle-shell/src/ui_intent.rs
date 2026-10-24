@@ -143,6 +143,7 @@ pub enum UiIntentTarget {
     TssView,
     SplicingExpert,
     ProteinExpressionHandoff,
+    RnaReadPanel,
 }
 
 const UI_INTENT_TARGETS: [UiIntentTarget; UiIntentTarget::COUNT] = [
@@ -168,6 +169,7 @@ const UI_INTENT_TARGETS: [UiIntentTarget; UiIntentTarget::COUNT] = [
     UiIntentTarget::TssView,
     UiIntentTarget::SplicingExpert,
     UiIntentTarget::ProteinExpressionHandoff,
+    UiIntentTarget::RnaReadPanel,
 ];
 
 const UI_INTENT_ACTION_NAMES: [&str; 3] = ["open", "focus", "close"];
@@ -307,7 +309,7 @@ pub struct UiIntentTargetCatalogRow {
 
 impl UiIntentTarget {
     /// Number of stable UI-intent destinations.
-    pub const COUNT: usize = 22;
+    pub const COUNT: usize = 23;
 
     /// Stable catalog order used by shell, MCP, and GUI discoverability.
     pub fn all() -> &'static [Self] {
@@ -317,6 +319,7 @@ impl UiIntentTarget {
     /// Parse stable shell spellings and common aliases.
     pub fn parse(raw: &str) -> Option<Self> {
         match raw.trim().to_ascii_lowercase().as_str() {
+            "rna-read-panel" | "rna_read_panel" => Some(Self::RnaReadPanel),
             "protein-expression-handoff" | "protein_expression_handoff" => {
                 Some(Self::ProteinExpressionHandoff)
             }
@@ -388,6 +391,7 @@ impl UiIntentTarget {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::ProteinExpressionHandoff => "protein-expression-handoff",
+            Self::RnaReadPanel => "rna-read-panel",
             Self::GelImageEditor => "gel-image-editor",
             Self::TssView => "tss-view",
             Self::SplicingExpert => "splicing-expert",
@@ -416,6 +420,7 @@ impl UiIntentTarget {
     pub fn discoverability_title(self) -> &'static str {
         match self {
             Self::ProteinExpressionHandoff => "Protein Expression Handoff",
+            Self::RnaReadPanel => "RNA Read Panel",
             Self::GelImageEditor => "Gel Image Analysis",
             Self::TssView => "TSS / Regulatory View",
             Self::SplicingExpert => "Splicing Expert",
@@ -450,6 +455,9 @@ impl UiIntentTarget {
         match self {
             Self::ProteinExpressionHandoff => {
                 "Inspect the shared read-only protein-expression report, unanswered requirements, CDS/tag evidence and explicit provider binding. Suggested commands are copy-only; no provider is selected automatically."
+            }
+            Self::RnaReadPanel => {
+                "Prepare or extend a multi-locus RNA-read reference panel from loaded annotations. Review source identities and transcript selection; save a new immutable panel without screening reads."
             }
             Self::SplicingExpert => {
                 "Open/focus/close the Splicing Expert for explicit SEQ_ID FEATURE_ID. Inspect annotated isoforms, exon/junction evidence and primer/qPCR seeds. Closing retains project data; headless hosts only record the intent."
@@ -506,6 +514,9 @@ impl UiIntentTarget {
             Self::ProteinExpressionHandoff => {
                 "synthetic biology protein expression handoff yield chassis vector tag provider readiness"
             }
+            Self::RnaReadPanel => {
+                "rna fastq nanopore isoforms transcripts multi-gene panel prepare extend"
+            }
             Self::SplicingExpert => {
                 "splicing isoform transcript exon junction primer pair qpcr assay evidence"
             }
@@ -551,6 +562,7 @@ impl UiIntentTarget {
     pub fn menu_path(self) -> &'static str {
         match self {
             Self::ProteinExpressionHandoff => "Services",
+            Self::RnaReadPanel => "Genome",
             Self::OpenSequence
             | Self::RecentProject
             | Self::TutorialProject
@@ -583,7 +595,8 @@ impl UiIntentTarget {
             | Self::GelImageEditor
             | Self::TssView
             | Self::SplicingExpert
-            | Self::ProteinExpressionHandoff => &UI_INTENT_ACTION_NAMES,
+            | Self::ProteinExpressionHandoff
+            | Self::RnaReadPanel => &UI_INTENT_ACTION_NAMES,
             Self::PreparedReferences
             | Self::PrepareReferenceGenome
             | Self::RetrieveGenomeSequence
@@ -603,7 +616,9 @@ impl UiIntentTarget {
     /// Stable optional arguments accepted by the target's discoverability contract.
     pub fn optional_arguments(self) -> &'static [&'static str] {
         match self {
-            Self::ProteinExpressionHandoff => &UI_INTENT_OPTIONAL_ARGUMENTS_NONE,
+            Self::ProteinExpressionHandoff | Self::RnaReadPanel => {
+                &UI_INTENT_OPTIONAL_ARGUMENTS_NONE
+            }
             Self::SplicingExpert => &UI_INTENT_OPTIONAL_ARGUMENTS_NONE,
             Self::TssView => &UI_INTENT_OPTIONAL_ARGUMENTS_TSS,
             Self::PreparedReferences => &UI_INTENT_OPTIONAL_ARGUMENTS_PREPARED_REFERENCES,
@@ -622,7 +637,7 @@ impl UiIntentTarget {
     /// Structured argument contract accepted by this target.
     pub fn arguments(self) -> &'static [UiIntentArgument] {
         match self {
-            Self::ProteinExpressionHandoff => &UI_INTENT_ARGUMENTS_NONE,
+            Self::ProteinExpressionHandoff | Self::RnaReadPanel => &UI_INTENT_ARGUMENTS_NONE,
             Self::SplicingExpert => &UI_INTENT_ARGUMENTS_SPLICING,
             Self::TssView => &UI_INTENT_ARGUMENTS_TSS,
             Self::PreparedReferences => &UI_INTENT_ARGUMENTS_PREPARED_REFERENCES,
@@ -678,6 +693,8 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     const TARGET_ALIAS_CASES: &[(&str, UiIntentTarget)] = &[
+        ("rna-read-panel", UiIntentTarget::RnaReadPanel),
+        ("rna_read_panel", UiIntentTarget::RnaReadPanel),
         (
             "protein-expression-handoff",
             UiIntentTarget::ProteinExpressionHandoff,
@@ -811,6 +828,7 @@ mod tests {
     fn assert_exhaustive_target_match(target: UiIntentTarget) {
         match target {
             UiIntentTarget::ProteinExpressionHandoff
+            | UiIntentTarget::RnaReadPanel
             | UiIntentTarget::GelImageEditor
             | UiIntentTarget::TssView
             | UiIntentTarget::SplicingExpert
@@ -875,6 +893,7 @@ mod tests {
             UiIntentTarget::TssView,
             UiIntentTarget::SplicingExpert,
             UiIntentTarget::ProteinExpressionHandoff,
+            UiIntentTarget::RnaReadPanel,
         ];
         assert_eq!(UiIntentTarget::COUNT, expected.len());
         assert_eq!(UiIntentTarget::all(), expected.as_slice());
